@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "pwsh -NoProfile -File ./hooks/marketplace-update.ps1",
+        "powershell": "./hooks/marketplace-update.ps1",
+        "timeoutSec": 30
+      }
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# Logs and temp
+*.log
+*.tmp
+tmp/
+
+# Node (in case a plugin ships tooling)
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

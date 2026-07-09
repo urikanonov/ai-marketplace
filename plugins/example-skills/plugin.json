@@ -1,0 +1,11 @@
+{
+  "name": "example-skills",
+  "description": "Example skills collection. A template you can copy to build your own AI marketplace plugin.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Uri Kanonov",
+    "email": "urikanonov@gmail.com"
+  },
+  "keywords": ["example", "template", "starter"],
+  "skills": "skills/"
+}

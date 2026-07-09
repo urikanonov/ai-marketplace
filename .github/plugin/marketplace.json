@@ -1,0 +1,55 @@
+{
+  "name": "urikan-ai-marketplace",
+  "metadata": {
+    "description": "A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name.",
+    "version": "1.0.0"
+  },
+  "owner": {
+    "name": "Uri Kanonov",
+    "email": "urikanonov@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "urikan-ai-marketplace-auto-updater",
+      "description": "Automatically checks for and installs plugin updates from this marketplace on session start. Opt-in: only install if you want automatic updates.",
+      "version": "1.0.0",
+      "source": "./plugins/urikan-ai-marketplace-auto-updater",
+      "author": {
+        "name": "Uri Kanonov",
+        "email": "urikanonov@gmail.com"
+      },
+      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater",
+      "repository": "https://github.com/urikanonov/ai-marketplace",
+      "license": "MIT",
+      "category": "infrastructure",
+      "keywords": [
+        "auto-update",
+        "marketplace",
+        "hooks",
+        "session-start"
+      ],
+      "strict": false
+    },
+    {
+      "name": "hello-world",
+      "description": "Minimal example skill that prints a friendly greeting. Serves as a starter template for new plugins in this marketplace.",
+      "version": "1.0.0",
+      "source": "./plugins/example-skills/skills/hello-world",
+      "author": {
+        "name": "Uri Kanonov",
+        "email": "urikanonov@gmail.com"
+      },
+      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/example-skills/skills/hello-world",
+      "repository": "https://github.com/urikanonov/ai-marketplace",
+      "license": "MIT",
+      "category": "example",
+      "keywords": [
+        "example",
+        "template",
+        "starter",
+        "hello-world"
+      ],
+      "strict": false
+    }
+  ]
+}
