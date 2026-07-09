@@ -7,5 +7,6 @@
     "email": "urikanonov@gmail.com"
   },
   "keywords": ["auto-update", "marketplace", "hooks", "session-start"],
+  "license": "MIT",
   "hooks": "hooks.json"
 }

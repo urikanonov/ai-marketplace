@@ -7,5 +7,6 @@
     "email": "urikanonov@gmail.com"
   },
   "keywords": ["example", "template", "starter"],
+  "license": "MIT",
   "skills": "skills/"
 }
