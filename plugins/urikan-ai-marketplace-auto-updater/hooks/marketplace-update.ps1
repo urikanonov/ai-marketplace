@@ -1,18 +1,38 @@
 # urikan-ai-marketplace Auto-Update Hook
-# Runs on session start to check for plugin updates from the urikan-ai-marketplace.
-# Errors are silently suppressed: intentional to never block session startup.
+# Runs on session start to update installed plugins from the urikan-ai-marketplace.
+# Non-blocking by design: failures are caught and logged, never surfaced to the session.
 
-$ErrorActionPreference = "SilentlyContinue"
 $marketplace = "urikan-ai-marketplace"
+$self = "urikan-ai-marketplace-auto-updater"
 
-# Respect COPILOT_HOME, fall back to ~/.copilot
+# Respect COPILOT_HOME, fall back to ~/.copilot.
 $copilotHome = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $HOME ".copilot" }
-$dir = Join-Path $copilotHome "installed-plugins" $marketplace
 
-if (-Not (Test-Path $dir)) { return }
+# Use the nested 2-arg Join-Path form; the 3-arg form is not supported on Windows PowerShell 5.1.
+$installed = Join-Path (Join-Path $copilotHome "installed-plugins") $marketplace
+$logFile = Join-Path (Join-Path $copilotHome "plugin-data") "$self.log"
 
-Get-ChildItem -Path $dir -Directory |
-    Where-Object { $_.Name -ne "urikan-ai-marketplace-auto-updater" } |
-    ForEach-Object { copilot plugin update "$($_.Name)@$marketplace" 2>$null }
+function Write-UpdaterLog($message) {
+    try {
+        $logDir = Split-Path -Parent $logFile
+        if (-Not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+        "$(Get-Date -Format o)  $message" | Add-Content -Path $logFile -Encoding utf8
+    } catch { }
+}
 
-return
+try {
+    if (-Not (Test-Path $installed)) { return }
+    if (-Not (Get-Command copilot -ErrorAction SilentlyContinue)) {
+        Write-UpdaterLog "copilot CLI not found on PATH; skipping auto-update."
+        return
+    }
+
+    Get-ChildItem -Path $installed -Directory |
+        Where-Object { $_.Name -ne $self } |
+        ForEach-Object {
+            try { copilot plugin update "$($_.Name)@$marketplace" 2>&1 | Out-Null }
+            catch { Write-UpdaterLog "update failed for $($_.Name): $($_.Exception.Message)" }
+        }
+} catch {
+    Write-UpdaterLog "auto-update aborted: $($_.Exception.Message)"
+}

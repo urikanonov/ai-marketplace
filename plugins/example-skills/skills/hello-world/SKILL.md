@@ -1,10 +1,9 @@
 ---
 name: hello-world
 description: >
-  Minimal example skill that greets the user. Use this as a starter template when
-  creating a new skill for the marketplace, or invoke it to confirm the marketplace
-  is wired up correctly. Trigger when the user asks for a hello-world or marketplace
-  smoke test.
+  Minimal example skill that greets the user and confirms the marketplace is wired up
+  correctly. Serves as a starter template for new plugins. Trigger when the user asks
+  for a hello-world or a marketplace smoke test.
 ---
 
 # Hello World

@@ -32,7 +32,7 @@
     },
     {
       "name": "hello-world",
-      "description": "Minimal example skill that prints a friendly greeting. Serves as a starter template for new plugins in this marketplace.",
+      "description": "Minimal example skill that greets the user and confirms the marketplace is wired up correctly. Serves as a starter template for new plugins.",
       "version": "1.0.0",
       "source": "./plugins/example-skills/skills/hello-world",
       "author": {

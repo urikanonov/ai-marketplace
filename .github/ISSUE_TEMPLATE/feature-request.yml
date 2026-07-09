@@ -1,0 +1,55 @@
+name: Plugin or feature request
+description: Propose a new plugin or skill, or an improvement to an existing one.
+title: "[Request]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose a new plugin or skill, or to request an improvement to an existing one.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Request type
+      options:
+        - New plugin or skill
+        - Improvement to an existing plugin
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Proposed name
+      description: A short kebab-case name for the plugin or skill.
+      placeholder: e.g. pr-summarizer
+    validations:
+      required: false
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what is painful today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should the plugin or skill do, and when should the model trigger it?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Anything you already tried or considered.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not already been requested.
+          required: true

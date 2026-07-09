@@ -1,0 +1,9 @@
+# Default owner for everything in this repository.
+* @urikanonov
+
+# Extra emphasis on the parts that affect every consumer of the marketplace.
+/.github/plugin/ @urikanonov
+/.github/workflows/ @urikanonov
+/.github/schemas/ @urikanonov
+/plugins/ @urikanonov
+/SECURITY.md @urikanonov

@@ -8,9 +8,10 @@
 
 - [ ] New or updated plugin lives under `plugins/`
 - [ ] Registered / updated in `.github/plugin/marketplace.json`
-- [ ] `version` bumped in both `plugin.json` and the manifest entry
+- [ ] Version bumped per CONTRIBUTING (both `plugin.json` and manifest for a plugin-dir source; manifest only for a single-skill source)
+- [ ] `CHANGELOG.md` updated
 - [ ] Author set to `Uri Kanonov <urikanonov@gmail.com>`
-- [ ] `marketplace.json` is valid JSON
+- [ ] `python scripts/validate_marketplace.py` passes locally
 
 ## Notes
 

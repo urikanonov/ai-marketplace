@@ -53,6 +53,8 @@ copilot plugin update <PLUGIN_NAME>
 
 Or install `urikan-ai-marketplace-auto-updater` to update every installed plugin from this marketplace automatically on session start.
 
+> The auto-updater runs a PowerShell session-start hook. On macOS and Linux it needs PowerShell 7 (`pwsh`) on your PATH; if `pwsh` is not installed the hook simply does nothing (it never blocks session startup). Install it with `brew install --cask powershell` or your distro's package (`apt install -y powershell`).
+
 ## Repository Layout
 
 ```
@@ -73,6 +75,12 @@ ai-marketplace/
 ```
 
 The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry points at a plugin directory (or a single skill directory) via its `source` field. See [CONTRIBUTING.md](CONTRIBUTING.md) to add your own plugin.
+
+## Trust and safety
+
+Plugins here can ship skills, MCP servers, and session hooks that run code on your machine (for example, the auto-updater runs a PowerShell hook on session start). Review a plugin's contents before installing it. To report a security issue privately, see [SECURITY.md](SECURITY.md). Uninstall anything with `copilot plugin uninstall <name>`.
+
+Every change to `main` is validated in CI (`.github/workflows/validate.yml`): the marketplace manifest, each `plugin.json`, and each `SKILL.md` are checked against JSON Schemas and for consistent `source` paths and versions. You can run the same check locally with `python scripts/validate_marketplace.py`.
 
 ## Reporting Issues
 

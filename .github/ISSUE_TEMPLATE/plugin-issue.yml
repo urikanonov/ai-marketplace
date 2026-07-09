@@ -8,15 +8,12 @@ body:
       value: |
         Thanks for filing an issue. Please fill in as much as you can so the problem can be reproduced and fixed quickly.
         You can drag and drop images, logs, or other files directly into any of the text boxes below.
-  - type: dropdown
+  - type: input
     id: plugin-name
     attributes:
       label: Plugin name
-      description: Which plugin is affected? Pick "Other" if it is not listed and name it in the description.
-      options:
-        - urikan-ai-marketplace-auto-updater
-        - hello-world
-        - Other (name it in the description)
+      description: Which plugin is affected? Use the exact name shown by `copilot plugin list`.
+      placeholder: e.g. urikan-ai-marketplace-auto-updater
     validations:
       required: true
   - type: input

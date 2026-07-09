@@ -76,12 +76,31 @@ Add an entry to the `plugins` array in `.github/plugin/marketplace.json`:
 
 ### 3. Validate and open a PR
 
-- Confirm `marketplace.json` is valid JSON.
-- Bump the `version` in `plugin.json` and the manifest entry when you change a published plugin.
-- Open a pull request against `main`.
+Run the validator locally before opening a PR. It also runs in CI and is a required status check on `main`:
+
+```bash
+python scripts/validate_marketplace.py
+```
+
+It verifies the manifest against its JSON Schema, that every `source` path exists, that plugin-directory
+sources have a `plugin.json` whose version matches the manifest entry, and that skill sources have a
+`SKILL.md` with `name` and `description` front matter. Then open a pull request against `main`.
+
+### Versioning: which file is the source of truth
+
+There are two shapes of manifest entry, and they version differently:
+
+- Plugin-directory source (for example the auto-updater, `source: ./plugins/<plugin>`): the directory has
+  its own `plugin.json`. Bump the version in BOTH `plugin.json` and the manifest entry, and keep them
+  equal - CI enforces that they match.
+- Single-skill source (for example `hello-world`, `source: ./plugins/<plugin>/skills/<skill>`): the skill
+  directory has only a `SKILL.md` and no `plugin.json` of its own, so the manifest entry is the single
+  source of truth. Bump the version only in the manifest entry.
+
+Add a matching entry to [CHANGELOG.md](CHANGELOG.md) whenever you bump a version.
 
 ## Conventions
 
 - Author every plugin as `Uri Kanonov <urikanonov@gmail.com>`.
 - Keep skill descriptions action-oriented so the model knows when to trigger them.
-- Use semantic versioning for both `plugin.json` and the manifest entry.
+- Use semantic versioning for every `version` field.

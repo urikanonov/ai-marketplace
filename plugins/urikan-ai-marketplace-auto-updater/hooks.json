@@ -4,9 +4,9 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "pwsh -NoProfile -File ./hooks/marketplace-update.ps1",
+        "bash": "command -v pwsh >/dev/null 2>&1 && pwsh -NoProfile -File ./hooks/marketplace-update.ps1 || true",
         "powershell": "./hooks/marketplace-update.ps1",
-        "timeoutSec": 30
+        "timeoutSec": 120
       }
     ]
   }
