@@ -60,21 +60,19 @@ Or install `urikan-ai-marketplace-auto-updater` to update every installed plugin
 ```
 ai-marketplace/
   .github/
-    plugin/
-      marketplace.json     # marketplace manifest: lists every published plugin
-    pull_request_template.md
+    plugin/marketplace.json               # marketplace manifest: lists every published plugin
+    schemas/                              # JSON Schemas for the manifest and plugin.json
+    workflows/validate.yml                # CI that validates the marketplace
   plugins/
     urikan-ai-marketplace-auto-updater/   # session-start hook that auto-updates plugins
     example-skills/                        # collection plugin; template for new skills
-      skills/
-        hello-world/
-          SKILL.md
-  CONTRIBUTING.md
-  LICENSE
-  README.md
+      skills/hello-world/SKILL.md          # shipped: the skill
+      dev/                                 # NOT shipped: tests, build tooling, dev docs
+  scripts/validate_marketplace.py         # marketplace validator (CI + pre-commit)
+  AGENTS.md  CONTRIBUTING.md  LICENSE  README.md
 ```
 
-The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry points at a plugin directory (or a single skill directory) via its `source` field. See [CONTRIBUTING.md](CONTRIBUTING.md) to add your own plugin.
+The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry points at a plugin directory (or a single skill directory) via its `source` field. **Only a plugin's registered `source` is distributed on install** - a `dev/` folder beside it (tests, build tooling, sources) stays in the repo and is never shipped. See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
 ## Trust and safety
 

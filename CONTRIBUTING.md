@@ -49,6 +49,10 @@ There are two shapes of manifest entry, and they version differently:
 
 New plugins are authored by the maintainer. A plugin is a directory under `plugins/` plus one entry in `.github/plugin/marketplace.json`. The mechanics are documented in [AGENTS.md](AGENTS.md), which is also the guide for developing in this repo with an AI agent.
 
+## Tests and development files
+
+Only a plugin's registered `source` is distributed when someone installs it. Keep tests, build tooling, canonical sources, and maintainer docs in a `dev/` folder beside the shipped source (`plugins/<plugin>/dev/`). That folder stays in the repo - versioned and testable - but is never shipped. The validator ignores `dev/` and rejects any `source` that would ship it. See [AGENTS.md](AGENTS.md) for the full structure and how to choose the source shape.
+
 ## Conventions
 
 - Every plugin is authored as `Uri Kanonov <urikanonov@gmail.com>`.

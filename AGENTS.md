@@ -22,6 +22,7 @@ plugins/
   <plugin>/plugin.json        # plugin manifest (hook/MCP/skills-collection plugins)
   <plugin>/hooks.json, hooks/ # session hooks (see the auto-updater)
   <plugin>/skills/<skill>/SKILL.md   # a skill: YAML front matter (name, description) + instructions
+  <plugin>/dev/               # development-only, NEVER distributed (tests, build tooling, sources, specs)
 scripts/validate_marketplace.py  # the validator CI runs; also run it locally
 CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
 ```
@@ -37,6 +38,36 @@ Each object in `marketplace.json`'s `plugins` array has a `source` that points a
 
 Both shapes are valid. A `SKILL.md` begins with YAML front matter that must have a non-empty `name` and
 `description`; the `description` should say what the skill does and when to trigger it.
+
+## Shipped vs development files (what gets distributed)
+
+`copilot plugin install` copies ONLY the marketplace entry's `source` subtree onto the user's machine.
+Anything else in the repo is never distributed. Use this to keep tests, build tooling, canonical sources,
+and specs in the repo without shipping them.
+
+Convention: put non-distributed content in a `dev/` folder beside the shipped source. `dev/` (and
+`node_modules/`, `__pycache__/`) is reserved - the validator ignores it, and it rejects any `source` that
+resolves into or contains one of these folders (that would ship it).
+
+```
+plugins/<plugin>/
+  skills/<skill>/        # shipped: SKILL.md plus any runtime assets/scripts it references
+  dev/                   # NOT shipped: tests/, build tooling, canonical sources, SPEC.md, DEVELOPMENT.md
+```
+
+If a plugin builds artifacts (a bundled HTML/CSS/JS, for example), commit the BUILT OUTPUTS into the shipped
+folder and keep the INPUTS and the builder under `dev/`; install runs no build step. Add a CI check that the
+committed outputs match a fresh build.
+
+### Choosing the source shape
+
+- Skill-dir source (`source: ./plugins/<plugin>/skills/<skill>`): simplest. The plugin folder holds the
+  shipped skill plus a sibling `dev/`, so the ship/dev split is automatic. The version lives only in the
+  manifest entry. Use for a single skill with no `plugin.json`.
+- Plugin-dir source (`source: ./plugins/<plugin>/pkg`, where `pkg/` contains a `plugin.json`): use when you
+  need a `plugin.json` (explicit version/author/keywords), multiple skills, or hooks/MCP config. Because the
+  whole source subtree ships, point the source at a nested ship folder (e.g. `pkg/`) and keep `dev/` as its
+  sibling so dev files stay out of the shipped subtree.
 
 ## Validate before you commit
 
@@ -59,6 +90,7 @@ status check on `main`) enforces:
 - Every `source` path exists; a plugin-dir source's `plugin.json` version equals the manifest entry version;
   a skill-dir source has a `SKILL.md` with `name` and `description` front matter.
 - Every `plugins/**/plugin.json` matches `.github/schemas/plugin.schema.json` with a semver `version`.
+- Development-only folders (`dev/`, `node_modules/`, `__pycache__/`) are ignored, and a `source` that would ship one is rejected.
 
 ## Versioning
 
@@ -102,3 +134,5 @@ status check on `main`) enforces:
   in `marketplace.json`, bump versions per the rules, update `CHANGELOG.md`, run the validator.
 - Fix the auto-updater: edit `hooks/marketplace-update.ps1`, keep it non-blocking and 5.1-safe, bump the plugin
   version in both its `plugin.json` and the manifest entry, update `CHANGELOG.md`, run the validator.
+- Add tests or build tooling to a plugin: put them under `plugins/<plugin>/dev/` so they stay in the repo but
+  are never distributed. Run them from a CI job scoped to that plugin's path.

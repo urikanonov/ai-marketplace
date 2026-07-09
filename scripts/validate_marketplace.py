@@ -8,6 +8,8 @@ Fails (exit 1) on any structural error so broken plugins cannot be merged. Check
   the manifest entry) or a SKILL.md (whose front matter must have name + description).
 - Every plugins/**/plugin.json parses, matches the plugin JSON Schema, and has a semver version.
 - Every plugins/**/SKILL.md has YAML front matter with a non-empty name and description.
+- Development-only folders (dev/, node_modules/, __pycache__/) are ignored, and a source that would
+  ship one is rejected.
 
 Run locally: python scripts/validate_marketplace.py
 Dependencies: jsonschema, pyyaml.
@@ -24,6 +26,10 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$")
 
+# Directory names under plugins/ that hold development-only content that is never distributed.
+# The validator ignores them, and a manifest source must never resolve into (or contain) one.
+RESERVED_DEV_DIRS = {"dev", "node_modules", "__pycache__"}
+
 errors: list[str] = []
 
 
@@ -33,6 +39,10 @@ def err(msg: str) -> None:
 
 def rel(p: Path) -> str:
     return str(p.relative_to(ROOT)).replace("\\", "/")
+
+
+def is_dev_path(path: Path) -> bool:
+    return any(part in RESERVED_DEV_DIRS for part in path.relative_to(ROOT).parts)
 
 
 def load_json(path: Path):
@@ -81,6 +91,12 @@ def main() -> int:
         if not src.startswith("./") or ".." in src:
             err(f"{name}: source must be repo-relative and must not contain '..': {src!r}")
             continue
+        if any(part in RESERVED_DEV_DIRS for part in src.strip("./").split("/")):
+            err(
+                f"{name}: source must not live under a dev-only folder "
+                f"({', '.join(sorted(RESERVED_DEV_DIRS))}): {src!r}"
+            )
+            continue
 
         src_path = (ROOT / src).resolve()
         if ROOT != src_path and ROOT not in src_path.parents:
@@ -89,6 +105,10 @@ def main() -> int:
         if not src_path.exists():
             err(f"{name}: source path does not exist: {src!r}")
             continue
+
+        for sub in src_path.rglob("*"):
+            if sub.is_dir() and sub.name in RESERVED_DEV_DIRS:
+                err(f"{name}: shipped source would distribute a dev-only folder: {rel(sub)}")
 
         plugin_json = src_path / "plugin.json"
         skill_md = src_path / "SKILL.md"
@@ -109,6 +129,8 @@ def main() -> int:
             err(f"{name}: source has neither plugin.json nor SKILL.md: {src!r}")
 
     for pj_path in sorted(ROOT.glob("plugins/**/plugin.json")):
+        if is_dev_path(pj_path):
+            continue
         pj = load_json(pj_path)
         if pj is None:
             continue
@@ -119,6 +141,8 @@ def main() -> int:
             err(f"{rel(pj_path)}: version is not semver: {pj.get('version')!r}")
 
     for skill_md in sorted(ROOT.glob("plugins/**/SKILL.md")):
+        if is_dev_path(skill_md):
+            continue
         fm = read_front_matter(skill_md)
         if not fm.get("name"):
             err(f"{rel(skill_md)}: front matter is missing 'name'")

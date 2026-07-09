@@ -22,3 +22,8 @@ node_modules/
 __pycache__/
 *.pyc
 .venv/
+
+# Plugin dev/test generated artifacts (never shipped)
+test-results/
+playwright-report/
+.playwright-cli/
