@@ -1,0 +1,84 @@
+<!-- Rich edge-case content injected into the CONTENT region of the fixtures by
+     generate.mjs. Deliberately dense with anchoring hazards: text split across
+     inline elements, adjacent/short text nodes, HTML entities, Unicode and emoji
+     (surrogate pairs), RTL runs, links, tables, blockquotes and code blocks.
+     Keep every commentable region here; put cm-skip only on the mermaid block. -->
+
+  <h1>Kitchen-sink sample</h1>
+  <p>A dense document used to stress the commentable-html anchoring. Select text
+     anywhere and add a comment; it should anchor at any offset.</p>
+
+  <section>
+    <h2>Inline element soup</h2>
+    <p>Prose with a<code>inline-code</code>b<em>emphasis</em>c<strong>strong</strong>d
+       and adjacent <span>nested <span>spans <span>here</span></span></span> plus a
+       <a href="https://example.com/spec#section-3" data-testid="sample-link">real link</a>
+       right in the middle of the sentence, then more trailing text after it.</p>
+    <p>Short nodes: <code>x</code> <code>y</code> <code>z</code> and a lone <kbd>Esc</kbd>.</p>
+  </section>
+
+  <section>
+    <h2>Entities &amp; special characters</h2>
+    <p>Ampersand &amp;, less-than &lt;, greater-than &gt;, quote &quot;, apostrophe &#39;,
+       non-breaking&nbsp;space, and a literal closing tag written as text: &lt;/script&gt;
+       and an HTML comment opener &lt;!-- inside prose. None of these should break anchoring.</p>
+  </section>
+
+  <section>
+    <h2>Unicode, emoji &amp; direction</h2>
+    <p>Accents: caf&eacute;, na&iuml;ve, jalape&ntilde;o. CJK: &#26085;&#26412;&#35486;.
+       Emoji (surrogate pairs): &#128640; rocket, &#129412; and a family &#128104;&#8205;&#128105;&#8205;&#128103;.
+       Selecting across an emoji must not corrupt the offset.</p>
+    <p dir="rtl">RTL run: &#1506;&#1489;&#1512;&#1497;&#1514; &#1502;&#1489;&#1495;&#1503; and
+       &#1575;&#1604;&#1593;&#1585;&#1576;&#1610;&#1577; mixed with English words.</p>
+  </section>
+
+  <section>
+    <h2>Lists and a table</h2>
+    <ul>
+      <li>First bullet with <a href="https://example.com/a">a link</a> inside it.</li>
+      <li>Second bullet, nested:
+        <ol><li>alpha</li><li>beta with <code>code</code></li></ol>
+      </li>
+      <li>Third bullet.</li>
+    </ul>
+    <table>
+      <thead><tr><th>Metric</th><th>Before</th><th>After</th></tr></thead>
+      <tbody>
+        <tr><td>p95 latency</td><td>1.8s</td><td>640ms</td></tr>
+        <tr><td>error rate</td><td>2.1%</td><td>0.3%</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Blockquote and code</h2>
+    <blockquote>
+      <p>A quote with a nested <blockquote><p>inner quote</p></blockquote> and trailing text.</p>
+    </blockquote>
+    <p>Select across these lines to test code-block comments:</p>
+    <pre><code class="language-python">def anchor(items, fn, acc=None):
+    for x in items:            # comment with a &lt;/script&gt; lookalike in text
+        acc = fn(acc, x) if acc is not None else x
+    return acc</code></pre>
+    <pre>plain preformatted block
+  with leading spaces and a tab&#9;here</pre>
+  </section>
+
+  <section>
+    <h2>Repeated phrases (occurrence anchoring)</h2>
+    <p id="dup-a">Anchor target: this exact sentence repeats verbatim below.</p>
+    <p id="dup-b">Anchor target: this exact sentence repeats verbatim below.</p>
+  </section>
+
+  <section>
+    <h2>Diagram (commentable nodes)</h2>
+    <pre class="mermaid cm-skip">
+flowchart LR
+    A([Source]) --> B[Ingest]
+    B --> C{Valid?}
+    C -->|yes| D[Enrich]
+    C -->|no| E([Drop])
+    D --> F[(Warehouse)]
+    </pre>
+  </section>

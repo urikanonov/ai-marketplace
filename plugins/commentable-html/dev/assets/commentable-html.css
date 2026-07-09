@@ -1,0 +1,791 @@
+mark.cm-hl {
+  background: rgba(245, 158, 11, 0.32);
+  color: inherit;
+  padding: 1px 0;
+  border-radius: 2px;
+  cursor: pointer;
+  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
+  transition: background 0.15s;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+mark.cm-hl:hover { background: rgba(245, 158, 11, 0.5); }
+mark.cm-hl.active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+html[data-theme="dark"] mark.cm-hl { background: rgba(251, 191, 36, 0.28); }
+html[data-theme="dark"] mark.cm-hl:hover { background: rgba(251, 191, 36, 0.42); }
+html[data-theme="dark"] mark.cm-hl.active { background: rgba(251, 191, 36, 0.6); }
+/* Code-block highlights: the mark lives inside <pre>/<code>. Keep its background but make
+   it behave well across line wraps and preserve the monospace baseline. */
+pre mark.cm-hl, code mark.cm-hl {
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.cm-toolbar {
+  position: fixed; top: 1rem; right: 1rem; z-index: 100;
+  display: flex; gap: 0.4rem;
+  background: var(--cp-panel-strong); backdrop-filter: blur(8px);
+  border: 1px solid var(--cp-border); border-radius: 999px;
+  padding: 0.35rem 0.5rem; box-shadow: var(--cp-shadow);
+  align-items: center; font-size: 0.82rem;
+}
+.cm-toolbar button {
+  background: transparent; border: none; color: var(--cp-text);
+  font-family: inherit; font-size: 0.85rem; padding: 0.35rem 0.7rem;
+  border-radius: 999px; cursor: pointer; display: inline-flex;
+  align-items: center; gap: 0.35rem;
+}
+.cm-toolbar button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+/* When the panel is collapsed, the Show button gets a distinct filled bubble so it
+   stands out from the encapsulating toolbar pill (it is the primary way to reopen). */
+body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar {
+  background: var(--cp-accent-soft); color: var(--cp-accent); font-weight: 600;
+}
+body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+}
+.cm-toolbar .pill-count, .cm-sidebar header .pill-count {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  border-radius: 999px; padding: 0.1rem 0.5rem;
+  font-size: 0.72rem; font-weight: 600; min-width: 1.4rem; text-align: center;
+}
+
+.cm-sidebar {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 400px; max-width: 90vw;
+  background: var(--cp-bg-elevated); border-left: 1px solid var(--cp-border);
+  box-shadow: var(--cp-shadow);
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform 0.22s ease;
+  z-index: 90;
+}
+body.sidebar-open .cm-sidebar { transform: translateX(0); }
+/* When the panel is open, hide the floating toolbar entirely - every action it
+   offers is present in the panel header, so there is no reason to keep a pill
+   hovering over the document content. It returns when the panel is closed. */
+body.sidebar-open .cm-toolbar { display: none; }
+
+/* === Layout recipe (centered max-width). Swap as needed. === */
+body.sidebar-open .app { padding-right: 1.5rem; }
+@media (min-width: 1100px) {
+  body.sidebar-open .app {
+    max-width: none; margin: 0;
+    padding-left: 2rem;
+    padding-right: calc(400px + 2rem);
+  }
+}
+@media (min-width: 1700px) {
+  body.sidebar-open .app {
+    padding-left: calc((100vw - 400px - 1300px) / 2);
+    padding-right: calc(400px + (100vw - 400px - 1300px) / 2);
+  }
+}
+
+.cm-sidebar header {
+  padding: 1rem 1.1rem; border-bottom: 1px solid var(--cp-border);
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+.cm-sidebar .head-top { display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem; }
+.cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
+.cm-sidebar .head-actions { display: flex; flex-wrap: nowrap; gap: 0.35rem; }
+.cm-sidebar .head-actions button { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
+.cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-ui-ico { flex: none; vertical-align: middle; }
+
+/* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with
+   a centered arrow; pointer-events:none so it never blocks the control it describes. */
+.cm-tooltip {
+  position: fixed; z-index: 400; max-width: 260px;
+  background: #22272e; color: #fff;
+  font-size: 0.72rem; line-height: 1.35; padding: 0.35rem 0.55rem;
+  border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);
+  pointer-events: none; opacity: 0; transform: translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.cm-tooltip.is-visible { opacity: 1; transform: none; }
+.cm-tooltip::after {
+  content: ""; position: absolute; left: var(--cm-tip-arrow, 50%); margin-left: -5px;
+  top: 100%; border: 5px solid transparent; border-top-color: #22272e;
+}
+.cm-tooltip.below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #22272e; }
+.cm-sidebar .head-top button,
+.cm-sidebar .head-actions button {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  padding: 0.35rem 0.6rem; border-radius: 0.5rem; cursor: pointer;
+  font-family: inherit; font-size: 0.78rem;
+}
+.cm-sidebar .head-top button:hover,
+.cm-sidebar .head-actions button:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-sidebar .head-top button.primary,
+.cm-sidebar .head-actions button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+.cm-sidebar .head-top button.primary:hover,
+.cm-sidebar .head-actions button.primary:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+/* Sort-by-time arrows sit at the far right of the header row (Copy all stays next to the count). */
+.cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: 0.15rem; }
+.cm-sidebar .head-top .cm-sort-btn { padding: 0.2rem 0.42rem; font-size: 0.7rem; line-height: 1; color: var(--cp-text-soft); }
+.cm-sidebar .head-top .cm-sort-btn[aria-pressed="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+/* Informational "Generated on / Last comment" line under the header. */
+.cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem 0.7rem; font-size: 0.66rem; color: var(--cp-text-soft); margin: 0.15rem 0 0.35rem; }
+.cm-side-info > span { white-space: nowrap; }
+/* Clear Comments wears a persistent warning treatment so it is not clicked by accident. */
+.cm-sidebar .head-actions button.danger {
+  background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger);
+}
+.cm-sidebar .head-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); border-color: var(--cp-danger); color: var(--cp-danger); }
+/* Hide gets a distinct filled (secondary) look, separate from the outline export buttons. */
+.cm-sidebar .head-actions button#btnCloseSidebar {
+  background: var(--cp-accent-soft); border-color: transparent; color: var(--cp-text);
+}
+.cm-sidebar .head-actions button#btnCloseSidebar:hover {
+  background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg);
+}
+
+/* Confirm dialog (used for destructive actions such as Clear Comments). */
+.cm-modal-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.cm-modal {
+  background: var(--cp-bg-elevated); color: var(--cp-text);
+  border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
+  max-width: 24rem; width: calc(100% - 3rem); padding: 1.1rem 1.2rem;
+}
+.cm-modal-msg { margin: 0 0 1rem; font-size: 0.9rem; line-height: 1.5; }
+.cm-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.cm-modal-actions button {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  padding: 0.4rem 0.9rem; border-radius: 0.5rem; cursor: pointer;
+  font-family: inherit; font-size: 0.82rem;
+}
+.cm-modal-actions button:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-modal-actions button.cm-modal-default {
+  background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg);
+}
+.cm-modal-actions button.cm-modal-default:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+.cm-modal-actions button.danger {
+  background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger);
+}
+.cm-modal-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); color: var(--cp-danger); }
+
+/* Sidebar header meta row: document-type bubble, version, and Help. */
+.cm-sidebar .head-meta { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
+.cm-type-badge {
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
+  padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--cp-border); color: var(--cp-text-soft);
+}
+.cm-type-badge[data-doc-type="Portable"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-text-soft); border-color: var(--cp-border); background: transparent; cursor: help; }
+.cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
+.cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
+.cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
+.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; }
+.cm-help-btn {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  padding: 0.2rem 0.6rem; border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: 0.72rem;
+  display: inline-flex; align-items: center; gap: 0.25rem;
+}
+.cm-help-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-btn-chevron { flex: none; opacity: 0.65; margin-right: -0.1rem; }
+
+/* Help dialog (reuses .cm-modal-overlay). */
+.cm-modal.cm-help { max-width: 42rem; width: calc(100% - 3rem); max-height: calc(100vh - 4rem); display: flex; flex-direction: column; padding: 0; }
+.cm-help-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--cp-border); }
+.cm-help-head h2 { margin: 0; font-size: 1.05rem; }
+.cm-help-close { background: transparent; border: none; color: var(--cp-text-soft); font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.35rem; border-radius: 6px; }
+.cm-help-close:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-help-body { padding: 0.5rem 1.2rem 1.2rem; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.cm-help-body h3 { font-size: 0.92rem; margin: 1rem 0 0.3rem; color: var(--cp-text); }
+.cm-help-body p, .cm-help-body li { font-size: 0.86rem; line-height: 1.5; color: var(--cp-text); }
+.cm-help-body ul { margin: 0.3rem 0; padding-left: 1.3rem; }
+.cm-help-body kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 0 4px; font-family: inherit; font-size: 0.8em; }
+/* Searchable, collapsible Help topics. */
+.cm-help-search { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.2rem; border-bottom: 1px solid var(--cp-border); color: var(--cp-text-soft); }
+.cm-help-search-input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.86rem; padding: 0.4rem 0.6rem; border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text); }
+.cm-help-search-input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
+.cm-help-topic { border-bottom: 1px solid var(--cp-border); }
+.cm-help-topic > summary { cursor: pointer; list-style: none; padding: 0.6rem 0.2rem; font-weight: 600; font-size: 0.9rem; color: var(--cp-text); display: flex; align-items: center; gap: 0.5rem; }
+.cm-help-topic > summary::-webkit-details-marker { display: none; }
+.cm-help-topic > summary::before { content: "\25B8"; color: var(--cp-text-soft); font-size: 0.8em; transition: transform 0.12s ease; }
+.cm-help-topic[open] > summary::before { transform: rotate(90deg); }
+.cm-help-topic > summary:hover { color: var(--cp-accent); }
+.cm-help-topic-body { padding: 0 0.2rem 0.7rem 1.3rem; }
+.cm-help-noresults { color: var(--cp-text-soft); font-style: italic; padding: 0.9rem 0.2rem; }
+/* About is a static, always-shown block (not a collapsible topic). */
+.cm-help-about { border-top: 1px solid var(--cp-border); padding: 0.2rem 0.2rem 0.4rem; }
+.cm-help-about h3 { margin: 0.6rem 0 0.3rem; font-size: 0.9rem; color: var(--cp-text); }
+
+/* Table-of-contents side menu (wide screens only; runtime-generated, collapsible). */
+.cm-side-toc {
+  position: fixed; left: 1rem; top: 1rem; z-index: 90;
+  width: var(--cm-side-toc-w, 17rem); max-height: calc(100vh - 2rem);
+  display: none; flex-direction: column;
+  background: var(--cp-panel-strong); backdrop-filter: blur(8px);
+  border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
+  padding: 0.6rem 0.5rem 0.6rem 0.75rem; font-size: 0.82rem;
+}
+@media (min-width: 1400px) {
+  .cm-side-toc { display: flex; }
+  /* Reserve gutter space so an expanded TOC never overlaps the (centered) content.
+     Collapsing the TOC reclaims the full width. */
+  body.cm-side-toc-on { padding-left: calc(var(--cm-side-toc-w, 17rem) + 2rem); }
+  body.cm-side-toc-on.cm-side-toc-collapsed { padding-left: 0; }
+}
+.cm-side-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+.cm-side-toc-title { font-weight: 700; color: var(--cp-text); }
+.cm-side-toc-toggle { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; font-size: 1.05rem; line-height: 1; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 6px; }
+.cm-side-toc-toggle:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-side-toc-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; }
+.cm-side-toc-list li { margin: 0.05rem 0; }
+.cm-side-toc-list li.is-sub { padding-left: 0.8rem; }
+.cm-side-toc-list a { display: block; color: var(--cp-text-soft); text-decoration: none; padding: 0.2rem 0.45rem; border-radius: 6px; border-left: 2px solid transparent; }
+.cm-side-toc-list a:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-side-toc-list a.is-active { color: var(--cp-accent); border-left-color: var(--cp-accent); background: var(--cp-accent-soft); font-weight: 600; }
+.cm-side-toc-top { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; margin-top: 0.4rem; background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text); border-radius: 0.5rem; padding: 0.3rem; cursor: pointer; font-family: inherit; font-size: 0.75rem; }
+.cm-side-toc-top:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-side-toc-scroll { display: flex; gap: 0.3rem; }
+.cm-side-toc-scroll .cm-side-toc-top { flex: 1 1 0; margin-top: 0.4rem; }
+/* Bottom-right scroll-position bubble (runtime, cm-skip, absent from Plain export). */
+.cm-scroll-progress {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 95;
+  background: var(--cp-panel-strong); backdrop-filter: blur(6px);
+  border: 1px solid var(--cp-border); border-radius: 999px;
+  padding: 0.25rem 0.6rem; font-size: 0.72rem; font-weight: 600;
+  color: var(--cp-text-soft); box-shadow: var(--cp-shadow);
+  min-width: 2.6rem; text-align: center; pointer-events: none;
+}
+body.sidebar-open .cm-scroll-progress { right: calc(400px + 1rem); }
+@media (max-width: 700px) { body.sidebar-open .cm-scroll-progress { right: 1rem; } }
+/* Collapsed: shrink to a single clear chevron box (the >> expand affordance). */
+.cm-side-toc.is-collapsed { width: auto; padding: 0.25rem; }
+.cm-side-toc.is-collapsed .cm-side-toc-head { margin-bottom: 0; }
+.cm-side-toc.is-collapsed .cm-side-toc-title,
+.cm-side-toc.is-collapsed .cm-side-toc-list,
+.cm-side-toc.is-collapsed .cm-side-toc-scroll,
+.cm-side-toc.is-collapsed .cm-side-toc-top { display: none; }
+
+/* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
+   active, and is correctly absent from a Plain HTML export where the layer is removed. */
+.cm-footer {
+  margin: 0.5rem auto 1.25rem; max-width: 1480px; padding: 0.6rem 1rem;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem;
+  font-size: 0.72rem; color: var(--cp-text-soft);
+  border: 1px solid var(--cp-border); border-radius: 0.6rem; background: var(--cp-surface);
+}
+/* With the runtime footer present, the layout recipe's large bottom padding would leave
+   a big empty gap above the footer; tighten it (plain-export docs keep the full padding). */
+body.cm-has-footer .app { padding-bottom: 1.25rem; }
+.cm-footer a { color: var(--cp-accent); text-decoration: none; }
+.cm-footer a:hover { text-decoration: underline; }
+.cm-footer-help { background: transparent; border: none; color: var(--cp-accent); cursor: pointer; font: inherit; padding: 0; text-decoration: none; }
+.cm-footer-help:hover { text-decoration: underline; }
+.cm-footer-ver { font-weight: 600; color: var(--cp-text); }
+.cm-footer-sep { opacity: 0.5; }
+/* When the comments panel is open, span the visible (non-sidebar) area so the centered
+   flex content reads as centralized in that region rather than hidden behind the panel. */
+body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(400px + 1rem); max-width: none; }
+@media (max-width: 700px) { body.sidebar-open .cm-footer { margin-right: auto; max-width: 1240px; } }
+/* TOC section numbers. */
+.cm-side-toc-list .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
+.cm-side-toc-list a.is-active .cm-toc-num { color: var(--cp-accent); }
+/* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
+   mermaid blocks keep their own whitespace handling. */
+#commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Section headings are deep-links: a plain click updates the URL to their anchor. */
+#commentRoot .cm-anchored { cursor: pointer; }
+#commentRoot .cm-anchored:hover { text-decoration-line: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+/* Collapsible sections: caret on the heading toggles a class that hides the body. */
+.cmh-sec-caret {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6em; height: 1.6em; margin-right: 0.15rem; vertical-align: middle;
+  background: transparent; border: 0; border-radius: 6px; cursor: pointer;
+  color: var(--cp-text-soft); padding: 0; line-height: 1;
+}
+.cmh-sec-caret::before { content: "\25BE"; font-size: 0.95em; }
+.cmh-sec-caret[aria-expanded="false"]::before { content: "\25B8"; }
+.cmh-sec-caret:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+#commentRoot section.cmh-section-collapsed > * { display: none; }
+#commentRoot section.cmh-section-collapsed > .cmh-section-heading { display: revert; }
+
+.cm-sidebar .list { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: 0.85rem; line-height: 1.55; }
+.cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: 0.78rem; color: var(--cp-text); }
+
+.cm-card {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px;
+  padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.45rem;
+  font-size: 0.85rem; cursor: pointer;
+}
+.cm-card:hover { border-color: var(--cp-accent); }
+.cm-card.active { border-color: var(--cp-warning); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25); }
+.cm-card .section {
+  font-size: 0.7rem; color: var(--cp-text-soft);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.cm-card .section strong {
+  color: var(--cp-accent); font-weight: 600;
+  text-transform: none; letter-spacing: 0; font-size: 0.78rem;
+}
+.cm-card .quote {
+  border-left: 3px solid var(--cp-warning); padding: 0.25rem 0.55rem;
+  color: var(--cp-text-muted); font-size: 0.8rem; line-height: 1.5;
+  background: rgba(245, 158, 11, 0.06); border-radius: 0 4px 4px 0;
+  overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+}
+.cm-card .quote .ctx { color: var(--cp-text-soft); font-style: italic; }
+.cm-card .quote .quoted {
+  color: var(--cp-text); font-style: normal; font-weight: 600;
+  background: rgba(245, 158, 11, 0.18); padding: 0 3px; border-radius: 3px;
+}
+.cm-card .pin {
+  font-size: 0.7rem; color: var(--cp-text-soft);
+  font-family: Consolas, "Courier New", Courier, monospace;
+}
+.cm-card .note { color: var(--cp-text); white-space: pre-wrap; word-wrap: break-word; }
+.cm-card .meta { display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: var(--cp-text-soft); }
+.cm-card .meta .acts { display: flex; gap: 0.35rem; }
+.cm-card .meta button { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-size: 0.72rem; }
+.cm-card .meta button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-card .meta button.del:hover { background: rgba(220, 38, 38, 0.12); color: var(--cp-danger); }
+
+.cm-menu { position: fixed; z-index: 200; }
+
+/* Add-comment affordances: the text-selection menu button and the floating
+   image / diff / mermaid buttons all share ONE accent-pill look + hover, so the
+   "Add Comment" control is visually identical wherever it appears. */
+.cm-menu button, .cm-mermaid-add, .cm-diff-add, .cm-image-add {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  border: none; border-radius: 999px; padding: 0.3rem 0.85rem;
+  font-family: inherit; font-size: 0.78rem; font-weight: 600; line-height: 1.2;
+  cursor: pointer; box-shadow: var(--cp-shadow);
+  display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap;
+}
+.cm-menu button:hover, .cm-mermaid-add:hover, .cm-diff-add:hover, .cm-image-add:hover {
+  background: var(--cp-accent-hover); color: var(--cp-accent-fg);
+}
+.cm-menu button:active, .cm-mermaid-add:active, .cm-diff-add:active, .cm-image-add:active {
+  transform: translateY(1px);
+}
+
+.cm-composer {
+  position: fixed; z-index: 210; width: 360px; max-width: 92vw;
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 12px;
+  box-shadow: var(--cp-shadow); padding: 0.85rem;
+  display: flex; flex-direction: column; gap: 0.55rem;
+}
+.cm-composer.dragging { user-select: none; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28); }
+.cm-composer-handle {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: -0.35rem -0.2rem 0.1rem -0.2rem;
+  padding: 0.15rem 0.4rem; border-radius: 6px;
+  cursor: grab; color: var(--cp-text-muted); font-size: 0.75rem;
+  user-select: none;
+}
+.cm-composer-handle:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-composer.dragging .cm-composer-handle { cursor: grabbing; background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-composer-handle .grip { letter-spacing: 1px; font-weight: 700; font-size: 0.9rem; line-height: 1; }
+.cm-composer-handle .label { opacity: 0.75; }
+@keyframes cm-composer-flash {
+  0%   { box-shadow: var(--cp-shadow); }
+  30%  { box-shadow: 0 0 0 3px var(--cp-accent), 0 24px 64px rgba(0,0,0,0.28); }
+  100% { box-shadow: var(--cp-shadow); }
+}
+.cm-composer.flash { animation: cm-composer-flash 0.6s ease-out 1; }
+.cm-composer .quote {
+  border-left: 3px solid var(--cp-warning); padding: 0.3rem 0.55rem;
+  color: var(--cp-text-muted); font-style: italic; font-size: 0.8rem; line-height: 1.5;
+  background: rgba(245, 158, 11, 0.07); border-radius: 0 4px 4px 0;
+  max-height: 8.5em; overflow-y: auto;
+}
+/* When the quoted text came from a <pre>/<code> block, preserve its formatting:
+   render in monospace, keep whitespace, don't collapse newlines. Applied as an
+   extra class (cm-quote-code) by createComposerElement and renderSidebar. */
+.cm-card .quote.cm-quote-code,
+.cm-composer .quote.cm-quote-code {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.78rem;
+  font-style: normal;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+  -moz-tab-size: 2;
+}
+.cm-card .quote.cm-quote-code {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+.cm-composer textarea {
+  resize: vertical; min-height: 70px; padding: 0.5rem 0.6rem;
+  background: var(--cp-bg-elevated); border: 1px solid var(--cp-border); border-radius: 6px;
+  color: var(--cp-text); font-family: inherit; font-size: 0.88rem;
+}
+.cm-composer textarea:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
+.cm-composer textarea.cm-invalid { border-color: var(--cp-danger); box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.14); }
+.cm-composer .row { display: flex; justify-content: flex-end; gap: 0.4rem; }
+.cm-composer button {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  padding: 0.4rem 0.85rem; border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: 0.85rem;
+}
+.cm-composer button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+.cm-composer button.primary:hover { background: var(--cp-accent-hover); }
+.cm-composer button:not(.primary):hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+
+.cm-toast {
+  position: fixed; bottom: 1.5rem; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+  padding: 0.7rem 1.1rem; border-radius: 999px;
+  box-shadow: var(--cp-shadow); font-size: 0.85rem; z-index: 300;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  max-width: 90vw; text-align: center;
+}
+.cm-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* --- Mermaid commenting layer (works with pre.mermaid / div.mermaid) --- */
+.cm-mermaid-host { position: relative; }
+.cm-mermaid-host svg g.node,
+.cm-mermaid-host svg g.cluster,
+.cm-mermaid-host svg g.edgeLabel {
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.cm-mermaid-host svg g.node:hover,
+.cm-mermaid-host svg g.cluster:hover {
+  filter: drop-shadow(0 0 4px var(--cp-accent));
+}
+.cm-mermaid-hl > rect,
+.cm-mermaid-hl > polygon,
+.cm-mermaid-hl > circle,
+.cm-mermaid-hl > ellipse,
+.cm-mermaid-hl > path {
+  stroke: var(--cp-accent) !important;
+  stroke-width: 3px !important;
+}
+.cm-mermaid-hl { filter: drop-shadow(0 0 4px var(--cp-accent)); }
+/* Whole-diagram highlight: outline the host box (the node stroke rules don't apply). */
+.cm-mermaid-host.cm-mermaid-hl { outline: 2px solid var(--cp-accent); outline-offset: 4px; border-radius: 6px; }
+/* Gantt/sequence labels are SVG <text> with no child shape; tint the text itself. */
+text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; font-weight: 700; }
+@keyframes cm-mermaid-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px var(--cp-accent)); }
+  50%      { filter: drop-shadow(0 0 14px var(--cp-accent)); }
+}
+.cm-mermaid-hl.cm-mermaid-active { animation: cm-mermaid-pulse 0.7s ease-in-out 3; }
+.cm-mermaid-add { position: fixed; z-index: 200; }
+
+/* Hover bubble that opens a comment. Needed because a highlighted region may itself
+   be a link (or other clickable element), which would swallow the click - the bubble
+   is a reliable, always-clickable affordance to open the comment. */
+.cm-hl-bubble {
+  position: fixed; z-index: 210;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  background: var(--cp-warning); color: #fff;
+  border: 1.5px solid #fff; border-radius: 999px;
+  cursor: pointer; box-shadow: var(--cp-shadow); line-height: 0;
+}
+.cm-hl-bubble:hover { filter: brightness(1.08); }
+.cm-hl-bubble svg { width: 12px; height: 12px; display: block; }
+
+/* Portability status badge (shown in the toolbar overflow menu). */
+.cm-mode-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  border: 1px solid var(--cp-border-strong); color: var(--cp-text-muted);
+  background: var(--cp-surface-soft); white-space: nowrap;
+}
+.cm-mode-badge.is-economy { color: var(--cp-warning); border-color: var(--cp-warning); }
+
+/* Economy-only controls are hidden until the layer detects economy mode. */
+.cm-economy-only { display: none !important; }
+body.cm-economy .cm-economy-only { display: inline-block !important; }
+body.cm-economy .cm-toolbar-menu .cm-economy-only { display: block !important; }
+
+/* Inline-only controls (e.g. Export economy) are shown only in a portable/inline
+   document and hidden once the file is in economy mode. */
+body.cm-economy .cm-inline-only { display: none !important; }
+.cm-toolbar-menu .cm-inline-only { display: block; }
+
+/* Prominent primary action (Copy all) in the toolbar. */
+.cm-toolbar button.cm-primary { background: var(--cp-accent); color: var(--cp-accent-fg); }
+.cm-toolbar button.cm-primary:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+
+/* Icon-only "more actions" button + its dropdown menu. */
+.cm-toolbar-more { position: relative; display: inline-flex; }
+.cm-toolbar .cm-icon-btn { padding: 0.35rem 0.45rem; }
+.cm-toolbar-menu {
+  position: absolute; top: calc(100% + 0.5rem); right: 0; z-index: 120;
+  min-width: 12rem; display: flex; flex-direction: column; gap: 0.15rem;
+  padding: 0.4rem; background: var(--cp-surface); color: var(--cp-text);
+  border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
+}
+.cm-toolbar-menu .cm-mode-badge { align-self: flex-start; margin: 0.1rem 0.2rem 0.35rem; }
+.cm-toolbar-menu button {
+  width: 100%; justify-content: flex-start; text-align: left;
+  padding: 0.45rem 0.6rem; border-radius: 8px; font-size: 0.85rem;
+}
+.cm-toolbar-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+
+/* Missing-companion-assets banner (economy mode only). Revealed by the tiny
+   inline bootstrap when the external runtime fails to initialize in time. */
+#cmhAssetBanner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 400;
+  padding: 10px 16px; font-size: 13px; line-height: 1.4;
+  background: var(--cp-danger); color: #fff;
+  box-shadow: var(--cp-shadow); text-align: center;
+}
+#cmhAssetBanner code { background: rgba(0,0,0,0.18); padding: 1px 5px; border-radius: 4px; }
+
+/* --- Diff / code-review layer (pre.cmh-diff / div.cmh-diff) --- */
+.cmh-diff-host { margin: 1rem 0; }
+.cmh-diff-view {
+  border: 1px solid var(--cp-border); border-radius: 10px; overflow: hidden;
+  background: var(--cp-surface); font-size: 0.82rem;
+}
+.cmh-diff-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.45rem 0.7rem; background: var(--cp-surface-soft);
+  border-bottom: 1px solid var(--cp-border);
+}
+.cmh-diff-label {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.8rem; color: var(--cp-text); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmh-diff-toggle, .cmh-diff-hltoggle {
+  flex: none; background: var(--cp-surface); border: 1px solid var(--cp-border);
+  color: var(--cp-text); border-radius: 999px; padding: 0.22rem 0.7rem;
+  font-family: inherit; font-size: 0.76rem; cursor: pointer;
+}
+.cmh-diff-toggle:hover, .cmh-diff-hltoggle:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* Syntax toggle: light green when ON, light red when OFF. */
+.cmh-diff-hltoggle[aria-pressed="true"] { background: rgba(45, 164, 78, 0.16); border-color: rgba(45, 164, 78, 0.55); }
+.cmh-diff-hltoggle[aria-pressed="false"] { background: rgba(209, 36, 47, 0.14); border-color: rgba(209, 36, 47, 0.5); }
+.cmh-diff-body {
+  overflow-x: auto;
+  font-family: Consolas, "Courier New", Courier, monospace; line-height: 1.5;
+}
+.cmh-diff-inline .cmh-diff-body { display: block; }
+.cmh-diff-split .cmh-diff-body { display: grid; grid-template-columns: 1fr 1fr; }
+.cmh-diff-split .cmh-dl[data-side="old"] { border-right: 1px solid var(--cp-border); }
+.cmh-diff-split .cmh-dl-full { grid-column: 1 / -1; }
+.cmh-diff-pane { min-width: 0; }
+.cmh-diff-raw .cmh-diff-body { display: block; }
+.cmh-diff-toobig { padding: 0.4rem 0.7rem; font-family: inherit; font-size: 0.78rem; color: var(--cp-warning); background: var(--cp-surface-soft); border-bottom: 1px solid var(--cp-border); }
+.cmh-diff-raw pre.cmh-diff-raw { margin: 0; padding: 0.5rem 0.7rem; white-space: pre; overflow-x: auto; color: var(--cp-text-muted); }
+
+.cmh-dl {
+  display: flex; align-items: flex-start; gap: 0.4rem;
+  padding: 0 0.5rem; white-space: pre-wrap; word-break: break-word;
+  border-left: 3px solid transparent;
+}
+.cmh-dl[tabindex]:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: -2px; }
+.cmh-dl-gutter {
+  flex: none; width: 2.6em; text-align: right; user-select: none;
+  color: var(--cp-text-soft); opacity: 0.75; font-size: 0.72rem; padding-top: 0.05rem;
+}
+.cmh-dl-sign { flex: none; width: 0.8em; user-select: none; color: var(--cp-text-soft); }
+.cmh-dl-code { flex: 1 1 auto; min-width: 0; }
+.cmh-dl-full { color: var(--cp-text-muted); background: var(--cp-surface-soft); }
+.cmh-dl-hunk { color: var(--cp-link); background: rgba(0, 120, 212, 0.06); font-style: italic; }
+.cmh-dl-file { color: var(--cp-text-soft); font-size: 0.76rem; }
+.cmh-dl-add { background: rgba(22, 163, 74, 0.10); }
+.cmh-dl-add .cmh-dl-sign { color: var(--cp-success); }
+.cmh-dl-del { background: rgba(220, 38, 38, 0.10); }
+.cmh-dl-del .cmh-dl-sign { color: var(--cp-danger); }
+.cmh-dl-spacer { background: repeating-linear-gradient(45deg, transparent, transparent 6px, var(--cp-surface-soft) 6px, var(--cp-surface-soft) 12px); min-height: 1.5em; }
+.cmh-dl-add, .cmh-dl-del, .cmh-dl-ctx { cursor: default; }
+.cmh-dl-add:hover, .cmh-dl-del:hover, .cmh-dl-ctx:hover { filter: brightness(0.97); }
+html[data-theme="dark"] .cmh-dl-add:hover,
+html[data-theme="dark"] .cmh-dl-del:hover,
+html[data-theme="dark"] .cmh-dl-ctx:hover { filter: brightness(1.15); }
+.cmh-dl-hl { border-left-color: var(--cp-warning); box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.10); }
+@keyframes cmh-dl-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.10); }
+  50%      { box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.30); }
+}
+.cmh-dl-hl.cmh-dl-active { animation: cmh-dl-pulse 0.7s ease-in-out 3; }
+/* Sub-line region highlight: a comment on part of a diff line. */
+mark.cmh-dl-mark {
+  background: rgba(245, 158, 11, 0.34);
+  color: inherit; border-radius: 2px; padding: 0 1px; cursor: pointer;
+  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+mark.cmh-dl-mark:hover { background: rgba(245, 158, 11, 0.5); }
+mark.cmh-dl-mark.cmh-dl-mark-active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+html[data-theme="dark"] mark.cmh-dl-mark { background: rgba(251, 191, 36, 0.30); }
+html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 0.44); }
+.cm-diff-add { position: fixed; z-index: 200; }
+
+
+/* ---------------------------------------------------------------------------
+   Default content styling (sections, tables, TOC, images, badges) - shipped so
+   a generated or retrofitted document looks neat without the host adding its own
+   rules. All are scoped to #commentRoot and use the --cp-* theme vars, and carry
+   no !important so a host stylesheet can still override them.
+   --------------------------------------------------------------------------- */
+#commentRoot > section {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px;
+  padding: 1.5rem; margin: 1.5rem 0;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+#commentRoot > section > h2:first-child, #commentRoot > section > h3:first-child { margin-top: 0; }
+#commentRoot .badge {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 0.78rem; font-weight: 600; line-height: 1.5;
+  max-width: 100%; overflow-wrap: anywhere;
+  border: 1px solid var(--cp-border); background: var(--cp-surface-soft); color: var(--cp-text-muted);
+}
+/* State badges convey status via a tinted background + colored border while keeping
+   the label in --cp-text, so contrast stays >= 4.5:1 in both light and dark. */
+#commentRoot .badge.ok { border-color: var(--cp-success); background: rgba(22, 163, 74, 0.14); color: var(--cp-text); }
+#commentRoot .badge.warn { border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.16); color: var(--cp-text); }
+#commentRoot .badge.danger { border-color: var(--cp-danger); background: rgba(220, 38, 38, 0.14); color: var(--cp-text); }
+/* The light-theme amber border is faint against a white card; darken it. */
+html:not([data-theme="dark"]) #commentRoot .badge.warn { border-color: #b45309; }
+
+#commentRoot table { border-collapse: collapse; width: 100%; margin: 0.75rem 0 0.25rem; font-size: 0.9rem; }
+#commentRoot th, #commentRoot td { border: 1px solid var(--cp-border); padding: 6px 9px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+#commentRoot th { background: var(--cp-bg-elevated); font-weight: 600; }
+#commentRoot tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.04); }
+html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.03); }
+#commentRoot table caption { caption-side: top; text-align: left; color: var(--cp-text-soft); font-size: 0.82rem; padding: 0.2rem 0; }
+
+#commentRoot .cm-toc { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
+#commentRoot .cm-toc-title { font-weight: 700; color: var(--cp-text); margin-bottom: 0.5rem; font-size: 1rem; }
+#commentRoot .cm-toc ol { margin: 0; padding-left: 1.4rem; }
+#commentRoot .cm-toc li { margin: 0.25rem 0; font-size: 0.92rem; }
+#commentRoot .cm-toc a { color: var(--cp-link); text-decoration: none; }
+#commentRoot .cm-toc a:hover { text-decoration: underline; }
+
+#commentRoot img { max-width: 100%; height: auto; }
+
+/* ---------------------------------------------------------------------------
+   Image comment layer - per-image structural anchoring (mirrors the mermaid
+   node layer). A commentable <img> gets a subtle hover ring; the floating
+   #imageAddBtn snaps to its top-right; a commented image keeps a warning ring.
+   --------------------------------------------------------------------------- */
+#commentRoot img.cm-img-commentable { cursor: pointer; }
+#commentRoot img.cm-img-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
+#commentRoot img.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+#commentRoot img.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
+#commentRoot img.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+.cm-image-add { position: fixed; z-index: 200; }
+/* Per-code-block Copy button: always visible, pinned to the block's top-right. */
+.cmh-code-wrap { position: relative; }
+.cm-code-copy {
+  position: absolute; top: 8px; right: 8px; z-index: 4;
+  background: var(--cp-panel-strong); color: var(--cp-text); border: 1px solid var(--cp-border);
+  border-radius: 6px; padding: 0.2rem 0.55rem; font-family: inherit; font-size: 0.72rem;
+  cursor: pointer; box-shadow: var(--cp-shadow); backdrop-filter: blur(6px); opacity: 0.85;
+}
+.cm-code-copy:hover { border-color: var(--cp-accent); color: var(--cp-accent); opacity: 1; }
+/* Sortable-table column chevrons. */
+#commentRoot table.cmh-sortable th { white-space: nowrap; }
+.cmh-sort-ctrl {
+  margin-left: 0.35rem; padding: 0; border: none; background: transparent; cursor: pointer;
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.16rem; line-height: 0.7; vertical-align: middle; font-size: 0.62rem; color: var(--cp-text-soft);
+}
+.cmh-sort-ctrl .cmh-sort-up, .cmh-sort-ctrl .cmh-sort-dn { opacity: 0.38; }
+.cmh-sort-ctrl .cmh-sort-up::before { content: "\25B2"; }
+.cmh-sort-ctrl .cmh-sort-dn::before { content: "\25BC"; }
+.cmh-sort-ctrl:hover .cmh-sort-up, .cmh-sort-ctrl:hover .cmh-sort-dn { opacity: 0.7; }
+.cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up { opacity: 1; color: var(--cp-accent); }
+.cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
+
+
+/* ---------------------------------------------------------------------------
+   Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
+   syntax highlighting. The .cmh-kql-* token spans are baked into the code by
+   tools/kql_highlight.py; these rules only supply the frame and token colors, so
+   no per-report CSS is needed. Scoped to #commentRoot, --cp-* vars, no !important.
+   --------------------------------------------------------------------------- */
+#commentRoot figure.cmh-kql {
+  margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
+  overflow: hidden; background: var(--cp-surface);
+}
+#commentRoot figure.cmh-kql .cmh-kql-cap {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.4rem 0.75rem; font-size: 0.82rem;
+  background: var(--cp-surface-soft); border-bottom: 1px solid var(--cp-border);
+}
+#commentRoot figure.cmh-kql .cmh-kql-title {
+  flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; font-weight: 600; color: var(--cp-text-muted); cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: transparent; border: 0; padding: 0; font-size: inherit; text-align: left;
+}
+#commentRoot figure.cmh-kql .cmh-kql-title:hover { color: var(--cp-accent); text-decoration: underline; }
+#commentRoot figure.cmh-kql .cmh-kql-run {
+  flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
+}
+#commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+#commentRoot figure.cmh-kql pre {
+  margin: 0; border: 0; border-radius: 0; padding: 0.7rem 0.9rem; overflow-x: auto;
+  background: var(--cp-bg-elevated);
+}
+/* Standalone code blocks get a light frame like the KQL figure. The KQL figure's own
+   <pre> (higher specificity above) stays frameless; the mermaid host is reset below. */
+#commentRoot pre {
+  background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
+  border-radius: 10px; padding: 0.85rem 1rem; overflow-x: auto;
+}
+#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; overflow: visible; }
+/* Chart figures are boxed for readability, like code and KQL blocks. */
+#commentRoot figure.chart {
+  margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
+  padding: 0.85rem 1rem; background: var(--cp-surface);
+}
+#commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
+/* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
+   identifiers/columns inherit --cp-text; only these categories are tinted. */
+#commentRoot .cmh-kql-kw  { color: #8250df; font-weight: 600; }
+#commentRoot .cmh-kql-fn  { color: #0550ae; }
+#commentRoot .cmh-kql-str { color: #0a7d33; }
+#commentRoot .cmh-kql-num { color: #953800; }
+#commentRoot .cmh-kql-com { color: var(--cp-text-soft); font-style: italic; }
+#commentRoot .cmh-kql-op  { color: var(--cp-text-muted); }
+html[data-theme="dark"] #commentRoot .cmh-kql-kw  { color: #d2a8ff; }
+html[data-theme="dark"] #commentRoot .cmh-kql-fn  { color: #79c0ff; }
+html[data-theme="dark"] #commentRoot .cmh-kql-str { color: #7ee787; }
+html[data-theme="dark"] #commentRoot .cmh-kql-num { color: #ffa657; }
+
+/* General code syntax token colors (baked at author time by tools/highlight_code.py;
+   same primer palette as the KQL tokens). Plain identifiers inherit --cp-text. */
+#commentRoot .cmh-code-kw  { color: #8250df; font-weight: 600; }
+#commentRoot .cmh-code-fn  { color: #0550ae; }
+#commentRoot .cmh-code-str { color: #0a7d33; }
+#commentRoot .cmh-code-num { color: #953800; }
+#commentRoot .cmh-code-com { color: var(--cp-text-soft); font-style: italic; }
+#commentRoot .cmh-code-op  { color: var(--cp-text-muted); }
+html[data-theme="dark"] #commentRoot .cmh-code-kw  { color: #d2a8ff; }
+html[data-theme="dark"] #commentRoot .cmh-code-fn  { color: #79c0ff; }
+html[data-theme="dark"] #commentRoot .cmh-code-str { color: #7ee787; }
+html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
+
+
+.cm-skip[hidden], .cm-skip [hidden] { display: none !important; }
+
+/* A shared, themed focus ring for every interactive control the layer ships, so
+   keyboard focus is clearly visible in both light and dark (the UA default
+   outline has poor contrast on the dark surfaces). */
+.cm-toolbar button:focus-visible,
+.cm-toolbar-menu button:focus-visible,
+.cm-sidebar button:focus-visible,
+.cm-composer button:focus-visible,
+.cm-composer textarea:focus-visible,
+.cm-menu button:focus-visible,
+.cm-mermaid-add:focus-visible,
+.cm-diff-add:focus-visible,
+.cm-image-add:focus-visible,
+.cm-hl-bubble:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: 2px;
+}

@@ -10,6 +10,7 @@ Every plugin here is designed to make AI-assisted development workflows faster a
 |--------|-------------|---------|
 | `urikan-ai-marketplace-auto-updater` | Automatically updates all installed plugins from this marketplace on session start (opt-in) | `copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace` |
 | `example-skills` | Example plugin (the `hello-world` starter skill) - copy it as a template for a new plugin | `copilot plugin install example-skills@urikan-ai-marketplace` |
+| `commentable-html` | Turn any standalone HTML into an offline, single-file commentable review surface: reviewers select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent | `copilot plugin install commentable-html@urikan-ai-marketplace` |
 
 ## Getting Started
 

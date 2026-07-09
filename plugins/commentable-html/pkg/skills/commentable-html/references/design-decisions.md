@@ -1,0 +1,23 @@
+# Design decisions
+
+Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
+
+## Design decisions (intentional - do not flag)
+
+The following behaviors are deliberate. They have been raised and dismissed by prior multi-model reviews of `validate.py` / the layer; do not re-report them as bugs.
+
+- **The Chart.js loader may sit in `<head>`, before the JS END marker.** `Export to Plain HTML` removes only the four HTML-comment BEGIN/END regions (HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS), which all live in `<body>`, and keeps the CSS region; a loader in `<head>` is outside those regions and survives. So the validator intentionally does NOT flag "loader before the JS END marker" - it only flags chart init that runs before the marker or before the loader.
+- **`new Chart(` / guard detection is lexical, after blanking comments and (for the init) string literals - not a full JavaScript parse.** A `new Chart(` or a `typeof Chart` guard hidden entirely inside a template/regex construct, or a complete guard embedded inside a string literal, is an accepted residual: real init and real guards are never written that way.
+- **A `<!--` inside chart-data JSON is an error even when the JSON is otherwise valid.** Chart data must escape `<` as `\u003C`; a raw `<!--` risks the legacy script-comment parsing, so it is flagged regardless of JSON validity.
+- **A self-closing `<script src=... />` is treated as "no loader".** `<script>` is not a void element, so `/>` is ignored and the tag swallows the following markup as (ignored) content - the page breaks. Failing closed (E3) is correct; the validator does not pretend a self-closed loader works.
+- **Malformed markup that makes the HTML parser raise fails closed** with a single "could not be parsed" error, rather than running checks on partial parser state.
+- **A `<canvas>` is treated as a Chart.js chart.** This skill's only sanctioned charting path is Chart.js (canvas based - see [Charts with tooltips](charts-with-tooltips.md) and `docs/CHARTS.md`); it does not do raw/hand-rolled canvas drawing. So the presence of a `<canvas>` deliberately triggers the full Chart.js embedding checks (loader, chart-data JSON, init ordering, `cm-skip`, accessibility, offline guard), and a canvas without that wiring is intentionally an error. A document that genuinely uses a non-Chart.js canvas can run `--layer-only` to skip the chart half.
+- **Layer region-marker checks stay line-oriented regex; element / id / attribute / script-body checks use the shared HTML parser (`_DocParser`).** Region markers are BEGIN/END comment lines, not elements, so a line regex is the right tool; everything that reads real DOM structure goes through the parser.
+- **Two test files cover one validator.** `tests/test_validate.py` exercises the layer checks (`validate.validate`) and `tests/test_validate_charts.py` the chart checks (`validate.validate_charts`, the chart-only API); the split is by concern, not by module.
+- **The field-artifact positive control skips when the file is absent.** It points at the author's local report and is an extra smoke test, not a required gate.
+- **"four HTML-comment regions" in the Save-as-plain code is correct.** Of the five regions, four are HTML comments (HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS) and one (CSS) is a `/* */` CSS comment; Save-as-plain removes the four HTML-comment regions and keeps the CSS region intact so the plain copy stays styled.
+- **A comment anchored on a link is opened via the hover bubble, not by clicking the link.** Clicking a highlighted link follows the link (by design); the `#hlBubble` affordance is the way to open its comment.
+- **E5 compares document source order and does not model `type="module"` / `defer` execution timing.** A module or deferred chart-init placed in source before a classic loader technically runs after it, yet E5 flags "init before the loader". The recipe uses classic synchronous inline init after the loader, so this never occurs in skill-emitted docs; module/deferred chart init is discouraged, so flagging it is acceptable.
+- **`new Chart(` / guard detection does not model regex literals or template-literal substitutions.** The single-pass lexer treats a whole `` `...` `` template (including any executable `${ ... }` substitution) as a string and blanks it, and it does not parse `/.../ ` regex literals. So a `new Chart(` written inside a `${}` substitution or a regex literal is not detected; init and guards are never written that way, so this is an accepted residual (plain strings, both comment styles, and `<script src>` dead bodies ARE handled).
+
+

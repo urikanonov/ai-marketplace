@@ -49,6 +49,30 @@
         "starter"
       ],
       "strict": false
+    },
+    {
+      "name": "commentable-html",
+      "description": "Turn any standalone HTML into an offline, single-file commentable review surface: reviewers select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent. Ships deterministic Python tools and a validator.",
+      "version": "2.5.0",
+      "source": "./plugins/commentable-html/pkg",
+      "author": {
+        "name": "Uri Kanonov",
+        "email": "urikanonov@gmail.com"
+      },
+      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/pkg",
+      "repository": "https://github.com/urikanonov/ai-marketplace",
+      "license": "MIT",
+      "category": "documentation",
+      "keywords": [
+        "html",
+        "code-review",
+        "comments",
+        "offline",
+        "documentation",
+        "kusto",
+        "charts"
+      ],
+      "strict": false
     }
   ]
 }
