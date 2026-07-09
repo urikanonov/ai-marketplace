@@ -74,7 +74,7 @@ Prefer a plugin-dir source; it is the most forward-compatible.
 ## Testing in CI
 
 `.github/workflows/plugin-tests.yml` discovers every plugin with a Node/Playwright suite at
-`plugins/<plugin>/dev/package.json` and runs it in a matrix (one job per plugin): Node 20, `npm ci`,
+`plugins/<plugin>/dev/package.json` and runs it in a matrix (one job per plugin): Node 22, `npm ci --ignore-scripts`,
 `npx playwright install --with-deps chromium`, then `npm test`. If no plugin has such a suite the job is a
 no-op.
 
@@ -127,7 +127,7 @@ status check on `main`) enforces:
 
 - `main` is protected: 1-approval PRs required, conversation resolution required, no force-push or deletion.
 - The owner (`urikanonov`, an admin) can push to `main` directly; everyone else must open a PR.
-- Required status checks on `main`: `validate` and `plugin-tests` (the `summary` gate). Changes to owned paths require code-owner review (`CODEOWNERS`).
+- Required status checks on `main`: `validate` and `summary` (the `plugin-tests` gate). Changes to owned paths require code-owner review (`CODEOWNERS`).
 - Do not weaken branch protection or bypass the validator.
 
 ## The auto-updater hook (portability notes)

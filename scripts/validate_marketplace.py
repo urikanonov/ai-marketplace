@@ -16,9 +16,10 @@ Dependencies: jsonschema, pyyaml.
 """
 
 import json
+import os
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -114,11 +115,15 @@ def main() -> int:
             err(f"{name}: source is itself a dev-only folder: {src!r}")
             continue
 
-        for sub in src_path.rglob("*"):
-            if sub.is_symlink():
-                err(f"{name}: shipped source must not contain a symlink: {rel(sub)}")
-            elif sub.is_dir() and sub.name.lower() in RESERVED_DEV_DIRS:
-                err(f"{name}: shipped source would distribute a dev-only folder: {rel(sub)}")
+        # Walk without following symlinks (Python 3.12 rglob would descend into symlinked dirs).
+        for dirpath, dirnames, filenames in os.walk(src_path, followlinks=False):
+            base = Path(dirpath)
+            for entry in list(dirnames) + filenames:
+                if (base / entry).is_symlink():
+                    err(f"{name}: shipped source must not contain a symlink: {rel(base / entry)}")
+            for d in dirnames:
+                if d.lower() in RESERVED_DEV_DIRS:
+                    err(f"{name}: shipped source would distribute a dev-only folder: {rel(base / d)}")
 
         plugin_json = src_path / "plugin.json"
         skill_md = src_path / "SKILL.md"
@@ -140,12 +145,18 @@ def main() -> int:
                     if not ref:
                         continue
                     parts = str(ref).replace("\\", "/").split("/")
-                    if ".." in parts or str(ref).startswith("/") or any(
-                        p.lower() in RESERVED_DEV_DIRS for p in parts
+                    target = (src_path / ref).resolve()
+                    src_resolved = src_path.resolve()
+                    within = target == src_resolved or src_resolved in target.parents
+                    if (
+                        PureWindowsPath(str(ref)).is_absolute()
+                        or str(ref).startswith("/")
+                        or ".." in parts
+                        or any(p.lower() in RESERVED_DEV_DIRS for p in parts)
+                        or not within
                     ):
                         err(f"{name}: {rel(plugin_json)} '{key}' path escapes the shipped source: {ref!r}")
                         continue
-                    target = src_path / ref
                     if key == "hooks":
                         if not target.is_file():
                             err(f"{name}: {rel(plugin_json)} 'hooks' target does not exist: {ref!r}")

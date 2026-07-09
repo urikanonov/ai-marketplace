@@ -24,7 +24,7 @@ but still read the PR before approving.
 
 - New plugins are maintainer-authored: close external PRs that add a new plugin directory or a new
   `marketplace.json` entry, and ask the contributor to open a plugin request instead.
-- Confirm both required checks are green: `validate` and `plugin-tests` (the `summary` gate).
+- Confirm both required checks are green: `validate` and `summary` (the `plugin-tests` gate job).
 - Changes to shipped executable content (hooks, `*.ps1`, MCP) ship to end users via the auto-updater - review
   them with extra care.
 

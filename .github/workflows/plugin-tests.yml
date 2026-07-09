@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   discover:
@@ -79,9 +79,14 @@ jobs:
     steps:
       - name: Gate on plugin test results
         run: |
-          result="${{ needs.playwright.result }}"
-          echo "playwright result: $result"
-          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+          discover_result="${{ needs.discover.result }}"
+          playwright_result="${{ needs.playwright.result }}"
+          echo "discover=$discover_result playwright=$playwright_result"
+          if [ "$discover_result" != "success" ]; then
+            echo "::error::plugin discovery failed"
+            exit 1
+          fi
+          if [ "$playwright_result" = "failure" ] || [ "$playwright_result" = "cancelled" ]; then
             echo "::error::plugin Playwright tests did not pass"
             exit 1
           fi
