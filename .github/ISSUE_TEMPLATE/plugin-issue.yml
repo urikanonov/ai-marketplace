@@ -1,0 +1,96 @@
+name: Plugin issue
+description: Report a bug or problem with a plugin from this marketplace.
+title: "[Plugin]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing an issue. Please fill in as much as you can so the problem can be reproduced and fixed quickly.
+        You can drag and drop images, logs, or other files directly into any of the text boxes below.
+  - type: dropdown
+    id: plugin-name
+    attributes:
+      label: Plugin name
+      description: Which plugin is affected? Pick "Other" if it is not listed and name it in the description.
+      options:
+        - urikan-ai-marketplace-auto-updater
+        - hello-world
+        - Other (name it in the description)
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Find it in the plugin's plugin.json or by running `copilot plugin list`.
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: A clear and concise explanation of what is wrong and the impact on you.
+      placeholder: What happened? What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact steps to trigger the problem. Numbered steps are ideal.
+      placeholder: |
+        1. Install the plugin with `copilot plugin install ...`
+        2. Run '...'
+        3. Observe the error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include the full error message or output if there is one.
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots and attachments
+      description: Drag and drop screenshots, logs, or sample files here if they help explain the issue.
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your setup. Get the CLI version with `copilot --version`.
+      placeholder: |
+        - OS: Windows 11 / macOS 14 / Ubuntu 24.04
+        - Copilot CLI version: 1.0.69
+        - Shell: PowerShell 7 / bash / zsh
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant, such as related plugins, recent changes, or workarounds you tried.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not already been reported.
+          required: true
+        - label: I am using the latest version of the plugin (`copilot plugin update <name>`).
+          required: false

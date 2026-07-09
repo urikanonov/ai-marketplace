@@ -74,6 +74,10 @@ ai-marketplace/
 
 The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry points at a plugin directory (or a single skill directory) via its `source` field. See [CONTRIBUTING.md](CONTRIBUTING.md) to add your own plugin.
 
+## Reporting Issues
+
+Found a bug in a plugin? [Open an issue](https://github.com/urikanonov/ai-marketplace/issues/new/choose) using the plugin issue form. It asks for the plugin name and version, a description, repro steps, screenshots or attachments, and your environment so problems can be reproduced and fixed quickly.
+
 ## Contributing
 
 The `main` branch is protected. The repository owner pushes directly; everyone else contributes through a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and the template for adding a new plugin.
