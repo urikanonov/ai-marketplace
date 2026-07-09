@@ -44,7 +44,15 @@ Both shapes are valid. A `SKILL.md` begins with YAML front matter that must have
 python scripts/validate_marketplace.py        # deps: jsonschema, pyyaml
 ```
 
-The validator (and the `validate` CI job, a required status check on `main`) enforces:
+Enable the pre-commit hook once per clone so this runs automatically before every commit (skip a single
+commit with `git commit --no-verify`):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The validator (the pre-commit hook in `.githooks/pre-commit`, and the `validate` CI job which is a required
+status check on `main`) enforces:
 
 - `marketplace.json` matches `.github/schemas/marketplace.schema.json`.
 - Every entry has a unique `name`, a semver `version`, and a repo-relative `source` (starts with `./`, no `..`).

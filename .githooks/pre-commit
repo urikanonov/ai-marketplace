@@ -1,0 +1,25 @@
+#!/bin/sh
+# Pre-commit hook: run the marketplace validator so a bad manifest, plugin, or skill
+# cannot be committed locally (even by the owner, who can bypass branch protection).
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# Skip for a single commit: git commit --no-verify
+
+PY=python
+command -v python >/dev/null 2>&1 || PY=python3
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "pre-commit: python not found; skipping marketplace validation." >&2
+  exit 0
+fi
+
+if ! "$PY" -c "import yaml, jsonschema" >/dev/null 2>&1; then
+  echo "pre-commit: validator deps missing; run 'pip install jsonschema pyyaml' to enable checks (skipping for now)." >&2
+  exit 0
+fi
+
+echo "pre-commit: validating marketplace..."
+if ! "$PY" scripts/validate_marketplace.py; then
+  echo "pre-commit: validation failed; commit aborted. Fix the errors above, or use 'git commit --no-verify' to skip." >&2
+  exit 1
+fi
+exit 0

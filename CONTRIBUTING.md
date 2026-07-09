@@ -15,6 +15,18 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 - The repository owner (`urikanonov`) can push to `main` directly.
 - Everyone else contributes through a pull request. Fork the repo (or push a feature branch if you are a collaborator), open a PR against `main`, and wait for it to be reviewed and merged. Direct pushes to `main` from non-owners are rejected.
 
+## One-time setup
+
+Enable the pre-commit hook so the validator runs automatically before every commit (it needs python with
+`jsonschema` and `pyyaml`). This protects the owner too, who can otherwise bypass branch protection:
+
+```bash
+pip install jsonschema pyyaml
+git config core.hooksPath .githooks
+```
+
+Skip the hook for a single commit with `git commit --no-verify`.
+
 ## Improving an existing plugin
 
 1. Find the plugin under `plugins/`. A plugin is either a single skill directory (a `SKILL.md` with `name` and `description` front matter) or a plugin directory with a `plugin.json` (used by hook and MCP plugins, such as the auto-updater).

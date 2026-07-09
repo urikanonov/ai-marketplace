@@ -80,7 +80,7 @@ The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry 
 
 Plugins here can ship skills, MCP servers, and session hooks that run code on your machine (for example, the auto-updater runs a PowerShell hook on session start). Review a plugin's contents before installing it. To report a security issue privately, see [SECURITY.md](SECURITY.md). Uninstall anything with `copilot plugin uninstall <name>`.
 
-Every change to `main` is validated in CI (`.github/workflows/validate.yml`): the marketplace manifest, each `plugin.json`, and each `SKILL.md` are checked against JSON Schemas and for consistent `source` paths and versions. You can run the same check locally with `python scripts/validate_marketplace.py`.
+Every change to `main` is validated in CI (`.github/workflows/validate.yml`): the marketplace manifest, each `plugin.json`, and each `SKILL.md` are checked against JSON Schemas and for consistent `source` paths and versions. You can run the same check locally with `python scripts/validate_marketplace.py`, or enable it as a pre-commit hook with `git config core.hooksPath .githooks`.
 
 ## Reporting Issues
 
