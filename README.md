@@ -9,7 +9,7 @@ Every plugin here is designed to make AI-assisted development workflows faster a
 | Plugin | Description | Install |
 |--------|-------------|---------|
 | `urikan-ai-marketplace-auto-updater` | Automatically updates all installed plugins from this marketplace on session start (opt-in) | `copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace` |
-| `hello-world` | Minimal example skill that doubles as a starter template for new plugins | `copilot plugin install hello-world@urikan-ai-marketplace` |
+| `example-skills` | Example plugin (the `hello-world` starter skill) - copy it as a template for a new plugin | `copilot plugin install example-skills@urikan-ai-marketplace` |
 
 ## Getting Started
 
@@ -36,7 +36,7 @@ You can manage plugins without leaving your session using the built-in `/plugin`
 
 ```
 /plugin marketplace add https://github.com/urikanonov/ai-marketplace
-/plugin install hello-world@urikan-ai-marketplace
+/plugin install example-skills@urikan-ai-marketplace
 /plugin list
 /plugin marketplace browse urikan-ai-marketplace
 /plugin update <PLUGIN_NAME>

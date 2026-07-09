@@ -1,0 +1,55 @@
+name: plugin-tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      plugins: ${{ steps.find.outputs.plugins }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Discover plugin test suites
+        id: find
+        shell: bash
+        run: |
+          # A plugin has a Node/Playwright suite when plugins/<plugin>/dev/package.json exists.
+          plugins=$(find plugins -mindepth 2 -maxdepth 3 -type f -path '*/dev/package.json' \
+            -exec dirname {} \; | sed 's|/dev$||' | sort -u \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "plugins=$plugins" >> "$GITHUB_OUTPUT"
+          echo "Discovered plugin test suites: $plugins"
+
+  playwright:
+    needs: discover
+    if: ${{ needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.discover.outputs.plugins) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.plugin }}/dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ matrix.plugin }}/dev/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright tests
+        run: npm test

@@ -42,8 +42,8 @@ Skip the hook for a single commit with `git commit --no-verify`.
 
 There are two shapes of manifest entry, and they version differently:
 
-- Plugin-directory source (for example the auto-updater, `source: ./plugins/<plugin>`): the directory has its own `plugin.json`. Bump the version in BOTH `plugin.json` and the manifest entry, and keep them equal - CI enforces that they match.
-- Single-skill source (for example `hello-world`, `source: ./plugins/<plugin>/skills/<skill>`): the skill directory has only a `SKILL.md` and no `plugin.json` of its own, so the manifest entry is the single source of truth. Bump the version only in the manifest entry.
+- Plugin-directory source (recommended - for example `example-skills` at `source: ./plugins/example-skills/pkg`, or the auto-updater): the source directory has its own `plugin.json`. Bump the version in BOTH `plugin.json` and the manifest entry, and keep them equal - CI enforces that they match.
+- Single-skill source (minimal - `source: ./plugins/<plugin>/skills/<skill>`): the skill directory has only a `SKILL.md` and no `plugin.json`, so the manifest entry is the single source of truth. Bump the version only in the manifest entry.
 
 ## Adding a new plugin (maintainer)
 
@@ -51,7 +51,7 @@ New plugins are authored by the maintainer. A plugin is a directory under `plugi
 
 ## Tests and development files
 
-Only a plugin's registered `source` is distributed when someone installs it. Keep tests, build tooling, canonical sources, and maintainer docs in a `dev/` folder beside the shipped source (`plugins/<plugin>/dev/`). That folder stays in the repo - versioned and testable - but is never shipped. The validator ignores `dev/` and rejects any `source` that would ship it. See [AGENTS.md](AGENTS.md) for the full structure and how to choose the source shape.
+Only a plugin's registered `source` is distributed when someone installs it. Keep tests, build tooling, canonical sources, and maintainer docs in a `dev/` folder beside the shipped source (`plugins/<plugin>/dev/`). That folder stays in the repo - versioned and testable - but is never shipped. The validator ignores `dev/` and rejects any `source` that would ship it. Browser tests (Playwright) placed under `plugins/<plugin>/dev/` are run automatically by the `plugin-tests` workflow; see `plugins/example-skills/dev/` for a working example. See [AGENTS.md](AGENTS.md) for the full structure and how to choose the source shape.
 
 ## Conventions
 

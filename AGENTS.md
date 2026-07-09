@@ -19,11 +19,10 @@ A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users 
   ISSUE_TEMPLATE/             # bug form, feature/plugin-request form, config
   CODEOWNERS, dependabot.yml, pull_request_template.md
 plugins/
-  <plugin>/plugin.json        # plugin manifest (hook/MCP/skills-collection plugins)
-  <plugin>/hooks.json, hooks/ # session hooks (see the auto-updater)
-  <plugin>/skills/<skill>/SKILL.md   # a skill: YAML front matter (name, description) + instructions
+  <plugin>/pkg/               # shipped source: plugin.json + skills/ (+ hooks/ or .mcp.json)
   <plugin>/dev/               # development-only, NEVER distributed (tests, build tooling, sources, specs)
-scripts/validate_marketplace.py  # the validator CI runs; also run it locally
+scripts/validate_marketplace.py     # the validator CI runs; also run it locally
+.github/workflows/plugin-tests.yml  # runs each plugin's dev/ Playwright suite
 CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
 ```
 
@@ -31,13 +30,13 @@ CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
 
 Each object in `marketplace.json`'s `plugins` array has a `source` that points at either:
 
-- a plugin directory that contains a `plugin.json` (for example the auto-updater at
-  `./plugins/urikan-ai-marketplace-auto-updater`), or
-- a single skill directory that contains a `SKILL.md` and no `plugin.json` of its own (for example
-  `./plugins/example-skills/skills/hello-world`).
+- a plugin directory that contains a `plugin.json` (the default shape - for example the auto-updater at
+  `./plugins/urikan-ai-marketplace-auto-updater`, or `example-skills` at `./plugins/example-skills/pkg`), or
+- a single skill directory that contains just a `SKILL.md` (the minimal shape, no `plugin.json`).
 
-Both shapes are valid. A `SKILL.md` begins with YAML front matter that must have a non-empty `name` and
-`description`; the `description` should say what the skill does and when to trigger it.
+A `SKILL.md` begins with YAML front matter that must have a non-empty `name` and `description`; the
+`description` should say what the skill does and when to trigger it. Prefer the plugin-directory shape (see
+"Choosing the source shape") because it can grow to add hooks, MCP servers, and more skills.
 
 ## Shipped vs development files (what gets distributed)
 
@@ -51,7 +50,7 @@ resolves into or contains one of these folders (that would ship it).
 
 ```
 plugins/<plugin>/
-  skills/<skill>/        # shipped: SKILL.md plus any runtime assets/scripts it references
+  pkg/                   # shipped (the source): plugin.json + skills/ + any runtime assets/scripts
   dev/                   # NOT shipped: tests/, build tooling, canonical sources, SPEC.md, DEVELOPMENT.md
 ```
 
@@ -61,13 +60,33 @@ committed outputs match a fresh build.
 
 ### Choosing the source shape
 
-- Skill-dir source (`source: ./plugins/<plugin>/skills/<skill>`): simplest. The plugin folder holds the
-  shipped skill plus a sibling `dev/`, so the ship/dev split is automatic. The version lives only in the
-  manifest entry. Use for a single skill with no `plugin.json`.
-- Plugin-dir source (`source: ./plugins/<plugin>/pkg`, where `pkg/` contains a `plugin.json`): use when you
-  need a `plugin.json` (explicit version/author/keywords), multiple skills, or hooks/MCP config. Because the
-  whole source subtree ships, point the source at a nested ship folder (e.g. `pkg/`) and keep `dev/` as its
-  sibling so dev files stay out of the shipped subtree.
+Prefer a plugin-dir source; it is the most forward-compatible.
+
+- Plugin-dir source (recommended, `source: ./plugins/<plugin>/pkg`, where `pkg/` contains a `plugin.json`):
+  a real plugin manifest that can declare multiple skills, session hooks, and an MCP server, with
+  version/author/keywords co-located in the plugin. Because the whole source subtree ships, keep the shipped
+  content in `pkg/` and `dev/` as its sibling so dev files stay out of the shipped subtree. The `plugin.json`
+  version must equal the manifest entry version (CI enforces this). `example-skills` uses this shape.
+- Skill-dir source (minimal, `source: ./plugins/<plugin>/skills/<skill>`): a single `SKILL.md` with no
+  `plugin.json`; the version lives only in the manifest entry. Fine for a one-off skill, but it cannot grow
+  to hooks/MCP/multiple skills without converting to a plugin-dir source.
+
+## Testing in CI
+
+`.github/workflows/plugin-tests.yml` discovers every plugin with a Node/Playwright suite at
+`plugins/<plugin>/dev/package.json` and runs it in a matrix (one job per plugin): Node 20, `npm ci`,
+`npx playwright install --with-deps chromium`, then `npm test`. If no plugin has such a suite the job is a
+no-op.
+
+To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/example-skills/dev/` for a
+working example):
+
+- `package.json` with `@playwright/test` and a `"test": "playwright test"` script,
+- `playwright.config.js` with `testDir: "./tests"`,
+- specs under `dev/tests/`,
+- a committed `package-lock.json` (so CI can `npm ci`).
+
+Nothing under `dev/` is distributed. `node_modules/`, `test-results/`, and `playwright-report/` are gitignored.
 
 ## Validate before you commit
 
@@ -134,5 +153,6 @@ status check on `main`) enforces:
   in `marketplace.json`, bump versions per the rules, update `CHANGELOG.md`, run the validator.
 - Fix the auto-updater: edit `hooks/marketplace-update.ps1`, keep it non-blocking and 5.1-safe, bump the plugin
   version in both its `plugin.json` and the manifest entry, update `CHANGELOG.md`, run the validator.
-- Add tests or build tooling to a plugin: put them under `plugins/<plugin>/dev/` so they stay in the repo but
-  are never distributed. Run them from a CI job scoped to that plugin's path.
+- Add browser tests to a plugin: add `plugins/<plugin>/dev/package.json` (with `@playwright/test`),
+  `playwright.config.js`, and specs under `dev/tests/`; `plugin-tests.yml` runs them automatically (see
+  `plugins/example-skills/dev/`). Everything under `dev/` stays in the repo but is never distributed.

@@ -1,0 +1,11 @@
+{
+  "name": "example-skills-dev",
+  "private": true,
+  "description": "Development harness and tests for the example-skills plugin. Not distributed.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

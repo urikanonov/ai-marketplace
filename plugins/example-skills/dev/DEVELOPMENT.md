@@ -1,7 +1,8 @@
 # Development notes (not distributed)
 
 This `dev/` folder is NOT shipped when someone installs a plugin from this marketplace. Only a plugin's
-registered `source` (for this plugin, `../skills/hello-world`) is copied to the user's machine.
+registered `source` (for this plugin, `../pkg`, which holds `plugin.json` and `skills/hello-world`) is
+copied to the user's machine.
 
 Put anything that supports development but should not reach end users here:
 

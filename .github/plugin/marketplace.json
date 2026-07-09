@@ -31,23 +31,22 @@
       "strict": false
     },
     {
-      "name": "hello-world",
-      "description": "Minimal example skill that greets the user and confirms the marketplace is wired up correctly. Serves as a starter template for new plugins.",
+      "name": "example-skills",
+      "description": "Example skills collection (currently the hello-world starter skill). Copy it as a template for a new plugin.",
       "version": "1.0.0",
-      "source": "./plugins/example-skills/skills/hello-world",
+      "source": "./plugins/example-skills/pkg",
       "author": {
         "name": "Uri Kanonov",
         "email": "urikanonov@gmail.com"
       },
-      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/example-skills/skills/hello-world",
+      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/example-skills/pkg",
       "repository": "https://github.com/urikanonov/ai-marketplace",
       "license": "MIT",
       "category": "example",
       "keywords": [
         "example",
         "template",
-        "starter",
-        "hello-world"
+        "starter"
       ],
       "strict": false
     }
