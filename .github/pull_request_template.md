@@ -1,16 +1,17 @@
 ## Summary
 
-<!-- What does this PR add or change? -->
+<!-- What does this PR change? -->
 
-## Plugin checklist
+## Type
 
-<!-- Delete this section if the PR does not touch a plugin. -->
+- [ ] Improvement or fix to an existing plugin
+- [ ] New plugin (maintainer only)
+- [ ] Docs or repo tooling
 
-- [ ] New or updated plugin lives under `plugins/`
-- [ ] Registered / updated in `.github/plugin/marketplace.json`
-- [ ] Version bumped per CONTRIBUTING (both `plugin.json` and manifest for a plugin-dir source; manifest only for a single-skill source)
-- [ ] `CHANGELOG.md` updated
-- [ ] Author set to `Uri Kanonov <urikanonov@gmail.com>`
+## Checklist
+
+- [ ] Version bumped per CONTRIBUTING when a published plugin changed (both `plugin.json` and manifest for a plugin-dir source; manifest only for a single-skill source)
+- [ ] `CHANGELOG.md` updated when a plugin version changed
 - [ ] `python scripts/validate_marketplace.py` passes locally
 
 ## Notes
