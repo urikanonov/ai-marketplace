@@ -14,6 +14,7 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 - `main` is protected.
 - The repository owner (`urikanonov`) can push to `main` directly.
 - Everyone else contributes through a pull request. Fork the repo (or push a feature branch if you are a collaborator), open a PR against `main`, and wait for it to be reviewed and merged. Direct pushes to `main` from non-owners are rejected.
+- What must be green to merge: the required checks `validate` and `plugin-tests`. `CODEOWNERS` routes review of sensitive paths (workflows, hooks, scripts, plugins) to the maintainer, and new plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
 
 ## One-time setup
 

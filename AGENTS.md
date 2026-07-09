@@ -127,6 +127,7 @@ status check on `main`) enforces:
 
 - `main` is protected: 1-approval PRs required, conversation resolution required, no force-push or deletion.
 - The owner (`urikanonov`, an admin) can push to `main` directly; everyone else must open a PR.
+- Required status checks on `main`: `validate` and `plugin-tests` (the `summary` gate). Changes to owned paths require code-owner review (`CODEOWNERS`).
 - Do not weaken branch protection or bypass the validator.
 
 ## The auto-updater hook (portability notes)

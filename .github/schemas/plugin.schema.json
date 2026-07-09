@@ -4,6 +4,7 @@
   "title": "Copilot CLI plugin manifest (plugin.json)",
   "type": "object",
   "required": ["name", "description", "version", "author"],
+  "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
     "name": { "type": "string", "minLength": 1 },

@@ -11,6 +11,18 @@ Plugins in this marketplace can ship skills, MCP servers, and session hooks that
 machine. For example, `urikan-ai-marketplace-auto-updater` runs a PowerShell hook on session start.
 Review a plugin's contents before installing it, exactly as you would any other third-party tooling.
 
+## Auto-updater trust model
+
+`urikan-ai-marketplace-auto-updater` is opt-in, but once installed it runs a PowerShell hook on every
+Copilot session start that calls `copilot plugin update` for each installed plugin from this marketplace.
+That means:
+
+- Installing it is a persistent grant to execute future versions of your installed plugins - a new or
+  changed session hook, MCP server, or script merged to `main` runs on your next session without a prompt.
+- The trust anchor is the `@urikanonov` GitHub account and the branch protection on `main`.
+- If you want to review each update yourself, do not install the auto-updater; run
+  `copilot plugin update <name>@urikan-ai-marketplace` manually instead.
+
 ## Reporting a vulnerability
 
 Please do not open a public issue for security problems. Instead, use one of:

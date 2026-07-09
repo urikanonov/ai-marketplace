@@ -5,5 +5,10 @@
 /.github/plugin/ @urikanonov
 /.github/workflows/ @urikanonov
 /.github/schemas/ @urikanonov
+/.githooks/ @urikanonov
+/scripts/ @urikanonov
 /plugins/ @urikanonov
 /SECURITY.md @urikanonov
+
+# Shipped executable content that runs on end users' machines - always maintainer-reviewed.
+*.ps1 @urikanonov

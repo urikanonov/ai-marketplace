@@ -30,8 +30,15 @@ try {
     Get-ChildItem -Path $installed -Directory |
         Where-Object { $_.Name -ne $self } |
         ForEach-Object {
-            try { copilot plugin update "$($_.Name)@$marketplace" 2>&1 | Out-Null }
-            catch { Write-UpdaterLog "update failed for $($_.Name): $($_.Exception.Message)" }
+            $plugin = $_.Name
+            try {
+                $output = copilot plugin update "$plugin@$marketplace" 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-UpdaterLog "update failed for $plugin (exit $LASTEXITCODE): $output"
+                }
+            } catch {
+                Write-UpdaterLog "update errored for $plugin : $($_.Exception.Message)"
+            }
         }
 } catch {
     Write-UpdaterLog "auto-update aborted: $($_.Exception.Message)"

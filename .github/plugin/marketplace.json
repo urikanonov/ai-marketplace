@@ -12,7 +12,7 @@
     {
       "name": "urikan-ai-marketplace-auto-updater",
       "description": "Automatically checks for and installs plugin updates from this marketplace on session start. Opt-in: only install if you want automatic updates.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "source": "./plugins/urikan-ai-marketplace-auto-updater",
       "author": {
         "name": "Uri Kanonov",

@@ -24,7 +24,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
-SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$")
+SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?\Z")
 
 # Directory names under plugins/ that hold development-only content that is never distributed.
 # The validator ignores them, and a manifest source must never resolve into (or contain) one.
@@ -42,7 +42,7 @@ def rel(p: Path) -> str:
 
 
 def is_dev_path(path: Path) -> bool:
-    return any(part in RESERVED_DEV_DIRS for part in path.relative_to(ROOT).parts)
+    return any(part.lower() in RESERVED_DEV_DIRS for part in path.relative_to(ROOT).parts)
 
 
 def load_json(path: Path):
@@ -55,13 +55,14 @@ def load_json(path: Path):
 
 def read_front_matter(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
-    m = re.match(r"^\ufeff?---\s*\n(.*?)\n---\s*\n", text, re.S)
+    m = re.match(r"^\ufeff?---\s*\r?\n(.*?)\r?\n(?:---|\.\.\.)\s*(?:\r?\n|\Z)", text, re.S)
     if not m:
         return {}
     try:
-        return yaml.safe_load(m.group(1)) or {}
+        data = yaml.safe_load(m.group(1))
     except Exception:  # noqa: BLE001
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def main() -> int:
@@ -91,34 +92,67 @@ def main() -> int:
         if not src.startswith("./") or ".." in src:
             err(f"{name}: source must be repo-relative and must not contain '..': {src!r}")
             continue
-        if any(part in RESERVED_DEV_DIRS for part in src.strip("./").split("/")):
+        if any(part.lower() in RESERVED_DEV_DIRS for part in src.strip("./").split("/")):
             err(
                 f"{name}: source must not live under a dev-only folder "
                 f"({', '.join(sorted(RESERVED_DEV_DIRS))}): {src!r}"
             )
             continue
 
-        src_path = (ROOT / src).resolve()
+        raw_src = ROOT / src
+        if raw_src.is_symlink():
+            err(f"{name}: source must not be a symlink: {src!r}")
+            continue
+        src_path = raw_src.resolve()
         if ROOT != src_path and ROOT not in src_path.parents:
             err(f"{name}: source escapes the repository: {src!r}")
             continue
         if not src_path.exists():
             err(f"{name}: source path does not exist: {src!r}")
             continue
+        if src_path.name.lower() in RESERVED_DEV_DIRS:
+            err(f"{name}: source is itself a dev-only folder: {src!r}")
+            continue
 
         for sub in src_path.rglob("*"):
-            if sub.is_dir() and sub.name in RESERVED_DEV_DIRS:
+            if sub.is_symlink():
+                err(f"{name}: shipped source must not contain a symlink: {rel(sub)}")
+            elif sub.is_dir() and sub.name.lower() in RESERVED_DEV_DIRS:
                 err(f"{name}: shipped source would distribute a dev-only folder: {rel(sub)}")
 
         plugin_json = src_path / "plugin.json"
         skill_md = src_path / "SKILL.md"
         if plugin_json.exists():
             pj = load_json(plugin_json)
-            if pj is not None and str(pj.get("version", "")) != version:
-                err(
-                    f"{name}: manifest version {version} != {rel(plugin_json)} "
-                    f"version {pj.get('version')!r}"
-                )
+            if pj is not None:
+                if str(pj.get("version", "")) != version:
+                    err(
+                        f"{name}: manifest version {version} != {rel(plugin_json)} "
+                        f"version {pj.get('version')!r}"
+                    )
+                if pj.get("name") != name:
+                    err(
+                        f"{name}: {rel(plugin_json)} name {pj.get('name')!r} does not match "
+                        f"manifest entry name {name!r}"
+                    )
+                for key in ("hooks", "skills"):
+                    ref = pj.get(key)
+                    if not ref:
+                        continue
+                    parts = str(ref).replace("\\", "/").split("/")
+                    if ".." in parts or str(ref).startswith("/") or any(
+                        p.lower() in RESERVED_DEV_DIRS for p in parts
+                    ):
+                        err(f"{name}: {rel(plugin_json)} '{key}' path escapes the shipped source: {ref!r}")
+                        continue
+                    target = src_path / ref
+                    if key == "hooks":
+                        if not target.is_file():
+                            err(f"{name}: {rel(plugin_json)} 'hooks' target does not exist: {ref!r}")
+                        else:
+                            load_json(target)
+                    elif not target.is_dir():
+                        err(f"{name}: {rel(plugin_json)} 'skills' target is not a directory: {ref!r}")
         elif skill_md.exists():
             fm = read_front_matter(skill_md)
             if not fm.get("name"):

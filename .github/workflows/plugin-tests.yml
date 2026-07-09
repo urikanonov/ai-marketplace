@@ -8,29 +8,42 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   discover:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       plugins: ${{ steps.find.outputs.plugins }}
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
       - name: Discover plugin test suites
         id: find
         shell: bash
         run: |
+          set -euo pipefail
           # A plugin has a Node/Playwright suite when plugins/<plugin>/dev/package.json exists.
-          plugins=$(find plugins -mindepth 2 -maxdepth 3 -type f -path '*/dev/package.json' \
-            -exec dirname {} \; | sed 's|/dev$||' | sort -u \
+          plugins=$(find plugins -mindepth 3 -maxdepth 3 -type f -path 'plugins/*/dev/package.json' \
+            -printf '%h\n' | sed 's:/dev$::' | sort -u \
             | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "plugins=$plugins" >> "$GITHUB_OUTPUT"
+          {
+            echo 'plugins<<__EOF__'
+            echo "$plugins"
+            echo '__EOF__'
+          } >> "$GITHUB_OUTPUT"
           echo "Discovered plugin test suites: $plugins"
 
   playwright:
     needs: discover
     if: ${{ needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -41,15 +54,34 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: ${{ matrix.plugin }}/dev/package-lock.json
-      - name: Install dependencies
-        run: npm ci
+      - name: Verify committed lockfile
+        run: test -f package-lock.json || { echo "::error::this plugin's dev/ needs a committed package-lock.json for npm ci"; exit 1; }
+      - name: Install dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: Run Playwright tests
         run: npm test
+
+  summary:
+    needs: [discover, playwright]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Gate on plugin test results
+        run: |
+          result="${{ needs.playwright.result }}"
+          echo "playwright result: $result"
+          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+            echo "::error::plugin Playwright tests did not pass"
+            exit 1
+          fi
