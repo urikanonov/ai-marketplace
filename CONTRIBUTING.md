@@ -11,10 +11,10 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 
 ## Branch rules
 
-- `main` is protected.
-- The repository owner (`urikanonov`) can push to `main` directly.
-- Everyone else contributes through a pull request. Fork the repo (or push a feature branch if you are a collaborator), open a PR against `main`, and wait for it to be reviewed and merged. Direct pushes to `main` from non-owners are rejected.
-- What must be green to merge: the required checks `validate` and `summary` (the `plugin-tests` gate). `CODEOWNERS` routes review of sensitive paths (workflows, hooks, scripts, plugins) to the maintainer, and new plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
+- `main` is protected: every change lands through a pull request that passes CI.
+- Direct pushes to `main` are blocked for everyone, including the owner. The maintainer's own changes go through a PR too.
+- Contribute through a pull request: fork the repo (or push a feature branch if you are a collaborator) and open a PR against `main`. No approvals are required to merge, so the solo maintainer is never blocked; conversation resolution is required, and force-push and deletion are disallowed.
+- What must be green to merge: the required checks `validate` and `summary` (the `plugin-tests` gate). New plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
 
 ## One-time setup
 

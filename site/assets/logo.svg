@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ai-marketplace logo">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#b11f4b"/>
+  <rect x="13" y="13" width="17" height="17" rx="4" fill="#fcfbf8"/>
+  <rect x="34" y="13" width="17" height="17" rx="4" fill="#fcfbf8" opacity="0.82"/>
+  <rect x="13" y="34" width="17" height="17" rx="4" fill="#fcfbf8" opacity="0.66"/>
+  <rect x="34" y="34" width="17" height="17" rx="4" fill="#f7c9d6"/>
+</svg>

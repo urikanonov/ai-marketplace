@@ -127,10 +127,16 @@ status check on `main`) enforces:
 
 ## Branch and PR rules
 
-- `main` is protected: 1-approval PRs required, conversation resolution required, no force-push or deletion.
-- The owner (`urikanonov`, an admin) can push to `main` directly; everyone else must open a PR.
-- Required status checks on `main`: `validate` and `summary` (the `plugin-tests` gate). Changes to owned paths require code-owner review (`CODEOWNERS`).
-- Do not weaken branch protection or bypass the validator.
+- `main` is protected: every change lands through a pull request that passes CI. Direct pushes to
+  `main` are blocked for everyone, including the owner/admin (`enforce_admins` is on), so nothing
+  reaches `main` without going through the gate.
+- No approvals are required (`0` required reviewers) so the solo maintainer is never blocked waiting
+  for a review they cannot self-give; conversation resolution is still required, and force-push and
+  deletion are disallowed.
+- Required status checks on `main`: `validate` and `summary` (the `plugin-tests` gate). A PR merges
+  once those are green.
+- Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`) or bypass
+  the validator.
 
 ## The auto-updater hook (portability notes)
 

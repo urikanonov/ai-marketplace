@@ -1,0 +1,98 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "tests/site/**"
+      - "scripts/build_site_data.py"
+      - ".github/plugin/marketplace.json"
+      - "CHANGELOG.md"
+      - "plugins/commentable-html/CHANGELOG.md"
+      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-taxi.html"
+      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-community-garden.html"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "tests/site/**"
+      - "scripts/build_site_data.py"
+      - ".github/plugin/marketplace.json"
+      - "CHANGELOG.md"
+      - "plugins/commentable-html/CHANGELOG.md"
+      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-taxi.html"
+      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-community-garden.html"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Least privilege by default. Only the deploy job is granted the Pages/OIDC scopes,
+# so the untrusted npm/browser install and the site tests never run in a job that
+# can mint a deploy token.
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/site/package-lock.json
+      - name: Verify committed site data is fresh (pull requests)
+        if: github.event_name == 'pull_request'
+        run: python scripts/build_site_data.py --check
+      - name: Regenerate site data from source (deploys)
+        if: github.event_name != 'pull_request'
+        run: python scripts/build_site_data.py
+      - name: Run site generator unit tests
+        run: python -m unittest discover -s scripts -p "test_build_site_data.py"
+      - name: Install test dependencies (no lifecycle scripts)
+        working-directory: tests/site
+        run: npm ci --ignore-scripts
+      - name: Install Playwright browser
+        working-directory: tests/site
+        run: npx playwright install --with-deps chromium
+      - name: Run site smoke tests
+        working-directory: tests/site
+        run: npm test
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+        with:
+          enablement: true
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

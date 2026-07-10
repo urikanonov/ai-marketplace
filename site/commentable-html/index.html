@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
+  <title>commentable-html - inline-comment review surface for any HTML</title>
+  <meta name="description" content="Turn any standalone HTML into a single-file commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
+  <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+  <link rel="stylesheet" href="../assets/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <nav class="navbar">
+    <div class="wrap">
+      <a class="brand" href="../index.html">
+        <img src="../assets/logo.svg" alt="" />
+        <span>ai-marketplace</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#demo">Try it</a>
+        <a href="#changelog" class="hide-sm">Changelog</a>
+        <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <header class="hero">
+      <div class="wrap">
+        <a class="back-link" href="../index.html">&larr; All plugins</a>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.0.0<!-- END:version --></span></span>
+        <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
+        <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#demo">Try the live demo</a>
+          <a class="btn" href="#install">Install</a>
+        </div>
+      </div>
+    </header>
+
+    <section id="install">
+      <div class="wrap">
+        <h2 class="section-title">Install</h2>
+        <p class="section-sub">Add the marketplace, then install the plugin.</p>
+        <div class="cmd">
+          <span class="prompt">$</span>
+          <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
+copilot plugin install commentable-html@urikan-ai-marketplace</pre>
+          <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
+copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2 class="section-title">What you get</h2>
+        <p class="section-sub">A full code-review layer baked into one portable HTML file.</p>
+        <div class="grid">
+          <div class="card feature"><h3>Comment on anything</h3><p>Prose, table cells, code blocks, KQL queries, charts, images, and mermaid diagram nodes are all selectable and commentable.</p></div>
+          <div class="card feature"><h3>Single self-contained file</h3><p>The CSS, UI, and runtime travel inside the document. Email it, archive it, or open it offline - it just works.</p></div>
+          <div class="card feature"><h3>Round-trip to the agent</h3><p>Copy all emits a Markdown bundle plus a machine-readable id list, so the agent acts on your notes and marks them handled.</p></div>
+          <div class="card feature"><h3>Export as Portable</h3><p>Embed the current comments into the file so a review travels with it. Share it and the recipient sees every note immediately.</p></div>
+          <div class="card feature"><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
+          <div class="card feature"><h3>Deterministic tools</h3><p>Ships stdlib-only Python tools and a strict validator so generated documents are correct by construction, not by luck.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="demo">
+      <div class="wrap">
+        <h2 class="section-title">Try it live</h2>
+        <p class="section-sub">This is a real commentable report. Select any text and the Add comment popup appears. For the full experience, open it in its own tab.</p>
+        <div class="demo-frame">
+          <div class="bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="title">report-taxi.html</span>
+          </div>
+          <iframe src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
+        </div>
+        <div class="demo-actions">
+          <a class="btn btn-primary" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer">Open the taxi report</a>
+          <a class="btn" href="demo/report-community-garden.html" target="_blank" rel="noopener noreferrer">Open the community-garden report</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="loop">
+      <div class="wrap">
+        <h2 class="section-title">How the review loop works</h2>
+        <p class="section-sub">Feedback goes back to the agent as structured data, not pasted prose.</p>
+        <div class="steps">
+          <div class="step"><h3>Generate</h3><p>The agent produces a commentable HTML report.</p></div>
+          <div class="step"><h3>Comment</h3><p>You select text and leave inline notes in the sidebar.</p></div>
+          <div class="step"><h3>Copy all</h3><p>Export a Markdown bundle of every open comment.</p></div>
+          <div class="step"><h3>Reload</h3><p>The agent acts and marks ids handled; handled comments prune away.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="changelog">
+      <div class="wrap">
+        <h2 class="section-title">Changelog</h2>
+        <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+        <div class="changelog">
+          <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.0.0] - 2026-07-10</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Offline, single-file commentable HTML review surface: reviewers select any paragraph, table cell, code block, KQL block, chart, image, or mermaid diagram and leave inline comments, then copy or export a bundle back to an agent, with no network dependency.</li>
+              <li>Portable mode (one self-contained file) and NonPortable mode (companion CSS/JS files).</li>
+              <li>Deterministic Python tooling (new_document, inline_images, chart_block, upgrade, validate, and more) plus a standard-library validator that enforces the structural invariants of a generated file.</li>
+              <li>Rich, commentable content: tables, Chart.js charts, mermaid diagrams, KQL blocks, code-review diffs, and inlined images.</li>
+              <li>Each generated file stamps the skill version that produced it in a &lt;meta name=&quot;commentable-html-version&quot;&gt; in the head and in the visible footer.</li>
+            </ul>
+            <div class="group-label">Notes</div>
+            <ul>
+              <li>The injected layer is version-agnostic: the region markers, the companion filenames, and the demo storage keys no longer embed a version. The single source of truth for the release version is dev/VERSION; build.py stamps it into the layer constant, plugin.json, the marketplace entry, and each document&#x27;s version &lt;meta&gt;, and build.py --check guards against drift.</li>
+            </ul>
+          </div>
+          <!-- END:changelog -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>MIT License &middot; &copy; <span id="year">2026</span> Uri Kanonov</span>
+      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">plugin source</a></span>
+    </div>
+  </footer>
+
+  <script src="../assets/site.js"></script>
+</body>
+</html>
