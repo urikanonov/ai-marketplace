@@ -29,11 +29,11 @@ are in **`SKILL.md`**; the maintainer build/test guide is in **`docs/DEVELOPMENT
 - **Copy all.** Produces a markdown bundle (document label, per-comment pinpoint /
   offsets / quoted text / context, agent instructions, and a machine-readable
   `HANDLED_IDS_JSON` line), with an `execCommand` clipboard fallback.
-- **Save / share.** *Export with embedded comments* embeds the comments into a downloadable copy that
+- **Save / share.** *Export as Portable* embeds the comments into a downloadable copy that
   travels without localStorage. *Export to Plain HTML* strips the layer back to clean HTML while keeping the styling.
 - **Two output modes.** *Standalone* (one self-contained file) and *economy* (the
   layer lives in companion `commentable-html.v<V>.{css,js,assets.js}` files referenced
-  from the skill's `dist/` folder, so refreshes stay cheap). *Export as standalone*
+  from the skill's `dist/` folder, so refreshes stay cheap). *Export as Portable*
   rebuilds a self-contained file from an economy doc. A version handshake shows a
   banner if the companions are missing or stale.
 - **Handled-id pruning.** `tools/mark_handled.py` appends processed ids surgically; on

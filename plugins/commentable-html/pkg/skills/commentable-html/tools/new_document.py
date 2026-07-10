@@ -174,10 +174,10 @@ def make_document(template_html, content, key, label, source=None, generated=Non
 
 def _self_validate(html_out):
     """Validate `html_out` with validate.py. Returns a list of error strings, or
-    None if the validator is unavailable (degrade gracefully)."""
+    None only when the validator module is genuinely unavailable (degrade gracefully)."""
     try:
         import validate as _validate
-    except Exception:
+    except ImportError:
         return None
     fd, tmp = tempfile.mkstemp(suffix=".html", dir=os.getcwd())
     try:
