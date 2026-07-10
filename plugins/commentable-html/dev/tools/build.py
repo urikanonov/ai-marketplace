@@ -98,9 +98,10 @@ def _stamp_const(text, version, label):
 
 
 def _stamp_plugin_json(text, version):
-    new, n = _JSON_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), text, count=1)
+    json.loads(text)  # validate the manifest is well-formed before stamping
+    new, n = _JSON_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), text)
     if n != 1:
-        raise SystemExit("build: could not find a version field in plugin.json")
+        raise SystemExit("build: expected exactly one version field in plugin.json, found %d" % n)
     return new
 
 
@@ -122,6 +123,10 @@ def _find_marketplace(start):
         cand = os.path.join(cur, ".github", "plugin", "marketplace.json")
         if os.path.exists(cand):
             return cand
+        # Stop at the repo root: never escape the current repo into an ancestor
+        # checkout that might have its own marketplace.json.
+        if os.path.exists(os.path.join(cur, ".git")):
+            return None
         parent = os.path.dirname(cur)
         if parent == cur:
             return None
@@ -181,7 +186,7 @@ def _legacy_generated_files(out_dir=None):
     ]
 
 
-def _names(version=None):
+def _names():
     # Companion filenames are version-agnostic; each HTML stamps its own version
     # in the <meta name="commentable-html-version"> and the visible footer.
     return "commentable-html.css", "commentable-html.js", "commentable-html.assets.js"
@@ -238,7 +243,7 @@ _BOOTSTRAP = (
 
 
 def build_nonportable(shell, version):
-    css_name, js_name, assets_name = _names(version)
+    css_name, js_name, assets_name = _names()
     t = shell
 
     # 1) Remove the inline layer-CSS region from inside <style>; link it instead.
@@ -310,7 +315,7 @@ def build_all(assets_dir=None, out_dir=None):
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
     js = _stamp_const(js, version, "commentable-html.js")
-    css_name, js_name, assets_name = _names(version)
+    css_name, js_name, assets_name = _names()
     assets_js = build_assets_js(css, js, version)
     css_file, js_file = css + "\n", js + "\n"
     manifest = {

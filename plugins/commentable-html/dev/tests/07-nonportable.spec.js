@@ -34,8 +34,10 @@ test.describe("nonportable mode", () => {
     // string literals that mention meta names.
     const head = (html.match(/<head[\s\S]*?<\/head>/i) || [""])[0];
     expect(head).not.toMatch(/<meta\b[^>]*commentable-html-assets/i);
-    // The version stamp is universal: it must survive the export into the portable file.
-    expect(head).toMatch(/<meta\b[^>]*name="commentable-html-version"[^>]*content="[0-9]+\.[0-9]+\.[0-9]+"/i);
+    // The version stamp is universal and must survive export, carrying the exact build version.
+    const buildVersion = JSON.parse(fs.readFileSync(path.join(SKILL, "dist", "manifest.json"), "utf8")).version;
+    const metaMatch = head.match(/<meta\b[^>]*name="commentable-html-version"[^>]*content="([^"]+)"/i);
+    expect(metaMatch && metaMatch[1]).toBe(buildVersion);
     expect(html).toContain("BEGIN: commentable-html - CSS");
     expect(html).toContain("BEGIN: commentable-html - JS");
 

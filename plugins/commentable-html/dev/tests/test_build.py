@@ -301,5 +301,57 @@ class BuildTests(unittest.TestCase):
         self.assertIn("build --check OK", out.getvalue())
 
 
+class StampHelperTests(unittest.TestCase):
+    def test_read_version_rejects_non_semver(self):
+        with tempfile.TemporaryDirectory() as d:
+            vf = os.path.join(d, "VERSION")
+            for bad in ("1.0", "1.0.0-rc1", "x", "1.2.3 extra"):
+                with open(vf, "w", encoding="utf-8") as fh:
+                    fh.write(bad)
+                with self.assertRaises(SystemExit):
+                    build.read_version(vf)
+            with open(vf, "w", encoding="utf-8") as fh:
+                fh.write("1.2.3\n")
+            self.assertEqual(build.read_version(vf), "1.2.3")
+
+    def test_stamp_plugin_json_preserves_format_and_sets_top_level(self):
+        text = '{\n  "name": "x",\n  "version": "1.0.0",\n  "keywords": ["a", "b"]\n}\n'
+        out = build._stamp_plugin_json(text, "2.0.0")
+        self.assertIn('"version": "2.0.0"', out)
+        self.assertIn('"keywords": ["a", "b"]', out)
+
+    def test_stamp_plugin_json_fails_on_duplicate_version(self):
+        with self.assertRaises(SystemExit):
+            build._stamp_plugin_json('{"version": "1.0.0", "n": {"version": "1.0.0"}}', "2.0.0")
+
+    def test_stamp_plugin_json_fails_on_malformed(self):
+        with self.assertRaises(Exception):
+            build._stamp_plugin_json("{bad json", "2.0.0")
+
+    def test_stamp_marketplace_updates_only_target_entry(self):
+        data = {"plugins": [
+            {"name": "other", "source": "./x", "version": "3.3.3"},
+            {"name": "commentable-html", "source": "./y", "version": "1.0.0"}]}
+        parsed = json.loads(build._stamp_marketplace(json.dumps(data, indent=2), "2.0.0"))
+        self.assertEqual(parsed["plugins"][0]["version"], "3.3.3")
+        self.assertEqual(parsed["plugins"][1]["version"], "2.0.0")
+
+    def test_stamp_marketplace_fails_when_entry_missing(self):
+        with self.assertRaises(SystemExit):
+            build._stamp_marketplace('{"plugins": []}', "2.0.0")
+
+    def test_find_marketplace_is_bounded_by_repo_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, ".git"))
+            sub = os.path.join(d, "a", "b")
+            os.makedirs(sub)
+            self.assertIsNone(build._find_marketplace(sub))
+            mk = os.path.join(d, ".github", "plugin")
+            os.makedirs(mk)
+            open(os.path.join(mk, "marketplace.json"), "w").close()
+            self.assertEqual(os.path.normcase(build._find_marketplace(sub)),
+                             os.path.normcase(os.path.join(mk, "marketplace.json")))
+
+
 if __name__ == "__main__":
     unittest.main()

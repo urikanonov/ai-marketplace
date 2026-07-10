@@ -52,3 +52,21 @@ jobs:
           BUMP_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           BUMP_HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: python scripts/check_version_bump.py
+
+  build-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Verify commentable-html generated files are in sync with the layer source
+        run: >-
+          python plugins/commentable-html/dev/tools/build.py
+          --assets-dir plugins/commentable-html/dev/assets
+          --out-dir plugins/commentable-html/pkg/skills/commentable-html --check
