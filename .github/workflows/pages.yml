@@ -61,6 +61,8 @@ jobs:
       - name: Regenerate site data from source (deploys)
         if: github.event_name != 'pull_request'
         run: python scripts/build_site_data.py
+      - name: Run site generator unit tests
+        run: python -m unittest discover -s scripts -p "test_build_site_data.py"
       - name: Install test dependencies (no lifecycle scripts)
         working-directory: tests/site
         run: npm ci --ignore-scripts
@@ -87,7 +89,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Configure Pages (enable on first run)
+      - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
         with:
           enablement: true
