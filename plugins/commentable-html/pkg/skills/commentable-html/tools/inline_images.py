@@ -117,7 +117,7 @@ def main(argv=None):
         sys.stderr.write("inline_images: missing local image(s): %s\n" % ", ".join(missing))
         return 2
     dest = args.out or args.html
-    with open(dest, "w", encoding="utf-8") as fh:
+    with open(dest, "w", encoding="utf-8", newline="") as fh:
         fh.write(out)
     print("inline_images: inlined %d image(s), %d missing -> %s" % (inlined, len(missing), dest))
     return 0

@@ -96,7 +96,7 @@ class BuildTests(unittest.TestCase):
     # -- versioning / manifest --------------------------------------------- #
     def test_version_is_single_sourced(self):
         v = build.read_version()
-        self.assertEqual(v, "1.0.0")
+        self.assertRegex(v, r"^\d+\.\d+\.\d+$")
         manifest = json.loads(_read(os.path.join(DIST, "manifest.json")))
         self.assertEqual(manifest["version"], v)
         self.assertEqual(set(manifest["files"]), {
@@ -299,6 +299,78 @@ class BuildTests(unittest.TestCase):
                     runpy.run_path(BUILD_PY, run_name="__main__")
         self.assertEqual(cm.exception.code, 0)
         self.assertIn("build --check OK", out.getvalue())
+
+
+class StampHelperTests(unittest.TestCase):
+    def test_read_version_rejects_non_semver(self):
+        with tempfile.TemporaryDirectory() as d:
+            vf = os.path.join(d, "VERSION")
+            for bad in ("1.0", "1.0.0-rc1", "x", "1.2.3 extra"):
+                with open(vf, "w", encoding="utf-8") as fh:
+                    fh.write(bad)
+                with self.assertRaises(SystemExit):
+                    build.read_version(vf)
+            with open(vf, "w", encoding="utf-8") as fh:
+                fh.write("1.2.3\n")
+            self.assertEqual(build.read_version(vf), "1.2.3")
+
+    def test_stamp_plugin_json_preserves_format_and_sets_top_level(self):
+        text = '{\n  "name": "x",\n  "version": "1.0.0",\n  "keywords": ["a", "b"]\n}\n'
+        out = build._stamp_plugin_json(text, "2.0.0")
+        self.assertIn('"version": "2.0.0"', out)
+        self.assertIn('"keywords": ["a", "b"]', out)
+
+    def test_stamp_plugin_json_stamps_top_level_and_preserves_nested_version(self):
+        # A schema-valid manifest may carry a nested version (e.g. author.version);
+        # only the top-level version is stamped, and it is not rejected.
+        text = '{\n  "name": "x",\n  "version": "1.0.0",\n  "author": {"version": "9.9.9"}\n}\n'
+        out = build._stamp_plugin_json(text, "2.0.0")
+        parsed = json.loads(out)
+        self.assertEqual(parsed["version"], "2.0.0")
+        self.assertEqual(parsed["author"]["version"], "9.9.9")
+
+    def test_stamp_plugin_json_fails_on_malformed(self):
+        with self.assertRaises(Exception):
+            build._stamp_plugin_json("{bad json", "2.0.0")
+
+    def test_stamp_marketplace_updates_only_target_entry(self):
+        data = {"plugins": [
+            {"name": "other", "source": "./x", "version": "3.3.3"},
+            {"name": "commentable-html", "source": "./y", "version": "1.0.0"}]}
+        parsed = json.loads(build._stamp_marketplace(json.dumps(data, indent=2), "2.0.0"))
+        self.assertEqual(parsed["plugins"][0]["version"], "3.3.3")
+        self.assertEqual(parsed["plugins"][1]["version"], "2.0.0")
+
+    def test_stamp_marketplace_roundtrips_real_file_byte_for_byte(self):
+        # Stamping the real manifest to its current version must be a no-op, proving
+        # the targeted stamp does not reformat unrelated entries.
+        mk = build._find_marketplace(ROOT)
+        self.assertIsNotNone(mk)
+        original = _read(mk)
+        current = next(p["version"] for p in json.loads(original)["plugins"]
+                       if p["name"] == "commentable-html")
+        self.assertEqual(build._stamp_marketplace(original, current), original)
+
+    def test_stamp_marketplace_fails_when_entry_missing(self):
+        with self.assertRaises(SystemExit):
+            build._stamp_marketplace('{"plugins": []}', "2.0.0")
+
+    def test_find_marketplace_stops_at_repo_root_without_escaping(self):
+        with tempfile.TemporaryDirectory() as d:
+            # An outer marketplace.json above the repo boundary must NOT be found.
+            outer = os.path.join(d, ".github", "plugin")
+            os.makedirs(outer)
+            open(os.path.join(outer, "marketplace.json"), "w").close()
+            repo = os.path.join(d, "repo")
+            os.makedirs(os.path.join(repo, ".git"))
+            sub = os.path.join(repo, "a", "b")
+            os.makedirs(sub)
+            self.assertIsNone(build._find_marketplace(sub))  # bounded by repo/.git
+            mk = os.path.join(repo, ".github", "plugin")
+            os.makedirs(mk)
+            open(os.path.join(mk, "marketplace.json"), "w").close()
+            self.assertEqual(os.path.normcase(build._find_marketplace(sub)),
+                             os.path.normcase(os.path.join(mk, "marketplace.json")))
 
 
 if __name__ == "__main__":

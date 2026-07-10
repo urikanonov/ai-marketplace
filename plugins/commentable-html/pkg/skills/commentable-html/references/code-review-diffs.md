@@ -3,7 +3,7 @@
 
 ## Code review diffs (side-by-side or inline)
 
-The layer renders unified-diff blocks into a colored, commentable code-review view. It is fully self-contained and self-contained, with no diff2html or CDN dependency.
+The layer renders unified-diff blocks into a colored, commentable code-review view. It is fully self-contained, with no diff2html or CDN dependency.
 
 ### Markup
 

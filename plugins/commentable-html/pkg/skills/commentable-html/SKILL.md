@@ -263,7 +263,7 @@ Unified diffs can be rendered as self-contained, line-commentable review blocks 
 
 ## Charts with tooltips
 
-Chart.js charts are supported when the canvas lives in `figure.chart`, the wrapper is `cm-skip` for text offsets, and init runs after the commentable JS region. The canvas itself is commentable as `imageKind: "chart"`. Load Chart.js from a local vendored or inline asset by default; CDN loading is explicit opt-in and breaks self-contained operation. See [Charts with tooltips](references/charts.md) for embedding and verification details.
+Chart.js charts are supported when the canvas lives in `figure.chart`, the wrapper is `cm-skip` for text offsets, and init runs after the commentable JS region. The canvas itself is commentable as `imageKind: "chart"`. Chart.js loads from a CDN by default via a guarded loader that falls back gracefully; self-host or inline it for a fully self-contained file. See [Charts with tooltips](references/charts.md) for embedding and verification details.
 
 ## Network requirements
 

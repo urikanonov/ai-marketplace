@@ -18,9 +18,9 @@ comment contains a second, decoy `<main id="commentRoot">` (the "my-doc"
 example) that must stay untouched.
 
 Usage (run from the skill root):
-    python tools/new_document.py --content body.html --key my-report-v1 --label "My Report"
+    python tools/new_document.py --content body.html --key my-report --label "My Report"
     echo '<section><h2 id="a">Hi</h2></section>' | \
-        python tools/new_document.py --content - --key my-report-v1 --label "My Report" --out out.html
+        python tools/new_document.py --content - --key my-report --label "My Report" --out out.html
 
 The result is self-validated with validate.py before it is written; validation
 errors print to stderr and exit 1. Output goes to stdout unless --out is given.

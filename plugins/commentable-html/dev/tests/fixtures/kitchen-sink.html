@@ -45,7 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.0.0" />
+<meta name="commentable-html-version" content="1.0.1" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (inline)</title>
 
@@ -1227,10 +1227,9 @@ const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
 // malformed id could break out of an attribute or poison a selector.
 const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
-// Asset version of this runtime. The build reads this constant as the single
-// source of truth for the dist filenames, the version <meta> handshake, and the
-// manifest, so bumping it here is the only place a version changes.
-const CMH_VERSION = "1.0.0";
+// Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
+// bump dev/VERSION and rebuild.
+const CMH_VERSION = "1.0.1";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -1261,7 +1260,7 @@ function _cmIco(name, size) {
     + '" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2"'
     + ' stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
 }
-// In nonportable mode the page loads an external commentable-html.<ver>.assets.js
+// In nonportable mode the page loads an external commentable-html.assets.js
 // that defines window.__COMMENTABLE_ASSETS__ = { version, css, js } - the string
 // payloads used to rebuild a fully self-contained file for "Export standalone".
 // A separate assets file (never the runtime embedding its own source) avoids any

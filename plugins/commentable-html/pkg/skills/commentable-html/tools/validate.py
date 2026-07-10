@@ -456,7 +456,7 @@ def _parser_script_body(parser, script_id, lo=None, hi=None):
 
 
 # --------------------------------------------------------------------------- #
-# NonPortable mode: the layer's CSS/JS live in companion commentable-html.v<V>.*
+# NonPortable mode: the layer's CSS/JS live in companion commentable-html.{css,js,assets.js}
 # files referenced via <link>/<script src> instead of being inlined. Only CSS
 # and JS leave the document; HANDLED IDS, EMBEDDED COMMENTS and COMMENT UI stay
 # inline (document-owned state + controls), so those three regions are still

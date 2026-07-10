@@ -32,7 +32,7 @@ Contributors should follow the development guide in the project's source reposit
 | Path | What ships |
 | --- | --- |
 | `skills/commentable-html/SKILL.md` | Public skill instructions and review loop. |
-| `skills/commentable-html/dist/` | Generated bundle: `PORTABLE.html`, `NONPORTABLE.html`, versioned CSS/JS/assets companions, and `manifest.json`. |
+| `skills/commentable-html/dist/` | Generated bundle: `PORTABLE.html`, `NONPORTABLE.html`, CSS/JS/assets companions, and `manifest.json`. |
 | `skills/commentable-html/tools/` | Runtime Python tools used while generating, validating, upgrading, and processing reports. |
 | `skills/commentable-html/references/` | Detailed reference docs for anchors, layout, charts, validation, exports, and helper tools. |
 | `skills/commentable-html/docs/` | Tutorial only: `docs/TUTORIAL.md` and `tutorial-images/`. |

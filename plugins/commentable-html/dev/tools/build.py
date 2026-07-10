@@ -3,22 +3,30 @@
 
 Single source of truth
 ----------------------
+  VERSION                       - the release version (semver). This is the ONE
+                                  place the version is hand-edited; build stamps
+                                  it into the layer const, plugin.json, the
+                                  marketplace entry, and each document's
+                                  <meta name="commentable-html-version">.
   assets/commentable-html.css   - the layer CSS (region body)
-  assets/commentable-html.js    - the runtime JS (region body); the CMH_VERSION
-                                  constant in here is the ONE place the version
-                                  is defined.
-  assets/template.shell.html    - the page shell with {{CMH_CSS}} / {{CMH_JS}}
-                                  placeholders and the demo content.
+  assets/commentable-html.js    - the runtime JS (region body); its CMH_VERSION
+                                  constant is stamped from VERSION by build.
+  assets/template.shell.html    - the page shell with {{CMH_CSS}} / {{CMH_JS}} /
+                                  {{CMH_VERSION}} placeholders and the demo content.
 
 Generated (never hand-edit; `--check` fails if they drift)
 ----------------------------------------------------------
-  dist/PORTABLE.html                       - inline / standalone template (self-contained)
-  dist/commentable-html.v<V>.css      - external layer stylesheet
-  dist/commentable-html.v<V>.js       - external runtime
-  dist/commentable-html.v<V>.assets.js- asset registry (css+js as strings) used by
-                                        "Export standalone" to rebuild a portable file
+  dist/PORTABLE.html                  - inline / standalone template (self-contained)
+  dist/commentable-html.css           - external layer stylesheet (version-agnostic name)
+  dist/commentable-html.js            - external runtime
+  dist/commentable-html.assets.js     - asset registry (css+js as strings) used by
+                                        "Export as Portable" to rebuild a portable file
   dist/manifest.json                  - version + sha256 of each companion file
-  dist/NONPORTABLE.html                   - nonportable template, sitting next to its companions
+  dist/NONPORTABLE.html               - nonportable template, sitting next to its companions
+
+Bumping the version: edit VERSION, then run this builder (it re-stamps every
+spot and regenerates dist). Companion filenames are version-agnostic, so a bump
+never renames dist files.
 
 Usage (flat layout, run from the skill root):
   python tools/build.py            # (re)generate everything, print a size report
@@ -78,7 +86,9 @@ def sha256(text):
 VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _CMH_CONST_RE = re.compile(r'(?m)^(\s*const\s+CMH_VERSION\s*=\s*")[0-9]+\.[0-9]+\.[0-9]+("\s*;)')
-_JSON_VERSION_RE = re.compile(r'("version"\s*:\s*")[0-9]+\.[0-9]+\.[0-9]+(")')
+_JSON_VERSION_RE = re.compile(r'("version"\s*:\s*")([0-9]+\.[0-9]+\.[0-9]+)(")')
+_MARKETPLACE_VERSION_RE = re.compile(
+    r'("name"\s*:\s*"commentable-html"[\s\S]*?"version"\s*:\s*")([0-9]+\.[0-9]+\.[0-9]+)(")')
 
 
 def read_version(version_file=None):
@@ -98,22 +108,27 @@ def _stamp_const(text, version, label):
 
 
 def _stamp_plugin_json(text, version):
-    new, n = _JSON_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), text, count=1)
-    if n != 1:
-        raise SystemExit("build: could not find a version field in plugin.json")
-    return new
+    # Stamp ONLY the top-level "version" (a schema-valid manifest may carry a
+    # nested version, e.g. author.version), preserving the file's formatting.
+    data = json.loads(text)
+    if not isinstance(data, dict) or "version" not in data:
+        raise SystemExit("build: plugin.json has no top-level version field")
+    m = _JSON_VERSION_RE.search(text)
+    if not m or m.group(2) != str(data["version"]):
+        raise SystemExit("build: could not locate the top-level version in plugin.json "
+                         "(a nested version appears before it)")
+    return text[:m.start(2)] + version + text[m.end(2):]
 
 
 def _stamp_marketplace(text, version):
-    data = json.loads(text)
-    found = False
-    for entry in data.get("plugins", []):
-        if entry.get("name") == "commentable-html":
-            entry["version"] = version
-            found = True
-    if not found:
-        raise SystemExit("build: no commentable-html entry in marketplace.json")
-    return json.dumps(data, indent=2) + "\n"
+    # Rewrite ONLY the commentable-html entry's version, leaving all other
+    # entries and the file's formatting untouched (so an unrelated edit to the
+    # manifest cannot make build --check fail on formatting grounds).
+    json.loads(text)  # validate the manifest is well-formed before stamping
+    new, n = _MARKETPLACE_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(3), text, count=1)
+    if n != 1:
+        raise SystemExit("build: no commentable-html entry version found in marketplace.json")
+    return new
 
 
 def _find_marketplace(start):
@@ -122,6 +137,10 @@ def _find_marketplace(start):
         cand = os.path.join(cur, ".github", "plugin", "marketplace.json")
         if os.path.exists(cand):
             return cand
+        # Stop at the repo root: never escape the current repo into an ancestor
+        # checkout that might have its own marketplace.json.
+        if os.path.exists(os.path.join(cur, ".git")):
+            return None
         parent = os.path.dirname(cur)
         if parent == cur:
             return None
@@ -181,7 +200,7 @@ def _legacy_generated_files(out_dir=None):
     ]
 
 
-def _names(version=None):
+def _names():
     # Companion filenames are version-agnostic; each HTML stamps its own version
     # in the <meta name="commentable-html-version"> and the visible footer.
     return "commentable-html.css", "commentable-html.js", "commentable-html.assets.js"
@@ -238,7 +257,7 @@ _BOOTSTRAP = (
 
 
 def build_nonportable(shell, version):
-    css_name, js_name, assets_name = _names(version)
+    css_name, js_name, assets_name = _names()
     t = shell
 
     # 1) Remove the inline layer-CSS region from inside <style>; link it instead.
@@ -310,7 +329,7 @@ def build_all(assets_dir=None, out_dir=None):
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
     js = _stamp_const(js, version, "commentable-html.js")
-    css_name, js_name, assets_name = _names(version)
+    css_name, js_name, assets_name = _names()
     assets_js = build_assets_js(css, js, version)
     css_file, js_file = css + "\n", js + "\n"
     manifest = {
