@@ -60,8 +60,8 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
     """Return (new_html, changed_region_names). Raises ValueError on an unusable input."""
     if NONPORTABLE_MARKER in target_html:
         raise ValueError(
-            "%s looks like an nonportable document (companion assets). Upgrade nonportable files by "
-            "replacing the dist/ companions and bumping the assets version meta instead." % target_name)
+            "%s looks like a nonportable document (companion assets). Upgrade nonportable files by "
+            "replacing the dist/ companions from the new release; the version meta is stamped by the build." % target_name)
     for marker in REQUIRED_MARKERS:
         if ("BEGIN: commentable-html - " + marker) not in target_html:
             raise ValueError("%s is not a commentable-html document (missing '%s' region)" % (target_name, marker))

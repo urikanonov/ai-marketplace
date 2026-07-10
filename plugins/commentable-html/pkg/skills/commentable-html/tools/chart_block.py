@@ -154,7 +154,7 @@ def _inject_for_validation(template_html, figure, scripts):
 def _self_validate(figure, scripts, template_path=DEFAULT_TEMPLATE):
     try:
         import validate as _validate
-    except Exception:
+    except ImportError:
         return None
     template_html = _read_text(template_path)
     candidate = _inject_for_validation(template_html, figure, scripts)

@@ -17,10 +17,9 @@ const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
 // malformed id could break out of an attribute or poison a selector.
 const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
-// Asset version of this runtime. The build reads this constant as the single
-// source of truth for the dist filenames, the version <meta> handshake, and the
-// manifest, so bumping it here is the only place a version changes.
-const CMH_VERSION = "1.0.0";
+// Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
+// bump dev/VERSION and rebuild.
+const CMH_VERSION = "1.0.1";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (

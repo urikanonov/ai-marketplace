@@ -51,6 +51,7 @@ jobs:
         env:
           BUMP_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           BUMP_HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          BUMP_EVENT: ${{ github.event_name }}
         run: python scripts/check_version_bump.py
 
   build-check:

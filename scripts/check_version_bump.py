@@ -2,24 +2,26 @@
 """Fail if a plugin's shipped source changed without a version bump.
 
 For every plugin in the marketplace manifest, if any file under the plugin's
-registered `source` path (at the base or the head) changed between the base and
-head refs, or the `source` path itself changed, the plugin's version at head
-must be strictly greater than at base. Plugins whose source did not change, and
-plugins that are newly introduced (absent at base), are skipped. Changes to a
-plugin's CHANGELOG.md alone never require a bump - a changelog documents a
-release, it is not itself a shipped change.
+registered `source` path changed between base and head, or the `source` path
+itself changed, the plugin's version at head must be strictly greater than at
+base. Plugins whose source did not change, and plugins newly introduced (absent
+at base), are skipped. A change to the plugin's own `<source>/CHANGELOG.md`
+never requires a bump - a changelog documents a release, it is not a shipped
+change.
 
-The diff is computed from the MERGE BASE of base..head so a PR is judged only on
-its own changes, not on unrelated commits the base branch gained after the fork.
-The version is compared against the base ref's manifest, so a bump must exceed
-whatever is currently on the target branch.
+Diff scoping by event:
+- pull_request: diff from the MERGE BASE of base..head, so a PR is judged only
+  on its own changes (not commits the base branch gained after the fork).
+- push: diff exactly base..head (the push's before..after), so a rollback /
+  non-fast-forward push is judged on exactly what it changed.
+Renames are split into an add + a delete (--no-renames) so a file moved OUT of a
+source path still registers as a change to that source.
 
 Usage:
-  python scripts/check_version_bump.py [--base <ref>] [--head <ref>]
+  python scripts/check_version_bump.py [--base <ref>] [--head <ref>] [--event <name>]
 
-Defaults: --base origin/main (or $BUMP_BASE_REF), --head HEAD (or $BUMP_HEAD_REF).
-In CI, pass the PR base sha (or the push "before" sha) as --base and the head
-sha as --head.
+Defaults: --base $BUMP_BASE_REF or origin/main; --head $BUMP_HEAD_REF or HEAD;
+--event $BUMP_EVENT or pull_request.
 """
 
 import argparse
@@ -31,7 +33,6 @@ import sys
 
 MANIFEST = ".github/plugin/marketplace.json"
 _ZERO_SHA = "0" * 40
-_EXEMPT_BASENAMES = {"CHANGELOG.md"}
 
 
 def _git(*args):
@@ -51,11 +52,18 @@ def ref_exists(ref):
 
 def merge_base(base, head):
     r = _git("merge-base", base, head)
-    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else base
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip()
+    sys.stderr.write("check-version-bump: WARNING - git merge-base %s %s failed (%s); "
+                     "diffing from base directly. Ensure fetch-depth: 0.\n"
+                     % (base, head, r.stderr.strip()))
+    return base
 
 
 def changed_files(from_ref, to_ref):
-    r = _git("diff", "--name-only", from_ref, to_ref)
+    # --no-renames: a rename is reported as both a delete (old path) and an add
+    # (new path), so moving a file out of a source path is not hidden.
+    r = _git("diff", "--no-renames", "--name-only", from_ref, to_ref)
     if r.returncode != 0:
         raise SystemExit("check-version-bump: git diff %s %s failed: %s"
                          % (from_ref, to_ref, r.stderr.strip()))
@@ -74,7 +82,7 @@ def _entries(manifest):
 
 
 def _norm_source(source):
-    """Normalize a manifest source path to a repo-relative posix prefix (no leading ./)."""
+    """Normalize a manifest source to a repo-relative posix prefix (no leading ./)."""
     s = str(source).replace("\\", "/")
     if s.startswith("./"):
         s = s[2:]
@@ -83,13 +91,14 @@ def _norm_source(source):
 
 
 def source_touched(source, files):
+    """True if any changed file lives under *source*, ignoring the plugin's own
+    top-level CHANGELOG.md (a changelog does not itself require a bump)."""
     src = _norm_source(source)
+    changelog = posixpath.join(src, "CHANGELOG.md") if src else "CHANGELOG.md"
     for f in files:
-        if os.path.basename(f) in _EXEMPT_BASENAMES:
+        if f == changelog:
             continue
-        if src == "":
-            return True
-        if f == src or f.startswith(src + "/"):
+        if src == "" or f == src or f.startswith(src + "/"):
             return True
     return False
 
@@ -102,20 +111,18 @@ def evaluate(head_manifest, base_manifest, files):
         if name not in base_by_name:
             continue  # newly introduced plugin: nothing to bump against
         base_entry = base_by_name[name]
-        head_source = entry.get("source", "")
-        base_source = base_entry.get("source", "")
-        source_changed = _norm_source(head_source) != _norm_source(base_source)
-        touched = source_touched(head_source, files) or source_touched(base_source, files)
-        if not (source_changed or touched):
+        source_changed = _norm_source(entry.get("source", "")) != _norm_source(base_entry.get("source", ""))
+        # When the source path is unchanged it equals the base source, so a single
+        # source_touched check covers it; when it changed, source_changed forces
+        # evaluation regardless of which files moved.
+        if not (source_changed or source_touched(entry.get("source", ""), files)):
             continue
-        head_v = entry.get("version")
-        base_v = base_entry.get("version")
         try:
-            if semver(head_v) <= semver(base_v):
+            if semver(entry.get("version")) <= semver(base_entry.get("version")):
                 why = "source path changed" if source_changed else "shipped source changed"
                 failures.append(
                     "%s: %s but version did not increase (base %s, head %s). Bump the version."
-                    % (name, why, base_v, head_v))
+                    % (name, why, base_entry.get("version"), entry.get("version")))
         except ValueError as exc:
             failures.append("%s: %s" % (name, exc))
     return failures
@@ -125,6 +132,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default=os.environ.get("BUMP_BASE_REF", "origin/main"))
     parser.add_argument("--head", default=os.environ.get("BUMP_HEAD_REF", "HEAD"))
+    parser.add_argument("--event", default=os.environ.get("BUMP_EVENT", "pull_request"))
     args = parser.parse_args(argv)
 
     base, head = args.base, args.head
@@ -143,7 +151,11 @@ def main(argv=None):
         print("check-version-bump: manifest absent at base %s (new manifest); skipping." % base)
         return 0
 
-    files = changed_files(merge_base(base, head), head)
+    # A PR is judged on its own changes (merge base); a push is judged on exactly
+    # what it moved (before..after), so a rollback cannot slip through an empty
+    # merge-base diff.
+    from_ref = base if args.event == "push" else merge_base(base, head)
+    files = changed_files(from_ref, head)
     failures = evaluate(head_manifest, base_manifest, files)
     if failures:
         sys.stderr.write("check-version-bump FAILED:\n")

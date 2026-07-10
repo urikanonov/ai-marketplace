@@ -48,16 +48,18 @@ class TestSourceTouched(unittest.TestCase):
         self.assertFalse(cvb.source_touched("./plugins/other/pkg", files))
 
     def test_dev_only_change_does_not_touch_pkg_source(self):
-        files = ["plugins/commentable-html/dev/tests/x.spec.js"]
-        self.assertFalse(cvb.source_touched("./plugins/commentable-html/pkg", files))
+        self.assertFalse(cvb.source_touched("./plugins/commentable-html/pkg",
+                                            ["plugins/commentable-html/dev/tests/x.spec.js"]))
 
-    def test_changelog_is_exempt(self):
-        files = ["plugins/auto-updater/CHANGELOG.md"]
-        self.assertFalse(cvb.source_touched("./plugins/auto-updater", files))
+    def test_top_level_changelog_is_exempt(self):
+        self.assertFalse(cvb.source_touched("./plugins/p", ["plugins/p/CHANGELOG.md"]))
+
+    def test_nested_changelog_is_not_exempt(self):
+        # A CHANGELOG.md deeper in the shipped tree is shipped content, not the release changelog.
+        self.assertTrue(cvb.source_touched("./plugins/p", ["plugins/p/docs/CHANGELOG.md"]))
 
     def test_changelog_plus_real_change_still_touches(self):
-        files = ["plugins/auto-updater/CHANGELOG.md", "plugins/auto-updater/hooks/x.ps1"]
-        self.assertTrue(cvb.source_touched("./plugins/auto-updater", files))
+        self.assertTrue(cvb.source_touched("./plugins/p", ["plugins/p/CHANGELOG.md", "plugins/p/x.ps1"]))
 
 
 class TestEvaluate(unittest.TestCase):
@@ -65,40 +67,39 @@ class TestEvaluate(unittest.TestCase):
         return entry("commentable-html", "./plugins/commentable-html/pkg", ver)
 
     def test_changed_without_bump_fails(self):
-        files = ["plugins/commentable-html/pkg/plugin.json"]
-        self.assertTrue(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("1.0.0")), files))
+        self.assertTrue(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("1.0.0")),
+                                     ["plugins/commentable-html/pkg/plugin.json"]))
 
     def test_changed_with_bump_passes(self):
-        files = ["plugins/commentable-html/pkg/skills/x/SKILL.md"]
-        self.assertEqual(cvb.evaluate(mf(self._cmt("1.0.1")), mf(self._cmt("1.0.0")), files), [])
+        self.assertEqual(cvb.evaluate(mf(self._cmt("1.0.1")), mf(self._cmt("1.0.0")),
+                                      ["plugins/commentable-html/pkg/skills/x/SKILL.md"]), [])
 
     def test_unchanged_plugin_skipped(self):
-        files = ["README.md", "plugins/commentable-html/dev/tests/x.spec.js"]
-        self.assertEqual(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("1.0.0")), files), [])
+        self.assertEqual(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("1.0.0")),
+                                      ["README.md", "plugins/commentable-html/dev/tests/x.spec.js"]), [])
 
-    def test_changelog_only_change_skipped(self):
-        files = ["plugins/commentable-html/pkg/CHANGELOG.md"]
-        self.assertEqual(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("1.0.0")), files), [])
+    def test_top_level_changelog_only_change_skipped(self):
+        self.assertEqual(cvb.evaluate(mf(entry("p", "./plugins/p", "1.0.0")),
+                                      mf(entry("p", "./plugins/p", "1.0.0")),
+                                      ["plugins/p/CHANGELOG.md"]), [])
 
     def test_new_plugin_skipped(self):
-        files = ["plugins/new-plugin/plugin.json"]
-        self.assertEqual(cvb.evaluate(mf(entry("new-plugin", "./plugins/new-plugin", "1.0.0")), mf(), files), [])
+        self.assertEqual(cvb.evaluate(mf(entry("new", "./plugins/new", "1.0.0")), mf(),
+                                      ["plugins/new/plugin.json"]), [])
 
     def test_version_decrease_fails(self):
-        files = ["plugins/commentable-html/pkg/plugin.json"]
-        self.assertTrue(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("2.5.0")), files))
+        self.assertTrue(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("2.5.0")),
+                                     ["plugins/commentable-html/pkg/plugin.json"]))
 
-    def test_source_path_change_requires_bump(self):
+    def test_source_path_change_requires_bump_even_with_no_touched_files(self):
         head = mf(entry("p", "./plugins/p/pkg2", "1.0.0"))
         base = mf(entry("p", "./plugins/p/pkg", "1.0.0"))
-        # nothing under either source touched, but the source path itself moved
         self.assertTrue(cvb.evaluate(head, base, ["README.md"]))
 
-    def test_change_under_old_source_counts(self):
-        head = mf(entry("p", "./plugins/p/pkg2", "1.0.1"))
-        base = mf(entry("p", "./plugins/p/pkg", "1.0.0"))
-        # a file under the OLD source path changed; union coverage still evaluates it
-        self.assertEqual(cvb.evaluate(head, base, ["plugins/p/pkg/x"]), [])
+    def test_renamed_out_of_source_counts(self):
+        # With --no-renames, a file moved OUT of the source appears as a delete under the source.
+        self.assertTrue(cvb.evaluate(mf(self._cmt("1.0.0")), mf(self._cmt("1.0.0")),
+                                     ["plugins/commentable-html/pkg/old.js", "elsewhere/old.js"]))
 
 
 class TestMain(unittest.TestCase):
@@ -115,50 +116,67 @@ class TestMain(unittest.TestCase):
         self.assertIn("skipping", out)
 
     def test_empty_base_skips(self):
-        rc, out = self._run(["--base", "", "--head", "HEAD"])
-        self.assertEqual(rc, 0)
+        self.assertEqual(self._run(["--base", "", "--head", "HEAD"])[0], 0)
 
     def test_invalid_base_fails_closed(self):
         with self.assertRaises(SystemExit):
             self._run(["--base", "deadbeef", "--head", "HEAD"], ref_exists=lambda r: False)
 
     def test_absent_base_manifest_skips(self):
-        rc, out = self._run(
-            ["--base", "b", "--head", "h"],
-            ref_exists=lambda r: True,
-            manifest_at=lambda ref: None if ref == "b" else mf(),
-        )
+        rc, out = self._run(["--base", "b", "--head", "h"],
+                            ref_exists=lambda r: True,
+                            manifest_at=lambda ref: None if ref == "b" else mf())
         self.assertEqual(rc, 0)
         self.assertIn("skipping", out)
 
     def test_missing_head_manifest_fails(self):
         with self.assertRaises(SystemExit):
-            self._run(["--base", "b", "--head", "h"],
-                      ref_exists=lambda r: True, manifest_at=lambda ref: None)
+            self._run(["--base", "b", "--head", "h"], ref_exists=lambda r: True,
+                      manifest_at=lambda ref: None)
 
-    def test_env_defaults_used(self):
-        cmt_head = mf(entry("commentable-html", "./plugins/commentable-html/pkg", "1.0.0"))
-        cmt_base = mf(entry("commentable-html", "./plugins/commentable-html/pkg", "1.0.0"))
-        with mock.patch.dict(os.environ, {"BUMP_BASE_REF": "b", "BUMP_HEAD_REF": "h"}):
-            rc, out = self._run(
-                [],
-                ref_exists=lambda r: True,
-                manifest_at=lambda ref: cmt_base if ref == "b" else cmt_head,
-                merge_base=lambda a, b: a,
-                changed_files=lambda a, b: ["plugins/commentable-html/pkg/plugin.json"],
-            )
-        self.assertEqual(rc, 1)  # touched pkg, no bump -> fail
+    def test_env_defaults_used_with_strict_refs(self):
+        seen = {}
+
+        def strict_manifest(ref):
+            if ref not in ("envbase", "envhead"):
+                raise AssertionError("unexpected ref %r (env defaults not honored)" % ref)
+            return mf(entry("commentable-html", "./plugins/commentable-html/pkg",
+                            "1.0.0" if ref == "envbase" else "1.0.0"))
+
+        def rec_changed(a, b):
+            seen["from"], seen["to"] = a, b
+            return ["plugins/commentable-html/pkg/plugin.json"]
+
+        with mock.patch.dict(os.environ, {"BUMP_BASE_REF": "envbase", "BUMP_HEAD_REF": "envhead",
+                                          "BUMP_EVENT": "pull_request"}):
+            rc, _ = self._run([], ref_exists=lambda r: True, manifest_at=strict_manifest,
+                              merge_base=lambda a, b: "mb", changed_files=rec_changed)
+        self.assertEqual(rc, 1)             # touched pkg, no bump -> fail
+        self.assertEqual(seen["from"], "mb")  # PR event used merge base
+        self.assertEqual(seen["to"], "envhead")
+
+    def test_push_event_uses_two_dot_not_merge_base(self):
+        seen = {}
+
+        def rec_changed(a, b):
+            seen["from"] = a
+            return []
+
+        rc, _ = self._run(["--base", "before", "--head", "after", "--event", "push"],
+                          ref_exists=lambda r: True, manifest_at=lambda ref: mf(),
+                          merge_base=lambda a, b: (_ for _ in ()).throw(AssertionError("merge_base used on push")),
+                          changed_files=rec_changed)
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen["from"], "before")  # push diffs base..head directly
 
     def test_full_pass_path(self):
         head = mf(entry("commentable-html", "./plugins/commentable-html/pkg", "1.0.1"))
         base = mf(entry("commentable-html", "./plugins/commentable-html/pkg", "1.0.0"))
-        rc, out = self._run(
-            ["--base", "b", "--head", "h"],
-            ref_exists=lambda r: True,
-            manifest_at=lambda ref: base if ref == "b" else head,
-            merge_base=lambda a, b: a,
-            changed_files=lambda a, b: ["plugins/commentable-html/pkg/plugin.json"],
-        )
+        rc, out = self._run(["--base", "b", "--head", "h", "--event", "pull_request"],
+                            ref_exists=lambda r: True,
+                            manifest_at=lambda ref: base if ref == "b" else head,
+                            merge_base=lambda a, b: a,
+                            changed_files=lambda a, b: ["plugins/commentable-html/pkg/plugin.json"])
         self.assertEqual(rc, 0)
         self.assertIn("OK", out)
 
