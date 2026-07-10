@@ -8,8 +8,8 @@ Fails (exit 1) on any structural error so broken plugins cannot be merged. Check
   the manifest entry) or a SKILL.md (whose front matter must have name + description).
 - Every plugins/**/plugin.json parses, matches the plugin JSON Schema, and has a semver version.
 - Every plugins/**/SKILL.md has YAML front matter with a non-empty name and description.
-- Development-only folders (dev/, node_modules/, __pycache__/) are ignored, and a source that would
-  ship one is rejected.
+- Development-only folders (dev/, node_modules/, __pycache__/) are ignored. A gitignored one nested in a
+  shipped source is pruned (git can never commit or ship it); a tracked one nested in a source is rejected.
 
 Run locally: python scripts/validate_marketplace.py
 Dependencies: jsonschema, pyyaml.
@@ -18,6 +18,7 @@ Dependencies: jsonschema, pyyaml.
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path, PureWindowsPath
 
@@ -44,6 +45,22 @@ def rel(p: Path) -> str:
 
 def is_dev_path(path: Path) -> bool:
     return any(part.lower() in RESERVED_DEV_DIRS for part in path.relative_to(ROOT).parts)
+
+
+def git_ignores(path: Path) -> bool:
+    """True if git ignores path, so it can never be committed and thus never shipped.
+
+    Best-effort: if git is unavailable or ROOT is not a git repo, returns False so a
+    physically-present dev-only folder is still flagged (strict fallback).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ROOT), "check-ignore", "-q", str(path)],
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
 
 
 def load_json(path: Path):
@@ -118,6 +135,11 @@ def main() -> int:
         # Walk without following symlinks (Python 3.12 rglob would descend into symlinked dirs).
         for dirpath, dirnames, filenames in os.walk(src_path, followlinks=False):
             base = Path(dirpath)
+            # Prune gitignored dev-only folders: git never commits them, so an install (a clean
+            # checkout) can never ship them. Don't descend into or flag them.
+            for d in list(dirnames):
+                if d.lower() in RESERVED_DEV_DIRS and git_ignores(base / d):
+                    dirnames.remove(d)
             for entry in list(dirnames) + filenames:
                 if (base / entry).is_symlink():
                     err(f"{name}: shipped source must not contain a symlink: {rel(base / entry)}")

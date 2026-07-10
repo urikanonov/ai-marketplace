@@ -31,26 +31,6 @@
       "strict": false
     },
     {
-      "name": "example-skills",
-      "description": "Example skills collection (currently the hello-world starter skill). Copy it as a template for a new plugin.",
-      "version": "1.0.0",
-      "source": "./plugins/example-skills/pkg",
-      "author": {
-        "name": "Uri Kanonov",
-        "email": "urikanonov@gmail.com"
-      },
-      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/example-skills/pkg",
-      "repository": "https://github.com/urikanonov/ai-marketplace",
-      "license": "MIT",
-      "category": "example",
-      "keywords": [
-        "example",
-        "template",
-        "starter"
-      ],
-      "strict": false
-    },
-    {
       "name": "commentable-html",
       "description": "Turn any standalone HTML into a single-file commentable review surface: reviewers select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent. Ships deterministic Python tools and a validator.",
       "version": "2.5.0",

@@ -31,7 +31,7 @@ CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
 Each object in `marketplace.json`'s `plugins` array has a `source` that points at either:
 
 - a plugin directory that contains a `plugin.json` (the default shape - for example the auto-updater at
-  `./plugins/urikan-ai-marketplace-auto-updater`, or `example-skills` at `./plugins/example-skills/pkg`), or
+  `./plugins/urikan-ai-marketplace-auto-updater`, or `commentable-html` at `./plugins/commentable-html/pkg`), or
 - a single skill directory that contains just a `SKILL.md` (the minimal shape, no `plugin.json`).
 
 A `SKILL.md` begins with YAML front matter that must have a non-empty `name` and `description`; the
@@ -66,7 +66,7 @@ Prefer a plugin-dir source; it is the most forward-compatible.
   a real plugin manifest that can declare multiple skills, session hooks, and an MCP server, with
   version/author/keywords co-located in the plugin. Because the whole source subtree ships, keep the shipped
   content in `pkg/` and `dev/` as its sibling so dev files stay out of the shipped subtree. The `plugin.json`
-  version must equal the manifest entry version (CI enforces this). `example-skills` uses this shape.
+  version must equal the manifest entry version (CI enforces this). `commentable-html` uses this shape.
 - Skill-dir source (minimal, `source: ./plugins/<plugin>/skills/<skill>`): a single `SKILL.md` with no
   `plugin.json`; the version lives only in the manifest entry. Fine for a one-off skill, but it cannot grow
   to hooks/MCP/multiple skills without converting to a plugin-dir source.
@@ -78,7 +78,7 @@ Prefer a plugin-dir source; it is the most forward-compatible.
 `npx playwright install --with-deps chromium`, then `npm test`. If no plugin has such a suite the job is a
 no-op.
 
-To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/example-skills/dev/` for a
+To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/commentable-html/dev/` for a
 working example):
 
 - `package.json` with `@playwright/test` and a `"test": "playwright test"` script,
@@ -109,7 +109,7 @@ status check on `main`) enforces:
 - Every `source` path exists; a plugin-dir source's `plugin.json` version equals the manifest entry version;
   a skill-dir source has a `SKILL.md` with `name` and `description` front matter.
 - Every `plugins/**/plugin.json` matches `.github/schemas/plugin.schema.json` with a semver `version`.
-- Development-only folders (`dev/`, `node_modules/`, `__pycache__/`) are ignored, and a `source` that would ship one is rejected.
+- Development-only folders (`dev/`, `node_modules/`, `__pycache__/`) are ignored. A gitignored one (for example a generated `__pycache__/`) nested inside a shipped source is pruned, since git can never commit or ship it; a tracked one (for example a nested `dev/`) is rejected.
 
 ## Versioning
 
@@ -156,4 +156,4 @@ status check on `main`) enforces:
   version in both its `plugin.json` and the manifest entry, update `CHANGELOG.md`, run the validator.
 - Add browser tests to a plugin: add `plugins/<plugin>/dev/package.json` (with `@playwright/test`),
   `playwright.config.js`, and specs under `dev/tests/`; `plugin-tests.yml` runs them automatically (see
-  `plugins/example-skills/dev/`). Everything under `dev/` stays in the repo but is never distributed.
+  `plugins/commentable-html/dev/`). Everything under `dev/` stays in the repo but is never distributed.

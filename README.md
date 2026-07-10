@@ -9,7 +9,6 @@ Every plugin here is designed to make AI-assisted development workflows faster a
 | Plugin | Description | Install |
 |--------|-------------|---------|
 | `urikan-ai-marketplace-auto-updater` | Automatically updates all installed plugins from this marketplace on session start (opt-in) | `copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace` |
-| `example-skills` | Example plugin (the `hello-world` starter skill) - copy it as a template for a new plugin | `copilot plugin install example-skills@urikan-ai-marketplace` |
 | `commentable-html` | Turn any standalone HTML into an offline, single-file commentable review surface: reviewers select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent | `copilot plugin install commentable-html@urikan-ai-marketplace` |
 
 ## Getting Started
@@ -37,7 +36,7 @@ You can manage plugins without leaving your session using the built-in `/plugin`
 
 ```
 /plugin marketplace add https://github.com/urikanonov/ai-marketplace
-/plugin install example-skills@urikan-ai-marketplace
+/plugin install commentable-html@urikan-ai-marketplace
 /plugin list
 /plugin marketplace browse urikan-ai-marketplace
 /plugin update <PLUGIN_NAME>
@@ -67,8 +66,8 @@ ai-marketplace/
     CODEOWNERS
   plugins/
     urikan-ai-marketplace-auto-updater/   # session-start hook that auto-updates plugins
-    example-skills/                        # plugin-dir source (the recommended shape)
-      pkg/                                 # shipped: plugin.json + skills/hello-world/SKILL.md
+    commentable-html/                      # plugin-dir source (the recommended shape)
+      pkg/                                 # shipped: plugin.json + skills/commentable-html/
       dev/                                 # NOT shipped: Playwright tests, dev docs
   scripts/validate_marketplace.py         # marketplace validator (CI + pre-commit)
   .githooks/pre-commit                    # runs the validator before each commit
