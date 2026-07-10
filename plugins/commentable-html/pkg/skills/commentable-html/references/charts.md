@@ -13,9 +13,9 @@ It is light-theme by default; a dark-theme note is at the end.
 
 ## Dependency and portability
 
-Vendor or inline Chart.js by default. Place `chart.umd.min.js` next to the HTML and load it with a relative synchronous `<script src="./vendor/chart.umd.min.js"></script>`, or inline the library when the deliverable must be one file. Chart.js built-in tooltips need no extra library.
+`chart_block.py` emits a guarded Chart.js CDN loader by default: it pins the full version, adds SRI plus `crossorigin="anonymous"`, keeps the loader synchronous, and guards init with `if (typeof Chart === "undefined") return;` so blocked loading leaves a blank canvas instead of throwing. Chart.js built-in tooltips need no extra library.
 
-CDN loading is explicit opt-in because shared files then depend on network availability to render charts. If a CDN is accepted, pin the full version, add SRI plus `crossorigin="anonymous"`, keep the loader synchronous, and guard init with `if (typeof Chart === "undefined") return;` so blocked loading leaves a blank canvas instead of throwing.
+For a fully self-contained / offline file, vendor or inline Chart.js instead: place `chart.umd.min.js` next to the HTML and load it with a relative synchronous `<script src="./vendor/chart.umd.min.js"></script>`, or inline the library when the deliverable must be one file. Prefer this whenever a shared file must render without network access.
 
 ## Why Chart.js and not hand-rolled SVG
 
