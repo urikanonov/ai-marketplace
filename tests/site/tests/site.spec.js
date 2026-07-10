@@ -5,8 +5,8 @@ const { test, expect } = require("@playwright/test");
 // CDN can never fail the deploy gate. We validate the built static output only.
 test.beforeEach(async ({ context }) => {
   await context.route("**/*", (route) => {
-    const host = new URL(route.request().url()).hostname;
-    if (host === "127.0.0.1" || host === "localhost") {
+    const url = new URL(route.request().url());
+    if (url.protocol === "data:" || url.hostname === "127.0.0.1" || url.hostname === "localhost") {
       return route.continue();
     }
     return route.abort();
@@ -54,10 +54,25 @@ test("open-full demo links are safe external targets", async ({ page }) => {
   }
 });
 
-test("demo report loads and the commentable toolbar mounts", async ({ page }) => {
-  await page.goto("/commentable-html/demo/report-taxi.html", { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });
-  await expect(page.locator("#btnCopyAll")).toBeAttached({ timeout: 15000 });
+test("hub embeds the GitHub star widget", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("a.github-button")).toHaveCount(1);
+  await expect(page.locator('script[src="https://buttons.github.io/buttons.js"]')).toHaveCount(1);
+});
+
+test("demo mounts inside the iframe on the plugin page (CSP allows it)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const frame = page.frameLocator("#demo iframe");
+  await expect(frame.locator(".cm-toolbar")).toHaveCount(1, { timeout: 20000 });
+  await expect(frame.locator("#btnCopyAll")).toBeAttached({ timeout: 20000 });
+});
+
+test("both demo reports load and their toolbars mount", async ({ page }) => {
+  for (const report of ["report-taxi.html", "report-community-garden.html"]) {
+    await page.goto("/commentable-html/demo/" + report, { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });
+    await expect(page.locator("#btnCopyAll")).toBeAttached({ timeout: 15000 });
+  }
 });
 
 test("no broken internal links or assets", async ({ page, request }) => {
@@ -75,6 +90,7 @@ test("no broken internal links or assets", async ({ page, request }) => {
       document.querySelectorAll("link[href]").forEach((n) => add(n.href));
       document.querySelectorAll("script[src]").forEach((n) => add(n.src));
       document.querySelectorAll("img[src]").forEach((n) => add(n.src));
+      document.querySelectorAll("iframe[src]").forEach((n) => add(n.src));
       return out;
     });
     for (const u of urls) {

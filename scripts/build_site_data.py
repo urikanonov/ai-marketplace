@@ -24,7 +24,7 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PLUGIN_PAGES = {"commentable-html": "./commentable-html/"}
+PLUGIN_PAGES = {"commentable-html": "./commentable-html/index.html"}
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html"]
 EXAMPLES_REL = os.path.join(
@@ -38,9 +38,11 @@ def esc(value):
 
 def safe_url(url):
     """Allow only https and in-repo relative / mailto URLs; neutralize anything else
-    (javascript:, data:, protocol-relative) so fetched manifest links cannot inject."""
+    (javascript:, data:, protocol-relative) so manifest links cannot inject."""
     u = (url or "").strip()
-    if re.match(r"^(https://|\./|\.\./|/|#|mailto:)", u):
+    if u.startswith("//"):
+        return "#"
+    if re.match(r"^(https://|\./|\.\./|/(?!/)|#|mailto:)", u):
         return u
     return "#"
 
@@ -123,25 +125,29 @@ def render_plugins(manifest):
 def clean_entry(text, plugin):
     stripped = text.replace("`", "")
     if plugin:
-        stripped = re.sub(r"^%s\s+v?\d+\.\d+\.\d+\s*[-:]\s*" % re.escape(plugin), "", stripped)
+        stripped = re.sub(r"^%s(\s+v?\d+\.\d+\.\d+)?\s*[-:]\s*" % re.escape(plugin), "",
+                          stripped, flags=re.IGNORECASE)
     return stripped.strip()
 
 
-def resolve_changelog(root, explicit):
-    """Locate the changelog source. Prefer the marketplace root CHANGELOG.md (filter
-    to the plugin's bullets); fall back to a per-plugin CHANGELOG.md (all bullets) so
-    the site keeps building if the changelog is ever split per plugin. Returns
-    (path_or_None, filter_plugin) where filter_plugin is None for a per-plugin file."""
+def mentions_plugin(text, plugin):
+    """True when a changelog bullet is about `plugin`: the bullet text, with any code
+    backticks removed, starts with the plugin name (case-insensitive). Anchoring to the
+    start avoids over-matching a bullet that merely mentions the plugin mid-sentence."""
+    return text.replace("`", "").lstrip().lower().startswith(plugin.lower())
+
+
+def changelog_candidates(root, explicit):
+    """Ordered changelog sources to try. Prefer the marketplace root CHANGELOG.md
+    (filter to the plugin's bullets); fall back to a per-plugin CHANGELOG.md (all
+    bullets) so the site keeps building if the changelog is split per plugin. Each
+    entry is (path, filter_plugin) where filter_plugin is None for a per-plugin file."""
     if explicit:
-        return explicit, CHANGELOG_PLUGIN
-    candidates = [
+        return [(explicit, CHANGELOG_PLUGIN)]
+    return [
         (os.path.join(root, "CHANGELOG.md"), CHANGELOG_PLUGIN),
         (os.path.join(root, "plugins", CHANGELOG_PLUGIN, "CHANGELOG.md"), None),
     ]
-    for path, filter_plugin in candidates:
-        if os.path.exists(path):
-            return path, filter_plugin
-    return None, None
 
 
 def parse_changelog(text, plugin):
@@ -152,9 +158,10 @@ def parse_changelog(text, plugin):
 
     def flush():
         nonlocal buffer
-        if buffer is not None and current_release is not None and current_type is not None:
-            if plugin is None or plugin in buffer:
-                current_release["groups"].setdefault(current_type, []).append(
+        if buffer is not None and current_release is not None:
+            group = current_type if current_type is not None else "Changes"
+            if plugin is None or mentions_plugin(buffer, plugin):
+                current_release["groups"].setdefault(group, []).append(
                     clean_entry(buffer, plugin))
         buffer = None
 
@@ -201,6 +208,11 @@ def render_changelog(releases):
     return "\n".join(blocks)
 
 
+def _read_normalized(path):
+    with open(path, "rb") as fh:
+        return fh.read().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def sync_demos(root, check):
     src_dir = os.path.join(root, EXAMPLES_REL)
     dst_dir = os.path.join(root, DEMO_REL)
@@ -210,10 +222,9 @@ def sync_demos(root, check):
         dst = os.path.join(dst_dir, name)
         if not os.path.exists(src):
             raise SystemExit("demo source missing: %s" % src)
-        with open(src, "rb") as fh:
-            src_bytes = fh.read()
+        src_bytes = _read_normalized(src)
         if check:
-            if not os.path.exists(dst) or open(dst, "rb").read() != src_bytes:
+            if not os.path.exists(dst) or _read_normalized(dst) != src_bytes:
                 drift.append(name)
         else:
             os.makedirs(dst_dir, exist_ok=True)
@@ -240,17 +251,19 @@ def main(argv):
 
     root = args.root
     manifest_path = args.manifest or os.path.join(root, ".github", "plugin", "marketplace.json")
-    changelog_path, changelog_filter = resolve_changelog(root, args.changelog)
 
     with open(manifest_path, "r", encoding="utf-8") as fh:
         manifest = json.load(fh)
 
     plugins_html = render_plugins(manifest)
-    if changelog_path is None:
-        changelog_html = render_changelog([])
-    else:
-        changelog_text = read_text(changelog_path)
-        changelog_html = render_changelog(parse_changelog(changelog_text, changelog_filter))
+    changelog_html = render_changelog([])
+    for path, filter_plugin in changelog_candidates(root, args.changelog):
+        if not os.path.exists(path):
+            continue
+        releases = parse_changelog(read_text(path), filter_plugin)
+        if releases:
+            changelog_html = render_changelog(releases)
+            break
     version = plugin_version(manifest, CHANGELOG_PLUGIN)
 
     hub_path = os.path.join(root, "site", "index.html")
