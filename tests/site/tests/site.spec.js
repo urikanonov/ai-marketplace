@@ -54,10 +54,18 @@ test("open-full demo links are safe external targets", async ({ page }) => {
   }
 });
 
-test("hub embeds the GitHub star widget", async ({ page }) => {
+test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("a.github-button")).toHaveCount(1);
   await expect(page.locator('script[src="https://buttons.github.io/buttons.js"]')).toHaveCount(1);
+  const csp = await page
+    .locator('meta[http-equiv="Content-Security-Policy"]')
+    .getAttribute("content");
+  expect(csp).toContain("https://buttons.github.io");
+  expect(csp, "widget fetches the star count").toContain("https://api.github.com");
+  expect(csp, "widget injects a <style>, so style-src must allow 'unsafe-inline'").toMatch(
+    /style-src[^;]*'unsafe-inline'/
+  );
 });
 
 test("demo mounts inside the iframe on the plugin page (CSP allows it)", async ({ page }) => {
@@ -72,6 +80,27 @@ test("both demo reports load and their toolbars mount", async ({ page }) => {
     await page.goto("/commentable-html/demo/" + report, { waitUntil: "domcontentloaded" });
     await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });
     await expect(page.locator("#btnCopyAll")).toBeAttached({ timeout: 15000 });
+  }
+});
+
+test("no internal link or asset uses a root-relative path (would break the project sub-path)", async ({ page }) => {
+  for (const p of ["/", "/commentable-html/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const bad = await page.evaluate(() => {
+      const out = [];
+      const check = (nodes, attr) =>
+        nodes.forEach((n) => {
+          const raw = n.getAttribute(attr);
+          if (raw && raw.startsWith("/") && !raw.startsWith("//")) out.push(attr + "=" + raw);
+        });
+      check(document.querySelectorAll("a[href]"), "href");
+      check(document.querySelectorAll("link[href]"), "href");
+      check(document.querySelectorAll("script[src]"), "src");
+      check(document.querySelectorAll("img[src]"), "src");
+      check(document.querySelectorAll("iframe[src]"), "src");
+      return out;
+    });
+    expect(bad, "root-relative refs would 404 under /ai-marketplace/: " + bad.join(", ")).toEqual([]);
   }
 });
 

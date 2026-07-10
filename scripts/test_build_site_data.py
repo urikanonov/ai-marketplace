@@ -11,7 +11,8 @@ import build_site_data as bsd
 
 class SafeUrlTests(unittest.TestCase):
     def test_allows_https_relative_anchor_mailto(self):
-        for url in ["https://example.com", "./x.html", "../a/b", "/root", "#frag", "mailto:a@b.c"]:
+        for url in ["https://example.com", "./x.html", "../a/b", "/root", "#frag", "mailto:a@b.c",
+                    "index.html", "docs/page.html"]:
             self.assertEqual(bsd.safe_url(url), url)
 
     def test_neutralizes_dangerous_or_offsite(self):
@@ -23,6 +24,7 @@ class MentionsPluginTests(unittest.TestCase):
     def test_anchored_case_insensitive(self):
         self.assertTrue(bsd.mentions_plugin("`commentable-html` 2.5.0 - x", "commentable-html"))
         self.assertTrue(bsd.mentions_plugin("Commentable-html - x", "commentable-html"))
+        self.assertTrue(bsd.mentions_plugin("**commentable-html**: bolded", "commentable-html"))
 
     def test_rejects_midtext_and_other_plugins(self):
         self.assertFalse(bsd.mentions_plugin("see commentable-html for details", "commentable-html"))
@@ -58,7 +60,7 @@ class ParseChangelogTests(unittest.TestCase):
     def test_ungrouped_bullets_are_not_dropped(self):
         text = "## [1.0.0]\n- Ungrouped item\n"
         releases = bsd.parse_changelog(text, None)
-        self.assertEqual(releases[0]["groups"]["Changes"], ["Ungrouped item"])
+        self.assertEqual(releases[0]["groups"][""], ["Ungrouped item"])
 
     def test_continuation_lines_join(self):
         text = "## [1.0.0]\n### Added\n- First line\n  continues here\n"

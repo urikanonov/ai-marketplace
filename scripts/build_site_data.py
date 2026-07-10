@@ -37,14 +37,16 @@ def esc(value):
 
 
 def safe_url(url):
-    """Allow only https and in-repo relative / mailto URLs; neutralize anything else
-    (javascript:, data:, protocol-relative) so manifest links cannot inject."""
+    """Allow https, mailto, and in-repo relative URLs; neutralize anything with a
+    dangerous or insecure scheme (javascript:, data:, http:, ...) or a protocol-relative
+    //host, so manifest links cannot inject or silently point off-origin."""
     u = (url or "").strip()
     if u.startswith("//"):
         return "#"
-    if re.match(r"^(https://|\./|\.\./|/(?!/)|#|mailto:)", u):
-        return u
-    return "#"
+    scheme = re.match(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):", u)
+    if scheme and scheme.group(1).lower() not in ("https", "mailto"):
+        return "#"
+    return u
 
 
 def read_text(path):
@@ -131,10 +133,11 @@ def clean_entry(text, plugin):
 
 
 def mentions_plugin(text, plugin):
-    """True when a changelog bullet is about `plugin`: the bullet text, with any code
-    backticks removed, starts with the plugin name (case-insensitive). Anchoring to the
-    start avoids over-matching a bullet that merely mentions the plugin mid-sentence."""
-    return text.replace("`", "").lstrip().lower().startswith(plugin.lower())
+    """True when a changelog bullet is about `plugin`: after stripping leading Markdown
+    emphasis/link/code punctuation, the text starts with the plugin name (case-insensitive).
+    Anchoring to the start avoids over-matching a bullet that only mentions it mid-sentence."""
+    cleaned = re.sub(r"^[\[\*_`\s]+", "", text or "")
+    return cleaned.lower().startswith(plugin.lower())
 
 
 def changelog_candidates(root, explicit):
@@ -159,7 +162,7 @@ def parse_changelog(text, plugin):
     def flush():
         nonlocal buffer
         if buffer is not None and current_release is not None:
-            group = current_type if current_type is not None else "Changes"
+            group = current_type if current_type is not None else ""
             if plugin is None or mentions_plugin(buffer, plugin):
                 current_release["groups"].setdefault(group, []).append(
                     clean_entry(buffer, plugin))
@@ -198,7 +201,8 @@ def render_changelog(releases):
         parts = ['<div class="release">',
                  '  <div class="rel-head"><h3>%s</h3></div>' % esc(release["name"])]
         for change_type, items in release["groups"].items():
-            parts.append('  <div class="group-label">%s</div>' % esc(change_type))
+            if change_type:
+                parts.append('  <div class="group-label">%s</div>' % esc(change_type))
             parts.append('  <ul>')
             for item in items:
                 parts.append('    <li>%s</li>' % esc(item))
