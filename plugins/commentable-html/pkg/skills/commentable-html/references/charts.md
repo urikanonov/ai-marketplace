@@ -61,7 +61,7 @@ CDN loading is explicit opt-in because shared files then depend on network avail
 
  Equivalently, paste the chart init `<script>` after the commentable JS region and immediately
  before the closing `</body>` tag by hand. Place the chart scripts **after the
- `END: commentable-html v2 - JS` marker** (still before the final `</body>`): **Export to Plain HTML**
+ `END: commentable-html - JS` marker** (still before the final `</body>`): **Export to Plain HTML**
  strips only the commentable regions up to that marker, so chart scripts placed after it
  (host-owned content) survive the plain export and the chart still renders. **Export with embedded comments** only
  rewrites `<script id="embeddedComments">`, so charts are never touched by it either.
@@ -347,7 +347,7 @@ and point count match the source, and `c.scales.y.min` is the floor you set.
  `<canvas>`, also checks the chart rules above statically: `cm-skip` on the canvas wrapper (not the
  `<figure>`, so captions stay commentable), an SRI-pinned synchronous Chart.js CDN tag, valid
  non-empty chart-data JSON with no `</script>` / `<!--` breakout, chart init after the
- `END: commentable-html v2 - JS` marker and after the Chart.js loader, and canvas `role`/`aria-label`
+ `END: commentable-html - JS` marker and after the Chart.js loader, and canvas `role`/`aria-label`
  + the `typeof Chart` network-failure guard. Use `--charts-only` to run just the chart checks.
 
 ## Dark theme
@@ -370,7 +370,7 @@ at init; note that Chart.js does not re-theme a rendered chart, so a live theme 
 
 - Init `<script>` landed inside the template's explanatory comment because you replaced the first
  `</body>`. Use `rindex` / the last occurrence, and place chart scripts after the
- `END: commentable-html v2 - JS` marker. (Symptom: blank canvas, no console error,
+ `END: commentable-html - JS` marker. (Symptom: blank canvas, no console error,
  `Chart.getChart(id)` falsy.)
 - Added `defer`/`async`/`type="module"` to the CDN tag -> the inline init runs before `Chart` exists
  and silently no-ops. Keep the CDN tag synchronous and before the init (or wrap the init in a

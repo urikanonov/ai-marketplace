@@ -37,7 +37,7 @@ The HTML file itself is the durable source of truth for which comments have been
 
 **Postconditions**
 
-- HTML contains the five `BEGIN/END: commentable-html v2 - <REGION>` blocks (CSS, HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS)
+- HTML contains the five `BEGIN/END: commentable-html - <REGION>` blocks (CSS, HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS)
 - Content is wrapped in `<main id="commentRoot" data-comment-key=... data-doc-label=...>` with `data-doc-source=...` set whenever the agent needs to edit a specific source file
 - User can select text, attach inline comments, copy a markdown bundle for the agent, and Export as Portable to embed the comments into the file so they travel with it
 - `<script id="handledCommentIds">` block exists and is the agent-owned source of truth for which comments have been processed
@@ -63,13 +63,13 @@ python tools/new_document.py --content fragment.html --key auto --label "My Repo
 # pass --generated <ISO-8601> for a reproducible "Generated on" line instead of the file mtime.
 ```
 
-**Only when RETROFITTING an existing host HTML you cannot regenerate**, copy all five `BEGIN/END: commentable-html v2 - <REGION>` blocks verbatim, in this order: CSS (in `<head>`), HANDLED IDS (top of `<body>`), EMBEDDED COMMENTS (immediately after HANDLED IDS), COMMENT UI (immediately after EMBEDDED COMMENTS), JS (just before `</body>`). See "Add the layer to an existing HTML" for the full recipe. To bring an already-layered file up to a newer `dist/PORTABLE.html`, **MUST** use `tools/upgrade.py` (it swaps only the CSS/COMMENT UI/JS regions, preserves your content and state, and leaves the file untouched if the result would fail validation) rather than hand-swapping regions.
+**Only when RETROFITTING an existing host HTML you cannot regenerate**, copy all five `BEGIN/END: commentable-html - <REGION>` blocks verbatim, in this order: CSS (in `<head>`), HANDLED IDS (top of `<body>`), EMBEDDED COMMENTS (immediately after HANDLED IDS), COMMENT UI (immediately after EMBEDDED COMMENTS), JS (just before `</body>`). See "Add the layer to an existing HTML" for the full recipe. To bring an already-layered file up to a newer `dist/PORTABLE.html`, **MUST** use `tools/upgrade.py` (it swaps only the CSS/COMMENT UI/JS regions, preserves your content and state, and leaves the file untouched if the result would fail validation) rather than hand-swapping regions.
 
 ### Step 3 - Wrap content in `#commentRoot` and set the data attributes
 
 **MUST** wrap the commentable content in `<main id="commentRoot" data-comment-key="..." data-doc-label="...">`. `data-comment-key` must be unique per document on the same origin or comments will leak across pages.
 
-**Pitfall when scripting the content swap.** `dist/PORTABLE.html` contains a **second** `<main id="commentRoot"> ... </main>` - an *example* inside the top-of-file documentation comment (its `data-comment-key` is the placeholder `my-doc-v1`). If you replace the demo content with a script (regex / `str.index`), a naive "find the first `<main id="commentRoot">`" match hits that **commented example**, so your real content lands inside the comment and the browser silently renders the leftover demo instead. The real content root is the **last** `<main id="commentRoot">` and lives inside `<body>` - target that (e.g. `rindex`, or anchor on the demo `data-comment-key="commentable-html-demo-v1"`), and give your root a **unique** `data-comment-key` (never reuse the demo key). `validate.py` now fails both of these mistakes (see Step 4).
+**Pitfall when scripting the content swap.** `dist/PORTABLE.html` contains a **second** `<main id="commentRoot"> ... </main>` - an *example* inside the top-of-file documentation comment (its `data-comment-key` is the placeholder `my-doc`). If you replace the demo content with a script (regex / `str.index`), a naive "find the first `<main id="commentRoot">`" match hits that **commented example**, so your real content lands inside the comment and the browser silently renders the leftover demo instead. The real content root is the **last** `<main id="commentRoot">` and lives inside `<body>` - target that (e.g. `rindex`, or anchor on the demo `data-comment-key="commentable-html-demo"`), and give your root a **unique** `data-comment-key` (never reuse the demo key). `validate.py` now fails both of these mistakes (see Step 4).
 
 **SHOULD** also set `data-doc-source="..."` whenever the agent will be editing a known source file (it is written into the Copy bundle's `Source:` line and the agent-instructions block). If omitted, the layer falls back to `location.pathname` - fine for ad-hoc demos, but ambiguous for real review loops.
 
@@ -93,7 +93,7 @@ Then run `tools/finalize.py <file> [--toc --fix-skip --inline-images --images-ba
 
 **MUST** run the verification checks in "Quick verification after retrofitting" below before handing the HTML to the user (skip the mermaid check if the document has no `<pre class="mermaid">` blocks). The most important invariant: appending a handled id to `<script id="handledCommentIds">` and reloading must prune that comment from **Copy all** output (this applies equally to text and mermaid comments).
 
-**MUST** also run the automated validator before handoff when Python is available: `python tools/validate.py --strict <file.html>`. `--strict` treats every warning as a failure, so one run surfaces *all* issues at once (missing self-contained inlining, un-escaped diffs, broken Kusto links, duplicate heading ids, unlabeled canvases, and more) - iterate until it reports `OK (0 warning(s))`. Do not skip it and do not hand off with outstanding warnings. It also runs as the final step of `finalize.py`. It codifies the structural invariants (regions, `#commentRoot` wiring, JSON script blocks, escaped `</script>`, required ids, the self-contained guarantee) and fails two retrofit-specific mistakes: the demo content root surviving the swap (the active `#commentRoot` still carries `data-comment-key="commentable-html-demo-v1"` while the `<title>` was customized) and a real content root left buried inside an HTML comment.
+**MUST** also run the automated validator before handoff when Python is available: `python tools/validate.py --strict <file.html>`. `--strict` treats every warning as a failure, so one run surfaces *all* issues at once (missing self-contained inlining, un-escaped diffs, broken Kusto links, duplicate heading ids, unlabeled canvases, and more) - iterate until it reports `OK (0 warning(s))`. Do not skip it and do not hand off with outstanding warnings. It also runs as the final step of `finalize.py`. It codifies the structural invariants (regions, `#commentRoot` wiring, JSON script blocks, escaped `</script>`, required ids, the self-contained guarantee) and fails two retrofit-specific mistakes: the demo content root surviving the swap (the active `#commentRoot` still carries `data-comment-key="commentable-html-demo"` while the `<title>` was customized) and a real content root left buried inside an HTML comment.
 
 ### Step 5 - Iteration loop (recurring)
 
@@ -144,7 +144,7 @@ The layer ships in two interchangeable forms. Both share the exact same runtime 
 | | **Standalone (inline)** - `dist/PORTABLE.html` | **NonPortable** - `dist/NONPORTABLE.html` + companions |
 |---|---|---|
 | Layer CSS/JS | inlined in the file | referenced by `<link>` / `<script src>` from the skill's `dist/` folder (not copied into the report folder) |
-| Portability | one self-contained file - email/move freely | needs the `commentable-html.v<V>.*` assets reachable at the referenced path; use **Export as Portable** for a self-contained copy |
+| Portability | one self-contained file - email/move freely | needs the `commentable-html.{css,js,assets.js}` assets reachable at the referenced path; use **Export as Portable** for a self-contained copy |
 | Per (re)generation cost | agent emits the whole ~106 KB file | agent emits a ~17 KB shell; the boilerplate is **referenced from the skill folder**, never emitted (~84% smaller) |
 | Best for | one-shot artifacts, things you email or archive | dashboards/plans you iterate on locally, where regeneration speed and token cost matter |
 
@@ -152,13 +152,13 @@ The layer ships in two interchangeable forms. Both share the exact same runtime 
 
 ### Producing a nonportable document
 
-1. Point the shell's asset references at the skill's `dist/` folder rather than copying the files into the report folder: set the head `<link href>` and the two `<script src>` to a path that resolves to `.../commentable-html/dist/commentable-html.v<V>.{css,js,assets.js}`. **Prefer a relative path** from the target HTML; use an absolute path only for clearly local-only documents (an absolute path embeds your local directory / username in the file and breaks for anyone else unless you run **Export as Portable** first). The three assets are **referenced, never regenerated**. (Copying them next to the HTML still works if you want a movable bundle instead.)
+1. Point the shell's asset references at the skill's `dist/` folder rather than copying the files into the report folder: set the head `<link href>` and the two `<script src>` to a path that resolves to `.../commentable-html/dist/commentable-html.{css,js,assets.js}`. **Prefer a relative path** from the target HTML; use an absolute path only for clearly local-only documents (an absolute path embeds your local directory / username in the file and breaks for anyone else unless you run **Export as Portable** first). The three assets are **referenced, never regenerated**. (Copying them next to the HTML still works if you want a movable bundle instead.)
 2. Use `dist/NONPORTABLE.html` as the starting shell (head `<link>` + version `<meta>`, the NONPORTABLE BOOTSTRAP banner, the inline state/UI regions, and the two `<script src>` companions at the end of `<body>`); repoint the `href`/`src` at the skill `dist/` path. Replace the demo content inside the CONTENT markers with your own; set a unique `data-comment-key`.
-3. Keep the version `<meta name="commentable-html-assets" content="<V>">` matching the referenced asset version.
+3. Keep the version `<meta name="commentable-html-version" content="<V>">` matching the referenced asset version.
 
 ### Guardrails that make nonportable safe (built in)
 
-- **Version handshake.** Each document declares `<meta name="commentable-html-assets" content="<V>">`; the runtime warns loudly via a banner if the loaded companion version differs (stale cache / mismatched files).
+- **Version stamp and handshake.** Every generated document (portable and nonportable) carries `<meta name="commentable-html-version" content="<V>">` in `<head>` and shows `Commentable HTML v<V>` in the runtime footer. In nonportable mode the runtime reads that meta and warns loudly via a banner if the loaded companion version differs (stale cache / mismatched files).
 - **Missing-asset banner.** The NONPORTABLE BOOTSTRAP block reveals a visible red banner if the companion runtime does not initialize within 3 s, so a broken share never fails silently.
 - **Export as Portable embeds everything.** In nonportable mode the export action is labeled **Export as Portable**: it rebuilds ONE self-contained inline file - reading the CSS/JS string payloads from the loaded `.assets.js` registry (works from `file://` without `fetch`), inlining them, and embedding the current comments - so the downloaded file no longer depends on the skill folder or any companion. A user always gets a portable single file, even starting from a nonportable document. Producing the nonportable (referenced-asset) variant is the agent's job at generation time, not an in-page conversion.
 
@@ -205,7 +205,7 @@ Do not use this skill for:
 
 ## Required HTML structure
 
-Five drop-in regions, all included in `dist/PORTABLE.html` and clearly bracketed with `BEGIN: commentable-html v2 - <REGION>` / `END: commentable-html v2 - <REGION>` comments so you can grep them out and paste them as a unit:
+Five drop-in regions, all included in `dist/PORTABLE.html` and clearly bracketed with `BEGIN: commentable-html - <REGION>` / `END: commentable-html - <REGION>` comments so you can grep them out and paste them as a unit:
 
 1. **CSS** - paste inside any `<style>` block in `<head>`.
 2. **HANDLED IDS** - a `<script type="application/json" id="handledCommentIds">[]</script>` block plus a comment explaining its purpose. Paste near the top of `<body>`. The agent appends processed ids here.
@@ -234,7 +234,7 @@ Example:
 
 ```html
 <main id="commentRoot"
- data-comment-key="migration-plan-comments-v1"
+ data-comment-key="migration-plan-comments"
  data-doc-label="Migration Plan review"
  data-doc-source="docs/Archive/Migration-Plan.html">
  ...content...

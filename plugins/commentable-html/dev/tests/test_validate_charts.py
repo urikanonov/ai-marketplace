@@ -54,7 +54,7 @@ INIT_VALID = (
     "<script>(function(){ if (typeof Chart === \"undefined\") return; "
     'new Chart(document.getElementById("c"), {type:"line"}); })();</script>'
 )
-MARKER = "<!-- END: commentable-html v2 - JS -->"
+MARKER = "<!-- END: commentable-html - JS -->"
 
 
 def build(cdn=CDN_VALID, figure=FIGURE_VALID, json_body='{"labels":[1,2]}',
@@ -279,7 +279,7 @@ class ChartValidatorTests(unittest.TestCase):
         # comment, so E5 must FIRE (the real comment is the marker). If a regressed
         # regex mistook the prose text for the marker, the init would count as
         # "after" it and E5 would wrongly stay silent - this asserts it does not.
-        html = build(pre_marker="<p>END: commentable-html v2 - JS</p>\n"
+        html = build(pre_marker="<p>END: commentable-html - JS</p>\n"
                                 "<script>new Chart(x,{});</script>\n")
         e, _w, _n = run(html)
         self.assertTrue(any("before the" in x for x in e), e)
@@ -574,7 +574,7 @@ class ChartValidatorTests(unittest.TestCase):
     def test_marker_text_in_prose_comment_ignored(self):
         # A comment that merely MENTIONS the marker text (not an exact marker) must
         # not be treated as the JS END marker; the real marker still gates E5.
-        html = build(pre_marker="<!-- note: END: commentable-html v2 - JS is the marker name -->\n"
+        html = build(pre_marker="<!-- note: END: commentable-html - JS is the marker name -->\n"
                                 "<script>new Chart(z,{});</script>\n")
         e, _w, _n = run(html)
         self.assertTrue(any("before the" in x for x in e), e)
@@ -639,7 +639,7 @@ class ChartValidatorTests(unittest.TestCase):
     def test_template_marker_is_ignored(self):
         # A JS END marker comment inside an inert <template> must not become the E5
         # boundary; the real marker after it still gates an earlier init.
-        html = build(pre_marker="<template><!-- END: commentable-html v2 - JS --></template>\n"
+        html = build(pre_marker="<template><!-- END: commentable-html - JS --></template>\n"
                                 "<script>new Chart(z,{});</script>\n")
         e, _w, _n = run(html)
         self.assertTrue(any("before the" in x for x in e), e)

@@ -7,7 +7,7 @@ import {
   installClipboardCapture, allCids,
 } from "./helpers.js";
 
-const CONTENT_END = "<!-- END: commentable-html v2 - CONTENT -->";
+const CONTENT_END = "<!-- END: commentable-html - CONTENT -->";
 function inject(snippet) {
   return (h) => h.replace(CONTENT_END, snippet + "\n" + CONTENT_END);
 }

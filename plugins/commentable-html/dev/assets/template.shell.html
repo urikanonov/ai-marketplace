@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   ============================================================
-  Commentable HTML - TEMPLATE / DEMO  (commentable-html v2)
+  Commentable HTML - TEMPLATE / DEMO  (commentable-html)
   ============================================================
   This file is a fully working demo of the commentable-html skill.
   Open it in a browser to confirm the behavior, then copy the
@@ -25,7 +25,7 @@
   required when you port between docs.
 
     <main id="commentRoot"
-          data-comment-key="my-doc-v1"      (unique per doc)
+          data-comment-key="my-doc"      (unique per doc)
           data-doc-label="My Document">     (shown in copy)
       ... your content ...
     </main>
@@ -45,6 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="commentable-html-version" content="{{CMH_VERSION}}" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - Demo</title>
 
@@ -158,12 +159,12 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 }
 
 /* ============================================================
-   BEGIN: commentable-html v2 - CSS
+   BEGIN: commentable-html - CSS
    Drop-in. Paste this whole block inside your <style>.
    ============================================================ */
 {{CMH_CSS}}
 /* ============================================================
-   END: commentable-html v2 - CSS
+   END: commentable-html - CSS
    ============================================================ */
 </style>
 </head>
@@ -171,7 +172,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 <body class="sidebar-open">
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - HANDLED IDS
+     BEGIN: commentable-html - HANDLED IDS
      ============================================================
      The agent appends every processed comment id to this JSON
      array. On the next page load the IDs are removed from
@@ -186,10 +187,10 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 <script type="application/json" id="handledCommentIds">
 []
 </script>
-<!-- END: commentable-html v2 - HANDLED IDS -->
+<!-- END: commentable-html - HANDLED IDS -->
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - EMBEDDED COMMENTS
+     BEGIN: commentable-html - EMBEDDED COMMENTS
      ============================================================
      Optional in-HTML snapshot of the comments array, so the file
      is self-contained for sharing. The "Export as Portable" button in
@@ -208,10 +209,10 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 <script type="application/json" id="embeddedComments">
 []
 </script>
-<!-- END: commentable-html v2 - EMBEDDED COMMENTS -->
+<!-- END: commentable-html - EMBEDDED COMMENTS -->
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - COMMENT UI
+     BEGIN: commentable-html - COMMENT UI
      ============================================================ -->
 <div class="cm-toolbar cm-skip" role="toolbar" aria-label="Comments toolbar">
   <button id="btnCopyAllTop" type="button" class="cm-primary" title="Copy all comments to the clipboard for pasting back to the agent">Copy all</button>
@@ -278,7 +279,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 <button type="button" class="cm-hl-bubble cm-skip" id="hlBubble" hidden aria-label="Open comment on this text" title="Open comment"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg></button>
 
 <div class="cm-toast cm-skip" id="toast"></div>
-<!-- END: commentable-html v2 - COMMENT UI -->
+<!-- END: commentable-html - COMMENT UI -->
 
 <!-- ============================================================
      Per-document content (NOT one of the five pasteable regions).
@@ -289,18 +290,18 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
                             and into the agent-instructions block,
                             so the agent knows which file to edit
                             (falls back to location.pathname).
-     The five BEGIN/END: commentable-html v2 regions above and below
+     The five BEGIN/END: commentable-html regions above and below
      stay byte-for-byte identical across docs, so upgrades are a
      clean replace. This wrapper is intentionally NOT marked with
-     the commentable-html v2 marker format - it is per-document
+     the commentable-html marker format - it is per-document
      content, not a template-owned region.
 -->
 <div class="app">
 <main id="commentRoot"
-      data-comment-key="commentable-html-demo-v1"
+      data-comment-key="commentable-html-demo"
       data-doc-label="Commentable HTML demo"
       data-doc-source="PORTABLE.html">
-<!-- BEGIN: commentable-html v2 - CONTENT (agent edits ONLY between these markers) -->
+<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
   <header class="cmh-lede">
     <h1>Commentable HTML demo</h1>
@@ -459,13 +460,13 @@ gantt
     </figure>
   </section>
 
-<!-- END: commentable-html v2 - CONTENT -->
+<!-- END: commentable-html - CONTENT -->
 </main>
 </div>
 <!-- End of per-document content -->
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - JS
+     BEGIN: commentable-html - JS
      ============================================================
      Drop-in. No per-document edits. Reads its config from
      #commentRoot data-* attributes (see CONTENT ROOT above).
@@ -473,7 +474,7 @@ gantt
 -->
 <script>
 {{CMH_JS}}</script>
-<!-- END: commentable-html v2 - JS -->
+<!-- END: commentable-html - JS -->
 
 </body>
 </html>

@@ -170,7 +170,7 @@ test.describe("diff region (sub-line) comments", () => {
 
   test("a poisoned negative subStart in a persisted region comment does not crash init", async ({ page }) => {
     await page.addInitScript(() => {
-      localStorage.setItem("commentable-html-demo-v1", JSON.stringify([
+      localStorage.setItem("commentable-html-demo", JSON.stringify([
         { id: "cbad00001", anchorType: "diff", diffIndex: 0, lineKey: "0",
           subStart: -1, subEnd: 5, note: "negative poison", createdAt: new Date().toISOString() },
       ]));
@@ -228,7 +228,7 @@ test.describe("diff region (sub-line) comments", () => {
     // guard; the apply-time guard must still prevent nested marks on load.
     const doc = docWithDiff(DOC, "persist-overlap.txt"); // add line "new value here" (key "2")
     await page.addInitScript(() => {
-      localStorage.setItem("commentable-html-demo-v1", JSON.stringify([
+      localStorage.setItem("commentable-html-demo", JSON.stringify([
         { id: "covlap001", anchorType: "diff", diffIndex: 0, lineKey: "2", side: "new", lineType: "add",
           subStart: 0, subEnd: 10, quote: "new value ", note: "A", createdAt: new Date().toISOString() },
         { id: "covlap002", anchorType: "diff", diffIndex: 0, lineKey: "2", side: "new", lineType: "add",
@@ -541,7 +541,7 @@ test("a poisoned persisted diff comment does not crash init", async ({ page }) =
   // A comment with a valid SAFE id but a selector-breaking lineKey must not throw
   // during setupDiffLayer (it should simply fail to highlight).
   await page.addInitScript(() => {
-    const key = "commentable-html-demo-v1";
+    const key = "commentable-html-demo";
     localStorage.setItem(key, JSON.stringify([
       { id: "cbadbadbad", anchorType: "diff", diffIndex: 0, lineKey: '0"] , x[', note: "poison", createdAt: new Date().toISOString() },
     ]));

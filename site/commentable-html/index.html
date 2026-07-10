@@ -30,7 +30,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow" style="margin-top:14px">commentable-html <span class="badge version"><!-- BEGIN:version -->v2.5.0<!-- END:version --></span></span>
+        <span class="eyebrow" style="margin-top:14px">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.0.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -107,11 +107,18 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[Unreleased]</h3></div>
+            <div class="rel-head"><h3>[1.0.0] - 2026-07-10</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>offline, single-file commentable HTML review surface, registered as a plugin-dir source (source: ./plugins/commentable-html/pkg). pkg/ ships the runtime skill: SKILL.md, the 13 Python runtime tools, the generated TEMPLATE.html and dist/ (economy build plus companions), references, examples, and docs. dev/ (never shipped) holds the canonical assets, the build.py builder, and the full Python + Playwright test suites, which import the shipped pkg/ tools so a green suite proves what installs.</li>
-              <li>Playwright CI: .github/workflows/plugin-tests.yml discovers and runs each plugin&#x27;s dev/ browser suite, demonstrated by plugins/commentable-html/dev/.</li>
+              <li>Offline, single-file commentable HTML review surface: reviewers select any paragraph, table cell, code block, KQL block, chart, image, or mermaid diagram and leave inline comments, then copy or export a bundle back to an agent, with no network dependency.</li>
+              <li>Portable mode (one self-contained file) and NonPortable mode (companion CSS/JS files).</li>
+              <li>Deterministic Python tooling (new_document, inline_images, chart_block, upgrade, validate, and more) plus a standard-library validator that enforces the structural invariants of a generated file.</li>
+              <li>Rich, commentable content: tables, Chart.js charts, mermaid diagrams, KQL blocks, code-review diffs, and inlined images.</li>
+              <li>Each generated file stamps the skill version that produced it in a &lt;meta name=&quot;commentable-html-version&quot;&gt; in the head and in the visible footer.</li>
+            </ul>
+            <div class="group-label">Notes</div>
+            <ul>
+              <li>The injected layer is version-agnostic: the region markers, the companion filenames, and the demo storage keys no longer embed a version. The single source of truth for the release version is dev/VERSION; build.py stamps it into the layer constant, plugin.json, the marketplace entry, and each document&#x27;s version &lt;meta&gt;, and build.py --check guards against drift.</li>
             </ul>
           </div>
           <!-- END:changelog -->

@@ -27,10 +27,12 @@ dev/
 Edit `dev/assets/` only when changing the review layer:
 
 - `assets/commentable-html.css` - layer stylesheet.
-- `assets/commentable-html.js` - runtime. `CMH_VERSION` is the single source for dist filenames, version metadata, and `manifest.json`.
+- `assets/commentable-html.js` - runtime. Its `CMH_VERSION` const is stamped from `VERSION` by the build; do not hand-edit the const.
 - `assets/template.shell.html` - shell with the five commentable regions, toolbar, sidebar, and demo content.
 
-Everything under `../pkg/skills/commentable-html/dist/` is generated and committed so installs do not run a build step. Do not hand-edit `dist/PORTABLE.html`, `dist/NONPORTABLE.html`, versioned companions, or `manifest.json`.
+The version lives in `dev/VERSION` (plain-text semver) and is the only hand-edited version. `build.py` reads it and stamps the runtime `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each generated document's `<meta name="commentable-html-version">`. Companion filenames are version-agnostic, so a version bump never renames dist files.
+
+Everything under `../pkg/skills/commentable-html/dist/` is generated and committed so installs do not run a build step. Do not hand-edit `dist/PORTABLE.html`, `dist/NONPORTABLE.html`, the companions, or `manifest.json`.
 
 ## Build pipeline
 
@@ -47,6 +49,8 @@ python tools\build.py --assets-dir assets --out-dir ..\pkg\skills\commentable-ht
 ```
 
 `--assets-dir` and `--out-dir` point the builder at this split source/shipped layout. The check mode is the CI guard for generated output drift.
+
+To bump the version, edit `VERSION` then run `build.py`; it restamps every version spot (the layer `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each document's `<meta name="commentable-html-version">`). Companion filenames are version-agnostic, so the bump does not rename any dist files. `build.py --check` fails if any stamped spot drifts from `VERSION`.
 
 ## Python suite
 

@@ -10,9 +10,9 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `dist/README.md` | Terse pointer for generated dist artifacts. |
 | `dist/PORTABLE.html` | Standalone inline template and demo. |
 | `dist/NONPORTABLE.html` | NonPortable starting shell. |
-| `dist/commentable-html.v<V>.css` | Versioned stylesheet companion. |
-| `dist/commentable-html.v<V>.js` | Versioned runtime companion. |
-| `dist/commentable-html.v<V>.assets.js` | Asset registry used by Export as Portable. |
+| `dist/commentable-html.css` | Layer stylesheet companion. |
+| `dist/commentable-html.js` | Runtime companion. |
+| `dist/commentable-html.assets.js` | Asset registry used by Export as Portable. |
 | `dist/manifest.json` | Version and SHA-256 metadata for companions. |
 | `tools/` | Runtime Python helpers that ship with the skill. |
 | `references/` | Detailed generated-report references. |

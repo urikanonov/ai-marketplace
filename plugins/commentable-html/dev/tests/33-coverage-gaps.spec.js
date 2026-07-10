@@ -48,28 +48,31 @@ test("the example Chart.js chart renders a working tooltip (CMH-CHART-04)", asyn
     await routeMermaidLocal(page);
     await page.goto(`${server.url}/${path.basename(html)}`);
     await ready(page);
-    // Wait for Chart.js to finish its first render (deterministic, not a fixed sleep):
-    // the chart instance must exist and have a laid-out first data point.
-    await page.waitForFunction(() => {
-      const cv = document.querySelector("canvas");
+    const chartSelector = "#wateringNeedsChart";
+    await page.locator(chartSelector).scrollIntoViewIfNeeded();
+    await page.waitForFunction((sel) => {
+      const cv = document.querySelector(sel);
       const chart = cv && window.Chart && window.Chart.getChart && window.Chart.getChart(cv);
       return !!(chart && chart.getDatasetMeta(0).data[0]);
-    }, null, { timeout: 10000 });
-    const result = await page.evaluate(async () => {
-      const cv = document.querySelector("canvas");
-      const chart = window.Chart.getChart(cv);
-      const pt = chart.getDatasetMeta(0).data[0];
-      const r = cv.getBoundingClientRect();
-      // Drive a real hover at the first data point, the same path a user's mouse takes.
-      // Retry across frames so a slow first paint under CI contention cannot flake it.
-      for (let i = 0; i < 30; i++) {
-        cv.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: r.left + pt.x, clientY: r.top + pt.y }));
-        await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
-        if (chart.tooltip.getActiveElements().length > 0) return { active: chart.tooltip.getActiveElements().length };
-      }
-      return { active: 0 };
-    });
-    expect(result.active).toBeGreaterThan(0); // the hover activated the tooltip on a data point
+    }, chartSelector, { timeout: 10000 });
+    await expect.poll(async () => {
+      const point = await page.evaluate((sel) => {
+        const cv = document.querySelector(sel);
+        const chart = cv && window.Chart && window.Chart.getChart && window.Chart.getChart(cv);
+        const pt = chart && chart.getDatasetMeta(0).data[0];
+        if (!cv || !pt) return null;
+        const r = cv.getBoundingClientRect();
+        return { x: r.left + pt.x, y: r.top + pt.y };
+      }, chartSelector);
+      if (!point) return 0;
+      await page.mouse.move(Math.max(1, point.x - 24), Math.max(1, point.y - 24));
+      await page.mouse.move(point.x, point.y);
+      return page.evaluate((sel) => {
+        const cv = document.querySelector(sel);
+        const chart = cv && window.Chart && window.Chart.getChart && window.Chart.getChart(cv);
+        return chart ? chart.tooltip.getActiveElements().length : 0;
+      }, chartSelector);
+    }, { timeout: 6000 }).toBeGreaterThan(0);
   } finally {
     await server.close();
     fs.rmSync(dir, { recursive: true, force: true });

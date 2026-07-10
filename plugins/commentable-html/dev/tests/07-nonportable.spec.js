@@ -30,12 +30,14 @@ test.describe("nonportable mode", () => {
     // though the source document was nonportable, the export is always combined.
     expect(html).not.toMatch(/<link\b[^>]*\bhref\s*=\s*["'][^"']*commentable-html/i);
     expect(html).not.toMatch(/<script\b[^>]*\bsrc\s*=\s*["'][^"']*commentable-html/i);
-    // Scope the version-meta check to <head>: the inlined runtime source legitimately
-    // contains a "<meta ... commentable-html-assets ...>" string literal.
+    // Scope the version-meta checks to <head>: the inlined runtime source can contain
+    // string literals that mention meta names.
     const head = (html.match(/<head[\s\S]*?<\/head>/i) || [""])[0];
     expect(head).not.toMatch(/<meta\b[^>]*commentable-html-assets/i);
-    expect(html).toContain("BEGIN: commentable-html v2 - CSS");
-    expect(html).toContain("BEGIN: commentable-html v2 - JS");
+    // The version stamp is universal: it must survive the export into the portable file.
+    expect(head).toMatch(/<meta\b[^>]*name="commentable-html-version"[^>]*content="[0-9]+\.[0-9]+\.[0-9]+"/i);
+    expect(html).toContain("BEGIN: commentable-html - CSS");
+    expect(html).toContain("BEGIN: commentable-html - JS");
 
     // It passes validate.py as an inline document.
     const tmp = path.join(os.tmpdir(), "cmh_standalone_" + Date.now() + ".html");
@@ -69,7 +71,9 @@ test.describe("nonportable mode", () => {
   });
 
   test("a version-handshake mismatch reveals the banner", async ({ page }) => {
-    const { html, dir } = stageNonPortable({ mutate: (h) => h.replace('content="2.5.0"', 'content="9.9.9"') });
+    const { html, dir } = stageNonPortable({
+      mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, 'content="9.9.9"'),
+    });
     try {
       await page.goto(fileUrl(html));
       await ready(page);

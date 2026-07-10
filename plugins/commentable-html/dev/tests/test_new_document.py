@@ -40,7 +40,7 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertIn('data-doc-label="My Report"', out)
         self.assertIn('data-doc-source="src.md"', out)
         # The demo content-root key was replaced, not left as a second live root.
-        self.assertNotIn("commentable-html-demo-v1", out)
+        self.assertNotIn("commentable-html-demo", out)
         # Title is synced to the label (best effort).
         self.assertIn("<title>My Report</title>", out)
 
@@ -51,10 +51,10 @@ class MakeDocumentTests(unittest.TestCase):
 
     def test_doc_comment_example_root_is_not_the_one_edited(self):
         # The template's top documentation comment holds a decoy
-        # `<main id="commentRoot" data-comment-key="my-doc-v1">`. It must survive
+        # `<main id="commentRoot" data-comment-key="my-doc">`. It must survive
         # untouched, and OUR key must land on the real (last) root instead.
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report")
-        self.assertIn('data-comment-key="my-doc-v1"', out)     # decoy untouched
+        self.assertIn('data-comment-key="my-doc"', out)     # decoy untouched
         # The LAST content root before the CONTENT marker carries our key.
         begin = out.index(new_document.BEGIN_MARKER)
         last_root = None
@@ -63,7 +63,7 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertIsNotNone(last_root)
         tag = out[last_root.start():new_document._tag_end(out, last_root.start()) + 1]
         self.assertIn('data-comment-key="my-report-v1"', tag)
-        self.assertNotIn("my-doc-v1", tag)
+        self.assertNotIn("my-doc", tag)
 
     def test_source_omitted_drops_stale_attribute(self):
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report")
@@ -114,7 +114,7 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertEqual(key, "explicit-v1")
 
     def test_refuses_demo_key(self):
-        for bad in ("commentable-html-demo-v1", "my-doc-v1", "commentable-html-nonportable-demo-v1"):
+        for bad in ("commentable-html-demo", "my-doc", "commentable-html-nonportable-demo"):
             with self.assertRaises(ValueError) as cm:
                 new_document.make_document(_template(), CONTENT, bad, "My Report")
             self.assertIn("demo", str(cm.exception).lower())
@@ -214,7 +214,7 @@ class MainCliTests(unittest.TestCase):
 
     def test_demo_key_exits_2(self):
         code, _out, err = self._call_main(
-            ["new_document.py", "--content", "-", "--key", "my-doc-v1", "--label", "X"],
+            ["new_document.py", "--content", "-", "--key", "my-doc", "--label", "X"],
             stdin=CONTENT)
         self.assertEqual(code, 2)
         self.assertIn("new_document:", err)

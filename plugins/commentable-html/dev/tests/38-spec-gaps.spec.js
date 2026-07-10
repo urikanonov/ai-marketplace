@@ -5,8 +5,8 @@ import {
 } from "./helpers.js";
 
 const INLINE_HTML = fs.readFileSync(INLINE, "utf8");
-const CONTENT_END = "<!-- END: commentable-html v2 - CONTENT -->";
-const DEMO_ROOT_RE = /<main id="commentRoot"\s+data-comment-key="commentable-html-demo-v1"\s+data-doc-label="Commentable HTML demo"\s+data-doc-source="PORTABLE\.html">/;
+const CONTENT_END = "<!-- END: commentable-html - CONTENT -->";
+const DEMO_ROOT_RE = /<main id="commentRoot"\s+data-comment-key="commentable-html-demo"[\s\S]*?>/;
 
 function withContent(snippet) {
   return INLINE_HTML.replace(CONTENT_END, snippet + "\n" + CONTENT_END);
@@ -155,7 +155,7 @@ test("invalid localStorage JSON degrades to defaults without breaking startup (C
   const pageErrors = [];
   page.on("pageerror", (err) => pageErrors.push(err.message));
   await page.addInitScript(() => {
-    const key = "commentable-html-demo-v1";
+    const key = "commentable-html-demo";
     localStorage.setItem(key, "{bad");
     localStorage.setItem(key + "::deleted", "{bad");
     localStorage.setItem(key + "::tableSort", "{bad");
@@ -176,7 +176,7 @@ test("primary comment save failure stays usable but warns that persistence faile
   await page.addInitScript(() => {
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (String(key).startsWith("commentable-html-demo-v1")) throw new Error("blocked storage");
+      if (String(key).startsWith("commentable-html-demo")) throw new Error("blocked storage");
       return original.call(this, key, value);
     };
   });

@@ -54,37 +54,37 @@ EXPECTED_REQUIRED_IDS = frozenset({
 
 CSS_REGION = (
     "/*\n"
-    "BEGIN: commentable-html v2 - CSS\n"
+    "BEGIN: commentable-html - CSS\n"
     "*/\n"
     ":root { --cp-bg: #ffffff; --cp-text: #000000; }\n"
     ".cm-skip[hidden], .cm-skip [hidden] { display: none !important; }\n"
     "/*\n"
-    "END: commentable-html v2 - CSS\n"
+    "END: commentable-html - CSS\n"
     "*/"
 )
 
 HANDLED_REGION = (
     "<!--\n"
-    "BEGIN: commentable-html v2 - HANDLED IDS\n"
+    "BEGIN: commentable-html - HANDLED IDS\n"
     "-->\n"
     '<script type="application/json" id="handledCommentIds">[]</script>\n'
-    "<!-- END: commentable-html v2 - HANDLED IDS -->"
+    "<!-- END: commentable-html - HANDLED IDS -->"
 )
 
 EMBEDDED_REGION = (
     "<!--\n"
-    "BEGIN: commentable-html v2 - EMBEDDED COMMENTS\n"
+    "BEGIN: commentable-html - EMBEDDED COMMENTS\n"
     "-->\n"
     '<script type="application/json" id="embeddedComments">[]</script>\n'
-    "<!-- END: commentable-html v2 - EMBEDDED COMMENTS -->"
+    "<!-- END: commentable-html - EMBEDDED COMMENTS -->"
 )
 
 JS_REGION = (
     "<!--\n"
-    "BEGIN: commentable-html v2 - JS\n"
+    "BEGIN: commentable-html - JS\n"
     "-->\n"
     "<script>\n(function () { var a = 1; return a; })();\n</script>\n"
-    "<!-- END: commentable-html v2 - JS -->"
+    "<!-- END: commentable-html - JS -->"
 )
 
 MAIN = (
@@ -108,13 +108,13 @@ def comment_ui(extra=""):
     spans = "\n".join('  <span id="%s" class="cm-skip"></span>' % u for u in ids)
     return (
         "<!--\n"
-        "BEGIN: commentable-html v2 - COMMENT UI\n"
+        "BEGIN: commentable-html - COMMENT UI\n"
         "-->\n"
         '<div class="cm-toolbar cm-skip">\n'
         + spans + "\n"
         + extra
         + "</div>\n"
-        "<!-- END: commentable-html v2 - COMMENT UI -->"
+        "<!-- END: commentable-html - COMMENT UI -->"
     )
 
 
@@ -287,13 +287,13 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_duplicate_end_marker(self):
         doc = build().replace(
-            "<!-- END: commentable-html v2 - HANDLED IDS -->",
-            "<!-- END: commentable-html v2 - HANDLED IDS -->\n<!-- END: commentable-html v2 - HANDLED IDS -->",
+            "<!-- END: commentable-html - HANDLED IDS -->",
+            "<!-- END: commentable-html - HANDLED IDS -->\n<!-- END: commentable-html - HANDLED IDS -->",
             1)
         self.assertError(doc, "expected 1 END marker, found 2")
 
     def test_missing_end_marker(self):
-        doc = build().replace("<!-- END: commentable-html v2 - HANDLED IDS -->", "", 1)
+        doc = build().replace("<!-- END: commentable-html - HANDLED IDS -->", "", 1)
         self.assertError(doc, "expected 1 END marker, found 0")
 
     def test_regions_out_of_order(self):
@@ -308,9 +308,9 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_end_before_begin(self):
         doc = build()
-        doc = (doc.replace("BEGIN: commentable-html v2 - CSS", "\x00TMP\x00")
-                  .replace("END: commentable-html v2 - CSS", "BEGIN: commentable-html v2 - CSS")
-                  .replace("\x00TMP\x00", "END: commentable-html v2 - CSS"))
+        doc = (doc.replace("BEGIN: commentable-html - CSS", "\x00TMP\x00")
+                  .replace("END: commentable-html - CSS", "BEGIN: commentable-html - CSS")
+                  .replace("\x00TMP\x00", "END: commentable-html - CSS"))
         self.assertError(doc, "END marker appears before its BEGIN")
 
     def test_id_in_attribute_value_is_not_a_real_id(self):
@@ -412,7 +412,7 @@ class ValidateUnitTests(unittest.TestCase):
                          'no element with id="commentRoot"')
 
     # -- retrofit / demo leftovers ------------------------------------------ #
-    _DEMO_MAIN = ('<main id="commentRoot" data-comment-key="commentable-html-demo-v1" '
+    _DEMO_MAIN = ('<main id="commentRoot" data-comment-key="commentable-html-demo" '
                   'data-doc-label="l" data-doc-source="s"><p>x</p></main>')
 
     def test_demo_content_root_survived_is_error(self):
@@ -431,7 +431,7 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_real_content_root_in_comment_is_error(self):
         # A retrofit that buried the real content root inside a comment (a key
-        # other than the "my-doc-v1" example) must be caught even though a valid
+        # other than the "my-doc" example) must be caught even though a valid
         # root also exists in the live DOM.
         buried = ('<!--\nleftover from a bad retrofit:\n'
                   '<main id="commentRoot" data-comment-key="my-real-doc-v1" '
@@ -461,10 +461,10 @@ class ValidateUnitTests(unittest.TestCase):
         self.assertOkNoWarn(doc)
 
     def test_doc_example_commented_root_is_ok(self):
-        # The template's own documentation example (data-comment-key="my-doc-v1")
+        # The template's own documentation example (data-comment-key="my-doc")
         # lives inside a comment and must NOT be flagged.
         example = ('<!--\n  <main id="commentRoot"\n'
-                   '        data-comment-key="my-doc-v1"\n'
+                   '        data-comment-key="my-doc"\n'
                    '        data-doc-label="My Document">\n'
                    '    ... your content ...\n  </main>\n-->')
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), example + "\n" + MAIN, JS_REGION])
@@ -491,55 +491,55 @@ class ValidateUnitTests(unittest.TestCase):
 
     # -- text-anchoring robustness ------------------------------------------ #
     _JS_OFFSET_NO_NORM = (
-        "<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        "<!--\nBEGIN: commentable-html - JS\n-->\n"
         "<script>\n(function(){ function offsetWithin(n,o){ return -1; } })();\n</script>\n"
-        "<!-- END: commentable-html v2 - JS -->"
+        "<!-- END: commentable-html - JS -->"
     )
     _JS_OFFSET_WITH_NORM = (
-        "<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        "<!--\nBEGIN: commentable-html - JS\n-->\n"
         "<script>\n(function(){ function normalizeBoundary(n,o){ return [n,o]; }\n"
         "function offsetWithin(n,o){ [n,o]=normalizeBoundary(n,o); return -1; } })();\n</script>\n"
-        "<!-- END: commentable-html v2 - JS -->"
+        "<!-- END: commentable-html - JS -->"
     )
     # A function merely NAMED like offsetWithin* (offsetWithinX) is NOT the real
     # offsetWithin(), so the normalizeBoundary requirement must stay exempt.
     _JS_OFFSETWITHIN_PREFIX_DECOY = (
-        "<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        "<!--\nBEGIN: commentable-html - JS\n-->\n"
         "<script>\n(function(){ function offsetWithinX(n,o){ return -1; } })();\n</script>\n"
-        "<!-- END: commentable-html v2 - JS -->"
+        "<!-- END: commentable-html - JS -->"
     )
     # normalizeBoundary present only inside comments -> must still error: the
     # string/comment-blanked scan strips it, so the guard fires (F-C2 false-pass).
     _JS_OFFSET_COMMENTED = (
-        "<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        "<!--\nBEGIN: commentable-html - JS\n-->\n"
         "<script>\n(function(){\n"
         "/* function normalizeBoundary(n,o){ return [n,o]; } */\n"
         "function offsetWithin(n,o){ /* normalizeBoundary(n,o) */ return -1; } })();\n</script>\n"
-        "<!-- END: commentable-html v2 - JS -->"
+        "<!-- END: commentable-html - JS -->"
     )
     # normalizeBoundary token present only inside a string literal -> must error.
     _JS_OFFSET_STRINGCALL = (
-        "<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        "<!--\nBEGIN: commentable-html - JS\n-->\n"
         "<script>\n(function(){\n"
         'function offsetWithin(n,o){ var s = "normalizeBoundary("; return -1; } })();\n</script>\n'
-        "<!-- END: commentable-html v2 - JS -->"
+        "<!-- END: commentable-html - JS -->"
     )
     # Valid helper + real call, but the body also has a `}` inside a string literal
     # -> must NOT false-fail (F-C2 false-fail: string-blanked brace matching).
     _JS_OFFSET_BRACE_STRING = (
-        "<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        "<!--\nBEGIN: commentable-html - JS\n-->\n"
         "<script>\n(function(){ function normalizeBoundary(n,o){ return [n,o]; }\n"
         'function offsetWithin(n,o){ var s = "}"; [n,o]=normalizeBoundary(n,o); return -1; } })();\n</script>\n'
-        "<!-- END: commentable-html v2 - JS -->"
+        "<!-- END: commentable-html - JS -->"
     )
     # Helper declared and called, but the call is in an UNRELATED later function,
     # not inside offsetWithin's body -> must error (body-local check).
     _JS_OFFSET_CALL_ELSEWHERE = (
-        "<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        "<!--\nBEGIN: commentable-html - JS\n-->\n"
         "<script>\n(function(){ function normalizeBoundary(n,o){ return [n,o]; }\n"
         "function offsetWithin(n,o){ return -1; }\n"
         "function other(n,o){ return normalizeBoundary(n,o); } })();\n</script>\n"
-        "<!-- END: commentable-html v2 - JS -->"
+        "<!-- END: commentable-html - JS -->"
     )
 
     def test_offsetwithin_without_normalizeboundary_is_error(self):
@@ -625,9 +625,9 @@ class ValidateUnitTests(unittest.TestCase):
         self.assertError(doc, "</script> tags")
 
     def test_js_region_missing_script_close(self):
-        js = ("<!--\nBEGIN: commentable-html v2 - JS\n-->\n"
+        js = ("<!--\nBEGIN: commentable-html - JS\n-->\n"
               "<script>\nvar a = 1;\n"          # closing </script> deliberately absent
-              "<!-- END: commentable-html v2 - JS -->")
+              "<!-- END: commentable-html - JS -->")
         self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, js]),
                          "no closing </script>")
 
@@ -671,29 +671,29 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_cp_variable_must_be_defined_not_just_used(self):
         css = (
-            "/*\nBEGIN: commentable-html v2 - CSS\n*/\n"
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
             "body { background: var(--cp-bg); }\n"
             ".cm-skip[hidden], .cm-skip [hidden] { display: none !important; }\n"
-            "/*\nEND: commentable-html v2 - CSS\n*/"
+            "/*\nEND: commentable-html - CSS\n*/"
         )
         self.assertError(build(css=css), "--cp-* theme variables are not defined")
 
     # -- [hidden] scoping --------------------------------------------------- #
     def test_unscoped_hidden_warns(self):
         css = (
-            "/*\nBEGIN: commentable-html v2 - CSS\n*/\n"
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
             ":root { --cp-bg: #fff; }\n"
             "[hidden] {\n  display: none !important;\n}\n"
             ".cm-skip[hidden] { display: none !important; }\n"
-            "/*\nEND: commentable-html v2 - CSS\n*/"
+            "/*\nEND: commentable-html - CSS\n*/"
         )
         self.assertWarn(build(css=css), "unscoped '[hidden]")
 
     def test_missing_scoped_hidden_warns(self):
         css = (
-            "/*\nBEGIN: commentable-html v2 - CSS\n*/\n"
+            "/*\nBEGIN: commentable-html - CSS\n*/\n"
             ":root { --cp-bg: #fff; }\n"
-            "/*\nEND: commentable-html v2 - CSS\n*/"
+            "/*\nEND: commentable-html - CSS\n*/"
         )
         self.assertWarn(build(css=css), "missing the scoped '.cm-skip[hidden]'")
 
@@ -761,7 +761,7 @@ class ValidateUnitTests(unittest.TestCase):
 # NonPortable-mode fixtures: CSS/JS live in companion files referenced via
 # <link>/<script src>; HANDLED IDS, EMBEDDED COMMENTS and COMMENT UI stay inline.
 # --------------------------------------------------------------------------- #
-NONPORTABLE_VERSION = "2.5.0"
+NONPORTABLE_VERSION = "1.0.0"
 
 
 def nonportable_bootstrap(banner=True, watchdog=True):
@@ -771,18 +771,18 @@ def nonportable_bootstrap(banner=True, watchdog=True):
     if watchdog:
         inner += ("<script>window.setTimeout(function () { "
                   "if (!window.__commentableHtmlReady) {} }, 3000);</script>\n")
-    return ("<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->\n"
+    return ("<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->\n"
             + inner
-            + "<!-- END: commentable-html v2 - NONPORTABLE BOOTSTRAP -->")
+            + "<!-- END: commentable-html - NONPORTABLE BOOTSTRAP -->")
 
 
 def nonportable_scripts(version=NONPORTABLE_VERSION, runtime=True, assets=True):
     out = []
     if assets:
-        out.append('<script src="commentable-html.v%s.assets.js"></script>' % version)
+        out.append('<script src="commentable-html.assets.js"></script>')
     if runtime:
-        out.append('<script src="commentable-html.v%s.js"></script>' % version)
-    out.append("<!-- END: commentable-html v2 - JS -->")
+        out.append('<script src="commentable-html.js"></script>')
+    out.append("<!-- END: commentable-html - JS -->")
     return "\n".join(out)
 
 
@@ -791,9 +791,9 @@ def build_nonportable(version=NONPORTABLE_VERSION, link=True, runtime=True, asse
     """A minimal, valid nonportable document (theme vars inline, layer externalized)."""
     head = ["<style>\n:root { --cp-bg: #fff; --cp-text: #000; }\n</style>"]
     if link:
-        head.append('<link rel="stylesheet" href="commentable-html.v%s.css">' % (link_version or version))
+        head.append('<link rel="stylesheet" href="commentable-html.css">')
     if meta:
-        head.append('<meta name="commentable-html-assets" content="%s">' % version)
+        head.append('<meta name="commentable-html-version" content="%s">' % version)
     body = [nonportable_bootstrap(banner, watchdog), HANDLED_REGION, EMBEDDED_REGION,
             comment_ui(), MAIN, nonportable_scripts(version, runtime, assets)]
     return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n'
@@ -860,7 +860,7 @@ class NonPortableTests(unittest.TestCase):
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(content)
             for c in companions:
-                with open(os.path.join(d, "commentable-html.v%s%s" % (version, exts[c])), "w",
+                with open(os.path.join(d, "commentable-html%s" % exts[c]), "w",
                           encoding="utf-8") as fh:
                     fh.write("/* stub */")
             return validate.validate(p)
@@ -899,9 +899,9 @@ class NonPortableTests(unittest.TestCase):
         # companion reference - the browser would never load it.
         decoy = (
             '<!DOCTYPE html>\n<html><head>\n'
-            '<link rel="preload" data-href="commentable-html.v%s.css">\n'
-            '<script type="application/json" data-src="commentable-html.v%s.js">{}</script>\n'
-            '</head><body>\n' % (NONPORTABLE_VERSION, NONPORTABLE_VERSION)
+            '<link rel="preload" data-href="commentable-html.css">\n'
+            '<script type="application/json" data-src="commentable-html.js">{}</script>\n'
+            '</head><body>\n'
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + '\n</body></html>\n')
         self.assertFalse(validate._is_nonportable(decoy))
@@ -912,15 +912,15 @@ class NonPortableTests(unittest.TestCase):
         v = NONPORTABLE_VERSION
         unquoted = (
             "<!DOCTYPE html>\n<html><head>\n"
-            "<link rel=stylesheet href=commentable-html.v%s.css>\n"
-            "<script src=commentable-html.v%s.js></script>\n"
-            "</head><body>\n" % (v, v)
+            "<link rel=stylesheet href=commentable-html.css>\n"
+            "<script src=commentable-html.js></script>\n"
+            "</head><body>\n"
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + "\n</body></html>\n")
         self.assertTrue(validate._is_nonportable(unquoted))
-        self.assertEqual(validate._nonportable_css_refs(unquoted), ["commentable-html.v%s.css" % v])
+        self.assertEqual(validate._nonportable_css_refs(unquoted), ["commentable-html.css"])
         # Reordered meta (content before name) is still read for the version.
-        reordered = '<meta content="%s" name="commentable-html-assets">' % v
+        reordered = '<meta content="%s" name="commentable-html-version">' % v
         self.assertEqual(validate._nonportable_meta_versions(reordered), [v])
 
     def test_nonportable_detection_is_case_insensitive(self):
@@ -929,25 +929,25 @@ class NonPortableTests(unittest.TestCase):
         v = NONPORTABLE_VERSION
         mixed = (
             "<!DOCTYPE html>\n<html><head>\n"
-            '<link rel="stylesheet" href="Commentable-HTML.v%s.CSS">\n'
-            '<script src="Commentable-HTML.v%s.JS"></script>\n'
-            "</head><body>\n" % (v, v)
+            '<link rel="stylesheet" href="Commentable-HTML.CSS">\n'
+            '<script src="Commentable-HTML.JS"></script>\n'
+            "</head><body>\n"
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + "\n</body></html>\n")
         self.assertTrue(validate._is_nonportable(mixed))
-        self.assertEqual(validate._nonportable_css_refs(mixed), ["Commentable-HTML.v%s.CSS" % v])
-        self.assertEqual(validate._nonportable_js_refs(mixed), ["Commentable-HTML.v%s.JS" % v])
+        self.assertEqual(validate._nonportable_css_refs(mixed), ["Commentable-HTML.CSS"])
+        self.assertEqual(validate._nonportable_js_refs(mixed), ["Commentable-HTML.JS"])
 
     def test_nonportable_detection_ignores_gt_in_value_and_decoys(self):
         # The HTMLParser-based scan must (a) not be fooled by a '>' inside a quoted
         # attribute value, and (b) ignore link/script tags that only appear inside an
         # HTML comment or a <script>/<style> body (CDATA), which a naive regex matched.
         v = NONPORTABLE_VERSION
-        gt_in_value = '<link rel="stylesheet" title="a>b" href="commentable-html.v%s.css">' % v
-        self.assertEqual(validate._nonportable_css_refs(gt_in_value), ["commentable-html.v%s.css" % v])
-        commented = '<!-- <link rel="stylesheet" href="commentable-html.v%s.css"> -->' % v
+        gt_in_value = '<link rel="stylesheet" title="a>b" href="commentable-html.css">'
+        self.assertEqual(validate._nonportable_css_refs(gt_in_value), ["commentable-html.css"])
+        commented = '<!-- <link rel="stylesheet" href="commentable-html.css"> -->'
         self.assertEqual(validate._nonportable_css_refs(commented), [])
-        in_script = '<script>var s = "<link href=\'commentable-html.v%s.css\'>";</script>' % v
+        in_script = '<script>var s = "<link href=\'commentable-html.css\'>";</script>'
         self.assertEqual(validate._nonportable_css_refs(in_script), [])
 
 
@@ -961,22 +961,13 @@ class NonPortableTests(unittest.TestCase):
         self.assertNonPortableWarn(build_nonportable(assets=False), "Export with embedded comments", companions=("css", "js"))
 
     def test_missing_version_meta_warns(self):
-        self.assertNonPortableWarn(build_nonportable(meta=False), 'missing <meta name="commentable-html-assets"')
+        self.assertNonPortableWarn(build_nonportable(meta=False), 'missing <meta name="commentable-html-version"')
 
-    def test_version_meta_filename_mismatch_warns(self):
-        # meta says 2.5.0 but the <link> points at a 2.4.0 companion file.
-        html = build_nonportable(link_version="2.4.0")
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "doc.html")
-            with open(p, "w", encoding="utf-8", newline="") as fh:
-                fh.write(html)
-            for name in ("commentable-html.v2.4.0.css", "commentable-html.v2.5.0.js",
-                         "commentable-html.v2.5.0.assets.js"):
-                with open(os.path.join(d, name), "w", encoding="utf-8") as fh:
-                    fh.write("/* stub */")
-            errors, warnings = validate.validate(p)
+    def test_version_meta_does_not_compare_to_versionless_filenames(self):
+        html = build_nonportable(version="9.9.9")
+        errors, warnings = self._validate(html)
         self.assertEqual(errors, [])
-        self.assertTrue(any("must match" in w for w in warnings), warnings)
+        self.assertFalse(any("must match" in w for w in warnings), warnings)
 
     def test_missing_banner_errors(self):
         self.assertNonPortableError(build_nonportable(banner=False), "#cmhAssetBanner")
@@ -996,18 +987,18 @@ class NonPortableTests(unittest.TestCase):
     def test_nonportable_does_not_require_inline_css_js_regions(self):
         # No inline CSS/JS region markers, yet clean - proving those checks are skipped.
         html = build_nonportable()
-        self.assertNotIn("BEGIN: commentable-html v2 - CSS", html)
-        self.assertNotIn("BEGIN: commentable-html v2 - JS", html)
+        self.assertNotIn("BEGIN: commentable-html - CSS", html)
+        self.assertNotIn("BEGIN: commentable-html - JS", html)
 
     def test_absolute_companion_path_warns(self):
         # An absolute path is usable but leaks a local directory - warn, do not error.
         with tempfile.TemporaryDirectory() as d:
-            css = os.path.join(d, "commentable-html.v%s.css" % NONPORTABLE_VERSION)
+            css = os.path.join(d, "commentable-html.css")
             for c, ext in (("css", ".css"), ("js", ".js"), ("assets", ".assets.js")):
-                with open(os.path.join(d, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w") as fh:
+                with open(os.path.join(d, "commentable-html%s" % ext), "w") as fh:
                     fh.write("/* stub */")
             html = build_nonportable().replace(
-                'href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
+                'href="commentable-html.css"',
                 'href="%s"' % css.replace("\\", "/"))
             p = os.path.join(d, "doc.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
@@ -1023,15 +1014,15 @@ class NonPortableTests(unittest.TestCase):
             sub = os.path.join(d, "reports")
             os.makedirs(sub)
             for ext in (".css", ".js", ".assets.js"):
-                with open(os.path.join(d, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w") as fh:
+                with open(os.path.join(d, "commentable-html%s" % ext), "w") as fh:
                     fh.write("/* stub */")
             html = (build_nonportable()
-                    .replace('href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
-                             'href="../commentable-html.v%s.css"' % NONPORTABLE_VERSION)
-                    .replace('src="commentable-html.v%s.js"' % NONPORTABLE_VERSION,
-                             'src="../commentable-html.v%s.js"' % NONPORTABLE_VERSION)
-                    .replace('src="commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION,
-                             'src="../commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION))
+                    .replace('href="commentable-html.css"',
+                             'href="../commentable-html.css"')
+                    .replace('src="commentable-html.js"',
+                             'src="../commentable-html.js"')
+                    .replace('src="commentable-html.assets.js"',
+                             'src="../commentable-html.assets.js"'))
             p = os.path.join(sub, "doc.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(html)
@@ -1045,15 +1036,15 @@ class NonPortableTests(unittest.TestCase):
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
             for ext in (".css", ".js", ".assets.js"):
-                with open(os.path.join(dist, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w") as fh:
+                with open(os.path.join(dist, "commentable-html%s" % ext), "w") as fh:
                     fh.write("/* stub */")
             html = (build_nonportable()
-                    .replace('href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
-                             'href="dist/commentable-html.v%s.css"' % NONPORTABLE_VERSION)
-                    .replace('src="commentable-html.v%s.js"' % NONPORTABLE_VERSION,
-                             'src="dist/commentable-html.v%s.js"' % NONPORTABLE_VERSION)
-                    .replace('src="commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION,
-                             'src="dist/commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION))
+                    .replace('href="commentable-html.css"',
+                             'href="dist/commentable-html.css"')
+                    .replace('src="commentable-html.js"',
+                             'src="dist/commentable-html.js"')
+                    .replace('src="commentable-html.assets.js"',
+                             'src="dist/commentable-html.assets.js"'))
             p = os.path.join(d, "doc.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(html)
@@ -1062,8 +1053,8 @@ class NonPortableTests(unittest.TestCase):
 
     def test_remote_companion_url_errors(self):
         html = build_nonportable().replace(
-            'href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
-            'href="https://cdn.example.com/commentable-html.v%s.css"' % NONPORTABLE_VERSION)
+            'href="commentable-html.css"',
+            'href="https://cdn.example.com/commentable-html.css"')
         self.assertNonPortableError(html, "remote/CDN URL")
 
     def test_nonportable_demo_key_survivor_is_flagged(self):
@@ -1080,7 +1071,7 @@ class NonPortableTests(unittest.TestCase):
                 fh.write(mutated)
             for c in ("css", "js", "assets"):
                 ext = {"css": ".css", "js": ".js", "assets": ".assets.js"}[c]
-                with open(os.path.join(d, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w", encoding="utf-8") as fh:
+                with open(os.path.join(d, "commentable-html%s" % ext), "w", encoding="utf-8") as fh:
                     fh.write("/* stub */")
             errors, _ = validate.validate(p)
         self.assertTrue(any("demo content root survived" in e for e in errors), errors)
@@ -1130,7 +1121,7 @@ class ValidateCliTests(unittest.TestCase):
     def test_charts_only_suppresses_layer_errors(self):
         # Layer-broken doc (a mangled region marker) but no <canvas>. --charts-only
         # skips the layer half, so exit 0 with no region error.
-        doc = build().replace("BEGIN: commentable-html v2 - CSS", "BEGIN: commentable-html v2 - BROKEN")
+        doc = build().replace("BEGIN: commentable-html - CSS", "BEGIN: commentable-html - BROKEN")
         with tempfile.TemporaryDirectory() as d:
             p = self._write(d, "chartsonly.html", doc)
             r = self._run("--charts-only", p)
@@ -1326,9 +1317,9 @@ class NewCheckTests(unittest.TestCase):
 
     # -- embeddedComments per-item schema ---------------------------------- #
     def _embedded(self, payload):
-        return ("<!--\nBEGIN: commentable-html v2 - EMBEDDED COMMENTS\n-->\n"
+        return ("<!--\nBEGIN: commentable-html - EMBEDDED COMMENTS\n-->\n"
                 '<script type="application/json" id="embeddedComments">' + payload + "</script>\n"
-                "<!-- END: commentable-html v2 - EMBEDDED COMMENTS -->")
+                "<!-- END: commentable-html - EMBEDDED COMMENTS -->")
 
     def test_embedded_comment_item_bad_id_errors(self):
         body = [HANDLED_REGION, self._embedded('[{"id": null, "note": "x"}]'), comment_ui(), MAIN, JS_REGION]

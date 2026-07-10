@@ -9,7 +9,7 @@ CONTENT block, and the `#commentRoot` wrapper are never modified.
 This is the "Upgrade an existing instance to a new dist/PORTABLE.html" recipe from SKILL.md,
 made deterministic. Doing it by hand is error prone because of two documented footguns:
 the JS payload's own plain-HTML-export code contains marker-like text, so the real JS
-region END is the LAST `END: commentable-html v2 - JS` occurrence, and a naive first
+region END is the LAST `END: commentable-html - JS` occurrence, and a naive first
 match truncates the region.
 
 Stdlib-only, local-only, deterministic. Usage:
@@ -37,15 +37,15 @@ REQUIRED_MARKERS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "CONTENT",
 # A real nonportable document carries this exact bootstrap comment. The inline JS body only
 # mentions the marker text inside a regex literal (with `\s*`, not literal spaces), so
 # matching the full comment avoids a false positive on standalone files.
-NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->"
+NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
 
 
 def _region_inner(text, name, where):
     """Return (start, end) byte offsets of a region's inner content (between the BEGIN
     and END marker texts). For JS the END is the LAST occurrence, because the JS body
     contains marker-like strings that would fool a first match."""
-    begin = "BEGIN: commentable-html v2 - " + name
-    end = "END: commentable-html v2 - " + name
+    begin = "BEGIN: commentable-html - " + name
+    end = "END: commentable-html - " + name
     bi = text.find(begin)
     if bi < 0:
         raise ValueError("%s: '%s' region BEGIN marker not found" % (where, name))
@@ -63,7 +63,7 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
             "%s looks like an nonportable document (companion assets). Upgrade nonportable files by "
             "replacing the dist/ companions and bumping the assets version meta instead." % target_name)
     for marker in REQUIRED_MARKERS:
-        if ("BEGIN: commentable-html v2 - " + marker) not in target_html:
+        if ("BEGIN: commentable-html - " + marker) not in target_html:
             raise ValueError("%s is not a commentable-html document (missing '%s' region)" % (target_name, marker))
     out = target_html
     changed = []

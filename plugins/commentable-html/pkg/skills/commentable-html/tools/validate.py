@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a commentable-html v2 document against the skill's invariants.
+"""Validate a commentable-html document against the skill's invariants.
 
 This is the single, unified checker. It always validates the commentable LAYER
 (region markers, required/forbidden ids, the two JSON blocks, theme variables,
@@ -81,23 +81,23 @@ def _attrs_have_class(attrs, class_name):
 # --------------------------------------------------------------------------- #
 # dist/PORTABLE.html ships a working DEMO: its content root carries these placeholder
 # values, and its top-of-file documentation comment contains ONE example
-# "<main id=commentRoot data-comment-key=my-doc-v1>". A finished consumer
+# "<main id=commentRoot data-comment-key=my-doc>". A finished consumer
 # document must (a) give its content root a unique data-comment-key - not the
 # demo one - and (b) never leave real content commented out. The two checks
 # below are written so the pristine dist/PORTABLE.html (demo key + demo <title>, and
-# only the "my-doc-v1" example commented) still passes with zero findings, while
+# only the "my-doc" example commented) still passes with zero findings, while
 # a botched retrofit (a script that replaced the WRONG "<main id=commentRoot>"
 # and buried the consumer's real content in the top comment, leaving the demo as
 # the live root) is caught.
 DEMO_TITLE = "Commentable HTML - Demo"
-DEMO_COMMENT_KEY = "commentable-html-demo-v1"
+DEMO_COMMENT_KEY = "commentable-html-demo"
 DEMO_NONPORTABLE_TITLE = "Commentable HTML - NonPortable Demo"
-DEMO_NONPORTABLE_COMMENT_KEY = "commentable-html-nonportable-demo-v1"
+DEMO_NONPORTABLE_COMMENT_KEY = "commentable-html-nonportable-demo"
 # Each pristine demo content-root key maps to the <title> its generated template
 # keeps. A customized retrofit that leaves the demo root in place (changed title,
 # same demo key) is flagged for both the inline and the nonportable template.
 DEMO_KEYS = {DEMO_COMMENT_KEY: DEMO_TITLE, DEMO_NONPORTABLE_COMMENT_KEY: DEMO_NONPORTABLE_TITLE}
-DOC_EXAMPLE_COMMENT_KEY = "my-doc-v1"
+DOC_EXAMPLE_COMMENT_KEY = "my-doc"
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # <script>/<style> bodies are blanked before the commented-root scan so a "<!-- -->"
 # that appears only inside script/style data (which the browser parses as text, not
@@ -114,7 +114,7 @@ _DATA_KEY_RE = re.compile(r'(?i:data-comment-key)\s*=\s*["\']?([^\s"\'<>]+)')
 # --------------------------------------------------------------------------- #
 
 # The real region marker is an HTML comment, not bare text in prose.
-JS_END_MARKER_TEXT = "END: commentable-html v2 - JS"
+JS_END_MARKER_TEXT = "END: commentable-html - JS"
 # JSON <script> ids owned by the commentable layer, not chart data.
 LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments"}
 # HTML void elements never get pushed on the stack.
@@ -160,13 +160,13 @@ CANVAS_RENDER_RE = re.compile(r"\.getContext\s*\(")
 # --------------------------------------------------------------------------- #
 
 def _begin_re(region):
-    return re.compile(r"(?m)^[ \t]*BEGIN: commentable-html v2 - " + re.escape(region) + r"[ \t]*$")
+    return re.compile(r"(?m)^[ \t]*BEGIN: commentable-html - " + re.escape(region) + r"[ \t]*$")
 
 
 def _end_re(region):
     # Banner form ("   END: ... CSS") or inline HTML comment ("<!-- END: ... JS -->").
     return re.compile(
-        r"(?m)^[ \t]*(?:<!--[ \t]*)?END: commentable-html v2 - "
+        r"(?m)^[ \t]*(?:<!--[ \t]*)?END: commentable-html - "
         + re.escape(region) + r"(?:[ \t]*-->)?[ \t]*$"
     )
 
@@ -357,7 +357,7 @@ class _DocParser(HTMLParser):
 
     def handle_comment(self, data):
         # Exact match, so a prose comment that merely mentions the marker text
-        # ("<!-- note: END: commentable-html v2 - JS is the marker -->") is ignored;
+        # ("<!-- note: END: commentable-html - JS is the marker -->") is ignored;
         # a marker inside an inert <template> is ignored too.
         if (self.js_end_marker_pos is None and not self._in_template()
                 and data.strip() == JS_END_MARKER_TEXT):
@@ -514,10 +514,7 @@ def _nonportable_js_refs(html):
 
 def _nonportable_meta_versions(html):
     return [a.get("content", "") for a in _find_tag_attrs(html, "meta")
-            if a.get("name", "").lower() == "commentable-html-assets"]
-
-
-_VER_IN_NAME_RE = re.compile(r"commentable-html\.v(\d+\.\d+\.\d+)\.")
+            if a.get("name", "").lower() == "commentable-html-version"]
 
 
 def _is_nonportable(html):
@@ -624,19 +621,12 @@ def _check_nonportable(html, base_dir, id_counts):
     if not assets_refs:
         warnings.append('nonportable mode: no commentable-html.*.assets.js is referenced - "Export with embedded comments" cannot rebuild a portable file (add the assets companion or ship a standalone copy)')
 
-    # Version handshake: a <meta name="commentable-html-assets"> lets the runtime
-    # detect a stale companion. Also flag a meta/filename version mismatch.
+    # Version stamp: a <meta name="commentable-html-version"> records the skill
+    # version that produced the file and lets the runtime detect a stale companion
+    # by comparing it against the loaded runtime's CMH_VERSION.
     metas = _nonportable_meta_versions(html)
     if not metas:
-        warnings.append('nonportable mode: missing <meta name="commentable-html-assets" content="X"> - the runtime cannot detect a stale/mismatched companion file')
-    else:
-        declared = metas[0].strip()
-        for ref in css_refs + js_refs:
-            m = _VER_IN_NAME_RE.search(ref)
-            if m and declared and m.group(1) != declared:
-                warnings.append('nonportable mode: version <meta> says "%s" but a companion file is "%s" (%s) - they must match'
-                                % (declared, m.group(1), ref))
-                break
+        warnings.append('nonportable mode: missing <meta name="commentable-html-version" content="X"> - the runtime cannot detect a stale/mismatched companion file')
 
     # Mandatory missing-asset banner: if the external runtime never loads, the
     # page must say so instead of looking fine but dead.
@@ -734,7 +724,7 @@ def check_layer(html, parser, base_dir=None):
     #     - the template ships one as a documentation EXAMPLE inside the top-of-file
     #     comment - so the consumer's real content ends up commented out and the
     #     browser renders the leftover demo. The only sanctioned commented root is
-    #     that example (data-comment-key="my-doc-v1"); any other commented content
+    #     that example (data-comment-key="my-doc"); any other commented content
     #     root (a different key, or none) means content was commented by mistake.
     #     Scan with <script>/<style> bodies blanked so comment-like text inside them
     #     (which the browser treats as script/style data, not a comment) is ignored.
@@ -1099,7 +1089,7 @@ def check_charts(html, parser):
     # keeps it) AND after the Chart.js loader (or Chart is undefined when it runs).
     if marker_pos is not None:
         if any(pos < marker_pos for pos in new_chart_positions):
-            errors.append("chart init (`new Chart(`) appears before the `END: commentable-html v2 - JS` "
+            errors.append("chart init (`new Chart(`) appears before the `END: commentable-html - JS` "
                           "marker - place chart scripts after it so Save-as-plain preserves the chart")
     if loader_pos is not None:
         if any(pos < loader_pos for pos in new_chart_positions):

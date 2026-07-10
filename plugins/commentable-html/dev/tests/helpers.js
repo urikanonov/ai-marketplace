@@ -222,7 +222,7 @@ export function stageNonPortable({ companions = true, mutate = null } = {}) {
   fs.writeFileSync(path.join(dir, "NONPORTABLE.html"), html);
   if (companions) {
     for (const f of fs.readdirSync(DIST)) {
-      if (/^commentable-html\.v.*\.(css|js)$/.test(f)) fs.copyFileSync(path.join(DIST, f), path.join(dir, f));
+      if (/^commentable-html\.(css|js|assets\.js)$/.test(f)) fs.copyFileSync(path.join(DIST, f), path.join(dir, f));
     }
   }
   return { dir, html: path.join(dir, "NONPORTABLE.html") };

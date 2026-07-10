@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   ============================================================
-  Commentable HTML - TEMPLATE / DEMO  (commentable-html v2)
+  Commentable HTML - TEMPLATE / DEMO  (commentable-html)
   ============================================================
   This file is a fully working demo of the commentable-html skill.
   Open it in a browser to confirm the behavior, then copy the
@@ -25,7 +25,7 @@
   required when you port between docs.
 
     <main id="commentRoot"
-          data-comment-key="my-doc-v1"      (unique per doc)
+          data-comment-key="my-doc"      (unique per doc)
           data-doc-label="My Document">     (shown in copy)
       ... your content ...
     </main>
@@ -45,6 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="commentable-html-version" content="1.0.0" />
 <title>Planning a Community Garden</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -169,7 +170,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 }
 
 /* ============================================================
-   BEGIN: commentable-html v2 - CSS
+   BEGIN: commentable-html - CSS
    Drop-in. Paste this whole block inside your <style>.
    ============================================================ */
 mark.cm-hl {
@@ -989,7 +990,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
   outline-offset: 2px;
 }
 /* ============================================================
-   END: commentable-html v2 - CSS
+   END: commentable-html - CSS
    ============================================================ */
 </style>
 </head>
@@ -997,7 +998,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 <body class="sidebar-open">
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - HANDLED IDS
+     BEGIN: commentable-html - HANDLED IDS
      ============================================================
      The agent appends every processed comment id to this JSON
      array. On the next page load the IDs are removed from
@@ -1012,10 +1013,10 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 <script type="application/json" id="handledCommentIds">
 []
 </script>
-<!-- END: commentable-html v2 - HANDLED IDS -->
+<!-- END: commentable-html - HANDLED IDS -->
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - EMBEDDED COMMENTS
+     BEGIN: commentable-html - EMBEDDED COMMENTS
      ============================================================
      Optional in-HTML snapshot of the comments array, so the file
      is self-contained for sharing. The "Save in HTML" button in
@@ -1034,10 +1035,10 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 <script type="application/json" id="embeddedComments">
 []
 </script>
-<!-- END: commentable-html v2 - EMBEDDED COMMENTS -->
+<!-- END: commentable-html - EMBEDDED COMMENTS -->
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - COMMENT UI
+     BEGIN: commentable-html - COMMENT UI
      ============================================================ -->
 <div class="cm-toolbar cm-skip" role="toolbar" aria-label="Comments toolbar">
   <button id="btnCopyAllTop" type="button" class="cm-primary" title="Copy all comments to the clipboard for pasting back to the agent">Copy all</button>
@@ -1104,7 +1105,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 <button type="button" class="cm-hl-bubble cm-skip" id="hlBubble" hidden aria-label="Open comment on this text" title="Open comment"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg></button>
 
 <div class="cm-toast cm-skip" id="toast"></div>
-<!-- END: commentable-html v2 - COMMENT UI -->
+<!-- END: commentable-html - COMMENT UI -->
 
 <!-- ============================================================
      Per-document content (NOT one of the five pasteable regions).
@@ -1115,15 +1116,15 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
                             and into the agent-instructions block,
                             so the agent knows which file to edit
                             (falls back to location.pathname).
-     The five BEGIN/END: commentable-html v2 regions above and below
+     The five BEGIN/END: commentable-html regions above and below
      stay byte-for-byte identical across docs, so upgrades are a
      clean replace. This wrapper is intentionally NOT marked with
-     the commentable-html v2 marker format - it is per-document
+     the commentable-html marker format - it is per-document
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-comment-key="community-garden-plan-v1" data-doc-label="Community Garden Plan" data-doc-source="report-community-garden.html">
-<!-- BEGIN: commentable-html v2 - CONTENT (agent edits ONLY between these markers) -->
+<main id="commentRoot" data-comment-key="community-garden-plan" data-doc-label="Community Garden Plan" data-doc-source="report-community-garden.html">
+<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
   <h1>Planning a Community Garden</h1>
   <p>This standalone plan is designed as a friendly review surface for every major commentable-html feature. Use the table of contents to jump through the plan, then try comments on prose, tables, KQL, a chart caption, images, Mermaid nodes, and a code diff.</p>
@@ -1445,13 +1446,13 @@ StormEvents
     <p>The plan should be reviewed after the first 6 weeks of growing. At that review, the group should compare the schedule, watering chart, volunteer coverage, and actual plant health, then adjust summer work routines before the hottest part of the season.</p>
   </section>
 
-<!-- END: commentable-html v2 - CONTENT -->
+<!-- END: commentable-html - CONTENT -->
 </main>
 </div>
 <!-- End of per-document content -->
 
 <!-- ============================================================
-     BEGIN: commentable-html v2 - JS
+     BEGIN: commentable-html - JS
      ============================================================
      Drop-in. No per-document edits. Reads its config from
      #commentRoot data-* attributes (see CONTENT ROOT above).
@@ -1480,7 +1481,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 // Asset version of this runtime. The build reads this constant as the single
 // source of truth for the dist filenames, the version <meta> handshake, and the
 // manifest, so bumping it here is the only place a version changes.
-const CMH_VERSION = "2.5.0";
+const CMH_VERSION = "1.0.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -1522,7 +1523,7 @@ const CMH_ASSETS = (typeof window !== "undefined" && window.__COMMENTABLE_ASSETS
 const NONPORTABLE_MODE = !!CMH_ASSETS
   || !!document.querySelector('script[src*="commentable-html"], link[href*="commentable-html"]');
 function declaredAssetVersion() {
-  const meta = document.querySelector('meta[name="commentable-html-assets"]');
+  const meta = document.querySelector('meta[name="commentable-html-version"]');
   return meta ? (meta.getAttribute("content") || "").trim() : "";
 }
 
@@ -4501,25 +4502,25 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
-  t = t.replace(/<!--\s*BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html v2 - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
+  t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
-  // a "<!--". That prevents note text like "END: commentable-html v2 - EMBEDDED COMMENTS -->"
+  // a "<!--". That prevents note text like "END: commentable-html - EMBEDDED COMMENTS -->"
   // from terminating the region early and leaking the comments that follow it.
   ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"].forEach(function (name) {
-    t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html v2 - " + name +
-      "[\\s\\S]*?<!--\\s*=*\\s*END: commentable-html v2 - " + name + "\\s*=*\\s*-->"), "");
+    t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - " + name +
+      "[\\s\\S]*?<!--\\s*=*\\s*END: commentable-html - " + name + "\\s*=*\\s*-->"), "");
   });
   // The JS region sits last. Opened from file://, fetch() is blocked so
   // _getBaseHtml() returns a DOM snapshot taken while THIS script runs - the
   // parser has not reached the trailing "END ... JS" comment yet, so anchor on
   // the script's own closing tag instead (eat a trailing END marker if present).
-  t = t.replace(/<!--\s*=+\s*BEGIN: commentable-html v2 - JS[\s\S]*?<\/script>\s*(?:<!--\s*=*\s*END: commentable-html v2 - JS\s*-->)?/, "");
+  t = t.replace(/<!--\s*=+\s*BEGIN: commentable-html - JS[\s\S]*?<\/script>\s*(?:<!--\s*=*\s*END: commentable-html - JS\s*-->)?/, "");
   // NonPortable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
-  t = t.replace(/[ \t]*<!--\s*commentable-html v2 - layer loaded[^\n]*-->\s*/i, "");
+  t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[^\n]*-->\s*/i, "");
   t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>\s*/ig, "");
-  t = t.replace(/[ \t]*<!--\s*END: commentable-html v2 - JS\s*-->\s*/i, "");
+  t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->\s*/i, "");
   t = t.replace(/(<body[^>]*class=")([^"]*)(")/, function (m, a, cls, c) {
     return a + cls.replace(/\bsidebar-open\b/, "").replace(/\s+/g, " ").trim() + c;
   });
@@ -4600,29 +4601,29 @@ function _inlineNonPortableAssets(baseHtml) {
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
-  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html v2 - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
-  t = t.replace(/[ \t]*<meta\b[^>]*commentable-html-assets[^>]*>[ \t]*\n?/i, "");
-  t = t.replace(/[ \t]*<!--\s*commentable-html v2 - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
+  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
+  t = t.replace(/[ \t]*<meta\b[^>]*commentable-html-version[^>]*>[ \t]*\n?/i, "");
+  t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
   t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>[ \t]*\n?/ig, "");
-  t = t.replace(/[ \t]*<!--\s*END: commentable-html v2 - JS\s*-->[ \t]*\n?/ig, "");
+  t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
   t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
 
   // 2) Inline the CSS in place of the removed <link>, and the runtime just before
   //    </body>. Each block carries its own region markers on their own lines.
   const styleBlock = "\n<style>\n"
     + "/* ============================================================\n"
-    + "   BEGIN: commentable-html v2 - CSS\n"
+    + "   BEGIN: commentable-html - CSS\n"
     + "   ============================================================ */\n"
     + _escClose(CMH_ASSETS.css) + "\n"
     + "/* ============================================================\n"
-    + "   END: commentable-html v2 - CSS\n"
+    + "   END: commentable-html - CSS\n"
     + "   ============================================================ */\n"
     + "</style>\n";
   const jsBlock = "\n<!-- ============================================================\n"
-    + "     BEGIN: commentable-html v2 - JS\n"
+    + "     BEGIN: commentable-html - JS\n"
     + "     ============================================================ -->\n"
     + "<script>\n" + _escClose(CMH_ASSETS.js) + "\n</scr" + "ipt>\n"
-    + "<!-- END: commentable-html v2 - JS -->\n";
+    + "<!-- END: commentable-html - JS -->\n";
   if (!/<\/head>/i.test(t)) throw new Error("Could not find </head> to inline the stylesheet.");
   if (!/<\/body>/i.test(t)) throw new Error("Could not find </body> to inline the runtime.");
   // Insert the CSS before the LAST </head> and the runtime before the LAST </body>,
@@ -5470,7 +5471,7 @@ if (!comments.length) closeSidebar(); else openSidebar();
 window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
-<!-- END: commentable-html v2 - JS -->
+<!-- END: commentable-html - JS -->
 
 
 <script id="wateringNeedsChartData" type="application/json">

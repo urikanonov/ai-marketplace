@@ -3,15 +3,15 @@
 
 ## Add the layer to an existing HTML
 
-The five `BEGIN/END: commentable-html v2 - <REGION>` blocks in `dist/PORTABLE.html` are designed to be copied verbatim into another document - no JS or CSS edits required. The layer is built to overlay an arbitrary existing page: every style is namespaced under a `cm-` class (plus `mark.cm-hl` and a scoped `.cm-skip[hidden]` rule), and the only globals it introduces are the `:root` / `html[data-theme="dark"]` blocks that define the `--cp-*` variables.
+The five `BEGIN/END: commentable-html - <REGION>` blocks in `dist/PORTABLE.html` are designed to be copied verbatim into another document - no JS or CSS edits required. The layer is built to overlay an arbitrary existing page: every style is namespaced under a `cm-` class (plus `mark.cm-hl` and a scoped `.cm-skip[hidden]` rule), and the only globals it introduces are the `:root` / `html[data-theme="dark"]` blocks that define the `--cp-*` variables.
 
-1. **Open `dist/PORTABLE.html`** and locate the five region pairs. Each region is a single contiguous block bracketed by HTML or CSS comments stamped `commentable-html v2`.
+1. **Open `dist/PORTABLE.html`** and locate the five region pairs. Each region is a single contiguous block bracketed by HTML or CSS comments stamped `commentable-html`.
 2. **Paste CSS region** at the end of any `<style>` block in `<head>` (or create one). It is self-contained: it ships the `--cp-*` variables it needs inside its own `:root` / `html[data-theme="dark"]` blocks, so you do not have to import a theme.
 3. **Paste HANDLED IDS region** as the first child of `<body>`.
 4. **Paste EMBEDDED COMMENTS region** immediately after the HANDLED IDS region. Leave its payload as `[]`; **Export as Portable** is what writes into it.
 5. **Paste COMMENT UI region** immediately after the EMBEDDED COMMENTS region.
 6. **Paste JS region** at the very end of `<body>`, after every other script that renders content. The IIFE wrapper ensures none of the script's local variables (`root`, `comments`, `COMMENT_KEY`, ...) leak into the host page's global scope.
-7. **Mark the content root.** Prefer adding `id="commentRoot"` plus the `data-*` attributes to the host's existing outermost content container rather than introducing a new `<main>` that could change the host's margins or layout. If there is no single wrapper, add `<main id="commentRoot" data-comment-key="..." data-doc-label="..." data-doc-source="...">` around the body content. Pick a unique `data-comment-key` per document. **If you are scripting the swap of the demo content**, remember `dist/PORTABLE.html` has an *example* `<main id="commentRoot">` inside its top-of-file documentation comment (placeholder key `my-doc-v1`); target the **last** `<main id="commentRoot">` (the real one, inside `<body>`), not the first, or your content ends up commented out and the demo renders. See the pitfall note in Step 3.
+7. **Mark the content root.** Prefer adding `id="commentRoot"` plus the `data-*` attributes to the host's existing outermost content container rather than introducing a new `<main>` that could change the host's margins or layout. If there is no single wrapper, add `<main id="commentRoot" data-comment-key="..." data-doc-label="..." data-doc-source="...">` around the body content. Pick a unique `data-comment-key` per document. **If you are scripting the swap of the demo content**, remember `dist/PORTABLE.html` has an *example* `<main id="commentRoot">` inside its top-of-file documentation comment (placeholder key `my-doc`); target the **last** `<main id="commentRoot">` (the real one, inside `<body>`), not the first, or your content ends up commented out and the demo renders. See the pitfall note in Step 3.
 8. **Add `class="cm-skip"`** to any of your own pre-existing floating panels, modals, toolbars, navs, or sticky headers that should not receive comments. Mermaid blocks should keep `cm-skip` too (the mermaid layer attaches via the `mermaid` class, not via the selection layer).
 9. **Adjust the layout** so the open sidebar does not crush your main content (see [Layout recipes](document-layout.md#layout-recipes)).
 
@@ -37,7 +37,7 @@ The layer is designed to coexist with an arbitrary host stylesheet. Walk this ch
 
 When a newer version of the skill ships, upgrading a deployed HTML is mechanical:
 
-1. **Locate each `BEGIN: commentable-html v2 - <REGION>` / `END: commentable-html v2 - <REGION>` pair** in the deployed HTML (five pairs: CSS, HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS).
+1. **Locate each `BEGIN: commentable-html - <REGION>` / `END: commentable-html - <REGION>` pair** in the deployed HTML (five pairs: CSS, HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS).
 2. **For CSS, COMMENT UI, and JS:** delete everything between the markers (markers inclusive) and replace it with the same region from the new `dist/PORTABLE.html`. These three regions are byte-identical across deployments.
 3. **For HANDLED IDS and EMBEDDED COMMENTS:** keep the existing regions intact. The agent owns the HANDLED IDS array and **Export as Portable** owns the EMBEDDED COMMENTS snapshot; the skill never overwrites them on upgrade.
 4. **Leave the `#commentRoot` element alone.** Its `data-*` attributes carry the document's per-instance config, so `data-comment-key` continues to point at the same `localStorage` bucket and comments survive the upgrade.

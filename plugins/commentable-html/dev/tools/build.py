@@ -71,6 +71,82 @@ def sha256(text):
 
 
 # --------------------------------------------------------------------------- #
+# Version: the VERSION file at the dev root is the single source of truth. build
+# reads it and stamps it into the layer const, plugin.json, the marketplace
+# entry, and the per-document <meta>. --check verifies every stamped spot.
+# --------------------------------------------------------------------------- #
+VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_CMH_CONST_RE = re.compile(r'(?m)^(\s*const\s+CMH_VERSION\s*=\s*")[0-9]+\.[0-9]+\.[0-9]+("\s*;)')
+_JSON_VERSION_RE = re.compile(r'("version"\s*:\s*")[0-9]+\.[0-9]+\.[0-9]+(")')
+
+
+def read_version(version_file=None):
+    version_file = VERSION_FILE if version_file is None else version_file
+    with open(version_file, "r", encoding="utf-8") as fh:
+        v = fh.read().strip()
+    if not _SEMVER_RE.match(v):
+        raise SystemExit("build: VERSION must be a semver like 1.2.3, got %r" % v)
+    return v
+
+
+def _stamp_const(text, version, label):
+    new, n = _CMH_CONST_RE.subn(lambda m: m.group(1) + version + m.group(2), text)
+    if n != 1:
+        raise SystemExit("build: expected exactly one CMH_VERSION declaration in %s, found %d" % (label, n))
+    return new
+
+
+def _stamp_plugin_json(text, version):
+    new, n = _JSON_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), text, count=1)
+    if n != 1:
+        raise SystemExit("build: could not find a version field in plugin.json")
+    return new
+
+
+def _stamp_marketplace(text, version):
+    data = json.loads(text)
+    found = False
+    for entry in data.get("plugins", []):
+        if entry.get("name") == "commentable-html":
+            entry["version"] = version
+            found = True
+    if not found:
+        raise SystemExit("build: no commentable-html entry in marketplace.json")
+    return json.dumps(data, indent=2) + "\n"
+
+
+def _find_marketplace(start):
+    cur = os.path.abspath(start)
+    while True:
+        cand = os.path.join(cur, ".github", "plugin", "marketplace.json")
+        if os.path.exists(cand):
+            return cand
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return None
+        cur = parent
+
+
+def source_stamps(version, assets_dir, out_dir):
+    """Return {path: stamped_text} for the hand-maintained files that carry the
+    version: the layer const, plugin.json, and the marketplace entry. Only files
+    that exist are included, so non-standard layouts degrade gracefully. Examples
+    are NOT stamped here - they embed the whole layer and are regenerated from
+    dist, which already carries the version."""
+    stamps = {}
+    js_path = os.path.join(assets_dir, "commentable-html.js")
+    stamps[js_path] = _stamp_const(read(js_path), version, "commentable-html.js")
+    plugin_json = os.path.join(os.path.dirname(os.path.dirname(out_dir)), "plugin.json")
+    if os.path.exists(plugin_json):
+        stamps[plugin_json] = _stamp_plugin_json(read(plugin_json), version)
+    marketplace = _find_marketplace(out_dir)
+    if marketplace:
+        stamps[marketplace] = _stamp_marketplace(read(marketplace), version)
+    return stamps
+
+
+# --------------------------------------------------------------------------- #
 # Sources + version
 # --------------------------------------------------------------------------- #
 def load_sources(assets_dir=None):
@@ -78,12 +154,7 @@ def load_sources(assets_dir=None):
     css = read(os.path.join(assets_dir, "commentable-html.css")).rstrip("\n")
     js = read(os.path.join(assets_dir, "commentable-html.js")).rstrip("\n")
     shell = read(os.path.join(assets_dir, "template.shell.html"))
-    # Anchor to a real top-level declaration line and require exactly one, so a
-    # commented-out or string occurrence elsewhere cannot be picked up.
-    matches = re.findall(r'(?m)^\s*const\s+CMH_VERSION\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*;', js)
-    if len(matches) != 1:
-        raise SystemExit("build: expected exactly one CMH_VERSION declaration in assets/commentable-html.js, found %d" % len(matches))
-    return css, js, shell, matches[0]
+    return css, js, shell, read_version()
 
 
 def _unexpected_dist_files(expected_paths, dist_dir=None):
@@ -95,7 +166,7 @@ def _unexpected_dist_files(expected_paths, dist_dir=None):
     expected = {os.path.normcase(os.path.abspath(p)) for p in expected_paths}
     stale = []
     for name in os.listdir(dist_dir):
-        if re.match(r"commentable-html\.v[0-9.]+\.(css|js|assets\.js)$", name):
+        if re.match(r"commentable-html(\.v[0-9.]+)?\.(css|js|assets\.js)$", name):
             full = os.path.join(dist_dir, name)
             if os.path.normcase(os.path.abspath(full)) not in expected:
                 stale.append(name)
@@ -110,18 +181,22 @@ def _legacy_generated_files(out_dir=None):
     ]
 
 
-def _names(version):
-    base = "commentable-html.v" + version
-    return base + ".css", base + ".js", base + ".assets.js"
+def _names(version=None):
+    # Companion filenames are version-agnostic; each HTML stamps its own version
+    # in the <meta name="commentable-html-version"> and the visible footer.
+    return "commentable-html.css", "commentable-html.js", "commentable-html.assets.js"
 
 
 # --------------------------------------------------------------------------- #
 # Output builders
 # --------------------------------------------------------------------------- #
-def build_inline(css, js, shell):
-    if "{{CMH_CSS}}" not in shell or "{{CMH_JS}}" not in shell:
-        raise SystemExit("build: shell is missing a placeholder")
-    return shell.replace("{{CMH_CSS}}", css).replace("{{CMH_JS}}", js)
+def build_inline(css, js, shell, version):
+    for ph in ("{{CMH_CSS}}", "{{CMH_JS}}", "{{CMH_VERSION}}"):
+        if ph not in shell:
+            raise SystemExit("build: shell is missing placeholder " + ph)
+    return (shell.replace("{{CMH_CSS}}", css)
+                 .replace("{{CMH_JS}}", js)
+                 .replace("{{CMH_VERSION}}", version))
 
 
 def build_assets_js(css, js, version):
@@ -137,14 +212,14 @@ def build_assets_js(css, js, version):
 
 
 _CSS_REGION_RE = re.compile(
-    r"/\*[^\n]*\n\s*BEGIN: commentable-html v2 - CSS.*?END: commentable-html v2 - CSS[^*]*\*/",
+    r"/\*[^\n]*\n\s*BEGIN: commentable-html - CSS.*?END: commentable-html - CSS[^*]*\*/",
     re.S)
 _JS_REGION_RE = re.compile(
-    r"<!--[^\n]*\n\s*BEGIN: commentable-html v2 - JS.*?<!-- END: commentable-html v2 - JS -->",
+    r"<!--[^\n]*\n\s*BEGIN: commentable-html - JS.*?<!-- END: commentable-html - JS -->",
     re.S)
 
 _BOOTSTRAP = (
-    "<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->\n"
+    "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->\n"
     '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>\n'
     "  Commentable-html could not load its companion files. Keep\n"
     "  <code>__JSNAME__</code>, <code>__ASSETSNAME__</code> and <code>__CSSNAME__</code>\n"
@@ -158,7 +233,7 @@ _BOOTSTRAP = (
     "    }\n"
     "  }, 3000);\n"
     "</scr" + "ipt>\n"
-    "<!-- END: commentable-html v2 - NONPORTABLE BOOTSTRAP -->\n"
+    "<!-- END: commentable-html - NONPORTABLE BOOTSTRAP -->\n"
 )
 
 
@@ -170,17 +245,16 @@ def build_nonportable(shell, version):
     if not _CSS_REGION_RE.search(t):
         raise SystemExit("build: could not locate the CSS region in the shell")
     t = _CSS_REGION_RE.sub("", t)
-    head_add = ('<link rel="stylesheet" href="' + css_name + '">\n'
-                '<meta name="commentable-html-assets" content="' + version + '">\n')
+    head_add = '<link rel="stylesheet" href="' + css_name + '">\n'
     if "</style>\n</head>" not in t:
         raise SystemExit("build: could not locate </style></head> in the shell")
     t = t.replace("</style>\n</head>", "</style>\n" + head_add + "</head>", 1)
 
     # 2) Replace the inline JS region with external <script src> companions.
-    js_add = ("<!-- commentable-html v2 - layer loaded from companion files (nonportable mode) -->\n"
+    js_add = ("<!-- commentable-html - layer loaded from companion files (nonportable mode) -->\n"
               '<script src="' + assets_name + '"></script>\n'
               '<script src="' + js_name + '"></script>\n'
-              "<!-- END: commentable-html v2 - JS -->")
+              "<!-- END: commentable-html - JS -->")
     if not _JS_REGION_RE.search(t):
         raise SystemExit("build: could not locate the JS region in the shell")
     t = _JS_REGION_RE.sub(lambda _m: js_add, t)
@@ -200,8 +274,8 @@ def build_nonportable(shell, version):
 
     # 4) Per-document identity so the nonportable demo does not collide with the
     #    inline demo in localStorage, and is clearly labelled.
-    t = t.replace('data-comment-key="commentable-html-demo-v1"',
-                  'data-comment-key="commentable-html-nonportable-demo-v1"', 1)
+    t = t.replace('data-comment-key="commentable-html-demo"',
+                  'data-comment-key="commentable-html-nonportable-demo"', 1)
     t = t.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="NONPORTABLE.html"', 1)
     t = t.replace("<title>Commentable HTML - Demo</title>",
                   "<title>Commentable HTML - NonPortable Demo</title>", 1)
@@ -223,6 +297,8 @@ def build_nonportable(shell, version):
         1)
 
     t = re.sub(r"\n{3,}", "\n\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    t = t.replace("{{CMH_VERSION}}", version)
     if "{{CMH_" in t:
         raise SystemExit("build: an unresolved placeholder remains in NONPORTABLE.html")
     return t
@@ -233,6 +309,7 @@ def build_all(assets_dir=None, out_dir=None):
     out_dir = HERE if out_dir is None else out_dir
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
+    js = _stamp_const(js, version, "commentable-html.js")
     css_name, js_name, assets_name = _names(version)
     assets_js = build_assets_js(css, js, version)
     css_file, js_file = css + "\n", js + "\n"
@@ -245,7 +322,7 @@ def build_all(assets_dir=None, out_dir=None):
         },
     }
     return {
-        os.path.join(dist_dir, "PORTABLE.html"): build_inline(css, js, shell),
+        os.path.join(dist_dir, "PORTABLE.html"): build_inline(css, js, shell, version),
         os.path.join(dist_dir, css_name): css_file,
         os.path.join(dist_dir, js_name): js_file,
         os.path.join(dist_dir, assets_name): assets_js,
@@ -285,11 +362,12 @@ def main(argv):
     out_dir = HERE if ns.out_dir is None else os.path.abspath(ns.out_dir)
     dist_dir = os.path.join(out_dir, "dist")
     outputs, version = build_all(assets_dir, out_dir)
+    stamps = source_stamps(version, assets_dir, out_dir)
     stale = _unexpected_dist_files(outputs.keys(), dist_dir)
     legacy = [p for p in _legacy_generated_files(out_dir) if os.path.exists(p)]
     if ns.check:
         drift = []
-        for path, text in outputs.items():
+        for path, text in list(outputs.items()) + list(stamps.items()):
             rel = os.path.relpath(path, out_dir)
             if not os.path.exists(path):
                 drift.append(rel + " (missing)")
@@ -311,6 +389,8 @@ def main(argv):
     for path in legacy:
         os.remove(path)
     for path, text in outputs.items():
+        write(path, text)
+    for path, text in stamps.items():
         write(path, text)
     if stale:
         print("removed %d stale dist file(s): %s" % (len(stale), ", ".join(stale)))
