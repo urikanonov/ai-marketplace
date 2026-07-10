@@ -14,7 +14,7 @@ surgically swaps only those two per-document parts:
 
 The content root is anchored off the unique CONTENT markers, never off the first
 `<main id="commentRoot">` in the file - the template's top-of-file documentation
-comment contains a second, decoy `<main id="commentRoot">` (the "my-doc-v1"
+comment contains a second, decoy `<main id="commentRoot">` (the "my-doc"
 example) that must stay untouched.
 
 Usage (run from the skill root):
@@ -35,17 +35,17 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-BEGIN_MARKER = "<!-- BEGIN: commentable-html v2 - CONTENT (agent edits ONLY between these markers) -->"
-END_MARKER = "<!-- END: commentable-html v2 - CONTENT -->"
+BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
+END_MARKER = "<!-- END: commentable-html - CONTENT -->"
 
 # Keys that must never become a live content root: the two demo roots the
-# template ships and the "my-doc-v1" example in the top documentation comment.
+# template ships and the "my-doc" example in the top documentation comment.
 # validate.py fails a document whose active root keeps a demo key, so refusing
 # them up front keeps this tool from ever producing a document validate rejects.
 REFUSED_KEYS = frozenset({
-    "commentable-html-demo-v1",
-    "commentable-html-nonportable-demo-v1",
-    "my-doc-v1",
+    "commentable-html-demo",
+    "commentable-html-nonportable-demo",
+    "my-doc",
 })
 
 # The content root, anchored so only a real `<main>` opening tag matches (id is

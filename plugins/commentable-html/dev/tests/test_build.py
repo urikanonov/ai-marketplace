@@ -50,12 +50,30 @@ class BuildTests(unittest.TestCase):
     def setUp(self):
         self.outputs, self.version = build.build_all()
 
+    def _write_checked_tree(self, root):
+        assets = os.path.join(root, "assets")
+        out_dir = os.path.join(root, "skill")
+        os.makedirs(assets)
+        css, js, shell, version = build.load_sources()
+        build.write(os.path.join(assets, "commentable-html.css"), css + "\n")
+        build.write(os.path.join(assets, "commentable-html.js"),
+                    build._stamp_const(js, version, "commentable-html.js") + "\n")
+        build.write(os.path.join(assets, "template.shell.html"), shell)
+        outputs, _ = build.build_all(assets, out_dir)
+        for path, text in outputs.items():
+            build.write(path, text)
+        for path, text in build.source_stamps(version, assets, out_dir).items():
+            build.write(path, text)
+        return assets, out_dir
+
     # -- single source of truth -------------------------------------------- #
     def test_check_subprocess_passes(self):
-        r = subprocess.run(
-            [sys.executable, BUILD_PY, "--check", "--assets-dir", _paths.ASSETS, "--out-dir", ROOT],
-            capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with tempfile.TemporaryDirectory() as d:
+            assets, out_dir = self._write_checked_tree(d)
+            r = subprocess.run(
+                [sys.executable, BUILD_PY, "--check", "--assets-dir", assets, "--out-dir", out_dir],
+                capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_generated_files_match_disk(self):
         for path, text in self.outputs.items():
@@ -70,22 +88,27 @@ class BuildTests(unittest.TestCase):
             self.assertEqual(again[k], self.outputs[k])
 
     def test_inline_template_round_trips_from_shell_and_assets(self):
-        css, js, shell, _v = build.load_sources()
-        rebuilt = build.build_inline(css, js, shell)
+        css, js, shell, version = build.load_sources()
+        js = build._stamp_const(js, version, "commentable-html.js")
+        rebuilt = build.build_inline(css, js, shell, version)
         self.assertEqual(rebuilt, _read(os.path.join(ROOT, "dist", "PORTABLE.html")))
 
     # -- versioning / manifest --------------------------------------------- #
     def test_version_is_single_sourced(self):
-        js = _read(os.path.join(build.ASSETS, "commentable-html.js"))
-        m = re.search(r'const\s+CMH_VERSION\s*=\s*"([\d.]+)"', js)
-        self.assertTrue(m)
-        v = m.group(1)
+        v = build.read_version()
+        self.assertEqual(v, "1.0.0")
         manifest = json.loads(_read(os.path.join(DIST, "manifest.json")))
         self.assertEqual(manifest["version"], v)
-        for name in manifest["files"]:
-            self.assertIn(".v%s." % v, name)
-        eco = _read(os.path.join(DIST, "NONPORTABLE.html"))
-        self.assertIn('content="%s"' % v, eco)
+        self.assertEqual(set(manifest["files"]), {
+            "commentable-html.css",
+            "commentable-html.js",
+            "commentable-html.assets.js",
+        })
+        companion_js = _read(os.path.join(DIST, "commentable-html.js"))
+        self.assertIn('const CMH_VERSION = "%s";' % v, companion_js)
+        for name in ("PORTABLE.html", "NONPORTABLE.html"):
+            html = _read(os.path.join(DIST, name))
+            self.assertIn('<meta name="commentable-html-version" content="%s"' % v, html)
 
     def test_manifest_hashes_match_dist_files(self):
         manifest = json.loads(_read(os.path.join(DIST, "manifest.json")))
@@ -96,15 +119,15 @@ class BuildTests(unittest.TestCase):
 
     # -- asset registry (Export standalone payload) ------------------------ #
     def test_registry_has_no_raw_script_close(self):
-        reg = _read(os.path.join(DIST, "commentable-html.v%s.assets.js" % self.version))
+        reg = _read(os.path.join(DIST, "commentable-html.assets.js"))
         self.assertIsNone(re.search(r"</\s*script", reg, re.IGNORECASE),
                           "assets registry must not contain a raw </script>")
 
     def test_registry_payload_matches_companion_files(self):
-        reg = _read(os.path.join(DIST, "commentable-html.v%s.assets.js" % self.version))
+        reg = _read(os.path.join(DIST, "commentable-html.assets.js"))
         obj = json.loads(re.search(r"=\s*(\{.*\})\s*;", reg, re.S).group(1))
-        css = _read(os.path.join(DIST, "commentable-html.v%s.css" % self.version)).rstrip("\n")
-        js = _read(os.path.join(DIST, "commentable-html.v%s.js" % self.version)).rstrip("\n")
+        css = _read(os.path.join(DIST, "commentable-html.css")).rstrip("\n")
+        js = _read(os.path.join(DIST, "commentable-html.js")).rstrip("\n")
         self.assertEqual(obj["version"], self.version)
         self.assertEqual(obj["css"], css)
         self.assertEqual(obj["js"], js)
@@ -129,33 +152,32 @@ class BuildTests(unittest.TestCase):
         self.assertIn('class="cmh-diff"', tpl, "diff demo block missing from dist/PORTABLE.html")
         self.assertIn("setupDiffLayer", tpl, "diff runtime missing from inline dist/PORTABLE.html")
         self.assertIn("cmh-diff-view", tpl, "diff CSS missing from inline dist/PORTABLE.html")
-        eco_js = _read(os.path.join(DIST, "commentable-html.v%s.js" % self.version))
+        eco_js = _read(os.path.join(DIST, "commentable-html.js"))
         self.assertIn("setupDiffLayer", eco_js, "diff runtime missing from nonportable companion JS")
-        eco_css = _read(os.path.join(DIST, "commentable-html.v%s.css" % self.version))
+        eco_css = _read(os.path.join(DIST, "commentable-html.css"))
         self.assertIn("cmh-diff-view", eco_css, "diff CSS missing from nonportable companion CSS")
 
     # -- stale-artifact detection ------------------------------------------ #
     def test_stale_dist_files_are_detected(self):
         # A companion from an older version, not in the current build, is flagged.
         with tempfile.TemporaryDirectory() as d:
-            for name in ("commentable-html.v9.9.9.css", "commentable-html.v2.5.0.css"):
+            for name in ("commentable-html.css", "commentable-html.v9.9.9.css", "commentable-html.v2.5.0.css"):
                 with open(os.path.join(d, name), "w", encoding="utf-8") as fh:
                     fh.write("x")
             orig = build.DIST
             try:
                 build.DIST = d
-                expected = [os.path.join(d, "commentable-html.v2.5.0.css")]
+                expected = [os.path.join(d, "commentable-html.css")]
                 stale = build._unexpected_dist_files(expected)
             finally:
                 build.DIST = orig
-        self.assertEqual(stale, ["commentable-html.v9.9.9.css"])
+        self.assertEqual(stale, ["commentable-html.v2.5.0.css", "commentable-html.v9.9.9.css"])
 
     def test_version_must_be_single_declaration(self):
         # Two CMH_VERSION declarations must fail the build loudly.
         js = 'const CMH_VERSION = "2.5.0";\nconst CMH_VERSION = "2.6.0";\n'
-        with mock.patch.object(build, "read", side_effect=lambda p: js if p.endswith(".js") else "x{{CMH_CSS}}{{CMH_JS}}"):
-            with self.assertRaises(SystemExit):
-                build.load_sources()
+        with self.assertRaises(SystemExit):
+            build._stamp_const(js, "1.0.0", "commentable-html.js")
 
     def test_write_creates_parent_and_normalizes_lf(self):
         with tempfile.TemporaryDirectory() as d:
@@ -175,8 +197,8 @@ class BuildTests(unittest.TestCase):
 
     def test_build_inline_requires_both_placeholders(self):
         with self.assertRaises(SystemExit) as cm:
-            build.build_inline("css", "js", "<style>{{CMH_CSS}}</style>")
-        self.assertIn("missing a placeholder", str(cm.exception))
+            build.build_inline("css", "js", "<style>{{CMH_CSS}}</style>", "1.0.0")
+        self.assertIn("missing placeholder", str(cm.exception))
 
     def test_build_assets_js_rejects_raw_script_close(self):
         with self.assertRaises(SystemExit) as cm:
@@ -189,9 +211,9 @@ class BuildTests(unittest.TestCase):
         body_pos = shell.index("<body", head_end)
         no_body_shell = shell[:body_pos] + "<main" + shell[body_pos + len("<body"):]
         cases = [
-            (shell.replace("BEGIN: commentable-html v2 - CSS", "BEGIN: broken CSS", 1), "CSS region"),
+            (shell.replace("BEGIN: commentable-html - CSS", "BEGIN: broken CSS", 1), "CSS region"),
             (shell.replace("</style>\n</head>", "</style></head>", 1), "</style></head>"),
-            (shell.replace("BEGIN: commentable-html v2 - JS", "BEGIN: broken JS", 1), "JS region"),
+            (shell.replace("BEGIN: commentable-html - JS", "BEGIN: broken JS", 1), "JS region"),
             (no_body_shell, "<body> tag"),
             (shell + "\n{{CMH_LEFT}}\n", "unresolved placeholder"),
         ]
@@ -216,6 +238,7 @@ class BuildTests(unittest.TestCase):
             err = io.StringIO()
             with mock.patch.object(build, "HERE", d), mock.patch.object(build, "DIST", dist), \
                     mock.patch.object(build, "build_all", return_value=(outputs, "1.2.3")), \
+                    mock.patch.object(build, "source_stamps", return_value={}), \
                     contextlib.redirect_stderr(err):
                 code = build.main(["build.py", "--check"])
             self.assertEqual(code, 1)
@@ -236,6 +259,7 @@ class BuildTests(unittest.TestCase):
             out = io.StringIO()
             with mock.patch.object(build, "HERE", d), mock.patch.object(build, "DIST", dist), \
                     mock.patch.object(build, "build_all", return_value=(outputs, "1.2.3")), \
+                    mock.patch.object(build, "source_stamps", return_value={}), \
                     contextlib.redirect_stdout(out):
                 code = build.main(["build.py", "--check"])
             self.assertEqual(code, 0)
@@ -246,7 +270,7 @@ class BuildTests(unittest.TestCase):
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
             tpl = os.path.join(d, "dist", "PORTABLE.html")
-            css = os.path.join(dist, "commentable-html.v1.2.3.css")
+            css = os.path.join(dist, "commentable-html.css")
             eco = os.path.join(dist, "NONPORTABLE.html")
             stale = os.path.join(dist, "commentable-html.v0.0.1.css")
             with open(stale, "w", encoding="utf-8") as fh:
@@ -255,6 +279,7 @@ class BuildTests(unittest.TestCase):
             out = io.StringIO()
             with mock.patch.object(build, "HERE", d), mock.patch.object(build, "DIST", dist), \
                     mock.patch.object(build, "build_all", return_value=(outputs, "1.2.3")), \
+                    mock.patch.object(build, "source_stamps", return_value={}), \
                     contextlib.redirect_stdout(out):
                 code = build.main(["build.py"])
             self.assertEqual(code, 0)
@@ -266,10 +291,12 @@ class BuildTests(unittest.TestCase):
 
     def test_module_entrypoint_uses_sys_argv(self):
         out = io.StringIO()
-        argv = [BUILD_PY, "--check", "--assets-dir", _paths.ASSETS, "--out-dir", ROOT]
-        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(out):
-            with self.assertRaises(SystemExit) as cm:
-                runpy.run_path(BUILD_PY, run_name="__main__")
+        with tempfile.TemporaryDirectory() as d:
+            assets, out_dir = self._write_checked_tree(d)
+            argv = [BUILD_PY, "--check", "--assets-dir", assets, "--out-dir", out_dir]
+            with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(out):
+                with self.assertRaises(SystemExit) as cm:
+                    runpy.run_path(BUILD_PY, run_name="__main__")
         self.assertEqual(cm.exception.code, 0)
         self.assertIn("build --check OK", out.getvalue())
 

@@ -20,7 +20,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 // Asset version of this runtime. The build reads this constant as the single
 // source of truth for the dist filenames, the version <meta> handshake, and the
 // manifest, so bumping it here is the only place a version changes.
-const CMH_VERSION = "2.5.0";
+const CMH_VERSION = "1.0.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -62,7 +62,7 @@ const CMH_ASSETS = (typeof window !== "undefined" && window.__COMMENTABLE_ASSETS
 const NONPORTABLE_MODE = !!CMH_ASSETS
   || !!document.querySelector('script[src*="commentable-html"], link[href*="commentable-html"]');
 function declaredAssetVersion() {
-  const meta = document.querySelector('meta[name="commentable-html-assets"]');
+  const meta = document.querySelector('meta[name="commentable-html-version"]');
   return meta ? (meta.getAttribute("content") || "").trim() : "";
 }
 
@@ -3041,25 +3041,25 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
-  t = t.replace(/<!--\s*BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html v2 - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
+  t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
-  // a "<!--". That prevents note text like "END: commentable-html v2 - EMBEDDED COMMENTS -->"
+  // a "<!--". That prevents note text like "END: commentable-html - EMBEDDED COMMENTS -->"
   // from terminating the region early and leaking the comments that follow it.
   ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"].forEach(function (name) {
-    t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html v2 - " + name +
-      "[\\s\\S]*?<!--\\s*=*\\s*END: commentable-html v2 - " + name + "\\s*=*\\s*-->"), "");
+    t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - " + name +
+      "[\\s\\S]*?<!--\\s*=*\\s*END: commentable-html - " + name + "\\s*=*\\s*-->"), "");
   });
   // The JS region sits last. Opened from file://, fetch() is blocked so
   // _getBaseHtml() returns a DOM snapshot taken while THIS script runs - the
   // parser has not reached the trailing "END ... JS" comment yet, so anchor on
   // the script's own closing tag instead (eat a trailing END marker if present).
-  t = t.replace(/<!--\s*=+\s*BEGIN: commentable-html v2 - JS[\s\S]*?<\/script>\s*(?:<!--\s*=*\s*END: commentable-html v2 - JS\s*-->)?/, "");
+  t = t.replace(/<!--\s*=+\s*BEGIN: commentable-html - JS[\s\S]*?<\/script>\s*(?:<!--\s*=*\s*END: commentable-html - JS\s*-->)?/, "");
   // NonPortable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
-  t = t.replace(/[ \t]*<!--\s*commentable-html v2 - layer loaded[^\n]*-->\s*/i, "");
+  t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[^\n]*-->\s*/i, "");
   t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>\s*/ig, "");
-  t = t.replace(/[ \t]*<!--\s*END: commentable-html v2 - JS\s*-->\s*/i, "");
+  t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->\s*/i, "");
   t = t.replace(/(<body[^>]*class=")([^"]*)(")/, function (m, a, cls, c) {
     return a + cls.replace(/\bsidebar-open\b/, "").replace(/\s+/g, " ").trim() + c;
   });
@@ -3140,29 +3140,28 @@ function _inlineNonPortableAssets(baseHtml) {
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
-  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html v2 - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
-  t = t.replace(/[ \t]*<meta\b[^>]*commentable-html-assets[^>]*>[ \t]*\n?/i, "");
-  t = t.replace(/[ \t]*<!--\s*commentable-html v2 - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
+  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
+  t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
   t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>[ \t]*\n?/ig, "");
-  t = t.replace(/[ \t]*<!--\s*END: commentable-html v2 - JS\s*-->[ \t]*\n?/ig, "");
+  t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
   t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
 
   // 2) Inline the CSS in place of the removed <link>, and the runtime just before
   //    </body>. Each block carries its own region markers on their own lines.
   const styleBlock = "\n<style>\n"
     + "/* ============================================================\n"
-    + "   BEGIN: commentable-html v2 - CSS\n"
+    + "   BEGIN: commentable-html - CSS\n"
     + "   ============================================================ */\n"
     + _escClose(CMH_ASSETS.css) + "\n"
     + "/* ============================================================\n"
-    + "   END: commentable-html v2 - CSS\n"
+    + "   END: commentable-html - CSS\n"
     + "   ============================================================ */\n"
     + "</style>\n";
   const jsBlock = "\n<!-- ============================================================\n"
-    + "     BEGIN: commentable-html v2 - JS\n"
+    + "     BEGIN: commentable-html - JS\n"
     + "     ============================================================ -->\n"
     + "<script>\n" + _escClose(CMH_ASSETS.js) + "\n</scr" + "ipt>\n"
-    + "<!-- END: commentable-html v2 - JS -->\n";
+    + "<!-- END: commentable-html - JS -->\n";
   if (!/<\/head>/i.test(t)) throw new Error("Could not find </head> to inline the stylesheet.");
   if (!/<\/body>/i.test(t)) throw new Error("Could not find </body> to inline the runtime.");
   // Insert the CSS before the LAST </head> and the runtime before the LAST </body>,

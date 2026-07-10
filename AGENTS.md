@@ -24,7 +24,7 @@ plugins/
 scripts/validate_marketplace.py     # the validator CI runs; also run it locally
 scripts/validate_markdown.py        # Markdown hygiene validator CI runs; also run it locally
 .github/workflows/plugin-tests.yml  # runs each plugin's dev/ Playwright suite
-CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
+SECURITY.md, CODE_OF_CONDUCT.md, LICENSE     # top-level; each plugin has its own CHANGELOG.md
 ```
 
 ## How the manifest maps to plugins
@@ -117,7 +117,7 @@ status check on `main`) enforces:
 
 - Plugin-directory source: bump the version in BOTH `plugin.json` and the manifest entry, and keep them equal.
 - Single-skill source: the manifest entry is the only version; bump it there.
-- Add a `CHANGELOG.md` entry under the plugin name for every version bump.
+- Add an entry to the plugin's own `CHANGELOG.md` (for example `plugins/commentable-html/CHANGELOG.md`) for every version bump.
 
 ## Authorship and contribution policy
 
@@ -153,9 +153,9 @@ status check on `main`) enforces:
 ## Common tasks
 
 - Add a skill to an existing collection plugin: create `plugins/<plugin>/skills/<skill>/SKILL.md`, register it
-  in `marketplace.json`, bump versions per the rules, update `CHANGELOG.md`, run the validator.
+  in `marketplace.json`, bump versions per the rules, update the plugin's `CHANGELOG.md`, run the validator.
 - Fix the auto-updater: edit `hooks/marketplace-update.ps1`, keep it non-blocking and 5.1-safe, bump the plugin
-  version in both its `plugin.json` and the manifest entry, update `CHANGELOG.md`, run the validator.
+  version in both its `plugin.json` and the manifest entry, update the plugin's `CHANGELOG.md`, run the validator.
 - Add browser tests to a plugin: add `plugins/<plugin>/dev/package.json` (with `@playwright/test`),
   `playwright.config.js`, and specs under `dev/tests/`; `plugin-tests.yml` runs them automatically (see
   `plugins/commentable-html/dev/`). Everything under `dev/` stays in the repo but is never distributed.

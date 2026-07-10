@@ -67,21 +67,21 @@ class UpgradeUnitTests(unittest.TestCase):
 
     def test_js_region_end_uses_the_last_marker_occurrence(self):
         # A JS body that itself mentions the END marker text must not truncate the region.
-        text = ("x BEGIN: commentable-html v2 - JS"
-                " real-js-body-with END: commentable-html v2 - JS inside a string"
-                " more-js END: commentable-html v2 - JS y")
+        text = ("x BEGIN: commentable-html - JS"
+                " real-js-body-with END: commentable-html - JS inside a string"
+                " more-js END: commentable-html - JS y")
         b, e = upgrade._region_inner(text, "JS", "<t>")
         inner = text[b:e]
         # the inner must extend to the LAST occurrence, so it still contains the first
         # (marker-like) occurrence rather than stopping at it
         self.assertIn("inside a string", inner)
         self.assertIn("more-js", inner)
-        self.assertEqual(e, text.rfind("END: commentable-html v2 - JS"))
+        self.assertEqual(e, text.rfind("END: commentable-html - JS"))
 
     def test_nonportable_document_is_refused(self):
         tpl = _tpl()
         econ = tpl.replace("<head>",
-                           "<head>\n<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->", 1)
+                           "<head>\n<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->", 1)
         with self.assertRaises(ValueError) as cm:
             upgrade.upgrade(econ, tpl)
         self.assertIn("nonportable", str(cm.exception).lower())

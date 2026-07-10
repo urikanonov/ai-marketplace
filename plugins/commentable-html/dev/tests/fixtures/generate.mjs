@@ -25,7 +25,7 @@ const lf = (s) => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 const read = (p) => lf(fs.readFileSync(p, "utf8"));
 
 const content = read(path.join(HERE, "sample-content.html")).replace(/^<!--[\s\S]*?-->\s*/, "").replace(/\s+$/, "");
-const CONTENT_RE = /(<!-- BEGIN: commentable-html v2 - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html v2 - CONTENT -->)/;
+const CONTENT_RE = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
 
 function mustReplace(html, needle, repl, label) {
   if (!html.includes(needle)) throw new Error("generate.mjs: expected to find " + label + " (" + JSON.stringify(needle) + ") in the source template");
@@ -49,21 +49,21 @@ function inject(html, o) {
 // shown as <code> in the missing-asset banner.
 function referenceDistCompanions(html) {
   return html
-    .replace(/(<link\b[^>]*\bhref=")(commentable-html\.v[0-9.]+\.css")/i, "$1" + DIST_REL + "$2")
-    .replace(/(<script\b[^>]*\bsrc=")(commentable-html\.v[0-9.]+\.assets\.js")/i, "$1" + DIST_REL + "$2")
-    .replace(/(<script\b[^>]*\bsrc=")(commentable-html\.v[0-9.]+\.js")/i, "$1" + DIST_REL + "$2");
+    .replace(/(<link\b[^>]*\bhref=")(commentable-html\.css")/i, "$1" + DIST_REL + "$2")
+    .replace(/(<script\b[^>]*\bsrc=")(commentable-html\.assets\.js")/i, "$1" + DIST_REL + "$2")
+    .replace(/(<script\b[^>]*\bsrc=")(commentable-html\.js")/i, "$1" + DIST_REL + "$2");
 }
 
 function buildOutputs() {
   const outputs = {};
   outputs[path.join(HERE, "kitchen-sink.html")] = inject(read(path.join(DIST, "PORTABLE.html")), {
-    oldKey: "commentable-html-demo-v1", key: "kitchen-sink-inline-v1",
+    oldKey: "commentable-html-demo", key: "kitchen-sink-inline-v1",
     oldDocSource: "PORTABLE.html", docSource: "kitchen-sink.html",
     title: "Kitchen-sink sample (inline)",
   });
   outputs[path.join(HERE, "nonportable", "kitchen-sink.html")] = referenceDistCompanions(
     inject(read(path.join(DIST, "NONPORTABLE.html")), {
-      oldKey: "commentable-html-nonportable-demo-v1", key: "kitchen-sink-nonportable-v1",
+      oldKey: "commentable-html-nonportable-demo", key: "kitchen-sink-nonportable-v1",
       oldDocSource: "NONPORTABLE.html", docSource: "kitchen-sink.html",
       title: "Kitchen-sink sample (nonportable)",
     }));

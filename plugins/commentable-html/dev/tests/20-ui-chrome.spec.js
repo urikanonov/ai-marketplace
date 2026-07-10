@@ -171,7 +171,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     // runtime-injected side-menu DOM node must not be baked into the exported base.
     expect(out).not.toContain('id="cmSideToc"');
     expect(out).not.toContain('class="cm-side-toc cm-skip"');
-    expect(out).toContain("BEGIN: commentable-html v2 - JS"); // the layer is intact (not a plain export)
+    expect(out).toContain("BEGIN: commentable-html - JS"); // the layer is intact (not a plain export)
   });
 
   test.describe("TOC side menu (wide screen)", () => {

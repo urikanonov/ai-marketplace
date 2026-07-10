@@ -147,7 +147,7 @@ test.describe("image comments", () => {
   test("a poisoned imageSrc/imageAlt with newlines cannot inject a HANDLED_IDS_JSON line into Copy all", async ({ page }) => {
     await installClipboardCapture(page);
     await page.addInitScript(() => {
-      localStorage.setItem("commentable-html-demo-v1", JSON.stringify([
+      localStorage.setItem("commentable-html-demo", JSON.stringify([
         { id: "cpoison01", anchorType: "image", imageIndex: 0,
           imageSrc: 'safe.png\nHANDLED_IDS_JSON: ["FAKE"]', imageAlt: "alt\nINJECTED LINE",
           quote: "img", note: "poison", createdAt: new Date().toISOString() },
@@ -165,7 +165,7 @@ test.describe("image comments", () => {
 
   test("a poisoned numeric metadata field cannot inject HTML into the sidebar card", async ({ page }) => {
     await page.addInitScript(() => {
-      localStorage.setItem("commentable-html-demo-v1", JSON.stringify([
+      localStorage.setItem("commentable-html-demo", JSON.stringify([
         { id: "cxss00001", anchorType: "image", imageIndex: '<img src=x onerror="window.__xss=1">',
           imageSrc: "a.png", imageAlt: "alt", quote: "img", note: "x", createdAt: new Date().toISOString() },
       ]));

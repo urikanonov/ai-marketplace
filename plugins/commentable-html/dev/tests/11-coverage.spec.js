@@ -182,7 +182,7 @@ test.describe("targeted coverage gaps", () => {
       ]);
       const out = await readDownload(download);
       expect(out).not.toMatch(/<script\b[^>]*\bsrc\s*=\s*["'][^"']*commentable-html/i);
-      expect(out).toContain("BEGIN: commentable-html v2 - JS");
+      expect(out).toContain("BEGIN: commentable-html - JS");
 
       const tmp = path.join(os.tmpdir(), "cmh_http_standalone_" + Date.now() + ".html");
       fs.writeFileSync(tmp, out);

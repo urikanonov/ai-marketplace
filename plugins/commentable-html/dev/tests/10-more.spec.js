@@ -59,7 +59,7 @@ test.describe("theme, copy payload, nonportable plain, drift", () => {
     });
     // 2) Two embedded comments: the first forges an EMBEDDED COMMENTS END marker in its
     //    text (no "<", which the save path escapes to \u003c), the second holds secrets.
-    const marker = "x END: commentable-html v2 - EMBEDDED COMMENTS --> y";
+    const marker = "x END: commentable-html - EMBEDDED COMMENTS --> y";
     const forged = { ...comment, id: "cforge01", note: marker, text: marker, quote: marker };
     const secret = { ...comment, id: "csecret02", note: "SECRET_SECOND_NOTE", text: "SECRET_SECOND_NOTE", quote: "SECRET_SECOND_QUOTE" };
     const embedded = JSON.stringify([forged, secret]);

@@ -7,7 +7,7 @@ Usage (run from the skill root):
 
 The output has two clearly separated fragments:
   1) a <figure class="chart"> block for #commentRoot content
-  2) chart scripts for after "END: commentable-html v2 - JS" and before </body>
+  2) chart scripts for after "END: commentable-html - JS" and before </body>
 
 The tool self-validates the emitted fragments by injecting them into dist/PORTABLE.html
 and running tools/validate.py as an import.
@@ -24,8 +24,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_ROOT = os.path.dirname(HERE)
 DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 
-BEGIN_MARKER = "<!-- BEGIN: commentable-html v2 - CONTENT (agent edits ONLY between these markers) -->"
-END_MARKER = "<!-- END: commentable-html v2 - CONTENT -->"
+BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
+END_MARKER = "<!-- END: commentable-html - CONTENT -->"
 
 CHART_CDN = (
     '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" '
@@ -130,7 +130,7 @@ def render_output(spec, canvas_id, caption, title=None):
         "<!-- chart_block.py: paste this figure inside #commentRoot content -->\n"
         + parts["figure"]
         + "\n\n"
-        + "<!-- chart_block.py: paste these scripts after END: commentable-html v2 - JS and before </body> -->\n"
+        + "<!-- chart_block.py: paste these scripts after END: commentable-html - JS and before </body> -->\n"
         + parts["scripts"]
         + "\n"
     )

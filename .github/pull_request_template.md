@@ -11,7 +11,7 @@
 ## Checklist
 
 - [ ] Version bumped per CONTRIBUTING when a published plugin changed (both `plugin.json` and manifest for a plugin-dir source; manifest only for a single-skill source)
-- [ ] `CHANGELOG.md` updated when a plugin version changed
+- [ ] The changed plugin's `CHANGELOG.md` updated when its version changed
 - [ ] `python scripts/validate_marketplace.py` passes locally
 - [ ] `python scripts/validate_markdown.py` passes locally
 
