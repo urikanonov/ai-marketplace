@@ -22,7 +22,14 @@ test.describe("UI batch 2: headings, whole-diagram, scroll bubble, code box, ico
     await openInline(page);
     const h = page.locator("#commentRoot h2[id].cm-anchored").first();
     const id = await h.getAttribute("id");
-    await h.click({ position: { x: 5, y: 5 } });
+    // Click the heading TEXT, just past the collapse caret at its start: clicking the
+    // caret itself toggles the section instead of deep-linking, and the enlarged caret
+    // can cover a fixed top-left offset, so anchor the click to the caret's real width.
+    await h.scrollIntoViewIfNeeded();
+    const caret = await h.locator(".cmh-sec-caret").boundingBox();
+    const box = await h.boundingBox();
+    const x = caret ? caret.x + caret.width + 6 : box.x + 8;
+    await page.mouse.click(x, box.y + box.height / 2);
     await expect(page).toHaveURL(new RegExp("#" + id + "$"));
   });
 
