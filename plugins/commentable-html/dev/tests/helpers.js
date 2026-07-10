@@ -4,7 +4,18 @@ import path from "path";
 import os from "os";
 import fs from "fs";
 import http from "http";
+import { spawnSync } from "child_process";
 import { expect } from "@playwright/test";
+
+// The Python interpreter name varies by platform: Linux and most CI runners expose only
+// `python3`, while Windows dev boxes usually expose `python`. Resolve it once so the
+// subprocess specs (mark_handled.py / validate.py) run on both without a spawn ENOENT.
+export const PYTHON = (() => {
+  for (const cmd of ["python3", "python"]) {
+    try { if (spawnSync(cmd, ["--version"]).status === 0) return cmd; } catch (e) { /* try next */ }
+  }
+  return "python";
+})();
 
 // Marketplace pkg/dev split: this suite lives under dev/tests, but the runtime skill it
 // exercises (TEMPLATE.html, dist/, examples/, tools/) ships under pkg. Test-only assets

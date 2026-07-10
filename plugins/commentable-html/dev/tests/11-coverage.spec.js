@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import { PYTHON } from "./helpers.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -187,7 +188,7 @@ test.describe("targeted coverage gaps", () => {
       fs.writeFileSync(tmp, out);
       let page2;
       try {
-        execFileSync("python", ["tools/validate.py", tmp], { cwd: SKILL });
+        execFileSync(PYTHON, ["tools/validate.py", tmp], { cwd: SKILL });
         page2 = await context.newPage();
         await page2.goto(fileUrl(tmp));
         await ready(page2);

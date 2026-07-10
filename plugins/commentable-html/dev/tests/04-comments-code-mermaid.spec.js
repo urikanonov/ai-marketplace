@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import { PYTHON } from "./helpers.js";
 import fs from "fs";
 import path from "path";
 import {
@@ -117,7 +118,7 @@ test.describe("mermaid node comments (local vendored mermaid)", () => {
       await expect(composer).toHaveCount(0);
 
       const cid = await page.locator(".cm-card").first().getAttribute("data-cid");
-      execFileSync("python", ["tools/mark_handled.py", html, cid], { cwd: SKILL });
+      execFileSync(PYTHON, ["tools/mark_handled.py", html, cid], { cwd: SKILL });
 
       await page.reload();
       await ready(page);

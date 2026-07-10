@@ -59,13 +59,10 @@ test.describe("add-comment affordances", () => {
     expect(before).not.toBeNull();
     // Scroll a small amount while the button is showing.
     await page.evaluate(() => window.scrollBy(0, 40));
-    await page.waitForTimeout(60);
-    const after = await gap();
-    // Either the button hid (target moved out), or it stayed pinned to the image at
-    // the same offset - it must NOT have drifted (which would grow the offset by ~40).
-    if (after !== null) {
-      expect(Math.abs(after - before)).toBeLessThan(4);
-    }
+    // Wait for the rAF-based reposition to settle instead of a fixed sleep (which loses the
+    // race under CI worker contention): the button either hides or stays pinned within tolerance.
+    await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 4; },
+      { timeout: 3000 }).toBe(true);
   });
 
   test("the image add button hides when the image scrolls off-screen", async ({ page }) => {
@@ -126,12 +123,11 @@ test.describe("add-comment affordances", () => {
     const before = await gap();
     expect(before).not.toBeNull();
     await page.evaluate(() => window.scrollBy(0, 40));
-    await page.waitForTimeout(60);
-    const after = await gap();
     // Distinct code path from the image button (positionDiffAdd); it must pin the
     // same way - either it hid (target moved out) or it tracked the line exactly.
-    // Assert explicitly so a "hides too eagerly on any scroll" regression cannot pass silently.
-    expect(after === null || Math.abs(after - before) < 4).toBe(true);
+    // Poll for the rAF reposition to settle (deterministic; not flaky under contention).
+    await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 4; },
+      { timeout: 3000 }).toBe(true);
   });
 
   test("the mermaid add button stays pinned to its node on scroll (no drift)", async ({ page }) => {
@@ -157,10 +153,10 @@ test.describe("add-comment affordances", () => {
       const before = await gap();
       expect(before).not.toBeNull();
       await page.evaluate(() => window.scrollBy(0, 40));
-      await page.waitForTimeout(60);
-      const after = await gap();
       // Distinct code path (positionMermaidAdd); same pin invariant as image/diff.
-      expect(after === null || Math.abs(after - before) < 4).toBe(true);
+      // Poll for the rAF reposition to settle (deterministic; not flaky under contention).
+      await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 4; },
+        { timeout: 3000 }).toBe(true);
     } finally {
       await server.close();
     }

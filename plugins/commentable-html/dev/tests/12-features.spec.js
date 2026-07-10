@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import { PYTHON } from "./helpers.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -545,7 +546,7 @@ test.describe("mermaid copy + activation", () => {
       await composer.locator('[data-act="save"]').click();
       await expect(composer).toHaveCount(0);
       const cid = await page.locator(".cm-card").first().getAttribute("data-cid");
-      execFileSync("python", ["tools/mark_handled.py", staged.html, cid], { cwd: SKILL });
+      execFileSync(PYTHON, ["tools/mark_handled.py", staged.html, cid], { cwd: SKILL });
       await page.reload();
       await ready(page);
       await expect(page.locator("#commentRoot .mermaid svg g.node").first()).toBeVisible({ timeout: 20000 });

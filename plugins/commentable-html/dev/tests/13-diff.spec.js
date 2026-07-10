@@ -665,11 +665,15 @@ test("a `\\ No newline at end of file` marker does not stagger del/add in split 
   await expect(page.locator(".cmh-diff-view")).toHaveClass(/cmh-diff-split/); // side-by-side by default
   // The deletion (old side) and addition (new side) share ONE grid row - their
   // top offsets match - rather than staggering across separate rows.
-  const delTop = await page.locator('.cmh-dl-del[data-side="old"]').first()
-    .evaluate((el) => Math.round(el.getBoundingClientRect().top));
-  const addTop = await page.locator('.cmh-dl-add[data-side="new"]').first()
-    .evaluate((el) => Math.round(el.getBoundingClientRect().top));
-  expect(Math.abs(delTop - addTop)).toBeLessThanOrEqual(2);
+  // The deletion (old side) and addition (new side) share ONE grid row (aligned tops).
+  // Poll so a slow first layout under CI contention cannot flake the measurement.
+  await expect.poll(async () => {
+    const delTop = await page.locator('.cmh-dl-del[data-side="old"]').first()
+      .evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    const addTop = await page.locator('.cmh-dl-add[data-side="new"]').first()
+      .evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    return Math.abs(delTop - addTop);
+  }, { timeout: 3000 }).toBeLessThanOrEqual(2);
   // Both `\ No newline` markers render as full-width rows (below the paired change).
   await expect(page.locator(".cmh-dl-full").filter({ hasText: "No newline" })).toHaveCount(2);
 });

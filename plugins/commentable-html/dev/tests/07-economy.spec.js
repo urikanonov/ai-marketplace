@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import { PYTHON } from "./helpers.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -41,7 +42,7 @@ test.describe("economy mode", () => {
     fs.writeFileSync(tmp, html);
     let page2;
     try {
-      execFileSync("python", ["tools/validate.py", tmp], { cwd: SKILL }); // throws on non-zero exit
+      execFileSync(PYTHON, ["tools/validate.py", tmp], { cwd: SKILL }); // throws on non-zero exit
 
       // And it re-opens as a working inline (portable) document.
       page2 = await context.newPage();

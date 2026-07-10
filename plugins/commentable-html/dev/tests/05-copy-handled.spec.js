@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import { PYTHON } from "./helpers.js";
 import fs from "fs";
 import {
   openInline, addTextComment, distinctCids, lastCopied, fileUrl, stageInline, SKILL,
@@ -40,7 +41,7 @@ test.describe("Copy all + handled-id pruning", () => {
       const keptCid = cids[1];
 
       // Simulate the agent's iteration step with the real helper.
-      execFileSync("python", ["tools/mark_handled.py", html, handledCid], { cwd: SKILL });
+      execFileSync(PYTHON, ["tools/mark_handled.py", html, handledCid], { cwd: SKILL });
       expect(fs.readFileSync(html, "utf8")).toContain(handledCid);
 
       await page.reload();

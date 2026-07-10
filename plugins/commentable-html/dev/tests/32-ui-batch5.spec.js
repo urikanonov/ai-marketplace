@@ -192,10 +192,14 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
   test("the tooltip does not overwrite a control's existing aria-label", async ({ page }) => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel so its buttons are focusable
-    const before = await page.locator("#btnSaveHtml").getAttribute("aria-label");
-    await page.locator("#btnSaveHtml").focus();
-    await expect(page.locator(".cm-tooltip.is-visible")).toBeVisible({ timeout: 1500 });
-    expect(await page.locator("#btnSaveHtml").getAttribute("aria-label")).toBe(before); // unchanged
+    const saveBtn = page.locator("#btnSaveHtml");
+    await saveBtn.scrollIntoViewIfNeeded();
+    const before = await saveBtn.getAttribute("aria-label");
+    await saveBtn.focus();
+    // Generous timeout: the focus tooltip appears immediately locally but can lag under CI
+    // worker contention; the assertion is about correctness, not speed.
+    await expect(page.locator(".cm-tooltip.is-visible")).toBeVisible({ timeout: 5000 });
+    expect(await saveBtn.getAttribute("aria-label")).toBe(before); // unchanged
   });
 
   test("the compact action buttons keep their short visible labels", async ({ page }) => {
