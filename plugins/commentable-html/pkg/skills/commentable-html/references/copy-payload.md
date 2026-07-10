@@ -12,7 +12,7 @@ Source: <data-doc-source>
 
 ## Comment 1
 Id: c<timestamp><random>
-When: 6/4/26, 11:41 AM
+When: Jun 4, 2026, 11:41
 Where: H1 "Migration Plan" > H2 "P0 Targets" > H3 "Authoring Detectors"
 Pinpoint: <li> - match 2 of 4 in section
 Offsets: [1234, 1267]
@@ -33,7 +33,7 @@ the user's note
 
 ## Comment 2 (mermaid)
 Id: c<timestamp><random>
-When: 6/4/26, 11:43 AM
+When: Jun 4, 2026, 11:43
 Where: H1 "Migration Plan" > H2 "Processor flow"
 Anchor: mermaid diagram #1, node "AsmGate"
 Node label: ASM machine?
