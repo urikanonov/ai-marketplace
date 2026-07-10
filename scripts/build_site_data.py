@@ -39,8 +39,9 @@ def esc(value):
 def safe_url(url):
     """Allow https, mailto, and in-repo relative URLs; neutralize anything with a
     dangerous or insecure scheme (javascript:, data:, http:, ...) or a protocol-relative
-    //host, so manifest links cannot inject or silently point off-origin."""
-    u = (url or "").strip()
+    //host. Strip C0 control chars, DEL, and whitespace first, because browsers remove
+    tabs/newlines from URLs (so a tab inside "javascript" would otherwise hide the scheme)."""
+    u = re.sub(r"[\x00-\x20\x7f]", "", url or "")
     if u.startswith("//"):
         return "#"
     scheme = re.match(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):", u)

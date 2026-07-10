@@ -19,6 +19,11 @@ class SafeUrlTests(unittest.TestCase):
         for url in ["//evil.example", "javascript:alert(1)", "data:text/html,x", "http://x", "ftp://x"]:
             self.assertEqual(bsd.safe_url(url), "#")
 
+    def test_neutralizes_control_char_scheme_smuggling(self):
+        for url in ["java\tscript:alert(1)", "\x00javascript:alert(1)", "\x00//evil.example",
+                    "  javascript:alert(1)"]:
+            self.assertEqual(bsd.safe_url(url), "#")
+
 
 class MentionsPluginTests(unittest.TestCase):
     def test_anchored_case_insensitive(self):
