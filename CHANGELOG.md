@@ -16,6 +16,7 @@ entry below under that plugin's name.
 - Repository scaffolding: marketplace manifest, JSON Schemas for the manifest and `plugin.json`, CI validation (`.github/workflows/validate.yml`), a pre-commit hook (`.githooks/pre-commit`) that runs the same validator locally, issue and PR templates, `CODEOWNERS`, `SECURITY.md`, and Dependabot.
 - Public/development split convention: a plugin's `dev/` folder (tests, build tooling, canonical sources) stays in the repo but is never distributed; the validator ignores `dev/` and rejects a `source` that would ship it.
 - Playwright CI: `.github/workflows/plugin-tests.yml` discovers and runs each plugin's `dev/` browser suite, demonstrated by `plugins/commentable-html/dev/`.
+- Marketplace website: a light-themed GitHub Pages site (a hub plus a page per plugin) published from `site/` via a GitHub Actions deploy (`.github/workflows/pages.yml`). Content is generated at build time from the manifest by `scripts/build_site_data.py`, and a hermetic Playwright smoke suite under `tests/site/` gates the deploy.
 
 ### Changed
 

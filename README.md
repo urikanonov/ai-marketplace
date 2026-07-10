@@ -4,6 +4,8 @@ A personal marketplace of AI-oriented plugins for the [GitHub Copilot CLI](https
 
 Every plugin here is designed to make AI-assisted development workflows faster and more repeatable. Install what you need by name, or add the whole marketplace and browse.
 
+**Website:** [urikanonov.github.io/ai-marketplace](https://urikanonov.github.io/ai-marketplace/) - browse the plugins and try the commentable-html review surface live in your browser.
+
 ## Available Plugins
 
 | Plugin | Description | Install |
