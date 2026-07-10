@@ -22,6 +22,7 @@ plugins/
   <plugin>/pkg/               # shipped source: plugin.json + skills/ (+ hooks/ or .mcp.json)
   <plugin>/dev/               # development-only, NEVER distributed (tests, build tooling, sources, specs)
 scripts/validate_marketplace.py     # the validator CI runs; also run it locally
+scripts/validate_markdown.py        # Markdown hygiene validator CI runs; also run it locally
 .github/workflows/plugin-tests.yml  # runs each plugin's dev/ Playwright suite
 CHANGELOG.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
 ```
@@ -92,6 +93,7 @@ Nothing under `dev/` is distributed. `node_modules/`, `test-results/`, and `play
 
 ```bash
 python scripts/validate_marketplace.py        # deps: jsonschema, pyyaml
+python scripts/validate_markdown.py            # Markdown hygiene; standard library only
 ```
 
 Enable the pre-commit hook once per clone so this runs automatically before every commit (skip a single

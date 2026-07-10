@@ -70,6 +70,7 @@ ai-marketplace/
       pkg/                                 # shipped: plugin.json + skills/commentable-html/
       dev/                                 # NOT shipped: Playwright tests, dev docs
   scripts/validate_marketplace.py         # marketplace validator (CI + pre-commit)
+  scripts/validate_markdown.py            # Markdown hygiene validator (CI + pre-commit)
   .githooks/pre-commit                    # runs the validator before each commit
   AGENTS.md  CONTRIBUTING.md  SECURITY.md  MAINTAINING.md  LICENSE  README.md
 ```
@@ -80,7 +81,7 @@ The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry 
 
 Plugins here can ship skills, MCP servers, and session hooks that run code on your machine (for example, the auto-updater runs a PowerShell hook on session start). Review a plugin's contents before installing it. To report a security issue privately, see [SECURITY.md](SECURITY.md). Uninstall anything with `copilot plugin uninstall <name>`.
 
-Every change to `main` is validated in CI: `validate` checks the marketplace manifest, each `plugin.json`, and each `SKILL.md` against JSON Schemas and for consistent `source` paths and versions; `plugin-tests` runs each plugin's Playwright suite. Run the validator locally with `python scripts/validate_marketplace.py`, or as a pre-commit hook via `git config core.hooksPath .githooks`.
+Every change to `main` is validated in CI: `validate` checks the marketplace manifest, each `plugin.json`, and each `SKILL.md` against JSON Schemas and for consistent `source` paths and versions, and runs the Markdown validator (`scripts/validate_markdown.py`) over the repo's docs; `plugin-tests` runs each plugin's Playwright suite. Run the validators locally with `python scripts/validate_marketplace.py` and `python scripts/validate_markdown.py`, or as a pre-commit hook via `git config core.hooksPath .githooks`.
 
 **Auto-updater note:** installing `urikan-ai-marketplace-auto-updater` is a standing grant - on every session start it runs `copilot plugin update` for your installed plugins, so it silently applies whatever the maintainer later merges. If you prefer to review each update, do not install it and run `copilot plugin update <name>` yourself. See [SECURITY.md](SECURITY.md).
 

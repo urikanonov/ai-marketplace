@@ -33,11 +33,12 @@ Skip the hook for a single commit with `git commit --no-verify`.
 1. Find the plugin under `plugins/`. A plugin is either a single skill directory (a `SKILL.md` with `name` and `description` front matter) or a plugin directory with a `plugin.json` (used by hook and MCP plugins, such as the auto-updater).
 2. Make your change: fix a hook, sharpen a `SKILL.md`'s instructions, correct docs, or improve portability.
 3. Bump the version (see Versioning below) and add a matching [CHANGELOG.md](CHANGELOG.md) entry.
-4. Run the validator, then open a pull request against `main`:
+4. Run the validators, then open a pull request against `main`:
    ```bash
    python scripts/validate_marketplace.py
+   python scripts/validate_markdown.py
    ```
-   It also runs in CI and is a required status check on `main`. It verifies the manifest against its JSON Schema, that every `source` path exists, that plugin-directory sources have a `plugin.json` whose version matches the manifest entry, and that skill sources have a `SKILL.md` with `name` and `description` front matter.
+   They also run in CI and are required status checks on `main`. `validate_marketplace.py` verifies the manifest against its JSON Schema, that every `source` path exists, that plugin-directory sources have a `plugin.json` whose version matches the manifest entry, and that skill sources have a `SKILL.md` with `name` and `description` front matter. `validate_markdown.py` checks every Markdown file for non-ASCII "smart" characters, local filesystem paths, and broken relative links.
 
 ### Versioning: which file is the source of truth
 
