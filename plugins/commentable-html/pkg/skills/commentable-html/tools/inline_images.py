@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Inline local ``<img src="...">`` references as ``data:`` URIs.
 
-The example / tutorial images live in the skill folder (e.g. ``examples/images/``).
-At build time this tool bundles them into the generated HTML so the artifact is a
+Local images referenced by a report live alongside the HTML (in a folder you point
+at with ``--base``). This tool bundles them into the generated HTML so the artifact is a
 single self-contained file: it finds every ``<img>`` whose ``src`` is a local relative
 path (not ``http(s):``, ``data:``, ``//`` or a ``#`` fragment), reads the referenced
 file relative to a base directory, base64-encodes it with the right MIME type, and

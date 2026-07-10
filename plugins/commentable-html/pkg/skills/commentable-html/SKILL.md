@@ -45,6 +45,8 @@ The HTML file itself is the durable source of truth for which comments have been
 
 ## Steps
 
+**Defaults from a brief request.** A short request such as "make me a commentable HTML for X, cover: <topics>" is enough on its own. Fill in the rest by default: produce a single self-contained standalone file, add a table of contents, write polished sectioned prose, and add tables, charts, mermaid diagrams, images, KQL blocks, and code-review diffs wherever they aid understanding - all commentable. The user should not have to ask for the review layer, the table of contents, single-file output, or rich content; those are the skill's defaults.
+
 ### Step 1 - Decide whether to add the layer
 
 **MUST** confirm the use case fits ("When to use" section below). Do not add the layer to short HTML emails, one-shot views, or HTML rendered inside a sandbox that disables `localStorage` or clipboard APIs.

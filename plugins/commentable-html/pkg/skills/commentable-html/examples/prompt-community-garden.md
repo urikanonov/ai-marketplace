@@ -1,70 +1,23 @@
 # Example prompt - Planning a Community Garden
 
-This is a ready-to-reuse prompt that generates the companion `report-community-garden.html`
-in this folder. It is a benign, non-work planning document that exercises **every**
-feature of the commentable-html skill, so it doubles as the walkthrough subject in
-[`../docs/TUTORIAL.md`](../docs/TUTORIAL.md).
-
-The prompt below is written the way a real person would ask - it says *what* they
-want, not *how* to build it. All of the build machinery (self-contained review layer,
-table of contents, "Run in Azure Data Explorer" links, the version-pinned CDN-failure-guarded chart
-loader, mermaid handling, inlined images, validation) is the skill's job, not the
-user's. See "What the skill does for you" further down for the mapping.
+A minimal prompt that produces the companion `report-community-garden.html`. It is a
+benign planning document that exercises every feature of the skill, so it also serves
+as the subject of [`../docs/TUTORIAL.md`](../docs/TUTORIAL.md).
 
 ## Prompt
 
-> Make me a shareable, commentable web page for planning a community garden - call it
-> **"Planning a Community Garden"**. I want to open it in a browser and be able to
-> leave comments on any part of it, and I want to hand it to other people so they can
-> comment too, without any network dependency.
->
-> Cover these sections: Overview, Goals & Success Criteria, Site Selection, Garden
-> Layout, Planting Schedule, Budget, Timeline & Milestones, Risks & Mitigations, and
-> Next Steps. Add a table of contents so I can jump around, and keep the writing
-> polished with practical bullet points in each section.
->
-> Please also include:
-> - A budget table and a planting schedule table.
-> - A chart of the estimated monthly watering needs.
-> - A "should I plant today?" decision flowchart, and a timeline diagram for the
-> milestones.
-> - A couple of simple pictures of the garden layout and the raised beds.
-> - A little analysis of past severe weather by month so I can plan around frosts and
-> storms - and give me a way to run that query myself.
-> - A small example of a code change that adjusts the watering schedule for rainfall.
->
-> Make it a single file I can email to people.
+> Make me a commentable HTML page for planning a community garden. Cover: Overview,
+> Goals and Success Criteria, Site Selection, Garden Layout, Planting Schedule, Budget,
+> Timeline and Milestones, Risks and Mitigations, and Next Steps.
 
-## What the skill does for you
+## What you get
 
-The user never has to know the plumbing. From the request above, the skill:
+From that one line, the skill produces a single self-contained HTML file you can open
+in any browser and share:
 
-- Wraps the content in the self-contained commentable review layer (no CDN for the
- review UI) so any paragraph, list item, table cell, code block, chart, image, or
- diagram is selectable and commentable, whether or not the CDN is reachable.
-- Generates the table of contents + heading `id`s and wires the scroll-spy side menu.
-- Renders the tables and prose.
-- Turns "a chart" into a Chart.js bar chart using the version-pinned, SRI-pinned,
- CDN-failure-guarded loader the skill's chart checks require, with a caption.
-- Turns "a flowchart" and "a timeline" into two mermaid diagrams that degrade to
- readable source text when it cannot load.
-- Turns "a way to run that query myself" into a KQL block against the public Kusto
- help cluster (`https://help.kusto.windows.net`, database `Samples`, table
- `StormEvents`) with an adjacent "Run in Azure Data Explorer" deep link.
-- Turns "a small example of a code change" into a unified diff rendered as a
- `<pre class="cmh-diff">` code-review block.
-- Stores the two pictures in `examples/images/` and inlines them as `data:` URIs at
- build time so the file stays a single portable document.
-- Validates the result with `python tools/validate.py` and fixes anything it flags.
-
-## Build
-
-The images live in the skill folder and are inlined into the HTML at build time:
-
-```
-python tools/inline_images.py examples/report-community-garden.html --base examples --strict
-python tools/validate.py examples/report-community-garden.html
-```
-
-The committed `report-community-garden.html` already has its images inlined, so it opens as a
-single self-contained file with no dependency on the `images/` folder.
+- Every part is commentable: select text, a table cell, a chart, an image, or a diagram
+  and leave a note; the side panel collects them.
+- It writes polished sections with a table of contents, and adds tables, a chart,
+  diagrams, and pictures where they help.
+- When you are done, Copy all hands your comments back to the agent as a tidy list, and
+  it can bake them into a shareable copy.

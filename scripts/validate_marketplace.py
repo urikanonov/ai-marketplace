@@ -215,6 +215,8 @@ def main() -> int:
             err(f"{rel(skill_md)}: front matter is missing 'name'")
         if not fm.get("description"):
             err(f"{rel(skill_md)}: front matter is missing 'description'")
+        elif len(str(fm.get("description"))) > 800:
+            err(f"{rel(skill_md)}: front matter 'description' is {len(str(fm.get('description')))} chars; must be under 800")
 
     if errors:
         print(f"Validation FAILED with {len(errors)} error(s):")

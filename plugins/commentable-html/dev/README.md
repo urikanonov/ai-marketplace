@@ -105,6 +105,17 @@ From `pkg\skills\commentable-html`, the same check is:
 python tools\validate.py --strict dist\PORTABLE.html examples\report-community-garden.html examples\report-taxi.html
 ```
 
+## Rebuilding the example images
+
+The shipped example reports are single self-contained files with their images inlined as data URIs, so `pkg/skills/commentable-html/examples/` has no `images/` folder. The source images for the community garden example live here in `dev/example-images/` (kept for reproducibility, not shipped). To re-inline them into a freshly authored example and validate it, run from `dev/`:
+
+```powershell
+python ..\pkg\skills\commentable-html\tools\inline_images.py <report>.html --base ..\dev\example-images --strict
+python ..\pkg\skills\commentable-html\tools\validate.py <report>.html
+```
+
+The taxi example has no images, so it needs no inlining - just validate it.
+
 ## Fixtures workflow
 
 Interaction and fuzz tests use generated fixtures under `tests/fixtures/`, including the inline `kitchen-sink.html` and the NonPortable `nonportable/kitchen-sink.html`. They are derived from the current shipped `dist/PORTABLE.html`, `dist/`, and `tests/fixtures/sample-content.html`.

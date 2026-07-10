@@ -22,7 +22,6 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `examples/prompt-taxi.md` | Prompt for the NYC taxi example. |
 | `examples/report-community-garden.html` | Portable community garden example report. |
 | `examples/report-taxi.html` | Portable NYC taxi example report. |
-| `examples/images/` | Source images used by the community garden example before inlining. |
 
 ## Runtime tools
 
