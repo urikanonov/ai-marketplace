@@ -72,12 +72,12 @@ For a fully self-contained / offline file, vendor or inline Chart.js instead: pl
  init and un-deferred. Prefer a local or inline loader for a self-contained shareable artifact. If CDN loading is explicitly accepted, pin the version and add Subresource Integrity plus `crossorigin`:
 
  ```html
- <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
- integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
+ <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"
+ integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo"
  crossorigin="anonymous"></script>
  ```
 
- (That hash is for `chart.js@4.4.0` UMD min; regenerate for any other version with
+ (That hash is for `chart.js@4.4.0` UMD - the static `dist/chart.umd.js`, never jsDelivr's on-demand-minified `.min.js`, which must not be used with SRI; regenerate for any other version with
  `curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.) Guard the init with `if (typeof Chart === "undefined") return;` so a network-unavailable, CDN-blocked, or SRI-mismatch load degrades to a blank canvas instead of a thrown error. If the report will be served under a
  Content-Security-Policy (internal wiki, SharePoint, portal), a CDN `<script src>` and the inline
  init/style are blocked unless allowlisted: self-host `chart.umd.min.js` next to the file and move
@@ -94,8 +94,8 @@ For a fully self-contained / offline file, vendor or inline Chart.js instead: pl
 **In `<head>`** (Chart.js + chart CSS):
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
- integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"
+ integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo"
  crossorigin="anonymous"></script>
 <style>
  .chart { margin: 1.2rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; }

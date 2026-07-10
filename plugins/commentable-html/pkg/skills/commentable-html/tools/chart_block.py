@@ -28,8 +28,8 @@ BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between
 END_MARKER = "<!-- END: commentable-html - CONTENT -->"
 
 CHART_CDN = (
-    '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" '
-    'integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" '
+    '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" '
+    'integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" '
     'crossorigin="anonymous"></script>'
 )
 
