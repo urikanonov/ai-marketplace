@@ -1,6 +1,6 @@
 ---
 name: commentable-html
-description: Turn any standalone HTML into an offline, single-file commentable review surface with inline comments and an exportable review bundle.
+description: Turn any standalone HTML into a single-file commentable review surface with inline comments and an exportable review bundle.
 ---
 
 # Commentable HTML
