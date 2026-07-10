@@ -183,7 +183,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      The agent appends every processed comment id to this JSON
      array. On the next page load the IDs are removed from
      localStorage, dropped from the live list, and filtered out
-     of any Copy or Save in HTML so handled comments cannot
+     of any Copy or Export as Portable so handled comments cannot
      come back through a stale clipboard or blob.
 
      Append-only. Duplicates tolerated. Order does not matter.
@@ -199,7 +199,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      BEGIN: commentable-html v2 - EMBEDDED COMMENTS
      ============================================================
      Optional in-HTML snapshot of the comments array, so the file
-     is self-contained for sharing. The "Save in HTML" button in
+     is self-contained for sharing. The "Export as Portable" button in
      the toolbar writes the current comments here and downloads a
      fresh copy of the file (named <stem>-comments.html); replace
      the original with it to make the comments stick.
@@ -210,7 +210,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      is then written back to localStorage so reloads converge.
 
      Hand-edit only if you know what you are doing. Normal flow:
-     click "Save in HTML" in the toolbar.
+     click "Export as Portable" in the toolbar.
 -->
 <script type="application/json" id="embeddedComments">
 []

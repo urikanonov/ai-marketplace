@@ -183,7 +183,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      The agent appends every processed comment id to this JSON
      array. On the next page load the IDs are removed from
      localStorage, dropped from the live list, and filtered out
-     of any Copy or Save in HTML so handled comments cannot
+     of any Copy or Export as Portable so handled comments cannot
      come back through a stale clipboard or blob.
 
      Append-only. Duplicates tolerated. Order does not matter.
@@ -199,7 +199,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      BEGIN: commentable-html v2 - EMBEDDED COMMENTS
      ============================================================
      Optional in-HTML snapshot of the comments array, so the file
-     is self-contained for sharing. The "Save in HTML" button in
+     is self-contained for sharing. The "Export as Portable" button in
      the toolbar writes the current comments here and downloads a
      fresh copy of the file (named <stem>-comments.html); replace
      the original with it to make the comments stick.
@@ -210,7 +210,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      is then written back to localStorage so reloads converge.
 
      Hand-edit only if you know what you are doing. Normal flow:
-     click "Save in HTML" in the toolbar.
+     click "Export as Portable" in the toolbar.
 -->
 <script type="application/json" id="embeddedComments">
 []
@@ -383,7 +383,7 @@ print(reduce([1, 2, 3, 4], lambda a, b: a + b))</code></pre>
 
   <section>
     <h2 id="mermaid">Mermaid diagrams</h2>
-    <p>If your document contains <code>&lt;pre class="mermaid"&gt;</code> blocks, the layer also lets you comment on individual diagram nodes. Hover any node, click <em>Add Comment</em>, and the comment is anchored to that node by its mermaid id rather than character offsets. The highlight is a coloured ring around the node and survives reload, copy, and Save in HTML.</p>
+    <p>If your document contains <code>&lt;pre class="mermaid"&gt;</code> blocks, the layer also lets you comment on individual diagram nodes. Hover any node, click <em>Add Comment</em>, and the comment is anchored to that node by its mermaid id rather than character offsets. The highlight is a coloured ring around the node and survives reload, copy, and Export as Portable.</p>
     <p>Keep <code>cm-skip</code> on the <code>&lt;pre class="mermaid"&gt;</code> element. It tells the text-selection layer to ignore the source code; the mermaid layer attaches independently via the <code>mermaid</code> class.</p>
     <pre class="mermaid cm-skip">
 flowchart LR
@@ -408,7 +408,7 @@ gantt
 
   <section>
     <h2 id="diffs">Code review diffs (side-by-side or inline)</h2>
-    <p>Drop a unified diff into a <code>&lt;pre class="cmh-diff"&gt;</code> block and the layer renders a colored code-review view. Use the <strong>Side-by-side view</strong> / <strong>Inline view</strong> button in the diff header to switch layouts; the preference is remembered for this document (all diffs in a document share one layout default). Hover any changed or context line and click <em>Add Comment</em> to attach a review comment. Diff comments are anchored to the diff line structurally (not by character offset), so they survive the layout toggle, reload, copy, and Save in HTML. Add <code>data-diff-label</code> to name the file.</p>
+    <p>Drop a unified diff into a <code>&lt;pre class="cmh-diff"&gt;</code> block and the layer renders a colored code-review view. Use the <strong>Side-by-side view</strong> / <strong>Inline view</strong> button in the diff header to switch layouts; the preference is remembered for this document (all diffs in a document share one layout default). Hover any changed or context line and click <em>Add Comment</em> to attach a review comment. Diff comments are anchored to the diff line structurally (not by character offset), so they survive the layout toggle, reload, copy, and Export as Portable. Add <code>data-diff-label</code> to name the file.</p>
     <pre class="cmh-diff" data-diff-label="src/reducer.py">@@ -1,5 +1,6 @@
  def reduce(items, fn, acc=None):
 -    for x in items:

@@ -1,7 +1,7 @@
 (() => {
 // Pristine snapshot of the document, captured before any DOM mutation
 // (mermaid render, restored highlights, dynamic composers, etc). Used as a
-// fallback by "Save in HTML" when fetch() of the page URL is unavailable
+// fallback by "Export as Portable" when fetch() of the page URL is unavailable
 // (e.g., file:// or offline). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
 const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
@@ -741,7 +741,7 @@ function setupMermaidLayer() {
    Diff lines are commentable: hovering a changed/context line shows a
    "+ comment" button and the comment anchors by (diffIndex, lineKey) - a
    structural anchor, like mermaid nodes - so it survives the layout toggle,
-   reload, copy, and Save in HTML. The rendered view lives inside a .cm-skip
+   reload, copy, and Export as Portable. The rendered view lives inside a .cm-skip
    host so diff text stays out of the text-offset system, and the raw unified
    diff is preserved in a hidden <script class="cmh-diff-src"> so an exported
    file re-renders on open. */
@@ -1408,7 +1408,7 @@ function setupDiffLayer() {
    Makes any <img> inside #commentRoot commentable. Each image is indexed in
    document order (imageIndex); hovering or keyboard-focusing it reveals a
    floating "+ comment" button, and the comment anchors by (imageIndex) with the
-   src as a fallback key so it survives reload, Copy all, and Save in HTML. This
+   src as a fallback key so it survives reload, Copy all, and Export as Portable. This
    mirrors the mermaid-node layer: images carry no text offsets, so image
    comments are excluded from backfillContext / restoreHighlights. */
 const imageEls = [];
@@ -2925,7 +2925,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
   }
 });
 
-/* ---------- Save in HTML (embed comments + download a copy) ---------- */
+/* ---------- Export as Portable (embed comments + download a copy) ---------- */
 // Strategy: always download a fresh HTML copy with the current comments
 // embedded in the <script id="embeddedComments"> block. The user can keep
 // the copy as-is or replace the original with it. We deliberately do NOT
@@ -3065,7 +3065,7 @@ async function saveAsPlain() {
 }
 const _btnSaveHtml = document.getElementById("btnSaveHtml");
 const _btnSaveHtmlTop = document.getElementById("btnSaveHtmlTop");
-// "Export with embedded comments" always downloads ONE combined/standalone file
+// "Export as Portable" always downloads ONE combined/standalone file
 // with the current comments embedded: saveStandalone() rebuilds an inline file in
 // economy mode and falls back to the in-file embed for inline documents.
 if (_btnSaveHtml) _btnSaveHtml.addEventListener("click", saveStandalone);
@@ -3153,7 +3153,7 @@ function _suggestedStandaloneFilename() {
   return m ? m[1] + ".standalone" + m[3] : name;
 }
 async function saveStandalone() {
-  // "Export with embedded comments" always yields ONE combined file with the
+  // "Export as Portable" always yields ONE combined file with the
   // comments embedded. An inline document is already self-contained, so the plain
   // in-file embed (saveHtml) IS the combined file there; only economy documents
   // need the CSS/JS inlined to become portable.
