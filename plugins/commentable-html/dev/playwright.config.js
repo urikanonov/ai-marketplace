@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // E2E regression suite for the commentable-html layer. Fixtures are the skill's
-// own generated artifacts (TEMPLATE.html, dist/ECONOMY.html), opened over file://
+// own generated artifacts (dist/PORTABLE.html, dist/NONPORTABLE.html), opened over file://
 // so the suite matches how users actually open these documents (double-click).
 export default defineConfig({
   testDir: "./tests",

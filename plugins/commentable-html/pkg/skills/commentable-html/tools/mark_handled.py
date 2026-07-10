@@ -8,7 +8,7 @@ surrounding boilerplate; this helper does it deterministically instead, touching
 only the handled-ids array and leaving the rest of the document's structure
 untouched. (A file's newline style is preserved when it is uniformly CRLF or
 uniformly LF; a file that mixes newline styles is normalized to the dominant one.)
-It works for both inline and economy documents (the block is inline in both).
+It works for both inline and nonportable documents (the block is inline in both).
 
 Usage (run from the skill root):
     python tools/mark_handled.py <file.html> c<id> [c<id> ...]

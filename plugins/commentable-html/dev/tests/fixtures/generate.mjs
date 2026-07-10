@@ -5,7 +5,7 @@
 //   node tests/fixtures/generate.mjs           # (re)generate the fixtures
 //   node tests/fixtures/generate.mjs --check   # fail if committed fixtures are stale
 //
-// Fixtures are DERIVED from the current TEMPLATE.html + dist/ (which tools/build.py
+// Fixtures are DERIVED from the current dist/PORTABLE.html + dist/ (which tools/build.py
 // generates), so after changing the layer run tools/build.py then this. The --check mode
 // is wired into the test suite so stale fixtures fail CI.
 import fs from "fs";
@@ -15,12 +15,12 @@ import { fileURLToPath } from "url";
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // dev/tests/fixtures
 const DEV = path.resolve(HERE, "..", "..");                // dev
 // Marketplace pkg/dev split: the fixtures are written here under dev, but they are DERIVED
-// from the shipped skill (TEMPLATE.html + dist/) which lives under pkg.
+// from the shipped skill (dist/PORTABLE.html + dist/) which lives under pkg.
 const SKILL = path.resolve(DEV, "..", "pkg", "skills", "commentable-html");
 const DIST = path.join(SKILL, "dist");
-// Relative path from the economy fixture's own directory to the shipped dist/, so its
+// Relative path from the nonportable fixture's own directory to the shipped dist/, so its
 // companion <link>/<script src> references resolve across the pkg/dev split over file://.
-const DIST_REL = path.relative(path.join(HERE, "economy"), DIST).replace(/\\/g, "/") + "/";
+const DIST_REL = path.relative(path.join(HERE, "nonportable"), DIST).replace(/\\/g, "/") + "/";
 const lf = (s) => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 const read = (p) => lf(fs.readFileSync(p, "utf8"));
 
@@ -42,7 +42,7 @@ function inject(html, o) {
   return html;
 }
 
-// The economy fixture is a real economy document whose companion <link>/<script src>
+// The nonportable fixture is a real nonportable document whose companion <link>/<script src>
 // normally sit next to it. To avoid a THIRD copy of the css/js/assets.js in the repo
 // (they already live in the shipped dist/), point the fixture's companion refs at the
 // shipped dist/ via DIST_REL. Only the load attributes are rewritten, not the filenames
@@ -56,16 +56,16 @@ function referenceDistCompanions(html) {
 
 function buildOutputs() {
   const outputs = {};
-  outputs[path.join(HERE, "kitchen-sink.html")] = inject(read(path.join(SKILL, "TEMPLATE.html")), {
+  outputs[path.join(HERE, "kitchen-sink.html")] = inject(read(path.join(DIST, "PORTABLE.html")), {
     oldKey: "commentable-html-demo-v1", key: "kitchen-sink-inline-v1",
-    oldDocSource: "TEMPLATE.html", docSource: "kitchen-sink.html",
+    oldDocSource: "PORTABLE.html", docSource: "kitchen-sink.html",
     title: "Kitchen-sink sample (inline)",
   });
-  outputs[path.join(HERE, "economy", "kitchen-sink.html")] = referenceDistCompanions(
-    inject(read(path.join(DIST, "ECONOMY.html")), {
-      oldKey: "commentable-html-economy-demo-v1", key: "kitchen-sink-economy-v1",
-      oldDocSource: "ECONOMY.html", docSource: "kitchen-sink.html",
-      title: "Kitchen-sink sample (economy)",
+  outputs[path.join(HERE, "nonportable", "kitchen-sink.html")] = referenceDistCompanions(
+    inject(read(path.join(DIST, "NONPORTABLE.html")), {
+      oldKey: "commentable-html-nonportable-demo-v1", key: "kitchen-sink-nonportable-v1",
+      oldDocSource: "NONPORTABLE.html", docSource: "kitchen-sink.html",
+      title: "Kitchen-sink sample (nonportable)",
     }));
   return outputs;
 }

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, openToolbarMenu, fileUrl, INLINE, openKitchenSinkEconomy } from "./helpers.js";
+import { openInline, ready, openToolbarMenu, fileUrl, INLINE, openKitchenSinkNonPortable } from "./helpers.js";
 
 // UI batch 5: searchable/collapsible Help, custom tooltips, compact sidebar header,
 // bigger section caret, and icons on the TOC / scroll buttons.
@@ -234,9 +234,9 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     expect(await page.locator(".cm-help-topic[open]").count()).toBe(1);
   });
 
-  test("economy mode keeps the sidebar Export button's icon and full aria-label", async ({ page }) => {
-    await openKitchenSinkEconomy(page);
-    await expect(page.locator("body.cm-economy")).toHaveCount(1);
+  test("nonportable mode keeps the sidebar Export button's icon and full aria-label", async ({ page }) => {
+    await openKitchenSinkNonPortable(page);
+    await expect(page.locator("body.cm-nonportable")).toHaveCount(1);
     expect(await page.locator("#btnSaveHtml svg.cm-ui-ico").count()).toBe(1); // icon preserved
     expect((await page.locator("#btnSaveHtml span").innerText()).trim()).toBe("Portable");
     await expect(page.locator("#btnSaveHtml")).toHaveAttribute("aria-label", "Export as Portable");

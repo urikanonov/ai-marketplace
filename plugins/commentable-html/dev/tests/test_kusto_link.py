@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for kusto_link.py (the Run in Kusto deep-link builder)."""
+"""Regression tests for kusto_link.py (the Run in Azure Data Explorer deep-link builder)."""
 import base64
 import contextlib
 import gzip

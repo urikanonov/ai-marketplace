@@ -2,7 +2,7 @@
 """Regression tests for build.py (the commentable-html asset pipeline).
 
 Standard library only. Verifies the single-source-of-truth guarantees: the shell
-+ canonical assets deterministically regenerate TEMPLATE.html and the dist/ set,
++ canonical assets deterministically regenerate dist/PORTABLE.html and the dist/ set,
 the on-disk generated files are in sync (--check), the manifest hashes are
 correct, the version is single-sourced, and the asset registry round-trips.
 
@@ -23,7 +23,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
-ROOT = _paths.PKG          # shipped outputs (TEMPLATE.html, dist/)
+ROOT = _paths.PKG          # shipped outputs (dist/PORTABLE.html, dist/)
 TOOLS = _paths.TOOLS       # shipped runtime tools (for `import validate`)
 sys.path.insert(0, TOOLS)
 sys.path.insert(0, _paths.DEV_TOOLS)  # maintainer-only build tool (build.py lives in dev/)
@@ -72,7 +72,7 @@ class BuildTests(unittest.TestCase):
     def test_inline_template_round_trips_from_shell_and_assets(self):
         css, js, shell, _v = build.load_sources()
         rebuilt = build.build_inline(css, js, shell)
-        self.assertEqual(rebuilt, _read(os.path.join(ROOT, "TEMPLATE.html")))
+        self.assertEqual(rebuilt, _read(os.path.join(ROOT, "dist", "PORTABLE.html")))
 
     # -- versioning / manifest --------------------------------------------- #
     def test_version_is_single_sourced(self):
@@ -84,7 +84,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(manifest["version"], v)
         for name in manifest["files"]:
             self.assertIn(".v%s." % v, name)
-        eco = _read(os.path.join(DIST, "ECONOMY.html"))
+        eco = _read(os.path.join(DIST, "NONPORTABLE.html"))
         self.assertIn('content="%s"' % v, eco)
 
     def test_manifest_hashes_match_dist_files(self):
@@ -110,29 +110,29 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(obj["js"], js)
 
     # -- token win --------------------------------------------------------- #
-    def test_economy_is_much_smaller_than_inline(self):
-        inline = self.outputs[os.path.join(ROOT, "TEMPLATE.html")]
-        eco = self.outputs[os.path.join(DIST, "ECONOMY.html")]
+    def test_nonportable_is_much_smaller_than_inline(self):
+        inline = self.outputs[os.path.join(ROOT, "dist", "PORTABLE.html")]
+        eco = self.outputs[os.path.join(DIST, "NONPORTABLE.html")]
         self.assertLess(len(eco), len(inline) * 0.4,
-                        "economy template should be dramatically smaller than inline")
+                        "nonportable template should be dramatically smaller than inline")
 
     # -- both generated templates validate --------------------------------- #
     def test_both_templates_validate_clean(self):
-        for rel in ("TEMPLATE.html", os.path.join("dist", "ECONOMY.html")):
+        for rel in ("dist/PORTABLE.html", os.path.join("dist", "NONPORTABLE.html")):
             errors, warnings = validate.validate(os.path.join(ROOT, rel))
             self.assertEqual(errors, [], "%s errors: %r" % (rel, errors))
             self.assertEqual(warnings, [], "%s warnings: %r" % (rel, warnings))
 
     # -- diff / code-review layer ships in the generated artifacts --------- #
     def test_diff_layer_present_in_artifacts(self):
-        tpl = _read(os.path.join(ROOT, "TEMPLATE.html"))
-        self.assertIn('class="cmh-diff"', tpl, "diff demo block missing from TEMPLATE.html")
-        self.assertIn("setupDiffLayer", tpl, "diff runtime missing from inline TEMPLATE.html")
-        self.assertIn("cmh-diff-view", tpl, "diff CSS missing from inline TEMPLATE.html")
+        tpl = _read(os.path.join(ROOT, "dist", "PORTABLE.html"))
+        self.assertIn('class="cmh-diff"', tpl, "diff demo block missing from dist/PORTABLE.html")
+        self.assertIn("setupDiffLayer", tpl, "diff runtime missing from inline dist/PORTABLE.html")
+        self.assertIn("cmh-diff-view", tpl, "diff CSS missing from inline dist/PORTABLE.html")
         eco_js = _read(os.path.join(DIST, "commentable-html.v%s.js" % self.version))
-        self.assertIn("setupDiffLayer", eco_js, "diff runtime missing from economy companion JS")
+        self.assertIn("setupDiffLayer", eco_js, "diff runtime missing from nonportable companion JS")
         eco_css = _read(os.path.join(DIST, "commentable-html.v%s.css" % self.version))
-        self.assertIn("cmh-diff-view", eco_css, "diff CSS missing from economy companion CSS")
+        self.assertIn("cmh-diff-view", eco_css, "diff CSS missing from nonportable companion CSS")
 
     # -- stale-artifact detection ------------------------------------------ #
     def test_stale_dist_files_are_detected(self):
@@ -183,7 +183,7 @@ class BuildTests(unittest.TestCase):
             build.build_assets_js("</script>", "js", "1.2.3")
         self.assertIn("raw </script>", str(cm.exception))
 
-    def test_build_economy_reports_malformed_shells(self):
+    def test_build_nonportable_reports_malformed_shells(self):
         _css, _js, shell, version = build.load_sources()
         head_end = shell.index("</head>")
         body_pos = shell.index("<body", head_end)
@@ -198,15 +198,15 @@ class BuildTests(unittest.TestCase):
         for bad_shell, message in cases:
             with self.subTest(message=message):
                 with self.assertRaises(SystemExit) as cm:
-                    build.build_economy(bad_shell, version)
+                    build.build_nonportable(bad_shell, version)
                 self.assertIn(message, str(cm.exception))
 
     def test_main_check_reports_missing_outdated_and_stale(self):
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
-            tpl = os.path.join(d, "TEMPLATE.html")
-            missing = os.path.join(dist, "ECONOMY.html")
+            tpl = os.path.join(d, "dist", "PORTABLE.html")
+            missing = os.path.join(dist, "NONPORTABLE.html")
             stale = os.path.join(dist, "commentable-html.v0.0.1.css")
             with open(tpl, "w", encoding="utf-8") as fh:
                 fh.write("old")
@@ -219,16 +219,16 @@ class BuildTests(unittest.TestCase):
                     contextlib.redirect_stderr(err):
                 code = build.main(["build.py", "--check"])
             self.assertEqual(code, 1)
-            self.assertIn("TEMPLATE.html (out of date)", err.getvalue())
-            self.assertIn("dist%sECONOMY.html (missing)" % os.sep, err.getvalue())
+            self.assertIn("dist%sPORTABLE.html (out of date)" % os.sep, err.getvalue())
+            self.assertIn("dist%sNONPORTABLE.html (missing)" % os.sep, err.getvalue())
             self.assertIn("commentable-html.v0.0.1.css", err.getvalue())
 
     def test_main_check_ok_prints_version(self):
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
-            tpl = os.path.join(d, "TEMPLATE.html")
-            eco = os.path.join(dist, "ECONOMY.html")
+            tpl = os.path.join(d, "dist", "PORTABLE.html")
+            eco = os.path.join(dist, "NONPORTABLE.html")
             outputs = {tpl: "tpl", eco: "eco"}
             for path, text in outputs.items():
                 with open(path, "w", encoding="utf-8") as fh:
@@ -245,9 +245,9 @@ class BuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
-            tpl = os.path.join(d, "TEMPLATE.html")
+            tpl = os.path.join(d, "dist", "PORTABLE.html")
             css = os.path.join(dist, "commentable-html.v1.2.3.css")
-            eco = os.path.join(dist, "ECONOMY.html")
+            eco = os.path.join(dist, "NONPORTABLE.html")
             stale = os.path.join(dist, "commentable-html.v0.0.1.css")
             with open(stale, "w", encoding="utf-8") as fh:
                 fh.write("stale")

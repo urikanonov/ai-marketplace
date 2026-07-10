@@ -63,8 +63,8 @@
 
 <!-- Mermaid loader. The commentable layer auto-detects pre.mermaid / div.mermaid
      elements once mermaid renders them to SVG, so no per-doc wiring is required.
-     Diagrams render by default; if mermaid cannot load (offline / CDN blocked) the
-     block degrades to readable source text. For a fully offline artifact, vendor a
+     Diagrams render by default; if mermaid cannot load (network unavailable / CDN blocked) the
+     block degrades to readable source text. For a fully self-contained artifact, vendor a
      local copy of mermaid and import it by relative path (see SKILL.md). -->
 <script type="module">
   try {
@@ -76,7 +76,7 @@
     } else {
       m.run().catch(() => {});
     }
-  } catch (e) { /* offline or blocked: pre.mermaid stays as source text */ }
+  } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
 </script>
 
 <style>
@@ -101,6 +101,9 @@
   --cp-success: #16a34a;
   --cp-danger: #dc2626;
   --cp-warning: #f59e0b;
+  --cp-danger-soft: rgba(220, 38, 38, 0.08);
+  --cp-warning-soft: rgba(245, 158, 11, 0.10);
+  --cp-success-soft: rgba(22, 163, 74, 0.10);
   --cp-link: #0078d4;
   --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
   --cp-panel-strong: rgba(255, 255, 255, 0.96);
@@ -123,6 +126,9 @@ html[data-theme="dark"] {
   --cp-success: #4ade80;
   --cp-danger: #f87171;
   --cp-warning: #fbbf24;
+  --cp-danger-soft: rgba(248, 113, 113, 0.15);
+  --cp-warning-soft: rgba(251, 191, 36, 0.16);
+  --cp-success-soft: rgba(74, 222, 128, 0.16);
   --cp-link: #4da6ff;
   --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   --cp-panel-strong: rgba(41, 41, 41, 0.96);
@@ -220,7 +226,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <button id="btnShowTop" type="button" title="Show the comments panel">Show</button>
       <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it">Export as Portable</button>
       <button id="btnSavePlainTop" type="button" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)">Export to Plain HTML</button>
-      <button id="btnHelpTop" type="button" title="Open help: what every button does and how the review workflow works" aria-haspopup="dialog">Help</button>
+      <button id="btnHelpTop" type="button" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog">Help &amp; About</button>
     </div>
   </div>
 </div>
@@ -231,7 +237,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <span class="cm-type-badge" id="cmTypeBadge" title="Whether this file is portable. Portable means self-contained and safe to share (assets embedded and every comment embedded). Not portable means it references external skill/companion resources and/or has comments not embedded yet - hover shows which."></span>
       <span class="cm-version" id="cmVersion" title="commentable-html version that generated this file"></span>
       <span class="cm-head-actions">
-        <button type="button" id="btnHelp" class="cm-help-btn" title="Open help: what every button does and how the review workflow works" aria-haspopup="dialog">Help</button>
+        <button type="button" id="btnHelp" class="cm-help-btn" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog">Help &amp; About</button>
         <button type="button" id="btnCloseSidebar" class="cm-help-btn cm-hide-btn" title="Hide the comments panel (it stays available from the floating toolbar)">Hide<svg class="cm-btn-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </span>
     </div>
@@ -293,16 +299,19 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 <main id="commentRoot"
       data-comment-key="commentable-html-demo-v1"
       data-doc-label="Commentable HTML demo"
-      data-doc-source="TEMPLATE.html">
+      data-doc-source="PORTABLE.html">
 <!-- BEGIN: commentable-html v2 - CONTENT (agent edits ONLY between these markers) -->
 
-  <h1>Commentable HTML demo</h1>
-  <p>This is a small playground. Try selecting some text below, right-click, and pick <em>Add Comment</em>. The comment appears in the sidebar on the right.</p>
+  <header class="cmh-lede">
+    <h1>Commentable HTML demo</h1>
+    <p>This is a small playground. Try selecting some text below, right-click, and pick <em>Add Comment</em>. The comment appears in the sidebar on the right.</p>
+  </header>
 
   <nav class="cm-toc" aria-label="Table of contents">
     <div class="cm-toc-title">Contents</div>
     <ol>
       <li><a href="#try-it">Try it</a></li>
+      <li><a href="#callouts">Callouts</a></li>
       <li><a href="#code-blocks">Code blocks</a></li>
       <li><a href="#kql">Kusto query blocks</a></li>
       <li><a href="#mermaid">Mermaid diagrams</a></li>
@@ -315,6 +324,15 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
     <h2 id="try-it">Try it</h2>
     <p>The commenting layer wraps a selection in a <code>&lt;mark&gt;</code> element and stores the character offsets within <code>#commentRoot</code> in <code>localStorage</code>. The HTML file itself records which comments the agent has already handled, so reloading the page automatically prunes anything marked done.</p>
     <p>Clicking a highlighted span scrolls the sidebar to that comment. Clicking <em>jump</em> in a card scrolls the document to that highlight.</p>
+  </section>
+
+  <section>
+    <h2 id="callouts">Callouts</h2>
+    <p>Use <code>cmh-callout</code> with a variant class for boxed asides. They stay readable in both light and dark themes because they use the built-in theme variables, so never hardcode colors in report content.</p>
+    <div class="cmh-callout cmh-callout-info"><strong>Info.</strong> A neutral note styled with <code>cmh-callout-info</code>.</div>
+    <div class="cmh-callout cmh-callout-success"><strong>Success.</strong> The change landed cleanly; <code>cmh-callout-success</code> signals a good outcome.</div>
+    <div class="cmh-callout cmh-callout-warning"><strong>Warning.</strong> Double-check this step; <code>cmh-callout-warning</code> draws a cautious eye.</div>
+    <div class="cmh-callout cmh-callout-danger"><strong>Bottom line.</strong> The important takeaway, styled with <code>cmh-callout-danger</code> and fully readable on its tinted background in either theme.</div>
   </section>
 
   <section>
@@ -355,10 +373,10 @@ print(reduce([1, 2, 3, 4], lambda a, b: a + b))</code></pre>
   </section>
 
   <section>
-    <h2 id="kql">Kusto query blocks (Run in Kusto deep link)</h2>
-    <p>An embedded KQL query is rendered as a framed figure: a caption bar naming the target cluster/database, a <strong>Run in Kusto</strong> deep link that opens the query pre-loaded in the Azure Data Explorer web UX, and the query itself with author-time syntax highlighting. The code stays a normal commentable <code>&lt;pre&gt;&lt;code class="language-kusto"&gt;</code> block (select any part to comment); the caption and link are <code>cm-skip</code> chrome. Build the figure with <code>tools/kql_highlight.py</code> (which calls <code>tools/kusto_link.py</code> for the link).</p>
+    <h2 id="kql">Kusto query blocks (Run in Azure Data Explorer deep link)</h2>
+    <p>An embedded KQL query is rendered as a framed figure: a caption bar naming the target cluster/database, a <strong>Run in Azure Data Explorer</strong> deep link that opens the query pre-loaded in the Azure Data Explorer web UX, and the query itself with author-time syntax highlighting. The code stays a normal commentable <code>&lt;pre&gt;&lt;code class="language-kusto"&gt;</code> block (select any part to comment); the caption and link are <code>cm-skip</code> chrome. Build the figure with <code>tools/kql_highlight.py</code> (which calls <code>tools/kusto_link.py</code> for the link).</p>
     <figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F1WNPQ%2BCMBRFd3%2FFDRNN5KM4ODGYyG4Cg2uRF2QoJe1DgvHH2wYGTe7yzrs5t2ZjdfWikd3hg%2BVJllCzstwMmtASL0Qj4k4xsSdxkefnJJc%2BAmmKfy6L5CSF%2BBUxoSwRNdX9Ukf%2B4WatlR3ehG0UJR5mHjkWR1yVVr3vh1K8HTdrJrK8CrTrrkOWobdmngJyAXktmwkyD2SXdOQeXy3AkyHcAAAA" target="_blank" rel="noopener noreferrer">Run in Kusto &#9654;</a></figcaption>
+<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F1WNPQ%2BCMBRFd3%2FFDRNN5KM4ODGYyG4Cg2uRF2QoJe1DgvHH2wYGTe7yzrs5t2ZjdfWikd3hg%2BVJllCzstwMmtASL0Qj4k4xsSdxkefnJJc%2BAmmKfy6L5CSF%2BBUxoSwRNdX9Ukf%2B4WatlR3ehG0UJR5mHjkWR1yVVr3vh1K8HTdrJrK8CrTrrkOWobdmngJyAXktmwkyD2SXdOQeXy3AkyHcAAAA" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
 <pre><code class="language-kusto">StormEvents
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> StartTime <span class="cmh-kql-kw">between</span> <span class="cmh-kql-op">(</span><span class="cmh-kql-fn">datetime</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">2007</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">01</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">01</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-op">.</span><span class="cmh-kql-op">.</span> <span class="cmh-kql-fn">datetime</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">2007</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">12</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">31</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">)</span>
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> State <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"TEXAS"</span>

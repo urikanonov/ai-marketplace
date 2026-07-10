@@ -16,7 +16,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import finalize  # noqa: E402
 
-TEMPLATE = os.path.join(ROOT, "TEMPLATE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 
 
 class FinalizeTests(unittest.TestCase):

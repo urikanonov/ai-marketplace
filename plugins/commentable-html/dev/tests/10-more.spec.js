@@ -3,11 +3,11 @@ import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import {
-  openKitchenSink, openKitchenSinkEconomy, addTextComment, openToolbarMenu, lastCopied,
-  readDownload, fileUrl, ready, stageInline, KITCHEN_SINK, KITCHEN_SINK_ECONOMY, SKILL, DEV,
+  openKitchenSink, openKitchenSinkNonPortable, addTextComment, openToolbarMenu, lastCopied,
+  readDownload, fileUrl, ready, stageInline, KITCHEN_SINK, KITCHEN_SINK_NONPORTABLE, SKILL, DEV,
 } from "./helpers.js";
 
-test.describe("theme, copy payload, economy plain, drift", () => {
+test.describe("theme, copy payload, nonportable plain, drift", () => {
   test("renders and works in dark theme (clawpilotTheme=dark)", async ({ page }) => {
     await page.goto(fileUrl(KITCHEN_SINK) + "?clawpilotTheme=dark");
     await ready(page);
@@ -30,8 +30,8 @@ test.describe("theme, copy payload, economy plain, drift", () => {
     expect(bundle).toContain("review this code");
   });
 
-  test("Export plain in economy mode strips the JS companion but keeps the CSS companion and content", async ({ page }) => {
-    await openKitchenSinkEconomy(page);
+  test("Export plain in nonportable mode strips the JS companion but keeps the CSS companion and content", async ({ page }) => {
+    await openKitchenSinkNonPortable(page);
     await openToolbarMenu(page);
     const [download] = await Promise.all([
       page.waitForEvent("download"),

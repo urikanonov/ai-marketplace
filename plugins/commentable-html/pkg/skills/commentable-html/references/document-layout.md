@@ -1,6 +1,5 @@
 # Document layout
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Theme (light by default)
 
@@ -18,10 +17,10 @@ For a document with roughly **4+ top-level sections**, add a table of contents s
 
 ```html
 <nav class="cm-toc" aria-label="Table of contents">
-  <div class="cm-toc-title">Contents</div>
-  <ol>
-    <li><a href="#section-id">Section title</a></li>
-  </ol>
+ <div class="cm-toc-title">Contents</div>
+ <ol>
+ <li><a href="#section-id">Section title</a></li>
+ </ol>
 </nav>
 ```
 
@@ -68,19 +67,19 @@ The sidebar is `position: fixed` with width 400px. When `body.sidebar-open` is s
 body.sidebar-open .app { padding-right: 1.5rem; }
 
 @media (min-width: 1100px) {
-  body.sidebar-open .app {
-    max-width: none;
-    margin: 0;
-    padding-left: 2rem;
-    padding-right: calc(400px + 2rem);
-  }
+ body.sidebar-open .app {
+ max-width: none;
+ margin: 0;
+ padding-left: 2rem;
+ padding-right: calc(400px + 2rem);
+ }
 }
 
 @media (min-width: 1900px) {
-  body.sidebar-open .app {
-    padding-left: calc((100vw - 400px - 1480px) / 2);
-    padding-right: calc(400px + (100vw - 400px - 1480px) / 2);
-  }
+ body.sidebar-open .app {
+ padding-left: calc((100vw - 400px - 1480px) / 2);
+ padding-right: calc(400px + (100vw - 400px - 1480px) / 2);
+ }
 }
 ```
 

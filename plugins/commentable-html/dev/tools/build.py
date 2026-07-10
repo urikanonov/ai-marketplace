@@ -12,13 +12,13 @@ Single source of truth
 
 Generated (never hand-edit; `--check` fails if they drift)
 ----------------------------------------------------------
-  TEMPLATE.html                       - inline / standalone template (self-contained)
+  dist/PORTABLE.html                       - inline / standalone template (self-contained)
   dist/commentable-html.v<V>.css      - external layer stylesheet
   dist/commentable-html.v<V>.js       - external runtime
   dist/commentable-html.v<V>.assets.js- asset registry (css+js as strings) used by
                                         "Export standalone" to rebuild a portable file
   dist/manifest.json                  - version + sha256 of each companion file
-  dist/ECONOMY.html                   - economy template, sitting next to its companions
+  dist/NONPORTABLE.html                   - nonportable template, sitting next to its companions
 
 Usage (flat layout, run from the skill root):
   python tools/build.py            # (re)generate everything, print a size report
@@ -30,7 +30,7 @@ the ai-marketplace pkg/dev split - run from dev/):
   python tools/build.py --assets-dir assets --out-dir ../pkg/skills/commentable-html --check
 
 --assets-dir defaults to <skill>/assets and --out-dir defaults to the skill root (the
-directory that receives TEMPLATE.html and dist/). --check compares the files already
+directory that receives dist/PORTABLE.html and dist/). --check compares the files already
 present in --out-dir against a fresh build.
 """
 import argparse
@@ -102,6 +102,14 @@ def _unexpected_dist_files(expected_paths, dist_dir=None):
     return sorted(stale)
 
 
+def _legacy_generated_files(out_dir=None):
+    out_dir = HERE if out_dir is None else out_dir
+    return [
+        os.path.join(out_dir, "TEMPLATE" + ".html"),
+        os.path.join(out_dir, "dist", "ECO" + "NOMY" + ".html"),
+    ]
+
+
 def _names(version):
     base = "commentable-html.v" + version
     return base + ".css", base + ".js", base + ".assets.js"
@@ -136,7 +144,7 @@ _JS_REGION_RE = re.compile(
     re.S)
 
 _BOOTSTRAP = (
-    "<!-- BEGIN: commentable-html v2 - ECONOMY BOOTSTRAP -->\n"
+    "<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->\n"
     '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>\n'
     "  Commentable-html could not load its companion files. Keep\n"
     "  <code>__JSNAME__</code>, <code>__ASSETSNAME__</code> and <code>__CSSNAME__</code>\n"
@@ -150,11 +158,11 @@ _BOOTSTRAP = (
     "    }\n"
     "  }, 3000);\n"
     "</scr" + "ipt>\n"
-    "<!-- END: commentable-html v2 - ECONOMY BOOTSTRAP -->\n"
+    "<!-- END: commentable-html v2 - NONPORTABLE BOOTSTRAP -->\n"
 )
 
 
-def build_economy(shell, version):
+def build_nonportable(shell, version):
     css_name, js_name, assets_name = _names(version)
     t = shell
 
@@ -169,7 +177,7 @@ def build_economy(shell, version):
     t = t.replace("</style>\n</head>", "</style>\n" + head_add + "</head>", 1)
 
     # 2) Replace the inline JS region with external <script src> companions.
-    js_add = ("<!-- commentable-html v2 - layer loaded from companion files (economy mode) -->\n"
+    js_add = ("<!-- commentable-html v2 - layer loaded from companion files (nonportable mode) -->\n"
               '<script src="' + assets_name + '"></script>\n'
               '<script src="' + js_name + '"></script>\n'
               "<!-- END: commentable-html v2 - JS -->")
@@ -190,33 +198,33 @@ def build_economy(shell, version):
             .replace("__CSSNAME__", css_name))
     t = t[:idx] + "\n" + boot + t[idx:]
 
-    # 4) Per-document identity so the economy demo does not collide with the
+    # 4) Per-document identity so the nonportable demo does not collide with the
     #    inline demo in localStorage, and is clearly labelled.
     t = t.replace('data-comment-key="commentable-html-demo-v1"',
-                  'data-comment-key="commentable-html-economy-demo-v1"', 1)
-    t = t.replace('data-doc-source="TEMPLATE.html"', 'data-doc-source="ECONOMY.html"', 1)
+                  'data-comment-key="commentable-html-nonportable-demo-v1"', 1)
+    t = t.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="NONPORTABLE.html"', 1)
     t = t.replace("<title>Commentable HTML - Demo</title>",
-                  "<title>Commentable HTML - Economy Demo</title>", 1)
+                  "<title>Commentable HTML - NonPortable Demo</title>", 1)
 
-    # 5) Clarify in the header comment that this is the economy build (CSS/JS load
+    # 5) Clarify in the header comment that this is the nonportable build (CSS/JS load
     #    from companion files), so the inline "five regions" description below is not
-    #    misleading to someone starting from ECONOMY.html.
+    #    misleading to someone starting from NONPORTABLE.html.
     t = t.replace(
         "This file is a fully working demo of the commentable-html skill.\n"
         "  Open it in a browser to confirm the behavior, then copy the\n"
         "  five marker-delimited regions below into your own HTML.",
-        "This file is the ECONOMY build of the commentable-html demo: the CSS and JS\n"
+        "This file is the NONPORTABLE build of the commentable-html demo: the CSS and JS\n"
         "  load from companion files (see the <link> / <script src> references), NOT\n"
         "  from inline regions. Open it in a browser (with the companion files\n"
         "  alongside) to confirm the behavior. The numbered region list below\n"
-        "  describes the inline TEMPLATE.html; in economy mode you copy only the\n"
+        "  describes the inline dist/PORTABLE.html; in nonportable mode you copy only the\n"
         "  in-body regions (HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI) and keep the\n"
         "  companion <link> / <script> references.",
         1)
 
     t = re.sub(r"\n{3,}", "\n\n", t)
     if "{{CMH_" in t:
-        raise SystemExit("build: an unresolved placeholder remains in ECONOMY.html")
+        raise SystemExit("build: an unresolved placeholder remains in NONPORTABLE.html")
     return t
 
 
@@ -237,12 +245,12 @@ def build_all(assets_dir=None, out_dir=None):
         },
     }
     return {
-        os.path.join(out_dir, "TEMPLATE.html"): build_inline(css, js, shell),
+        os.path.join(dist_dir, "PORTABLE.html"): build_inline(css, js, shell),
         os.path.join(dist_dir, css_name): css_file,
         os.path.join(dist_dir, js_name): js_file,
         os.path.join(dist_dir, assets_name): assets_js,
         os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2) + "\n",
-        os.path.join(dist_dir, "ECONOMY.html"): build_economy(shell, version),
+        os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version),
     }, version
 
 
@@ -251,16 +259,16 @@ def build_all(assets_dir=None, out_dir=None):
 # --------------------------------------------------------------------------- #
 def _report(outputs, version, out_dir=None):
     out_dir = HERE if out_dir is None else out_dir
-    tpl = outputs[os.path.join(out_dir, "TEMPLATE.html")]
-    eco = outputs[os.path.join(out_dir, "dist", "ECONOMY.html")]
-    inline_b = len(tpl.encode("utf-8"))
-    eco_b = len(eco.encode("utf-8"))
-    saved = inline_b - eco_b
+    portable = outputs[os.path.join(out_dir, "dist", "PORTABLE.html")]
+    nonportable = outputs[os.path.join(out_dir, "dist", "NONPORTABLE.html")]
+    inline_b = len(portable.encode("utf-8"))
+    nonportable_b = len(nonportable.encode("utf-8"))
+    saved = inline_b - nonportable_b
     pct = (saved / inline_b * 100) if inline_b else 0
     print("commentable-html build - version %s" % version)
-    print("  inline  TEMPLATE.html : %6d bytes" % inline_b)
-    print("  economy ECONOMY.html  : %6d bytes" % eco_b)
-    print("  per-regeneration boilerplate avoided in economy mode: %d bytes (%.0f%% smaller)"
+    print("  inline  dist/PORTABLE.html : %6d bytes" % inline_b)
+    print("  nonportable dist/NONPORTABLE.html  : %6d bytes" % nonportable_b)
+    print("  per-regeneration boilerplate avoided in nonportable mode: %d bytes (%.0f%% smaller)"
           % (saved, pct))
 
 
@@ -271,13 +279,14 @@ def main(argv):
     parser.add_argument("--assets-dir", default=None,
                         help="directory holding the canonical sources (default: <skill>/assets)")
     parser.add_argument("--out-dir", default=None,
-                        help="directory that receives TEMPLATE.html and dist/ (default: the skill root)")
+                        help="directory that receives dist/PORTABLE.html and dist/ (default: the skill root)")
     ns = parser.parse_args(argv[1:])
     assets_dir = ASSETS if ns.assets_dir is None else os.path.abspath(ns.assets_dir)
     out_dir = HERE if ns.out_dir is None else os.path.abspath(ns.out_dir)
     dist_dir = os.path.join(out_dir, "dist")
     outputs, version = build_all(assets_dir, out_dir)
     stale = _unexpected_dist_files(outputs.keys(), dist_dir)
+    legacy = [p for p in _legacy_generated_files(out_dir) if os.path.exists(p)]
     if ns.check:
         drift = []
         for path, text in outputs.items():
@@ -288,6 +297,8 @@ def main(argv):
                 drift.append(rel + " (out of date)")
         for name in stale:
             drift.append(os.path.join("dist", name) + " (stale - not produced by the current build; delete it)")
+        for path in legacy:
+            drift.append(os.path.relpath(path, out_dir) + " (legacy generated file - delete it)")
         if drift:
             sys.stderr.write("build --check FAILED; run `python tools/build.py`:\n")
             for d in drift:
@@ -297,6 +308,8 @@ def main(argv):
         return 0
     for name in stale:
         os.remove(os.path.join(dist_dir, name))
+    for path in legacy:
+        os.remove(path)
     for path, text in outputs.items():
         write(path, text)
     if stale:

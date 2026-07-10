@@ -5,7 +5,7 @@ test.describe("inline (standalone) mode", () => {
   test("initializes and reports itself as a portable file", async ({ page }) => {
     await openInline(page);
     await expect(page.locator("#cmhModeBadge")).toHaveText("Portable");
-    expect(await page.evaluate(() => document.body.classList.contains("cm-economy"))).toBe(false);
+    expect(await page.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
     expect(await page.evaluate(() => !!window.__COMMENTABLE_ASSETS__)).toBe(false);
     expect(await page.evaluate(() => window.__commentableHtmlVersion)).toBeTruthy();
   });

@@ -1,29 +1,62 @@
 # File inventory
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
+This inventory lists the files that ship with the skill. Development sources, the spec, and the test suites live in the project's source repository and are not part of the installed plugin.
 
-## Files
+## Shipped skill root
 
-The skill root holds the public docs and template plus the root tooling config (`SKILL.md`, `README.md`, `TEMPLATE.html`, and the npm/Playwright config); the rest lives in subfolders (`assets/` canonical sources, `dist/` economy bundle, `tools/` Python scripts, `docs/` deep-dives, `tests/` suites). Artifacts you use when producing or reviewing a document (see `docs/DEVELOPMENT.md` for the canonical sources, `tools/build.py`, and the test suites):
+| Path | Purpose |
+| --- | --- |
+| `SKILL.md` | Public skill instructions, generation steps, validation, and review loop. |
+| `dist/README.md` | Terse pointer for generated dist artifacts. |
+| `dist/PORTABLE.html` | Standalone inline template and demo. |
+| `dist/NONPORTABLE.html` | NonPortable starting shell. |
+| `dist/commentable-html.v<V>.css` | Versioned stylesheet companion. |
+| `dist/commentable-html.v<V>.js` | Versioned runtime companion. |
+| `dist/commentable-html.v<V>.assets.js` | Asset registry used by Export as Portable. |
+| `dist/manifest.json` | Version and SHA-256 metadata for companions. |
+| `tools/` | Runtime Python helpers that ship with the skill. |
+| `references/` | Detailed generated-report references. |
+| `docs/TUTORIAL.md` | Tutorial using `examples/report-community-garden.html`. |
+| `docs/tutorial-images/` | Tutorial screenshots. |
+| `examples/prompt-community-garden.md` | Prompt for the community garden example. |
+| `examples/prompt-taxi.md` | Prompt for the NYC taxi example. |
+| `examples/report-community-garden.html` | Portable community garden example report. |
+| `examples/report-taxi.html` | Portable NYC taxi example report. |
+| `examples/images/` | Source images used by the community garden example before inlining. |
 
-- **`TEMPLATE.html`**: the complete, self-contained inline/standalone template + demo. Copy its five regions into your target HTML for standalone mode.
-- **`dist/`**: the economy bundle. `ECONOMY.html` is the economy starting shell; `commentable-html.v<V>.css` / `.js` / `.assets.js` are the companions you copy next to a target; `manifest.json` lists the version + a SHA-256 per companion.
-- **`tools/validate.py`**: the per-generation invariant checker. Auto-detects **inline** vs **economy** mode: in economy it validates the companion `<link>`/`<script src>` references (they must resolve to a local file that exists - a bare filename next to the HTML **or** a relative path into the skill's `dist/` folder; remote/CDN URLs are rejected and absolute paths warned), the version handshake `<meta>`, and the missing-asset banner, while skipping the inline CSS/JS region checks; the HANDLED IDS / EMBEDDED COMMENTS / COMMENT UI regions and required ids are checked in both modes. When a `<canvas>` is present it also runs the Chart.js checks. `python tools/validate.py <file.html> [...]`; `--charts-only` / `--layer-only` run one half. Optional - only when Python is present.
-- **`tools/mark_handled.py`**: surgically appends handled comment ids to `<script id="handledCommentIds">` (the near-zero-token iteration step). `python tools/mark_handled.py <file.html> <id...>` or `--from-bundle -`.
-- **`tools/kusto_link.py`**: builds a deterministic "Run in Kusto" deep link (gzip + base64 + percent-encode of the KQL into a `dataexplorer.azure.com` `?query=` URL) for the Kusto-query-block convention. `python tools/kusto_link.py <cluster> <database> "<query>"` or pipe the query on stdin.
-- **`tools/kql_highlight.py`**: author-time KQL syntax highlighter; emits the full `<figure class="cmh-kql">` (caption + Run-in-Kusto link + highlighted `<pre><code>`) or, with `--code-only`, just the highlighted code block. Token spans preserve `textContent`, so the code stays commentable. `python tools/kql_highlight.py <cluster> <database> "<title>" "<query>"`.
-- **`tools/highlight_code.py`**: author-time, offline general code syntax highlighter (python, javascript, typescript, json, bash, sql, csharp, java, go, yaml, c, cpp, xml, html; unknown languages fall back to a safely escaped block). Bakes `<span class="cmh-code-...">` tokens inside a `<pre><code class="language-X">` block; the spans preserve `textContent` so the code stays commentable and injection-safe. `python tools/highlight_code.py <language> "<code>"` (or pipe on stdin; `--list` for languages).
-- **`tools/inline_images.py`**: bundles local `<img src="...">` files into an HTML as `data:` URIs so the artifact is self-contained. Used to inline example/tutorial images that live in the skill folder. `python tools/inline_images.py <file.html> [--base DIR] [--out FILE] [--strict]`.
-- **`tools/upgrade.py`**: swaps the CSS / COMMENT UI / JS regions of a deployed standalone file to a newer `TEMPLATE.html`, preserving handled ids, embedded comments, and `#commentRoot`. Anchors the JS region END on the LAST marker occurrence (the JS body contains marker-like text) and refuses economy files. `python tools/upgrade.py <file.html> [--template T] [--out F] [--check]`.
-- **`tools/new_document.py`**: builds a fresh standalone commentable document from a content fragment by filling only the CONTENT region and setting the `#commentRoot` attrs (anchors on the unique CONTENT markers, so the doc-comment example root is never touched). `--key auto` derives a stable, collision-free key from the label. `python tools/new_document.py --content <file|-> --key K|auto --label L [--source S] [--generated ISO] [--template T] [--out F]`.
-- **`tools/diff_block.py`**: renders an escaped `pre.cmh-diff` code-review block from a unified diff, or generates one from two files. `python tools/diff_block.py --label L [--lang X] [<diff-file>|-]` or `--from-files OLD NEW`.
-- **`tools/chart_block.py`**: emits a validator-clean `figure.chart` plus the offline-guarded Chart.js loader and init from a Chart.js spec JSON. `python tools/chart_block.py --spec <json|-> --canvas-id ID --caption C [--title T]`.
-- **`tools/finalize.py`**: runs the safe assembly steps (generate_toc, fix_skip, inline_images) in a fixed order, then validates. `python tools/finalize.py <file.html> [--toc --fix-skip --inline-images --images-base DIR] [--strict]`.
-- **`tools/generate_toc.py`**: builds a `nav.cm-toc` table of contents from the document's `h2`/`h3` headings (synthesizes stable ids for headings that lack them). `python tools/generate_toc.py <file.html> [--in-place]`.
-- **`tools/fix_skip.py`**: adds `class="cm-skip"` to bare `<pre class="mermaid">` blocks that lack it (the one unambiguous cm-skip case). `python tools/fix_skip.py <file.html> [--check] [--out F]`.
-- **`examples/`**: two worked examples. Planning walkthrough: `prompt.md` (the reusable prompt) + `community-garden.html` (a benign, tutorial-quality plan exercising every feature: TOC + side menu, tables, a KQL block with Run-in-Kusto link, a Chart.js chart, a code diff, two mermaid diagrams, and inlined images) + `images/` (the source SVGs, inlined into the HTML at build time). Data status report: `prompt-taxi.md` + `nyc-taxi-2014.html` (a NYC Yellow Taxi 2014 operations report built on the public Kusto help cluster `nyc_taxi` table: monthly volume/revenue with a Chart.js bar chart, payment/tipping, passenger occupancy, demand-by-hour, five real Run-in-Kusto KQL figures, a data-cleaning diff, and a pipeline mermaid diagram).
-- **`TUTORIAL.md`**: a step-by-step walkthrough of every feature using `examples/community-garden.html`, illustrated with screenshots under `docs/tutorial-images/`.
-- **`tools/capture_tutorial.mjs`**: a Playwright script that deterministically regenerates the tutorial screenshots from an example. `node tools/capture_tutorial.mjs <example.html> <outDir> <prefix>`.
-- **`docs/CHARTS.md`**: maintainer chart examples; for generated reports, follow the offline-by-default Chart.js guidance in `references/charts-with-tooltips.md`.
-- **`docs/DEVELOPMENT.md`**: build pipeline, the Python suites, and the browser E2E suite (setup + run). Read it only when changing the skill's code, not per generation.
+## Runtime tools
 
+Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-html`.
+
+- `validate.py` - structural invariant checker for generated files. Use `--strict` before handoff.
+- `mark_handled.py` - appends handled comment ids from explicit ids or a copied bundle.
+- `new_document.py` - builds a fresh standalone document from a content fragment.
+- `upgrade.py` - upgrades CSS, COMMENT UI, and JS regions from the current `dist/PORTABLE.html`.
+- `finalize.py` - runs safe assembly steps, then validates.
+- `diff_block.py` - emits escaped `pre.cmh-diff` review blocks.
+- `chart_block.py` - emits a validator-clean Chart.js figure, loader, data block, and init.
+- `kql_highlight.py` and `kusto_link.py` - build KQL figures and Run in Azure Data Explorer deep links.
+- `highlight_code.py` - emits highlighted code blocks.
+- `generate_toc.py` - creates a `nav.cm-toc` from headings.
+- `fix_skip.py` - adds `cm-skip` to bare Mermaid blocks.
+- `inline_images.py` - inlines local images as data URIs.
+
+## References
+
+- `references/charts.md` - Chart.js embedding, tooltip, portability, data hygiene, and verification guidance.
+- `references/code-blocks.md` - Code comment behavior and copy buttons.
+- `references/code-review-diffs.md` - Unified diff rendering and anchors.
+- `references/comment-data-shape.md` - Comment JSON and pinpoint fields.
+- `references/content-conventions.md` - ADO links and stable cross-references.
+- `references/copy-payload.md` - `Copy all` Markdown and handled-id contract.
+- `references/design-decisions.md` - Intentional behaviors reviewers should not flag.
+- `references/document-layout.md` - Themes, TOC, sections, cards, and tables.
+- `references/exports.md` - Portable, Plain HTML, and NonPortable export semantics.
+- `references/file-inventory.md` - This file.
+- `references/images-commentable.md` - Image and chart canvas comments.
+- `references/interaction-model.md` - Add-comment gestures and sidebar lifecycle.
+- `references/kusto-query-blocks.md` - KQL blocks and deep links.
+- `references/limitations.md` - Known limitations to disclose.
+- `references/mermaid-diagrams.md` - Mermaid loading, anchors, and comments.
+- `references/retrofitting.md` - Adding or upgrading the layer in existing HTML.
+- `references/validation.md` - Validator behavior and manual verification.

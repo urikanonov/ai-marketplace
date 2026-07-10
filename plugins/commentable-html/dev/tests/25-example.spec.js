@@ -6,8 +6,8 @@ import {
 } from "./helpers.js";
 
 // The shipped showcase example must exercise every feature end to end, so these tests
-// run directly against examples/community-garden.html (not a fixture).
-const EXAMPLE = path.join(SKILL, "examples", "community-garden.html");
+// run directly against examples/report-community-garden.html (not a fixture).
+const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
 
 async function openExample(page) {
   await installClipboardCapture(page);
@@ -85,7 +85,7 @@ test.describe("showcase example: features work on the shipped example HTML", () 
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/examples/community-garden.html");
+      await page.goto(server.url + "/examples/report-community-garden.html");
       await ready(page);
       // Chart canvas is commentable media.
       const canvas = page.locator("#wateringNeedsChart");
@@ -96,6 +96,8 @@ test.describe("showcase example: features work on the shipped example HTML", () 
       await expect(taskLabel).toBeVisible({ timeout: 20000 });
       await taskLabel.hover();
       await expect(page.locator("#mermaidAddBtn")).toBeVisible();
+      // The report now also ships a zone flowchart with subgraphs (rendered as clusters).
+      await expect(page.locator("#commentRoot .mermaid svg .cluster").first()).toBeVisible({ timeout: 20000 });
     } finally {
       await server.close();
     }

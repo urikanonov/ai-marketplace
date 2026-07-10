@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Author-time KQL syntax highlighter for commentable-html reports.
 
-A commentable report is static and offline, so highlighting is baked in at author
+A commentable report is static and self-contained, so highlighting is baked in at author
 time (rather than by a runtime script that would have to coexist with the comment
 layer). This tokenizes a KQL query and wraps keywords, functions, strings, numbers,
 comments, and operators in escaped `<span class="cmh-kql-...">` tags. The result is
@@ -13,7 +13,7 @@ placed inside a normal `<pre><code class="language-kusto">` block, so:
 - Every character is HTML-escaped, so a query containing markup cannot inject HTML.
 
 The layer CSS (`.cmh-kql`, `.cmh-kql-*`) styles the frame and token colors, so no
-per-report CSS is needed. `render_block` also emits the adjacent "Run in Kusto"
+per-report CSS is needed. `render_block` also emits the adjacent "Run in Azure Data Explorer"
 deep link (via kusto_link), producing the full figure the convention calls for.
 """
 import html as _html
@@ -119,7 +119,7 @@ def render_code(query):
 
 
 def render_block(cluster, database, title, query):
-    """Return the full `<figure class="cmh-kql">` with caption, Run in Kusto link, and
+    """Return the full `<figure class="cmh-kql">` with caption, Run in Azure Data Explorer link, and
     highlighted code - the complete Kusto-query-block the convention calls for. The
     caption title (cluster / database) is itself the click-to-copy affordance for the
     cluster name."""
@@ -131,7 +131,7 @@ def render_block(cluster, database, title, query):
         '<button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="%s" '
         'title="Copy cluster name (%s) to the clipboard">%s</button>'
         '<a class="cmh-kql-run" href="%s" target="_blank" rel="noopener noreferrer">'
-        'Run in Kusto &#9654;</a>'
+        'Run in Azure Data Explorer &#9654;</a>'
         '</figcaption>\n'
         '%s\n'
         '</figure>'

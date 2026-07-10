@@ -1,6 +1,5 @@
 # Limitations
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Limitations to call out
 

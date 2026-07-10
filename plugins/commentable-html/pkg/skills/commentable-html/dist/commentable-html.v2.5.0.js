@@ -2,7 +2,7 @@
 // Pristine snapshot of the document, captured before any DOM mutation
 // (mermaid render, restored highlights, dynamic composers, etc). Used as a
 // fallback by "Export as Portable" when fetch() of the page URL is unavailable
-// (e.g., file:// or offline). The snapshot is taken on the very first line
+// (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
 const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
 
@@ -17,7 +17,7 @@ const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
 // malformed id could break out of an attribute or poison a selector.
 const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
-// Asset version of this runtime. build.py reads this constant as the single
+// Asset version of this runtime. The build reads this constant as the single
 // source of truth for the dist filenames, the version <meta> handshake, and the
 // manifest, so bumping it here is the only place a version changes.
 const CMH_VERSION = "2.5.0";
@@ -51,15 +51,15 @@ function _cmIco(name, size) {
     + '" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2"'
     + ' stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>';
 }
-// In economy mode the page loads an external commentable-html.<ver>.assets.js
+// In nonportable mode the page loads an external commentable-html.<ver>.assets.js
 // that defines window.__COMMENTABLE_ASSETS__ = { version, css, js } - the string
 // payloads used to rebuild a fully self-contained file for "Export standalone".
 // A separate assets file (never the runtime embedding its own source) avoids any
 // self-referential embedding loop. It is absent in inline/standalone documents.
 const CMH_ASSETS = (typeof window !== "undefined" && window.__COMMENTABLE_ASSETS__) || null;
-// Economy = the layer's CSS/JS live in companion files next to this HTML. Detected
+// NonPortable = the layer's CSS/JS live in companion files next to this HTML. Detected
 // by the presence of the assets registry OR an external commentable-html script.
-const ECONOMY_MODE = !!CMH_ASSETS
+const NONPORTABLE_MODE = !!CMH_ASSETS
   || !!document.querySelector('script[src*="commentable-html"], link[href*="commentable-html"]');
 function declaredAssetVersion() {
   const meta = document.querySelector('meta[name="commentable-html-assets"]');
@@ -785,7 +785,7 @@ function setDefaultDiffLayout(layout) {
   try { localStorage.setItem(CMH_DIFF_LAYOUT_KEY, layout); } catch (e) { /* ignore */ }
 }
 
-/* ---------- Diff syntax highlighting (runtime, offline, default ON) ----------
+/* ---------- Diff syntax highlighting (runtime, self-contained, default ON) ----------
    A compact tokenizer emitting the same .cmh-code-* classes as the author-time
    tools/highlight_code.py, applied to each diff line's code. Diff comments anchor
    structurally (diffIndex + lineKey + side), never by text offset, and the diff
@@ -1055,7 +1055,7 @@ function renderDiffBlock(block) {
     toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "cmh-diff-toggle";
-    toggle.textContent = layout === "split" ? "Inline view" : "Side-by-side view";
+    toggle.textContent = layout === "split" ? "To inline view" : "To side-by-side view";
     toggle.title = "Switch between side-by-side and inline diff";
     bar.appendChild(toggle);
   }
@@ -2611,6 +2611,20 @@ function isCommentableCodeBlock(pre) {
     && !pre.closest(".cm-skip")
     && !pre.closest(".cmh-diff") && !pre.closest(".cmh-diff-host");
 }
+var _CODE_LANG_LABELS = {
+  python: "Python", py: "Python", javascript: "JavaScript", js: "JavaScript",
+  typescript: "TypeScript", ts: "TypeScript", csharp: "C#", cs: "C#", json: "JSON",
+  bash: "Bash", sh: "Bash", shell: "Bash", sql: "SQL", go: "Go", golang: "Go",
+  yaml: "YAML", yml: "YAML", kql: "KQL", kusto: "KQL", html: "HTML", xml: "XML",
+  css: "CSS", java: "Java", cpp: "C++", c: "C", rust: "Rust", rs: "Rust",
+  ruby: "Ruby", rb: "Ruby", php: "PHP", diff: "Diff", text: "Text", plaintext: "Text",
+};
+function _codeLangLabel(lang) {
+  if (!lang) return "";
+  var k = String(lang).toLowerCase();
+  if (_CODE_LANG_LABELS[k]) return _CODE_LANG_LABELS[k];
+  return k.charAt(0).toUpperCase() + k.slice(1);
+}
 function setupCodeCopy() {
   root.querySelectorAll("pre").forEach(function (pre) {
     if (!isCommentableCodeBlock(pre)) return;
@@ -2619,6 +2633,19 @@ function setupCodeCopy() {
     wrap.className = "cmh-code-wrap";
     pre.parentNode.insertBefore(wrap, pre);
     wrap.appendChild(pre);
+    const tools = document.createElement("div");
+    tools.className = "cm-code-tools cm-skip";
+    // A small language pill (Python, C#, KQL, ...) sits next to the Copy button.
+    const codeEl = pre.querySelector("code");
+    const lm = /(?:^|\s)language-([\w#+.-]+)/i.exec(codeEl ? (codeEl.className || "") : "");
+    const label = lm ? _codeLangLabel(lm[1]) : "";
+    if (label) {
+      const pill = document.createElement("span");
+      pill.className = "cm-code-lang";
+      pill.textContent = label;
+      pill.title = label + " code block";
+      tools.appendChild(pill);
+    }
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "cm-code-copy cm-skip";
@@ -2628,7 +2655,8 @@ function setupCodeCopy() {
       const code = pre.querySelector("code") || pre;
       copyPlain(code.textContent.replace(/\n$/, ""), "Code copied to clipboard.");
     });
-    wrap.appendChild(btn);
+    tools.appendChild(btn);
+    wrap.appendChild(tools);
   });
 }
 
@@ -2934,7 +2962,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
 // to" once the user picks a different name).
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
-  // taken at IIFE start if fetch fails (file://, offline, blocked).
+  // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
   try {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
@@ -3002,7 +3030,7 @@ async function saveHtml() {
 // Produces a standalone copy of the document with the commenting *ability* removed but
 // its appearance intact: the HTML-comment regions (HANDLED IDS, EMBEDDED COMMENTS,
 // COMMENT UI) and the runtime JS are deleted, while every stylesheet is kept - the
-// inline CSS region (or the economy companion <link>) carries the document's own
+// inline CSS region (or the nonportable companion <link>) carries the document's own
 // content styling (tables, sections, code, diff, KQL, images), so the plain copy looks
 // the same. The now-unused .cm-* UI rules are inert because their elements are gone.
 //
@@ -3013,7 +3041,7 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
-  t = t.replace(/<!--\s*BEGIN: commentable-html v2 - ECONOMY BOOTSTRAP[\s\S]*?END: commentable-html v2 - ECONOMY BOOTSTRAP\s*-->\s*/i, "");
+  t = t.replace(/<!--\s*BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html v2 - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
   // a "<!--". That prevents note text like "END: commentable-html v2 - EMBEDDED COMMENTS -->"
@@ -3027,7 +3055,7 @@ function _buildPlainHtml(baseHtml) {
   // parser has not reached the trailing "END ... JS" comment yet, so anchor on
   // the script's own closing tag instead (eat a trailing END marker if present).
   t = t.replace(/<!--\s*=+\s*BEGIN: commentable-html v2 - JS[\s\S]*?<\/script>\s*(?:<!--\s*=*\s*END: commentable-html v2 - JS\s*-->)?/, "");
-  // Economy mode loads the runtime from a companion <script src> file; drop only the
+  // NonPortable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
   t = t.replace(/[ \t]*<!--\s*commentable-html v2 - layer loaded[^\n]*-->\s*/i, "");
   t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>\s*/ig, "");
@@ -3067,7 +3095,7 @@ const _btnSaveHtml = document.getElementById("btnSaveHtml");
 const _btnSaveHtmlTop = document.getElementById("btnSaveHtmlTop");
 // "Export as Portable" always downloads ONE combined/standalone file
 // with the current comments embedded: saveStandalone() rebuilds an inline file in
-// economy mode and falls back to the in-file embed for inline documents.
+// nonportable mode and falls back to the in-file embed for inline documents.
 if (_btnSaveHtml) _btnSaveHtml.addEventListener("click", saveStandalone);
 if (_btnSaveHtmlTop) _btnSaveHtmlTop.addEventListener("click", saveStandalone);
 const _btnSavePlain = document.getElementById("btnSavePlain");
@@ -3075,8 +3103,8 @@ const _btnSavePlainTop = document.getElementById("btnSavePlainTop");
 if (_btnSavePlain) _btnSavePlain.addEventListener("click", saveAsPlain);
 if (_btnSavePlainTop) _btnSavePlainTop.addEventListener("click", saveAsPlain);
 
-/* ---------- Export standalone (economy -> single self-contained file) ---------- */
-// In economy mode the live page only references companion files via <link> and
+/* ---------- Export standalone (nonportable -> single self-contained file) ---------- */
+// In nonportable mode the live page only references companion files via <link> and
 // <script src>. To produce ONE portable file we must inline those assets. We do
 // NOT fetch() them (blocked from file://); instead we read the string payloads
 // from window.__COMMENTABLE_ASSETS__, which loaded as a classic <script src> and
@@ -3096,7 +3124,7 @@ function _insertBeforeLastTag(html, tag, insertion) {
   if (idx < 0) throw new Error("Could not find </" + tag + "> to inline into.");
   return html.slice(0, idx) + insertion + html.slice(idx);
 }
-function _inlineEconomyAssets(baseHtml) {
+function _inlineNonPortableAssets(baseHtml) {
   if (!CMH_ASSETS || !CMH_ASSETS.css || !CMH_ASSETS.js) {
     throw new Error("Cannot export standalone: the commentable-html assets file "
       + "(__COMMENTABLE_ASSETS__) did not load. Keep the companion .assets.js next "
@@ -3106,13 +3134,13 @@ function _inlineEconomyAssets(baseHtml) {
   if (!/<link\b[^>]*commentable-html[^>]*\.css/i.test(t)) {
     throw new Error("Could not find the commentable-html stylesheet <link> to inline.");
   }
-  // 1) Strip every piece of economy scaffolding BEFORE inlining the payloads, so
+  // 1) Strip every piece of nonportable scaffolding BEFORE inlining the payloads, so
   //    the marker-like strings inside the runtime source can never be matched and
   //    no leftover companion reference survives. _getBaseHtml() may hand us a
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
-  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html v2 - ECONOMY BOOTSTRAP[\s\S]*?END: commentable-html v2 - ECONOMY BOOTSTRAP\s*-->[ \t]*/i, "");
+  t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html v2 - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
   t = t.replace(/[ \t]*<meta\b[^>]*commentable-html-assets[^>]*>[ \t]*\n?/i, "");
   t = t.replace(/[ \t]*<!--\s*commentable-html v2 - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
   t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>[ \t]*\n?/ig, "");
@@ -3145,7 +3173,7 @@ function _inlineEconomyAssets(baseHtml) {
   return t.replace(/\n{3,}/g, "\n\n");
 }
 function _buildStandaloneHtml(baseHtml, commentArr) {
-  return _inlineEconomyAssets(_buildSavedHtml(baseHtml, commentArr));
+  return _inlineNonPortableAssets(_buildSavedHtml(baseHtml, commentArr));
 }
 function _suggestedStandaloneFilename() {
   const name = _suggestedFilename();
@@ -3155,9 +3183,9 @@ function _suggestedStandaloneFilename() {
 async function saveStandalone() {
   // "Export as Portable" always yields ONE combined file with the
   // comments embedded. An inline document is already self-contained, so the plain
-  // in-file embed (saveHtml) IS the combined file there; only economy documents
+  // in-file embed (saveHtml) IS the combined file there; only nonportable documents
   // need the CSS/JS inlined to become portable.
-  if (!ECONOMY_MODE) return saveHtml();
+  if (!NONPORTABLE_MODE) return saveHtml();
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
@@ -3199,7 +3227,7 @@ function _embeddedCommentSig() {
 // bubble hover explains WHY a file is not portable.
 function currentDocState() {
   const reasons = [];
-  if (ECONOMY_MODE) reasons.push("it references external skill / companion resources");
+  if (NONPORTABLE_MODE) reasons.push("it references external skill / companion resources");
   const emb = _embeddedCommentSig();
   if (comments.length > 0) {
     const hasUnembedded = !comments.every(function (c) {
@@ -3220,7 +3248,7 @@ function currentDocState() {
   if (reasons.length === 0) {
     return { type: "Portable", reason: "Portable: self-contained and safe to share (assets embedded and every comment embedded)." };
   }
-  return { type: "Not portable", reason: "Not portable because " + reasons.join(", and ") + ". Use Export as Portable to fix it." };
+  return { type: "Not portable", reason: "Not portable because " + reasons.join(", and ") + ". Use Export as Portable to share it." };
 }
 function updateDocTypeUi() {
   const st = currentDocState();
@@ -3234,9 +3262,9 @@ function setupModeUi() {
   if (ver) ver.textContent = "v" + CMH_VERSION;
   const meta = document.querySelector(".cm-sidebar .head-meta");
   if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", CMH_ICON_SVG);
-  if (ECONOMY_MODE) {
-    document.body.classList.add("cm-economy");
-    // In economy (companion) mode the portability action embeds everything into one file.
+  if (NONPORTABLE_MODE) {
+    document.body.classList.add("cm-nonportable");
+    // In nonportable (companion) mode the portability action embeds everything into one file.
     ["btnSaveHtml", "btnSaveHtmlTop"].forEach(function (id) {
       const b = document.getElementById(id);
       if (b) {
@@ -3297,14 +3325,22 @@ function showHelp(restoreEl) {
       '<input type="search" class="cm-help-search-input" placeholder="Search help (e.g. export, diff, sort)..." aria-label="Search help" autocomplete="off" spellcheck="false">' +
     '</div>' +
     '<div class="cm-help-body">' +
+      T('The review workflow',
+        '<p>Commentable HTML fits a simple back-and-forth loop with an AI agent:</p>' +
+        '<ol>' +
+          '<li><strong>Generate</strong> - ask an AI chat or terminal agent to produce the report or document as a commentable HTML file.</li>' +
+          '<li><strong>Review</strong> - open the file in your browser and leave inline comments anywhere: text, code, tables, charts, diagrams, diffs or images.</li>' +
+          '<li><strong>Hand back</strong> - click <strong>Copy all</strong> and paste the bundle back to the agent (or export the file and send it along).</li>' +
+          '<li><strong>Refresh and repeat</strong> - the agent edits the source and marks your comments handled; reload the updated file and the addressed comments disappear. Repeat until none remain.</li>' +
+        '</ol>', true) +
       T('Getting started',
-        '<p>This page is a <strong>commentable</strong> document: you can highlight anything, leave inline comments, and hand the whole batch back to an agent - entirely <strong>offline</strong>, inside this single file (plus its companion assets in Economy mode).</p>' +
+        '<p>This page is a <strong>commentable</strong> document: you can highlight anything, leave inline comments, and hand the whole batch back to an agent inside this single file (plus its companion assets in NonPortable mode).</p>' +
         '<ul>' +
           '<li>Select any text and an <em>Add Comment</em> popup appears. Type a note and Save.</li>' +
           '<li>Your comments live in the panel on the right and persist in this browser.</li>' +
           '<li>Use <strong>Copy all</strong> to paste the whole set back to an agent, or <strong>Export as Portable</strong> to bake them into a shareable copy.</li>' +
           '<li>Every topic below is collapsible; use the search box above to jump straight to an answer.</li>' +
-        '</ul>', true) +
+        '</ul>') +
       T('Leaving a comment',
         '<ul>' +
           '<li><strong>Text and code:</strong> select the words to comment on; the <em>Add Comment</em> popup appears (right-click a selection also works). Re-selecting the exact same range re-opens that comment; a different range starts a new one. Triple-click and block selections that spill onto section chrome still anchor to the real text.</li>' +
@@ -3340,7 +3376,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
-          '<li>In <strong>Economy mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
+          '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
         '</ul>') +
       T('Sending comments to an agent',
         '<ul>' +
@@ -3366,8 +3402,8 @@ function showHelp(restoreEl) {
           '<li>Images and diff lines are focusable with <kbd>Tab</kbd>; press <kbd>Enter</kbd> to reveal their <em>Add Comment</em> button.</li>' +
           '<li>Controls carry hover and focus tooltips; this dialog traps focus and restores it to the control that opened it.</li>' +
         '</ul>') +
-      T('Offline and privacy',
-        '<p>The comment layer makes <strong>no network calls</strong>: everything runs from this file. Optional host features (mermaid, Chart.js) are the author\'s explicit choice and should be vendored or inlined so the report stays fully offline. Your comments never leave this browser until you copy or export them yourself.</p>') +
+      T('Self-contained and privacy',
+        '<p>The review layer is <strong>bundled into this file</strong>. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot load, mermaid stays readable source text and charts stay as a blank canvas. Your comments never leave this browser until you copy or export them yourself.</p>') +
       '<div class="cm-help-about"><h3>About</h3>' +
         '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by Uri Kanonov.</p>' +
         '<ul>' +
@@ -3463,7 +3499,7 @@ function showHelp(restoreEl) {
 // When the document carries a table of contents (an author `.cm-toc`, else h2/h3
 // ids), render a fixed, collapsible section menu on the left with scroll-spy and a
 // back-to-top button. It is a runtime-only aid (never in the base HTML, so plain /
-// standalone exports and the offline snapshot never include it) and is cm-skip so it
+// standalone exports and the startup snapshot never include it) and is cm-skip so it
 // is not itself commentable. CSS gates it to wide viewports.
 function _cmSlugify(text) {
   const s = String(text).toLowerCase().trim()
@@ -3599,6 +3635,17 @@ function setupCollapsibleSections() {
     caret.addEventListener("click", function (e) {
       e.stopPropagation();
       setState(!sec.classList.contains("cmh-section-collapsed"));
+    });
+    // Clicking a collapsed section's title (anywhere but the caret) expands it too - a
+    // collapsed section shows only its heading, so a plain click is the natural gesture.
+    // Ignore clicks that are part of a text selection so commenting on an expanded heading
+    // is unaffected.
+    heading.addEventListener("click", function (e) {
+      if (e.target.closest(".cmh-sec-caret")) return;
+      if (!sec.classList.contains("cmh-section-collapsed")) return;
+      const sel = window.getSelection();
+      if (sel && sel.toString().trim()) return;
+      setState(false);
     });
     _cmSectionToggles.push(setState);
   });
@@ -3958,7 +4005,7 @@ if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
 if (!comments.length) closeSidebar(); else openSidebar();
-// Signals the economy-mode bootstrap that the external runtime initialized, so
+// Signals the nonportable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.
 window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;

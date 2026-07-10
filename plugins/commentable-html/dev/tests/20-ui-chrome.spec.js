@@ -1,7 +1,7 @@
 // Sidebar version indicator, document-type bubble, Help dialog, per-button tooltips,
 // and the wide-screen table-of-contents side menu (scroll-spy, collapse, back-to-top).
 import { test, expect } from "@playwright/test";
-import { openInline, openEconomy, openToolbarMenu, addTextComment, ready, fileUrl, stageInline, readDownload, INLINE } from "./helpers.js";
+import { openInline, openNonPortable, openToolbarMenu, addTextComment, ready, fileUrl, stageInline, readDownload, INLINE } from "./helpers.js";
 import fs from "fs";
 
 test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
@@ -23,14 +23,14 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await expect(page.locator("#cmTypeBadge")).toHaveAttribute("title", /not embedded/i);
   });
 
-  test("the type bubble reads Not portable for an economy document", async ({ page }) => {
-    await openEconomy(page);
+  test("the type bubble reads Not portable for an nonportable document", async ({ page }) => {
+    await openNonPortable(page);
     await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable");
     await expect(page.locator("#cmTypeBadge")).toHaveAttribute("title", /external skill/i);
   });
 
-  test("economy relabels the export action to Export as Portable", async ({ page }) => {
-    await openEconomy(page);
+  test("nonportable relabels the export action to Export as Portable", async ({ page }) => {
+    await openNonPortable(page);
     await openToolbarMenu(page);
     await expect(page.locator("#btnSaveHtmlTop")).toHaveText("Export as Portable");
   });

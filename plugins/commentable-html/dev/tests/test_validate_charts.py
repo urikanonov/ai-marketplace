@@ -8,7 +8,7 @@ root:
 
 Each test builds a MINIMAL valid chart document in-memory and mutates one thing
 to assert a specific error or warning. The base fixture must pass with zero
-errors and zero warnings. The real TEMPLATE.html (no <canvas>) and the field
+errors and zero warnings. The real dist/PORTABLE.html (no <canvas>) and the field
 artifact mde-mad-growth.html (if present) are positive controls. A few tests
 drive the CLI as a subprocess to cover exit codes and batch behaviour.
 
@@ -31,7 +31,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import validate  # noqa: E402
 
-TEMPLATE = os.path.join(ROOT, "TEMPLATE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 SCRIPT = os.path.join(TOOLS, "validate.py")
 _FIELD_CANDIDATES = [
     os.path.join(os.path.expanduser("~"), "Downloads", "mde-mad-growth.html"),

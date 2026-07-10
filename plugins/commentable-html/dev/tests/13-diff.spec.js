@@ -338,14 +338,14 @@ test.describe("diff comments", () => {
   });
 });
 
-test("the diff view reaches out to no external network", async ({ page }) => {
+test("the diff view remains usable when external requests are denied", async ({ page }) => {
   await denyExternalNetwork(page);
   await page.goto(fileUrl(INLINE));
   await ready(page);
-  await addDiffComment(page, ".cmh-dl-add", "offline");
+  await addDiffComment(page, ".cmh-dl-add", "self-contained");
   await page.locator(".cmh-diff-toggle").click();
-  // The demo page also ships an optional mermaid CDN loader; the diff layer itself
-  // must add no network activity, so nothing non-mermaid may appear.
+  // The demo page also ships an optional mermaid CDN loader; diff interactions
+  // should not depend on additional remote assets, so nothing non-mermaid may appear.
   const nonMermaid = page.__external.filter((u) => !u.includes("mermaid"));
   expect(nonMermaid).toEqual([]);
 });
@@ -677,4 +677,3 @@ test("a `\\ No newline at end of file` marker does not stagger del/add in split 
   // Both `\ No newline` markers render as full-width rows (below the paired change).
   await expect(page.locator(".cmh-dl-full").filter({ hasText: "No newline" })).toHaveCount(2);
 });
-

@@ -88,6 +88,9 @@ class KqlHighlightTests(unittest.TestCase):
         self.assertIn('<figcaption class="cm-skip cmh-kql-cap">', block)
         self.assertIn('class="cmh-kql-run" href="https://dataexplorer.azure.com/', block)
         self.assertIn('target="_blank" rel="noopener noreferrer"', block)
+        # The run link is labelled for Azure Data Explorer (not the old "Run in Kusto").
+        self.assertIn("Run in Azure Data Explorer", block)
+        self.assertNotIn("Run in Kusto", block)
         self.assertIn('<pre><code class="language-kusto">', block)
         # The title is HTML-escaped.
         self.assertIn("My &amp; &lt;title&gt;", block)

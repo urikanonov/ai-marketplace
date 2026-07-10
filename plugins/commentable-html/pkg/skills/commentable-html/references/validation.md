@@ -1,6 +1,5 @@
 # Validation
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Validating a generated file (tools/validate.py)
 
@@ -10,7 +9,7 @@ Detailed reference content moved out of `SKILL.md` to keep the core skill under 
 python tools/validate.py --strict path/to/file.html [more.html ...]
 ```
 
-It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when every file passes (warnings allowed) and `1` when any file has errors; `--strict` also fails on any warning, so a single run surfaces *everything* to fix and you iterate until it reports `OK (0 warning(s))`. When the document embeds Chart.js charts (a `<canvas>` is present), it **also** runs the chart-embedding checks automatically (see `docs/CHARTS.md`); pass `--charts-only` or `--layer-only` to run just one half. If Python is not installed, skip it and fall back to the manual [Quick verification after retrofitting](#quick-verification-after-retrofitting) checks.
+It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when every file passes (warnings allowed) and `1` when any file has errors; `--strict` also fails on any warning, so a single run surfaces *everything* to fix and you iterate until it reports `OK (0 warning(s))`. When the document embeds Chart.js charts (a `<canvas>` is present), it **also** runs the chart-embedding checks automatically (see `charts.md`); pass `--charts-only` or `--layer-only` to run just one half. If Python is not installed, skip it and fall back to the manual [Quick verification after retrofitting](#quick-verification-after-retrofitting) checks.
 
 **Errors (block - the file will not work):**
 
@@ -28,15 +27,13 @@ It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when e
 - An unscoped `[hidden] { display: none }` rule exists (should be `.cm-skip[hidden], .cm-skip [hidden]`), or the scoped rule is missing.
 - Export/Import UI is present (removed in v2.4).
 - A mermaid block is missing `class="cm-skip"`.
-- A `cmh-kql-run` ("Run in Kusto") link does not point at `https://dataexplorer.azure.com/`, or uses `target="_blank"` without `rel="noopener"`.
+- A `cmh-kql-run` ("Run in Azure Data Explorer") link does not point at `https://dataexplorer.azure.com/`, or uses `target="_blank"` without `rel="noopener"`.
 - A **section cross-reference in prose is not a link**. The checker reads the `#commentRoot` prose with `<a>` text and `cm-skip` regions removed, so only UNLINKED references remain, then flags directional references ("the section below", "previous section") and named references ("see `<Heading>`", "`<Heading>` section" where `<Heading>` is an actual heading in the document). The fix is to wrap the reference in an in-page anchor (`<a href="#section-id">`); detection is deterministic, the fix is the author's.
 - A **mermaid diagram will not render on open**. When the document has `pre`/`div.mermaid` blocks, the checker warns if there is no mermaid loader script, if the loader never triggers a render (no `.run()` call and `startOnLoad` is not `true`), or if the loader is hidden behind a URL query-param gate (e.g. `?mermaid=1`) so the diagrams stay as source text by default. Mermaid must render by default; do not gate it.
 
 The checker parses the document with a tolerant HTML parser and reads real elements, attributes and `<script>` bodies (not a regex over raw text), so an `id="..."` sitting inside another attribute's value, a `>` inside a quoted attribute, or example markup inside a comment / `<pre>` / a JS string literal does not trigger a false positive.
 
-When a `<canvas>` is present, additional **chart** checks run: `cm-skip` on the canvas wrapper (not the `<figure>`), valid non-empty chart-data JSON with no `</script>` / `<!--` breakout, chart init after the JS END marker **and** after the loader, canvas `role`/`aria-label`, and a `typeof Chart` offline guard. Use a local or inline Chart.js loader by default; if a CDN loader is explicitly chosen, pin it and add SRI plus `crossorigin`. See [Charts with tooltips](charts-with-tooltips.md).
-
-`tools/validate.py` is mutation-checked by two standard-library `unittest` suites (for every validator branch there is a test that fails if the branch is deleted, so it will not silently rot). Running or changing those suites is a maintainer task - see `docs/DEVELOPMENT.md`, not per generation.
+When a `<canvas>` is present, additional **chart** checks run: `cm-skip` on the canvas wrapper (not the `<figure>`), valid non-empty chart-data JSON with no `</script>` / `<!--` breakout, chart init after the JS END marker **and** after the loader, canvas `role`/`aria-label`, and a `typeof Chart` network-failure guard. Use a local or inline Chart.js loader by default; if a CDN loader is explicitly chosen, pin it and add SRI plus `crossorigin`. See [Charts with tooltips](charts.md).
 
 
 ## Quick verification after retrofitting

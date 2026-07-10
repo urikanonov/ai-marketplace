@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Upgrade an existing commentable-html file to a newer TEMPLATE.html.
+"""Upgrade an existing commentable-html file to a newer dist/PORTABLE.html.
 
 Swaps the three layer regions - CSS, COMMENT UI, and JS - in a deployed standalone
 (inline) commentable-html file with the versions from a template, while leaving the
 document's own state and content untouched: HANDLED IDS, EMBEDDED COMMENTS, the
 CONTENT block, and the `#commentRoot` wrapper are never modified.
 
-This is the "Upgrade an existing instance to a new TEMPLATE.html" recipe from SKILL.md,
+This is the "Upgrade an existing instance to a new dist/PORTABLE.html" recipe from SKILL.md,
 made deterministic. Doing it by hand is error prone because of two documented footguns:
 the JS payload's own plain-HTML-export code contains marker-like text, so the real JS
 region END is the LAST `END: commentable-html v2 - JS` occurrence, and a naive first
 match truncates the region.
 
-Stdlib-only, offline, deterministic. Usage:
+Stdlib-only, local-only, deterministic. Usage:
 
-    python tools/upgrade.py <file.html>                 # upgrade in place from TEMPLATE.html
+    python tools/upgrade.py <file.html>                 # upgrade in place from dist/PORTABLE.html
     python tools/upgrade.py <file.html> --template T     # use a specific template
     python tools/upgrade.py <file.html> --out out.html   # write elsewhere
     python tools/upgrade.py <file.html> --check          # exit 1 if regions are stale, no write
@@ -26,7 +26,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_ROOT = os.path.dirname(HERE)
-DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "TEMPLATE.html")
+DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 
 # Regions swapped from the template. HANDLED IDS, EMBEDDED COMMENTS, CONTENT, and the
 # #commentRoot wrapper are the document's own state and are deliberately left alone.
@@ -34,10 +34,10 @@ SWAP_REGIONS = ["CSS", "COMMENT UI", "JS"]
 # State/content markers a valid target must contain (so we never "upgrade" a file that
 # is not actually a commentable-html document).
 REQUIRED_MARKERS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "CONTENT", "CSS", "JS"]
-# A real economy document carries this exact bootstrap comment. The inline JS body only
+# A real nonportable document carries this exact bootstrap comment. The inline JS body only
 # mentions the marker text inside a regex literal (with `\s*`, not literal spaces), so
 # matching the full comment avoids a false positive on standalone files.
-ECONOMY_MARKER = "<!-- BEGIN: commentable-html v2 - ECONOMY BOOTSTRAP -->"
+NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->"
 
 
 def _region_inner(text, name, where):
@@ -58,9 +58,9 @@ def _region_inner(text, name, where):
 
 def upgrade(target_html, template_html, target_name="<target>", template_name="<template>"):
     """Return (new_html, changed_region_names). Raises ValueError on an unusable input."""
-    if ECONOMY_MARKER in target_html:
+    if NONPORTABLE_MARKER in target_html:
         raise ValueError(
-            "%s looks like an economy document (companion assets). Upgrade economy files by "
+            "%s looks like an nonportable document (companion assets). Upgrade nonportable files by "
             "replacing the dist/ companions and bumping the assets version meta instead." % target_name)
     for marker in REQUIRED_MARKERS:
         if ("BEGIN: commentable-html v2 - " + marker) not in target_html:
@@ -85,7 +85,7 @@ def _read(path):
 def main(argv):
     p = argparse.ArgumentParser(description="Upgrade a commentable-html file's layer regions from a template.")
     p.add_argument("file", help="the deployed commentable-html file to upgrade")
-    p.add_argument("--template", default=DEFAULT_TEMPLATE, help="template to upgrade from (default: skill TEMPLATE.html)")
+    p.add_argument("--template", default=DEFAULT_TEMPLATE, help="template to upgrade from (default: skill dist/PORTABLE.html)")
     p.add_argument("--out", default=None, help="write result here instead of in place")
     p.add_argument("--check", action="store_true", help="do not write; exit 1 if any region is stale")
     args = p.parse_args(argv[1:])

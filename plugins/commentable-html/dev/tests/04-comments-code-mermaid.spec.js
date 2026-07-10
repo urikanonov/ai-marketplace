@@ -20,14 +20,14 @@ test.describe("code comments", () => {
 
 // Mermaid's CDN ES-module import is blocked over file://, so serve over http; the
 // jsdelivr request is intercepted and served from the locally vendored mermaid,
-// so the diagram renders with no network access (fully deterministic).
+// so the diagram render path stays deterministic.
 test.describe("mermaid node comments (local vendored mermaid)", () => {
   test("hovering a node reveals + Add comment; saving anchors and rings the node", async ({ page }) => {
     const server = await startStaticServer(SKILL);
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/TEMPLATE.html?mermaid=1");
+      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
       await ready(page);
 
       const node = page.locator("#commentRoot .mermaid svg g.node").first();
@@ -55,7 +55,7 @@ test.describe("mermaid node comments (local vendored mermaid)", () => {
     const server = await startStaticServer(SKILL);
     try {
       await routeMermaidLocal(page);
-      await page.goto(server.url + "/TEMPLATE.html?mermaid=1");
+      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
       await ready(page);
       page.on("dialog", (d) => d.accept());
       const node = page.locator("#commentRoot .mermaid svg g.node").first();

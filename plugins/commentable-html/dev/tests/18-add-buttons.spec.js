@@ -131,13 +131,13 @@ test.describe("add-comment affordances", () => {
   });
 
   test("the mermaid add button stays pinned to its node on scroll (no drift)", async ({ page }) => {
-    // Served over http with mermaid routed to the local vendored copy (offline), and
+    // Served over http with mermaid routed to the local vendored copy (network-isolated), and
     // ?mermaid=1 opts the demo into rendering.
     const server = await startStaticServer(SKILL);
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/TEMPLATE.html?mermaid=1");
+      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
       await ready(page);
       const node = page.locator("#commentRoot .mermaid svg g.node").first();
       await expect(node).toBeVisible({ timeout: 20000 });

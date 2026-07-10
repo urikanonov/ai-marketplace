@@ -21,7 +21,12 @@ async function ready(page) {
 
 const run = async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1320, height: 900 }, deviceScaleFactor: 2 });
+  const context = await browser.newContext({
+    viewport: { width: 1320, height: 900 },
+    deviceScaleFactor: 2,
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
+  const page = await context.newPage();
   await page.goto(url);
   await ready(page);
 
@@ -66,6 +71,15 @@ const run = async () => {
 
   // 6. The comments panel with a saved comment.
   await page.screenshot({ path: shotPath("06-comment-saved"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
+
+  // 9. "Copy all" - the review bundle copied back to the agent (step 3 of the review loop).
+  await page.evaluate(() => { window.prompt = () => ""; });
+  const copyBtn = page.locator("#btnCopyAll");
+  if (await copyBtn.count()) {
+    await copyBtn.click().catch(() => {});
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: shotPath("09-copyall"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
+  }
 
   // 7. The help panel.
   await page.evaluate(() => {

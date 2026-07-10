@@ -15,7 +15,7 @@ PKG = os.environ.get("CMH_PKG_DIR") or os.path.normpath(
     os.path.join(DEV, "..", "pkg", "skills", "commentable-html"))
 TOOLS = os.path.join(PKG, "tools")                             # shipped runtime tools
 DIST = os.path.join(PKG, "dist")
-TEMPLATE = os.path.join(PKG, "TEMPLATE.html")
+TEMPLATE = os.path.join(PKG, "dist", "PORTABLE.html")
 EXAMPLES = os.path.join(PKG, "examples")
 ASSETS = os.path.join(DEV, "assets")                           # build inputs (dev-only)
 DEV_TOOLS = os.path.join(DEV, "tools")                         # maintainer-only tools (build.py)

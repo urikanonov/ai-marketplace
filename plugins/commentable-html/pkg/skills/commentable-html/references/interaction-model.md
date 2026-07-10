@@ -1,6 +1,5 @@
 # Interaction model
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Leaving comments (interaction model)
 

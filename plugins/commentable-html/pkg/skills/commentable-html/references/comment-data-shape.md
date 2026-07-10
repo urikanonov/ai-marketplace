@@ -1,6 +1,5 @@
 # Comment data shape
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Per-comment data shape
 
@@ -10,23 +9,23 @@ Each comment captures concrete pinpoint info, not just the user's note - enough 
 
 ```json
 {
-  "id":              "c<timestamp><random>",
-  "quote":          "exact selected text",
-  "note":           "user's comment body",
-  "start":          1234,
-  "end":            1267,
-  "section":        "nearest preceding heading text, or null",
-  "headingPath":    [{"level":1,"text":"..."}, {"level":2,"text":"..."}, ...],
-  "before":         "...up to ~80 chars before the selection",
-  "after":          "up to ~80 chars after the selection...",
-  "occurrence":     2,
-  "occurrenceTotal": 5,
-  "blockTag":       "li",
-  "blockText":      "full text of the containing <li>/<p>/<td>/... element, capped at ~280 chars",
-  "isCode":         false,
-  "codeLanguage":   null,
-  "createdAt":      "ISO-8601",
-  "updatedAt":      "ISO-8601 (only set after edit)"
+ "id": "c<timestamp><random>",
+ "quote": "exact selected text",
+ "note": "user's comment body",
+ "start": 1234,
+ "end": 1267,
+ "section": "nearest preceding heading text, or null",
+ "headingPath": [{"level":1,"text":"..."}, {"level":2,"text":"..."}, ...],
+ "before": "...up to ~80 chars before the selection",
+ "after": "up to ~80 chars after the selection...",
+ "occurrence": 2,
+ "occurrenceTotal": 5,
+ "blockTag": "li",
+ "blockText": "full text of the containing <li>/<p>/<td>/... element, capped at ~280 chars",
+ "isCode": false,
+ "codeLanguage": null,
+ "createdAt": "ISO-8601",
+ "updatedAt": "ISO-8601 (only set after edit)"
 }
 ```
 
@@ -36,17 +35,17 @@ When the user clicks the floating **Add Comment** button on a rendered mermaid n
 
 ```json
 {
-  "id":           "c<timestamp><random>",
-  "anchorType":   "mermaid",
-  "diagramIndex": 0,
-  "nodeKey":      "AsmGate",
-  "nodeLabel":    "ASM machine?",
-  "quote":        "ASM machine?",
-  "note":         "user's comment body",
-  "section":      "Processor flow",
-  "headingPath":  [{"level":1,"text":"..."}, {"level":2,"text":"Processor flow"}],
-  "createdAt":    "ISO-8601",
-  "updatedAt":    "ISO-8601 (only set after edit)"
+ "id": "c<timestamp><random>",
+ "anchorType": "mermaid",
+ "diagramIndex": 0,
+ "nodeKey": "AsmGate",
+ "nodeLabel": "ASM machine?",
+ "quote": "ASM machine?",
+ "note": "user's comment body",
+ "section": "Processor flow",
+ "headingPath": [{"level":1,"text":"..."}, {"level":2,"text":"Processor flow"}],
+ "createdAt": "ISO-8601",
+ "updatedAt": "ISO-8601 (only set after edit)"
 }
 ```
 
@@ -63,21 +62,21 @@ When the user hovers a line inside a rendered diff block and clicks the floating
 
 ```json
 {
-  "id":        "c<timestamp><random>",
-  "anchorType": "diff",
-  "diffIndex":  0,
-  "lineKey":    "3",
-  "side":       "new",
-  "lineType":   "add",
-  "oldNo":      null,
-  "newNo":      2,
-  "diffLabel":  "src/reducer.py",
-  "quote":      "+    acc = x if acc is None else fn(acc, x)",
-  "isCode":     true,
-  "note":       "user's comment body",
-  "section":    "Code review diffs",
-  "headingPath": [{"level":2,"text":"Code review diffs"}],
-  "createdAt":  "ISO-8601"
+ "id": "c<timestamp><random>",
+ "anchorType": "diff",
+ "diffIndex": 0,
+ "lineKey": "3",
+ "side": "new",
+ "lineType": "add",
+ "oldNo": null,
+ "newNo": 2,
+ "diffLabel": "src/reducer.py",
+ "quote": "+ acc = x if acc is None else fn(acc, x)",
+ "isCode": true,
+ "note": "user's comment body",
+ "section": "Code review diffs",
+ "headingPath": [{"level":2,"text":"Code review diffs"}],
+ "createdAt": "ISO-8601"
 }
 ```
 

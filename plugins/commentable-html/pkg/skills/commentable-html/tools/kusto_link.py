@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build a deterministic "Run in Kusto" deep link for the Azure Data Explorer web UX.
+"""Build a deterministic "Run in Azure Data Explorer" deep link for the Azure Data Explorer web UX.
 
-A commentable report is static and offline, so an embedded KQL query cannot be run
+A commentable report is static and self-contained, so an embedded KQL query cannot be run
 in place. Instead, each query block carries an adjacent link that opens the query,
 pre-loaded, in https://dataexplorer.azure.com against a chosen cluster + database.
 

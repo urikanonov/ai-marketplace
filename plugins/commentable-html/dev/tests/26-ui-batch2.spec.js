@@ -73,7 +73,7 @@ test.describe("UI batch 2: headings, whole-diagram, scroll bubble, code box, ico
     const server = await startStaticServer(SKILL);
     try {
       await routeMermaidLocal(page);
-      await page.goto(server.url + "/TEMPLATE.html");
+      await page.goto(server.url + "/dist/PORTABLE.html");
       await ready(page);
       const host = page.locator("#commentRoot pre.mermaid").nth(1); // the gantt
       await expect(host.locator("svg .taskText, svg .taskTextOutsideRight, svg .taskTextOutsideLeft").first()).toBeVisible({ timeout: 20000 });

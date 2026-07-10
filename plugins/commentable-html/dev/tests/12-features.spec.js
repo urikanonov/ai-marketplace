@@ -5,10 +5,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-  openKitchenSink, openInline, openEconomy, addTextComment, selectText, openComposerFor,
+  openKitchenSink, openInline, openNonPortable, addTextComment, selectText, openComposerFor,
   distinctCids, allCids, currentToast, copiedBundle, markTextForCid, storedComments,
   denyExternalNetwork, installClipboardCapture, readDownload, fileUrl, ready,
-  startStaticServer, routeMermaidLocal, stageEconomy, stageInline, openToolbarMenu, KITCHEN_SINK, SKILL,
+  startStaticServer, routeMermaidLocal, stageNonPortable, stageInline, openToolbarMenu, KITCHEN_SINK, SKILL,
 } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -385,19 +385,19 @@ test.describe("exports preserve comments", () => {
     expect(await readDownload(dl)).toContain("top save note");
   });
 
-  test("Export with embedded comments makes a portable standalone file from an economy doc and reopens showing them", async ({ page, context }) => {
+  test("Export with embedded comments makes a portable standalone file from an nonportable doc and reopens showing them", async ({ page, context }) => {
     // Over file:// _getBaseHtml() uses the in-memory snapshot (no fetch), so this has
     // no http-server dependency; the HTTP export path is covered by 11-coverage.
     let dir;
     try {
-      const staged = stageEconomy();
+      const staged = stageNonPortable();
       dir = staged.dir;
       await installClipboardCapture(page);
       await page.goto(fileUrl(staged.html));
       await ready(page);
       await addTextComment(page, "#commentRoot section p", "travels in the standalone");
       // A comment is present so the panel is open: the sidebar "Export with embedded
-      // comments" always yields a portable combined file, even from an economy doc.
+      // comments" always yields a portable combined file, even from an nonportable doc.
       const [dl] = await Promise.all([
         page.waitForEvent("download"),
         page.click("#btnSaveHtml"),
@@ -414,7 +414,7 @@ test.describe("exports preserve comments", () => {
         await p2.goto(fileUrl(tmp));
         await ready(p2);
         await expect(p2.locator("#commentList")).toContainText("travels in the standalone");
-        expect(await p2.evaluate(() => document.body.classList.contains("cm-economy"))).toBe(false);
+        expect(await p2.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
       } finally {
         if (p2) await p2.close();
         fs.rmSync(tmp, { force: true });
@@ -461,7 +461,7 @@ test.describe("mermaid copy + activation", () => {
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/TEMPLATE.html?mermaid=1");
+      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
       await ready(page);
     } catch (e) {
       await server.close();
@@ -562,12 +562,12 @@ test.describe("mermaid copy + activation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Offline guarantee
+// Self-contained guarantee
 // ---------------------------------------------------------------------------
-test.describe("offline guarantee", () => {
-  test("a normal inline document reaches out to no external network", async ({ page }) => {
+test.describe("self-contained guarantee", () => {
+  test("a normal inline document stays functional when external requests are denied", async ({ page }) => {
     // mermaid's CDN import is the ONE deliberate online dependency; strip its loader so
-    // this proves the layer itself makes zero network calls (denyExternalNetwork aborts
+    // this exercises the layer with denied remote requests (denyExternalNetwork aborts
     // and records every non-local request, including the mermaid CDN).
     const { html, dir } = stageInline({
       mutate: (h) => h.replace(/<script type="module">[\s\S]*?jsdelivr[\s\S]*?<\/script>/gi, ""),
@@ -577,8 +577,8 @@ test.describe("offline guarantee", () => {
       await installClipboardCapture(page);
       await page.goto(fileUrl(html));
       await ready(page);
-      await addTextComment(page, "#commentRoot p", "offline works");
-      expect(page.__external, "no external requests: " + JSON.stringify(page.__external)).toEqual([]);
+      await addTextComment(page, "#commentRoot p", "self-contained works");
+      expect(page.__external, "unexpected external requests: " + JSON.stringify(page.__external)).toEqual([]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

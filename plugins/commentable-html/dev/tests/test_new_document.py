@@ -19,7 +19,7 @@ sys.path.insert(0, TOOLS)
 import new_document  # noqa: E402
 
 NEW_DOC_PY = os.path.join(TOOLS, "new_document.py")
-TEMPLATE = os.path.join(ROOT, "TEMPLATE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 
 CONTENT = '<section><h2 id="a">Hi</h2><p>x</p></section>'
 
@@ -72,7 +72,7 @@ class MakeDocumentTests(unittest.TestCase):
         for m in new_document._MAIN_ROOT_RE.finditer(out, 0, begin):
             last_root = m
         tag = out[last_root.start():new_document._tag_end(out, last_root.start()) + 1]
-        self.assertNotIn("data-doc-source", tag)  # template's TEMPLATE.html source is dropped
+        self.assertNotIn("data-doc-source", tag)  # template's dist/PORTABLE.html source is dropped
 
     def test_html_special_chars_in_label_are_escaped(self):
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", 'A & B "<x>"')
@@ -114,7 +114,7 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertEqual(key, "explicit-v1")
 
     def test_refuses_demo_key(self):
-        for bad in ("commentable-html-demo-v1", "my-doc-v1", "commentable-html-economy-demo-v1"):
+        for bad in ("commentable-html-demo-v1", "my-doc-v1", "commentable-html-nonportable-demo-v1"):
             with self.assertRaises(ValueError) as cm:
                 new_document.make_document(_template(), CONTENT, bad, "My Report")
             self.assertIn("demo", str(cm.exception).lower())
@@ -293,7 +293,7 @@ class MainCliTests(unittest.TestCase):
 
     def test_missing_template_errors(self):
         d = self._tmpdir()
-        missing = os.path.join(d, "no-template.html")
+        missing = os.path.join(d, "missing-portable-source.html")
         code, _out, err = self._call_main(
             ["new_document.py", "--content", "-", "--key", "x-v1", "--label", "X",
              "--template", missing], stdin=CONTENT)

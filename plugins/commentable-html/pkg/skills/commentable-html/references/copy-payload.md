@@ -1,6 +1,5 @@
 # Copy payload format
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Copy payload format
 
@@ -66,11 +65,11 @@ The `HANDLED_IDS_JSON` line is the machine-readable contract. Always parse it; d
 4. **Merge:** append every id from `HANDLED_IDS_JSON` to the existing array. Preserve existing ids. Deduplicate (a `Set` round-trip is fine).
 5. **Write** the new JSON array back into the same `<script>` block. Keep it on its own line for diff-friendliness:
 
-   ```html
-   <script type="application/json" id="handledCommentIds">
-   ["c1abc","c2def","c3ghi"]
-   </script>
-   ```
+ ```html
+ <script type="application/json" id="handledCommentIds">
+ ["c1abc","c2def","c3ghi"]
+ </script>
+ ```
 
 6. **Tell the user** to reload the page (Ctrl+F5 to bust any cache). The processed comments will be pruned automatically and a toast will say `"N previously-handled comments cleared by the agent."`
 

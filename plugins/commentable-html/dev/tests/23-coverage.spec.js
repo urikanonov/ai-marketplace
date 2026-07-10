@@ -68,7 +68,7 @@ test.describe("coverage gap closures", () => {
     const server = await startStaticServer(SKILL);
     try {
       await routeMermaidLocal(page);
-      await page.goto(server.url + "/TEMPLATE.html");
+      await page.goto(server.url + "/dist/PORTABLE.html");
       await ready(page);
       await expect(page.locator("#commentRoot .mermaid svg g.node").first()).toBeVisible({ timeout: 20000 });
     } finally {
@@ -81,7 +81,7 @@ test.describe("coverage gap closures", () => {
     const server = await startStaticServer(SKILL);
     try {
       await routeMermaidLocal(page);
-      await page.goto(server.url + "/TEMPLATE.html");
+      await page.goto(server.url + "/dist/PORTABLE.html");
       await ready(page);
       const taskLabel = page.locator("#commentRoot .mermaid svg .taskText").first();
       await expect(taskLabel).toBeVisible({ timeout: 20000 });
@@ -104,7 +104,7 @@ test.describe("coverage gap closures", () => {
     test.setTimeout(60000);
     const server = await startStaticServer(SKILL);
     try {
-      await page.goto(server.url + "/examples/community-garden.html");
+      await page.goto(server.url + "/examples/report-community-garden.html");
       await ready(page);
       await page.waitForFunction(() => {
         const chart = window.Chart && window.Chart.getChart && window.Chart.getChart("wateringNeedsChart");

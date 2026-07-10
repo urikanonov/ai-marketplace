@@ -43,7 +43,7 @@ test.describe("Kusto query blocks", () => {
     expect(text).not.toContain("<span");
   });
 
-  test("the Run in Kusto link is a safe ADX deep link inside cm-skip chrome", async ({ page }) => {
+  test("the Run in Azure Data Explorer link is a safe ADX deep link inside cm-skip chrome", async ({ page }) => {
     await openInline(page);
     const a = page.locator("a.cmh-kql-run");
     await expect(a).toHaveCount(1);

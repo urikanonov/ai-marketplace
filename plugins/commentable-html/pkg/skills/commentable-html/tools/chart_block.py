@@ -9,7 +9,7 @@ The output has two clearly separated fragments:
   1) a <figure class="chart"> block for #commentRoot content
   2) chart scripts for after "END: commentable-html v2 - JS" and before </body>
 
-The tool self-validates the emitted fragments by injecting them into TEMPLATE.html
+The tool self-validates the emitted fragments by injecting them into dist/PORTABLE.html
 and running tools/validate.py as an import.
 """
 import argparse
@@ -22,7 +22,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_ROOT = os.path.dirname(HERE)
-DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "TEMPLATE.html")
+DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 
 BEGIN_MARKER = "<!-- BEGIN: commentable-html v2 - CONTENT (agent edits ONLY between these markers) -->"
 END_MARKER = "<!-- END: commentable-html v2 - CONTENT -->"

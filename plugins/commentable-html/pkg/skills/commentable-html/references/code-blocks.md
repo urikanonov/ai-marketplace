@@ -1,6 +1,5 @@
 # Code blocks
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Code blocks
 
@@ -12,7 +11,7 @@ Any `<pre>` or `<pre><code>` block inside `#commentRoot` is commentable by defau
 <pre><code class="language-csharp">
 public sealed class FlakeFixer
 {
-    public void Run() => throw new NotImplementedException();
+ public void Run() => throw new NotImplementedException();
 }
 </code></pre>
 ```
@@ -36,15 +35,14 @@ Code-block comments are stored as regular text comments with two extra fields:
 4. The Copy bundle emits a fenced code block and skips the prose-only `In context:` / `Containing <pre>:` lines.
 5. The per-block **Copy** button copies the block's raw `textContent` without the trailing newline and shows a toast.
 
-### Syntax highlighting (author-time, offline)
+### Syntax highlighting (author-time, self-contained)
 
-Highlight code blocks with `tools/highlight_code.py`, an offline standard-library highlighter that bakes token spans at author time:
+Highlight code blocks with `tools/highlight_code.py`, a standard-library highlighter that bakes token spans at author time:
 
 ```bash
-python tools/highlight_code.py <language> "<code>"      # code as an argument
+python tools/highlight_code.py <language> "<code>" # code as an argument
 python tools/highlight_code.py <language> < snippet.txt # or piped on stdin
-python tools/highlight_code.py --list                   # supported languages
+python tools/highlight_code.py --list # supported languages
 ```
 
 It emits a `<pre><code class="language-<lang>">...</code></pre>` block whose tokens are wrapped in `<span class="cmh-code-...">` (kw, fn, str, num, com, op). The spans only add structure, so `textContent` is the exact original code (LF-normalized), selecting and commenting still see raw code, and every character is HTML-escaped. The layer CSS ships token colors for light and dark themes. Unknown languages fall back to a safely escaped unhighlighted block.
-

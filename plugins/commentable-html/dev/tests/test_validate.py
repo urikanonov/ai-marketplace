@@ -8,7 +8,7 @@ Run from the skill root:
 
 Most tests build a MINIMAL valid commentable document in-memory and mutate one
 thing to assert a specific error/warning. One test validates the real
-TEMPLATE.html as a positive control (it must pass with zero errors and zero
+dist/PORTABLE.html as a positive control (it must pass with zero errors and zero
 warnings). Several tests drive the CLI as a subprocess to cover exit codes,
 CRLF, non-UTF-8 input, and batch behaviour. Coverage is mutation-checked: for
 each validator branch there is a test that fails if the branch is deleted.
@@ -30,7 +30,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import validate  # noqa: E402
 
-TEMPLATE = os.path.join(ROOT, "TEMPLATE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 VALIDATE_PY = os.path.join(TOOLS, "validate.py")
 
 # Frozen, test-owned copy of the required-id contract. The fixture is built from
@@ -219,7 +219,7 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_kusto_run_link_valid_is_clean(self):
         link = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/c/databases/d?query=H4sI" '
-                'target="_blank" rel="noopener noreferrer">Run in Kusto</a>')
+                'target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer</a>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + link)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
@@ -248,22 +248,22 @@ class ValidateUnitTests(unittest.TestCase):
                '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
         self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
-                        'figure.cmh-kql has no "Run in Kusto" link')
+                        'figure.cmh-kql has no "Run in Azure Data Explorer" link')
 
     def test_kql_figure_with_run_link_is_clean(self):
         fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
                '<button class="cmh-kql-title" type="button">cluster</button>'
                '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
-               'target="_blank" rel="noopener noreferrer">Run in Kusto</a></figcaption>'
+               'target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer</a></figcaption>'
                '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
     def test_real_template_is_clean(self):
-        self.assertTrue(os.path.exists(TEMPLATE), "TEMPLATE.html not found next to the tests")
+        self.assertTrue(os.path.exists(TEMPLATE), "dist/PORTABLE.html not found next to the tests")
         errors, warnings = validate.validate(TEMPLATE)
-        self.assertEqual(errors, [], "TEMPLATE.html should have no errors, got: %r" % errors)
-        self.assertEqual(warnings, [], "TEMPLATE.html should have no warnings, got: %r" % warnings)
+        self.assertEqual(errors, [], "dist/PORTABLE.html should have no errors, got: %r" % errors)
+        self.assertEqual(warnings, [], "dist/PORTABLE.html should have no warnings, got: %r" % warnings)
 
     def test_case_insensitive_tags_and_ids_ok(self):
         doc = build()
@@ -423,7 +423,7 @@ class ValidateUnitTests(unittest.TestCase):
         self.assertError(doc, "demo content root survived")
 
     def test_demo_key_with_demo_title_is_ok(self):
-        # Matches TEMPLATE.html (demo key + demo <title>): the survivor check is
+        # Matches dist/PORTABLE.html (demo key + demo <title>): the survivor check is
         # title-gated so the pristine template and its derivatives stay green.
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), self._DEMO_MAIN, JS_REGION])
         doc = doc.replace("<head>\n<style>", "<head>\n<title>Commentable HTML - Demo</title>\n<style>", 1)
@@ -758,25 +758,25 @@ class ValidateUnitTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# Economy-mode fixtures: CSS/JS live in companion files referenced via
+# NonPortable-mode fixtures: CSS/JS live in companion files referenced via
 # <link>/<script src>; HANDLED IDS, EMBEDDED COMMENTS and COMMENT UI stay inline.
 # --------------------------------------------------------------------------- #
-ECON_VERSION = "2.5.0"
+NONPORTABLE_VERSION = "2.5.0"
 
 
-def econ_bootstrap(banner=True, watchdog=True):
+def nonportable_bootstrap(banner=True, watchdog=True):
     inner = ""
     if banner:
         inner += '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>missing</div>\n'
     if watchdog:
         inner += ("<script>window.setTimeout(function () { "
                   "if (!window.__commentableHtmlReady) {} }, 3000);</script>\n")
-    return ("<!-- BEGIN: commentable-html v2 - ECONOMY BOOTSTRAP -->\n"
+    return ("<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->\n"
             + inner
-            + "<!-- END: commentable-html v2 - ECONOMY BOOTSTRAP -->")
+            + "<!-- END: commentable-html v2 - NONPORTABLE BOOTSTRAP -->")
 
 
-def econ_scripts(version=ECON_VERSION, runtime=True, assets=True):
+def nonportable_scripts(version=NONPORTABLE_VERSION, runtime=True, assets=True):
     out = []
     if assets:
         out.append('<script src="commentable-html.v%s.assets.js"></script>' % version)
@@ -786,16 +786,16 @@ def econ_scripts(version=ECON_VERSION, runtime=True, assets=True):
     return "\n".join(out)
 
 
-def build_economy(version=ECON_VERSION, link=True, runtime=True, assets=True, meta=True,
+def build_nonportable(version=NONPORTABLE_VERSION, link=True, runtime=True, assets=True, meta=True,
                   banner=True, watchdog=True, link_version=None):
-    """A minimal, valid economy document (theme vars inline, layer externalized)."""
+    """A minimal, valid nonportable document (theme vars inline, layer externalized)."""
     head = ["<style>\n:root { --cp-bg: #fff; --cp-text: #000; }\n</style>"]
     if link:
         head.append('<link rel="stylesheet" href="commentable-html.v%s.css">' % (link_version or version))
     if meta:
         head.append('<meta name="commentable-html-assets" content="%s">' % version)
-    body = [econ_bootstrap(banner, watchdog), HANDLED_REGION, EMBEDDED_REGION,
-            comment_ui(), MAIN, econ_scripts(version, runtime, assets)]
+    body = [nonportable_bootstrap(banner, watchdog), HANDLED_REGION, EMBEDDED_REGION,
+            comment_ui(), MAIN, nonportable_scripts(version, runtime, assets)]
     return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n'
             + "\n".join(head)
             + "\n</head>\n<body>\n"
@@ -850,10 +850,10 @@ class SectionReferenceLinkTests(unittest.TestCase):
         self.assertFalse(self._warns('<h2 id="a">Overview</h2><p>The overview covers scope.</p>'))
 
 
-class EconomyTests(unittest.TestCase):
-    """Dual-mode validation: the economy branch and its guardrails."""
+class NonPortableTests(unittest.TestCase):
+    """Dual-mode validation: the nonportable branch and its guardrails."""
 
-    def _validate(self, content, companions=("css", "js", "assets"), version=ECON_VERSION):
+    def _validate(self, content, companions=("css", "js", "assets"), version=NONPORTABLE_VERSION):
         exts = {"css": ".css", "js": ".js", "assets": ".assets.js"}
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "doc.html")
@@ -865,35 +865,35 @@ class EconomyTests(unittest.TestCase):
                     fh.write("/* stub */")
             return validate.validate(p)
 
-    def assertEconError(self, content, needle, **kw):
+    def assertNonPortableError(self, content, needle, **kw):
         errors, _ = self._validate(content, **kw)
         self.assertTrue(any(needle in e for e in errors),
                         "expected an error containing %r, got: %r" % (needle, errors))
 
-    def assertEconWarn(self, content, needle, **kw):
+    def assertNonPortableWarn(self, content, needle, **kw):
         errors, warnings = self._validate(content, **kw)
         self.assertEqual(errors, [], "expected no errors, got: %r" % errors)
         self.assertTrue(any(needle in w for w in warnings),
                         "expected a warning containing %r, got: %r" % (needle, warnings))
 
     # -- positive controls -------------------------------------------------- #
-    def test_minimal_economy_is_clean(self):
-        errors, warnings = self._validate(build_economy())
-        self.assertEqual(errors, [], "economy errors: %r" % errors)
-        self.assertEqual(warnings, [], "economy warnings: %r" % warnings)
+    def test_minimal_nonportable_is_clean(self):
+        errors, warnings = self._validate(build_nonportable())
+        self.assertEqual(errors, [], "nonportable errors: %r" % errors)
+        self.assertEqual(warnings, [], "nonportable warnings: %r" % warnings)
 
-    def test_real_economy_template_is_clean(self):
-        eco = os.path.join(ROOT, "dist", "ECONOMY.html")
-        self.assertTrue(os.path.exists(eco), "dist/ECONOMY.html not found - run python tools/build.py")
+    def test_real_nonportable_template_is_clean(self):
+        eco = os.path.join(ROOT, "dist", "NONPORTABLE.html")
+        self.assertTrue(os.path.exists(eco), "dist/NONPORTABLE.html not found - run python tools/build.py")
         errors, warnings = validate.validate(eco)
-        self.assertEqual(errors, [], "dist/ECONOMY.html errors: %r" % errors)
-        self.assertEqual(warnings, [], "dist/ECONOMY.html warnings: %r" % warnings)
+        self.assertEqual(errors, [], "dist/NONPORTABLE.html errors: %r" % errors)
+        self.assertEqual(warnings, [], "dist/NONPORTABLE.html warnings: %r" % warnings)
 
-    def test_is_economy_detection(self):
-        self.assertTrue(validate._is_economy(build_economy()))
-        self.assertFalse(validate._is_economy(build()))
+    def test_is_nonportable_detection(self):
+        self.assertTrue(validate._is_nonportable(build_nonportable()))
+        self.assertFalse(validate._is_nonportable(build()))
 
-    def test_economy_detection_ignores_attribute_substrings(self):
+    def test_nonportable_detection_ignores_attribute_substrings(self):
         # A decoy tag whose attribute NAME merely contains "href"/"src" as a
         # substring (data-href / data-src) must NOT be treated as a real
         # companion reference - the browser would never load it.
@@ -901,15 +901,15 @@ class EconomyTests(unittest.TestCase):
             '<!DOCTYPE html>\n<html><head>\n'
             '<link rel="preload" data-href="commentable-html.v%s.css">\n'
             '<script type="application/json" data-src="commentable-html.v%s.js">{}</script>\n'
-            '</head><body>\n' % (ECON_VERSION, ECON_VERSION)
+            '</head><body>\n' % (NONPORTABLE_VERSION, NONPORTABLE_VERSION)
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + '\n</body></html>\n')
-        self.assertFalse(validate._is_economy(decoy))
+        self.assertFalse(validate._is_nonportable(decoy))
 
-    def test_economy_detection_accepts_unquoted_and_reordered_attrs(self):
+    def test_nonportable_detection_accepts_unquoted_and_reordered_attrs(self):
         # Unquoted href/src and a reordered <meta content=.. name=..> are valid
-        # HTML that the browser loads, so economy detection must recognize them.
-        v = ECON_VERSION
+        # HTML that the browser loads, so nonportable detection must recognize them.
+        v = NONPORTABLE_VERSION
         unquoted = (
             "<!DOCTYPE html>\n<html><head>\n"
             "<link rel=stylesheet href=commentable-html.v%s.css>\n"
@@ -917,16 +917,16 @@ class EconomyTests(unittest.TestCase):
             "</head><body>\n" % (v, v)
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + "\n</body></html>\n")
-        self.assertTrue(validate._is_economy(unquoted))
-        self.assertEqual(validate._econ_css_refs(unquoted), ["commentable-html.v%s.css" % v])
+        self.assertTrue(validate._is_nonportable(unquoted))
+        self.assertEqual(validate._nonportable_css_refs(unquoted), ["commentable-html.v%s.css" % v])
         # Reordered meta (content before name) is still read for the version.
         reordered = '<meta content="%s" name="commentable-html-assets">' % v
-        self.assertEqual(validate._econ_meta_versions(reordered), [v])
+        self.assertEqual(validate._nonportable_meta_versions(reordered), [v])
 
-    def test_economy_detection_is_case_insensitive(self):
+    def test_nonportable_detection_is_case_insensitive(self):
         # The "commentable-html" substring and the extension are matched
         # case-insensitively, so a mixed-case companion reference is still detected.
-        v = ECON_VERSION
+        v = NONPORTABLE_VERSION
         mixed = (
             "<!DOCTYPE html>\n<html><head>\n"
             '<link rel="stylesheet" href="Commentable-HTML.v%s.CSS">\n'
@@ -934,38 +934,38 @@ class EconomyTests(unittest.TestCase):
             "</head><body>\n" % (v, v)
             + "\n".join([HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN])
             + "\n</body></html>\n")
-        self.assertTrue(validate._is_economy(mixed))
-        self.assertEqual(validate._econ_css_refs(mixed), ["Commentable-HTML.v%s.CSS" % v])
-        self.assertEqual(validate._econ_js_refs(mixed), ["Commentable-HTML.v%s.JS" % v])
+        self.assertTrue(validate._is_nonportable(mixed))
+        self.assertEqual(validate._nonportable_css_refs(mixed), ["Commentable-HTML.v%s.CSS" % v])
+        self.assertEqual(validate._nonportable_js_refs(mixed), ["Commentable-HTML.v%s.JS" % v])
 
-    def test_economy_detection_ignores_gt_in_value_and_decoys(self):
+    def test_nonportable_detection_ignores_gt_in_value_and_decoys(self):
         # The HTMLParser-based scan must (a) not be fooled by a '>' inside a quoted
         # attribute value, and (b) ignore link/script tags that only appear inside an
         # HTML comment or a <script>/<style> body (CDATA), which a naive regex matched.
-        v = ECON_VERSION
+        v = NONPORTABLE_VERSION
         gt_in_value = '<link rel="stylesheet" title="a>b" href="commentable-html.v%s.css">' % v
-        self.assertEqual(validate._econ_css_refs(gt_in_value), ["commentable-html.v%s.css" % v])
+        self.assertEqual(validate._nonportable_css_refs(gt_in_value), ["commentable-html.v%s.css" % v])
         commented = '<!-- <link rel="stylesheet" href="commentable-html.v%s.css"> -->' % v
-        self.assertEqual(validate._econ_css_refs(commented), [])
+        self.assertEqual(validate._nonportable_css_refs(commented), [])
         in_script = '<script>var s = "<link href=\'commentable-html.v%s.css\'>";</script>' % v
-        self.assertEqual(validate._econ_css_refs(in_script), [])
+        self.assertEqual(validate._nonportable_css_refs(in_script), [])
 
 
     def test_missing_stylesheet_link_errors(self):
-        self.assertEconError(build_economy(link=False), "no commentable-html stylesheet")
+        self.assertNonPortableError(build_nonportable(link=False), "no commentable-html stylesheet")
 
     def test_missing_runtime_script_errors(self):
-        self.assertEconError(build_economy(runtime=False), "no commentable-html runtime")
+        self.assertNonPortableError(build_nonportable(runtime=False), "no commentable-html runtime")
 
     def test_missing_assets_js_warns(self):
-        self.assertEconWarn(build_economy(assets=False), "Export with embedded comments", companions=("css", "js"))
+        self.assertNonPortableWarn(build_nonportable(assets=False), "Export with embedded comments", companions=("css", "js"))
 
     def test_missing_version_meta_warns(self):
-        self.assertEconWarn(build_economy(meta=False), 'missing <meta name="commentable-html-assets"')
+        self.assertNonPortableWarn(build_nonportable(meta=False), 'missing <meta name="commentable-html-assets"')
 
     def test_version_meta_filename_mismatch_warns(self):
         # meta says 2.5.0 but the <link> points at a 2.4.0 companion file.
-        html = build_economy(link_version="2.4.0")
+        html = build_nonportable(link_version="2.4.0")
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "doc.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
@@ -979,35 +979,35 @@ class EconomyTests(unittest.TestCase):
         self.assertTrue(any("must match" in w for w in warnings), warnings)
 
     def test_missing_banner_errors(self):
-        self.assertEconError(build_economy(banner=False), "#cmhAssetBanner")
+        self.assertNonPortableError(build_nonportable(banner=False), "#cmhAssetBanner")
 
     def test_missing_watchdog_warns(self):
-        self.assertEconWarn(build_economy(watchdog=False), "bootstrap watchdog")
+        self.assertNonPortableWarn(build_nonportable(watchdog=False), "bootstrap watchdog")
 
     def test_missing_companion_file_errors(self):
         # HTML references the runtime but the .js file is absent on disk.
-        self.assertEconError(build_economy(), "companion file not found", companions=("css", "assets"))
+        self.assertNonPortableError(build_nonportable(), "companion file not found", companions=("css", "assets"))
 
-    def test_economy_state_regions_still_validated(self):
-        # Dropping the inline HANDLED IDS region must still fail in economy mode.
-        html = build_economy().replace(HANDLED_REGION, "")
-        self.assertEconError(html, "handledCommentIds")
+    def test_nonportable_state_regions_still_validated(self):
+        # Dropping the inline HANDLED IDS region must still fail in nonportable mode.
+        html = build_nonportable().replace(HANDLED_REGION, "")
+        self.assertNonPortableError(html, "handledCommentIds")
 
-    def test_economy_does_not_require_inline_css_js_regions(self):
+    def test_nonportable_does_not_require_inline_css_js_regions(self):
         # No inline CSS/JS region markers, yet clean - proving those checks are skipped.
-        html = build_economy()
+        html = build_nonportable()
         self.assertNotIn("BEGIN: commentable-html v2 - CSS", html)
         self.assertNotIn("BEGIN: commentable-html v2 - JS", html)
 
     def test_absolute_companion_path_warns(self):
         # An absolute path is usable but leaks a local directory - warn, do not error.
         with tempfile.TemporaryDirectory() as d:
-            css = os.path.join(d, "commentable-html.v%s.css" % ECON_VERSION)
+            css = os.path.join(d, "commentable-html.v%s.css" % NONPORTABLE_VERSION)
             for c, ext in (("css", ".css"), ("js", ".js"), ("assets", ".assets.js")):
-                with open(os.path.join(d, "commentable-html.v%s%s" % (ECON_VERSION, ext)), "w") as fh:
+                with open(os.path.join(d, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w") as fh:
                     fh.write("/* stub */")
-            html = build_economy().replace(
-                'href="commentable-html.v%s.css"' % ECON_VERSION,
+            html = build_nonportable().replace(
+                'href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
                 'href="%s"' % css.replace("\\", "/"))
             p = os.path.join(d, "doc.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
@@ -1017,21 +1017,21 @@ class EconomyTests(unittest.TestCase):
         self.assertTrue(any("absolute path" in w for w in warnings), warnings)
 
     def test_companion_parent_relative_ref_ok(self):
-        # Economy may point at the skill dist/ folder via a ../ path; if the target
+        # NonPortable may point at the skill dist/ folder via a ../ path; if the target
         # resolves to an existing file it is valid (no "escapes the folder" error).
         with tempfile.TemporaryDirectory() as d:
             sub = os.path.join(d, "reports")
             os.makedirs(sub)
             for ext in (".css", ".js", ".assets.js"):
-                with open(os.path.join(d, "commentable-html.v%s%s" % (ECON_VERSION, ext)), "w") as fh:
+                with open(os.path.join(d, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w") as fh:
                     fh.write("/* stub */")
-            html = (build_economy()
-                    .replace('href="commentable-html.v%s.css"' % ECON_VERSION,
-                             'href="../commentable-html.v%s.css"' % ECON_VERSION)
-                    .replace('src="commentable-html.v%s.js"' % ECON_VERSION,
-                             'src="../commentable-html.v%s.js"' % ECON_VERSION)
-                    .replace('src="commentable-html.v%s.assets.js"' % ECON_VERSION,
-                             'src="../commentable-html.v%s.assets.js"' % ECON_VERSION))
+            html = (build_nonportable()
+                    .replace('href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
+                             'href="../commentable-html.v%s.css"' % NONPORTABLE_VERSION)
+                    .replace('src="commentable-html.v%s.js"' % NONPORTABLE_VERSION,
+                             'src="../commentable-html.v%s.js"' % NONPORTABLE_VERSION)
+                    .replace('src="commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION,
+                             'src="../commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION))
             p = os.path.join(sub, "doc.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(html)
@@ -1039,21 +1039,21 @@ class EconomyTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
 
     def test_companion_in_subfolder_ok(self):
-        # A subdirectory reference (e.g. the skill's dist/) is the intended economy
+        # A subdirectory reference (e.g. the skill's dist/) is the intended nonportable
         # workflow, so it is valid as long as the file exists at the resolved path.
         with tempfile.TemporaryDirectory() as d:
             dist = os.path.join(d, "dist")
             os.makedirs(dist)
             for ext in (".css", ".js", ".assets.js"):
-                with open(os.path.join(dist, "commentable-html.v%s%s" % (ECON_VERSION, ext)), "w") as fh:
+                with open(os.path.join(dist, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w") as fh:
                     fh.write("/* stub */")
-            html = (build_economy()
-                    .replace('href="commentable-html.v%s.css"' % ECON_VERSION,
-                             'href="dist/commentable-html.v%s.css"' % ECON_VERSION)
-                    .replace('src="commentable-html.v%s.js"' % ECON_VERSION,
-                             'src="dist/commentable-html.v%s.js"' % ECON_VERSION)
-                    .replace('src="commentable-html.v%s.assets.js"' % ECON_VERSION,
-                             'src="dist/commentable-html.v%s.assets.js"' % ECON_VERSION))
+            html = (build_nonportable()
+                    .replace('href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
+                             'href="dist/commentable-html.v%s.css"' % NONPORTABLE_VERSION)
+                    .replace('src="commentable-html.v%s.js"' % NONPORTABLE_VERSION,
+                             'src="dist/commentable-html.v%s.js"' % NONPORTABLE_VERSION)
+                    .replace('src="commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION,
+                             'src="dist/commentable-html.v%s.assets.js"' % NONPORTABLE_VERSION))
             p = os.path.join(d, "doc.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(html)
@@ -1061,26 +1061,26 @@ class EconomyTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
 
     def test_remote_companion_url_errors(self):
-        html = build_economy().replace(
-            'href="commentable-html.v%s.css"' % ECON_VERSION,
-            'href="https://cdn.example.com/commentable-html.v%s.css"' % ECON_VERSION)
-        self.assertEconError(html, "remote/CDN URL")
+        html = build_nonportable().replace(
+            'href="commentable-html.v%s.css"' % NONPORTABLE_VERSION,
+            'href="https://cdn.example.com/commentable-html.v%s.css"' % NONPORTABLE_VERSION)
+        self.assertNonPortableError(html, "remote/CDN URL")
 
-    def test_economy_demo_key_survivor_is_flagged(self):
-        # The real economy template (economy demo key + economy demo title) is clean,
+    def test_nonportable_demo_key_survivor_is_flagged(self):
+        # The real nonportable template (nonportable demo key + nonportable demo title) is clean,
         # but changing only the title while keeping the demo key is a survived retrofit.
-        eco = os.path.join(ROOT, "dist", "ECONOMY.html")
+        eco = os.path.join(ROOT, "dist", "NONPORTABLE.html")
         with open(eco, encoding="utf-8") as fh:
             html = fh.read()
-        mutated = html.replace("<title>Commentable HTML - Economy Demo</title>",
-                               "<title>My Real Economy Doc</title>")
+        mutated = html.replace("<title>Commentable HTML - NonPortable Demo</title>",
+                               "<title>My Real NonPortable Doc</title>")
         with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "ECONOMY.html")
+            p = os.path.join(d, "NONPORTABLE.html")
             with open(p, "w", encoding="utf-8", newline="") as fh:
                 fh.write(mutated)
             for c in ("css", "js", "assets"):
                 ext = {"css": ".css", "js": ".js", "assets": ".assets.js"}[c]
-                with open(os.path.join(d, "commentable-html.v%s%s" % (ECON_VERSION, ext)), "w", encoding="utf-8") as fh:
+                with open(os.path.join(d, "commentable-html.v%s%s" % (NONPORTABLE_VERSION, ext)), "w", encoding="utf-8") as fh:
                     fh.write("/* stub */")
             errors, _ = validate.validate(p)
         self.assertTrue(any("demo content root survived" in e for e in errors), errors)
@@ -1274,7 +1274,7 @@ class ErrorPathTests(unittest.TestCase):
 
 
 class NewCheckTests(unittest.TestCase):
-    """Coverage for the offline-guarantee, embedded-comment schema, duplicate-heading,
+    """Coverage for the self-contained-guarantee, embedded-comment schema, duplicate-heading,
     canvas-report-all, and --strict additions."""
 
     def _body(self, main, *extra):
@@ -1283,7 +1283,7 @@ class NewCheckTests(unittest.TestCase):
     def _errs_warns(self, content):
         return _validate_text(content)
 
-    # -- offline guarantee -------------------------------------------------- #
+    # -- self-contained guarantee -------------------------------------------------- #
     def test_external_img_src_errors(self):
         main = MAIN.replace("<p>content</p>", '<p>content</p>\n  <img src="https://example.com/x.png" alt="x">')
         errors, _ = self._errs_warns(build(body=self._body(main)))
@@ -1303,18 +1303,18 @@ class NewCheckTests(unittest.TestCase):
 
     def test_external_script_src_errors(self):
         errors, _ = self._errs_warns(build(body=self._body(MAIN, '<script src="https://evil.cdn/x.js"></script>')))
-        self.assertTrue(any("offline guarantee" in e for e in errors), errors)
+        self.assertTrue(any("self-contained guarantee" in e for e in errors), errors)
 
-    def test_chartjs_cdn_script_is_exempt_from_offline_error(self):
+    def test_chartjs_cdn_script_is_exempt_from_self_contained_error(self):
         script = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>'
         errors, _ = self._errs_warns(build(body=self._body(MAIN, script)))
-        self.assertFalse(any("offline guarantee" in e for e in errors), errors)
+        self.assertFalse(any("self-contained guarantee" in e for e in errors), errors)
 
     def test_external_stylesheet_link_warns(self):
         link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=X">'
         errors, warnings = self._errs_warns(build(body=self._body(MAIN, link)))
         self.assertEqual(errors, [], errors)
-        self.assertTrue(any("offline guarantee" in w for w in warnings), warnings)
+        self.assertTrue(any("self-contained guarantee" in w for w in warnings), warnings)
 
     # -- duplicate heading ids --------------------------------------------- #
     def test_duplicate_heading_ids_warn(self):

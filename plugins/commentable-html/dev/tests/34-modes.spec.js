@@ -11,7 +11,7 @@ import {
 // (a shared copy whose comments travel embedded in the file, independent of localStorage).
 
 test("MODE Portable: a fresh self-contained document reports Portable", async ({ page }) => {
-  await openInline(page); // TEMPLATE.html: assets embedded, no live comments
+  await openInline(page); // dist/PORTABLE.html: assets embedded, no live comments
   await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
 });
 

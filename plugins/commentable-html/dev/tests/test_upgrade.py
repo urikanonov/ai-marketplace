@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression tests for tools/upgrade.py (the layer-region upgrade tool).
 
-Standard library only. The real TEMPLATE.html is used as both the template and the
+Standard library only. The real dist/PORTABLE.html is used as both the template and the
 basis for a "deployed" file whose regions are then mutated, so the tests exercise the
 actual region model rather than a synthetic fixture.
 """
@@ -20,7 +20,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import upgrade  # noqa: E402
 
-TEMPLATE = os.path.join(ROOT, "TEMPLATE.html")
+TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 
 
 def _tpl():
@@ -78,13 +78,13 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertIn("more-js", inner)
         self.assertEqual(e, text.rfind("END: commentable-html v2 - JS"))
 
-    def test_economy_document_is_refused(self):
+    def test_nonportable_document_is_refused(self):
         tpl = _tpl()
         econ = tpl.replace("<head>",
-                           "<head>\n<!-- BEGIN: commentable-html v2 - ECONOMY BOOTSTRAP -->", 1)
+                           "<head>\n<!-- BEGIN: commentable-html v2 - NONPORTABLE BOOTSTRAP -->", 1)
         with self.assertRaises(ValueError) as cm:
             upgrade.upgrade(econ, tpl)
-        self.assertIn("economy", str(cm.exception).lower())
+        self.assertIn("nonportable", str(cm.exception).lower())
 
     def test_non_commentable_file_is_refused(self):
         with self.assertRaises(ValueError) as cm:

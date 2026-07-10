@@ -5,10 +5,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-  openInline, openEconomy, openKitchenSink, addTextComment, openComposerFor,
+  openInline, openNonPortable, openKitchenSink, addTextComment, openComposerFor,
   openToolbarMenu, markTextForCid, distinctCids, ready, fileUrl, selectText,
   startStaticServer, routeMermaidLocal, installClipboardCapture, readDownload,
-  stageEconomy, SKILL,
+  stageNonPortable, SKILL,
 } from "./helpers.js";
 
 test.describe("targeted coverage gaps", () => {
@@ -80,12 +80,12 @@ test.describe("targeted coverage gaps", () => {
   });
 
   test("mode badge reflects document type in both directions", async ({ page }) => {
-    // Inline documents are standalone; economy documents load assets from companions.
+    // Inline documents are standalone; nonportable documents load assets from companions.
     await openInline(page);
     await openToolbarMenu(page);
     await expect(page.locator("#cmhModeBadge")).toHaveText("Portable");
 
-    await openEconomy(page);
+    await openNonPortable(page);
     await openToolbarMenu(page);
     await expect(page.locator("#cmhModeBadge")).toHaveText("Not portable");
   });
@@ -95,7 +95,7 @@ test.describe("targeted coverage gaps", () => {
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/TEMPLATE.html?mermaid=1");
+      await page.goto(server.url + "/dist/PORTABLE.html?mermaid=1");
       await ready(page);
 
       // Deliberately comment a NON-first node so "always rings the first node" cannot pass.
@@ -164,11 +164,11 @@ test.describe("targeted coverage gaps", () => {
     await expect(page.locator("#toolbarCount")).toHaveText("0");
   });
 
-  test("Export with embedded comments produces a standalone file when the economy doc is served over HTTP", async ({ page, context }) => {
+  test("Export with embedded comments produces a standalone file when the nonportable doc is served over HTTP", async ({ page, context }) => {
     test.slow(); // static server + http fetch in _getBaseHtml + python validate under parallel load
     let server, dir;
     try {
-      const staged = stageEconomy();
+      const staged = stageNonPortable();
       dir = staged.dir;
       server = await startStaticServer(dir);
       await installClipboardCapture(page);
@@ -192,7 +192,7 @@ test.describe("targeted coverage gaps", () => {
         page2 = await context.newPage();
         await page2.goto(fileUrl(tmp));
         await ready(page2);
-        expect(await page2.evaluate(() => document.body.classList.contains("cm-economy"))).toBe(false);
+        expect(await page2.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
       } finally {
         if (page2) await page2.close();
         fs.rmSync(tmp, { force: true });

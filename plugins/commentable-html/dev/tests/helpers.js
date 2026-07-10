@@ -18,17 +18,17 @@ export const PYTHON = (() => {
 })();
 
 // Marketplace pkg/dev split: this suite lives under dev/tests, but the runtime skill it
-// exercises (TEMPLATE.html, dist/, examples/, tools/) ships under pkg. Test-only assets
+// exercises (dist/PORTABLE.html, dist/, examples/, tools/) ships under pkg. Test-only assets
 // (fixtures) and node_modules stay under dev. SKILL points at the shipped skill root; DEV
 // points at this dev tree.
 export const DEV = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const SKILL = path.resolve(DEV, "..", "pkg", "skills", "commentable-html");
-export const INLINE = path.join(SKILL, "TEMPLATE.html");
 export const DIST = path.join(SKILL, "dist");
-export const ECONOMY = path.join(DIST, "ECONOMY.html");
+export const INLINE = path.join(DIST, "PORTABLE.html");
+export const NONPORTABLE = path.join(DIST, "NONPORTABLE.html");
 export const FIXTURES = path.join(DEV, "tests", "fixtures");
 export const KITCHEN_SINK = path.join(FIXTURES, "kitchen-sink.html");
-export const KITCHEN_SINK_ECONOMY = path.join(FIXTURES, "economy", "kitchen-sink.html");
+export const KITCHEN_SINK_NONPORTABLE = path.join(FIXTURES, "nonportable", "kitchen-sink.html");
 export const fileUrl = (p) => pathToFileURL(p).href;
 
 // The layer copies via navigator.clipboard.writeText; capture it deterministically
@@ -49,7 +49,7 @@ export async function installClipboardCapture(page) {
 export const ready = (page) =>
   page.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 8000 });
 
-// Prove the offline guarantee: abort and RECORD every non-local HTTP(S) request
+// Prove the self-contained guarantee: abort and RECORD every non-local HTTP(S) request
 // (including the mermaid CDN) so a test can assert the page reached out to nothing.
 // file:// and localhost/127.0.0.1 (the static server) are allowed through. Mermaid is
 // only ever served locally by routeMermaidLocal (which fulfills from vendored files),
@@ -89,9 +89,9 @@ export async function openInline(page) {
   await ready(page);
 }
 
-export async function openEconomy(page) {
+export async function openNonPortable(page) {
   await installClipboardCapture(page);
-  await page.goto(fileUrl(ECONOMY));
+  await page.goto(fileUrl(NONPORTABLE));
   await ready(page);
 }
 
@@ -101,9 +101,9 @@ export async function openKitchenSink(page) {
   await ready(page);
 }
 
-export async function openKitchenSinkEconomy(page) {
+export async function openKitchenSinkNonPortable(page) {
   await installClipboardCapture(page);
-  await page.goto(fileUrl(KITCHEN_SINK_ECONOMY));
+  await page.goto(fileUrl(KITCHEN_SINK_NONPORTABLE));
   await ready(page);
 }
 
@@ -213,22 +213,22 @@ export function readDownload(download) {
   return download.path().then((p) => fs.readFileSync(p, "utf8"));
 }
 
-// Copy dist/ECONOMY.html (+ optionally its companions) into a fresh temp dir and
+// Copy dist/NONPORTABLE.html (+ optionally its companions) into a fresh temp dir and
 // return the path to the copied HTML. `companions=false` simulates a broken share.
-export function stageEconomy({ companions = true, mutate = null } = {}) {
+export function stageNonPortable({ companions = true, mutate = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_e2e_"));
-  let html = fs.readFileSync(ECONOMY, "utf8");
+  let html = fs.readFileSync(NONPORTABLE, "utf8");
   if (mutate) html = mutate(html);
-  fs.writeFileSync(path.join(dir, "ECONOMY.html"), html);
+  fs.writeFileSync(path.join(dir, "NONPORTABLE.html"), html);
   if (companions) {
     for (const f of fs.readdirSync(DIST)) {
       if (/^commentable-html\.v.*\.(css|js)$/.test(f)) fs.copyFileSync(path.join(DIST, f), path.join(dir, f));
     }
   }
-  return { dir, html: path.join(dir, "ECONOMY.html") };
+  return { dir, html: path.join(dir, "NONPORTABLE.html") };
 }
 
-// Copy a self-contained inline document (TEMPLATE.html by default, or any other
+// Copy a self-contained inline document (dist/PORTABLE.html by default, or any other
 // fixture) into a fresh temp dir so a test can mutate it (e.g. append a handled id)
 // without touching the committed file.
 export function stageInline({ mutate = null, source = INLINE } = {}) {
@@ -263,7 +263,7 @@ export async function startStaticServer(dir) {
 }
 
 // Serve mermaid's CDN import (and its chunk imports) from the locally vendored
-// node_modules/mermaid/dist, so mermaid renders with NO network access. The local
+// node_modules/mermaid/dist, so mermaid renders from the vendored files. The local
 // main module imports its own relative chunks, which resolve against the CDN base
 // and are intercepted here too - fully self-consistent regardless of CDN version.
 export async function routeMermaidLocal(page) {
@@ -283,7 +283,7 @@ export async function routeMermaidLocal(page) {
       await route.abort();
     }
   });
-  // The suite must be fully offline: deny any other remote request, but allow the
+  // The suite must be fully self-contained: deny any other remote request, but allow the
   // local static server (localhost/127.0.0.1) and file:// documents through.
   await page.route(/^https?:\/\//, async (route) => {
     const url = route.request().url();

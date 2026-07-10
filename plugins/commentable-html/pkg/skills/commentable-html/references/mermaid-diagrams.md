@@ -1,6 +1,5 @@
 # Mermaid diagrams
 
-Detailed reference content moved out of `SKILL.md` to keep the core skill under the governance line limit.
 
 ## Mermaid diagrams
 
@@ -11,8 +10,8 @@ The layer adds structural commenting to rendered mermaid diagrams inside `#comme
 ```html
 <pre class="mermaid cm-skip">
 flowchart TD
-    Start --> AsmGate{"ASM machine?"}
-    ...
+ Start --> AsmGate{"ASM machine?"}
+ ...
 </pre>
 ```
 
@@ -36,26 +35,25 @@ flowchart TD
 4. Saving writes an `anchorType: "mermaid"` comment keyed by `(diagramIndex, nodeKey)`, applies `cm-mermaid-hl`, and adds a sidebar card.
 5. Highlights restore across reload after mermaid finishes rendering and round-trip through **Copy all**, **Export as Portable**, and handled-id pruning.
 
-### Mermaid loader and offline guidance
+### Mermaid loader and CDN-fallback guidance
 
 The skill does **not** load mermaid. The host page must include a mermaid script, and diagrams should render by default. For generated reports, vendor mermaid next to the HTML and import it by relative path:
 
 ```html
 <script type="module">
-  try {
-    const m = (await import("./vendor/mermaid.esm.min.mjs")).default;
-    const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-    m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
-    } else {
-      m.run().catch(() => {});
-    }
-  } catch (e) { /* offline or missing vendor file: pre.mermaid stays as source text */ }
+ try {
+ const m = (await import("./vendor/mermaid.esm.min.mjs")).default;
+ const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+ m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+ if (document.readyState === "loading") {
+ document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
+ } else {
+ m.run().catch(() => {});
+ }
+ } catch (e) { /* network unavailable or missing vendor file: pre.mermaid stays as source text */ }
 </script>
 ```
 
-If mermaid never renders because the file is offline, CSP blocks it, or the source is invalid, the layer no-ops and the `pre.mermaid` block remains readable source text. Do not gate the loader behind `?mermaid=1`; the validator warns because diagrams must render on normal open.
+If mermaid never renders because network access is unavailable, CSP blocks it, or the source is invalid, the layer no-ops and the `pre.mermaid` block remains readable source text. Do not gate the loader behind `?mermaid=1`; the validator warns because diagrams must render on normal open.
 
-CDN mermaid loading is an explicit opt-in. It executes remote code and breaks the offline/privacy guarantee. Use it only when the user accepts that tradeoff; otherwise self-host the module or inline it.
-
+CDN mermaid loading is an explicit opt-in. It executes remote code, so shared files depend on network availability to render the diagram. Use it only when the user accepts that tradeoff; otherwise self-host the module or inline it.

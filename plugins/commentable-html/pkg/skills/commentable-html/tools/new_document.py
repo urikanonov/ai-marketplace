@@ -5,7 +5,7 @@ A finished commentable report is a ~240KB standalone file whose CSS/HTML/JS
 regions are byte-for-byte the template's; the only per-document parts are the
 content root's data-* attributes and the fragment between the CONTENT markers.
 Re-emitting the whole template by hand to place a new document wastes tokens and
-risks corrupting a layer region. This helper instead clones TEMPLATE.html and
+risks corrupting a layer region. This helper instead clones dist/PORTABLE.html and
 surgically swaps only those two per-document parts:
 
   - the fragment BETWEEN the CONTENT-BEGIN/CONTENT-END markers, and
@@ -44,7 +44,7 @@ END_MARKER = "<!-- END: commentable-html v2 - CONTENT -->"
 # them up front keeps this tool from ever producing a document validate rejects.
 REFUSED_KEYS = frozenset({
     "commentable-html-demo-v1",
-    "commentable-html-economy-demo-v1",
+    "commentable-html-nonportable-demo-v1",
     "my-doc-v1",
 })
 
@@ -193,8 +193,8 @@ def _self_validate(html_out):
 
 
 def _default_template():
-    # tools/ lives directly under the skill root, next to TEMPLATE.html.
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "TEMPLATE.html")
+    # tools/ lives directly under the skill root, next to dist/PORTABLE.html.
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dist", "PORTABLE.html")
 
 
 def _derive_auto_key(seed):
@@ -245,7 +245,7 @@ def main(argv):
     parser.add_argument("--generated", default=None,
                         help="optional data-generated ISO-8601 timestamp for deterministic metadata")
     parser.add_argument("--template", default=None,
-                        help="template to clone (default: the skill's TEMPLATE.html)")
+                        help="template to clone (default: the skill's dist/PORTABLE.html)")
     parser.add_argument("--out", default=None, help="output file (default: stdout)")
     args = parser.parse_args(argv[1:])
 

@@ -5,20 +5,20 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import {
-  openInline, openEconomy, openToolbarMenu, readDownload, ready, fileUrl, stageEconomy, SKILL,
+  openInline, openNonPortable, openToolbarMenu, readDownload, ready, fileUrl, stageNonPortable, SKILL,
 } from "./helpers.js";
 
-test.describe("economy mode", () => {
+test.describe("nonportable mode", () => {
   test("loads from companion files and reports itself as needing them", async ({ page }) => {
-    await openEconomy(page);
+    await openNonPortable(page);
     await expect(page.locator("#cmhModeBadge")).toHaveText("Not portable");
-    expect(await page.evaluate(() => document.body.classList.contains("cm-economy"))).toBe(true);
+    expect(await page.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(true);
     expect(await page.evaluate(() => !!(window.__COMMENTABLE_ASSETS__ && window.__COMMENTABLE_ASSETS__.css && window.__COMMENTABLE_ASSETS__.js))).toBe(true);
     await expect(page.locator("#cmhAssetBanner")).toBeHidden();
   });
 
-  test("Export with embedded comments produces one portable standalone file in economy mode", async ({ page, context }) => {
-    await openEconomy(page);
+  test("Export with embedded comments produces one portable standalone file in nonportable mode", async ({ page, context }) => {
+    await openNonPortable(page);
     await openToolbarMenu(page);
     const [download] = await Promise.all([
       page.waitForEvent("download"),
@@ -27,7 +27,7 @@ test.describe("economy mode", () => {
     const html = await readDownload(download);
 
     // No companion references survive; the inline regions are restored - even
-    // though the source document was economy, the export is always combined.
+    // though the source document was nonportable, the export is always combined.
     expect(html).not.toMatch(/<link\b[^>]*\bhref\s*=\s*["'][^"']*commentable-html/i);
     expect(html).not.toMatch(/<script\b[^>]*\bsrc\s*=\s*["'][^"']*commentable-html/i);
     // Scope the version-meta check to <head>: the inlined runtime source legitimately
@@ -48,7 +48,7 @@ test.describe("economy mode", () => {
       page2 = await context.newPage();
       await page2.goto(fileUrl(tmp));
       await ready(page2);
-      expect(await page2.evaluate(() => document.body.classList.contains("cm-economy"))).toBe(false);
+      expect(await page2.evaluate(() => document.body.classList.contains("cm-nonportable"))).toBe(false);
       await expect(page2.locator("#cmhModeBadge")).toHaveText("Portable");
     } finally {
       if (page2) await page2.close();
@@ -57,7 +57,7 @@ test.describe("economy mode", () => {
   });
 
   test("missing companions reveal the banner and never mark the runtime ready", async ({ page }) => {
-    const { html, dir } = stageEconomy({ companions: false });
+    const { html, dir } = stageNonPortable({ companions: false });
     try {
       await page.goto(fileUrl(html));
       await expect(page.locator("#cmhAssetBanner")).toBeVisible({ timeout: 6000 });
@@ -69,7 +69,7 @@ test.describe("economy mode", () => {
   });
 
   test("a version-handshake mismatch reveals the banner", async ({ page }) => {
-    const { html, dir } = stageEconomy({ mutate: (h) => h.replace('content="2.5.0"', 'content="9.9.9"') });
+    const { html, dir } = stageNonPortable({ mutate: (h) => h.replace('content="2.5.0"', 'content="9.9.9"') });
     try {
       await page.goto(fileUrl(html));
       await ready(page);

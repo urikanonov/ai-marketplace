@@ -6,7 +6,7 @@ import {
   installClipboardCapture, stageInline, startStaticServer, routeMermaidLocal,
 } from "./helpers.js";
 
-const EXAMPLE = path.join(SKILL, "examples", "community-garden.html");
+const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
 
 // Fills SPEC coverage gaps that were previously manual-only.
 

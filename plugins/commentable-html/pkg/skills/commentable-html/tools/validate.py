@@ -8,7 +8,7 @@ checks the chart-embedding invariants that used to live in validate_charts.py.
 Not all chart checks are enforced equally: a missing/broken loader, wrong chart
 init ordering, and invalid chart-data JSON are hard ERRORS, while a non-pinned or
 un-SRI loader, missing canvas accessibility (role/aria-label), and a missing
-offline `typeof Chart` guard are advisory WARNINGS.
+`typeof Chart` network-failure guard are advisory WARNINGS.
 
 Both halves share ONE tolerant HTML parse (see _DocParser), so script tags are
 read via the parser's own attribute handling rather than a fragile regex: a `>`
@@ -79,24 +79,24 @@ def _attrs_have_class(attrs, class_name):
 # --------------------------------------------------------------------------- #
 # Retrofit / demo-leftover contract
 # --------------------------------------------------------------------------- #
-# TEMPLATE.html ships a working DEMO: its content root carries these placeholder
+# dist/PORTABLE.html ships a working DEMO: its content root carries these placeholder
 # values, and its top-of-file documentation comment contains ONE example
 # "<main id=commentRoot data-comment-key=my-doc-v1>". A finished consumer
 # document must (a) give its content root a unique data-comment-key - not the
 # demo one - and (b) never leave real content commented out. The two checks
-# below are written so the pristine TEMPLATE.html (demo key + demo <title>, and
+# below are written so the pristine dist/PORTABLE.html (demo key + demo <title>, and
 # only the "my-doc-v1" example commented) still passes with zero findings, while
 # a botched retrofit (a script that replaced the WRONG "<main id=commentRoot>"
 # and buried the consumer's real content in the top comment, leaving the demo as
 # the live root) is caught.
 DEMO_TITLE = "Commentable HTML - Demo"
 DEMO_COMMENT_KEY = "commentable-html-demo-v1"
-DEMO_ECONOMY_TITLE = "Commentable HTML - Economy Demo"
-DEMO_ECONOMY_COMMENT_KEY = "commentable-html-economy-demo-v1"
+DEMO_NONPORTABLE_TITLE = "Commentable HTML - NonPortable Demo"
+DEMO_NONPORTABLE_COMMENT_KEY = "commentable-html-nonportable-demo-v1"
 # Each pristine demo content-root key maps to the <title> its generated template
 # keeps. A customized retrofit that leaves the demo root in place (changed title,
-# same demo key) is flagged for both the inline and the economy template.
-DEMO_KEYS = {DEMO_COMMENT_KEY: DEMO_TITLE, DEMO_ECONOMY_COMMENT_KEY: DEMO_ECONOMY_TITLE}
+# same demo key) is flagged for both the inline and the nonportable template.
+DEMO_KEYS = {DEMO_COMMENT_KEY: DEMO_TITLE, DEMO_NONPORTABLE_COMMENT_KEY: DEMO_NONPORTABLE_TITLE}
 DOC_EXAMPLE_COMMENT_KEY = "my-doc-v1"
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 # <script>/<style> bodies are blanked before the commented-root scan so a "<!-- -->"
@@ -142,7 +142,7 @@ CHARTJS_SRC_RE = re.compile(
     r"(?:^|/)chart(?:\.umd)?(?:\.min)?\.js(?:$|[?#])"
     r"|(?:^|/)chart\.js@\d+\.\d+\.\d+(?:$|[/?#])",
     re.IGNORECASE)
-# A real offline guard (typeof Chart ==/===/!=/!== "undefined", optionally
+# A real network-failure guard (typeof Chart ==/===/!=/!== "undefined", optionally
 # parenthesised as typeof(Chart)), not the bare substring "typeof Chart".
 GUARD_RE = re.compile(r"typeof\s*\(?\s*Chart\s*\)?\s*[!=]={1,2}\s*(['\"])undefined\1", re.IGNORECASE)
 # Executable chart init: `new Chart(` or a global-qualified `new window.Chart(` /
@@ -456,13 +456,13 @@ def _parser_script_body(parser, script_id, lo=None, hi=None):
 
 
 # --------------------------------------------------------------------------- #
-# Economy mode: the layer's CSS/JS live in companion commentable-html.v<V>.*
+# NonPortable mode: the layer's CSS/JS live in companion commentable-html.v<V>.*
 # files referenced via <link>/<script src> instead of being inlined. Only CSS
 # and JS leave the document; HANDLED IDS, EMBEDDED COMMENTS and COMMENT UI stay
 # inline (document-owned state + controls), so those three regions are still
 # validated exactly as in inline mode.
 # --------------------------------------------------------------------------- #
-ECONOMY_REGIONS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"]
+NONPORTABLE_REGIONS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"]
 
 
 class _TagAttrParser(HTMLParser):
@@ -497,22 +497,22 @@ def _find_tag_attrs(html, tag):
     return p.found
 
 
-# Economy companion references are detected by parsing real link/script/meta
+# NonPortable companion references are detected by parsing real link/script/meta
 # attributes with the tolerant HTMLParser (not a regex), so a '>' in a quoted
 # value, an unquoted href/src, a reordered <meta content=.. name=..>, or a decoy
 # tag inside a comment/script body is handled the same way as the rest of the
 # validator.
-def _econ_css_refs(html):
+def _nonportable_css_refs(html):
     return [a["href"] for a in _find_tag_attrs(html, "link")
             if "commentable-html" in a.get("href", "").lower() and a.get("href", "").lower().endswith(".css")]
 
 
-def _econ_js_refs(html):
+def _nonportable_js_refs(html):
     return [a["src"] for a in _find_tag_attrs(html, "script")
             if "commentable-html" in a.get("src", "").lower() and a.get("src", "").lower().endswith(".js")]
 
 
-def _econ_meta_versions(html):
+def _nonportable_meta_versions(html):
     return [a.get("content", "") for a in _find_tag_attrs(html, "meta")
             if a.get("name", "").lower() == "commentable-html-assets"]
 
@@ -520,12 +520,12 @@ def _econ_meta_versions(html):
 _VER_IN_NAME_RE = re.compile(r"commentable-html\.v(\d+\.\d+\.\d+)\.")
 
 
-def _is_economy(html):
-    """Economy = the layer's CSS is NOT inlined (no inline CSS region) and the
+def _is_nonportable(html):
+    """NonPortable = the layer's CSS is NOT inlined (no inline CSS region) and the
     document references external commentable-html companion files."""
     if _begin_re("CSS").search(html):
         return False
-    return bool(_econ_css_refs(html) or _econ_js_refs(html))
+    return bool(_nonportable_css_refs(html) or _nonportable_js_refs(html))
 
 
 _SECTION_DIR_RE = re.compile(
@@ -608,73 +608,73 @@ def check_mermaid_renders(parser):
     return []
 
 
-def _check_economy(html, base_dir, id_counts):
-    """Economy-mode-only invariants. Returns (errors, warnings)."""
+def _check_nonportable(html, base_dir, id_counts):
+    """NonPortable-mode-only invariants. Returns (errors, warnings)."""
     errors, warnings = [], []
 
-    css_refs = _econ_css_refs(html)
-    js_refs = _econ_js_refs(html)
+    css_refs = _nonportable_css_refs(html)
+    js_refs = _nonportable_js_refs(html)
     runtime_refs = [s for s in js_refs if not s.lower().endswith(".assets.js")]
     assets_refs = [s for s in js_refs if s.lower().endswith(".assets.js")]
 
     if not css_refs:
-        errors.append('economy mode: no commentable-html stylesheet <link ... .css> found (the layer will be unstyled)')
+        errors.append('nonportable mode: no commentable-html stylesheet <link ... .css> found (the layer will be unstyled)')
     if not runtime_refs:
-        errors.append('economy mode: no commentable-html runtime <script src ... .js> found (the layer will not load)')
+        errors.append('nonportable mode: no commentable-html runtime <script src ... .js> found (the layer will not load)')
     if not assets_refs:
-        warnings.append('economy mode: no commentable-html.*.assets.js is referenced - "Export with embedded comments" cannot rebuild a portable file (add the assets companion or ship a standalone copy)')
+        warnings.append('nonportable mode: no commentable-html.*.assets.js is referenced - "Export with embedded comments" cannot rebuild a portable file (add the assets companion or ship a standalone copy)')
 
     # Version handshake: a <meta name="commentable-html-assets"> lets the runtime
     # detect a stale companion. Also flag a meta/filename version mismatch.
-    metas = _econ_meta_versions(html)
+    metas = _nonportable_meta_versions(html)
     if not metas:
-        warnings.append('economy mode: missing <meta name="commentable-html-assets" content="X"> - the runtime cannot detect a stale/mismatched companion file')
+        warnings.append('nonportable mode: missing <meta name="commentable-html-assets" content="X"> - the runtime cannot detect a stale/mismatched companion file')
     else:
         declared = metas[0].strip()
         for ref in css_refs + js_refs:
             m = _VER_IN_NAME_RE.search(ref)
             if m and declared and m.group(1) != declared:
-                warnings.append('economy mode: version <meta> says "%s" but a companion file is "%s" (%s) - they must match'
+                warnings.append('nonportable mode: version <meta> says "%s" but a companion file is "%s" (%s) - they must match'
                                 % (declared, m.group(1), ref))
                 break
 
     # Mandatory missing-asset banner: if the external runtime never loads, the
     # page must say so instead of looking fine but dead.
     if id_counts.get("cmhAssetBanner", 0) == 0:
-        errors.append('economy mode: missing the #cmhAssetBanner element (a broken companion load would fail silently) - keep the ECONOMY BOOTSTRAP block')
+        errors.append('nonportable mode: missing the #cmhAssetBanner element (a broken companion load would fail silently) - keep the NONPORTABLE BOOTSTRAP block')
     if "__commentableHtmlReady" not in html:
-        warnings.append('economy mode: no bootstrap watchdog (looked for __commentableHtmlReady) - the missing-asset banner will never reveal itself')
+        warnings.append('nonportable mode: no bootstrap watchdog (looked for __commentableHtmlReady) - the missing-asset banner will never reveal itself')
 
-    # Referenced companion files must resolve to a local file that exists. Economy
+    # Referenced companion files must resolve to a local file that exists. NonPortable
     # intentionally points at the skill's dist/ folder (a relative subdirectory or a
     # ../ path), so a subfolder / parent reference is allowed - only remote/CDN URLs
-    # are rejected (they break the offline guarantee), absolute paths are warned about
+    # are rejected (they break the self-contained guarantee), absolute paths are warned about
     # (they leak a local directory and are not portable), and a missing target errors.
     if base_dir is not None:
         base_abs = os.path.abspath(base_dir)
         for ref in css_refs + js_refs:
             if re.match(r"[a-z]+://", ref, re.I) or ref.startswith("//"):
-                errors.append('economy mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must load offline)' % ref)
+                errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
                 continue
             norm = ref.replace("\\", "/")
             if norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
                 # Absolute path: usable but leaks a local directory and is not portable.
                 target = os.path.abspath(ref)
-                warnings.append('economy mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
+                warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
             else:
                 # Relative ref resolved against the document folder; a subdirectory or
-                # ../ path to the skill dist/ folder is the intended economy workflow.
+                # ../ path to the skill dist/ folder is the intended nonportable workflow.
                 target = os.path.abspath(os.path.join(base_abs, norm))
             if not os.path.exists(target):
-                errors.append('economy mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
+                errors.append('nonportable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
 
     return errors, warnings
 
 
 def check_layer(html, parser, base_dir=None):
     errors, warnings = [], []
-    economy = _is_economy(html)
-    active_regions = ECONOMY_REGIONS if economy else REGIONS
+    nonportable = _is_nonportable(html)
+    active_regions = NONPORTABLE_REGIONS if nonportable else REGIONS
 
     # 1) Exactly one BEGIN and one END marker per (active) region, BEGIN before END.
     begin_idx, end_idx = {}, {}
@@ -888,7 +888,7 @@ def check_layer(html, parser, base_dir=None):
     # 9) The global [hidden] reset must be scoped to the layer.
     if re.search(r"(?m)^[ \t]*\[hidden\]\s*\{\s*display:\s*none", html):
         warnings.append("found an unscoped '[hidden] { display: none }' rule - scope it to '.cm-skip[hidden], .cm-skip [hidden]' so it cannot hide host elements")
-    if not economy and ".cm-skip[hidden]" not in html:
+    if not nonportable and ".cm-skip[hidden]" not in html:
         warnings.append("missing the scoped '.cm-skip[hidden]' rule (the layer's own hidden elements may not hide)")
 
     # 10) The --cp-* theme variables must be DEFINED.
@@ -925,7 +925,7 @@ def check_layer(html, parser, base_dir=None):
                           'escape the diff text (< as &lt;, > as &gt;, & as &amp;) so embedded '
                           'markup cannot execute before the diff renders' % (_diff_n, _snip))
 
-    # 11c) "Run in Kusto" links (class cmh-kql-run) must point at the ADX web UX over
+    # 11c) "Run in Azure Data Explorer" links (class cmh-kql-run) must point at the ADX web UX over
     #      https and open safely. This fires ONLY on the explicit run-link class, so
     #      it never false-positives on a plain KQL code block or a syntax example.
     for a in _find_tag_attrs(html, "a"):
@@ -939,17 +939,17 @@ def check_layer(html, parser, base_dir=None):
             warnings.append('a "cmh-kql-run" link uses target="_blank" without rel="noopener" '
                             "(reverse-tabnabbing risk); add rel=\"noopener noreferrer\"")
 
-    # 11d) A framed KQL figure (figure.cmh-kql) with no "Run in Kusto" link (class
+    # 11d) A framed KQL figure (figure.cmh-kql) with no "Run in Azure Data Explorer" link (class
     #      cmh-kql-run) is a usability gap: the reader cannot open the query in ADX.
     #      Warn per such figure so authors add a link built with tools/kusto_link.py.
     for fm in re.finditer(r"<figure\b([^>]*)>(.*?)</figure>", html, re.IGNORECASE | re.DOTALL):
         if not _attrs_have_class(fm.group(1), "cmh-kql"):
             continue
         if "cmh-kql-run" not in fm.group(2):
-            warnings.append('a figure.cmh-kql has no "Run in Kusto" link (class cmh-kql-run); '
+            warnings.append('a figure.cmh-kql has no "Run in Azure Data Explorer" link (class cmh-kql-run); '
                             "build one with tools/kusto_link.py so readers can open the query in ADX")
 
-    # 11e) Offline guarantee: the finished document must not pull resources over the
+    # 11e) Self-contained guarantee: the finished document must not pull resources over the
     #      network (the core promise is a single self-contained file). <a href> links
     #      are navigation, not resource loads, so they are exempt; Chart.js from a CDN
     #      is a documented opt-in (its SRI/version are checked in check_charts); mermaid
@@ -962,7 +962,7 @@ def check_layer(html, parser, base_dir=None):
             continue
         if _is_network(src):
             errors.append('<img src="%s"> loads over the network - inline it with '
-                          "tools/inline_images.py (external images break offline use and portability)"
+                          "tools/inline_images.py (external images break self-contained use and portability)"
                           % src[:80])
         elif not re.match(r"[a-z][a-z0-9+.\-]*:", src, re.I):
             warnings.append('<img src="%s"> is a local path - run tools/inline_images.py to embed '
@@ -975,10 +975,10 @@ def check_layer(html, parser, base_dir=None):
             if tag == "script" and CHARTJS_SRC_RE.search(val):
                 continue  # Chart.js CDN is an opt-in; its SRI/version are checked separately
             if tag == "link":
-                warnings.append('<link %s="%s"> loads over the network and breaks the offline '
+                warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
                                 "guarantee - inline or remove it" % (attr, val[:80]))
             else:
-                errors.append('<%s %s="%s"> loads over the network and breaks the offline guarantee - '
+                errors.append('<%s %s="%s"> loads over the network and breaks the self-contained guarantee - '
                               "inline or remove it" % (tag, attr, val[:80]))
 
     # 11f) Duplicate heading ids collide in-page anchors: the TOC and prose links bind
@@ -990,10 +990,10 @@ def check_layer(html, parser, base_dir=None):
                         "bind to the first occurrence; give each heading a unique id"
                         % ", ".join(_dup_hids[:5]))
 
-    # 12) Economy-mode-only invariants (companion refs, version handshake, banner,
+    # 12) NonPortable-mode-only invariants (companion refs, version handshake, banner,
     #     referenced files exist).
-    if economy:
-        e, w = _check_economy(html, base_dir, id_counts)
+    if nonportable:
+        e, w = _check_nonportable(html, base_dir, id_counts)
         errors += e
         warnings += w
 
@@ -1130,7 +1130,7 @@ def check_charts(html, parser):
                         "label to each)" % (n_missing_aria, n_canvas))
 
     if new_chart_positions and not guard_present:
-        warnings.append("the chart init does not guard with `typeof Chart === \"undefined\"` - an offline / "
+        warnings.append("the chart init does not guard with `typeof Chart === \"undefined\"` - a network-unavailable / "
                         "CDN-blocked load will throw instead of degrading to a blank canvas")
 
     # W6) A loaded canvas with no executable `new Chart(` renders nothing.

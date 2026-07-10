@@ -8,14 +8,29 @@ import {
 
 // The second shipped showcase example is a real-data operations report built on the
 // public Kusto help cluster (Samples.nyc_taxi). Like 25-example, these tests run
-// directly against the committed examples/nyc-taxi-2014.html (not a fixture) so the
+// directly against the committed examples/report-taxi.html (not a fixture) so the
 // shipped artifact is proven to exercise the feature set end to end.
-const EXAMPLE = path.join(SKILL, "examples", "nyc-taxi-2014.html");
+const EXAMPLE = path.join(SKILL, "examples", "report-taxi.html");
 
 async function openExample(page) {
   await installClipboardCapture(page);
   await page.goto(fileUrl(EXAMPLE));
   await ready(page);
+}
+
+// Comment on a chart canvas via the image-comment flow (a canvas is commentable media).
+async function addChartComment(page, canvasSel, note) {
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    el.scrollIntoView({ block: "center" });
+    el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+  }, canvasSel);
+  await expect(page.locator("#imageAddBtn")).toBeVisible();
+  await page.locator("#imageAddBtn").click();
+  const composer = page.locator(".cm-composer").last();
+  await composer.locator("textarea").fill(note);
+  await composer.locator('[data-act="save"]').click();
+  await expect(composer).toBeHidden();
 }
 
 test.describe("showcase example: NYC taxi 2014 report exercises the feature set", () => {
@@ -100,13 +115,54 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     await expect(toggle).toHaveText("Syntax: on");
   });
 
-  test("the monthly-trips chart renders a Chart.js instance offline", async ({ page }) => {
+  test("the monthly-trips chart renders from the bundled Chart.js script", async ({ page }) => {
     await openExample(page);
-    // Chart.js is inlined, so the chart builds even over file:// with no network.
+    // Chart.js is inlined, so the chart builds directly from the bundled script.
     await page.waitForFunction(
       () => !!(window.Chart && typeof window.Chart.getChart === "function" && window.Chart.getChart("taxiMonthlyChart")),
       null, { timeout: 20000 });
     await expect(page.locator("#taxiMonthlyChart")).toHaveClass(/cm-img-commentable/, { timeout: 20000 });
+  });
+
+  test("the added pie and line charts render as their intended kinds (CMH-TAXI-CHARTS-01)", async ({ page }) => {
+    await openExample(page);
+    for (const id of ["taxiPaymentChart", "taxiFareChart", "taxiHourlyChart"]) {
+      await page.waitForFunction(
+        (cid) => !!(window.Chart && window.Chart.getChart && window.Chart.getChart(cid)),
+        id, { timeout: 20000 });
+      await expect(page.locator("#" + id)).toHaveClass(/cm-img-commentable/, { timeout: 20000 });
+    }
+    const kinds = await page.evaluate(() => ({
+      monthly: window.Chart.getChart("taxiMonthlyChart").config.type,
+      payment: window.Chart.getChart("taxiPaymentChart").config.type,
+      fare: window.Chart.getChart("taxiFareChart").config.type,
+      hourly: window.Chart.getChart("taxiHourlyChart").config.type,
+    }));
+    expect(kinds.monthly).toBe("bar");
+    expect(kinds.payment).toBe("doughnut");
+    expect(kinds.fare).toBe("line");
+    expect(kinds.hourly).toBe("line");
+    // The dual-axis fare chart has two datasets and two y scales.
+    const fare = await page.evaluate(() => {
+      const c = window.Chart.getChart("taxiFareChart");
+      return { datasets: c.data.datasets.length, scales: Object.keys(c.options.scales || {}).sort() };
+    });
+    expect(fare.datasets).toBe(2);
+    expect(fare.scales).toContain("yFare");
+    expect(fare.scales).toContain("yDist");
+  });
+
+  test("commenting a chart canvas rings it with a visible highlight (CMH-CHART-HL-01)", async ({ page }) => {
+    await openExample(page);
+    await page.waitForFunction(
+      () => !!(window.Chart && window.Chart.getChart && window.Chart.getChart("taxiPaymentChart")),
+      null, { timeout: 20000 });
+    await addChartComment(page, "#taxiPaymentChart", "break out the small tail codes");
+    const canvas = page.locator("canvas#taxiPaymentChart.cm-img-hl");
+    await expect(canvas).toHaveCount(1);
+    // The regression fix: a commented canvas gets a real outline (not just the class).
+    const outline = await canvas.evaluate((el) => parseFloat(getComputedStyle(el).outlineWidth));
+    expect(outline).toBeGreaterThan(0);
   });
 
   test("a comment can be added on prose and persists across a reload", async ({ page }) => {
@@ -130,7 +186,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
-      await page.goto(server.url + "/examples/nyc-taxi-2014.html");
+      await page.goto(server.url + "/examples/report-taxi.html");
       await ready(page);
       const canvas = page.locator("#taxiMonthlyChart");
       await expect(canvas).toHaveClass(/cm-img-commentable/, { timeout: 20000 });
@@ -140,6 +196,27 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
       await expect(node).toBeVisible({ timeout: 20000 });
       await node.hover();
       await expect(page.locator("#mermaidAddBtn")).toBeVisible();
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("the enriched subgraph flowchart and the sequence diagram both render (CMH-TAXI-MERMAID-01)", async ({ page }) => {
+    test.setTimeout(60000);
+    const server = await startStaticServer(SKILL);
+    try {
+      await routeMermaidLocal(page);
+      await installClipboardCapture(page);
+      await page.goto(server.url + "/examples/report-taxi.html");
+      await ready(page);
+      // The report now ships two diagrams: a flowchart with subgraphs and a sequence diagram.
+      await expect(page.locator("#commentRoot .mermaid svg")).toHaveCount(2, { timeout: 20000 });
+      // Subgraphs render as clusters in the flowchart.
+      await expect(page.locator("#commentRoot .mermaid svg .cluster").first()).toBeVisible({ timeout: 20000 });
+      // The sequence diagram renders participant actors (a sequence-specific element).
+      await expect(page.locator("#commentRoot .mermaid svg .actor, #commentRoot .mermaid svg text.messageText").first()).toBeVisible({ timeout: 20000 });
+      // The sequence diagram names its participants (e.g. Analyst).
+      await expect(page.locator("#commentRoot .mermaid").filter({ hasText: "Analyst" })).toHaveCount(1, { timeout: 20000 });
     } finally {
       await server.close();
     }
