@@ -55,6 +55,69 @@ test("theme variables are present (light + crimson)", async ({ page }) => {
   expect(accent.toLowerCase()).toBe("#b11f4b");
 });
 
+test("light and dark themes preserve readable contrast", async ({ page }) => {
+  const contrast = (foreground, background) => {
+    const channels = (color) => {
+      let values;
+      if (/^#[0-9a-f]{6}$/i.test(color)) {
+        values = [1, 3, 5].map((index) => parseInt(color.slice(index, index + 2), 16));
+      } else {
+        const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        expect(match, "unsupported color format: " + color).not.toBeNull();
+        values = match.slice(1, 4).map(Number);
+      }
+      return values.map((value) => {
+        const channel = value / 255;
+        return channel <= 0.04045
+          ? channel / 12.92
+          : Math.pow((channel + 0.055) / 1.055, 2.4);
+      });
+    };
+    const luminance = (color) => {
+      const [r, g, b] = channels(color);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const a = luminance(foreground);
+    const b = luminance(background);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const colors = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const read = (name) => root.getPropertyValue(name).trim();
+      return {
+        scheme: root.colorScheme,
+        background: getComputedStyle(document.body).backgroundColor,
+        surface: read("--cp-surface"),
+        text: read("--cp-text"),
+        muted: read("--cp-text-muted"),
+        soft: read("--cp-text-soft"),
+        link: read("--cp-link"),
+        accent: read("--cp-accent"),
+        accentForeground: read("--cp-accent-fg"),
+      };
+    });
+    expect(colors.scheme).toBe(scheme);
+    for (const foreground of ["text", "muted", "soft", "link"]) {
+      expect(
+        contrast(colors[foreground], colors.background),
+        scheme + " " + foreground + " on page background"
+      ).toBeGreaterThanOrEqual(4.5);
+      expect(
+        contrast(colors[foreground], colors.surface),
+        scheme + " " + foreground + " on card surface"
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(
+      contrast(colors.accentForeground, colors.accent),
+      scheme + " primary button contrast"
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test("plugin page renders version, features, changelog, and demo", async ({ page }) => {
   const resp = await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   expect(resp.status()).toBeLessThan(400);
@@ -71,6 +134,7 @@ test("demo has one safe full-screen button and a two-option slider", async ({ pa
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
+  await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
   await expect(page.locator(".demo-tab")).toHaveCount(2);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
 });
@@ -127,11 +191,15 @@ test("install command copy button copies the command and shows feedback", async 
   expect(command).toContain("marketplace add");
   await btn.click();
   await expect(btn).toHaveText("copied");
+  const status = btn.locator(":scope + .copy-status");
+  await expect(status).toHaveAttribute("aria-live", "polite");
+  await expect(status).toHaveAttribute("aria-atomic", "true");
+  await expect(status).toHaveText("Copied to clipboard.");
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toBe(command);
 });
 
-test("copy button shows a manual-copy hint when the clipboard is unavailable", async ({ page }) => {
+test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -142,8 +210,29 @@ test("copy button shows a manual-copy hint when the clipboard is unavailable", a
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const btn = page.locator("#install .copy-btn").first();
   await btn.click();
-  await expect(btn).toHaveText("press Ctrl+C");
+  await expect(btn).toHaveText("copy manually");
+  await expect(btn).not.toContainText(/Ctrl|Cmd/);
+  await expect(btn.locator(":scope + .copy-status")).toHaveText(
+    "Copy unavailable. Copy the command manually."
+  );
   await expect(btn).toHaveClass(/copy-failed/);
+});
+
+test("plugin cards use one clearly focused title link without a stretched overlay", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const card = page.locator(".plugin-card", { hasText: "commentable-html" });
+  const title = card.locator("a.name");
+  await expect(title).toHaveAttribute("href", "./commentable-html/");
+  await expect(card.locator('a[href="./commentable-html/"]')).toHaveCount(1);
+  await expect(card.locator(".card-link")).toHaveCount(0);
+  await expect(card.getByText("Learn more", { exact: true })).toHaveCount(0);
+  await title.focus();
+  const focus = await title.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { style: style.outlineStyle, width: parseFloat(style.outlineWidth) };
+  });
+  expect(focus.style).toBe("solid");
+  expect(focus.width).toBeGreaterThanOrEqual(2);
 });
 
 test("copy button restores its original label after a rapid double click", async ({ page, context }) => {

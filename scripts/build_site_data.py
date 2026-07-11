@@ -161,17 +161,13 @@ def render_plugins(manifest):
         install = "copilot plugin install %s@%s" % (name, suffix)
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
-        primary = ('<a class="btn btn-primary" href="%s">Learn more</a>' % esc(page)) if page else ""
+        title = ('<a class="name" href="%s">%s</a>' % (esc(page), esc(name))
+                 if page else '<span class="name">%s</span>' % esc(name))
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
-        linked_class = " is-linked" if page else ""
-        card_link = (
-            '  <a class="card-link" href="%s" aria-label="Open the %s plugin page"></a>\n'
-            % (esc(page), esc(name))) if page else ""
         card = (
-            '<article class="card plugin-card%s">\n'
-            '%s'
+            '<article class="card plugin-card">\n'
             '  <div class="head">\n'
-            '    <span class="name">%s</span>\n'
+            '    %s\n'
             '    <span class="badge version">v%s</span>%s\n'
             '  </div>\n'
             '  <p class="desc">%s</p>\n'
@@ -181,12 +177,21 @@ def render_plugins(manifest):
             '    <pre>%s</pre>\n'
             '    <button class="copy-btn" type="button" data-copy="%s">copy</button>\n'
             '  </div>\n'
-            '  <div class="foot">%s%s</div>\n'
+            '  <div class="foot">%s</div>\n'
             '</article>'
-        ) % (linked_class, card_link, esc(name), esc(version), category_badge,
-             esc(description), chips, esc(install), esc(install), primary, source)
+        ) % (title, esc(version), category_badge, esc(description), chips,
+             esc(install), esc(install), source)
         cards.append(card)
     return "\n".join(cards)
+
+
+def render_demo_fullscreen_link():
+    return (
+        '<a class="demo-fs" id="demo-fullscreen" href="demo/report-taxi.html" '
+        'target="_blank" rel="noopener noreferrer" '
+        'aria-label="Open this demo full screen in a new tab" '
+        'title="Open this demo in a full browser tab">Full screen &#8599;</a>'
+    )
 
 
 def clean_entry(text, plugin):
@@ -531,6 +536,8 @@ def main(argv):
     plugin_src = read_text(plugin_path)
     plugin_out = replace_region_inline(plugin_src, "version", "v" + esc(version))
     plugin_out = replace_region_block(plugin_out, "changelog", changelog_html)
+    plugin_out = replace_region_inline(
+        plugin_out, "demo-fullscreen", render_demo_fullscreen_link())
     plugin_out = stamp_assets(plugin_out, root)
 
     tutorial_page_path = os.path.join(root, TUTORIAL_PAGE)
