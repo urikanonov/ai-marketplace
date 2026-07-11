@@ -7,7 +7,7 @@
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=359b4a23c8ed" />
+  <link rel="stylesheet" href="../assets/styles.css?v=6e75c2241cd6" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -197,6 +197,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Clarified the NonPortable asset-location wording in the skill reference: the default companion files are referenced by a relative path (the skill&#x27;s <code>dist/</code> folder by default), not &quot;beside the document&quot;; the document sits beside its companions only when they are copied there.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 9 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.2.1] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
@@ -313,6 +315,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The injected layer is version-agnostic: the region markers, the companion filenames, and the demo storage keys no longer embed a version. The single source of truth for the release version is <code>dev/VERSION</code>; <code>build.py</code> stamps it into the layer constant, <code>plugin.json</code>, the marketplace entry, and each document&#x27;s version <code>&lt;meta&gt;</code>, and <code>build.py --check</code> guards against drift.</li>
             </ul>
           </div>
+          </details>
           <!-- END:changelog -->
         </div>
       </div>

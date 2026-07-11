@@ -154,6 +154,29 @@ class ChangelogInlineTests(unittest.TestCase):
         html = bsd.render_changelog(bsd.parse_changelog(text, None))
         self.assertIn("<code>figure.chart</code>", html)
 
+    def test_latest_two_expanded_rest_collapsed(self):
+        releases = [{"name": "[%d.0.0]" % n, "groups": {"Added": ["item"]}}
+                    for n in (5, 4, 3, 2, 1)]
+        html = bsd.render_changelog(releases)
+        self.assertIn('<details class="older-releases">', html)
+        self.assertIn("<summary>Show 3 older releases</summary>", html)
+        # The two newest releases render before the collapsible section.
+        self.assertLess(html.index("[5.0.0]"), html.index("<details"))
+        self.assertLess(html.index("[4.0.0]"), html.index("<details"))
+        self.assertGreater(html.index("[3.0.0]"), html.index("<details"))
+
+    def test_no_details_when_two_or_fewer_releases(self):
+        releases = [{"name": "[2.0.0]", "groups": {"Added": ["a"]}},
+                    {"name": "[1.0.0]", "groups": {"Added": ["b"]}}]
+        html = bsd.render_changelog(releases)
+        self.assertNotIn("<details", html)
+
+    def test_single_older_release_uses_singular(self):
+        releases = [{"name": "[%d.0.0]" % n, "groups": {"Added": ["item"]}}
+                    for n in (3, 2, 1)]
+        html = bsd.render_changelog(releases)
+        self.assertIn("<summary>Show 1 older release</summary>", html)
+
 
 class SyncOrphanTests(unittest.TestCase):
     def test_orphan_flagged_then_removed(self):

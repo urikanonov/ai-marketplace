@@ -250,23 +250,36 @@ def parse_changelog(text, plugin):
     return [r for r in releases if r["groups"]]
 
 
-def render_changelog(releases):
+def _render_release(release):
+    parts = ['<div class="release">',
+             '  <div class="rel-head"><h3>%s</h3></div>' % esc(release["name"])]
+    for change_type, items in release["groups"].items():
+        if change_type:
+            parts.append('  <div class="group-label">%s</div>' % esc(change_type))
+        parts.append('  <ul>')
+        for item in items:
+            parts.append('    <li>%s</li>' % _md_inline(esc(item)))
+        parts.append('  </ul>')
+    parts.append('</div>')
+    return "\n".join(parts)
+
+
+def render_changelog(releases, expanded_count=2):
+    """Show the latest `expanded_count` releases inline; fold the rest into a
+    single <details> that stays collapsed by default so the page stays short."""
     if not releases:
         return ('<p class="empty">No changelog entries yet. '
                 'See the full marketplace changelog on GitHub.</p>')
-    blocks = []
-    for release in releases:
-        parts = ['<div class="release">',
-                 '  <div class="rel-head"><h3>%s</h3></div>' % esc(release["name"])]
-        for change_type, items in release["groups"].items():
-            if change_type:
-                parts.append('  <div class="group-label">%s</div>' % esc(change_type))
-            parts.append('  <ul>')
-            for item in items:
-                parts.append('    <li>%s</li>' % _md_inline(esc(item)))
-            parts.append('  </ul>')
-        parts.append('</div>')
-        blocks.append("\n".join(parts))
+    blocks = [_render_release(release) for release in releases[:expanded_count]]
+    older = releases[expanded_count:]
+    if older:
+        count = len(older)
+        summary = "Show %d older release%s" % (count, "" if count == 1 else "s")
+        details = ['<details class="older-releases">',
+                   '  <summary>%s</summary>' % esc(summary)]
+        details.extend(_render_release(release) for release in older)
+        details.append('</details>')
+        blocks.append("\n".join(details))
     return "\n".join(blocks)
 
 
