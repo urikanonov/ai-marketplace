@@ -114,8 +114,8 @@ test. The rule is simple and non-negotiable:
   non-feature), still add the spec row, mark its coverage `manual`, and list it under that spec's
   "Coverage gaps" section with the reason. Prefer a real test; use `manual` only when automation is
   not possible.
-- Removing a feature means removing its spec row and its now-dead test together, and bumping the
-  version and changelog as usual.
+- Removing a feature means removing its spec row and its now-dead test together; for a published
+  plugin, also bump the version and update the changelog.
 
 This applies to skill runtime/tooling changes, to the site's pages and its generator
 (`scripts/build_site_data.py`), and to any new surface added later. The required CI checks run these

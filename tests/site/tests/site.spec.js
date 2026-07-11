@@ -24,12 +24,14 @@ test("hub renders with plugins, install command, and logo", async ({ page }) => 
   await expect(page.locator("#install .cmd pre")).toContainText("marketplace add");
 });
 
-test("hub exposes a skip-to-content link that targets the main region", async ({ page }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  const skip = page.locator("a.skip-link");
-  await expect(skip).toHaveCount(1);
-  await expect(skip).toHaveAttribute("href", "#main");
-  await expect(page.locator("main#main")).toHaveCount(1);
+test("every page exposes a skip-to-content link that targets the main region", async ({ page }) => {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const skip = page.locator("a.skip-link");
+    await expect(skip).toHaveCount(1);
+    await expect(skip).toHaveAttribute("href", "#main");
+    await expect(page.locator("main#main")).toHaveCount(1);
+  }
 });
 
 test("footer year is filled in with the current year", async ({ page }) => {

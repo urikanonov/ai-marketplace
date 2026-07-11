@@ -88,7 +88,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-SEC-01 | The static file server refuses a request whose raw request-target traverses out of `site/` (403), mirroring the deployed Pages boundary the suite validates against. | `tests/site/tests/site.spec.js` - `the static test server refuses path traversal out of site/` |
 | SITE-SEC-02 | No internal link or asset on any page uses a root-relative path, because a root-relative path would break under the `/ai-marketplace/` project sub-path. | `tests/site/tests/site.spec.js` - `no internal link or asset uses a root-relative path (would break the project sub-path)` |
 | SITE-SEC-03 | Every internal link and asset on the hub, plugin, and tutorial pages resolves (no broken internal URLs). | `tests/site/tests/site.spec.js` - `no broken internal links or assets` |
-| SITE-A11Y-01 | Every page exposes a skip-to-content link that targets the `main` region. | `tests/site/tests/site.spec.js` - `hub exposes a skip-to-content link that targets the main region` |
+| SITE-A11Y-01 | Every page exposes a skip-to-content link that targets the `main` region. | `tests/site/tests/site.spec.js` - `every page exposes a skip-to-content link that targets the main region` |
 
 ## Coverage gaps
 
