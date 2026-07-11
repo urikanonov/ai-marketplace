@@ -73,7 +73,7 @@
     var tabs = document.querySelectorAll(".demo-tab");
     var frame = document.getElementById("demo-iframe");
     var panel = document.getElementById("demo-panel");
-    var filename = document.getElementById("demo-filename");
+    var title = document.getElementById("demo-title");
     var fullscreen = document.getElementById("demo-fullscreen");
     if (!tabs.length || !frame) {
       return;
@@ -97,8 +97,8 @@
       if (panel && tab.id) {
         panel.setAttribute("aria-labelledby", tab.id);
       }
-      if (filename) {
-        filename.textContent = file;
+      if (title) {
+        title.textContent = label;
       }
       if (fullscreen) {
         fullscreen.setAttribute("href", src);
