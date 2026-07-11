@@ -132,9 +132,9 @@ def render_plugins(manifest):
 
 
 def clean_entry(text, plugin):
-    stripped = text.replace("`", "")
+    stripped = text
     if plugin:
-        stripped = re.sub(r"^%s(\s+v?\d+\.\d+\.\d+)?\s*[-:]\s*" % re.escape(plugin), "",
+        stripped = re.sub(r"^`?%s`?(\s+v?\d+\.\d+\.\d+)?\s*[-:]\s*" % re.escape(plugin), "",
                           stripped, flags=re.IGNORECASE)
     return stripped.strip()
 
