@@ -45,7 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.0.1" />
+<meta name="commentable-html-version" content="1.1.0" />
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -196,6 +196,10 @@ pre mark.cm-hl, code mark.cm-hl {
   border-radius: 3px;
 }
 
+:root {
+  --cm-sidebar-w: 400px;
+}
+
 .cm-toolbar {
   position: fixed; top: 1rem; right: 1rem; z-index: 100;
   display: flex; gap: 0.4rem;
@@ -227,7 +231,7 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
 
 .cm-sidebar {
   position: fixed; top: 0; right: 0; bottom: 0;
-  width: 400px; max-width: 90vw;
+  width: var(--cm-sidebar-w, 400px); min-width: min(16rem, calc(100vw - 24px)); max-width: calc(100vw - 24px);
   background: var(--cp-bg-elevated); border-left: 1px solid var(--cp-border);
   box-shadow: var(--cp-shadow);
   display: flex; flex-direction: column;
@@ -235,6 +239,20 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
   z-index: 90;
 }
 body.sidebar-open .cm-sidebar { transform: translateX(0); }
+.cm-sidebar-resize {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 8px; z-index: 3;
+  cursor: ew-resize; touch-action: none; background: rgba(0, 0, 0, 0.01);
+}
+.cm-sidebar-resize::before {
+  content: ""; position: absolute; left: 0; top: 0.75rem; bottom: 0.75rem; width: 2px;
+  border-radius: 999px; background: transparent; transition: background 0.15s;
+}
+.cm-sidebar-resize:hover::before,
+.cm-sidebar-resize:focus-visible::before,
+body.cm-sidebar-resizing .cm-sidebar-resize::before { background: var(--cp-accent); }
+.cm-sidebar-resize:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+body.cm-sidebar-resizing { cursor: ew-resize; user-select: none; }
+body.cm-sidebar-resizing .cm-sidebar { transition: none; }
 /* When the panel is open, hide the floating toolbar entirely - every action it
    offers is present in the panel header, so there is no reason to keep a pill
    hovering over the document content. It returns when the panel is closed. */
@@ -246,25 +264,32 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   body.sidebar-open .app {
     max-width: none; margin: 0;
     padding-left: 2rem;
-    padding-right: calc(400px + 2rem);
+    padding-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
   }
 }
 @media (min-width: 1700px) {
   body.sidebar-open .app {
-    padding-left: calc((100vw - 400px - 1300px) / 2);
-    padding-right: calc(400px + (100vw - 400px - 1300px) / 2);
+    padding-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
+    padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
   }
 }
 
 .cm-sidebar header {
-  padding: 1rem 1.1rem; border-bottom: 1px solid var(--cp-border);
+  padding: clamp(0.75rem, 3vw, 1rem) clamp(0.75rem, 3vw, 1.1rem); border-bottom: 1px solid var(--cp-border);
   display: flex; flex-direction: column; gap: 0.5rem;
 }
-.cm-sidebar .head-top { display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem; }
-.cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
-.cm-sidebar .head-actions { display: flex; flex-wrap: nowrap; gap: 0.35rem; }
-.cm-sidebar .head-actions button { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
-.cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 0.45rem 0.6rem; }
+.cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex: 1 1 8rem; min-width: 0; }
+.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
+.cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: normal; }
+.cm-sidebar.is-narrow .head-meta .cm-head-actions { margin-left: 0; width: 100%; justify-content: stretch; }
+.cm-sidebar.is-narrow .head-meta .cm-head-actions button { flex: 1 1 8rem; }
+.cm-sidebar.is-narrow .head-top { align-items: stretch; }
+.cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
+.cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
+.cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
+.cm-sidebar.is-narrow .head-actions button { flex-basis: 100%; justify-content: flex-start; }
 .cm-ui-ico { flex: none; vertical-align: middle; }
 
 /* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with
@@ -344,7 +369,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-modal-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); color: var(--cp-danger); }
 
 /* Sidebar header meta row: document-type bubble, version, and Help. */
-.cm-sidebar .head-meta { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
+.cm-sidebar .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
 .cm-type-badge {
   font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
   padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
@@ -355,7 +380,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
-.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; }
+.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .cm-help-btn {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
   padding: 0.2rem 0.6rem; border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: 0.72rem;
@@ -434,7 +459,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   color: var(--cp-text-soft); box-shadow: var(--cp-shadow);
   min-width: 2.6rem; text-align: center; pointer-events: none;
 }
-body.sidebar-open .cm-scroll-progress { right: calc(400px + 1rem); }
+body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) + 1rem); }
 @media (max-width: 700px) { body.sidebar-open .cm-scroll-progress { right: 1rem; } }
 /* Collapsed: shrink to a single clear chevron box (the >> expand affordance). */
 .cm-side-toc.is-collapsed { width: auto; padding: 0.25rem; }
@@ -463,7 +488,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-footer-sep { opacity: 0.5; }
 /* When the comments panel is open, span the visible (non-sidebar) area so the centered
    flex content reads as centralized in that region rather than hidden behind the panel. */
-body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(400px + 1rem); max-width: none; }
+body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-sidebar-w, 400px) + 1rem); max-width: none; }
 @media (max-width: 700px) { body.sidebar-open .cm-footer { margin-right: auto; max-width: 1240px; } }
 /* TOC section numbers. */
 .cm-side-toc-list .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
@@ -941,7 +966,16 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 /* Chart figures are boxed for readability, like code and KQL blocks. */
 #commentRoot figure.chart {
   margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
-  padding: 0.85rem 1rem; background: var(--cp-surface);
+  padding: 0.85rem 1rem; background: var(--cp-surface); max-width: 100%; overflow: hidden;
+}
+#commentRoot figure.chart > .chart-wrap {
+  position: relative; width: 100%; max-width: 100%; height: clamp(220px, 42vw, 440px);
+  max-height: min(60vh, 480px); min-height: 160px; overflow: hidden;
+}
+#commentRoot figure.chart canvas,
+#commentRoot canvas.cmh-chart {
+  display: block; width: 100% !important; max-width: 100% !important;
+  height: 100% !important; max-height: 100% !important; box-sizing: border-box;
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
@@ -1092,6 +1126,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
       <p>Select any text in the document. The "Add Comment" popup appears automatically (right-click also works). Comments stay here until the agent processes them. Use <kbd>Copy all</kbd> to send them to the agent, or <kbd>Export as Portable</kbd> (in the <kbd>...</kbd> menu) to embed them into the file so they travel with it.</p>
     </div>
   </div>
+  <div id="sidebarResizeHandle" class="cm-sidebar-resize cm-skip" role="separator" aria-orientation="vertical" aria-label="Resize comments sidebar" tabindex="0" title="Drag or use Left and Right arrow keys to resize the comments sidebar"></div>
 </aside>
 
 <div class="cm-menu cm-skip" id="contextMenu" hidden>
@@ -1183,7 +1218,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
       </tbody>
     </table>
     <figure class="chart" aria-labelledby="taxi-chart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 360px;">
+      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
         <canvas id="taxiMonthlyChart" role="img" aria-label="Bar chart of monthly NYC yellow taxi trips in millions for 2014, from January through December."></canvas>
       </div>
       <figcaption id="taxi-chart-caption">Monthly yellow taxi trips in 2014 (millions). March is the busiest month and February the quietest.</figcaption>
@@ -1215,7 +1250,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-kw">asc</span></code></pre>
 </figure>
     <figure class="chart" aria-labelledby="taxiFareChart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 360px;">
+      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
         <canvas id="taxiFareChart" role="img" aria-label="Line chart of monthly average fare in dollars and monthly average trip distance in miles for 2014, showing a pronounced June distance spike."></canvas>
       </div>
       <figcaption id="taxiFareChart-caption">Average fare drifts up steadily through the year, while average trip distance holds near 3 miles apart from a March uptick and a sharp June spike to 4.74 miles.</figcaption>
@@ -1237,7 +1272,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
       </tbody>
     </table>
     <figure class="chart" aria-labelledby="taxiPaymentChart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 360px;">
+      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
         <canvas id="taxiPaymentChart" role="img" aria-label="Doughnut chart of 2014 NYC yellow taxi trips by payment type. Card is the largest share, cash is second, and unknown, no charge, and disputed form a small tail."></canvas>
       </div>
       <figcaption id="taxiPaymentChart-caption">Card and cash dominate the payment mix; the unknown, no-charge, and disputed codes together are under 1.4 million of the 165 million trips.</figcaption>
@@ -1372,7 +1407,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
     <h2 id="hourly">Demand by Hour</h2>
     <p>Trip volume follows a strong daily rhythm. Demand bottoms out around 05:00 (about 1.7 million trips across the year) and peaks in the evening at 19:00 (about 10.3 million), with a secondary rise near the 08:00 morning commute. The 18:00 to 22:00 evening window is the clearest operational signal in the dataset.</p>
     <figure class="chart" aria-labelledby="taxiHourlyChart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 360px;">
+      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
         <canvas id="taxiHourlyChart" role="img" aria-label="Line chart of NYC yellow taxi trip volume in millions by pickup hour for 2014, peaking at 19:00 and lowest at 05:00."></canvas>
       </div>
       <figcaption id="taxiHourlyChart-caption">Trip volume by pickup hour across 2014. Demand bottoms out near 05:00 and peaks at 19:00, with a secondary morning-commute rise around 08:00.</figcaption>
@@ -1417,6 +1452,7 @@ const root = document.getElementById("commentRoot") || document.body;
 const COMMENT_KEY = root.dataset.commentKey || ("commentable-html:" + location.pathname);
 const DOC_LABEL   = root.dataset.docLabel   || document.title || location.pathname;
 const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
+const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // Comment ids are generated as "c" + base36 timestamp + 4 base36 chars and are
 // later interpolated into HTML attributes (data-cid="...") and CSS selectors.
 // Loaded and embedded comment ids must match this format - otherwise a
@@ -1425,7 +1461,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.0.1";
+const CMH_VERSION = "1.1.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -3769,6 +3805,135 @@ document.addEventListener("mousedown", (e) => {
   hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null;
 });
 
+
+let _sidebarWidthPx = 0;
+function _sidebarWidthBounds() {
+  const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
+  const narrow = vw < 700;
+  const min = Math.min(narrow ? 240 : 320, Math.max(180, vw - 48));
+  const max = Math.max(min, Math.min(narrow ? Math.round(vw * 0.82) : 720, vw - 24));
+  return { min: min, max: max, defaultWidth: Math.max(min, Math.min(400, max)) };
+}
+function _clampSidebarWidth(value) {
+  const b = _sidebarWidthBounds();
+  const n = Number(value);
+  if (!Number.isFinite(n)) return b.defaultWidth;
+  return Math.max(b.min, Math.min(b.max, Math.round(n)));
+}
+function _setSidebarWidth(value, persist) {
+  const b = _sidebarWidthBounds();
+  const w = _clampSidebarWidth(value);
+  _sidebarWidthPx = w;
+  document.documentElement.style.setProperty("--cm-sidebar-w", w + "px");
+  if (sidebar) sidebar.classList.toggle("is-narrow", w <= 340);
+  const handle = document.getElementById("sidebarResizeHandle");
+  if (handle) {
+    handle.setAttribute("aria-valuemin", String(b.min));
+    handle.setAttribute("aria-valuemax", String(b.max));
+    handle.setAttribute("aria-valuenow", String(w));
+    handle.setAttribute("aria-valuetext", w + " pixels");
+  }
+  if (persist) {
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w)); } catch (e) { /* private mode */ }
+  }
+  _syncFloatingAfterLayoutShift();
+  return w;
+}
+function setupSidebarResize() {
+  if (!sidebar) return;
+  let saved = null;
+  try { saved = localStorage.getItem(SIDEBAR_WIDTH_KEY); } catch (e) { saved = null; }
+  _setSidebarWidth(saved == null ? _sidebarWidthBounds().defaultWidth : Number(saved), false);
+  window.addEventListener("resize", function () { _setSidebarWidth(_sidebarWidthPx || _sidebarWidthBounds().defaultWidth, false); });
+  const handle = document.getElementById("sidebarResizeHandle");
+  if (!handle || handle._cmWired) return;
+  handle._cmWired = true;
+  let dragging = false;
+  function widthFromEvent(e) { return (window.innerWidth || document.documentElement.clientWidth || 0) - e.clientX; }
+  function onDrag(e) {
+    if (!dragging) return;
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+  }
+  function finish(e) {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("cm-sidebar-resizing");
+    document.removeEventListener("pointermove", onDrag, true);
+    document.removeEventListener("pointerup", finish, true);
+    document.removeEventListener("pointercancel", finish, true);
+    try { handle.releasePointerCapture(e.pointerId); } catch (err) { /* pointer may already be released */ }
+    _setSidebarWidth(_sidebarWidthPx, true);
+  }
+  handle.addEventListener("pointerdown", beginPointerResize);
+  handle.addEventListener("pointermove", onDrag);
+  handle.addEventListener("pointerup", finish);
+  handle.addEventListener("pointercancel", finish);
+  function onMouseDrag(e) {
+    if (!dragging) return;
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+  }
+  function finishMouse(e) {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("cm-sidebar-resizing");
+    document.removeEventListener("mousemove", onMouseDrag, true);
+    document.removeEventListener("mouseup", finishMouse, true);
+    _setSidebarWidth(_sidebarWidthPx, true);
+    e.preventDefault();
+  }
+  function beginMouseResize(e) {
+    if (dragging || (e.button != null && e.button !== 0)) return false;
+    dragging = true;
+    handle.focus({ preventScroll: true });
+    document.body.classList.add("cm-sidebar-resizing");
+    document.addEventListener("mousemove", onMouseDrag, true);
+    document.addEventListener("mouseup", finishMouse, true);
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+    return true;
+  }
+  function beginPointerResize(e) {
+    if (dragging || (e.button != null && e.button !== 0)) return false;
+    dragging = true;
+    handle.focus({ preventScroll: true });
+    document.body.classList.add("cm-sidebar-resizing");
+    try { handle.setPointerCapture(e.pointerId); } catch (err) { /* capture is best effort */ }
+    document.addEventListener("pointermove", onDrag, true);
+    document.addEventListener("pointerup", finish, true);
+    document.addEventListener("pointercancel", finish, true);
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+    return true;
+  }
+  handle.addEventListener("mousedown", beginMouseResize);
+  if (sidebar) {
+    sidebar.addEventListener("mousedown", function (e) {
+      const r = sidebar.getBoundingClientRect();
+      if (e.clientX <= r.left + 12) beginMouseResize(e);
+    });
+    sidebar.addEventListener("pointerdown", function (e) {
+      const r = sidebar.getBoundingClientRect();
+      if (e.clientX <= r.left + 12) beginPointerResize(e);
+    });
+  }
+  handle.addEventListener("dblclick", function () { _setSidebarWidth(_sidebarWidthBounds().defaultWidth, true); });
+  handle.addEventListener("keydown", function (e) {
+    const b = _sidebarWidthBounds();
+    const step = e.shiftKey ? 60 : 20;
+    let next = null;
+    if (e.key === "ArrowLeft") next = (_sidebarWidthPx || b.defaultWidth) + step;
+    else if (e.key === "ArrowRight") next = (_sidebarWidthPx || b.defaultWidth) - step;
+    else if (e.key === "Home") next = b.min;
+    else if (e.key === "End") next = b.max;
+    if (next != null) {
+      _setSidebarWidth(next, true);
+      e.preventDefault();
+    }
+  });
+}
+
 /* ---------- Sidebar open/close ---------- */
 function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
@@ -4546,7 +4711,6 @@ function _inlineNonPortableAssets(baseHtml) {
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
   t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
-  t = t.replace(/[ \t]*<meta\b[^>]*commentable-html-version[^>]*>[ \t]*\n?/i, "");
   t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
   t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>[ \t]*\n?/ig, "");
   t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
@@ -5080,7 +5244,7 @@ function setupSideToc() {
   head.className = "cm-side-toc-head";
   const title = document.createElement("span");
   title.className = "cm-side-toc-title";
-  title.textContent = "Contents";
+  title.textContent = "Navigation";
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "cm-side-toc-toggle";
@@ -5263,6 +5427,17 @@ function restoreHighlights() {
   });
 }
 
+
+function setupChartContainment() {
+  root.querySelectorAll("figure.chart > .chart-wrap").forEach(function (wrap) {
+    if (!wrap.style.position) wrap.style.position = "relative";
+  });
+  if (window.Chart && window.Chart.defaults) {
+    window.Chart.defaults.responsive = true;
+    window.Chart.defaults.maintainAspectRatio = false;
+  }
+}
+
 function setupFooter() {
   if (document.getElementById("cmFooter")) return;
   const f = document.createElement("footer");
@@ -5396,9 +5571,11 @@ backfillContext();
 restoreHighlights();
 setupMermaidLayer();
 setupImageLayer();
+setupChartContainment();
 setupCodeCopy();
 setupSortableTables();
 setupModeUi();
+setupSidebarResize();
 setupHeadingAnchors();
 setupCollapsibleSections();
 setupSideToc();
