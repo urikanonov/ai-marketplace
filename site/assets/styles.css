@@ -279,7 +279,7 @@ main > section:nth-of-type(even) {
   font-weight: 700;
   font-family: var(--cp-mono);
 }
-.step h3 { font-size: 1.02rem; margin-bottom: 4px; }
+.step h3, .step h4 { font-size: 1.02rem; margin-bottom: 4px; }
 .step p { color: var(--cp-text-muted); font-size: 0.93rem; }
 
 /* Demo preview */
@@ -366,6 +366,19 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .loop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 20px; }
 .loop-title { font-size: 1.15rem; margin-bottom: 14px; color: var(--cp-accent); font-family: var(--cp-mono); }
 .steps-vertical { grid-template-columns: 1fr; gap: 14px; }
+
+/* Review-loop diagram: an inline, light-only twin of
+   plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg.
+   Styling lives here (not inline) so the page keeps a tight CSP with no 'unsafe-inline'. */
+.loop-figure { margin: 0 auto 30px; max-width: 640px; }
+.loop-figure svg { display: block; width: 100%; height: auto; }
+.loop-fig-bg { fill: var(--cp-surface); stroke: var(--cp-border); }
+.loop-fig-node { fill: var(--cp-bg-elevated); stroke: var(--cp-accent); }
+.loop-fig-title { fill: var(--cp-accent); font-family: var(--cp-mono); font-weight: 600; }
+.loop-fig-lead { fill: var(--cp-text); }
+.loop-fig-sub { fill: var(--cp-text-muted); }
+.loop-fig-arrow { stroke: var(--cp-accent); fill: none; }
+.loop-fig-head { fill: var(--cp-accent); }
 
 /* Tutorial page (content generated at build time from TUTORIAL.md) */
 .tutorial { max-width: 860px; margin: 0 auto; }

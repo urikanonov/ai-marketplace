@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-11
+
+### Added
+
+- Help & About: a "Tips and shortcuts" topic for power users (right-click to comment, re-select the same
+  text to reopen a comment, multiple and draggable composers, sort back to document order, the Expand and
+  Collapse controls, the diff Syntax toggle, and the keyboard shortcuts), plus "Request a feature" and
+  "Contribute" links in the About block alongside the existing source and issue links.
+- A review-loop diagram (`docs/images/review-loop.svg`) embedded in a new "Review workflow" section of the
+  plugin README, showing the agent-to-you-and-back loop and naming the self, peer, and reviewer variants.
+
+### Changed
+
+- Help & About now orients a first-time reviewer. The review-workflow topic points a recipient who was
+  sent a file straight to leaving a comment (no agent or account needed), the "Getting started" topic is
+  retitled for reviewing a shared file, and the search box suggests "shortcuts".
+- `docs/TUTORIAL.md` gained a short "you were sent a file to review" quick start and a pointer to the new
+  Tips and shortcuts help topic.
+
 ## [1.3.1] - 2026-07-11
 
 ### Fixed

@@ -5,4 +5,4 @@ contact_links:
     about: Report security issues privately. Please do not open a public issue.
   - name: Contributing guide
     url: https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md
-    about: How to add a plugin or open a pull request.
+    about: How to improve an existing plugin or open a pull request.

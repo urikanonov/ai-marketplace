@@ -7,7 +7,7 @@
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=359b4a23c8ed" />
+  <link rel="stylesheet" href="../assets/styles.css?v=dd1b4ddd56a0" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.3.1<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.4.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -82,6 +82,66 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
       </div>
     </section>
 
+    <section id="loop">
+      <div class="wrap">
+        <h2 class="section-title">How the review loop works</h2>
+        <p class="section-sub">Feedback goes back to the agent as structured data, not pasted prose.</p>
+        <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg; keep the two in sync if the labels or flow change. -->
+        <figure class="loop-figure">
+          <svg viewBox="0 0 640 240" role="img" aria-labelledby="loopFigTitle loopFigDesc">
+            <title id="loopFigTitle">Commentable HTML self-review loop</title>
+            <desc id="loopFigDesc">An AI agent generates a commentable HTML report; you review it and leave inline comments; you Copy all the comments back to the agent, then reload and repeat until every comment is resolved.</desc>
+            <defs>
+              <marker id="loopFigAh" markerWidth="10" markerHeight="10" refX="7.5" refY="4.5" orient="auto" markerUnits="userSpaceOnUse">
+                <path class="loop-fig-head" d="M1,1 L8,4.5 L1,8 Z" />
+              </marker>
+            </defs>
+            <rect class="loop-fig-bg" x="1" y="1" width="638" height="238" rx="16" />
+            <rect class="loop-fig-node" x="60" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
+            <text class="loop-fig-title" x="145" y="133" text-anchor="middle" font-size="17">AI agent</text>
+            <rect class="loop-fig-node" x="410" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
+            <text class="loop-fig-title" x="495" y="133" text-anchor="middle" font-size="17">You</text>
+            <text class="loop-fig-sub" x="320" y="106" text-anchor="middle" font-size="12.5">1. generates HTML</text>
+            <line class="loop-fig-arrow" x1="236" y1="116" x2="402" y2="116" stroke-width="1.8" marker-end="url(#loopFigAh)" />
+            <text class="loop-fig-sub" x="495" y="52" text-anchor="middle" font-size="12.5">2. comment inline</text>
+            <path class="loop-fig-arrow" d="M468,95 C 456,60 534,60 522,95" stroke-width="1.8" marker-end="url(#loopFigAh)" />
+            <line class="loop-fig-arrow" x1="404" y1="142" x2="238" y2="142" stroke-width="1.8" marker-end="url(#loopFigAh)" />
+            <text class="loop-fig-sub" x="320" y="160" text-anchor="middle" font-size="12.5">3. Copy all back to the agent</text>
+            <text class="loop-fig-lead" x="320" y="202" text-anchor="middle" font-size="13">Reload and repeat until every comment is resolved.</text>
+          </svg>
+        </figure>
+        <div class="loop-grid">
+          <div class="section-block loop-col">
+            <h3 class="loop-title">Self review</h3>
+            <div class="steps steps-vertical">
+              <div class="step"><h4>Generate</h4><p>The agent produces a commentable HTML report.</p></div>
+              <div class="step"><h4>Comment</h4><p>You select text and leave inline notes in the sidebar.</p></div>
+              <div class="step"><h4>Copy all</h4><p>Hand the agent a Markdown bundle of every open comment.</p></div>
+              <div class="step"><h4>Reload</h4><p>The agent acts and marks ids handled; handled comments prune away.</p></div>
+            </div>
+          </div>
+          <div class="section-block loop-col">
+            <h3 class="loop-title">Peer review</h3>
+            <div class="steps steps-vertical">
+              <div class="step"><h4>Self review first</h4><p>Run the self-review loop to get the artifact in good shape.</p></div>
+              <div class="step"><h4>Export as Portable</h4><p>Download one self-contained copy and share it with a peer.</p></div>
+              <div class="step"><h4>Peer comments</h4><p>The peer opens it, adds inline comments, and Exports as Portable again - comments now embedded in the HTML.</p></div>
+              <div class="step"><h4>Back to the agent</h4><p>You open their Portable file and Copy all to feed their feedback to the agent.</p></div>
+            </div>
+          </div>
+          <div class="section-block loop-col">
+            <h3 class="loop-title">Review someone's plan</h3>
+            <div class="steps steps-vertical">
+              <div class="step"><h4>Receive a plan</h4><p>A colleague sends a plan or report as markdown or HTML.</p></div>
+              <div class="step"><h4>Convert</h4><p>Ask the agent to turn it into a commentable HTML with this skill.</p></div>
+              <div class="step"><h4>Review inline</h4><p>Add your comments in place, on exactly the parts you mean.</p></div>
+              <div class="step"><h4>Export and send back</h4><p>Export as Portable and return it with your comments embedded.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="demo">
       <div class="wrap">
         <div class="demo-head">
@@ -101,42 +161,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
             <span class="title" id="demo-title">NYC Taxi Report</span>
           </div>
           <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
-        </div>
-      </div>
-    </section>
-
-    <section id="loop">
-      <div class="wrap">
-        <h2 class="section-title">How the review loop works</h2>
-        <p class="section-sub">Feedback goes back to the agent as structured data, not pasted prose.</p>
-        <div class="loop-grid">
-          <div class="section-block loop-col">
-            <h3 class="loop-title">Self review</h3>
-            <div class="steps steps-vertical">
-              <div class="step"><h3>Generate</h3><p>The agent produces a commentable HTML report.</p></div>
-              <div class="step"><h3>Comment</h3><p>You select text and leave inline notes in the sidebar.</p></div>
-              <div class="step"><h3>Copy all</h3><p>Hand the agent a Markdown bundle of every open comment.</p></div>
-              <div class="step"><h3>Reload</h3><p>The agent acts and marks ids handled; handled comments prune away.</p></div>
-            </div>
-          </div>
-          <div class="section-block loop-col">
-            <h3 class="loop-title">Peer review</h3>
-            <div class="steps steps-vertical">
-              <div class="step"><h3>Self review first</h3><p>Run the self-review loop to get the artifact in good shape.</p></div>
-              <div class="step"><h3>Export as Portable</h3><p>Download one self-contained copy and share it with a peer.</p></div>
-              <div class="step"><h3>Peer comments</h3><p>The peer opens it, adds inline comments, and Exports as Portable again - comments now embedded in the HTML.</p></div>
-              <div class="step"><h3>Back to the agent</h3><p>You open their Portable file and Copy all to feed their feedback to the agent.</p></div>
-            </div>
-          </div>
-          <div class="section-block loop-col">
-            <h3 class="loop-title">Review someone's plan</h3>
-            <div class="steps steps-vertical">
-              <div class="step"><h3>Receive a plan</h3><p>A colleague sends a plan or report as markdown or HTML.</p></div>
-              <div class="step"><h3>Convert</h3><p>Ask the agent to turn it into a commentable HTML with this skill.</p></div>
-              <div class="step"><h3>Review inline</h3><p>Add your comments in place, on exactly the parts you mean.</p></div>
-              <div class="step"><h3>Export and send back</h3><p>Export as Portable and return it with your comments embedded.</p></div>
-            </div>
-          </div>
         </div>
       </div>
     </section>
@@ -176,6 +200,19 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.4.0] - 2026-07-11</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Help &amp; About: a &quot;Tips and shortcuts&quot; topic for power users (right-click to comment, re-select the same text to reopen a comment, multiple and draggable composers, sort back to document order, the Expand and Collapse controls, the diff Syntax toggle, and the keyboard shortcuts), plus &quot;Request a feature&quot; and &quot;Contribute&quot; links in the About block alongside the existing source and issue links.</li>
+              <li>A review-loop diagram (<code>docs/images/review-loop.svg</code>) embedded in a new &quot;Review workflow&quot; section of the plugin README, showing the agent-to-you-and-back loop and naming the self, peer, and reviewer variants.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Help &amp; About now orients a first-time reviewer. The review-workflow topic points a recipient who was sent a file straight to leaving a comment (no agent or account needed), the &quot;Getting started&quot; topic is retitled for reviewing a shared file, and the search box suggests &quot;shortcuts&quot;.</li>
+              <li><code>docs/TUTORIAL.md</code> gained a short &quot;you were sent a file to review&quot; quick start and a pointer to the new Tips and shortcuts help topic.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.3.1] - 2026-07-11</h3></div>
             <div class="group-label">Fixed</div>
@@ -331,7 +368,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
   <footer class="footer">
     <div class="wrap">
       <span>MIT License &middot; &copy; <span id="year">2026</span> Uri Kanonov</span>
-      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">plugin source</a></span>
+      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md">Contribute</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml">Request a feature</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">plugin source</a></span>
     </div>
   </footer>
 

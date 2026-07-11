@@ -15,6 +15,18 @@
 - Standalone and NonPortable output modes, both built from the same runtime.
 - Runtime helpers for validation, handled-id updates, document creation, upgrades, diffs, charts, KQL, code highlighting, TOCs, Mermaid skip fixes, and image inlining.
 
+## Review workflow
+
+Commentable HTML turns any report into a review you can hand straight back to an AI agent, then iterate until every comment is resolved.
+
+![The self-review loop: an AI agent generates a commentable HTML report, you review it and leave inline comments, you Copy all the comments back to the agent, then reload and repeat until every comment is resolved.](skills/commentable-html/docs/images/review-loop.svg)
+
+- **Self review** - generate the report, comment on it, `Copy all` back to the agent, and reload; repeat until the panel is empty.
+- **Peer review** - `Export as Portable` and share the single file; the peer comments in place and sends it back with the comments embedded, then you feed those back to the agent.
+- **Reviewing someone's plan** - convert an incoming Markdown or HTML plan into commentable HTML, comment inline, and `Export as Portable` to send it back.
+
+See the [tutorial](skills/commentable-html/docs/TUTORIAL.md) for a full walkthrough, or the live demo and review-loop diagram on the [project website](https://urikanonov.github.io/ai-marketplace/commentable-html/).
+
 ## Using the skill
 
 The authoritative per-generation instructions are in [`skills/commentable-html/SKILL.md`](skills/commentable-html/SKILL.md). In short: start from `skills/commentable-html/dist/PORTABLE.html` for a standalone file, or `skills/commentable-html/dist/NONPORTABLE.html` plus its companions for a local iterative file, then run the validator when Python is available:
@@ -25,7 +37,7 @@ python skills\commentable-html\tools\validate.py --strict <file.html>
 
 The review loop is also documented in `skills/commentable-html/SKILL.md`: the user copies all comments, the agent processes the bundle, and `tools\mark_handled.py` appends handled ids so processed comments disappear on reload.
 
-Contributors should follow the development guide in the project's source repository. Packaged installs do not include the development harness.
+Contributors: see the [contributing guide](https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md). Use the issue tracker to [report a bug](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml), [request a feature](https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml) for an existing plugin, or [suggest a new plugin or skill](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-request.yml). Packaged installs do not include the development harness.
 
 ## Directory layout
 
@@ -35,5 +47,5 @@ Contributors should follow the development guide in the project's source reposit
 | `skills/commentable-html/dist/` | Generated bundle: `PORTABLE.html`, `NONPORTABLE.html`, CSS/JS/assets companions, and `manifest.json`. |
 | `skills/commentable-html/tools/` | Runtime Python tools used while generating, validating, upgrading, and processing reports. |
 | `skills/commentable-html/references/` | Detailed reference docs for anchors, layout, charts, validation, exports, and helper tools. |
-| `skills/commentable-html/docs/` | Tutorial only: `docs/TUTORIAL.md` and `tutorial-images/`. |
+| `skills/commentable-html/docs/` | Tutorial and diagrams: `docs/TUTORIAL.md`, `tutorial-images/`, and `docs/images/` (the review-loop diagram embedded in this README). |
 | `skills/commentable-html/examples/` | Worked prompts and reports, including `prompt-community-garden.md`, `prompt-taxi.md`, `report-community-garden.html`, and `report-taxi.html`. |

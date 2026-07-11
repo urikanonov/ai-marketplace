@@ -87,13 +87,15 @@ Every change to `main` goes through a pull request and must pass the required CI
 
 **Auto-updater note:** installing `urikan-ai-marketplace-auto-updater` is a standing grant - on every session start it runs `copilot plugin update` for your installed plugins, so it silently applies whatever the maintainer later merges. If you prefer to review each update, do not install it and run `copilot plugin update <name>` yourself. See [SECURITY.md](SECURITY.md).
 
-## Reporting Issues
+## Reporting issues and requesting features
 
-Found a bug in a plugin? [Open an issue](https://github.com/urikanonov/ai-marketplace/issues/new/choose) using the plugin issue form. It asks for the plugin name and version, a description, repro steps, screenshots or attachments, and your environment so problems can be reproduced and fixed quickly.
+Found a bug in a plugin? [Open a bug report](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml). It asks for the plugin name and version, a description, repro steps, screenshots or attachments, and your environment so problems can be reproduced and fixed quickly.
+
+Want a plugin to do more? [Request a feature](https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml) for an existing plugin, or [suggest a brand-new plugin or skill](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-request.yml). The [issue chooser](https://github.com/urikanonov/ai-marketplace/issues/new/choose) lists every form.
 
 ## Contributing
 
-The `main` branch is protected: every change - including the maintainer's - lands through a pull request that passes CI. Direct pushes to `main` are blocked for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and the template for adding a new plugin.
+The `main` branch is protected: every change - including the maintainer's - lands through a pull request that passes CI. Direct pushes to `main` are blocked for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, including how to improve an existing plugin and how new plugins are added.
 
 ## License
 

@@ -18,6 +18,7 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `references/` | Detailed generated-report references. |
 | `docs/TUTORIAL.md` | Tutorial using `examples/report-community-garden.html`. |
 | `docs/tutorial-images/` | Tutorial screenshots. |
+| `docs/images/review-loop.svg` | Review-loop diagram embedded in the plugin README. |
 | `examples/prompt-community-garden.md` | Prompt for the community garden example. |
 | `examples/prompt-taxi.md` | Prompt for the NYC taxi example. |
 | `examples/report-community-garden.html` | Portable community garden example report. |
