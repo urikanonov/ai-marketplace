@@ -212,7 +212,7 @@ def render_changelog(releases):
                 parts.append('  <div class="group-label">%s</div>' % esc(change_type))
             parts.append('  <ul>')
             for item in items:
-                parts.append('    <li>%s</li>' % esc(item))
+                parts.append('    <li>%s</li>' % _md_inline(esc(item)))
             parts.append('  </ul>')
         parts.append('</div>')
         blocks.append("\n".join(parts))
@@ -222,6 +222,22 @@ def render_changelog(releases):
 def _read_normalized(path):
     with open(path, "rb") as fh:
         return fh.read().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def _orphans(dst_dir, allowed_names, check):
+    """Flag (in check mode) or delete (in write mode) destination files whose source was
+    removed or renamed, so a stale synced copy cannot silently ship."""
+    drift = []
+    if not os.path.isdir(dst_dir):
+        return drift
+    for name in sorted(os.listdir(dst_dir)):
+        if not os.path.isfile(os.path.join(dst_dir, name)) or name in allowed_names:
+            continue
+        if check:
+            drift.append(name + " (orphaned)")
+        else:
+            os.remove(os.path.join(dst_dir, name))
+    return drift
 
 
 def sync_demos(root, check):
@@ -241,6 +257,7 @@ def sync_demos(root, check):
             os.makedirs(dst_dir, exist_ok=True)
             with open(dst, "wb") as fh:
                 fh.write(src_bytes)
+    drift.extend(_orphans(dst_dir, DEMO_FILES, check))
     return drift
 
 
@@ -258,16 +275,25 @@ _MD_CODE = re.compile(r"`([^`]+)`")
 
 
 def _md_inline(escaped):
-    """Apply inline markdown to already-HTML-escaped text. Images run before links so
-    an image is not mis-parsed as a link. URLs are passed through safe_url."""
+    """Apply inline markdown to already-HTML-escaped text. Images run before links so an
+    image is not mis-parsed as a link. Captured URLs are already escaped (attribute-safe),
+    so they are passed through safe_url without re-escaping. Inline code spans are protected
+    so a `**` inside code is not turned into bold."""
     escaped = _MD_IMAGE.sub(
-        lambda m: '<img src="%s" alt="%s" loading="lazy" />' % (esc(safe_url(m.group(2))), m.group(1)),
+        lambda m: '<img src="%s" alt="%s" loading="lazy" />' % (safe_url(m.group(2)), m.group(1)),
         escaped)
     escaped = _MD_LINK.sub(
-        lambda m: '<a href="%s">%s</a>' % (esc(safe_url(m.group(2))), m.group(1)),
+        lambda m: '<a href="%s">%s</a>' % (safe_url(m.group(2)), m.group(1)),
         escaped)
+    code_spans = []
+
+    def _stash(match):
+        code_spans.append(match.group(1))
+        return "\x00%d\x00" % (len(code_spans) - 1)
+
+    escaped = _MD_CODE.sub(_stash, escaped)
     escaped = _MD_BOLD.sub(r"<strong>\1</strong>", escaped)
-    escaped = _MD_CODE.sub(r"<code>\1</code>", escaped)
+    escaped = re.sub(r"\x00(\d+)\x00", lambda m: "<code>%s</code>" % code_spans[int(m.group(1))], escaped)
     return escaped
 
 
@@ -343,20 +369,24 @@ def sync_tutorial_images(root, check):
     drift = []
     if not os.path.isdir(src_dir):
         return drift
-    for name in sorted(os.listdir(src_dir)):
+    src_names = [n for n in sorted(os.listdir(src_dir)) if os.path.isfile(os.path.join(src_dir, n))]
+    for name in src_names:
         src = os.path.join(src_dir, name)
-        if not os.path.isfile(src):
-            continue
         dst = os.path.join(dst_dir, name)
         with open(src, "rb") as fh:
             data = fh.read()
         if check:
-            if not os.path.exists(dst) or open(dst, "rb").read() != data:
+            existing = None
+            if os.path.exists(dst):
+                with open(dst, "rb") as fh:
+                    existing = fh.read()
+            if existing != data:
                 drift.append(name)
         else:
             os.makedirs(dst_dir, exist_ok=True)
             with open(dst, "wb") as fh:
                 fh.write(data)
+    drift.extend(_orphans(dst_dir, src_names, check))
     return drift
 
 

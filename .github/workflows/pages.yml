@@ -12,6 +12,7 @@ on:
       - "plugins/commentable-html/CHANGELOG.md"
       - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-taxi.html"
       - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-community-garden.html"
+      - "plugins/commentable-html/pkg/skills/commentable-html/docs/**"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
@@ -23,6 +24,7 @@ on:
       - "plugins/commentable-html/CHANGELOG.md"
       - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-taxi.html"
       - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-community-garden.html"
+      - "plugins/commentable-html/pkg/skills/commentable-html/docs/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

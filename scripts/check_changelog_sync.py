@@ -109,6 +109,19 @@ def has_released_version(content, version):
     return str(version) in parse_released_sections(content)
 
 
+def duplicate_released_headings(content):
+    """Return semver versions whose released heading appears more than once. A duplicate
+    heading lets a PR prepend a second section with rewritten history that the by-version
+    comparison would otherwise miss."""
+    text = normalize_newlines(content)
+    counts = {}
+    for match in HEADING_RE.finditer(text):
+        version = match.group(1).strip()
+        if SEMVER_RE.match(version):
+            counts[version] = counts.get(version, 0) + 1
+    return sorted(v for v, n in counts.items() if n > 1)
+
+
 def check_current_version(plugin_name, changelog_rel, content, version, version_source):
     if has_released_version(content, version):
         return []
@@ -133,19 +146,30 @@ def compare_released_history(base_content, head_content):
 
 
 def git_show_text(root, base_ref, repo_relative_path):
+    """Return (content, error, skip_note). A path that is simply new at the base ref is a
+    safe skip (skip_note set); a base ref that cannot be resolved is a hard error, because
+    the tamper guard must not silently stop enforcing history."""
     try:
         result = subprocess.run(
             ["git", "-C", str(root), "show", "%s:%s" % (base_ref, repo_relative_path)],
             capture_output=True,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return None, "git is unavailable (%s); skipping history check for %s." % (exc, repo_relative_path)
+        return None, None, "git is unavailable (%s); skipping history check for %s." % (exc, repo_relative_path)
     if result.returncode != 0:
-        return None, "%s is unavailable at %s; skipping history check." % (repo_relative_path, base_ref)
+        stderr = result.stderr.decode("utf-8", "replace").lower()
+        if "does not exist in" in stderr or "exists on disk, but not in" in stderr:
+            return None, None, "%s is new at %s; skipping history check." % (repo_relative_path, base_ref)
+        first = (stderr.strip().splitlines() or ["git show failed"])[0]
+        return None, (
+            "cannot resolve base ref '%s' to verify released history of %s (%s); "
+            "fetch the base branch (fetch-depth: 0) or set CHANGELOG_BASE_REF."
+            % (base_ref, repo_relative_path, first)
+        ), None
     try:
-        return result.stdout.decode("utf-8"), None
+        return result.stdout.decode("utf-8"), None, None
     except UnicodeDecodeError as exc:
-        return None, "%s at %s is not UTF-8 (%s); skipping history check." % (repo_relative_path, base_ref, exc)
+        return None, None, "%s at %s is not UTF-8 (%s); skipping history check." % (repo_relative_path, base_ref, exc)
 
 
 def history_failure_message(plugin, change, base_ref):
@@ -193,11 +217,19 @@ def main(argv=None):
         failures.extend(
             check_current_version(plugin.name, changelog_rel, head_content, plugin.version, plugin.version_source)
         )
+        for version in duplicate_released_headings(head_content):
+            failures.append(
+                "%s: %s has a duplicate released heading ## [%s]; each version must appear once "
+                "(a duplicate can hide edited history)." % (plugin.name, changelog_rel, version)
+            )
 
         if changelog_rel in checked_history:
             continue
         checked_history.add(changelog_rel)
-        base_content, note = git_show_text(ROOT, args.base, changelog_rel)
+        base_content, error, note = git_show_text(ROOT, args.base, changelog_rel)
+        if error:
+            failures.append("%s: %s" % (plugin.name, error))
+            continue
         if note:
             notes.append("check-changelog-sync: NOTE - " + note)
             continue

@@ -76,6 +76,19 @@ test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }
   );
 });
 
+test("plugin and tutorial pages keep a tight CSP (no widget relaxations)", async ({ page }) => {
+  for (const p of ["/commentable-html/", "/commentable-html/tutorial/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const csp = await page
+      .locator('meta[http-equiv="Content-Security-Policy"]')
+      .getAttribute("content");
+    expect(csp, p + " CSP present").toBeTruthy();
+    expect(csp, p + " script-src 'self'").toContain("script-src 'self'");
+    expect(csp, p + " must not allow the star-widget script host").not.toContain("buttons.github.io");
+    expect(csp, p + " must not allow inline styles/scripts").not.toContain("'unsafe-inline'");
+  }
+});
+
 test("demo mounts inside the iframe on the plugin page (CSP allows it)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const frame = page.frameLocator("#demo iframe");
