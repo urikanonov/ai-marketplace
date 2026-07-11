@@ -340,6 +340,20 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .loop-title { font-size: 1.15rem; margin-bottom: 14px; color: var(--cp-accent); font-family: var(--cp-mono); }
 .steps-vertical { grid-template-columns: 1fr; gap: 14px; }
 
+/* Tutorial page (content generated at build time from TUTORIAL.md) */
+.tutorial { max-width: 860px; margin: 0 auto; }
+.tutorial h2 { font-size: 1.5rem; margin: 28px 0 10px; letter-spacing: -0.4px; }
+.tutorial h3 { font-size: 1.2rem; margin: 22px 0 8px; }
+.tutorial > h2:first-child, .tutorial > h3:first-child { margin-top: 0; }
+.tutorial p { margin-bottom: 14px; color: var(--cp-text); }
+.tutorial ul, .tutorial ol { margin: 0 0 14px 22px; }
+.tutorial li { margin-bottom: 6px; color: var(--cp-text); }
+.tutorial img { display: block; max-width: 100%; height: auto; margin: 16px 0; border: 1px solid var(--cp-border); border-radius: 10px; box-shadow: var(--cp-shadow); }
+.tutorial code { background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: var(--cp-mono); font-size: 0.9em; }
+.tutorial pre { background: #1f1720; color: #fbeef2; border: 1px solid var(--cp-accent-hover); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-family: var(--cp-mono); font-size: 0.88rem; margin-bottom: 14px; }
+.tutorial pre code { background: transparent; border: 0; padding: 0; color: inherit; }
+.tutorial a { color: var(--cp-link); }
+
 /* Footer */
 .footer {
   border-top: 1px solid var(--cp-border);
