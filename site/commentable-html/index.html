@@ -7,7 +7,7 @@
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=dd1b4ddd56a0" />
+  <link rel="stylesheet" href="../assets/styles.css?v=82a645ff81d6" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -222,6 +222,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The in-browser diff highlighter matches the case-insensitive keywords of SQL, Batch, and PowerShell (uppercase keywords now color), scans strings and comments in linear time for the newly added languages, maps the <code>.m</code> extension to Objective-C, and no longer over-colors common identifiers (<code>data</code>, <code>local</code>, <code>end</code>, and similar) as keywords in unrelated diffs.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 11 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.3.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
@@ -359,6 +361,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The injected layer is version-agnostic: the region markers, the companion filenames, and the demo storage keys no longer embed a version. The single source of truth for the release version is <code>dev/VERSION</code>; <code>build.py</code> stamps it into the layer constant, <code>plugin.json</code>, the marketplace entry, and each document&#x27;s version <code>&lt;meta&gt;</code>, and <code>build.py --check</code> guards against drift.</li>
             </ul>
           </div>
+          </details>
           <!-- END:changelog -->
         </div>
       </div>
