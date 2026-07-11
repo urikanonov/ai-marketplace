@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sample configuration -->
+<config>
+  <server host="localhost" port="8080" />
+  <feature name="highlight" enabled="true" />
+  <retries>3</retries>
+</config>

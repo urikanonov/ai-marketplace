@@ -1,0 +1,14 @@
+<span class="cmh-code-com">// Greeting helper</span>
+<span class="cmh-code-kw">fun</span> <span class="cmh-code-fn">greet</span><span class="cmh-code-op">(</span>name<span class="cmh-code-op">:</span> String<span class="cmh-code-op">):</span> String <span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">return</span> <span class="cmh-code-str">"Hello, $name!"</span>
+<span class="cmh-code-op">}</span>
+
+<span class="cmh-code-kw">fun</span> <span class="cmh-code-fn">main</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">val</span> names <span class="cmh-code-op">=</span> <span class="cmh-code-fn">listOf</span><span class="cmh-code-op">(</span><span class="cmh-code-str">"Ada"</span><span class="cmh-code-op">,</span> <span class="cmh-code-str">"Grace"</span><span class="cmh-code-op">)</span>
+    <span class="cmh-code-kw">for</span> <span class="cmh-code-op">(</span>name <span class="cmh-code-kw">in</span> names<span class="cmh-code-op">)</span> <span class="cmh-code-op">{</span>
+        <span class="cmh-code-com">/* one line each */</span>
+        <span class="cmh-code-fn">println</span><span class="cmh-code-op">(</span><span class="cmh-code-fn">greet</span><span class="cmh-code-op">(</span>name<span class="cmh-code-op">))</span>
+    <span class="cmh-code-op">}</span>
+    <span class="cmh-code-kw">val</span> count <span class="cmh-code-op">=</span> <span class="cmh-code-num">42</span>
+    <span class="cmh-code-fn">println</span><span class="cmh-code-op">(</span><span class="cmh-code-str">"count = $count"</span><span class="cmh-code-op">)</span>
+<span class="cmh-code-op">}</span>

@@ -1,0 +1,17 @@
+package main
+
+import "fmt"
+
+// Greet builds a greeting string.
+func Greet(name string) string {
+	return fmt.Sprintf("hello, %s", name)
+}
+
+func main() {
+	names := []string{"ada", "grace"}
+	for i, n := range names {
+		/* one line per name */
+		fmt.Println(i, Greet(n))
+	}
+	fmt.Println("count:", len(names)*2)
+}

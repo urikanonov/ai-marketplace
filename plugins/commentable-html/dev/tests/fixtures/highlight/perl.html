@@ -1,0 +1,16 @@
+<span class="cmh-code-com">#!/usr/bin/perl</span>
+<span class="cmh-code-kw">use</span> strict<span class="cmh-code-op">;</span>
+<span class="cmh-code-kw">use</span> warnings<span class="cmh-code-op">;</span>
+
+<span class="cmh-code-com"># Count words on each line</span>
+<span class="cmh-code-kw">my</span> <span class="cmh-code-op">%</span>counts<span class="cmh-code-op">;</span>
+<span class="cmh-code-kw">while</span> <span class="cmh-code-op">(</span><span class="cmh-code-kw">my</span> $line <span class="cmh-code-op">=</span> <span class="cmh-code-op">&lt;</span>STDIN<span class="cmh-code-op">&gt;)</span> <span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">for</span> <span class="cmh-code-kw">my</span> $word <span class="cmh-code-op">(</span>split <span class="cmh-code-op">/</span>\s<span class="cmh-code-op">+/,</span> $line<span class="cmh-code-op">)</span> <span class="cmh-code-op">{</span>
+        <span class="cmh-code-kw">next</span> <span class="cmh-code-kw">if</span> <span class="cmh-code-fn">length</span><span class="cmh-code-op">(</span>$word<span class="cmh-code-op">)</span> <span class="cmh-code-op">&lt;</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">;</span>
+        $counts<span class="cmh-code-op">{</span>$word<span class="cmh-code-op">}++;</span>
+    <span class="cmh-code-op">}</span>
+<span class="cmh-code-op">}</span>
+
+<span class="cmh-code-kw">for</span> <span class="cmh-code-kw">my</span> $word <span class="cmh-code-op">(</span>sort keys <span class="cmh-code-op">%</span>counts<span class="cmh-code-op">)</span> <span class="cmh-code-op">{</span>
+    print <span class="cmh-code-str">"$word: $counts{$word}\n"</span><span class="cmh-code-op">;</span>
+<span class="cmh-code-op">}</span>

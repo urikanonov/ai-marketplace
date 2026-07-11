@@ -1,0 +1,13 @@
+interface User {
+  id: number;
+  name: string;
+}
+
+// Look up a user by id
+function findUser(users: User[], id: number): User | undefined {
+  return users.find((u) => u.id === id);
+}
+
+const users: User[] = [{ id: 1, name: "Ada" }];
+/* Log the result */
+console.log(findUser(users, 1)?.name ?? "unknown");

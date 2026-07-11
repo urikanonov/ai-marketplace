@@ -1,0 +1,14 @@
+<span class="cmh-code-com"># Report large files in a folder</span>
+<span class="cmh-code-kw">function</span> Get<span class="cmh-code-op">-</span>LargeFiles <span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">param</span><span class="cmh-code-op">(</span>
+        <span class="cmh-code-op">[</span>string<span class="cmh-code-op">]</span>$Path<span class="cmh-code-op">,</span>
+        <span class="cmh-code-op">[</span>int<span class="cmh-code-op">]</span>$MinBytes <span class="cmh-code-op">=</span> <span class="cmh-code-num">1024</span>
+    <span class="cmh-code-op">)</span>
+
+    <span class="cmh-code-com">&lt;# filter and sort #&gt;</span>
+    Get<span class="cmh-code-op">-</span>ChildItem <span class="cmh-code-op">-</span>Path $Path <span class="cmh-code-op">-</span>File <span class="cmh-code-op">|</span>
+        Where<span class="cmh-code-op">-</span>Object <span class="cmh-code-op">{</span> $_<span class="cmh-code-op">.</span>Length <span class="cmh-code-op">-</span>gt $MinBytes <span class="cmh-code-op">}</span> <span class="cmh-code-op">|</span>
+        Sort<span class="cmh-code-op">-</span>Object Length <span class="cmh-code-op">-</span>Descending
+<span class="cmh-code-op">}</span>
+
+Get<span class="cmh-code-op">-</span>LargeFiles <span class="cmh-code-op">-</span>Path <span class="cmh-code-str">"."</span> <span class="cmh-code-op">-</span>MinBytes <span class="cmh-code-num">42</span> <span class="cmh-code-op">|</span> Format<span class="cmh-code-op">-</span>Table Name<span class="cmh-code-op">,</span> Length

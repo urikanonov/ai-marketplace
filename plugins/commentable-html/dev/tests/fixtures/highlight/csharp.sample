@@ -1,0 +1,19 @@
+using System;
+
+namespace Demo
+{
+    // A simple greeter
+    public class Greeter
+    {
+        public string Name { get; }
+        public int Visits { get; } = 0;
+
+        public Greeter(string name) => Name = name;
+
+        public string Greet()
+        {
+            /* interpolated string */
+            return $"Hello, {Name}! You are visitor 42.";
+        }
+    }
+}

@@ -5,10 +5,15 @@
 # Enable once per clone:   git config core.hooksPath .githooks
 # Skip for a single commit: git commit --no-verify
 
-PY=python
-command -v python >/dev/null 2>&1 || PY=python3
-if ! command -v "$PY" >/dev/null 2>&1; then
-  echo "pre-commit: python not found; skipping validation." >&2
+PY=""
+for _cand in python python3; do
+  if command -v "$_cand" >/dev/null 2>&1 && "$_cand" -c "" >/dev/null 2>&1; then
+    PY=$_cand
+    break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "pre-commit: no working python found; skipping validation (CI will run it)." >&2
   exit 0
 fi
 
