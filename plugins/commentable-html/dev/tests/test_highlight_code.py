@@ -43,6 +43,14 @@ SNIPPETS = {
     "dart": 'void foo() { var s = "hi"; bar(42); // comment\n/* block */ }\n',
     "r": 'foo <- function(x) {\n  s <- "hi"\n  bar(42) # comment\n}\n',
     "perl": 'sub foo {\n  my $s = "hi";\n  bar(42); # comment\n}\n',
+    "powershell": 'function Foo {\n  $s = "hi"\n  Write-Output 42 # comment\n  <# block #>\n}\n',
+    "lua": 'function foo()\n  local s = "hi"\n  bar(42) -- comment\n  --[[ block ]]\nend\n',
+    "toml": 'title = "hi"\nenabled = true\ncount = 42 # comment\n',
+    "css": 'a { content: "hi"; width: 42; /* comment */ display: block; }\n',
+    "groovy": 'def foo() { String s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "elixir": 'def foo do\n  s = "hi"\n  bar(42) # comment\nend\n',
+    "haskell": 'foo :: Int -> String\nfoo x = let s = "hi" in bar 42 -- comment\n{- block -}\n',
+    "objectivec": '- (void)foo { char *s = "hi"; bar(42); // comment\n/* block */ }\n',
 }
 
 ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
@@ -56,6 +64,12 @@ ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
     "rb": SNIPPETS["ruby"],
     "kt": SNIPPETS["kotlin"],
     "pl": SNIPPETS["perl"],
+    "ps1": SNIPPETS["powershell"],
+    "ps": SNIPPETS["powershell"],
+    "objc": SNIPPETS["objectivec"],
+    "hs": SNIPPETS["haskell"],
+    "ex": SNIPPETS["elixir"],
+    "exs": SNIPPETS["elixir"],
 })
 
 TOKEN_CASES = {
@@ -82,6 +96,14 @@ TOKEN_CASES = {
     "dart": ("void", '"hi"', "// comment", "42", "/* block */"),
     "r": ("function", '"hi"', "# comment", "42", None),
     "perl": ("sub", '"hi"', "# comment", "42", None),
+    "powershell": ("function", '"hi"', "<# block #>", "42", "<# block #>"),
+    "lua": ("function", '"hi"', "-- comment", "42", "--[[ block ]]"),
+    "toml": ("true", '"hi"', "# comment", "42", None),
+    "css": ("block", '"hi"', "/* comment */", "42", "/* comment */"),
+    "groovy": ("def", '"hi"', "// comment", "42", "/* block */"),
+    "elixir": ("def", '"hi"', "# comment", "42", None),
+    "haskell": ("let", '"hi"', "-- comment", "42", "{- block -}"),
+    "objectivec": ("void", '"hi"', "// comment", "42", "/* block */"),
 }
 
 

@@ -251,6 +251,84 @@ or our package redo require return sub unless until use while x
         "block_comments": (),
         "string_styles": ("single", "double", "backtick"),
     },
+    "powershell": {
+        "keywords": _words("""
+begin break catch class continue data default do dynamicparam else elseif end enum
+exit filter finally for foreach from function hidden if in param process return
+static switch throw trap try until using while
+"""),
+        "line_comments": ("#",),
+        "block_comments": (("<#", "#>"),),
+        "string_styles": ("single", "double"),
+    },
+    "lua": {
+        "keywords": _words("""
+and break do else elseif end false for function goto if in local nil not or repeat
+return then true until while
+"""),
+        "line_comments": ("--",),
+        "block_comments": (("--[[", "]]"),),
+        "string_styles": ("single", "double"),
+    },
+    "toml": {
+        "keywords": _words("true false"),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("triple_double", "triple_single", "single", "double"),
+    },
+    "css": {
+        "keywords": _words("""
+auto important inherit initial none unset revert hover focus active block flex grid
+inline absolute relative fixed static solid dashed dotted bold normal center left
+right top bottom
+"""),
+        "line_comments": (),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "groovy": {
+        "keywords": _words("""
+abstract as assert boolean break byte case catch char class const continue def
+default do double else enum extends false final finally float for goto if implements
+import in instanceof int interface long native new null package private protected
+public return short static strictfp super switch synchronized this throw throws
+trait transient true try void volatile while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "triple_single", "single", "double"),
+    },
+    "elixir": {
+        "keywords": _words("""
+after and case catch cond def defmacro defmodule defp defstruct do else end false
+fn for if import in nil not or quote raise receive require rescue true try unless
+unquote use when with
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("triple_double", "double"),
+    },
+    "haskell": {
+        "keywords": _words("""
+as case class data default deriving do else foreign hiding if import in infix infixl
+infixr instance let module newtype of qualified then type where
+"""),
+        "line_comments": ("--",),
+        "block_comments": (("{-", "-}"),),
+        "string_styles": ("double",),
+    },
+    "objectivec": {
+        "keywords": _words("""
+auto break case char const continue default do double else enum extern float for
+goto if inline int long register return short signed sizeof static struct switch
+typedef union unsigned void volatile while id nil BOOL YES NO self super @interface
+@implementation @end @property @synthesize @protocol @class @selector @encode
+@synchronized @autoreleasepool @try @catch @finally @throw
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
 }
 
 ALIASES = {
@@ -264,6 +342,12 @@ ALIASES = {
     "rb": "ruby",
     "kt": "kotlin",
     "pl": "perl",
+    "ps1": "powershell",
+    "ps": "powershell",
+    "objc": "objectivec",
+    "hs": "haskell",
+    "ex": "elixir",
+    "exs": "elixir",
 }
 
 _IDENTIFIER_RE = r"@?[A-Za-z_$][A-Za-z0-9_$]*"
