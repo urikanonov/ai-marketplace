@@ -45,7 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.1.3" />
+<meta name="commentable-html-version" content="1.2.0" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (inline)</title>
 
@@ -851,6 +851,13 @@ html:not([data-theme="dark"]) #commentRoot .badge.warn { border-color: #b45309; 
 #commentRoot tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.04); }
 html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.03); }
 #commentRoot table caption { caption-side: top; text-align: left; color: var(--cp-text-soft); font-size: 0.82rem; padding: 0.2rem 0; }
+/* On a narrow screen a wide multi-column table would push the whole page sideways.
+   Let the table scroll horizontally inside its own box instead: display:block wraps
+   the rows/cells in anonymous table boxes so the columns still align, while overflow-x
+   keeps the overflow contained rather than spilling onto the document. */
+@media (max-width: 700px) {
+  #commentRoot table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
 
 #commentRoot .cmh-lede { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 0.75rem 1.25rem 1rem; margin: 0 0 1.25rem; color: var(--cp-text); font-size: 1.04em; line-height: 1.6; }
 #commentRoot .cmh-lede > :first-child { margin-top: 0; }
@@ -875,6 +882,10 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot .cm-toc a:hover { text-decoration: underline; }
 
 #commentRoot img { max-width: 100%; height: auto; }
+/* Bare content figures (images) default to the browser's 40px side margins, which
+   crowd the image on narrow screens; use symmetric block spacing so the figure fills
+   the content width like the framed chart/KQL figures do. */
+#commentRoot figure { margin: 1.25rem 0; }
 
 /* ---------------------------------------------------------------------------
    Image comment layer - per-image structural anchoring (mirrors the mermaid
@@ -889,6 +900,11 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 .cm-image-add { position: fixed; z-index: 200; }
 /* Per-code-block Copy button: always visible, pinned to the block's top-right. */
 .cmh-code-wrap { position: relative; }
+/* The language pill + Copy button float over the block's top-right corner; reserve
+   headroom on the code so a long first line scrolls/wraps under them instead of being
+   overlapped by the controls. Scoped under #commentRoot so it outranks the id-scoped
+   default pre padding. */
+#commentRoot .cmh-code-wrap > pre { padding-top: 2.5rem; }
 .cm-code-tools { position: absolute; top: 8px; right: 8px; z-index: 4; display: inline-flex; align-items: center; gap: 0.35rem; }
 .cm-code-lang {
   font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
@@ -941,10 +957,19 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
 }
 #commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+/* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
+   side without cramping, so stack them on their own lines. */
+@media (max-width: 700px) {
+  #commentRoot figure.cmh-kql .cmh-kql-cap { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+}
 #commentRoot figure.cmh-kql pre {
   margin: 0; border: 0; border-radius: 0; padding: 0.7rem 0.9rem; overflow-x: auto;
   background: var(--cp-bg-elevated);
 }
+/* The Copy/language pills are wrapped around every code block at runtime, KQL figures
+   included, so the KQL <pre> needs the same top headroom; this selector outranks the
+   frameless-KQL rule just above so the reserved space is not lost. */
+#commentRoot figure.cmh-kql .cmh-code-wrap > pre { padding-top: 2.5rem; }
 /* Standalone code blocks get a light frame like the KQL figure. The KQL figure's own
    <pre> (higher specificity above) stays frameless; the mermaid host is reset below. */
 #commentRoot pre {
@@ -1265,7 +1290,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.1.3";
+const CMH_VERSION = "1.2.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -2828,10 +2853,18 @@ function selectionInRoot() {
   if (anc && anc.closest(".cm-skip")) return null;
   return { sel, range: r };
 }
+// Touch / coarse-pointer devices have no separate right-click: a long-press both
+// selects text and is the only gesture that opens the browser's native selection
+// menu (Copy, Share, Look up...). Hijacking contextmenu there would leave the reader
+// unable to copy, so on those devices we let the native menu through and rely on the
+// floating "Add comment" popup (raised from the selection/mouseup path) for commenting.
+const _coarsePointer = !!(window.matchMedia
+  && window.matchMedia("(hover: none), (pointer: coarse)").matches);
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
   const got = selectionInRoot();
   if (!got) { hideMenu(); return; }
+  if (_coarsePointer) return;
   e.preventDefault();
   pendingDiffSel = null;
   pendingRange = got.range.cloneRange();

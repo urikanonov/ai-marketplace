@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
-  <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+  <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
   <link rel="stylesheet" href="../assets/styles.css" />
 </head>
 <body>
@@ -14,8 +14,8 @@
   <nav class="navbar">
     <div class="wrap">
       <a class="brand" href="../">
-        <img src="../assets/logo.svg" alt="" />
-        <span>ai-marketplace</span>
+        <img src="../assets/commentable-html.svg" alt="" />
+        <span>Commentable HTML</span>
       </a>
       <div class="nav-links">
         <a href="#features">Features</a>
@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.3<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.2.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -89,16 +89,16 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
             <h2 class="section-title">Try it live</h2>
             <p class="section-sub">A real commentable report. Select any text and the Add comment popup appears.</p>
           </div>
-          <a class="btn btn-primary" id="demo-fullscreen" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer">Open in full screen</a>
         </div>
         <div class="demo-switch" role="tablist" aria-label="Choose a demo report">
-          <button class="demo-tab active" type="button" role="tab" id="demo-tab-taxi" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="demo/report-taxi.html" data-file="report-taxi.html">NYC Taxi Report</button>
-          <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html">Community Garden Plan</button>
+          <button class="demo-tab active" type="button" role="tab" id="demo-tab-taxi" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="demo/report-taxi.html" data-file="report-taxi.html" data-label="NYC Taxi Report">NYC Taxi Report</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html" data-label="Community Garden Plan">Community Garden Plan</button>
         </div>
         <div class="demo-frame" id="demo-panel" role="tabpanel" aria-labelledby="demo-tab-taxi" tabindex="0">
           <div class="bar">
             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            <span class="title" id="demo-filename">report-taxi.html</span>
+            <a class="demo-fs" id="demo-fullscreen" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer" title="Open this demo in a full browser tab">Full screen &#8599;</a>
+            <span class="title" id="demo-title">NYC Taxi Report</span>
           </div>
           <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
         </div>
@@ -141,6 +141,18 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
       </div>
     </section>
 
+    <section id="tutorial-cta">
+      <div class="wrap">
+        <a class="card tutorial-cta" href="tutorial/">
+          <div class="tutorial-cta-text">
+            <h2>New here? Start with the guided tutorial</h2>
+            <p>A step-by-step walkthrough that builds a commentable report from scratch, with screenshots of every stage of the review loop.</p>
+          </div>
+          <span class="btn btn-primary tutorial-cta-btn">Open the tutorial</span>
+        </a>
+      </div>
+    </section>
+
     <section id="modes">
       <div class="wrap">
         <h2 class="section-title">Two portability modes</h2>
@@ -164,6 +176,18 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.2.0] - 2026-07-11</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Mobile responsiveness of generated documents. Wide tables now scroll horizontally inside their own box on narrow screens instead of forcing the whole page to overflow. The Kusto query caption stacks the cluster title and the &quot;Run in Azure Data Explorer&quot; link onto separate lines below 700px so they no longer cramp. The floating Copy/language pills reserve top headroom over every code block (KQL figures included) so they no longer overlap the first line of code. Figures use symmetric vertical margins with no side indent so embedded images and charts get the full content width.</li>
+              <li>On touch / coarse-pointer devices the browser&#x27;s native selection menu (Copy, Share, Look up) is left intact; the reader can copy selected text again, while the floating &quot;Add comment&quot; popup still handles commenting.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li><code>docs/TUTORIAL.md</code> now references the running example with a skill-root-relative display path that links to the local file, so the reference reads cleanly without any <code>..</code> path traversal.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.1.3] - 2026-07-11</h3></div>
             <div class="group-label">Fixed</div>

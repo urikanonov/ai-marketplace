@@ -1,6 +1,6 @@
 # Commentable HTML tutorial: Planning a Community Garden
 
-This walkthrough uses `examples/report-community-garden.html` as a running example. It is a single self-contained file with prose, tables, a KQL query, a Chart.js chart, images, Mermaid diagrams, and a code-review diff, so it lets you try every kind of comment in one place.
+This walkthrough uses [`examples/report-community-garden.html`](../examples/report-community-garden.html) as a running example. It is a single self-contained file with prose, tables, a KQL query, a Chart.js chart, images, Mermaid diagrams, and a code-review diff, so it lets you try every kind of comment in one place.
 
 ## The review workflow
 
@@ -15,7 +15,7 @@ The rest of this tutorial walks through step 2 in detail: every kind of thing yo
 
 ## 1. Open the example
 
-1. Open `examples/report-community-garden.html` in a modern browser.
+1. Open [`examples/report-community-garden.html`](../examples/report-community-garden.html) in a modern browser.
 2. If the comments panel is not already open, click **Show** in the floating toolbar (upper right). That control reads **Hide** while the panel is open.
 3. Scroll through the plan once to see its sections and the in-page Contents list.
 

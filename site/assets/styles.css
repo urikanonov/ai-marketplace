@@ -224,6 +224,16 @@ main > section:nth-of-type(even) {
 .plugin-card .keywords { display: flex; flex-wrap: wrap; gap: 6px; }
 .plugin-card .foot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
+/* A linked plugin card is clickable anywhere: the stretched .card-link covers the whole
+   card, while the interactive controls (command copy button and footer buttons) are lifted
+   above it so they keep their own click targets. */
+.plugin-card.is-linked { position: relative; cursor: pointer; }
+.plugin-card .card-link {
+  position: absolute; inset: 0; z-index: 1; border-radius: var(--cp-radius);
+}
+.plugin-card.is-linked .cmd,
+.plugin-card.is-linked .foot { position: relative; z-index: 2; }
+
 .badge {
   display: inline-block;
   font-family: var(--cp-mono);
@@ -289,7 +299,14 @@ main > section:nth-of-type(even) {
   border-bottom: 1px solid var(--cp-border);
 }
 .demo-frame .bar .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--cp-border-strong); }
-.demo-frame .bar .title { margin-left: 8px; font-size: 0.82rem; color: var(--cp-text-muted); font-family: var(--cp-mono); }
+.demo-frame .bar .demo-fs {
+  margin-left: 8px; font-size: 0.78rem; font-weight: 600; line-height: 1;
+  color: var(--cp-text-muted); text-decoration: none;
+  border: 1px solid var(--cp-border); border-radius: 999px; padding: 4px 10px;
+  background: var(--cp-surface); transition: color 0.15s ease, border-color 0.15s ease;
+}
+.demo-frame .bar .demo-fs:hover { color: var(--cp-accent); border-color: var(--cp-accent); }
+.demo-frame .bar .title { margin-left: auto; font-size: 0.82rem; color: var(--cp-text-muted); font-family: var(--cp-mono); }
 .demo-frame iframe { width: 100%; height: 420px; border: 0; display: block; background: var(--cp-bg); }
 .demo-actions { margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
 
@@ -322,7 +339,16 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .prose p { margin-bottom: 12px; color: var(--cp-text); }
 .prose p:last-child { margin-bottom: 0; }
 
-/* Demo header row: title on the left, single full-screen button on the right */
+/* Tutorial call-to-action: a full-width clickable banner that links to the guided tutorial */
+.tutorial-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  flex-wrap: wrap; text-decoration: none; color: inherit;
+}
+.tutorial-cta-text h2 { font-size: 1.35rem; margin: 0 0 6px; letter-spacing: -0.4px; }
+.tutorial-cta-text p { margin: 0; color: var(--cp-text-muted); font-size: 0.95rem; }
+.tutorial-cta-btn { flex: none; }
+
+/* Demo header row: section title and intro above the demo frame */
 .demo-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
 .demo-head .section-sub { margin-bottom: 0; }
 

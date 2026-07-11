@@ -862,6 +862,13 @@ html:not([data-theme="dark"]) #commentRoot .badge.warn { border-color: #b45309; 
 #commentRoot tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.04); }
 html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.03); }
 #commentRoot table caption { caption-side: top; text-align: left; color: var(--cp-text-soft); font-size: 0.82rem; padding: 0.2rem 0; }
+/* On a narrow screen a wide multi-column table would push the whole page sideways.
+   Let the table scroll horizontally inside its own box instead: display:block wraps
+   the rows/cells in anonymous table boxes so the columns still align, while overflow-x
+   keeps the overflow contained rather than spilling onto the document. */
+@media (max-width: 700px) {
+  #commentRoot table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
 
 #commentRoot .cmh-lede { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 0.75rem 1.25rem 1rem; margin: 0 0 1.25rem; color: var(--cp-text); font-size: 1.04em; line-height: 1.6; }
 #commentRoot .cmh-lede > :first-child { margin-top: 0; }
@@ -886,6 +893,10 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot .cm-toc a:hover { text-decoration: underline; }
 
 #commentRoot img { max-width: 100%; height: auto; }
+/* Bare content figures (images) default to the browser's 40px side margins, which
+   crowd the image on narrow screens; use symmetric block spacing so the figure fills
+   the content width like the framed chart/KQL figures do. */
+#commentRoot figure { margin: 1.25rem 0; }
 
 /* ---------------------------------------------------------------------------
    Image comment layer - per-image structural anchoring (mirrors the mermaid
@@ -900,6 +911,11 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 .cm-image-add { position: fixed; z-index: 200; }
 /* Per-code-block Copy button: always visible, pinned to the block's top-right. */
 .cmh-code-wrap { position: relative; }
+/* The language pill + Copy button float over the block's top-right corner; reserve
+   headroom on the code so a long first line scrolls/wraps under them instead of being
+   overlapped by the controls. Scoped under #commentRoot so it outranks the id-scoped
+   default pre padding. */
+#commentRoot .cmh-code-wrap > pre { padding-top: 2.5rem; }
 .cm-code-tools { position: absolute; top: 8px; right: 8px; z-index: 4; display: inline-flex; align-items: center; gap: 0.35rem; }
 .cm-code-lang {
   font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
@@ -952,10 +968,19 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
 }
 #commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+/* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
+   side without cramping, so stack them on their own lines. */
+@media (max-width: 700px) {
+  #commentRoot figure.cmh-kql .cmh-kql-cap { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+}
 #commentRoot figure.cmh-kql pre {
   margin: 0; border: 0; border-radius: 0; padding: 0.7rem 0.9rem; overflow-x: auto;
   background: var(--cp-bg-elevated);
 }
+/* The Copy/language pills are wrapped around every code block at runtime, KQL figures
+   included, so the KQL <pre> needs the same top headroom; this selector outranks the
+   frameless-KQL rule just above so the reserved space is not lost. */
+#commentRoot figure.cmh-kql .cmh-code-wrap > pre { padding-top: 2.5rem; }
 /* Standalone code blocks get a light frame like the KQL figure. The KQL figure's own
    <pre> (higher specificity above) stays frameless; the mermaid host is reset below. */
 #commentRoot pre {
@@ -1222,7 +1247,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
     </ul>
     <p>If soil quality is uncertain, the first year should use raised beds with imported garden soil and a weed barrier below the paths. Native soil can be tested before any in-ground planting is considered.</p>
     <figure>
-      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMzYwIiB2aWV3Qm94PSIwIDAgNjQwIDM2MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPg0KICA8dGl0bGUgaWQ9InRpdGxlIj5SYWlzZWQgYmVkcyBpbGx1c3RyYXRpb248L3RpdGxlPg0KICA8ZGVzYyBpZD0iZGVzYyI+VGhyZWUgcmFpc2VkIGJlZHMgd2l0aCBncmVlbiBzZWVkbGluZ3MsIGEgdGFuIG11bGNoIHBhdGgsIGEgd2F0ZXJpbmcgY2FuLCBhbmQgYSB3ZWxjb21lIHNpZ24uPC9kZXNjPg0KICA8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2MCIgZmlsbD0iI2Y1ZmJlZiIvPg0KICA8cmVjdCB4PSIwIiB5PSIyNTAiIHdpZHRoPSI2NDAiIGhlaWdodD0iMTEwIiBmaWxsPSIjZDhjMjljIi8+DQogIDxnIHN0cm9rZT0iIzZjNGQyZSIgc3Ryb2tlLXdpZHRoPSIzIj4NCiAgICA8cG9seWdvbiBwb2ludHM9IjcwLDIxMCAyMjAsMTgwIDMwMCwyMTUgMTQ1LDI1MCIgZmlsbD0iI2E4NzU0NSIvPg0KICAgIDxwb2x5Z29uIHBvaW50cz0iMzQwLDIwNSA1MDAsMTc1IDU3NSwyMTAgNDIwLDI0NSIgZmlsbD0iI2E4NzU0NSIvPg0KICAgIDxwb2x5Z29uIHBvaW50cz0iMTg1LDEyNSAzNDAsMTAwIDQyNSwxMzIgMjcwLDE2NSIgZmlsbD0iI2I3ODM0ZCIvPg0KICA8L2c+DQogIDxnIGZpbGw9IiM0ZjhiM2EiIHN0cm9rZT0iIzJmNWYyNCIgc3Ryb2tlLXdpZHRoPSIyIj4NCiAgICA8cGF0aCBkPSJNMTM1IDIwNSBDMTI1IDE4NSAxMjAgMTc2IDEwNCAxNjkgQzEyNCAxNzAgMTM3IDE4MCAxMzUgMjA1WiIvPg0KICAgIDxwYXRoIGQ9Ik0xNzIgMTk4IEMxNzggMTgwIDE5MiAxNzEgMjEwIDE2OSBDMTk2IDE4MiAxODggMTk1IDE3MiAxOThaIi8+DQogICAgPHBhdGggZD0iTTQzOCAxOTUgQzQzMCAxNzYgNDE4IDE2OCA0MDAgMTY1IEM0MTggMTgxIDQyNiAxOTQgNDM4IDE5NVoiLz4NCiAgICA8cGF0aCBkPSJNNDgwIDE4OCBDNDkwIDE3MyA1MDcgMTY2IDUyNSAxNjggQzUwOCAxODEgNDk4IDE5MCA0ODAgMTg4WiIvPg0KICAgIDxwYXRoIGQ9Ik0yODUgMTI0IEMyNzggMTA4IDI2NiAxMDEgMjUwIDEwMCBDMjY1IDExMyAyNzQgMTI0IDI4NSAxMjRaIi8+DQogICAgPHBhdGggZD0iTTMzNSAxMTkgQzM0NiAxMDQgMzYyIDk5IDM3OCAxMDMgQzM1OSAxMTMgMzQ5IDEyMyAzMzUgMTE5WiIvPg0KICA8L2c+DQogIDxnIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNSIgZmlsbD0iIzM2NTIyYiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+DQogICAgPHRleHQgeD0iMTg1IiB5PSIyNzUiPkJlZCBBPC90ZXh0Pjx0ZXh0IHg9IjQ2NSIgeT0iMjcwIj5CZWQgQjwvdGV4dD48dGV4dCB4PSIzMDUiIHk9IjE5MCI+SGVyYnM8L3RleHQ+DQogIDwvZz4NCiAgPHBhdGggZD0iTTU2MCAyNzUgaDQ1IGExOCAxOCAwIDAgMSAwIDM2IGgtNDV6IiBmaWxsPSIjNmJiN2Q2IiBzdHJva2U9IiMyYjZmOGEiIHN0cm9rZS13aWR0aD0iMyIvPg0KICA8cGF0aCBkPSJNNjAwIDI3OCBxMzAgLTIyIDM2IDE4IiBmaWxsPSJub25lIiBzdHJva2U9IiMyYjZmOGEiIHN0cm9rZS13aWR0aD0iNCIvPg0KICA8bGluZSB4MT0iOTUiIHkxPSI5NSIgeDI9Ijk1IiB5Mj0iMTU1IiBzdHJva2U9IiM3YjVhMzYiIHN0cm9rZS13aWR0aD0iNSIvPg0KICA8cmVjdCB4PSI0NSIgeT0iNTUiIHdpZHRoPSIxMDAiIGhlaWdodD0iNDUiIHJ4PSI2IiBmaWxsPSIjZmZmNGM3IiBzdHJva2U9IiM5YTdhNDUiIHN0cm9rZS13aWR0aD0iMyIvPg0KICA8dGV4dCB4PSI5NSIgeT0iODIiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNSIgZmlsbD0iIzViNDUyOCI+V2VsY29tZTwvdGV4dD4NCjwvc3ZnPg0K" alt="Simple illustration of raised garden beds with seedlings, mulch paths, a watering can, and a small welcome sign." style="max-width: 100%; height: auto; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface);" />
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMzYwIiB2aWV3Qm94PSIwIDAgNjQwIDM2MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPg0KICA8dGl0bGUgaWQ9InRpdGxlIj5SYWlzZWQgYmVkcyBpbGx1c3RyYXRpb248L3RpdGxlPg0KICA8ZGVzYyBpZD0iZGVzYyI+VGhyZWUgcmFpc2VkIGJlZHMgd2l0aCBncmVlbiBzZWVkbGluZ3MsIGEgdGFuIG11bGNoIHBhdGgsIGEgd2F0ZXJpbmcgY2FuLCBhbmQgYSB3ZWxjb21lIHNpZ24uPC9kZXNjPg0KICA8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2MCIgZmlsbD0iI2Y1ZmJlZiIvPg0KICA8cmVjdCB4PSIwIiB5PSIyNTAiIHdpZHRoPSI2NDAiIGhlaWdodD0iMTEwIiBmaWxsPSIjZDhjMjljIi8+DQogIDxnIHN0cm9rZT0iIzZjNGQyZSIgc3Ryb2tlLXdpZHRoPSIzIj4NCiAgICA8cG9seWdvbiBwb2ludHM9IjcwLDIxMCAyMjAsMTgwIDMwMCwyMTUgMTQ1LDI1MCIgZmlsbD0iI2E4NzU0NSIvPg0KICAgIDxwb2x5Z29uIHBvaW50cz0iMzQwLDIwNSA1MDAsMTc1IDU3NSwyMTAgNDIwLDI0NSIgZmlsbD0iI2E4NzU0NSIvPg0KICAgIDxwb2x5Z29uIHBvaW50cz0iMTg1LDEyNSAzNDAsMTAwIDQyNSwxMzIgMjcwLDE2NSIgZmlsbD0iI2I3ODM0ZCIvPg0KICA8L2c+DQogIDxnIGZpbGw9IiM0ZjhiM2EiIHN0cm9rZT0iIzJmNWYyNCIgc3Ryb2tlLXdpZHRoPSIyIj4NCiAgICA8cGF0aCBkPSJNMTM1IDIwNSBDMTI1IDE4NSAxMjAgMTc2IDEwNCAxNjkgQzEyNCAxNzAgMTM3IDE4MCAxMzUgMjA1WiIvPg0KICAgIDxwYXRoIGQ9Ik0xNzIgMTk4IEMxNzggMTgwIDE5MiAxNzEgMjEwIDE2OSBDMTk2IDE4MiAxODggMTk1IDE3MiAxOThaIi8+DQogICAgPHBhdGggZD0iTTQzOCAxOTUgQzQzMCAxNzYgNDE4IDE2OCA0MDAgMTY1IEM0MTggMTgxIDQyNiAxOTQgNDM4IDE5NVoiLz4NCiAgICA8cGF0aCBkPSJNNDgwIDE4OCBDNDkwIDE3MyA1MDcgMTY2IDUyNSAxNjggQzUwOCAxODEgNDk4IDE5MCA0ODAgMTg4WiIvPg0KICAgIDxwYXRoIGQ9Ik0yODUgMTI0IEMyNzggMTA4IDI2NiAxMDEgMjUwIDEwMCBDMjY1IDExMyAyNzQgMTI0IDI4NSAxMjRaIi8+DQogICAgPHBhdGggZD0iTTMzNSAxMTkgQzM0NiAxMDQgMzYyIDk5IDM3OCAxMDMgQzM1OSAxMTMgMzQ5IDEyMyAzMzUgMTE5WiIvPg0KICA8L2c+DQogIDxnIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNSIgZmlsbD0iIzM2NTIyYiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+DQogICAgPHRleHQgeD0iMTg1IiB5PSIyNzUiPkJlZCBBPC90ZXh0Pjx0ZXh0IHg9IjQ2NSIgeT0iMjcwIj5CZWQgQjwvdGV4dD48dGV4dCB4PSIzMDUiIHk9IjE5MCI+SGVyYnM8L3RleHQ+DQogIDwvZz4NCiAgPHBhdGggZD0iTTU2MCAyNzUgaDQ1IGExOCAxOCAwIDAgMSAwIDM2IGgtNDV6IiBmaWxsPSIjNmJiN2Q2IiBzdHJva2U9IiMyYjZmOGEiIHN0cm9rZS13aWR0aD0iMyIvPg0KICA8cGF0aCBkPSJNNjAwIDI3OCBxMzAgLTIyIDM2IDE4IiBmaWxsPSJub25lIiBzdHJva2U9IiMyYjZmOGEiIHN0cm9rZS13aWR0aD0iNCIvPg0KICA8bGluZSB4MT0iOTUiIHkxPSI5NSIgeDI9Ijk1IiB5Mj0iMTU1IiBzdHJva2U9IiM3YjVhMzYiIHN0cm9rZS13aWR0aD0iNSIvPg0KICA8cmVjdCB4PSI0NSIgeT0iNTUiIHdpZHRoPSIxMDAiIGhlaWdodD0iNDUiIHJ4PSI2IiBmaWxsPSIjZmZmNGM3IiBzdHJva2U9IiM5YTdhNDUiIHN0cm9rZS13aWR0aD0iMyIvPg0KICA8dGV4dCB4PSI5NSIgeT0iODIiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNSIgZmlsbD0iIzViNDUyOCI+V2VsY29tZTwvdGV4dD4NCjwvc3ZnPg0K" alt="Simple illustration of raised garden beds with seedlings, mulch paths, a watering can, and a small welcome sign." style="display: block; width: 100%; height: auto; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface);" />
       <figcaption>Raised beds provide a clean first-season growing surface while soil quality is confirmed.</figcaption>
     </figure>
   </section>
@@ -1240,7 +1265,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
       <li>The layout sketch should be rendered from <code>garden-layout.svg</code>.</li>
     </ul>
     <figure>
-      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDIwIiB2aWV3Qm94PSIwIDAgNjQwIDQyMCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPg0KICA8dGl0bGUgaWQ9InRpdGxlIj5Db21tdW5pdHkgZ2FyZGVuIGxheW91dDwvdGl0bGU+DQogIDxkZXNjIGlkPSJkZXNjIj5BIGxhYmVsZWQgdG9wLWRvd24gcGxhbiB3aXRoIHJhaXNlZCBiZWRzLCBwYXRocywgY29tcG9zdCwgcmFpbiBiYXJyZWwsIHNlYXRpbmcsIGFuZCBwb2xsaW5hdG9yIGZsb3dlcnMuPC9kZXNjPg0KICA8cmVjdCB4PSIyMCIgeT0iMjAiIHdpZHRoPSI2MDAiIGhlaWdodD0iMzgwIiByeD0iMTgiIGZpbGw9IiNlZWY3ZTgiIHN0cm9rZT0iIzVmN2Y1MiIgc3Ryb2tlLXdpZHRoPSI0Ii8+DQogIDxyZWN0IHg9IjI5NSIgeT0iNTUiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyOTAiIGZpbGw9IiNkOWM3YTMiIHN0cm9rZT0iIzlhN2E0NSIgc3Ryb2tlLXdpZHRoPSIyIi8+DQogIDx0ZXh0IHg9IjMyMCIgeT0iMjA1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM1YjQ1MjgiIHRyYW5zZm9ybT0icm90YXRlKC05MCAzMjAgMjA1KSI+Q2VudHJhbCBwYXRoPC90ZXh0Pg0KICA8ZyBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiMxZjNkMWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPg0KICAgIDxyZWN0IHg9IjcwIiB5PSI2MCIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iOTMiPkJlZCAxIExldHR1Y2U8L3RleHQ+DQogICAgPHJlY3QgeD0iNzAiIHk9IjEzNSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iMTY4Ij5CZWQgMiBQZWFzPC90ZXh0Pg0KICAgIDxyZWN0IHg9IjcwIiB5PSIyMTAiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSIxNTAiIHk9IjI0MyI+QmVkIDMgVG9tYXRvZXM8L3RleHQ+DQogICAgPHJlY3QgeD0iNzAiIHk9IjI4NSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iMzE4Ij5CZWQgNCBQZXBwZXJzPC90ZXh0Pg0KICAgIDxyZWN0IHg9IjQxMCIgeT0iNjAiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSI0OTAiIHk9IjkzIj5CZWQgNSBSb290czwvdGV4dD4NCiAgICA8cmVjdCB4PSI0MTAiIHk9IjEzNSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjQ5MCIgeT0iMTY4Ij5CZWQgNiBadWNjaGluaTwvdGV4dD4NCiAgICA8cmVjdCB4PSI0MTAiIHk9IjIxMCIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjQ5MCIgeT0iMjQzIj5CZWQgNyBHcmVlbnM8L3RleHQ+DQogICAgPHJlY3QgeD0iNDEwIiB5PSIyODUiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSI0OTAiIHk9IjMxOCI+QmVkIDggQ2hvaWNlPC90ZXh0Pg0KICA8L2c+DQogIDxyZWN0IHg9IjU1IiB5PSIzNTUiIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQiIHJ4PSIxMiIgZmlsbD0iI2Y3ZDM2YiIgc3Ryb2tlPSIjYjI4YTE5Ii8+PHRleHQgeD0iMTc1IiB5PSIzNzMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMyI+SGVyYiBhbmQgcG9sbGluYXRvciBzdHJpcDwvdGV4dD4NCiAgPGNpcmNsZSBjeD0iMzg1IiBjeT0iMzYwIiByPSIxOCIgZmlsbD0iIzZiYjdkNiIgc3Ryb2tlPSIjMmI2ZjhhIi8+PHRleHQgeD0iMzg1IiB5PSIzOTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiI+UmFpbiBiYXJyZWw8L3RleHQ+DQogIDxyZWN0IHg9IjUyMCIgeT0iMzUwIiB3aWR0aD0iNjAiIGhlaWdodD0iMzAiIHJ4PSI1IiBmaWxsPSIjOWI3NjUzIi8+PHRleHQgeD0iNTUwIiB5PSIzOTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiI+Q29tcG9zdDwvdGV4dD4NCjwvc3ZnPg0K" alt="Top-down schematic of a community garden with eight raised beds, a central path, compost, rain barrel, seating, and pollinator strip." style="max-width: 100%; height: auto; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface);" />
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDIwIiB2aWV3Qm94PSIwIDAgNjQwIDQyMCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPg0KICA8dGl0bGUgaWQ9InRpdGxlIj5Db21tdW5pdHkgZ2FyZGVuIGxheW91dDwvdGl0bGU+DQogIDxkZXNjIGlkPSJkZXNjIj5BIGxhYmVsZWQgdG9wLWRvd24gcGxhbiB3aXRoIHJhaXNlZCBiZWRzLCBwYXRocywgY29tcG9zdCwgcmFpbiBiYXJyZWwsIHNlYXRpbmcsIGFuZCBwb2xsaW5hdG9yIGZsb3dlcnMuPC9kZXNjPg0KICA8cmVjdCB4PSIyMCIgeT0iMjAiIHdpZHRoPSI2MDAiIGhlaWdodD0iMzgwIiByeD0iMTgiIGZpbGw9IiNlZWY3ZTgiIHN0cm9rZT0iIzVmN2Y1MiIgc3Ryb2tlLXdpZHRoPSI0Ii8+DQogIDxyZWN0IHg9IjI5NSIgeT0iNTUiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyOTAiIGZpbGw9IiNkOWM3YTMiIHN0cm9rZT0iIzlhN2E0NSIgc3Ryb2tlLXdpZHRoPSIyIi8+DQogIDx0ZXh0IHg9IjMyMCIgeT0iMjA1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM1YjQ1MjgiIHRyYW5zZm9ybT0icm90YXRlKC05MCAzMjAgMjA1KSI+Q2VudHJhbCBwYXRoPC90ZXh0Pg0KICA8ZyBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiMxZjNkMWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPg0KICAgIDxyZWN0IHg9IjcwIiB5PSI2MCIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iOTMiPkJlZCAxIExldHR1Y2U8L3RleHQ+DQogICAgPHJlY3QgeD0iNzAiIHk9IjEzNSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iMTY4Ij5CZWQgMiBQZWFzPC90ZXh0Pg0KICAgIDxyZWN0IHg9IjcwIiB5PSIyMTAiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSIxNTAiIHk9IjI0MyI+QmVkIDMgVG9tYXRvZXM8L3RleHQ+DQogICAgPHJlY3QgeD0iNzAiIHk9IjI4NSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iMzE4Ij5CZWQgNCBQZXBwZXJzPC90ZXh0Pg0KICAgIDxyZWN0IHg9IjQxMCIgeT0iNjAiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSI0OTAiIHk9IjkzIj5CZWQgNSBSb290czwvdGV4dD4NCiAgICA8cmVjdCB4PSI0MTAiIHk9IjEzNSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjQ5MCIgeT0iMTY4Ij5CZWQgNiBadWNjaGluaTwvdGV4dD4NCiAgICA8cmVjdCB4PSI0MTAiIHk9IjIxMCIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjQ5MCIgeT0iMjQzIj5CZWQgNyBHcmVlbnM8L3RleHQ+DQogICAgPHJlY3QgeD0iNDEwIiB5PSIyODUiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSI0OTAiIHk9IjMxOCI+QmVkIDggQ2hvaWNlPC90ZXh0Pg0KICA8L2c+DQogIDxyZWN0IHg9IjU1IiB5PSIzNTUiIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQiIHJ4PSIxMiIgZmlsbD0iI2Y3ZDM2YiIgc3Ryb2tlPSIjYjI4YTE5Ii8+PHRleHQgeD0iMTc1IiB5PSIzNzMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMyI+SGVyYiBhbmQgcG9sbGluYXRvciBzdHJpcDwvdGV4dD4NCiAgPGNpcmNsZSBjeD0iMzg1IiBjeT0iMzYwIiByPSIxOCIgZmlsbD0iIzZiYjdkNiIgc3Ryb2tlPSIjMmI2ZjhhIi8+PHRleHQgeD0iMzg1IiB5PSIzOTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiI+UmFpbiBiYXJyZWw8L3RleHQ+DQogIDxyZWN0IHg9IjUyMCIgeT0iMzUwIiB3aWR0aD0iNjAiIGhlaWdodD0iMzAiIHJ4PSI1IiBmaWxsPSIjOWI3NjUzIi8+PHRleHQgeD0iNTUwIiB5PSIzOTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiI+Q29tcG9zdDwvdGV4dD4NCjwvc3ZnPg0K" alt="Top-down schematic of a community garden with eight raised beds, a central path, compost, rain barrel, seating, and pollinator strip." style="display: block; width: 100%; height: auto; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface);" />
       <figcaption>Top-down layout sketch for bed placement, water access, compost, and visitor flow.</figcaption>
     </figure>
     <h3>Bed allocation for the first season</h3>
@@ -1322,7 +1347,7 @@ StormEvents
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-kw">asc</span><span class="cmh-kql-op">,</span> Events <span class="cmh-kql-kw">desc</span></code></pre>
 </figure>
     <p>This query summarizes historical frost, hail, wind, heavy rain, and flood events by month for Illinois so the garden team can choose safer planting and volunteer work windows.</p>
-    <p>A small helper the volunteers use to size each week of watering (highlighted with <code>tools/highlight_code.py</code>):</p>
+    <p>A small helper the volunteers use to size each week of watering:</p>
 <pre><code class="language-python"><span class="cmh-code-com"># Estimate weekly watering liters for one raised bed.</span>
 <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">weekly_liters</span><span class="cmh-code-op">(</span>bed_area_m2<span class="cmh-code-op">,</span> weekly_rain_mm<span class="cmh-code-op">):</span>
     target_mm <span class="cmh-code-op">=</span> <span class="cmh-code-num">25</span>  <span class="cmh-code-com"># soil moisture goal per week</span>
@@ -3079,10 +3104,18 @@ function selectionInRoot() {
   if (anc && anc.closest(".cm-skip")) return null;
   return { sel, range: r };
 }
+// Touch / coarse-pointer devices have no separate right-click: a long-press both
+// selects text and is the only gesture that opens the browser's native selection
+// menu (Copy, Share, Look up...). Hijacking contextmenu there would leave the reader
+// unable to copy, so on those devices we let the native menu through and rely on the
+// floating "Add comment" popup (raised from the selection/mouseup path) for commenting.
+const _coarsePointer = !!(window.matchMedia
+  && window.matchMedia("(hover: none), (pointer: coarse)").matches);
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
   const got = selectionInRoot();
   if (!got) { hideMenu(); return; }
+  if (_coarsePointer) return;
   e.preventDefault();
   pendingDiffSel = null;
   pendingRange = got.range.cloneRange();

@@ -37,6 +37,14 @@ TUTORIAL_IMAGES_SRC = os.path.join(
 TUTORIAL_PAGE = os.path.join("site", "commentable-html", "tutorial", "index.html")
 TUTORIAL_IMAGES_DST = os.path.join("site", "commentable-html", "tutorial", "tutorial-images")
 
+# The commentable-html skill root, and its canonical location on GitHub. The tutorial
+# references example files with skill-root-relative display paths; locally (in the shipped
+# skill) those links resolve to the local asset, while on the generated site they are
+# rewritten to point at the file on GitHub (the site does not host the skill's examples/
+# tree at that path).
+SKILL_ROOT_POSIX = "plugins/commentable-html/pkg/skills/commentable-html"
+GITHUB_BLOB_BASE = "https://github.com/urikanonov/ai-marketplace/blob/main/" + SKILL_ROOT_POSIX + "/"
+
 
 def esc(value):
     return html.escape(str(value), quote=True)
@@ -115,8 +123,13 @@ def render_plugins(manifest):
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
         primary = ('<a class="btn btn-primary" href="%s">Learn more</a>' % esc(page)) if page else ""
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
+        linked_class = " is-linked" if page else ""
+        card_link = (
+            '  <a class="card-link" href="%s" aria-label="Open the %s plugin page"></a>\n'
+            % (esc(page), esc(name))) if page else ""
         card = (
-            '<article class="card plugin-card">\n'
+            '<article class="card plugin-card%s">\n'
+            '%s'
             '  <div class="head">\n'
             '    <span class="name">%s</span>\n'
             '    <span class="badge version">v%s</span>%s\n'
@@ -130,8 +143,8 @@ def render_plugins(manifest):
             '  </div>\n'
             '  <div class="foot">%s%s</div>\n'
             '</article>'
-        ) % (esc(name), esc(version), category_badge, esc(description), chips,
-             esc(install), esc(install), primary, source)
+        ) % (linked_class, card_link, esc(name), esc(version), category_badge,
+             esc(description), chips, esc(install), esc(install), primary, source)
         cards.append(card)
     return "\n".join(cards)
 
@@ -380,12 +393,14 @@ def render_markdown(md, heading_offset=1):
 
 
 def site_tutorial_markdown(md):
-    """Rewrite the package-relative example paths in TUTORIAL.md to the site's demo
-    location, so the generated tutorial page points readers at files that actually exist
-    on the site (the tutorial page lives at /commentable-html/tutorial/, the demos at
-    /commentable-html/demo/). Only the known demo filenames are rewritten."""
+    """Rewrite the tutorial's example-file links for the generated site. In the shipped
+    TUTORIAL.md the example is a link whose display text is the skill-root-relative path
+    (no `..`) and whose target is the local file (`../examples/NAME`), so a reader of the
+    skill opens the local asset. On the site that local file does not exist at that path,
+    so the link target is rewritten to the file on GitHub. Only the link target changes;
+    the skill-root-relative display text is left untouched."""
     for name in DEMO_FILES:
-        md = md.replace("examples/" + name, "../demo/" + name)
+        md = md.replace("(../examples/" + name + ")", "(" + GITHUB_BLOB_BASE + "examples/" + name + ")")
     return md
 
 

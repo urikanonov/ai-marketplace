@@ -10,6 +10,29 @@
   },
   "plugins": [
     {
+      "name": "commentable-html",
+      "description": "Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.",
+      "version": "1.2.0",
+      "source": "./plugins/commentable-html/pkg",
+      "author": {
+        "name": "Uri Kanonov",
+        "email": "urikanonov@gmail.com"
+      },
+      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/pkg",
+      "repository": "https://github.com/urikanonov/ai-marketplace",
+      "license": "MIT",
+      "category": "documentation",
+      "keywords": [
+        "html",
+        "code-review",
+        "comments",
+        "documentation",
+        "kusto",
+        "charts"
+      ],
+      "strict": false
+    },
+    {
       "name": "urikan-ai-marketplace-auto-updater",
       "description": "Automatically checks for and installs plugin updates from this marketplace on session start. Opt-in: only install if you want automatic updates.",
       "version": "1.0.1",
@@ -27,29 +50,6 @@
         "marketplace",
         "hooks",
         "session-start"
-      ],
-      "strict": false
-    },
-    {
-      "name": "commentable-html",
-      "description": "Turn any standalone HTML into a commentable review surface: reviewers select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent. Ships deterministic Python tools and a validator.",
-      "version": "1.1.3",
-      "source": "./plugins/commentable-html/pkg",
-      "author": {
-        "name": "Uri Kanonov",
-        "email": "urikanonov@gmail.com"
-      },
-      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/pkg",
-      "repository": "https://github.com/urikanonov/ai-marketplace",
-      "license": "MIT",
-      "category": "documentation",
-      "keywords": [
-        "html",
-        "code-review",
-        "comments",
-        "documentation",
-        "kusto",
-        "charts"
       ],
       "strict": false
     }

@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-11
+
+### Fixed
+
+- Mobile responsiveness of generated documents. Wide tables now scroll horizontally inside their own
+  box on narrow screens instead of forcing the whole page to overflow. The Kusto query caption stacks
+  the cluster title and the "Run in Azure Data Explorer" link onto separate lines below 700px so they
+  no longer cramp. The floating Copy/language pills reserve top headroom over every code block (KQL
+  figures included) so they no longer overlap the first line of code. Figures use symmetric vertical
+  margins with no side indent so embedded images and charts get the full content width.
+- On touch / coarse-pointer devices the browser's native selection menu (Copy, Share, Look up) is left
+  intact; the reader can copy selected text again, while the floating "Add comment" popup still handles
+  commenting.
+
+### Changed
+
+- `docs/TUTORIAL.md` now references the running example with a skill-root-relative display path that links
+  to the local file, so the reference reads cleanly without any `..` path traversal.
+
 ## [1.1.3] - 2026-07-11
 
 ### Fixed
