@@ -13,7 +13,7 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <nav class="navbar">
     <div class="wrap">
-      <a class="brand" href="../index.html">
+      <a class="brand" href="../">
         <img src="../assets/logo.svg" alt="" />
         <span>ai-marketplace</span>
       </a>
@@ -29,8 +29,8 @@
   <main id="main">
     <header class="hero">
       <div class="wrap">
-        <a class="back-link" href="../index.html">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.0.0<!-- END:version --></span></span>
+        <a class="back-link" href="../">&larr; All plugins</a>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.0.1<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -39,6 +39,17 @@
         </div>
       </div>
     </header>
+
+    <section id="why">
+      <div class="wrap">
+        <div class="section-block prose">
+          <h2 class="section-title">Why commentable-html</h2>
+          <p>AI agents increasingly answer with <strong>HTML</strong>, not markdown: plans, reports, design docs, code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, design tokens as swatches, data as real charts, long documents as collapsible, navigable sections. A wall of markdown flattens all of that.</p>
+          <p>But the moment you want to <em>revise</em> that artifact, the loop breaks down: you alt-tab between the rendered HTML and the AI chat, scroll to the spot you mean, and try to describe in prose what to change. The richer the document, the more painful the round-trip.</p>
+          <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> It turns any standalone HTML into a self-contained review surface: select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, the same way you would review a pull request. When you are done, one <em>Copy all</em> hands the agent a structured bundle of every note. You stay in the document and return to the chat only at the end - the loop gets tighter.</p>
+        </div>
+      </div>
+    </section>
 
     <section id="install">
       <div class="wrap">
@@ -71,18 +82,23 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
 
     <section id="demo">
       <div class="wrap">
-        <h2 class="section-title">Try it live</h2>
-        <p class="section-sub">This is a real commentable report. Select any text and the Add comment popup appears. For the full experience, open it in its own tab.</p>
+        <div class="demo-head">
+          <div>
+            <h2 class="section-title">Try it live</h2>
+            <p class="section-sub">A real commentable report. Select any text and the Add comment popup appears.</p>
+          </div>
+          <a class="btn btn-primary" id="demo-fullscreen" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer">Open in full screen</a>
+        </div>
+        <div class="demo-switch" role="tablist" aria-label="Choose a demo report">
+          <button class="demo-tab active" type="button" role="tab" aria-selected="true" data-demo="demo/report-taxi.html" data-file="report-taxi.html">NYC Taxi Report</button>
+          <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html">Community Garden Plan</button>
+        </div>
         <div class="demo-frame">
           <div class="bar">
             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            <span class="title">report-taxi.html</span>
+            <span class="title" id="demo-filename">report-taxi.html</span>
           </div>
-          <iframe src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
-        </div>
-        <div class="demo-actions">
-          <a class="btn btn-primary" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer">Open the taxi report</a>
-          <a class="btn" href="demo/report-community-garden.html" target="_blank" rel="noopener noreferrer">Open the community-garden report</a>
+          <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
         </div>
       </div>
     </section>
@@ -91,11 +107,51 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
       <div class="wrap">
         <h2 class="section-title">How the review loop works</h2>
         <p class="section-sub">Feedback goes back to the agent as structured data, not pasted prose.</p>
-        <div class="steps">
-          <div class="step"><h3>Generate</h3><p>The agent produces a commentable HTML report.</p></div>
-          <div class="step"><h3>Comment</h3><p>You select text and leave inline notes in the sidebar.</p></div>
-          <div class="step"><h3>Copy all</h3><p>Export a Markdown bundle of every open comment.</p></div>
-          <div class="step"><h3>Reload</h3><p>The agent acts and marks ids handled; handled comments prune away.</p></div>
+        <div class="loop-grid">
+          <div class="section-block loop-col">
+            <h3 class="loop-title">Self review</h3>
+            <div class="steps steps-vertical">
+              <div class="step"><h3>Generate</h3><p>The agent produces a commentable HTML report.</p></div>
+              <div class="step"><h3>Comment</h3><p>You select text and leave inline notes in the sidebar.</p></div>
+              <div class="step"><h3>Copy all</h3><p>Hand the agent a Markdown bundle of every open comment.</p></div>
+              <div class="step"><h3>Reload</h3><p>The agent acts and marks ids handled; handled comments prune away.</p></div>
+            </div>
+          </div>
+          <div class="section-block loop-col">
+            <h3 class="loop-title">Peer review</h3>
+            <div class="steps steps-vertical">
+              <div class="step"><h3>Self review first</h3><p>Run the self-review loop to get the artifact in good shape.</p></div>
+              <div class="step"><h3>Export as Portable</h3><p>Download one self-contained copy and share it with a peer.</p></div>
+              <div class="step"><h3>Peer comments</h3><p>The peer opens it, adds inline comments, and Exports as Portable again - comments now embedded in the HTML.</p></div>
+              <div class="step"><h3>Back to the agent</h3><p>You open their Portable file and Copy all to feed their feedback to the agent.</p></div>
+            </div>
+          </div>
+          <div class="section-block loop-col">
+            <h3 class="loop-title">Review someone's plan</h3>
+            <div class="steps steps-vertical">
+              <div class="step"><h3>Receive a plan</h3><p>A colleague sends a plan or report as markdown or HTML.</p></div>
+              <div class="step"><h3>Convert</h3><p>Ask the agent to turn it into a commentable HTML with this skill.</p></div>
+              <div class="step"><h3>Review inline</h3><p>Add your comments in place, on exactly the parts you mean.</p></div>
+              <div class="step"><h3>Export and send back</h3><p>Export as Portable and return it with your comments embedded.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="modes">
+      <div class="wrap">
+        <h2 class="section-title">Two portability modes</h2>
+        <p class="section-sub">Pick based on whether the document stays local or travels.</p>
+        <div class="grid">
+          <div class="card feature">
+            <h3>Non-portable <span class="badge">default</span></h3>
+            <p>References shared companion assets instead of inlining them, so each regeneration is far cheaper in tokens. Best for fast, personal iteration while you and the agent shape the document.</p>
+          </div>
+          <div class="card feature">
+            <h3>Portable</h3>
+            <p>One self-contained file with the CSS, runtime, and comments inlined. Best when you want to share the document with a peer or keep it as a durable, long-term artifact - one click via Export as Portable.</p>
+          </div>
         </div>
       </div>
     </section>

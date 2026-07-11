@@ -42,16 +42,24 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
   await expect(page.locator("#demo iframe")).toHaveAttribute("src", /demo\/report-taxi\.html/);
 });
 
-test("open-full demo links are safe external targets", async ({ page }) => {
+test("demo has one safe full-screen button and a two-option slider", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const links = page.locator(".demo-actions a");
-  const count = await links.count();
-  expect(count).toBeGreaterThanOrEqual(1);
-  for (let i = 0; i < count; i++) {
-    await expect(links.nth(i)).toHaveAttribute("target", "_blank");
-    const rel = (await links.nth(i).getAttribute("rel")) || "";
-    expect(rel).toContain("noopener");
-  }
+  const fs = page.locator("#demo-fullscreen");
+  await expect(fs).toHaveCount(1);
+  await expect(fs).toHaveAttribute("target", "_blank");
+  expect((await fs.getAttribute("rel")) || "").toContain("noopener");
+  await expect(page.locator(".demo-tab")).toHaveCount(2);
+  await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
+});
+
+test("demo slider switches the iframe, filename, and full-screen target", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-taxi\.html/);
+  await page.locator(".demo-tab", { hasText: "Community Garden Plan" }).click();
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-community-garden\.html/);
+  await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-community-garden\.html/);
+  await expect(page.locator("#demo-filename")).toHaveText("report-community-garden.html");
+  await expect(page.locator(".demo-tab.active")).toHaveText(/Community Garden/i);
 });
 
 test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }) => {

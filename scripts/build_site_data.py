@@ -24,7 +24,7 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PLUGIN_PAGES = {"commentable-html": "./commentable-html/index.html"}
+PLUGIN_PAGES = {"commentable-html": "./commentable-html/"}
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html"]
 EXAMPLES_REL = os.path.join(
