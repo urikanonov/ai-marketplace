@@ -18,15 +18,19 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 
 ## One-time setup
 
-Enable the pre-commit hook so the validator runs automatically before every commit (it needs python with
-`jsonschema` and `pyyaml`). This catches issues locally before CI, even for the maintainer:
+Enable the git hooks so they run automatically (it needs python with `jsonschema` and `pyyaml`).
+This catches issues locally before CI, even for the maintainer:
 
 ```bash
 pip install jsonschema pyyaml
 git config core.hooksPath .githooks
 ```
 
-Skip the hook for a single commit with `git commit --no-verify`.
+`core.hooksPath` enables both hooks: `pre-commit` validates the manifest and Markdown before each
+commit, and `pre-push` runs the deterministic CI gate before each push (validators, script unit
+tests, changelog sync, version bump, and the site/layer/fixtures `--check` drift guards). Skip a
+single commit with `git commit --no-verify` or a single push with `git push --no-verify`; add the
+browser Playwright suites to a push with `RUN_E2E=1 git push`.
 
 ## Improving an existing plugin
 
