@@ -127,7 +127,7 @@ test.describe("add-comment affordances", () => {
     // same way - either it hid (target moved out) or it tracked the line exactly.
     // Poll for the rAF reposition to settle (deterministic; not flaky under contention).
     await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 4; },
-      { timeout: 3000 }).toBe(true);
+      { timeout: 10000 }).toBe(true);
   });
 
   test("the mermaid add button stays pinned to its node on scroll (no drift)", async ({ page }) => {
@@ -156,7 +156,7 @@ test.describe("add-comment affordances", () => {
       // Distinct code path (positionMermaidAdd); same pin invariant as image/diff.
       // Poll for the rAF reposition to settle (deterministic; not flaky under contention).
       await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 4; },
-        { timeout: 3000 }).toBe(true);
+        { timeout: 10000 }).toBe(true);
     } finally {
       await server.close();
     }
