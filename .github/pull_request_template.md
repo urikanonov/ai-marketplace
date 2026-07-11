@@ -20,7 +20,7 @@
 - [ ] Read `dev/package.json` lifecycle scripts and the `package-lock.json` diff before "Approve and run"
 - [ ] Reviewed any change under `.github/workflows/**`, `.githooks/**`, `scripts/**`, plugin `hooks/**`, `*.ps1`, `.mcp.json`
 - [ ] Not a new plugin from an external contributor (new plugins are maintainer-authored)
-- [ ] Required checks green: `validate` and `summary`
+- [ ] Required checks green: `validate`, `version-bump`, `build-check`, `build`, and `summary`
 
 ## Notes
 

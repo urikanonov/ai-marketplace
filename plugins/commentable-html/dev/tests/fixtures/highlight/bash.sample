@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Count lines in each tracked file
+total=0
+for file in $(git ls-files); do
+  lines=$(wc -l < "$file")
+  echo "$file: $lines"
+  total=$((total + lines))
+done
+
+echo "total lines: $total"

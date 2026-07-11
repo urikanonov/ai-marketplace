@@ -1,0 +1,13 @@
+<span class="cmh-code-op">&lt;?</span>php
+
+<span class="cmh-code-com">// Sum an array of numbers</span>
+<span class="cmh-code-kw">function</span> <span class="cmh-code-fn">total</span><span class="cmh-code-op">(</span><span class="cmh-code-kw">array</span> $values<span class="cmh-code-op">):</span> int <span class="cmh-code-op">{</span>
+    $sum <span class="cmh-code-op">=</span> <span class="cmh-code-num">0</span><span class="cmh-code-op">;</span>
+    <span class="cmh-code-kw">foreach</span> <span class="cmh-code-op">(</span>$values <span class="cmh-code-kw">as</span> $value<span class="cmh-code-op">)</span> <span class="cmh-code-op">{</span>
+        $sum <span class="cmh-code-op">+=</span> $value<span class="cmh-code-op">;</span>
+    <span class="cmh-code-op">}</span>
+    <span class="cmh-code-kw">return</span> $sum<span class="cmh-code-op">;</span> <span class="cmh-code-com">/* fold */</span>
+<span class="cmh-code-op">}</span>
+
+$numbers <span class="cmh-code-op">=</span> <span class="cmh-code-op">[</span><span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">3</span><span class="cmh-code-op">];</span>
+<span class="cmh-code-kw">echo</span> <span class="cmh-code-str">"total = "</span> <span class="cmh-code-op">.</span> <span class="cmh-code-fn">total</span><span class="cmh-code-op">(</span>$numbers<span class="cmh-code-op">)</span> <span class="cmh-code-op">.</span> <span class="cmh-code-str">"\n"</span><span class="cmh-code-op">;</span>

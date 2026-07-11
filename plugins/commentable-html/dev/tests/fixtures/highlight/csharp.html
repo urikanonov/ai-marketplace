@@ -1,0 +1,19 @@
+<span class="cmh-code-kw">using</span> System<span class="cmh-code-op">;</span>
+
+<span class="cmh-code-kw">namespace</span> Demo
+<span class="cmh-code-op">{</span>
+    <span class="cmh-code-com">// A simple greeter</span>
+    <span class="cmh-code-kw">public</span> <span class="cmh-code-kw">class</span> Greeter
+    <span class="cmh-code-op">{</span>
+        <span class="cmh-code-kw">public</span> <span class="cmh-code-kw">string</span> Name <span class="cmh-code-op">{</span> get<span class="cmh-code-op">;</span> <span class="cmh-code-op">}</span>
+        <span class="cmh-code-kw">public</span> <span class="cmh-code-kw">int</span> Visits <span class="cmh-code-op">{</span> get<span class="cmh-code-op">;</span> <span class="cmh-code-op">}</span> <span class="cmh-code-op">=</span> <span class="cmh-code-num">0</span><span class="cmh-code-op">;</span>
+
+        <span class="cmh-code-kw">public</span> <span class="cmh-code-fn">Greeter</span><span class="cmh-code-op">(</span><span class="cmh-code-kw">string</span> name<span class="cmh-code-op">)</span> <span class="cmh-code-op">=&gt;</span> Name <span class="cmh-code-op">=</span> name<span class="cmh-code-op">;</span>
+
+        <span class="cmh-code-kw">public</span> <span class="cmh-code-kw">string</span> <span class="cmh-code-fn">Greet</span><span class="cmh-code-op">()</span>
+        <span class="cmh-code-op">{</span>
+            <span class="cmh-code-com">/* interpolated string */</span>
+            <span class="cmh-code-kw">return</span> $<span class="cmh-code-str">"Hello, {Name}! You are visitor 42."</span><span class="cmh-code-op">;</span>
+        <span class="cmh-code-op">}</span>
+    <span class="cmh-code-op">}</span>
+<span class="cmh-code-op">}</span>

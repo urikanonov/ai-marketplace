@@ -1,0 +1,13 @@
+<span class="cmh-code-kw">interface</span> User <span class="cmh-code-op">{</span>
+  id<span class="cmh-code-op">:</span> <span class="cmh-code-kw">number</span><span class="cmh-code-op">;</span>
+  name<span class="cmh-code-op">:</span> <span class="cmh-code-kw">string</span><span class="cmh-code-op">;</span>
+<span class="cmh-code-op">}</span>
+
+<span class="cmh-code-com">// Look up a user by id</span>
+<span class="cmh-code-kw">function</span> <span class="cmh-code-fn">findUser</span><span class="cmh-code-op">(</span>users<span class="cmh-code-op">:</span> User<span class="cmh-code-op">[],</span> id<span class="cmh-code-op">:</span> <span class="cmh-code-kw">number</span><span class="cmh-code-op">):</span> User <span class="cmh-code-op">|</span> <span class="cmh-code-kw">undefined</span> <span class="cmh-code-op">{</span>
+  <span class="cmh-code-kw">return</span> users<span class="cmh-code-op">.</span><span class="cmh-code-fn">find</span><span class="cmh-code-op">((</span>u<span class="cmh-code-op">)</span> <span class="cmh-code-op">=&gt;</span> u<span class="cmh-code-op">.</span>id <span class="cmh-code-op">===</span> id<span class="cmh-code-op">);</span>
+<span class="cmh-code-op">}</span>
+
+<span class="cmh-code-kw">const</span> users<span class="cmh-code-op">:</span> User<span class="cmh-code-op">[]</span> <span class="cmh-code-op">=</span> <span class="cmh-code-op">[{</span> id<span class="cmh-code-op">:</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> name<span class="cmh-code-op">:</span> <span class="cmh-code-str">"Ada"</span> <span class="cmh-code-op">}];</span>
+<span class="cmh-code-com">/* Log the result */</span>
+console<span class="cmh-code-op">.</span><span class="cmh-code-fn">log</span><span class="cmh-code-op">(</span><span class="cmh-code-fn">findUser</span><span class="cmh-code-op">(</span>users<span class="cmh-code-op">,</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)?.</span>name <span class="cmh-code-op">??</span> <span class="cmh-code-str">"unknown"</span><span class="cmh-code-op">);</span>

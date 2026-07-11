@@ -109,7 +109,7 @@ true type var
         "string_styles": ("single", "double", "backtick"),
     },
     "yaml": {
-        "keywords": _words("false False FALSE null Null NULL true True TRUE yes no on off"),
+        "keywords": _words("false False FALSE null Null NULL true True TRUE yes Yes YES no No NO on On ON off Off OFF"),
         "line_comments": ("#",),
         "block_comments": (),
         "string_styles": ("single", "double"),
@@ -153,7 +153,198 @@ td template textarea th thead title tr ul
         "block_comments": (("<!--", "-->"),),
         "string_styles": ("single", "double"),
     },
+    "rust": {
+        "keywords": _words("""
+as async await break const continue crate dyn else enum extern false fn for if
+impl in let loop match mod move mut pub ref return self Self static struct super
+trait true type union unsafe use where while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "ruby": {
+        "keywords": _words("""
+BEGIN END alias and begin break case class def defined do else elsif end ensure
+false for if in module next nil not or redo rescue retry return self super then
+true undef unless until when while yield
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("single", "double", "backtick"),
+    },
+    "php": {
+        "keywords": _words("""
+abstract and array as break callable case catch class clone const continue declare
+default do echo else elseif empty enddeclare endfor endforeach endif endswitch
+endwhile enum extends false final finally fn for foreach function global goto if
+implements include include_once instanceof insteadof interface isset list match
+namespace new null or print private protected public readonly require require_once
+return static switch throw trait true try unset use var while xor yield
+"""),
+        "line_comments": ("//", "#"),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "swift": {
+        "keywords": _words("""
+as associatedtype break case catch class continue default defer deinit do else
+enum extension fallthrough false fileprivate for func guard if import in init inout
+internal is let nil open operator private protocol public repeat rethrows return
+self Self static struct subscript super switch throw throws true try typealias var
+where while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "double"),
+    },
+    "kotlin": {
+        "keywords": _words("""
+abstract actual annotation as break by catch class companion const constructor
+continue crossinline data delegate do dynamic else enum external false final finally
+for fun get if import in infix init inline inner interface internal is lateinit lazy
+noinline null object open operator out override package private protected public
+reified return sealed super suspend this throw true try typealias typeof val var
+vararg when where while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "double"),
+    },
+    "scala": {
+        "keywords": _words("""
+abstract case catch class def do else extends false final finally for forSome if
+implicit import lazy match new null object override package private protected return
+sealed super this throw trait true try type val var while with yield
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "double"),
+    },
+    "dart": {
+        "keywords": _words("""
+abstract as assert async await break case catch class const continue covariant
+default deferred do dynamic else enum export extends extension external factory
+false final finally for get hide if implements import in interface is late library
+mixin new null on operator part required rethrow return set show static super switch
+sync this throw true try typedef var void while with yield
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "triple_single", "single", "double"),
+    },
+    "r": {
+        "keywords": _words("""
+break else for function if in next repeat while TRUE FALSE NULL Inf NaN NA
+NA_integer_ NA_real_ NA_character_ NA_complex_
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("single", "double"),
+    },
+    "perl": {
+        "keywords": _words("""
+and cmp do else elsif eq for foreach ge gt if last le local lt my ne next no not
+or our package redo require return sub unless until use while x
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("single", "double", "backtick"),
+    },
+    "powershell": {
+        "keywords": _words("""
+begin break catch class continue data default do dynamicparam else elseif end enum
+exit filter finally for foreach from function hidden if in param process return
+static switch throw trap try until using while
+"""),
+        "line_comments": ("#",),
+        "block_comments": (("<#", "#>"),),
+        "string_styles": ("single", "double"),
+    },
+    "lua": {
+        "keywords": _words("""
+and break do else elseif end false for function goto if in local nil not or repeat
+return then true until while
+"""),
+        "line_comments": ("--",),
+        "block_comments": (("--[[", "]]"),),
+        "string_styles": ("single", "double"),
+    },
+    "toml": {
+        "keywords": _words("true false"),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("triple_double", "triple_single", "toml_single_literal", "double"),
+    },
+    "css": {
+        "keywords": _words("""
+auto important inherit initial none unset revert hover focus active block flex grid
+inline absolute relative fixed static solid dashed dotted bold normal center left
+right top bottom
+"""),
+        "line_comments": (),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "groovy": {
+        "keywords": _words("""
+abstract as assert boolean break byte case catch char class const continue def
+default do double else enum extends false final finally float for goto if implements
+import in instanceof int interface long native new null package private protected
+public return short static strictfp super switch synchronized this throw throws
+trait transient true try void volatile while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "triple_single", "single", "double"),
+    },
+    "elixir": {
+        "keywords": _words("""
+after and case catch cond def defmacro defmodule defp defstruct do else end false
+fn for if import in nil not or quote raise receive require rescue true try unless
+unquote use when with
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("triple_double", "double"),
+    },
+    "haskell": {
+        "keywords": _words("""
+as case class data default deriving do else foreign hiding if import in infix infixl
+infixr instance let module newtype of qualified then type where
+"""),
+        "line_comments": ("--",),
+        "block_comments": (("{-", "-}"),),
+        "string_styles": ("double",),
+    },
+    "objectivec": {
+        "keywords": _words("""
+auto break case char const continue default do double else enum extern float for
+goto if inline int long register return short signed sizeof static struct switch
+typedef union unsigned void volatile while id nil BOOL YES NO self super @interface
+@implementation @end @property @synthesize @protocol @class @selector @encode
+@synchronized @autoreleasepool @try @catch @finally @throw
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "batch": {
+        "keywords": _words("""
+call cd cls copy defined del do echo else endlocal errorlevel exist exit for goto
+if in md move not pause popd pushd rd ren set setlocal shift start title type
+"""),
+        "line_comments": ("rem", "::"),
+        "block_comments": (),
+        "string_styles": ("double",),
+    },
 }
+
+# Languages whose keywords are genuinely case-insensitive. Only these compile their
+# tokenizer with re.IGNORECASE; every other language matches keywords case-sensitively
+# so an identifier like C# `String`, Python `true`, or Rust `Fn` is not mis-colored as a
+# keyword. (Numbers/strings/identifiers use case-explicit patterns, so they are unaffected.)
+CASE_INSENSITIVE_LANGUAGES = frozenset({"sql", "batch", "powershell", "html", "css"})
 
 ALIASES = {
     "sh": "bash",
@@ -162,6 +353,18 @@ ALIASES = {
     "golang": "go",
     "yml": "yaml",
     "c++": "cpp",
+    "rs": "rust",
+    "rb": "ruby",
+    "kt": "kotlin",
+    "pl": "perl",
+    "ps1": "powershell",
+    "ps": "powershell",
+    "objc": "objectivec",
+    "hs": "haskell",
+    "ex": "elixir",
+    "exs": "elixir",
+    "bat": "batch",
+    "cmd": "batch",
 }
 
 _IDENTIFIER_RE = r"@?[A-Za-z_$][A-Za-z0-9_$]*"
@@ -170,13 +373,20 @@ _OP_RE = r"[=!<>+\-*/%&|^~?:;.,()\[\]{}#]+"
 _TOKEN_RE_CACHE = {}
 
 _STRING_PATTERNS = {
-    "triple_double": r'"""[\s\S]*?"""',
-    "triple_single": r"'''[\s\S]*?'''",
-    "csharp_verbatim": r'@"(?:[^"]|"")*"',
-    "sql_single": r"'(?:[^']|'')*'",
-    "single": r"'(?:[^'\\\n]|\\.)*'",
-    "double": r'"(?:[^"\\\n]|\\.)*"',
-    "backtick": r"`(?:[^`\\]|\\.)*`",
+    # Multi-line (triple / verbatim / doubled-quote) styles. An unterminated opener still
+    # highlights to end of input via the |\Z fallback (partial snippets are common).
+    "triple_double": r'"""[\s\S]*?(?:"""|\Z)',
+    "triple_single": r"'''[\s\S]*?(?:'''|\Z)",
+    "csharp_verbatim": r'@"[^"]*(?:""[^"]*)*"?',
+    "sql_single": r"'[^']*(?:''[^']*)*'?",
+    "toml_single_literal": r"'[^'\n]*'?",
+    # Single-line styles use the "unrolled loop" form (a linear-time equivalent of
+    # (?:[^q\\]|\\.)* ) so pathological escaped-quote input cannot drive superlinear
+    # backtracking. \\[\s\S] (not \\.) so a backslash-newline line continuation stays inside
+    # the string. The optional closing quote highlights an unterminated string to end of line.
+    "single": r"'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'?",
+    "double": r'"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"?',
+    "backtick": r"`[^`\\]*(?:\\[\s\S][^`\\]*)*`?",
 }
 
 
@@ -205,9 +415,19 @@ def _span(kind, text):
 def _comment_pattern(config):
     parts = []
     for start, end in config["block_comments"]:
-        parts.append(re.escape(start) + r"[\s\S]*?" + re.escape(end))
+        # An unterminated block comment (a partial snippet) still highlights to end of input
+        # via the |\Z fallback. Nested block comments (e.g. Haskell {- {- -} -}) are NOT
+        # supported: stdlib re has no recursion, so the first close ends the comment.
+        parts.append(re.escape(start) + r"[\s\S]*?(?:" + re.escape(end) + r"|\Z)")
     if config["line_comments"]:
-        prefixes = sorted((re.escape(p) for p in config["line_comments"]), key=len, reverse=True)
+        prefixes = []
+        for prefix in sorted(config["line_comments"], key=len, reverse=True):
+            escaped = re.escape(prefix)
+            # A word-like prefix (e.g. batch `rem`) needs a trailing boundary so it matches
+            # `rem `, `rem<TAB>`, or a bare `rem` at end-of-line, but never `remark`.
+            if prefix[-1:].isalnum():
+                escaped += r"\b"
+            prefixes.append(escaped)
         parts.append(r"(?:%s)[^\n]*" % "|".join(prefixes))
     return "|".join(parts)
 
@@ -245,7 +465,8 @@ def _token_re(language):
         r"(?P<ws>\s+)",
         r"(?P<other>.)",
     ))
-    token_re = re.compile("|".join(parts), re.IGNORECASE)
+    flags = re.IGNORECASE if language in CASE_INSENSITIVE_LANGUAGES else 0
+    token_re = re.compile("|".join(parts), flags)
     _TOKEN_RE_CACHE[language] = token_re
     return token_re
 

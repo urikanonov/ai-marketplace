@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-11
+
+### Added
+
+- Author-time syntax highlighting (`tools/highlight_code.py`) now covers many more popular languages:
+  Rust, Ruby, PHP, Swift, Kotlin, Scala, Dart, R, Perl, PowerShell, Lua, TOML, CSS, Groovy, Elixir,
+  Haskell, and Objective-C, plus Windows Batch (`batch`, with `bat` and `cmd` aliases), with the usual
+  aliases (`rs`, `rb`, `kt`, `pl`, `ps1`, `ps`, `objc`, `hs`, `ex`, `exs`). Shell scripts were already
+  covered via the existing `shell` and `sh` aliases for `bash`. Run
+  `python tools/highlight_code.py --list` for the full set.
+- The in-browser diff highlighter now recognizes the same expanded language set (CSS, Groovy, Elixir,
+  Haskell, Objective-C, Lua, PowerShell, and Windows Batch, plus their aliases), so review diffs in
+  those languages render with token colors instead of plain text.
+
+### Fixed
+
+- Keywords are now matched case-sensitively except in genuinely case-insensitive languages (SQL, Batch,
+  PowerShell, HTML, CSS). Previously a global case-insensitive match mis-colored ordinary identifiers as
+  keywords (for example C# `String`, Python `true`/`none`, Rust `Fn`).
+- String tokenization is now linear time. Pathological input (a long run of escaped quotes) previously
+  drove superlinear rescanning; the string patterns use an unrolled form that stays fast.
+- Strings keep a backslash-newline line continuation inside the string, unterminated block comments and
+  strings still highlight (to end of input / end of line), Swift and Dart triple-quoted strings and TOML
+  literal (single-quoted) strings are recognized, and a Windows Batch `rem` comment is matched on a word
+  boundary (so `rem`, `rem<TAB>`, and a bare `rem` are comments, but `remark` is not).
+
+## [1.2.2] - 2026-07-11
+
+### Changed
+
+- Clarified the NonPortable asset-location wording in the skill reference: the default companion
+  files are referenced by a relative path (the skill's `dist/` folder by default), not "beside the
+  document"; the document sits beside its companions only when they are copied there.
+
 ## [1.2.1] - 2026-07-11
 
 ### Changed

@@ -29,7 +29,8 @@ still read the PR before approving.
 - New plugins are maintainer-authored: close external PRs that add a new plugin directory or a new
   `marketplace.json` entry, and ask the contributor to open a plugin request instead.
 - Confirm the required checks are green: `validate`, `version-bump`, `build-check`, `build`, and
-  `summary` (the `plugin-tests` gate), plus `require-owner-approval` on external PRs (see below).
+  `summary` (the `plugin-tests` gate), plus `require-owner-approval` on external PRs (see below). See
+  CONTRIBUTING.md / AGENTS.md for what each one enforces.
 - External PRs are hard-gated on your approval. The `require-owner-approval` status fails until you
   submit an **Approve** review (a comment or "request changes" does not satisfy it). Because stale
   approvals are dismissed on new commits, a contributor's fresh push re-blocks the PR until you

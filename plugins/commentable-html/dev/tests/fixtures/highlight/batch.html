@@ -1,0 +1,13 @@
+@echo off
+<span class="cmh-code-com">rem Greet each argument</span>
+<span class="cmh-code-kw">setlocal</span> enabledelayedexpansion
+
+<span class="cmh-code-kw">set</span> <span class="cmh-code-op">/</span>a count<span class="cmh-code-op">=</span><span class="cmh-code-num">0</span>
+<span class="cmh-code-kw">for</span> <span class="cmh-code-op">%%</span>a <span class="cmh-code-kw">in</span> <span class="cmh-code-op">(%*)</span> <span class="cmh-code-kw">do</span> <span class="cmh-code-op">(</span>
+    <span class="cmh-code-kw">echo</span> Hello<span class="cmh-code-op">,</span> <span class="cmh-code-op">%%</span>a
+    <span class="cmh-code-kw">set</span> <span class="cmh-code-op">/</span>a count<span class="cmh-code-op">+=</span><span class="cmh-code-num">1</span>
+<span class="cmh-code-op">)</span>
+
+<span class="cmh-code-com">:: report how many</span>
+<span class="cmh-code-kw">echo</span> Processed <span class="cmh-code-op">!</span>count<span class="cmh-code-op">!</span> <span class="cmh-code-fn">item</span><span class="cmh-code-op">(</span>s<span class="cmh-code-op">)</span>
+<span class="cmh-code-kw">endlocal</span>

@@ -8,6 +8,7 @@ import re
 import runpy
 import subprocess
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -34,6 +35,24 @@ SNIPPETS = {
     "cpp": 'class C { public: void m(){ auto s = "hi"; // comment\n/* block */ foo(42); } };\n',
     "xml": '<!-- comment --><root attr="hi">42</root>\n',
     "html": '<!-- comment --><div class="hi">42</div>\n',
+    "rust": 'fn main() { let s = "hi"; foo(42); // comment\n/* block */ }\n',
+    "ruby": 'def foo\n  s = "hi"\n  puts 42 # comment\nend\n',
+    "php": 'function foo() { $s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "swift": 'func foo() { let s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "kotlin": 'fun foo() { val s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "scala": 'def foo() { val s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "dart": 'void foo() { var s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "r": 'foo <- function(x) {\n  s <- "hi"\n  bar(42) # comment\n}\n',
+    "perl": 'sub foo {\n  my $s = "hi";\n  bar(42); # comment\n}\n',
+    "powershell": 'function Foo {\n  $s = "hi"\n  Write-Output 42 # comment\n  <# block #>\n}\n',
+    "lua": 'function foo()\n  local s = "hi"\n  bar(42) -- comment\n  --[[ block ]]\nend\n',
+    "toml": 'title = "hi"\nenabled = true\ncount = 42 # comment\n',
+    "css": 'a { content: "hi"; width: 42; /* comment */ display: block; }\n',
+    "groovy": 'def foo() { String s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "elixir": 'def foo do\n  s = "hi"\n  bar(42) # comment\nend\n',
+    "haskell": 'foo :: Int -> String\nfoo x = let s = "hi" in bar 42 -- comment\n{- block -}\n',
+    "objectivec": '- (void)foo { char *s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "batch": '@echo off\nset MSG="hi"\necho 42\nrem comment\n',
 }
 
 ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
@@ -43,6 +62,18 @@ ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
     "golang": SNIPPETS["go"],
     "yml": SNIPPETS["yaml"],
     "c++": SNIPPETS["cpp"],
+    "rs": SNIPPETS["rust"],
+    "rb": SNIPPETS["ruby"],
+    "kt": SNIPPETS["kotlin"],
+    "pl": SNIPPETS["perl"],
+    "ps1": SNIPPETS["powershell"],
+    "ps": SNIPPETS["powershell"],
+    "objc": SNIPPETS["objectivec"],
+    "hs": SNIPPETS["haskell"],
+    "ex": SNIPPETS["elixir"],
+    "exs": SNIPPETS["elixir"],
+    "bat": SNIPPETS["batch"],
+    "cmd": SNIPPETS["batch"],
 })
 
 TOKEN_CASES = {
@@ -60,6 +91,24 @@ TOKEN_CASES = {
     "cpp": ("class", '"hi"', "// comment", "42", "/* block */"),
     "xml": ("root", '"hi"', "<!-- comment -->", "42", "<!-- comment -->"),
     "html": ("div", '"hi"', "<!-- comment -->", "42", "<!-- comment -->"),
+    "rust": ("fn", '"hi"', "// comment", "42", "/* block */"),
+    "ruby": ("def", '"hi"', "# comment", "42", None),
+    "php": ("function", '"hi"', "// comment", "42", "/* block */"),
+    "swift": ("func", '"hi"', "// comment", "42", "/* block */"),
+    "kotlin": ("fun", '"hi"', "// comment", "42", "/* block */"),
+    "scala": ("def", '"hi"', "// comment", "42", "/* block */"),
+    "dart": ("void", '"hi"', "// comment", "42", "/* block */"),
+    "r": ("function", '"hi"', "# comment", "42", None),
+    "perl": ("sub", '"hi"', "# comment", "42", None),
+    "powershell": ("function", '"hi"', "# comment", "42", "<# block #>"),
+    "lua": ("function", '"hi"', "-- comment", "42", "--[[ block ]]"),
+    "toml": ("true", '"hi"', "# comment", "42", None),
+    "css": ("block", '"hi"', "/* comment */", "42", "/* comment */"),
+    "groovy": ("def", '"hi"', "// comment", "42", "/* block */"),
+    "elixir": ("def", '"hi"', "# comment", "42", None),
+    "haskell": ("let", '"hi"', "-- comment", "42", "{- block -}"),
+    "objectivec": ("void", '"hi"', "// comment", "42", "/* block */"),
+    "batch": ("echo", '"hi"', "rem comment", "42", None),
 }
 
 
@@ -167,6 +216,7 @@ class HighlightCodeCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("python", result.stdout.splitlines())
         self.assertIn("c++", result.stdout.splitlines())
+        self.assertIn("rust", result.stdout.splitlines())
 
     def test_main_list_direct(self):
         out = io.StringIO()
@@ -198,6 +248,115 @@ class HighlightCodeCliTests(unittest.TestCase):
                 runpy.run_path(HIGHLIGHT_PY, run_name="__main__")
         self.assertEqual(cm.exception.code, 0)
         self.assertIn("python", out.getvalue().splitlines())
+
+
+class HighlightCodeCaseSensitivityTests(unittest.TestCase):
+    def test_case_sensitive_languages_reject_wrong_case_keywords(self):
+        # An identifier that merely case-folds to a keyword must NOT be colored as a keyword in
+        # a case-sensitive language (e.g. C# `String` vs keyword `string`, Python `IF` vs `if`).
+        cases = {
+            "python": "true false none IF Def Class Return",
+            "csharp": "String Object VOID Int Class",
+            "java": "String INT Class Void",
+            "javascript": "FUNCTION Const LET Return",
+            "typescript": "Interface Type CONST",
+            "rust": "IF Fn Impl LET Struct",
+            "go": "FUNC Var Type Package",
+            "cpp": "CLASS Int Void Namespace",
+            "ruby": "DEF Class Module Return",
+            "kotlin": "FUN Val Var Class",
+        }
+        for language, code in cases.items():
+            with self.subTest(language=language):
+                self.assertNotIn("cmh-code-kw", H.highlight_code(language, code))
+
+    def test_case_sensitive_languages_still_match_correct_case(self):
+        self.assertIn('<span class="cmh-code-kw">def</span>', H.highlight_code("python", "def f(): pass"))
+        self.assertIn('<span class="cmh-code-kw">class</span>', H.highlight_code("csharp", "class C {}"))
+        self.assertIn('<span class="cmh-code-kw">fn</span>', H.highlight_code("rust", "fn main() {}"))
+
+    def test_case_insensitive_languages_match_any_case(self):
+        self.assertIn('<span class="cmh-code-kw">SELECT</span>', H.highlight_code("sql", "SELECT 1"))
+        self.assertIn('<span class="cmh-code-kw">IF</span>', H.highlight_code("batch", "IF exist x del x"))
+        self.assertIn('<span class="cmh-code-kw">Function</span>', H.highlight_code("powershell", "Function Foo {}"))
+        self.assertIn('<span class="cmh-code-kw">DIV</span>', H.highlight_code("html", "<DIV></DIV>"))
+        self.assertIn('<span class="cmh-code-kw">BLOCK</span>', H.highlight_code("css", "a{display:BLOCK}"))
+
+
+class HighlightCodeCommentAndStringEdgeTests(unittest.TestCase):
+    def test_secondary_line_comment_prefixes(self):
+        # PHP has both // and #; batch has both rem and ::. Both prefixes must be highlighted.
+        self.assertIn('<span class="cmh-code-com"># hash note</span>', H.highlight_code("php", "$x = 1; # hash note"))
+        self.assertIn('<span class="cmh-code-com">:: colon note</span>',
+                      H.highlight_code("batch", "set x=1\n:: colon note"))
+
+    def test_batch_rem_needs_word_boundary(self):
+        self.assertIn('<span class="cmh-code-com">rem note</span>', H.highlight_code("batch", "echo hi\nrem note"))
+        self.assertIn('<span class="cmh-code-com">rem\tnote</span>', H.highlight_code("batch", "echo hi\nrem\tnote"))
+        self.assertIn('<span class="cmh-code-com">rem</span>', H.highlight_code("batch", "echo hi\nrem"))
+        self.assertNotIn('cmh-code-com">rem', H.highlight_code("batch", "set remainder=1"))
+
+    def test_swift_and_dart_multiline_strings(self):
+        swift = H.highlight_code("swift", 'let s = """\nline\n"""')
+        self.assertIn('<span class="cmh-code-str">"""\nline\n"""</span>', swift)
+        dart = H.highlight_code("dart", "var s = '''\nline\n''';")
+        self.assertIn("<span class=\"cmh-code-str\">'''\nline\n'''</span>", dart)
+
+    def test_toml_literal_string_preserves_backslash(self):
+        out = H.highlight_code("toml", "path = 'C:\\Users\\me'")
+        self.assertIn("<span class=\"cmh-code-str\">'C:\\Users\\me'</span>", out)
+
+    def test_line_continuation_stays_inside_string(self):
+        out = H.highlight_code("javascript", '"a \\\nb"')
+        self.assertIn('<span class="cmh-code-str">"a \\\nb"</span>', out)
+
+    def test_unterminated_block_comment_highlights_to_end(self):
+        out = H.highlight_code("c", "int x; /* todo: finish")
+        self.assertIn('<span class="cmh-code-com">/* todo: finish</span>', out)
+
+    def test_unterminated_string_highlights_to_end_of_line(self):
+        out = H.highlight_code("python", 'x = "oops\ny = 1\n')
+        self.assertIn('<span class="cmh-code-str">"oops</span>', out)
+        # The next line is not swallowed into the string.
+        self.assertIn('<span class="cmh-code-num">1</span>', out)
+
+    def test_pathological_escaped_quote_input_is_linear(self):
+        # A run of `"\` never closes; a backtracking tokenizer rescans to EOF at every quote
+        # (quadratic). The unrolled string patterns keep this linear - a big input is instant.
+        code = '"\\' * 20000
+        start = time.perf_counter()
+        out = H.highlight_code("javascript", code)
+        elapsed = time.perf_counter() - start
+        self.assertEqual(_text_content(out), code)
+        self.assertLess(elapsed, 3.0, "string tokenization must be linear, not superlinear")
+
+
+class HighlightCodeSanitizationTests(unittest.TestCase):
+    def test_class_language_only_emits_safe_characters(self):
+        for label in ["c++", "f#", "  spaced name  ", "../../etc/passwd", '"><script>', "语言"]:
+            with self.subTest(label=label):
+                self.assertRegex(H._class_language(label), r"^[A-Za-z0-9_+.-]*$")
+                block = H.highlight_block(label, "x = 1")
+                self.assertTrue(block.startswith('<pre><code class="language-'))
+                self.assertNotIn('"><', block)
+
+    def test_literal_highlight_span_in_source_is_escaped(self):
+        code = '<span class="cmh-code-kw">danger</span>'
+        block = H.highlight_block("html", code)
+        # The injected angle brackets must be escaped, and the text must roundtrip exactly, so
+        # the source cannot inject real markup even though html marks up `span`/`class` tokens.
+        self.assertIn("&lt;", block)
+        self.assertIn("&gt;", block)
+        self.assertEqual(_text_content(block), code)
+
+
+class HighlightCodeListExactTests(unittest.TestCase):
+    def test_main_list_is_exact_and_sorted(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            H.main(["--list"])
+        listed = [line for line in out.getvalue().split(os.linesep) if line]
+        self.assertEqual(listed, H.supported_languages())
 
 
 if __name__ == "__main__":

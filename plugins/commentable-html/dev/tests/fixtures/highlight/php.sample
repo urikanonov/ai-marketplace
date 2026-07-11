@@ -1,0 +1,13 @@
+<?php
+
+// Sum an array of numbers
+function total(array $values): int {
+    $sum = 0;
+    foreach ($values as $value) {
+        $sum += $value;
+    }
+    return $sum; /* fold */
+}
+
+$numbers = [1, 2, 3];
+echo "total = " . total($numbers) . "\n";
