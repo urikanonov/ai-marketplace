@@ -121,5 +121,57 @@ class GitShowTests(unittest.TestCase):
         self.assertIsNone(error)
 
 
+class CurrentVersionForTests(unittest.TestCase):
+    def _root(self):
+        import tempfile
+        from pathlib import Path
+        return Path(tempfile.mkdtemp())
+
+    def test_pkg_layout_plugin_json(self):
+        root = self._root()
+        pkg = root / "plugins" / "p" / "pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "plugin.json").write_text('{"version": "2.3.4"}', encoding="utf-8")
+        version, source = ccs.current_version_for(root, "./plugins/p/pkg", {"name": "p", "version": "9.9.9"})
+        self.assertEqual(version, "2.3.4")
+        self.assertIn("plugin.json", source)
+
+    def test_plugin_dir_layout_plugin_json(self):
+        root = self._root()
+        pdir = root / "plugins" / "p"
+        pdir.mkdir(parents=True)
+        (pdir / "plugin.json").write_text('{"version": "1.2.0"}', encoding="utf-8")
+        version, source = ccs.current_version_for(root, "./plugins/p", {"name": "p", "version": "9.9.9"})
+        self.assertEqual(version, "1.2.0")
+        self.assertIn("plugin.json", source)
+
+    def test_skill_source_falls_back_to_manifest_entry(self):
+        root = self._root()
+        (root / "plugins" / "p" / "skills" / "s").mkdir(parents=True)
+        version, source = ccs.current_version_for(
+            root, "./plugins/p/skills/s", {"name": "p", "version": "4.5.6"})
+        self.assertEqual(version, "4.5.6")
+        self.assertIn("marketplace entry", source)
+
+
+class ResolveBaseRefTests(unittest.TestCase):
+    def test_uses_merge_base_when_it_differs_from_head(self):
+        with unittest.mock.patch.object(ccs, "_rev_parse", side_effect=lambda r, ref: "head" if ref == "HEAD" else None), \
+             unittest.mock.patch.object(ccs, "_git_out", return_value="mergebase"):
+            self.assertEqual(ccs.resolve_base_ref(ccs.ROOT, "origin/main"), "mergebase")
+
+    def test_falls_back_to_parent_when_merge_base_is_head(self):
+        def rp(root, ref):
+            return {"HEAD": "same", "HEAD^": "parent"}.get(ref)
+        with unittest.mock.patch.object(ccs, "_rev_parse", side_effect=rp), \
+             unittest.mock.patch.object(ccs, "_git_out", return_value="same"):
+            self.assertEqual(ccs.resolve_base_ref(ccs.ROOT, "origin/main"), "HEAD^")
+
+    def test_falls_back_to_base_when_history_unavailable(self):
+        with unittest.mock.patch.object(ccs, "_rev_parse", return_value=None), \
+             unittest.mock.patch.object(ccs, "_git_out", return_value=None):
+            self.assertEqual(ccs.resolve_base_ref(ccs.ROOT, "origin/main"), "origin/main")
+
+
 if __name__ == "__main__":
     unittest.main()

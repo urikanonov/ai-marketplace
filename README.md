@@ -93,7 +93,7 @@ Found a bug in a plugin? [Open an issue](https://github.com/urikanonov/ai-market
 
 ## Contributing
 
-The `main` branch is protected. The repository owner pushes directly; everyone else contributes through a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and the template for adding a new plugin.
+The `main` branch is protected: every change - including the maintainer's - lands through a pull request that passes CI. Direct pushes to `main` are blocked for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and the template for adding a new plugin.
 
 ## License
 

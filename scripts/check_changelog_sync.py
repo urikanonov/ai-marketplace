@@ -72,23 +72,31 @@ def plugin_root_from_source(source):
     return Path("plugins") / parts[1]
 
 
-def current_version_for(root, plugin_root, entry):
-    pkg_plugin_json = root / plugin_root / "pkg" / "plugin.json"
-    if pkg_plugin_json.exists():
-        data = load_json(pkg_plugin_json)
-        return str(data.get("version", "")), rel(pkg_plugin_json, root)
+def current_version_for(root, source, entry):
+    """Resolve the plugin's current version from the plugin.json at the manifest source
+    (this covers both a pkg/ layout, e.g. plugins/<p>/pkg/plugin.json, and a plugin-dir
+    layout, e.g. plugins/<p>/plugin.json). Fall back to the manifest entry version when the
+    source has no plugin.json (a single-skill source); validate_marketplace.py enforces that
+    a plugin.json version matches the manifest entry."""
+    src = _norm_source(source)
+    if src:
+        plugin_json = root / src / "plugin.json"
+        if plugin_json.exists():
+            data = load_json(plugin_json)
+            return str(data.get("version", "")), rel(plugin_json, root)
     return str(entry.get("version", "")), "marketplace entry %s" % entry.get("name", "<unknown>")
 
 
 def iter_plugin_changelogs(root, manifest):
     for entry in manifest.get("plugins", []):
-        plugin_root = plugin_root_from_source(entry.get("source", ""))
+        source = entry.get("source", "")
+        plugin_root = plugin_root_from_source(source)
         if plugin_root is None:
             continue
         changelog = root / plugin_root / "CHANGELOG.md"
         if not changelog.exists():
             continue
-        version, version_source = current_version_for(root, plugin_root, entry)
+        version, version_source = current_version_for(root, source, entry)
         yield PluginChangelog(str(entry.get("name", "<unknown>")), plugin_root, changelog, version, version_source)
 
 
@@ -185,6 +193,37 @@ def history_failure_message(plugin, change, base_ref):
     )
 
 
+def _git_out(root, args):
+    try:
+        result = subprocess.run(["git", "-C", str(root)] + args, capture_output=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.decode("utf-8", "replace").strip() or None
+
+
+def _rev_parse(root, ref):
+    return _git_out(root, ["rev-parse", "--verify", "--quiet", ref + "^{commit}"])
+
+
+def resolve_base_ref(root, base_ref):
+    """Compare released history against the commit the current work diverged from, not the
+    live tip of base_ref. Using merge-base(base_ref, HEAD) means a concurrent advance of the
+    base branch (a sibling PR merging while this one is open) does not look like removed
+    history and spuriously fail the check. When the merge-base is HEAD itself - which is what
+    a push to main looks like, where base_ref (origin/main) is the just-pushed commit - fall
+    back to HEAD's first parent so the push is still checked against the previous tip. Fall
+    back to base_ref when git history is unavailable (git_show_text then reports it)."""
+    head = _rev_parse(root, "HEAD")
+    merge_base = _git_out(root, ["merge-base", base_ref, "HEAD"])
+    if merge_base and merge_base != head:
+        return merge_base
+    if head and _rev_parse(root, "HEAD^"):
+        return "HEAD^"
+    return base_ref
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Validate that plugin versions have changelog entries and released history is unchanged."
@@ -195,6 +234,7 @@ def main(argv=None):
         help="Git ref used for released-history comparison (default: origin/main).",
     )
     args = parser.parse_args(argv)
+    base_ref = resolve_base_ref(ROOT, args.base)
 
     try:
         manifest = load_json(ROOT / MANIFEST)
@@ -226,7 +266,7 @@ def main(argv=None):
         if changelog_rel in checked_history:
             continue
         checked_history.add(changelog_rel)
-        base_content, error, note = git_show_text(ROOT, args.base, changelog_rel)
+        base_content, error, note = git_show_text(ROOT, base_ref, changelog_rel)
         if error:
             failures.append("%s: %s" % (plugin.name, error))
             continue
@@ -234,7 +274,7 @@ def main(argv=None):
             notes.append("check-changelog-sync: NOTE - " + note)
             continue
         for change in compare_released_history(base_content, head_content):
-            failures.append(history_failure_message(plugin, change, args.base))
+            failures.append(history_failure_message(plugin, change, base_ref))
 
     for note in notes:
         print(note)

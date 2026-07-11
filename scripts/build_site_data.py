@@ -46,8 +46,9 @@ def safe_url(url):
     """Allow https, mailto, and in-repo relative URLs; neutralize anything with a
     dangerous or insecure scheme (javascript:, data:, http:, ...) or a protocol-relative
     //host. Strip C0 control chars, DEL, and whitespace first, because browsers remove
-    tabs/newlines from URLs (so a tab inside "javascript" would otherwise hide the scheme)."""
-    u = re.sub(r"[\x00-\x20\x7f]", "", url or "")
+    tabs/newlines from URLs (so a tab inside "javascript" would otherwise hide the scheme),
+    and fold backslashes to forward slashes because browsers treat \\host like //host."""
+    u = re.sub(r"[\x00-\x20\x7f]", "", url or "").replace("\\", "/")
     if u.startswith("//"):
         return "#"
     scheme = re.match(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):", u)
@@ -80,6 +81,8 @@ def replace_region_block(text, name, inner):
     new_text, count = pattern.subn(repl, text)
     if count == 0:
         raise SystemExit("region not found: %s" % name)
+    if count > 1:
+        raise SystemExit("duplicate region: %s" % name)
     return new_text
 
 
@@ -91,6 +94,8 @@ def replace_region_inline(text, name, inner):
     new_text, count = pattern.subn(lambda m: replacement, text)
     if count == 0:
         raise SystemExit("region not found: %s" % name)
+    if count > 1:
+        raise SystemExit("duplicate region: %s" % name)
     return new_text
 
 
@@ -148,16 +153,13 @@ def mentions_plugin(text, plugin):
 
 
 def changelog_candidates(root, explicit):
-    """Ordered changelog sources to try. Prefer the marketplace root CHANGELOG.md
-    (filter to the plugin's bullets); fall back to a per-plugin CHANGELOG.md (all
-    bullets) so the site keeps building if the changelog is split per plugin. Each
-    entry is (path, filter_plugin) where filter_plugin is None for a per-plugin file."""
+    """The per-plugin CHANGELOG.md is the single source of truth for a plugin page's
+    changelog (the marketplace has no aggregate changelog, and it is also the file the
+    version+changelog-sync CI check enforces). An explicit --changelog path overrides it
+    and is read in the same per-plugin format (no plugin-name filtering)."""
     if explicit:
-        return [(explicit, CHANGELOG_PLUGIN)]
-    return [
-        (os.path.join(root, "CHANGELOG.md"), CHANGELOG_PLUGIN),
-        (os.path.join(root, "plugins", CHANGELOG_PLUGIN, "CHANGELOG.md"), None),
-    ]
+        return [(explicit, None)]
+    return [(os.path.join(root, "plugins", CHANGELOG_PLUGIN, "CHANGELOG.md"), None)]
 
 
 def parse_changelog(text, plugin):
@@ -275,25 +277,31 @@ _MD_CODE = re.compile(r"`([^`]+)`")
 
 
 def _md_inline(escaped):
-    """Apply inline markdown to already-HTML-escaped text. Images run before links so an
-    image is not mis-parsed as a link. Captured URLs are already escaped (attribute-safe),
-    so they are passed through safe_url without re-escaping. Inline code spans are protected
-    so a `**` inside code is not turned into bold."""
+    """Apply inline markdown to already-HTML-escaped text. Code spans are parsed first and
+    stashed so their content stays literal; images and links are then parsed and their
+    generated tags are also stashed, so a later bold pass can never turn a `**` inside a
+    URL into <strong> or corrupt an emitted tag. Captured URLs are already HTML-escaped
+    (attribute-safe), so they pass through safe_url without re-escaping. Placeholders are
+    restored last, repeatedly, so a code span nested in a link is also emitted."""
+    tokens = []
+
+    def _stash(markup):
+        tokens.append(markup)
+        return "\x00%d\x00" % (len(tokens) - 1)
+
+    escaped = _MD_CODE.sub(lambda m: _stash("<code>%s</code>" % m.group(1)), escaped)
     escaped = _MD_IMAGE.sub(
-        lambda m: '<img src="%s" alt="%s" loading="lazy" />' % (safe_url(m.group(2)), m.group(1)),
+        lambda m: _stash('<img src="%s" alt="%s" loading="lazy" />' % (safe_url(m.group(2)), m.group(1))),
         escaped)
     escaped = _MD_LINK.sub(
-        lambda m: '<a href="%s">%s</a>' % (safe_url(m.group(2)), m.group(1)),
+        lambda m: _stash('<a href="%s">%s</a>' % (safe_url(m.group(2)),
+                                                  _MD_BOLD.sub(r"<strong>\1</strong>", m.group(1)))),
         escaped)
-    code_spans = []
-
-    def _stash(match):
-        code_spans.append(match.group(1))
-        return "\x00%d\x00" % (len(code_spans) - 1)
-
-    escaped = _MD_CODE.sub(_stash, escaped)
     escaped = _MD_BOLD.sub(r"<strong>\1</strong>", escaped)
-    escaped = re.sub(r"\x00(\d+)\x00", lambda m: "<code>%s</code>" % code_spans[int(m.group(1))], escaped)
+    for _ in range(len(tokens) + 1):
+        escaped, replaced = re.subn(r"\x00(\d+)\x00", lambda m: tokens[int(m.group(1))], escaped)
+        if not replaced:
+            break
     return escaped
 
 
@@ -357,10 +365,25 @@ def render_markdown(md, heading_offset=1):
             flush_para()
             flush_list()
             continue
+        if state["list_tag"]:
+            flush_list()
         para.append(stripped)
+    if state["code"] is not None:
+        out.append("<pre><code>%s</code></pre>" % esc("\n".join(state["code"])))
+        state["code"] = None
     flush_para()
     flush_list()
     return "\n".join(out)
+
+
+def site_tutorial_markdown(md):
+    """Rewrite the package-relative example paths in TUTORIAL.md to the site's demo
+    location, so the generated tutorial page points readers at files that actually exist
+    on the site (the tutorial page lives at /commentable-html/tutorial/, the demos at
+    /commentable-html/demo/). Only the known demo filenames are rewritten."""
+    for name in DEMO_FILES:
+        md = md.replace("examples/" + name, "../demo/" + name)
+    return md
 
 
 def sync_tutorial_images(root, check):
@@ -368,6 +391,7 @@ def sync_tutorial_images(root, check):
     dst_dir = os.path.join(root, TUTORIAL_IMAGES_DST)
     drift = []
     if not os.path.isdir(src_dir):
+        drift.extend(_orphans(dst_dir, [], check))
         return drift
     src_names = [n for n in sorted(os.listdir(src_dir)) if os.path.isfile(os.path.join(src_dir, n))]
     for name in src_names:
@@ -430,10 +454,15 @@ def main(argv):
     tutorial_src_path = os.path.join(root, TUTORIAL_SRC)
     tutorial_src = None
     tutorial_out = None
-    if os.path.exists(tutorial_page_path) and os.path.exists(tutorial_src_path):
+    if os.path.exists(tutorial_page_path):
+        if not os.path.exists(tutorial_src_path):
+            raise SystemExit(
+                "tutorial source missing: %s (restore it, or remove the tutorial page it generates)"
+                % tutorial_src_path)
         tutorial_src = read_text(tutorial_page_path)
         tutorial_out = replace_region_block(
-            tutorial_src, "tutorial", render_markdown(read_text(tutorial_src_path)))
+            tutorial_src, "tutorial",
+            render_markdown(site_tutorial_markdown(read_text(tutorial_src_path))))
 
     demo_drift = sync_demos(root, args.check)
     tutorial_img_drift = sync_tutorial_images(root, args.check)
