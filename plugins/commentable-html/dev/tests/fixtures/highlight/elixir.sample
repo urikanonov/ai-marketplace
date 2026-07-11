@@ -1,0 +1,12 @@
+defmodule Fib do
+  # Compute the nth Fibonacci number
+  def compute(0), do: 0
+  def compute(1), do: 1
+
+  def compute(n) when n > 1 do
+    compute(n - 1) + compute(n - 2)
+  end
+end
+
+values = Enum.map(0..9, &Fib.compute/1)
+IO.inspect(values, label: "fib")

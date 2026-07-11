@@ -1,0 +1,13 @@
+// Fibonacci generator
+int fib(int n) {
+  if (n < 2) {
+    return n;
+  }
+  return fib(n - 1) + fib(n - 2);
+}
+
+void main() {
+  final values = [for (var i = 0; i < 10; i++) fib(i)];
+  /* prints the list */
+  print("fib: $values");
+}

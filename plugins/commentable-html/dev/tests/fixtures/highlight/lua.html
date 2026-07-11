@@ -1,0 +1,14 @@
+<span class="cmh-code-com">-- Recursive factorial</span>
+<span class="cmh-code-kw">local</span> <span class="cmh-code-kw">function</span> <span class="cmh-code-fn">factorial</span><span class="cmh-code-op">(</span>n<span class="cmh-code-op">)</span>
+  <span class="cmh-code-kw">if</span> n <span class="cmh-code-op">&lt;=</span> <span class="cmh-code-num">1</span> <span class="cmh-code-kw">then</span>
+    <span class="cmh-code-kw">return</span> <span class="cmh-code-num">1</span>
+  <span class="cmh-code-kw">end</span>
+  <span class="cmh-code-kw">return</span> n <span class="cmh-code-op">*</span> <span class="cmh-code-fn">factorial</span><span class="cmh-code-op">(</span>n <span class="cmh-code-op">-</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)</span>
+<span class="cmh-code-kw">end</span>
+
+<span class="cmh-code-com">--[[
+  Print factorials from 1 to 5
+]]</span>
+<span class="cmh-code-kw">for</span> i <span class="cmh-code-op">=</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">5</span> <span class="cmh-code-kw">do</span>
+  <span class="cmh-code-fn">print</span><span class="cmh-code-op">(</span>string<span class="cmh-code-op">.</span><span class="cmh-code-fn">format</span><span class="cmh-code-op">(</span><span class="cmh-code-str">"%d! = %d"</span><span class="cmh-code-op">,</span> i<span class="cmh-code-op">,</span> <span class="cmh-code-fn">factorial</span><span class="cmh-code-op">(</span>i<span class="cmh-code-op">)))</span>
+<span class="cmh-code-kw">end</span>

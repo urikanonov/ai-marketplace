@@ -1,0 +1,12 @@
+// Sum a list of numbers
+def total(List<Integer> values) {
+    int sum = 0
+    for (v in values) {
+        sum += v
+    }
+    return sum
+}
+
+def numbers = [1, 2, 3]
+/* prints 6 */
+println "total = ${total(numbers)}"

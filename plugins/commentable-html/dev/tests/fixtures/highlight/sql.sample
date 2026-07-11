@@ -1,0 +1,10 @@
+-- Top customers by revenue
+SELECT c.id, c.name, SUM(o.amount) AS revenue
+FROM customers AS c
+INNER JOIN orders AS o ON o.customer_id = c.id
+WHERE o.status = 'paid'
+GROUP BY c.id, c.name
+HAVING SUM(o.amount) > 1000
+ORDER BY revenue DESC
+LIMIT 10;
+/* revenue is in cents */

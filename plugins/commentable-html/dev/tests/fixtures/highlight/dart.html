@@ -1,0 +1,13 @@
+<span class="cmh-code-com">// Fibonacci generator</span>
+int <span class="cmh-code-fn">fib</span><span class="cmh-code-op">(</span>int n<span class="cmh-code-op">)</span> <span class="cmh-code-op">{</span>
+  <span class="cmh-code-kw">if</span> <span class="cmh-code-op">(</span>n <span class="cmh-code-op">&lt;</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">)</span> <span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">return</span> n<span class="cmh-code-op">;</span>
+  <span class="cmh-code-op">}</span>
+  <span class="cmh-code-kw">return</span> <span class="cmh-code-fn">fib</span><span class="cmh-code-op">(</span>n <span class="cmh-code-op">-</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)</span> <span class="cmh-code-op">+</span> <span class="cmh-code-fn">fib</span><span class="cmh-code-op">(</span>n <span class="cmh-code-op">-</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">);</span>
+<span class="cmh-code-op">}</span>
+
+<span class="cmh-code-kw">void</span> <span class="cmh-code-fn">main</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">{</span>
+  <span class="cmh-code-kw">final</span> values <span class="cmh-code-op">=</span> <span class="cmh-code-op">[</span><span class="cmh-code-kw">for</span> <span class="cmh-code-op">(</span><span class="cmh-code-kw">var</span> i <span class="cmh-code-op">=</span> <span class="cmh-code-num">0</span><span class="cmh-code-op">;</span> i <span class="cmh-code-op">&lt;</span> <span class="cmh-code-num">10</span><span class="cmh-code-op">;</span> i<span class="cmh-code-op">++)</span> <span class="cmh-code-fn">fib</span><span class="cmh-code-op">(</span>i<span class="cmh-code-op">)];</span>
+  <span class="cmh-code-com">/* prints the list */</span>
+  <span class="cmh-code-fn">print</span><span class="cmh-code-op">(</span><span class="cmh-code-str">"fib: $values"</span><span class="cmh-code-op">);</span>
+<span class="cmh-code-op">}</span>

@@ -1,0 +1,11 @@
+<span class="cmh-code-kw">module</span> Main <span class="cmh-code-kw">where</span>
+
+<span class="cmh-code-com">-- Sum a list of integers</span>
+total <span class="cmh-code-op">::</span> <span class="cmh-code-op">[</span>Int<span class="cmh-code-op">]</span> <span class="cmh-code-op">-&gt;</span> Int
+total <span class="cmh-code-op">=</span> foldr <span class="cmh-code-op">(+)</span> <span class="cmh-code-num">0</span>
+
+<span class="cmh-code-com">{- Entry point -}</span>
+main <span class="cmh-code-op">::</span> IO <span class="cmh-code-op">()</span>
+main <span class="cmh-code-op">=</span> <span class="cmh-code-kw">do</span>
+  <span class="cmh-code-kw">let</span> values <span class="cmh-code-op">=</span> <span class="cmh-code-op">[</span><span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">3</span><span class="cmh-code-op">]</span>
+  putStrLn <span class="cmh-code-op">(</span><span class="cmh-code-str">"sum = "</span> <span class="cmh-code-op">++</span> show <span class="cmh-code-op">(</span>total values<span class="cmh-code-op">))</span>

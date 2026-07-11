@@ -1,0 +1,13 @@
+<span class="cmh-code-kw">object</span> Demo <span class="cmh-code-op">{</span>
+  <span class="cmh-code-com">// Sum a list recursively</span>
+  <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">sum</span><span class="cmh-code-op">(</span>xs<span class="cmh-code-op">:</span> List<span class="cmh-code-op">[</span>Int<span class="cmh-code-op">]):</span> Int <span class="cmh-code-op">=</span> xs <span class="cmh-code-kw">match</span> <span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">case</span> Nil <span class="cmh-code-op">=&gt;</span> <span class="cmh-code-num">0</span>
+    <span class="cmh-code-kw">case</span> head <span class="cmh-code-op">::</span> tail <span class="cmh-code-op">=&gt;</span> head <span class="cmh-code-op">+</span> <span class="cmh-code-fn">sum</span><span class="cmh-code-op">(</span>tail<span class="cmh-code-op">)</span>
+  <span class="cmh-code-op">}</span>
+
+  <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">main</span><span class="cmh-code-op">(</span>args<span class="cmh-code-op">:</span> Array<span class="cmh-code-op">[</span>String<span class="cmh-code-op">]):</span> Unit <span class="cmh-code-op">=</span> <span class="cmh-code-op">{</span>
+    <span class="cmh-code-com">/* prints 6 */</span>
+    <span class="cmh-code-kw">val</span> values <span class="cmh-code-op">=</span> <span class="cmh-code-fn">List</span><span class="cmh-code-op">(</span><span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">3</span><span class="cmh-code-op">)</span>
+    <span class="cmh-code-fn">println</span><span class="cmh-code-op">(</span>s<span class="cmh-code-str">"sum = ${sum(values)}"</span><span class="cmh-code-op">)</span>
+  <span class="cmh-code-op">}</span>
+<span class="cmh-code-op">}</span>
