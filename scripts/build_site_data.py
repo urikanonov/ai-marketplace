@@ -185,6 +185,15 @@ def render_plugins(manifest):
     return "\n".join(cards)
 
 
+def render_demo_fullscreen_link():
+    return (
+        '<a class="demo-fs" id="demo-fullscreen" href="demo/report-taxi.html" '
+        'target="_blank" rel="noopener noreferrer" '
+        'aria-label="Open this demo full screen in a new tab" '
+        'title="Open this demo in a full browser tab">Full screen &#8599;</a>'
+    )
+
+
 def clean_entry(text, plugin):
     stripped = text
     if plugin:
@@ -527,6 +536,8 @@ def main(argv):
     plugin_src = read_text(plugin_path)
     plugin_out = replace_region_inline(plugin_src, "version", "v" + esc(version))
     plugin_out = replace_region_block(plugin_out, "changelog", changelog_html)
+    plugin_out = replace_region_inline(
+        plugin_out, "demo-fullscreen", render_demo_fullscreen_link())
     plugin_out = stamp_assets(plugin_out, root)
 
     tutorial_page_path = os.path.join(root, TUTORIAL_PAGE)

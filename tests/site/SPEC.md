@@ -101,6 +101,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-A11Y-02 | Every image on the hub, plugin, and tutorial pages carries non-empty alt text. | `tests/site/tests/site.spec.js` - `every image on every page has non-empty alt text` |
 | SITE-A11Y-03 | Copy success and failure feedback is exposed through a polite, atomic live region so assistive technology announces the outcome. | `tests/site/tests/site.spec.js` - `install command copy button copies the command and shows feedback`, `copy failure gives a platform-neutral manual hint` |
 | SITE-A11Y-04 | A linked plugin card uses its visible title as the single primary link, has a clear keyboard focus ring, and has no stretched overlay or duplicate Learn more link. | `tests/site/tests/site.spec.js` - `plugin cards use one clearly focused title link without a stretched overlay`; `scripts/test_build_site_data.py` - `RenderPluginsTests.test_plugin_page_uses_title_as_single_primary_link` |
+| SITE-A11Y-05 | The demo full-screen link announces in its accessible name that it opens a new tab. | `tests/site/tests/site.spec.js` - `demo has one safe full-screen button and a two-option slider`; `scripts/test_build_site_data.py` - `DemoFullscreenTests.test_link_accessible_name_announces_new_tab` |
 
 ## Theme
 

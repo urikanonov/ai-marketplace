@@ -134,6 +134,7 @@ test("demo has one safe full-screen button and a two-option slider", async ({ pa
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
+  await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
   await expect(page.locator(".demo-tab")).toHaveCount(2);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
 });

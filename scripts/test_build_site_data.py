@@ -115,6 +115,14 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertNotIn("Learn more", out)
 
 
+class DemoFullscreenTests(unittest.TestCase):
+    def test_link_accessible_name_announces_new_tab(self):
+        out = bsd.render_demo_fullscreen_link()
+        self.assertIn('target="_blank"', out)
+        self.assertIn('rel="noopener noreferrer"', out)
+        self.assertIn('aria-label="Open this demo full screen in a new tab"', out)
+
+
 class RenderMarkdownTests(unittest.TestCase):
     def test_headings_offset_lists_bold_code(self):
         html = bsd.render_markdown("# Title\n\n## Sub\n\n- a\n- b\n\n1. x\n2. y\n\n**bold** and `code`.")
