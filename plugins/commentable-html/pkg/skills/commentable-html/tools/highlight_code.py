@@ -389,8 +389,9 @@ _STRING_PATTERNS = {
     "sql_single": r"'[^']*(?:''[^']*)*'",
     "toml_single_literal": r"'[^'\n]*'",
     # A single character or escape between single quotes - a C/C++/C#/Java/Go/Rust char or rune literal.
-    # It cannot match a Rust lifetime (<'a>) or a digit separator (1'000) because those are not `'x'`.
-    "char": r"'(?:\\[\s\S]|[^'\\\n])'",
+    # We allow multi-byte escapes (\u1234) but restrict unescaped content to exactly one char to avoid
+    # swallowing Rust lifetimes (<'a>) or C++ digit separators (1'000'000).
+    "char": r"'(?:\\[\s\S][^'\\\n]*|[^'\\\n])'",
     # Unrolled (linear-time) loop so pathological escaped-quote input cannot backtrack; \\[\s\S]
     # keeps a backslash-newline line continuation inside the string.
     "single": r"'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'",

@@ -339,6 +339,11 @@ class HighlightCodeCommentAndStringEdgeTests(unittest.TestCase):
                          H.highlight_code("rust", "fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {"))
         # A multi-character single-quoted string in a string-quote language still highlights.
         self.assertIn("<span class=\"cmh-code-str\">'hi'</span>", H.highlight_code("python", "s = 'hi'"))
+        # Escaped and unicode char literals highlight too, not only single raw chars.
+        self.assertIn("<span class=\"cmh-code-str\">'\\n'</span>", H.highlight_code("c", "c = '\\n';"))
+        self.assertIn("<span class=\"cmh-code-str\">'\\x41'</span>", H.highlight_code("c", "c = '\\x41';"))
+        self.assertIn("<span class=\"cmh-code-str\">'\\u0041'</span>", H.highlight_code("java", "c = '\\u0041';"))
+        self.assertIn("<span class=\"cmh-code-str\">'\\u{2764}'</span>", H.highlight_code("rust", "let c = '\\u{2764}';"))
 
     def test_pathological_escaped_quote_input_is_linear(self):
         # A run of `"\` never closes; a backtracking tokenizer rescans to EOF at every quote

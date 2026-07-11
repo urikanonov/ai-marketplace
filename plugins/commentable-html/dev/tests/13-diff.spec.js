@@ -689,6 +689,7 @@ test("newly-supported languages are syntax-highlighted in diffs (runtime parity)
     { label: "probe.hs", body: '@@ -1 +1 @@\n-x = 1\n+s = "hi" -- note', com: "-- note" },
     { label: "probe.bat", body: "@@ -1 +1 @@\n-echo a\n+rem a note", com: "rem a note" },
     { label: "probe.mm", body: '@@ -1 +1 @@\n-int x;\n+id s = @"hi"; // note', com: "// note" },
+    { label: "probe.m", body: '@@ -1 +1 @@\n-int x;\n+id s = @"hi"; // note', com: "// note" },
     { label: "probe.groovy", body: '@@ -1 +1 @@\n-x = 1\n+def s = "hi" // note', com: "// note" },
   ];
   for (const c of cases) {
