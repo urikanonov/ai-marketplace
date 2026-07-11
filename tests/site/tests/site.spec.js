@@ -248,6 +248,84 @@ test("plugin page links to the tutorial", async ({ page }) => {
   await expect(page.locator('a[href="tutorial/"]').first()).toBeVisible();
 });
 
+test("every image on every page has non-empty alt text", async ({ page }) => {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const missing = await page.evaluate(() =>
+      Array.prototype.filter
+        .call(document.querySelectorAll("img"), (img) => !(img.getAttribute("alt") || "").trim())
+        .map((img) => img.getAttribute("src"))
+    );
+    expect(missing, "images without alt text on " + p + ": " + missing.join(", ")).toEqual([]);
+  }
+});
+
+test("commentable-html nav keeps the user on the page and offers a Marketplace link", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  // The top-left brand icon stays on the commentable-html page (does not jump to the hub).
+  await expect(page.locator(".brand")).toHaveAttribute("href", "./");
+  // A Marketplace link sits to the right of GitHub and goes back to the hub.
+  const market = page.locator('.nav-links a', { hasText: "Marketplace" });
+  await expect(market).toHaveAttribute("href", "../");
+  const links = page.locator(".nav-links a");
+  const count = await links.count();
+  const texts = [];
+  for (let linkIndex = 0; linkIndex < count; linkIndex++) texts.push((await links.nth(linkIndex).textContent()).trim());
+  expect(texts.indexOf("Marketplace")).toBe(texts.indexOf("GitHub") + 1);
+});
+
+test("commentable-html hero shows the plugin logo", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const logo = page.locator(".hero-logo");
+  await expect(logo).toHaveCount(1);
+  await expect(logo).toHaveAttribute("alt", /commentable html/i);
+});
+
+test("the full-screen button has a light-red (accent-tinted) background", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const bg = await page.locator("#demo-fullscreen").evaluate(
+    (el) => getComputedStyle(el).backgroundColor
+  );
+  const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  expect(m, "unexpected background color: " + bg).not.toBeNull();
+  const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  // A light red tint: red channel clearly dominant and the fill is light.
+  expect(r).toBeGreaterThan(g);
+  expect(r).toBeGreaterThan(b);
+  expect(r).toBeGreaterThan(220);
+});
+
+test("clicking a tutorial image opens a full-size lightbox that Escape closes", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const overlay = page.locator(".lightbox");
+  await expect(overlay).toBeHidden();
+  const firstImg = page.locator(".tutorial img").first();
+  const src = await firstImg.getAttribute("src");
+  await firstImg.click();
+  await expect(overlay).toBeVisible();
+  expect(await overlay.locator("img").getAttribute("src")).toContain(src);
+  await page.keyboard.press("Escape");
+  await expect(overlay).toBeHidden();
+});
+
+test("tutorial brand keeps the user in the commentable-html section", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  // The brand icon returns to the commentable-html plugin home, not the hub root.
+  await expect(page.locator(".brand")).toHaveAttribute("href", "../");
+});
+
+test("tutorial example links open the live demo, not a GitHub blob", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const exampleLinks = page.locator('.tutorial a[href*="report-community-garden.html"]');
+  const n = await exampleLinks.count();
+  expect(n).toBeGreaterThan(0);
+  for (let linkIndex = 0; linkIndex < n; linkIndex++) {
+    const href = await exampleLinks.nth(linkIndex).getAttribute("href");
+    expect(href).toMatch(/(^|\/)demo\/report-community-garden\.html$/);
+    expect(href).not.toContain("github.com");
+  }
+});
+
 test("no internal link or asset uses a root-relative path (would break the project sub-path)", async ({ page }) => {
   for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });

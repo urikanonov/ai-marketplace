@@ -177,6 +177,19 @@ class ChangelogInlineTests(unittest.TestCase):
         html = bsd.render_changelog(releases)
         self.assertIn("<summary>Show 1 older release</summary>", html)
 
+    def test_older_releases_capped_and_rest_linked_to_source(self):
+        # 2 expanded + 5 collapsed = 7 rendered; anything older is not rendered but is
+        # linked to the full changelog in source so the page never grows without bound.
+        releases = [{"name": "[1.%d.0]" % n, "groups": {"Added": ["item"]}}
+                    for n in range(9, -1, -1)]  # 10 releases
+        html = bsd.render_changelog(releases)
+        self.assertIn("<summary>Show 5 older releases</summary>", html)
+        self.assertIn(bsd.CHANGELOG_GITHUB_URL, html)
+        self.assertIn("3 earlier releases", html)
+        # The three oldest releases are not rendered inline.
+        self.assertNotIn("[1.2.0]", html)
+        self.assertNotIn("[1.0.0]", html)
+
 
 class SyncOrphanTests(unittest.TestCase):
     def test_orphan_flagged_then_removed(self):
@@ -271,17 +284,16 @@ class ChangelogCandidatesTests(unittest.TestCase):
 
 
 class SiteTutorialMarkdownTests(unittest.TestCase):
-    def test_rewrites_local_example_links_to_github(self):
+    def test_rewrites_local_example_links_to_demo(self):
         md = ("Open [`examples/report-community-garden.html`](../examples/report-community-garden.html) "
               "then [`examples/report-taxi.html`](../examples/report-taxi.html).")
         out = bsd.site_tutorial_markdown(md)
-        # The link target is rewritten to GitHub...
-        self.assertIn("(" + bsd.GITHUB_BLOB_BASE + "examples/report-community-garden.html)", out)
-        self.assertIn("(" + bsd.GITHUB_BLOB_BASE + "examples/report-taxi.html)", out)
+        # The link target is rewritten to the live demo page the site hosts...
+        self.assertIn("(../demo/report-community-garden.html)", out)
+        self.assertIn("(../demo/report-taxi.html)", out)
         # ...while the skill-root-relative display text (with no `..`) is preserved.
         self.assertIn("`examples/report-community-garden.html`", out)
         self.assertNotIn("../examples/", out)
-        self.assertNotIn("../demo/", out)
 
 
 class SyncDemosDriftTests(unittest.TestCase):

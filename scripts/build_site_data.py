@@ -38,13 +38,17 @@ TUTORIAL_IMAGES_SRC = os.path.join(
 TUTORIAL_PAGE = os.path.join("site", "commentable-html", "tutorial", "index.html")
 TUTORIAL_IMAGES_DST = os.path.join("site", "commentable-html", "tutorial", "tutorial-images")
 
-# The commentable-html skill root, and its canonical location on GitHub. The tutorial
-# references example files with skill-root-relative display paths; locally (in the shipped
-# skill) those links resolve to the local asset, while on the generated site they are
-# rewritten to point at the file on GitHub (the site does not host the skill's examples/
-# tree at that path).
-SKILL_ROOT_POSIX = "plugins/commentable-html/pkg/skills/commentable-html"
-GITHUB_BLOB_BASE = "https://github.com/urikanonov/ai-marketplace/blob/main/" + SKILL_ROOT_POSIX + "/"
+# The commentable-html skill root. The tutorial references example files with
+# skill-root-relative display paths; locally (in the shipped skill) those links resolve to
+# the local asset, while on the generated site they are rewritten to point at the live demo
+# page (the site does not host the skill's examples/ tree at that path, but it does host the
+# same reports under commentable-html/demo/).
+
+# The full per-plugin changelog on GitHub, linked from the plugin page when older releases
+# are folded away (the page shows only the most recent releases; the rest live in source).
+CHANGELOG_GITHUB_URL = (
+    "https://github.com/urikanonov/ai-marketplace/blob/main/plugins/"
+    + CHANGELOG_PLUGIN + "/CHANGELOG.md")
 
 
 def esc(value):
@@ -264,20 +268,29 @@ def _render_release(release):
     return "\n".join(parts)
 
 
-def render_changelog(releases, expanded_count=2):
-    """Show the latest `expanded_count` releases inline; fold the rest into a
-    single <details> that stays collapsed by default so the page stays short."""
+def render_changelog(releases, expanded_count=2, older_count=5):
+    """Show the latest `expanded_count` releases (counted in number of releases, default
+    2) inline; fold the next `older_count` releases (default 5) into a single <details>
+    that stays collapsed by default so the page stays short. Any releases beyond that are
+    not rendered - a link to the full changelog in source is shown instead, so the page
+    never grows without bound."""
     if not releases:
         return ('<p class="empty">No changelog entries yet. '
                 'See the full marketplace changelog on GitHub.</p>')
     blocks = [_render_release(release) for release in releases[:expanded_count]]
-    older = releases[expanded_count:]
+    older = releases[expanded_count:expanded_count + older_count]
+    remaining = len(releases) - expanded_count - len(older)
     if older:
         count = len(older)
         summary = "Show %d older release%s" % (count, "" if count == 1 else "s")
         details = ['<details class="older-releases">',
                    '  <summary>%s</summary>' % esc(summary)]
         details.extend(_render_release(release) for release in older)
+        if remaining > 0:
+            details.append(
+                '  <p class="changelog-more">{n} earlier release{s} in the '
+                '<a href="{url}">full changelog on GitHub</a>.</p>'.format(
+                    n=remaining, s="" if remaining == 1 else "s", url=esc(CHANGELOG_GITHUB_URL)))
         details.append('</details>')
         blocks.append("\n".join(details))
     return "\n".join(blocks)
@@ -446,10 +459,11 @@ def site_tutorial_markdown(md):
     TUTORIAL.md the example is a link whose display text is the skill-root-relative path
     (no `..`) and whose target is the local file (`../examples/NAME`), so a reader of the
     skill opens the local asset. On the site that local file does not exist at that path,
-    so the link target is rewritten to the file on GitHub. Only the link target changes;
-    the skill-root-relative display text is left untouched."""
+    so the link target is rewritten to the live demo page under `../demo/NAME`, which the
+    site does host - clicking it opens the actual commentable HTML in the browser. Only the
+    link target changes; the skill-root-relative display text is left untouched."""
     for name in DEMO_FILES:
-        md = md.replace("(../examples/" + name + ")", "(" + GITHUB_BLOB_BASE + "examples/" + name + ")")
+        md = md.replace("(../examples/" + name + ")", "(../demo/" + name + ")")
     return md
 
 
