@@ -640,23 +640,28 @@ def _check_nonportable(html, base_dir, id_counts):
     # ../ path), so a subfolder / parent reference is allowed - only remote/CDN URLs
     # are rejected (they break the self-contained guarantee), absolute paths are warned about
     # (they leak a local directory and are not portable), and a missing target errors.
-    if base_dir is not None:
-        base_abs = os.path.abspath(base_dir)
-        for ref in css_refs + js_refs:
-            if re.match(r"[a-z]+://", ref, re.I) or ref.startswith("//"):
-                errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
-                continue
-            norm = ref.replace("\\", "/")
-            if norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
-                # Absolute path: usable but leaks a local directory and is not portable.
-                target = os.path.abspath(ref)
-                warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
-            else:
-                # Relative ref resolved against the document folder; a subdirectory or
-                # ../ path to the skill dist/ folder is the intended nonportable workflow.
-                target = os.path.abspath(os.path.join(base_abs, norm))
-            if not os.path.exists(target):
-                errors.append('nonportable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
+    # The remote-URL and absolute-path checks are structural (they inspect the ref
+    # string only), so they always run. Only the on-disk existence check needs a
+    # base_dir; when base_dir is None the placement is deferred (e.g. generation-time
+    # validation of a not-yet-placed document), so existence is not checked - the
+    # structure is still validated.
+    for ref in css_refs + js_refs:
+        if re.match(r"[a-z]+://", ref, re.I) or ref.startswith("//"):
+            errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
+            continue
+        norm = ref.replace("\\", "/")
+        if norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
+            # Absolute path: usable but leaks a local directory and is not portable.
+            warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
+            target = os.path.abspath(ref)
+        elif base_dir is not None:
+            # Relative ref resolved against the document folder; a subdirectory or
+            # ../ path to the skill dist/ folder is the intended nonportable workflow.
+            target = os.path.abspath(os.path.join(os.path.abspath(base_dir), norm))
+        else:
+            target = None
+        if base_dir is not None and target is not None and not os.path.exists(target):
+            errors.append('nonportable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
 
     return errors, warnings
 

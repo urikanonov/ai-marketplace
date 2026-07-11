@@ -20,9 +20,11 @@ Output mode. New documents are NonPortable by DEFAULT: the ~89KB of layer CSS/JS
 referenced from the companion commentable-html.{css,js,assets.js} files instead of
 inlined, so the document (and every regeneration of it) is small and cheap to iterate
 on. A NonPortable file needs its companions reachable at the referenced path, so it is
-for local iteration; run tools/export_portable.py (or the in-page Export as Portable)
-to get a single self-contained file to share. Pass --portable to emit an inlined
-single file directly instead.
+for local iteration. To get a single self-contained file to share, regenerate with
+--portable (safe when the document has no in-browser comments yet) or use the in-page
+Export as Portable button; there is no CLI export because a tool cannot read the
+browser localStorage where in-browser comments live. Pass --portable to emit an
+inlined single file directly instead.
 
 For NonPortable output the companion references default to a relative path from --out to
 the skill's dist/ folder; use --assets-href PREFIX to reference them elsewhere, or
@@ -177,8 +179,8 @@ def make_document(template_html, content, key, label, source=None, generated=Non
     preceding content root's data-* attributes. Raises ValueError on a refused
     key or when the CONTENT markers / content root cannot be located. Pass
     `allow_reserved_key=True` only when re-stamping a document that legitimately
-    already carries a reserved key (e.g. export_portable.py preserving the source
-    document's key), never for a brand-new document.
+    already carries a reserved key (a caller re-stamping an existing document),
+    never for a brand-new document.
     """
     k = (key or "").strip()
     if not k:
@@ -219,7 +221,10 @@ def _self_validate(html_out, base_dir=None):
         import validate as _validate
     except ImportError:
         return None
-    fd, tmp = tempfile.mkstemp(suffix=".html", dir=os.getcwd())
+    # The temp file location does not affect validation: base_dir is passed explicitly,
+    # so companion refs never resolve against the temp file's directory. Use the system
+    # temp dir (not os.getcwd(), which may be read-only, e.g. C:\Windows\System32).
+    fd, tmp = tempfile.mkstemp(suffix=".html")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(html_out)
@@ -275,13 +280,20 @@ def _companion_prefix(out_path, assets_href, copy_assets):
             raise ValueError("--copy-assets needs --out FILE (cannot copy companions next to a stream)")
         return "", None, None
     if assets_href is not None:
-        return assets_href.rstrip("/"), None, None
+        # Return the prefix verbatim - _join_ref trims a trailing "/" without losing a
+        # bare root "/" (rstrip here would turn "/" into "" and drop the prefix).
+        return assets_href, None, None
     if not out_path:
         return "", ("nonportable output to stdout references the companions by bare name; keep "
                     "commentable-html.{css,js,assets.js} next to the saved file, or pass --assets-href"), None
     out_dir = os.path.dirname(os.path.abspath(out_path))
     dist = os.path.join(_skill_root(), "dist")
-    rel = os.path.relpath(dist, out_dir)
+    try:
+        rel = os.path.relpath(dist, out_dir)
+    except ValueError:
+        # Windows raises when --out is on a different drive/mount than the skill dist/.
+        raise ValueError("cannot compute a relative companion path (--out is on a different "
+                         "drive than the skill); use --assets-href PREFIX or --copy-assets")
     return rel.replace(os.sep, "/"), None, out_dir
 
 
@@ -384,8 +396,16 @@ def main(argv):
             sys.stderr.write("new_document: %s\n" % exc)
             return 2
         copy_here = args.copy_assets
+        if args.template:
+            # A custom template's companion references are the caller's responsibility:
+            # we do not rewrite them and cannot assume they resolve to the skill dist/,
+            # so defer the companion existence check to when the placed file is validated.
+            validate_base = None
         if note:
             sys.stderr.write("new_document: %s\n" % note)
+    elif args.copy_assets or args.assets_href is not None:
+        sys.stderr.write("new_document: --copy-assets / --assets-href are ignored with --portable "
+                         "(a Portable file inlines the layer and references no companions)\n")
 
     try:
         key = resolve_key(args.key, args.label, key_from_source=args.key_from_source)
@@ -405,15 +425,21 @@ def main(argv):
         return 1
 
     if args.out:
-        with open(args.out, "w", encoding="utf-8", newline="") as fh:
-            fh.write(out_html)
+        # Copy companions BEFORE writing the HTML, so a copy failure never leaves a
+        # written document that references companions missing from its folder.
         if copy_here:
             try:
                 _copy_companions(os.path.dirname(os.path.abspath(args.out)))
             except OSError as exc:
-                sys.stderr.write("new_document: wrote %s but could not copy companions: %s\n"
+                sys.stderr.write("new_document: could not copy companions next to %s: %s\n"
                                  % (args.out, exc))
                 return 1
+        try:
+            with open(args.out, "w", encoding="utf-8", newline="") as fh:
+                fh.write(out_html)
+        except OSError as exc:
+            sys.stderr.write("new_document: cannot write %s: %s\n" % (args.out, exc))
+            return 1
         sys.stderr.write("new_document: wrote %s\n" % args.out)
     else:
         sys.stdout.write(out_html)

@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-07-11
+
+### Fixed
+
+- `new_document.py`: corrected the module and `make_document` docstrings that referenced a removed CLI
+  export tool; `--assets-href "/"` now produces root-relative companion references instead of dropping
+  the prefix; a cross-drive `--out` gives an actionable message instead of a raw `relpath` error;
+  `--copy-assets` copies the companions before writing the HTML so a failed copy never leaves a broken
+  file; the write path reports `OSError` cleanly; `--copy-assets` / `--assets-href` warn when combined
+  with `--portable`; a custom `--template` defers the companion existence check (it previously always
+  failed self-validation); and self-validation no longer writes its temp file under the current working
+  directory, so it works from a read-only directory.
+- `validate.py`: the NonPortable remote-URL and absolute-path checks always run (they are structural),
+  and only the on-disk existence check is gated on `base_dir`, so an `--assets-href` remote/absolute
+  path is caught at generation time rather than slipping through.
+- `inline_images.py`: a missing or unreadable input file now reports a clean error and exits 1 instead
+  of raising an uncaught `OSError`.
+
+### Notes
+
+- Fixes surfaced by a 6-model rubber-duck review panel on the 1.0.2 change, plus a plugin-description
+  wording tidy-up. No change to the runtime review behavior.
+
 ## [1.0.2] - 2026-07-11
 
 ### Changed
