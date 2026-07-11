@@ -181,6 +181,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
       await openInline(page);
       const toc = page.locator("#cmSideToc");
       await expect(toc).toBeVisible();
+      await expect(toc.locator(".cm-side-toc-title")).toHaveText("Navigation");
       expect(await toc.locator(".cm-side-toc-list a").count()).toBeGreaterThanOrEqual(2);
       // Section numbers are shown.
       await expect(toc.locator(".cm-side-toc-list .cm-toc-num").first()).toHaveText(/^\d/);

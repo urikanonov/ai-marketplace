@@ -49,7 +49,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.0.2" />
+<meta name="commentable-html-version" content="1.1.0" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - NonPortable Demo</title>
 
@@ -278,6 +278,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <p>Select any text in the document. The "Add Comment" popup appears automatically (right-click also works). Comments stay here until the agent processes them. Use <kbd>Copy all</kbd> to send them to the agent, or <kbd>Export as Portable</kbd> (in the <kbd>...</kbd> menu) to embed them into the file so they travel with it.</p>
     </div>
   </div>
+  <div id="sidebarResizeHandle" class="cm-sidebar-resize cm-skip" role="separator" aria-orientation="vertical" aria-label="Resize comments sidebar" tabindex="0" title="Drag or use Left and Right arrow keys to resize the comments sidebar"></div>
 </aside>
 
 <div class="cm-menu cm-skip" id="contextMenu" hidden>
@@ -448,7 +449,7 @@ gantt
     <h2 id="charts">Charts (commentable)</h2>
     <p>A <code>&lt;canvas&gt;</code> chart inside a <code>&lt;figure class="chart"&gt;</code> is commentable just like an image, even though the render surface itself is <code>cm-skip</code>. Hover the chart and click <em>Add Comment</em>; the comment anchors to the chart by position and is labelled <em>chart</em> in the sidebar and the copied bundle.</p>
     <figure class="chart" aria-labelledby="demo-chart-cap">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 140px;">
+      <div class="chart-wrap cm-skip" style="position: relative; height: 140px; max-height: min(60vh, 480px); overflow: hidden;">
         <canvas id="demoChart" width="320" height="140" role="img" aria-label="Demo chart: weekly readiness trend"></canvas>
         <script>
         (function () {

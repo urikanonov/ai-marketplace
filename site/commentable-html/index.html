@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.0.2<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -164,6 +164,24 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.1.0] - 2026-07-11</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Resizable comments sidebar with a keyboard-focusable drag handle, persisted width, viewport clamps, and matching reserved page space.</li>
+              <li>Problem statement plus self-review, peer-review, and reviewer-side review-loop documentation for the generated review surface.</li>
+              <li>Documentation that explains when to use NonPortable for fast local iteration and when to Export as Portable for sharing or long-term storage.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Runtime left navigation side menu now labels itself as &quot;Navigation&quot; while leaving author-authored table-of-contents titles alone.</li>
+              <li>Sidebar header actions wrap into narrower rows instead of overflowing when the viewport or resized sidebar is narrow.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Chart.js canvases, including pie and doughnut charts, stay bounded inside figure.chart at narrow widths.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.0.2] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>

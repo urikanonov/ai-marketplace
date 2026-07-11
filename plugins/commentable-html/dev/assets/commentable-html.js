@@ -11,6 +11,7 @@ const root = document.getElementById("commentRoot") || document.body;
 const COMMENT_KEY = root.dataset.commentKey || ("commentable-html:" + location.pathname);
 const DOC_LABEL   = root.dataset.docLabel   || document.title || location.pathname;
 const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
+const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // Comment ids are generated as "c" + base36 timestamp + 4 base36 chars and are
 // later interpolated into HTML attributes (data-cid="...") and CSS selectors.
 // Loaded and embedded comment ids must match this format - otherwise a
@@ -19,7 +20,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.0.2";
+const CMH_VERSION = "1.1.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -2363,6 +2364,135 @@ document.addEventListener("mousedown", (e) => {
   hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null;
 });
 
+
+let _sidebarWidthPx = 0;
+function _sidebarWidthBounds() {
+  const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
+  const narrow = vw < 700;
+  const min = Math.min(narrow ? 240 : 320, Math.max(180, vw - 48));
+  const max = Math.max(min, Math.min(narrow ? Math.round(vw * 0.82) : 720, vw - 24));
+  return { min: min, max: max, defaultWidth: Math.max(min, Math.min(400, max)) };
+}
+function _clampSidebarWidth(value) {
+  const b = _sidebarWidthBounds();
+  const n = Number(value);
+  if (!Number.isFinite(n)) return b.defaultWidth;
+  return Math.max(b.min, Math.min(b.max, Math.round(n)));
+}
+function _setSidebarWidth(value, persist) {
+  const b = _sidebarWidthBounds();
+  const w = _clampSidebarWidth(value);
+  _sidebarWidthPx = w;
+  document.documentElement.style.setProperty("--cm-sidebar-w", w + "px");
+  if (sidebar) sidebar.classList.toggle("is-narrow", w <= 340);
+  const handle = document.getElementById("sidebarResizeHandle");
+  if (handle) {
+    handle.setAttribute("aria-valuemin", String(b.min));
+    handle.setAttribute("aria-valuemax", String(b.max));
+    handle.setAttribute("aria-valuenow", String(w));
+    handle.setAttribute("aria-valuetext", w + " pixels");
+  }
+  if (persist) {
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w)); } catch (e) { /* private mode */ }
+  }
+  _syncFloatingAfterLayoutShift();
+  return w;
+}
+function setupSidebarResize() {
+  if (!sidebar) return;
+  let saved = null;
+  try { saved = localStorage.getItem(SIDEBAR_WIDTH_KEY); } catch (e) { saved = null; }
+  _setSidebarWidth(saved == null ? _sidebarWidthBounds().defaultWidth : Number(saved), false);
+  window.addEventListener("resize", function () { _setSidebarWidth(_sidebarWidthPx || _sidebarWidthBounds().defaultWidth, false); });
+  const handle = document.getElementById("sidebarResizeHandle");
+  if (!handle || handle._cmWired) return;
+  handle._cmWired = true;
+  let dragging = false;
+  function widthFromEvent(e) { return (window.innerWidth || document.documentElement.clientWidth || 0) - e.clientX; }
+  function onDrag(e) {
+    if (!dragging) return;
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+  }
+  function finish(e) {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("cm-sidebar-resizing");
+    document.removeEventListener("pointermove", onDrag, true);
+    document.removeEventListener("pointerup", finish, true);
+    document.removeEventListener("pointercancel", finish, true);
+    try { handle.releasePointerCapture(e.pointerId); } catch (err) { /* pointer may already be released */ }
+    _setSidebarWidth(_sidebarWidthPx, true);
+  }
+  handle.addEventListener("pointerdown", beginPointerResize);
+  handle.addEventListener("pointermove", onDrag);
+  handle.addEventListener("pointerup", finish);
+  handle.addEventListener("pointercancel", finish);
+  function onMouseDrag(e) {
+    if (!dragging) return;
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+  }
+  function finishMouse(e) {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("cm-sidebar-resizing");
+    document.removeEventListener("mousemove", onMouseDrag, true);
+    document.removeEventListener("mouseup", finishMouse, true);
+    _setSidebarWidth(_sidebarWidthPx, true);
+    e.preventDefault();
+  }
+  function beginMouseResize(e) {
+    if (dragging || (e.button != null && e.button !== 0)) return false;
+    dragging = true;
+    handle.focus({ preventScroll: true });
+    document.body.classList.add("cm-sidebar-resizing");
+    document.addEventListener("mousemove", onMouseDrag, true);
+    document.addEventListener("mouseup", finishMouse, true);
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+    return true;
+  }
+  function beginPointerResize(e) {
+    if (dragging || (e.button != null && e.button !== 0)) return false;
+    dragging = true;
+    handle.focus({ preventScroll: true });
+    document.body.classList.add("cm-sidebar-resizing");
+    try { handle.setPointerCapture(e.pointerId); } catch (err) { /* capture is best effort */ }
+    document.addEventListener("pointermove", onDrag, true);
+    document.addEventListener("pointerup", finish, true);
+    document.addEventListener("pointercancel", finish, true);
+    _setSidebarWidth(widthFromEvent(e), false);
+    e.preventDefault();
+    return true;
+  }
+  handle.addEventListener("mousedown", beginMouseResize);
+  if (sidebar) {
+    sidebar.addEventListener("mousedown", function (e) {
+      const r = sidebar.getBoundingClientRect();
+      if (e.clientX <= r.left + 12) beginMouseResize(e);
+    });
+    sidebar.addEventListener("pointerdown", function (e) {
+      const r = sidebar.getBoundingClientRect();
+      if (e.clientX <= r.left + 12) beginPointerResize(e);
+    });
+  }
+  handle.addEventListener("dblclick", function () { _setSidebarWidth(_sidebarWidthBounds().defaultWidth, true); });
+  handle.addEventListener("keydown", function (e) {
+    const b = _sidebarWidthBounds();
+    const step = e.shiftKey ? 60 : 20;
+    let next = null;
+    if (e.key === "ArrowLeft") next = (_sidebarWidthPx || b.defaultWidth) + step;
+    else if (e.key === "ArrowRight") next = (_sidebarWidthPx || b.defaultWidth) - step;
+    else if (e.key === "Home") next = b.min;
+    else if (e.key === "End") next = b.max;
+    if (next != null) {
+      _setSidebarWidth(next, true);
+      e.preventDefault();
+    }
+  });
+}
+
 /* ---------- Sidebar open/close ---------- */
 function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
@@ -3673,7 +3803,7 @@ function setupSideToc() {
   head.className = "cm-side-toc-head";
   const title = document.createElement("span");
   title.className = "cm-side-toc-title";
-  title.textContent = "Contents";
+  title.textContent = "Navigation";
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "cm-side-toc-toggle";
@@ -3856,6 +3986,17 @@ function restoreHighlights() {
   });
 }
 
+
+function setupChartContainment() {
+  root.querySelectorAll("figure.chart > .chart-wrap").forEach(function (wrap) {
+    if (!wrap.style.position) wrap.style.position = "relative";
+  });
+  if (window.Chart && window.Chart.defaults) {
+    window.Chart.defaults.responsive = true;
+    window.Chart.defaults.maintainAspectRatio = false;
+  }
+}
+
 function setupFooter() {
   if (document.getElementById("cmFooter")) return;
   const f = document.createElement("footer");
@@ -3989,9 +4130,11 @@ backfillContext();
 restoreHighlights();
 setupMermaidLayer();
 setupImageLayer();
+setupChartContainment();
 setupCodeCopy();
 setupSortableTables();
 setupModeUi();
+setupSidebarResize();
 setupHeadingAnchors();
 setupCollapsibleSections();
 setupSideToc();

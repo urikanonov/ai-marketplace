@@ -1,6 +1,13 @@
 # Exports
 
 
+## Choosing a portability mode
+
+**NonPortable** is the default authoring mode for fast personal iteration with the agent. The live HTML references shared companion assets (`commentable-html.css`, `commentable-html.js`, and `commentable-html.assets.js`), so each regeneration is much cheaper in tokens while the file can reach those assets.
+
+**Portable** is one self-contained file with the CSS, runtime, and comments inlined. Use it for peer review, sharing, or long-term persistence. Create it with **Export as Portable**; from a nonportable source, the export inlines the companion assets and current comments into the downloaded file.
+
+
 ## Export as Portable
 
 > UI label: **Export as Portable** (in the toolbar **...** overflow menu and the sidebar header). Earlier builds labeled it "Save comments" / "Save in HTML"; the behavior is the same, and in nonportable mode it now always produces a combined single file (see below).
@@ -13,7 +20,9 @@ The fifth region, **EMBEDDED COMMENTS**, is an optional in-file snapshot of the 
 </script>
 ```
 
-The overflow menu and sidebar both expose an **Export as Portable** button. Clicking it:
+The overflow menu and sidebar both expose an **Export as Portable** button. It is the handoff point for the peer review loop: after your self review pass, export the Portable file, share it with a peer, then feed the peer's returned Portable HTML with embedded comments back to the agent.
+
+Clicking it:
 
 1. Fetches the on-disk HTML (`fetch(location.href)`). If that fails (file://, network unavailable, CSP), falls back to a snapshot of `document.documentElement.outerHTML` captured on the very first line of the layer's IIFE, before any DOM mutation.
 2. Replaces the contents of the `<script id="embeddedComments">` block with the current `comments` array (pretty-printed JSON, two-space indent, for git-friendly diffs).
