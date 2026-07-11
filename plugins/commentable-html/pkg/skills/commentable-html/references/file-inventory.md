@@ -46,12 +46,13 @@ Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-h
 - `references/charts.md` - Chart.js embedding, tooltip, portability, data hygiene, and verification guidance.
 - `references/code-blocks.md` - Code comment behavior and copy buttons.
 - `references/code-review-diffs.md` - Unified diff rendering and anchors.
+- `references/commentable-widgets.md` - Widget/SVG-node comments, state-change tracking, document-wide comments.
 - `references/comment-data-shape.md` - Comment JSON and pinpoint fields.
-- `references/content-conventions.md` - ADO links and stable cross-references.
+- `references/content-conventions.md` - ADO links, cross-references, and authoring guidance (shape, taste, measure, tokens).
 - `references/copy-payload.md` - `Copy all` Markdown and handled-id contract.
 - `references/design-decisions.md` - Intentional behaviors reviewers should not flag.
 - `references/document-layout.md` - Themes, TOC, sections, cards, and tables.
-- `references/exports.md` - Portable, Plain HTML, and NonPortable export semantics.
+- `references/exports.md` - Portable, Plain HTML, Markdown, and NonPortable export semantics.
 - `references/file-inventory.md` - This file.
 - `references/images-commentable.md` - Image and chart canvas comments.
 - `references/interaction-model.md` - Add-comment gestures and sidebar lifecycle.

@@ -20,7 +20,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.4.0";
+const CMH_VERSION = "1.5.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -426,6 +426,8 @@ function removeHighlight(comment) {
   if (comment.anchorType === "mermaid") clearMermaidHighlight(comment.id);
   else if (comment.anchorType === "diff") clearDiffHighlight(comment.id);
   else if (comment.anchorType === "image") clearImageHighlight(comment.id);
+  else if (comment.anchorType === "widget") clearWidgetHighlight(comment.id);
+  else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }
 
@@ -484,6 +486,11 @@ function indexMermaidDiagrams() {
   hosts.forEach((host, i) => {
     host.classList.add("cm-mermaid-host");
     host.dataset.cmMermaidIndex = String(i);
+    // Preserve the diagram source for Markdown export before mermaid replaces the element
+    // content with rendered SVG (after which textContent would be SVG text, not the source).
+    if (!host.hasAttribute("data-cmh-md-src") && !host.querySelector("svg") && !host.hasAttribute("data-processed")) {
+      host.setAttribute("data-cmh-md-src", host.textContent || "");
+    }
     mermaidDiagrams.push(host);
   });
 }
@@ -1326,6 +1333,7 @@ function attachDiffHostHandlers(block) {
       pendingRange = null;
       pendingQuote = "";
       diffAddBtn.hidden = true;
+      _setMenuMode("text");
       const r = info.rect;
       showMenu(r.left + Math.min(40, r.width / 2), r.bottom);
     }, 0);
@@ -1586,6 +1594,246 @@ if (imageAddBtn) {
   });
 }
 
+/* ---------- Commentable widgets and SVG nodes (generic opt-in) ----------
+   Any element marked data-cm-widget declares a commentable widget. Descendants marked
+   data-cm-part (with an optional data-cm-part-label) become individually commentable even
+   when the widget itself is cm-skip. A labeled SVG <g data-cm-part> is just a part, so
+   commenting on a diagram node uses the same mechanism. Parts inside containers marked
+   data-cm-slot also get state-change tracking: their slot at load is the baseline, and any
+   later move is surfaced as a synthetic "layout change" record (see widgetStateChanges). */
+const widgetAddBtn = document.getElementById("widgetAddBtn");
+const widgetParts = [];
+let pendingWidget = null;
+let widgetAddHideTimer = null;
+let _widgetBaseline = null;   // Map partKey -> slot name at load (baseline for state diff)
+let _widgetObserver = null;
+let _widgetRaf = 0;
+let _hadWidgetChanges = false;
+let _widgetOrder = new Map(); // Map partKey -> document order (O(1) sort lookup)
+let _lastWidgetSig = null;    // last widget state signature, to skip no-op re-renders
+
+function _cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
+function widgetName(el) { const w = el.closest("[data-cm-widget]"); return w ? (w.getAttribute("data-cm-widget") || "widget") : "widget"; }
+function partId(el) { return el.getAttribute("data-cm-part") || ""; }
+function partLabel(el) {
+  const l = el.getAttribute("data-cm-part-label");
+  return (l != null && l !== "") ? l.replace(/\s+/g, " ").trim() : (el.textContent || "").replace(/\s+/g, " ").trim();
+}
+function partSlot(el) { const s = el.closest("[data-cm-slot]"); return s ? (s.getAttribute("data-cm-slot") || "") : null; }
+function partKey(widget, id) { return widget + "\u0000" + id; }
+
+function _wireWidgetPart(el) {
+  if (el._cmWidgetAttached) return;
+  el._cmWidgetAttached = true;
+  el.addEventListener("mouseenter", () => showWidgetAddFor(el));
+  el.addEventListener("mouseleave", scheduleHideWidgetAdd);
+  el.addEventListener("focus", () => showWidgetAddFor(el));
+  el.addEventListener("blur", scheduleHideWidgetAdd);
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    const info = widgetInfo(el);
+    pendingWidget = null; if (widgetAddBtn) widgetAddBtn.hidden = true;
+    openWidgetComposer(info);
+  });
+}
+function indexWidgetParts() {
+  widgetParts.length = 0;
+  _widgetOrder = new Map();
+  const seenPerWidget = new Map();
+  root.querySelectorAll("[data-cm-widget] [data-cm-part]").forEach((el) => {
+    const w = widgetName(el), id = partId(el);
+    if (!id) { try { console.warn("commentable-html: ignoring a [data-cm-part] with an empty id in widget", w); } catch (e) { /* no-op */ } return; }
+    let seen = seenPerWidget.get(w);
+    if (!seen) { seen = new Set(); seenPerWidget.set(w, seen); }
+    if (seen.has(id)) { try { console.warn("commentable-html: ignoring a duplicate [data-cm-part] id", id, "in widget", w); } catch (e) { /* no-op */ } return; }
+    seen.add(id);
+    el.classList.add("cm-part-commentable");
+    if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0");
+    if (!el.getAttribute("aria-label")) {
+      const label = partLabel(el);
+      el.setAttribute("aria-label", (label ? label + " - " : "") + "press Enter to comment");
+    }
+    _wireWidgetPart(el);
+    _widgetOrder.set(partKey(w, id), widgetParts.length);
+    widgetParts.push(el);
+  });
+}
+function findWidgetPart(widget, id) {
+  try {
+    const hit = root.querySelector('[data-cm-widget="' + _cssEsc(widget) + '"] [data-cm-part="' + _cssEsc(id) + '"]');
+    if (hit) return hit;
+  } catch (e) { /* an invalid selector from exotic attribute values - fall through to the scan */ }
+  return widgetParts.find((el) => widgetName(el) === widget && partId(el) === id) || null;
+}
+function widgetInfo(el) {
+  const widget = widgetName(el), id = partId(el), label = partLabel(el);
+  return { widget, part: id, label, slot: partSlot(el), quote: label || id || widget };
+}
+function applyWidgetHighlight(comment) {
+  const el = findWidgetPart(comment.widget, comment.part);
+  if (!el) return false;
+  el.classList.add("cm-part-hl");
+  const cids = (el.getAttribute("data-cids") || "").split(/\s+/).filter(Boolean);
+  if (!cids.includes(comment.id)) cids.push(comment.id);
+  el.setAttribute("data-cids", cids.join(" "));
+  el.setAttribute("data-cid", cids[0]);
+  return true;
+}
+function _partCids(el) { return (el.getAttribute("data-cids") || el.getAttribute("data-cid") || "").split(/\s+/).filter(Boolean); }
+function clearWidgetHighlight(id) {
+  root.querySelectorAll("[data-cm-part].cm-part-hl").forEach((el) => {
+    const cids = _partCids(el);
+    const rest = cids.filter((c) => c !== id);
+    if (rest.length === cids.length) return;
+    if (rest.length) { el.setAttribute("data-cids", rest.join(" ")); el.setAttribute("data-cid", rest[0]); }
+    else { el.classList.remove("cm-part-hl", "cm-part-active"); el.removeAttribute("data-cid"); el.removeAttribute("data-cids"); }
+  });
+}
+function flashWidget(id) {
+  const el = [...root.querySelectorAll("[data-cm-part].cm-part-hl")].find((x) => _partCids(x).includes(id));
+  if (!el) return;
+  el.classList.add("cm-part-active");
+  setTimeout(() => el.classList.remove("cm-part-active"), 2200);
+}
+function positionWidgetAdd(el) {
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 && rect.height <= 0) return false;
+  const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
+  const left = rect.right - bw - 6, top = rect.top + 6;
+  widgetAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
+  widgetAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
+  return _rectInViewport(rect);
+}
+function showWidgetAddFor(el) {
+  if (!widgetAddBtn) return;
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return;
+  pendingWidget = widgetInfo(el);
+  widgetAddBtn.title = 'Comment on "' + (pendingWidget.quote || "this element") + '"';
+  if (widgetAddHideTimer) { clearTimeout(widgetAddHideTimer); widgetAddHideTimer = null; }
+  widgetAddBtn.hidden = false;
+  positionWidgetAdd(el);
+  _activeAdd = { el, btn: widgetAddBtn, position: () => positionWidgetAdd(el), clear: () => { pendingWidget = null; } };
+}
+function scheduleHideWidgetAdd() {
+  if (widgetAddHideTimer) clearTimeout(widgetAddHideTimer);
+  widgetAddHideTimer = setTimeout(() => {
+    if (widgetAddBtn && !widgetAddBtn.matches(":hover")) { widgetAddBtn.hidden = true; pendingWidget = null; }
+  }, 220);
+}
+function openWidgetComposer(info) { return createComposerElement({ mode: "new-widget", widget: info }); }
+
+// Canonical slot value: a part with no data-cm-slot ancestor reads as "(no slot)", used
+// identically by the snapshot, the signature, and the change detector so they never disagree.
+function _partSlotCanon(p) { const s = partSlot(p); return s == null ? "(no slot)" : s; }
+// State-change tracking: snapshot each part's slot at load, then report moves. Pure
+// function of the current DOM, so widgetStateChanges() is deterministic and idempotent.
+function _snapshotWidgetState() {
+  _widgetBaseline = new Map();
+  root.querySelectorAll("[data-cm-widget] [data-cm-part]").forEach((p) => {
+    const id = partId(p);
+    if (!id) return;
+    const key = partKey(widgetName(p), id);
+    if (_widgetBaseline.has(key)) return;   // first-seen wins, matching indexWidgetParts dedupe
+    _widgetBaseline.set(key, _partSlotCanon(p));
+  });
+}
+// A stable signature of the current widget layout (part keys + slots), used to skip no-op
+// sidebar rebuilds when a mutation did not actually change any part or slot.
+function _widgetStateSig() {
+  const parts = [];
+  const seen = new Set();
+  root.querySelectorAll("[data-cm-widget] [data-cm-part]").forEach((p) => {
+    const id = partId(p);
+    if (!id) return;
+    const key = partKey(widgetName(p), id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    parts.push(key + "\u0000" + _partSlotCanon(p));
+  });
+  return parts.join("\u0001");
+}
+function widgetStateChanges() {
+  if (!_widgetBaseline || !_widgetBaseline.size) return [];
+  const out = [];
+  const seen = new Set();
+  root.querySelectorAll("[data-cm-widget] [data-cm-part]").forEach((p) => {
+    const id = partId(p);
+    if (!id) return;
+    const key = partKey(widgetName(p), id);
+    if (!_widgetBaseline.has(key) || seen.has(key)) return;
+    seen.add(key);
+    const to = _partSlotCanon(p);
+    const from = _widgetBaseline.get(key);
+    if (from !== to) out.push({ widget: widgetName(p), part: id, label: partLabel(p), from, to });
+  });
+  // A part present at load but now gone from the DOM is a removal.
+  _widgetBaseline.forEach((from, key) => {
+    if (seen.has(key)) return;
+    const sep = key.indexOf("\u0000");
+    const part = key.slice(sep + 1);
+    out.push({ widget: key.slice(0, sep), part, label: part, from, to: "(removed)" });
+  });
+  return out;
+}
+function _onWidgetMutation() {
+  if (_widgetRaf) return;
+  const run = () => {
+    _widgetRaf = 0;
+    // Always re-index and reapply widget highlights, so a part node replaced in place (same
+    // widget/part/slot, e.g. a framework re-render) regains its listeners and highlight.
+    indexWidgetParts();
+    comments.forEach((c) => { if (c.anchorType === "widget") applyWidgetHighlight(c); });
+    // Only rebuild the sidebar / re-evaluate the state card when the layout actually changed,
+    // so cosmetic mutations (class toggles, mermaid attribute churn) do not thrash the panel.
+    const sig = _widgetStateSig();
+    if (sig === _lastWidgetSig) return;
+    _lastWidgetSig = sig;
+    renderComments();
+    // Surface a newly-detected layout change: open the panel so the state card (which is
+    // not counted as a comment) is not missed. Only on the 0 -> >0 transition, so a user
+    // who closes the panel is not fought.
+    const has = widgetStateChanges().length > 0;
+    if (has && !_hadWidgetChanges && typeof openSidebar === "function") openSidebar();
+    _hadWidgetChanges = has;
+  };
+  if (typeof requestAnimationFrame !== "function") { run(); return; }
+  _widgetRaf = requestAnimationFrame(run);
+}
+function setupWidgetLayer() {
+  if (!widgetAddBtn) return;
+  indexWidgetParts();
+  _snapshotWidgetState();
+  _lastWidgetSig = _widgetStateSig();
+  _hadWidgetChanges = widgetStateChanges().length > 0;
+  comments.filter((c) => c.anchorType === "widget").forEach((c) => {
+    if (!applyWidgetHighlight(c)) console.warn("Could not restore widget highlight for", c.id);
+  });
+  if (!widgetAddBtn._cmWired) {
+    widgetAddBtn._cmWired = true;
+    widgetAddBtn.addEventListener("mouseenter", () => { if (widgetAddHideTimer) { clearTimeout(widgetAddHideTimer); widgetAddHideTimer = null; } });
+    widgetAddBtn.addEventListener("mouseleave", scheduleHideWidgetAdd);
+    widgetAddBtn.addEventListener("click", () => {
+      if (!pendingWidget) return;
+      const info = pendingWidget;
+      pendingWidget = null; widgetAddBtn.hidden = true;
+      openWidgetComposer(info);
+    });
+  }
+  const widgets = root.querySelectorAll("[data-cm-widget]");
+  if (widgets.length && "MutationObserver" in window) {
+    if (_widgetObserver) _widgetObserver.disconnect();
+    _widgetObserver = new MutationObserver(_onWidgetMutation);
+    widgets.forEach((w) => _widgetObserver.observe(w, { childList: true, subtree: true }));
+  }
+}
+
+/* ---------- Document-wide comments ---------- */
+// A comment not tied to any element (raised by right-clicking empty space). It has no
+// highlight and no offsets; it just carries a note about the whole document.
+function openDocumentComposer() { return createComposerElement({ mode: "new-document" }); }
+
 /* ---------- Selection handling ---------- */
 function selectionInRoot() {
   const sel = window.getSelection();
@@ -1608,15 +1856,35 @@ function selectionInRoot() {
 // floating "Add comment" popup (raised from the selection/mouseup path) for commenting.
 const _coarsePointer = !!(window.matchMedia
   && window.matchMedia("(hover: none), (pointer: coarse)").matches);
+function _setMenuMode(mode) {
+  const mc = document.getElementById("menuComment");
+  const md = document.getElementById("menuDocComment");
+  if (mc) mc.hidden = (mode !== "text");
+  if (md) md.hidden = (mode !== "document");
+}
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
-  const got = selectionInRoot();
-  if (!got) { hideMenu(); return; }
   if (_coarsePointer) return;
+  const got = selectionInRoot();
+  if (got) {
+    e.preventDefault();
+    pendingDiffSel = null;
+    pendingRange = got.range.cloneRange();
+    pendingQuote = got.sel.toString();
+    _setMenuMode("text");
+    showMenu(e.clientX, e.clientY);
+    return;
+  }
+  // No selection: offer a document-wide comment on an "empty" right-click inside the
+  // document area, but leave the native menu for links, media, form controls, and existing
+  // comment anchors so their default actions (open link, comment on a part) still work.
+  const t = e.target;
+  const inDoc = (root.contains(t) || t === document.body || (t.closest && t.closest(".app")));
+  if (!inDoc) { hideMenu(); return; }
+  if (t.closest && t.closest("a[href], img, canvas, svg, button, input, textarea, select, [data-cm-part], mark.cm-hl")) { hideMenu(); return; }
   e.preventDefault();
-  pendingDiffSel = null;
-  pendingRange = got.range.cloneRange();
-  pendingQuote = got.sel.toString();
+  pendingRange = null; pendingQuote = ""; pendingDiffSel = null;
+  _setMenuMode("document");
   showMenu(e.clientX, e.clientY);
 });
 document.addEventListener("mouseup", (e) => {
@@ -1634,6 +1902,7 @@ document.addEventListener("mouseup", (e) => {
     pendingDiffSel = null;
     pendingRange = got.range.cloneRange();
     pendingQuote = got.sel.toString();
+    _setMenuMode("text");
     showMenuForRange(got.range);
   }, 0);
 });
@@ -1711,6 +1980,8 @@ document.getElementById("menuComment").addEventListener("click", () => {
   }
   openComposer(pendingRange, pendingQuote);
 });
+const _menuDocBtn = document.getElementById("menuDocComment");
+if (_menuDocBtn) _menuDocBtn.addEventListener("click", () => { hideMenu(); openDocumentComposer(); });
 
 /* ---------- Composer (per-instance, parallel-safe) ---------- */
 function bringToFront(el) { el.style.zIndex = ++composerZ; }
@@ -1745,7 +2016,7 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget }) {
   const el = document.createElement("div");
   // Remember what had focus so keyboard users return to the diagram node / diff
   // line / image (not <body>) after the composer closes.
@@ -1803,6 +2074,11 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     el._image = image;
     el._quote = image.quote;
+  } else if (mode === "new-widget") {
+    el._widget = widget;
+    el._quote = widget.quote || widget.label || widget.part || widget.widget;
+  } else if (mode === "new-document") {
+    el._quote = "(document-wide comment)";
   } else {
     el._quote = comment.quote;
     isCodeQuote = !!comment.isCode;
@@ -1827,6 +2103,12 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     const imgEl = findImageEl(image.imageIndex);
     anchorRect = imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  } else if (mode === "new-widget") {
+    const p = findWidgetPart(widget.widget, widget.part);
+    anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
+  } else if (mode === "new-document") {
+    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
+    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
   } else {
     let anchorEl = null;
     if (comment.anchorType === "mermaid") {
@@ -1835,6 +2117,8 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
     } else if (comment.anchorType === "image") {
       anchorEl = findImageEl(comment.imageIndex);
+    } else if (comment.anchorType === "widget") {
+      anchorEl = findWidgetPart(comment.widget, comment.part);
     } else {
       anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
     }
@@ -1938,6 +2222,7 @@ function openComposerForEdit(comment) {
       if (comment.anchorType === "mermaid") anchorEl = findMermaidNode(comment.diagramIndex, comment.nodeKey);
       else if (comment.anchorType === "diff") anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
       else if (comment.anchorType === "image") anchorEl = findImageEl(comment.imageIndex);
+      else if (comment.anchorType === "widget") anchorEl = findWidgetPart(comment.widget, comment.part);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
     }
@@ -2047,6 +2332,39 @@ function saveComposerElement(el) {
     if (!applyImageHighlight(comment)) {
       showToast("Comment saved, but the image could not be highlighted.");
     }
+  } else if (el._mode === "new-widget") {
+    const info = el._widget;
+    const partEl = findWidgetPart(info.widget, info.part);
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const ctx = partEl ? captureMermaidContext(partEl) : { section: null, headingPath: [] };
+    const comment = {
+      id,
+      anchorType: "widget",
+      widget: info.widget,
+      part: info.part,
+      partLabel: info.label,
+      slot: info.slot != null ? info.slot : null,
+      quote: info.quote,
+      note,
+      createdAt: new Date().toISOString(),
+      ...ctx,
+    };
+    comments.push(comment);
+    if (!applyWidgetHighlight(comment)) {
+      showToast("Comment saved, but the widget part could not be highlighted.");
+    }
+  } else if (el._mode === "new-document") {
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const comment = {
+      id,
+      anchorType: "document",
+      quote: "(document-wide)",
+      note,
+      createdAt: new Date().toISOString(),
+      section: null,
+      headingPath: [],
+    };
+    comments.push(comment);
   } else {
     const r = rangeFromOffsets(el._start, el._end);
     if (!r) {
@@ -2129,30 +2447,38 @@ function renderComments() {
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   updateSideInfo();
   updateSortUi();
-  if (!comments.length) {
+  const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
+  const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
+  if (!comments.length && !stateChanges.length) {
     listEl.innerHTML = `
       <div class="cm-empty">
         <p><strong>No comments yet.</strong></p>
-        <p>Select any text in the document, then right-click and choose <em>Add Comment</em>. Mermaid nodes, diff lines, and images: hover (or keyboard-focus) and click <em>Add Comment</em>. Comments stay here until the agent processes them. Click <kbd>Copy all</kbd> to send the bundle to the clipboard; the agent then marks them handled in this HTML file, and they are pruned automatically on the next reload.</p>
+        <p>Select any text in the document, then right-click and choose <em>Add Comment</em>. Mermaid nodes, diff lines, images, and widget parts: hover (or keyboard-focus) and click <em>Add Comment</em>. Right-click empty space for a document-wide comment. Comments stay here until the agent processes them. Click <kbd>Copy all</kbd> to send the bundle to the clipboard; the agent then marks them handled in this HTML file, and they are pruned automatically on the next reload.</p>
       </div>`;
     return;
   }
-  const sortKey = (c) => (c.anchorType === "mermaid")
+  const sortKey = (c) => (c.anchorType === "document")
+    ? -1
+    : (c.anchorType === "mermaid")
     ? (1e12 + (c.diagramIndex || 0) * 1000)
     : (c.anchorType === "diff")
     ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
     : (c.anchorType === "image")
     ? (3e12 + (c.imageIndex || 0))
+    : (c.anchorType === "widget")
+    ? (4e12 + _widgetOrderKey(c))
     : (typeof c.start === "number" ? c.start : 0);
   const sorted = (commentSort === "time-asc")
     ? [...comments].sort((a, b) => (commentTimeValue(a) - commentTimeValue(b)) || (sortKey(a) - sortKey(b)))
     : (commentSort === "time-desc")
     ? [...comments].sort((a, b) => (commentTimeValue(b) - commentTimeValue(a)) || (sortKey(a) - sortKey(b)))
     : [...comments].sort((a, b) => sortKey(a) - sortKey(b));
-  listEl.innerHTML = sorted.map((c, i) => {
+  listEl.innerHTML = stateHtml + sorted.map((c, i) => {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isWidget = c.anchorType === "widget";
+    const isDocument = c.anchorType === "document";
     const path = (c.headingPath && c.headingPath.length)
       ? c.headingPath.map(h => escapeHtml(h.text)).join(" &rsaquo; ")
       : (c.section ? escapeHtml(c.section) : "");
@@ -2163,6 +2489,10 @@ function renderComments() {
     } else if (isImage) {
       const mediaLbl = c.imageKind === "chart" ? "chart: " : "image: ";
       quoteHtml = `<div class="quote"><span class="ctx">${mediaLbl}</span><span class="quoted">${escapeHtml(c.imageAlt || c.quote || c.imageSrc || "")}</span></div>`;
+    } else if (isWidget) {
+      quoteHtml = `<div class="quote"><span class="ctx">${escapeHtml(c.widget || "widget")}: </span><span class="quoted">"${escapeHtml(c.partLabel || c.part || "")}"</span></div>`;
+    } else if (isDocument) {
+      quoteHtml = `<div class="quote"><span class="quoted">(document-wide comment)</span></div>`;
     } else if (c.isCode) {
       // Code-block quotes are rendered as a single preformatted block (no before/after
       // ctx) because surrounding code lines look misleading when collapsed to one line.
@@ -2184,6 +2514,11 @@ function renderComments() {
       pinBits.push(`${c.imageKind === "chart" ? "chart" : "image"} ${(Number(c.imageIndex) || 0) + 1}`);
       const src = String(c.imageSrc == null ? "" : c.imageSrc);
       if (src) pinBits.push(escapeHtml(src.length > 60 ? src.slice(0, 57) + "..." : src));
+    } else if (isWidget) {
+      pinBits.push(`widget "${escapeHtml(c.widget || "")}"`);
+      pinBits.push(`part "${escapeHtml(c.partLabel || c.part || "")}"`);
+    } else if (isDocument) {
+      pinBits.push("document-wide");
     } else {
       if (c.isCode) {
         pinBits.push(c.codeLanguage ? `code (${escapeHtml(c.codeLanguage)})` : "code block");
@@ -2193,9 +2528,11 @@ function renderComments() {
       // on the sidebar card, which only surfaces reader-facing anchor info.
     }
     const pinHtml = pinBits.length ? `<div class="pin">${pinBits.join(" - ")}</div>` : "";
-    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : "text";
+    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isWidget ? "element" : "text";
+    const cardClass = isDocument ? "cm-card cm-card-doc" : "cm-card";
+    const jumpBtn = isDocument ? "" : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
     return `
-    <article class="cm-card" data-cid="${c.id}">
+    <article class="${cardClass}" data-cid="${c.id}">
       ${sectionHtml}
       ${quoteHtml}
       ${pinHtml}
@@ -2203,13 +2540,28 @@ function renderComments() {
       <div class="meta">
         <span>#${i + 1} - ${escapeHtml(formatTime(c.updatedAt || c.createdAt))}${c.updatedAt ? " (edited)" : ""}</span>
         <span class="acts">
-          <button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>
+          ${jumpBtn}
           <button type="button" data-act="edit" title="Edit comment">edit</button>
           <button type="button" class="del" data-act="del" title="Delete comment">delete</button>
         </span>
       </div>
     </article>`;
   }).join("");
+}
+function _widgetOrderKey(c) {
+  const o = _widgetOrder.get(partKey(c.widget, c.part));
+  return o == null ? 1e9 : o;
+}
+function _renderWidgetStateCard(changes) {
+  const items = changes.map((ch) =>
+    `<li>"${escapeHtml(ch.label || ch.part)}" moved from <strong>${escapeHtml(ch.from)}</strong> to <strong>${escapeHtml(ch.to)}</strong></li>`
+  ).join("");
+  return `
+    <article class="cm-card cm-card-state" data-cm-state="1">
+      <div class="cm-card-state-title">Layout change - ${changes.length} item${changes.length === 1 ? "" : "s"} moved</div>
+      <ul>${items}</ul>
+      <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not portable until re-exported.</div>
+    </article>`;
 }
 // Scroll the anchored content (text highlight, mermaid node, diff line, or image) into
 // view and flash it. Shared by the jump button and by edit/delete (so the user sees which
@@ -2220,6 +2572,8 @@ function scrollToAnchor(c) {
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
   else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
+  else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
+  else if (c.anchorType === "document") { window.scrollTo({ top: 0, behavior: "smooth" }); flashActive(c.id); return; }
   else el = root.querySelector(`mark.cm-hl[data-cid="${c.id}"]`);
   if (el) { expandCollapsedAncestors(el); el.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(c.id); }
 }
@@ -2266,6 +2620,7 @@ function flashActive(id) {
   flashMermaid(id);
   flashDiff(id);
   flashImage(id);
+  flashWidget(id);
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
   if (card) card.classList.add("active");
   setTimeout(() => {
@@ -2572,13 +2927,18 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
 /* ---------- Copy all + Clear all ---------- */
 function buildCopyText() {
   const liveComments = withoutHandled(comments);
-  if (!liveComments.length) return "";
-  const sortKey = (c) => (c.anchorType === "mermaid")
+  const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
+  if (!liveComments.length && !stateChanges.length) return "";
+  const sortKey = (c) => (c.anchorType === "document")
+    ? -1
+    : (c.anchorType === "mermaid")
     ? (1e12 + (c.diagramIndex || 0) * 1000)
     : (c.anchorType === "diff")
     ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
     : (c.anchorType === "image")
     ? (3e12 + (c.imageIndex || 0))
+    : (c.anchorType === "widget")
+    ? (4e12 + _widgetOrderKey(c))
     : (typeof c.start === "number" ? c.start : 0);
   const sorted = [...liveComments].sort((a, b) => sortKey(a) - sortKey(b));
   const lines = [];
@@ -2594,7 +2954,9 @@ function buildCopyText() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
-    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : ""}`);
+    const isWidget = c.anchorType === "widget";
+    const isDocument = c.anchorType === "document";
+    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isWidget ? " (widget)" : isDocument ? " (document)" : ""}`);
     lines.push(`Id: ${c.id}`);
     lines.push(`When: ${formatTime(c.createdAt)}${c.updatedAt ? " (edited " + formatTime(c.updatedAt) + ")" : ""}`);
     if (c.headingPath && c.headingPath.length) {
@@ -2643,6 +3005,16 @@ function buildCopyText() {
       const mediaWord = c.imageKind === "chart" ? "chart" : "image";
       lines.push(`Anchor: ${mediaWord} #${(c.imageIndex || 0) + 1}${sSrc ? " (" + sSrc + ")" : ""}`);
       if (c.imageAlt) lines.push(`Alt: ${oneLine(c.imageAlt)}`);
+      lines.push("");
+      lines.push("Comment:");
+      lines.push(c.note);
+    } else if (isWidget) {
+      lines.push(`Anchor: widget "${oneLine(c.widget)}", part "${oneLine(c.partLabel || c.part)}"${c.slot ? " (in " + oneLine(c.slot) + ")" : ""}`);
+      lines.push("");
+      lines.push("Comment:");
+      lines.push(c.note);
+    } else if (isDocument) {
+      lines.push("Anchor: document-wide (not tied to a specific element)");
       lines.push("");
       lines.push("Comment:");
       lines.push(c.note);
@@ -2699,6 +3071,12 @@ function buildCopyText() {
     lines.push("---");
     lines.push("");
   });
+  if (stateChanges.length) {
+    lines.push("## Widget layout changes");
+    lines.push("Drag/drop moves not yet saved into the file. Reformat the source to match this layout, then re-export.");
+    lines.push("");
+    stateChanges.forEach((ch) => lines.push(`- widget "${oneLine(ch.widget)}": "${oneLine(ch.label || ch.part)}" moved from ${oneLine(ch.from)} to ${oneLine(ch.to)}`));
+  }
   lines.push("");
   lines.push("---");
   lines.push("");
@@ -2714,7 +3092,8 @@ function buildCopyText() {
 }
 async function copyAll() {
   const live = withoutHandled(comments);
-  if (!live.length) { showToast("No comments to copy."); return; }
+  const changes = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
+  if (!live.length && !changes.length) { showToast("No comments to copy."); return; }
   const n = live.length;
   const text = buildCopyText();
   let copied = false;
@@ -2734,11 +3113,324 @@ async function copyAll() {
     }
   }
   if (copied) {
-    showToast(`Copied ${n} comment${n === 1 ? "" : "s"}. They stay here until the agent marks them handled in the HTML.`);
+    const extra = changes.length ? ` plus ${changes.length} layout change${changes.length === 1 ? "" : "s"}` : "";
+    showToast(`Copied ${n} comment${n === 1 ? "" : "s"}${extra}. They stay here until the agent marks them handled in the HTML.`);
   }
 }
 document.getElementById("btnCopyAll").addEventListener("click", copyAll);
 document.getElementById("btnCopyAllTop").addEventListener("click", copyAll);
+
+/* ---------- Export to Markdown (deterministic content -> Markdown) ----------
+   Walks #commentRoot structure (never rendered layout) and maps each block kind to one
+   fixed Markdown construct, so the output is byte-stable and idempotent. cm-skip subtrees
+   are excluded EXCEPT a mermaid <pre> (its source is content) and a diff host (its raw
+   source is recovered). Sortable tables emit in original row order. */
+const _MD_SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NAV: 1, NOSCRIPT: 1, TEMPLATE: 1 };
+const _MD_ALERT = { info: "NOTE", success: "TIP", warning: "WARNING", danger: "CAUTION" };
+function _mdCollapse(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim(); }
+function _mdSkip(el) {
+  if (!el || el.nodeType !== 1) return false;
+  if (_MD_SKIP_TAGS[el.tagName]) return true;
+  // A mermaid host (pre.mermaid or div.mermaid) and a diff host carry content we export
+  // from a stashed source, so they are never skipped even though they are cm-skip.
+  if (el.classList && el.classList.contains("mermaid")) return false;
+  if (el.classList && el.classList.contains("cmh-diff-host")) return false;
+  return !!(el.classList && (el.classList.contains("cm-skip") || el.classList.contains("cm-toc")));
+}
+function _mdDedent(text) {
+  const arr = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  while (arr.length && arr[0].trim() === "") arr.shift();
+  while (arr.length && arr[arr.length - 1].trim() === "") arr.pop();
+  let indent = null;
+  arr.forEach((ln) => { if (!ln.trim()) return; const m = ln.match(/^[ \t]*/)[0].length; indent = indent === null ? m : Math.min(indent, m); });
+  indent = indent || 0;
+  return arr.map((ln) => ln.slice(indent)).join("\n");
+}
+function _mdFence(lang, text) {
+  const body = _mdDedent(text);
+  let maxRun = 0; const re = /`+/g; let m;
+  while ((m = re.exec(body)) !== null) { if (m[0].length > maxRun) maxRun = m[0].length; }
+  const bar = "`".repeat(Math.max(3, maxRun + 1));
+  // Sanitize the info string: a backtick or space in a derived language class would void a
+  // backtick fence (CommonMark forbids backticks in the info string), so keep it to a safe set.
+  const info = String(lang == null ? "" : lang).replace(/[^A-Za-z0-9_.+-]/g, "");
+  return bar + info + "\n" + body + "\n" + bar;
+}
+// Inline code span with a backtick run longer than any run inside the content (CommonMark
+// requires the fence to exceed the longest inner run), padded with a space when the content
+// starts or ends with a backtick. Newlines are collapsed so a code span stays one line.
+function _mdInlineCode(text) {
+  const s = String(text == null ? "" : text).replace(/\r?\n/g, " ");
+  let maxRun = 0; const re = /`+/g; let m;
+  while ((m = re.exec(s)) !== null) { if (m[0].length > maxRun) maxRun = m[0].length; }
+  const ticks = "`".repeat(maxRun + 1);
+  // Pad with a space when the content starts/ends with a backtick or space, so CommonMark's
+  // one-space strip leaves the original content intact.
+  const pad = (s === "" || /^[`\s]/.test(s) || /[`\s]$/.test(s)) ? " " : "";
+  return ticks + pad + s + pad + ticks;
+}
+// Escape a raw attribute-derived label (image alt, appendix widget/part/node names) with the
+// same set as text nodes, so a value like `<img onerror=...>` cannot become live HTML when the
+// exported Markdown is rendered by an HTML-permissive renderer, and brackets/backslash cannot
+// break the [..] syntax. (Anchor label text rides _mdText via _mdInlineText and is not passed here.)
+function _mdLinkLabel(text) { return _mdText(text); }
+// A link/image destination: strip control chars, and wrap in angle brackets (encoding any
+// literal '<'/'>') when it contains characters that would otherwise break the (..) destination.
+function _mdUrl(url) {
+  const u = String(url == null ? "" : url).replace(/[\x00-\x1f\x7f]+/g, "").trim();
+  // Neutralize executable schemes that have no legitimate use in an exported document; leave
+  // http/https/mailto/tel/data and relative/anchor destinations untouched.
+  if (/^(?:javascript|vbscript):/i.test(u)) return "about:blank";
+  if (/[()\s<>]/.test(u)) return "<" + u.replace(/</g, "%3C").replace(/>/g, "%3E") + ">";
+  return u;
+}
+// Escape a plain text node so its characters cannot open a code span, link, or raw-HTML tag
+// in the exported Markdown (block-leading triggers are handled by _mdEscapeLeading).
+function _mdText(s) { return String(s == null ? "" : s).replace(/[\\`<\[\]*_~]/g, "\\$&"); }
+// Escape GFM table-cell pipes without disturbing pipes that are already escaped (an odd run of
+// preceding backslashes), so a code span like `a\|b` inside a table cell keeps its pipe escaped
+// rather than forging a column boundary, and a backslash before a pipe cannot cancel the escape.
+function _mdEscapePipes(s) { return String(s == null ? "" : s).replace(/(\\*)\|/g, function (m, bs) { return bs.length % 2 ? m : bs + "\\|"; }); }
+// Escape a leading block trigger (heading, blockquote, list, ordered list, thematic break)
+// so ordinary prose cannot forge document structure in the exported Markdown.
+function _mdEscapeLeading(s) {
+  // Setext heading underline: a line of only '=' or only '-' turns the preceding line into a
+  // heading. This is reachable where raw newlines are preserved (comment notes); a bare '-' or
+  // one/two dashes also slips past the 3+-run thematic-break check below.
+  if (/^\s{0,3}=+\s*$/.test(s)) return s.replace(/=/, "\\=");
+  if (/^\s{0,3}-+\s*$/.test(s)) return s.replace(/-/, "\\-");
+  if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(s)) return s.replace(/(\\|[-*_])/g, "\\$1");
+  return s.replace(/^(\s*)(#{1,6}(?=\s|$)|>|[-+*](?=\s)|\d+[.)](?=\s))/, function (mm, ws, tok) {
+    if (/^\d/.test(tok)) return ws + tok.replace(/([.)])$/, "\\$1");
+    return ws + "\\" + tok;
+  });
+}
+function _mdInlineText(node) {
+  let out = "";
+  const kids = node.childNodes;
+  for (let i = 0; i < kids.length; i++) {
+    const ch = kids[i];
+    if (ch.nodeType === 3) { out += _mdText(ch.nodeValue); continue; }
+    if (ch.nodeType !== 1 || _mdSkip(ch)) continue;
+    const t = ch.tagName;
+    if (t === "STRONG" || t === "B") out += "**" + _mdCollapse(_mdInlineText(ch)) + "**";
+    else if (t === "EM" || t === "I") out += "*" + _mdCollapse(_mdInlineText(ch)) + "*";
+    else if (t === "CODE") out += _mdInlineCode(ch.textContent || "");
+    else if (t === "A") { if (out.slice(-1) === "!") out = out.slice(0, -1) + "\\!"; out += "[" + _mdCollapse(_mdInlineText(ch)) + "](" + _mdUrl(ch.getAttribute("href") || "") + ")"; }
+    else if (t === "IMG") out += "![" + _mdLinkLabel(ch.getAttribute("alt") || "") + "](" + _mdUrl(ch.getAttribute("src") || "") + ")";
+    else if (t === "BR") out += " ";
+    else if (t === "SPAN" && ch.classList.contains("badge")) out += _mdInlineCode(ch.textContent || "");
+    else out += _mdInlineText(ch);
+  }
+  return out;
+}
+function _mdTableRows(el) {
+  const cells = (tr, sel) => Array.prototype.map.call(tr.querySelectorAll(sel), (c) => _mdEscapePipes(_mdCollapse(_mdInlineText(c))));
+  const head = el.querySelector("thead tr") || el.querySelector("tr");
+  if (!head) return "";
+  const headers = cells(head, "th,td");
+  let bodyRows = Array.prototype.slice.call(el.querySelectorAll("tbody tr"));
+  if (!bodyRows.length) bodyRows = Array.prototype.filter.call(el.querySelectorAll("tr"), (tr) => tr !== head);
+  if (bodyRows.some((r) => r.dataset && r.dataset.cmhRow != null)) {
+    bodyRows = bodyRows.slice().sort((a, b) => (parseInt(a.dataset.cmhRow, 10) || 0) - (parseInt(b.dataset.cmhRow, 10) || 0));
+  }
+  const rows = bodyRows.map((tr) => cells(tr, "td,th"));
+  const out = [];
+  out.push("| " + headers.join(" | ") + " |");
+  out.push("| " + headers.map(() => "---").join(" | ") + " |");
+  rows.forEach((r) => out.push("| " + r.join(" | ") + " |"));
+  return out.join("\n");
+}
+function _mdFigure(el) {
+  const cap = el.querySelector("figcaption");
+  const caption = cap ? _mdCollapse(_mdInlineText(cap)) : "";
+  if (el.classList.contains("cmh-kql")) {
+    const code = el.querySelector("pre code, code");
+    const run = el.querySelector("a.cmh-kql-run, a[href]");
+    const parts = [];
+    if (code) parts.push(_mdFence("kusto", code.textContent || ""));
+    if (run && run.getAttribute("href")) parts.push("[Run in Azure Data Explorer](" + _mdUrl(run.getAttribute("href")) + ")");
+    if (caption) parts.push("_" + caption + "_");
+    return parts.join("\n\n");
+  }
+  if (el.classList.contains("chart") || el.querySelector("canvas")) return "_[Chart: " + caption + "]_";
+  const img = el.querySelector("img");
+  if (img) {
+    // The alt attribute is raw; when it is empty, fall back to the caption's raw text (not the
+    // already-escaped `caption`) so _mdLinkLabel applies exactly one escape pass.
+    const alt = img.getAttribute("alt") || (cap ? _mdCollapse(cap.textContent || "") : "");
+    return "![" + _mdLinkLabel(alt) + "](" + _mdUrl(img.getAttribute("src") || "") + ")";
+  }
+  if (el.querySelector("svg")) return "_[Figure: " + caption + "]_";
+  return caption ? "_[Figure: " + caption + "]_" : _mdChildren(el);
+}
+function _mdList(el, indent) {
+  const ordered = el.tagName === "OL";
+  const out = [];
+  let n = 0;
+  const BLOCK = /^(P|PRE|BLOCKQUOTE|TABLE|FIGURE|H[1-6]|DIV|SECTION)$/;
+  Array.prototype.forEach.call(el.children, (li) => {
+    if (li.tagName !== "LI") return;
+    n++;
+    const marker = ordered ? n + ". " : "- ";
+    const cont = indent + " ".repeat(marker.length);   // continuation indent = marker width
+    const segs = [];   // ordered runs: {t:"inline"|"block", v} in DOM order
+    let inline = "";
+    const flush = () => { const c = _mdCollapse(inline); inline = ""; if (c) segs.push({ t: "inline", v: c }); };
+    Array.prototype.forEach.call(li.childNodes, (ch) => {
+      if (ch.nodeType === 1 && (ch.tagName === "UL" || ch.tagName === "OL")) { flush(); segs.push({ t: "block", v: _mdList(ch, cont) }); }
+      else if (ch.nodeType === 1 && BLOCK.test(ch.tagName) && !_mdSkip(ch)) {
+        flush();
+        const md = _mdBlock(ch);
+        if (md && md.trim()) segs.push({ t: "block", v: md.split("\n").map((l) => cont + l).join("\n") });
+      } else if (ch.nodeType === 3) inline += _mdText(ch.nodeValue);
+      else if (ch.nodeType === 1 && !_mdSkip(ch)) inline += _mdInlineText(ch);
+    });
+    flush();
+    const lines = [];
+    if (!segs.length) { lines.push(indent + marker.replace(/\s+$/, "")); }
+    segs.forEach((s, i) => {
+      if (i === 0) {
+        if (s.t === "inline") lines.push(indent + marker + _mdEscapeLeading(s.v));
+        else { lines.push(indent + marker.replace(/\s+$/, "")); lines.push(s.v); }
+      } else {
+        lines.push(s.t === "inline" ? cont + _mdEscapeLeading(s.v) : s.v);
+      }
+    });
+    out.push(lines.join("\n"));
+  });
+  return out.join("\n");
+}
+function _mdCallout(el) {
+  let variant = "";
+  el.classList.forEach((c) => { const m = c.match(/^cmh-callout-(info|success|warning|danger)$/); if (m) variant = m[1]; });
+  const out = [];
+  if (variant) out.push("> [!" + _MD_ALERT[variant] + "]");
+  out.push("> " + _mdEscapeLeading(_mdCollapse(_mdInlineText(el))));
+  return out.join("\n");
+}
+function _mdDiff(el) {
+  const src = el.querySelector("script.cmh-diff-src");
+  let raw = "";
+  if (src) {
+    try { raw = src.getAttribute("data-enc") === "base64" ? _b64DecodeUtf8(src.textContent) : (src.textContent || ""); }
+    catch (e) { raw = ""; }
+  }
+  if (!raw) {
+    // Never silently drop content: fall back to the rendered diff text, but strip the
+    // encoded source <script> first so its base64 payload is not exported.
+    const clone = el.cloneNode(true);
+    Array.prototype.forEach.call(clone.querySelectorAll("script"), (s) => s.remove());
+    raw = (clone.textContent || "").replace(/\u00a0/g, " ").replace(/[ \t]+$/gm, "").trim();
+    if (raw) { try { console.warn("commentable-html: diff source unavailable; exported rendered text"); } catch (e) { /* no-op */ } }
+  }
+  return _mdFence("diff", raw || "");
+}
+function _mdBlock(el) {
+  const t = el.tagName;
+  if (el.classList && el.classList.contains("mermaid")) return _mdFence("mermaid", el.getAttribute("data-cmh-md-src") || el.textContent || "");
+  if (/^H[1-6]$/.test(t)) return "#".repeat(+t[1]) + " " + _mdCollapse(_mdInlineText(el));
+  if (t === "P") return _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
+  if (t === "UL" || t === "OL") return _mdList(el, "");
+  if (t === "TABLE") return _mdTableRows(el);
+  if (t === "FIGURE") return _mdFigure(el);
+  if (t === "IMG") return "![" + _mdLinkLabel(el.getAttribute("alt") || "") + "](" + _mdUrl(el.getAttribute("src") || "") + ")";
+  if (el.classList && el.classList.contains("cmh-diff-host")) return _mdDiff(el);
+  if (t === "PRE") {
+    const code = el.querySelector("code");
+    let lang = "";
+    (((code || el).className) || "").split(/\s+/).forEach((c) => { const m = c.match(/^language-(.+)$/); if (m) lang = m[1]; });
+    return _mdFence(lang, (code || el).textContent || "");
+  }
+  if (t === "BLOCKQUOTE") return "> " + _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
+  if (el.classList && el.classList.contains("cmh-callout")) return _mdCallout(el);
+  return _mdChildren(el);
+}
+function _mdChildren(el) {
+  const out = [];
+  Array.prototype.forEach.call(el.childNodes, (ch) => {
+    if (ch.nodeType === 3) {
+      // Direct text under a container (div/section/#commentRoot) is escaped like any prose,
+      // so a bare "# x" or link/HTML syntax cannot forge structure in the export.
+      const t = _mdEscapeLeading(_mdCollapse(_mdText(ch.nodeValue)));
+      if (t) out.push(t);
+      return;
+    }
+    if (ch.nodeType !== 1 || _mdSkip(ch)) return;
+    const md = _mdBlock(ch);
+    if (md && md.trim()) out.push(md);
+  });
+  return out.join("\n\n");
+}
+function htmlToMarkdown(rootEl) {
+  if (!rootEl) return "";
+  return _mdChildren(rootEl).replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+function _mdCommentsAppendix() {
+  const live = withoutHandled(comments);
+  if (!live.length) return "";
+  const oneLine = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  const esc = (s) => _mdLinkLabel(oneLine(s));   // bracket/backslash-escape so a crafted label cannot inject a link into the heading
+  const out = ["## Review comments (" + live.length + ")"];
+  live.forEach((c, i) => {
+    let where = "";
+    if (c.anchorType === "document") where = "document-wide";
+    else if (c.anchorType === "widget") where = 'widget "' + esc(c.widget) + '" / ' + esc(c.partLabel || c.part);
+    else if (c.anchorType === "mermaid") where = "mermaid " + esc(c.nodeLabel || c.nodeKey);
+    else if (c.anchorType === "diff") where = "diff line";
+    else if (c.anchorType === "image") where = (c.imageKind === "chart" ? "chart" : "image") + " " + ((c.imageIndex || 0) + 1);
+    else if (c.quote) where = '"' + esc(oneLine(c.quote).slice(0, 80)) + '"';
+    out.push("");
+    out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment"));
+    out.push("");
+    // Escape each preserved note line like prose (raw HTML, inline markup, leading structural
+    // markers including setext underlines) and neutralize pipes so a multi-line note cannot
+    // forge a GFM table either.
+    String(c.note == null ? "" : c.note).split(/\r?\n/).forEach((ln) => {
+      const e = _mdEscapePipes(_mdEscapeLeading(_mdText(ln)));
+      out.push(e.trim() ? "> " + e : ">");
+    });
+  });
+  return out.join("\n") + "\n";
+}
+function buildMarkdownDoc() {
+  let md = htmlToMarkdown(root);
+  const appendix = _mdCommentsAppendix();
+  if (appendix) md += "\n" + appendix;
+  return md;
+}
+function _downloadTextFile(text, filename, mime) {
+  const blob = new Blob([text], { type: (mime || "text/plain") + ";charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 1000);
+}
+function _mdFilename() {
+  let stem = "document";
+  try {
+    const p = (DOC_SOURCE || location.pathname || "document").split(/[\\/]/).pop() || "document";
+    stem = p.replace(/\.[^.]+$/, "") || "document";
+  } catch (e) { /* keep default */ }
+  return stem + ".md";
+}
+async function exportMarkdown() {
+  const md = buildMarkdownDoc();
+  const filename = _mdFilename();
+  let copied = false;
+  try { await navigator.clipboard.writeText(md); copied = true; } catch (e) { copied = false; }
+  _downloadTextFile(md, filename, "text/markdown");
+  showToast(copied
+    ? `Markdown copied to the clipboard and downloaded as ${filename}.`
+    : `Downloaded ${filename}. (Clipboard copy was blocked by the browser.)`);
+}
+["btnExportMd", "btnExportMdTop"].forEach((id) => {
+  const b = document.getElementById(id);
+  if (b) b.addEventListener("click", exportMarkdown);
+});
+// Exposed for deterministic tests and programmatic use.
+window.__cmhToMarkdown = function () { return buildMarkdownDoc(); };
 
 // Copy arbitrary text to the clipboard (navigator.clipboard with an execCommand
 // fallback), then show a toast. Returns a promise. Used by the per-code-block Copy
@@ -3382,6 +4074,9 @@ function _embeddedCommentSig() {
 function currentDocState() {
   const reasons = [];
   if (NONPORTABLE_MODE) reasons.push("it references external skill / companion resources");
+  if (typeof widgetStateChanges === "function" && widgetStateChanges().length > 0) {
+    reasons.push("a widget's layout was changed in this session and is not saved into the file");
+  }
   const emb = _embeddedCommentSig();
   if (comments.length > 0) {
     const hasUnembedded = !comments.every(function (c) {
@@ -3505,6 +4200,8 @@ function showHelp(restoreEl) {
           '<li><strong>Charts:</strong> a Chart.js canvas is commentable like an image.</li>' +
           '<li><strong>Mermaid diagrams:</strong> hover a node, edge label, gantt bar or sequence message and click <em>Add Comment</em>; hover an empty part of the diagram to comment on the whole diagram.</li>' +
           '<li><strong>Code-review diffs:</strong> select text inside a diff line for that snippet, or hover a line and click <em>Add Comment</em> to comment the whole line.</li>' +
+          '<li><strong>Widgets and SVG nodes:</strong> in a document that marks parts with <code>data-cm-part</code> (a triage card, a diagram node), hover the part (or focus it and press <kbd>Enter</kbd>) and click <em>Add Comment</em>.</li>' +
+          '<li><strong>Whole document:</strong> right-click an empty area and choose <em>Comment on document</em> for a note not tied to any element.</li>' +
         '</ul>') +
       T('Managing comments',
         '<ul>' +
@@ -3531,11 +4228,13 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
+          '<li><strong>Export to Markdown</strong> copies the document content to the clipboard as Markdown and downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
         '</ul>') +
       T('Sending comments to an agent',
         '<ul>' +
           '<li><strong>Copy all</strong> emits an ordered Markdown bundle with each comment\'s location, quoted text, and note, ending in a machine-readable <code>HANDLED_IDS_JSON</code> line.</li>' +
+          '<li>Drag-and-drop changes to a commentable widget are captured as a <em>Widget layout changes</em> section in the bundle, so the agent can reformat the source to match.</li>' +
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
       T('Navigation',
@@ -4013,7 +4712,8 @@ function withoutHandled(arr) {
   return arr.filter(c => !handled.has(c.id));
 }
 function restoreHighlights() {
-  const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff" && c.anchorType !== "image");
+  const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
+    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document");
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
     const r = rangeFromOffsets(c.start, c.end);
@@ -4170,6 +4870,7 @@ backfillContext();
 restoreHighlights();
 setupMermaidLayer();
 setupImageLayer();
+setupWidgetLayer();
 setupChartContainment();
 setupCodeCopy();
 setupSortableTables();

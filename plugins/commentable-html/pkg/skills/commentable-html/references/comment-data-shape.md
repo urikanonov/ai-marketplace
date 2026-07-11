@@ -87,6 +87,49 @@ When the user hovers a line inside a rendered diff block and clicks the floating
 - **`quote`** - the diff line including its `+`/`-`/space sign; emitted as a fenced ```` ```diff ```` block in Copy all. `isCode` is always `true`.
 - No `start/end` - like mermaid comments, diff comments are skipped by `backfillContext()` and restored by `setupDiffLayer()`.
 
+### Widget/part comments (`anchorType: "widget"`)
+
+A part of a commentable widget (any `data-cm-part` inside a `data-cm-widget`, including an SVG `<g>`) anchors by widget name + part id rather than by character offsets:
+
+```json
+{
+ "id": "c<timestamp><random>",
+ "anchorType": "widget",
+ "widget": "triage",
+ "part": "t-101",
+ "partLabel": "Add SSE backpressure",
+ "slot": "Now",
+ "quote": "Add SSE backpressure",
+ "note": "user's comment body",
+ "section": "nearest preceding heading text, or null",
+ "headingPath": [{"level":2,"text":"..."}],
+ "createdAt": "ISO-8601"
+}
+```
+
+- **`widget`/`part`** - the `data-cm-widget` name and `data-cm-part` id; the highlight restores by this pair via `setupWidgetLayer()`.
+- **`partLabel`** - the `data-cm-part-label` (or the part's trimmed text). **`slot`** - the `data-cm-slot` the part was in at save time, or `null`.
+- No `start/end` - like mermaid/diff/image comments, widget comments are skipped by the text backfill.
+- Widget **layout changes** are NOT stored as comments: they are computed live from the DOM against the load-time slot baseline and surfaced only in the sidebar and the Copy-all "Widget layout changes" section.
+
+### Document-wide comments (`anchorType: "document"`)
+
+A comment not tied to any element, raised by right-clicking empty space:
+
+```json
+{
+ "id": "c<timestamp><random>",
+ "anchorType": "document",
+ "quote": "(document-wide)",
+ "note": "user's comment body",
+ "section": null,
+ "headingPath": [],
+ "createdAt": "ISO-8601"
+}
+```
+
+- No anchor fields and no highlight; it sorts to the top of the panel and copies as `Anchor: document-wide (not tied to a specific element)`.
+
 All context fields for text comments are computed by `captureContext(start, end, range)` at save time:
 
 - **`headingPath`** - full heading breadcrumb (H1 -> H2 -> H3 ...) by walking every preceding heading and popping deeper-or-equal levels each time a higher-level heading appears.

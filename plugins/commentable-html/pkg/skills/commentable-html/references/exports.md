@@ -67,3 +67,27 @@ Implementation detail worth knowing when modifying this feature:
 - **The JS region is anchored on its own `</script>`, not its END marker.** When the file is opened from `file://`, `fetch(location.href)` is blocked, so the source is taken from a DOM snapshot captured while the layer's own script is still executing. At that point the HTML parser has not yet reached the trailing `<!-- END: commentable-html - JS -->` comment, so it is absent from the snapshot. Matching the JS region by its closing `</script>` (with an optional trailing END marker) strips it correctly in both the `file://` snapshot path and the fetched on-disk path.
 
 **Export to Plain HTML** never modifies the open document, `localStorage`, `handledCommentIds`, or the embedded comments; it only produces a downloaded copy.
+
+
+## Export to Markdown
+
+> UI label: **Export to Markdown** (overflow **...** menu and sidebar header).
+
+Downloads the document content as a Markdown (`.md`) file and copies the same Markdown to the clipboard. It is a deterministic, structural conversion: the layer walks the `#commentRoot` DOM (never the rendered layout) and maps each block kind to one fixed Markdown construct, so the same document always produces byte-identical output.
+
+| Block | Markdown |
+| --- | --- |
+| Headings `h1`-`h6` | ATX `#`..`######` |
+| Paragraphs; `strong` / `em` / `code`; links | bold `**x**`, italic `*x*`, inline `` `x` ``, and Markdown links |
+| `ul` / `ol` (nested) | `- ` / `1. ` with two-space indents |
+| Tables | GFM pipe tables, canonicalized to original row order even when sorted |
+| Code blocks | fenced with the language from `language-*` |
+| Code-review diffs | fenced `diff` (recovered from the diff source) |
+| Mermaid | fenced `mermaid` (the diagram source, not the rendered SVG) |
+| KQL blocks | fenced `kusto` plus the Run link |
+| Charts and inline SVG figures | a `_[Chart: caption]_` / `_[Figure: caption]_` note (not representable in plain Markdown) |
+| Images | Markdown image syntax with the `alt` text and `src` |
+| Callouts (`cmh-callout-*`) | GitHub alerts (`> [!NOTE]` / `[!TIP]` / `[!WARNING]` / `[!CAUTION]`) |
+| Interactive widgets (`cm-skip`) | omitted (a widget carries its own state) |
+
+Your current review comments are appended as a `## Review comments` section. `cm-skip` UI chrome is never included, except a `pre.mermaid` (its source is content) and a figure caption. Because the output is a pure function of the DOM - whitespace-normalized, theme- and sort-independent, idempotent - it is covered by golden Playwright tests.

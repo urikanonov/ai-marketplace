@@ -109,6 +109,36 @@ do each workstream in its own `.worktrees/<name>`; and resolve any conflict on g
 REBUILDING (rerun `python scripts/build_site_data.py` and, for the commentable-html layer,
 `plugins/commentable-html/dev/tools/build.py`) rather than hand-merging.
 
+## Resolving plugin conflicts when rebasing onto main
+
+When rebasing a plugin PR onto `main` and the same version number has already been merged into main,
+you MUST bump the plugin version before resolving conflicts - the CI version-bump gate and the
+validator both enforce that the shipped version is newer than the base branch, and
+`check_changelog_sync.py` requires a matching release heading in `CHANGELOG.md`.
+
+Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable-html`):
+
+1. **Bump `dev/VERSION`**: write the next semver (e.g. `1.4.0` -> `1.5.0`) and mark it resolved.
+2. **Resolve `CHANGELOG.md`**: keep main's released `[x.y.z]` section intact; rename your section
+   to the new version number and place it above the previously-released heading.
+3. **Resolve source files** (non-generated): take your changes; for content conflicts, merge them.
+4. **Do NOT hand-merge generated dist files** (`dist/`, `site/`, `manifest.json`, asset registry):
+   - Run the plugin's build script to regenerate them with the correct version and hashes:
+     ```bash
+     python plugins/<plugin>/dev/tools/build.py --assets-dir assets \
+       --out-dir plugins/<plugin>/pkg/skills/<plugin>
+     ```
+   - Then regenerate the site:
+     ```bash
+     python scripts/build_site_data.py
+     ```
+5. `git add` all resolved and regenerated files, then `git rebase --continue`.
+6. Repeat for each subsequent commit in the rebase that re-conflicts the dist files (each commit
+   that touched the source gets a fresh set of generated hashes; always rebuild instead of taking
+   either side of the conflict).
+7. Validate at the end: `python scripts/validate_marketplace.py` and
+   `python plugins/<plugin>/dev/tools/build.py ... --check` must both pass.
+
 ## Validate before you commit
 
 ```bash
@@ -219,3 +249,7 @@ rulesets are unavailable on public user-owned repos. The required `build` check 
   built from the skill's `docs/TUTORIAL.md`, plus synced demo reports and tutorial images). After editing a
   plugin's `CHANGELOG.md`, its skill `docs/TUTORIAL.md`, or an embedded example report, rerun it and commit the
   result; the required `build` check enforces freshness with `build_site_data.py --check`.
+- Rebase a plugin PR onto a newer main: if `main` already merged the same version number, bump the
+  plugin version (see "Resolving plugin conflicts when rebasing onto main" above), run the plugin's
+  build script (`tools/build.py`) to regenerate dist files with the new version, run
+  `build_site_data.py`, then continue the rebase. Never hand-merge generated dist or site files.

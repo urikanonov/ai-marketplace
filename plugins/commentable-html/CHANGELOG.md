@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-11
+
+### Added
+
+- Commentable widgets and SVG nodes. A generic opt-in contract (`data-cm-widget`, `data-cm-part`,
+  optional `data-cm-part-label`, and `data-cm-slot`) makes individual parts of an interactive widget
+  or a labeled SVG `<g>` node commentable, with a hover/keyboard Add Comment affordance and a
+  `widget` anchor type that restores across reloads and exports.
+- Widget layout-change tracking. When parts sit in `data-cm-slot` containers, drag/drop moves are
+  detected against the load-time baseline and surfaced as a synthetic sidebar card and a "Widget
+  layout changes" section in the Copy-all bundle; the document is flagged Not portable until it is
+  re-exported.
+- Document-wide comments. Right-clicking empty space adds an unanchored, whole-document comment
+  (`document` anchor type) that carries no highlight and copies as a document-wide anchor.
+- Export to Markdown. A new sidebar and overflow-menu action copies the document content to the
+  clipboard and downloads a `.md` file via a deterministic, block-by-block conversion (headings,
+  lists, GFM tables, fenced code / diff / mermaid / kusto, callouts as GitHub alerts, charts and
+  SVG figures as caption notes), with the current comments appended as a section. Untrusted text,
+  attributes, and comment notes are escaped so the exported Markdown cannot inject raw HTML or
+  forge document structure.
+
+### Changed
+
+- The overflow-menu portability badge now shares the sidebar badge's coloring and tooltip
+  (via `data-doc-type`), so both convey the same Portable / Not portable semantics.
+- Authoring guidance: content-conventions now covers shaping content in real layouts, an
+  anti-default-look taste checklist, a readable prose measure (top-level paragraphs are capped while
+  tables, figures, and code keep full width), and mapping a product's design tokens onto the
+  `--cp-*` variables.
+
 ## [1.4.0] - 2026-07-11
 
 ### Added

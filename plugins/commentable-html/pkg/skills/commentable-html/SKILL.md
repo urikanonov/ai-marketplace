@@ -204,7 +204,7 @@ The easiest and recommended way is `tools/new_document.py` (NonPortable by defau
 
 ### Toolbar
 
-The toolbar is intentionally minimal: **Copy all**, the open-comment **count bubble**, a **Hide** toggle, and a **... more** button (which holds a **document-type badge**, a **Show** entry to reopen the panel, **Export as Portable**, **Export to Plain HTML**, and **Help**). When the panel is collapsed, the toolbar toggle reads **Show** and wears a distinct filled bubble so it stands out. The sidebar header pins, top to bottom: a **meta row** (the document-type bubble, the layer **version** `v<x.y.z>`, and a right-aligned **Help** + **Hide** pair, where Hide carries a right-facing collapse chevron), then **Comments (count)** with **Copy all** next to it and two **sort-by-time arrows** (oldest-first / newest-first; click the active one again for document order, and the choice persists), then a single-line **info row** (**Generated on** and **Last comment** timestamps side by side), then a compact one-row group of icon buttons - **Export as Portable**, **Export to Plain HTML**, and **Clear** (the full labels are preserved as `aria-label`s). Every control shows a styled hover/focus tooltip via a dependency-free layer that upgrades the native `title` (moving it to `data-cmh-tip` so the browser tooltip never doubles up); no jQuery or CDN.
+The toolbar is intentionally minimal: **Copy all**, the open-comment **count bubble**, a **Hide** toggle, and a **... more** button (which holds a **document-type badge**, a **Show** entry to reopen the panel, **Export as Portable**, **Export to Plain HTML**, **Export to Markdown**, and **Help**). When the panel is collapsed, the toolbar toggle reads **Show** and wears a distinct filled bubble so it stands out. The sidebar header pins, top to bottom: a **meta row** (the document-type bubble, the layer **version** `v<x.y.z>`, and a right-aligned **Help** + **Hide** pair, where Hide carries a right-facing collapse chevron), then **Comments (count)** with **Copy all** next to it and two **sort-by-time arrows** (oldest-first / newest-first; click the active one again for document order, and the choice persists), then a single-line **info row** (**Generated on** and **Last comment** timestamps side by side), then a compact one-row group of icon buttons - **Export as Portable**, **Export to Plain HTML**, **Export to Markdown**, and **Clear** (the full labels are preserved as `aria-label`s). Every control shows a styled hover/focus tooltip via a dependency-free layer that upgrades the native `title` (moving it to `data-cmh-tip` so the browser tooltip never doubles up); no jQuery or CDN.
 
 **Attribution footer.** A runtime-generated `cm-skip` footer at the bottom of the page shows the layer brand icon, the **version**, the **generated-on** timestamp, and a **Help & about** link that opens the Help modal (the source-repo link, Raise-an-issue link, and author live in Help, not the footer). Like the TOC side menu it is runtime-only, so it is absent from a **Plain HTML** export (where the layer is removed) and regenerates whenever the layer is active. When the comments panel is open the footer stays centered in the visible (non-panel) area. The brand icon is also embedded as the file's favicon and shown in the sidebar meta row and the Help About section.
 
@@ -329,13 +329,17 @@ Plain rectangular tables inside `#commentRoot` get default themed styling and pe
 
 Images inside `#commentRoot` can receive whole-image comments restored by image index and source fallback. See [Images](references/images-commentable.md) for hover, keyboard, copy, and export behavior.
 
+## Commentable widgets, SVG nodes, and document-wide comments
+
+Interactive widgets and SVG figures become commentable per part via a generic opt-in contract (`data-cm-widget` / `data-cm-part` / `data-cm-slot`); parts inside `data-cm-slot` containers also get deterministic layout-change tracking, and right-clicking empty space adds a document-wide comment. See [Commentable widgets](references/commentable-widgets.md) for the markup, restore behavior, state-change bundle, and portability effect.
+
 ## Leaving comments (interaction model)
 
 All anchor types use the same Add Comment control and sidebar lifecycle, while duplicate anchors reopen existing comments where possible. See [Interaction model](references/interaction-model.md) for prose, code, diff, mermaid, and image gestures.
 
 ## Content conventions (ADO links and cross-references)
 
-Make source references actionable with real ADO links and stable in-page cross-references. See [Content conventions](references/content-conventions.md) for URL shapes and anchor-link rules.
+Make source references actionable with real ADO links and stable in-page cross-references. See [Content conventions](references/content-conventions.md) for URL shapes and anchor-link rules, and for authoring guidance on shaping content in real layouts, taste (avoiding the default-AI look), the readable prose measure, and mapping a product's design tokens onto the `--cp-*` variables.
 
 ## Export as Portable
 
@@ -348,6 +352,10 @@ NonPortable exports inline the loaded CSS and runtime from the asset registry so
 ## Export to Plain HTML
 
 Plain export removes the review UI and runtime while keeping the document styling and content intact. See [Exports](references/exports.md) for strip rules, safety checks, and mode differences.
+
+## Export to Markdown
+
+Export to Markdown copies the document content to the clipboard and downloads a `.md` file via a deterministic block-by-block conversion (headings, lists, GFM tables, fenced code / diff / mermaid / kusto, callouts as GitHub alerts, charts and SVG as caption notes), with the current comments appended as a section. See [Exports](references/exports.md#export-to-markdown) for the full block mapping.
 
 ## Add the layer to an existing HTML
 

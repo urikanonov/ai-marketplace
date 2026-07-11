@@ -88,21 +88,23 @@ test.describe("custom tooltips (no jQuery/CDN)", () => {
 });
 
 test.describe("compact sidebar header", () => {
-  test("the two timestamps share one row and the three actions share one row", async ({ page }) => {
+  test("the two timestamps share one row and the action buttons wrap into aligned rows", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await openInline(page);
     await page.evaluate(() => document.body.classList.add("sidebar-open"));
     const rects = await page.evaluate(() => {
-      const r = (id) => { const e = document.getElementById(id); const b = e.getBoundingClientRect(); return { top: b.top, h: b.height }; };
-      return { gen: r("cmGenerated"), last: r("cmLastComment"), save: r("btnSaveHtml"), plain: r("btnSavePlain"), clear: r("btnClearAll") };
+      const r = (id) => { const e = document.getElementById(id); const b = e.getBoundingClientRect(); return { top: Math.round(b.top), h: b.height }; };
+      return { gen: r("cmGenerated"), last: r("cmLastComment"), save: r("btnSaveHtml"), plain: r("btnSavePlain"), md: r("btnExportMd"), clear: r("btnClearAll") };
     });
     // timestamps on one line
     expect(Math.abs(rects.gen.top - rects.last.top)).toBeLessThan(6);
-    // the three action buttons on one line
-    expect(Math.abs(rects.save.top - rects.plain.top)).toBeLessThan(3);
-    expect(Math.abs(rects.save.top - rects.clear.top)).toBeLessThan(3);
+    // the four action buttons stay a compact, aligned grid (one or two rows, never a
+    // ragged stack): at most two distinct row tops.
+    const tops = [...new Set([rects.save.top, rects.plain.top, rects.md.top, rects.clear.top])];
+    expect(tops.length).toBeLessThanOrEqual(2);
     // accessible names stay full even though the visible labels are compact
     await expect(page.locator("#btnSaveHtml")).toHaveAttribute("aria-label", "Export as Portable");
+    await expect(page.locator("#btnExportMd")).toHaveAttribute("aria-label", "Export to Markdown");
     await expect(page.locator("#btnClearAll")).toHaveAttribute("aria-label", "Clear Comments");
   });
 
