@@ -33,7 +33,7 @@
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
         <img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" />
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.5.1<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.6.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any <span class="accent">HTML</span>,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -200,12 +200,27 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The Help <code>Getting started</code> topic now embeds the review-loop diagram (the agent-to-you-and-back loop) beneath the four steps, themed with the framework&#x27;s light/dark variables so it follows the active theme.</li>
+              <li>A <code>Website and live demo</code> link in the Help About block, pointing at the plugin&#x27;s GitHub Pages page.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Merged the <code>The review workflow</code> and <code>Getting started</code> help topics into a single, default-open <code>Getting started</code> topic, removing the overlap between them.</li>
+              <li>Reworded the <code>Self-contained and privacy</code> help topic: comments are stored in this browser&#x27;s <code>localStorage</code> (private, never uploaded, no account), and the review layer travels inside the file only in Portable mode - a Not portable file references small companion resources. It no longer implies the layer is always bundled into the file.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.5.1] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Polished the review-loop diagram (<code>docs/images/review-loop.svg</code> and its site twin): the step labels use consistent casing (&quot;1. Generates HTML&quot;, &quot;2. Comment Inline&quot;), and the &quot;reload and repeat&quot; caption became a fourth curved arrow from the AI agent back to you, so the loop reads as a closed cycle.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.5.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
@@ -221,8 +236,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Authoring guidance: content-conventions now covers shaping content in real layouts, an anti-default-look taste checklist, a readable prose measure (top-level paragraphs are capped while tables, figures, and code keep full width), and mapping a product&#x27;s design tokens onto the <code>--cp-*</code> variables.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.4.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
@@ -266,14 +279,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Clarified the NonPortable asset-location wording in the skill reference: the default companion files are referenced by a relative path (the skill&#x27;s <code>dist/</code> folder by default), not &quot;beside the document&quot;; the document sits beside its companions only when they are copied there.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.2.1] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Documentation wording now describes the NonPortable default accurately. The skill reference and the plugin README no longer call a generated document &quot;single-file&quot; or &quot;Portable&quot; by default: the default NonPortable document loads its CSS/JS from companion files, while Export as Portable (or <code>--portable</code>) produces the one self-contained file.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">8 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">9 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

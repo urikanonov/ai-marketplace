@@ -326,6 +326,37 @@ test("tutorial example links open the live demo, not a GitHub blob", async ({ pa
   }
 });
 
+test("the demo frame spans the full viewport width while its heading stays in the content column", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  const frame = await page.locator("#demo-panel").boundingBox();
+  // The demo frame breaks out of the content column to span the full layout width.
+  expect(frame.x).toBeLessThanOrEqual(2);
+  expect(frame.width).toBeGreaterThanOrEqual(clientWidth - 2);
+  // It is clearly wider than the constrained content column (proving the breakout).
+  const wrap = await page.locator("#features .wrap").boundingBox();
+  expect(frame.width).toBeGreaterThan(wrap.width + 20);
+  // The heading, description, and tabs stay in the content column, aligned with every other
+  // section heading (only the frame is full-bleed, not the whole section).
+  const demoTitle = await page.locator("#demo .section-title").boundingBox();
+  expect(demoTitle.x).toBeGreaterThan(frame.x + 8);
+  for (const id of ["#install", "#features", "#loop", "#modes"]) {
+    const other = await page.locator(id + " .section-title").boundingBox();
+    expect(Math.abs(other.x - demoTitle.x)).toBeLessThanOrEqual(2);
+  }
+});
+
+test("the plugin page footer links to contribute, feature request, issues, source, and the author's LinkedIn", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const footer = page.locator("footer.footer");
+  await expect(footer.locator("a", { hasText: "Contribute" })).toHaveAttribute("href", /\/CONTRIBUTING\.md$/);
+  await expect(footer.locator("a", { hasText: "Request a feature" })).toHaveAttribute("href", /feature-request\.yml$/);
+  await expect(footer.locator("a", { hasText: "File an issue" })).toHaveAttribute("href", /\/issues\/new\/choose$/);
+  await expect(footer.locator("a", { hasText: "Plugin source" })).toHaveAttribute("href", /\/plugins\/commentable-html$/);
+  await expect(footer.locator("a", { hasText: "Uri Kanonov" })).toHaveAttribute("href", /linkedin\.com\/in\/uri-kanonov/);
+});
+
 test("no internal link or asset uses a root-relative path (would break the project sub-path)", async ({ page }) => {
   for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });

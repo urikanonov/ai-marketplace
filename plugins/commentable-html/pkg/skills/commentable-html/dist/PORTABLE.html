@@ -45,7 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.5.1" />
+<meta name="commentable-html-version" content="1.6.0" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - Demo</title>
 
@@ -404,6 +404,17 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-help-topic[open] > summary::before { transform: rotate(90deg); }
 .cm-help-topic > summary:hover { color: var(--cp-accent); }
 .cm-help-topic-body { padding: 0 0.2rem 0.7rem 1.3rem; }
+/* Review-loop diagram in the "Getting started" help topic. Themed with the framework's
+   --cp-* variables so it follows the light/dark theme like the rest of the UI. */
+.cm-loop-figure { margin: 0.7rem 0 0.3rem; }
+.cm-loop-figure svg { width: 100%; height: auto; max-width: 560px; display: block; }
+.cm-loop-figure figcaption { margin-top: 0.35rem; font-size: 0.82rem; color: var(--cp-text-muted); }
+.cm-loop-bg { fill: var(--cp-surface-soft); stroke: var(--cp-border); }
+.cm-loop-node { fill: var(--cp-surface); stroke: var(--cp-accent); stroke-width: 1.5; }
+.cm-loop-title { fill: var(--cp-accent); }
+.cm-loop-sub { fill: var(--cp-text-muted); }
+.cm-loop-arrow { stroke: var(--cp-accent); stroke-width: 1.8; fill: none; }
+.cm-loop-head { fill: var(--cp-accent); }
 .cm-help-noresults { color: var(--cp-text-soft); font-style: italic; padding: 0.9rem 0.2rem; }
 /* About is a static, always-shown block (not a collapsible topic). */
 .cm-help-about { border-top: 1px solid var(--cp-border); padding: 0.2rem 0.2rem 0.4rem; }
@@ -1398,7 +1409,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.5.1";
+const CMH_VERSION = "1.6.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -5552,7 +5563,7 @@ function showHelp(restoreEl) {
       '<input type="search" class="cm-help-search-input" placeholder="Search help (e.g. export, diff, shortcuts)..." aria-label="Search help" autocomplete="off" spellcheck="false">' +
     '</div>' +
     '<div class="cm-help-body">' +
-      T('The review workflow',
+      T('Getting started',
         '<p>Commentable HTML turns any report into a review you can hand straight back to an AI agent. The loop has four steps:</p>' +
         '<ol>' +
           '<li><strong>Generate</strong> - ask an AI chat or terminal agent to produce the report or document as a commentable HTML file.</li>' +
@@ -5560,15 +5571,29 @@ function showHelp(restoreEl) {
           '<li><strong>Hand back</strong> - click <strong>Copy all</strong> and paste the bundle back to the agent (or export the file and send it along).</li>' +
           '<li><strong>Refresh and repeat</strong> - the agent edits the source and marks your comments handled; reload the updated file and the addressed comments disappear. Repeat until none remain.</li>' +
         '</ol>' +
-        '<p><strong>Just want to leave a comment?</strong> If someone shared this file with you to review, you do not need an agent or an account: select any text, click <em>Add Comment</em>, then hand your notes back with <strong>Copy all</strong> or <strong>Export as Portable</strong>. See <em>Getting started</em> next.</p>', true) +
-      T('Getting started (or reviewing a shared file)',
-        '<p>This page is a <strong>commentable</strong> document. If a colleague sent it to you to review, everything you need is in the file itself - no install, no agent, no account.</p>' +
-        '<ul>' +
-          '<li>Select any text and an <em>Add Comment</em> popup appears. Type a note and Save.</li>' +
-          '<li>Your comments live in the panel on the right and persist in this browser.</li>' +
-          '<li>Hand your review back with <strong>Copy all</strong> (paste it to an agent) or <strong>Export as Portable</strong> (one file to send to a person, with your comments baked in).</li>' +
-          '<li>Every topic below is collapsible; use the search box above to jump straight to an answer.</li>' +
-        '</ul>') +
+        '<figure class="cm-loop-figure">' +
+          '<svg viewBox="0 0 640 250" role="img" aria-labelledby="cmLoopTitle cmLoopDesc">' +
+            '<title id="cmLoopTitle">Commentable HTML self-review loop</title>' +
+            '<desc id="cmLoopDesc">An AI agent generates a commentable HTML report; you review it and leave inline comments; you Copy all the comments back to the agent; the agent returns the updated file and you repeat until every comment is resolved.</desc>' +
+            '<defs><marker id="cmLoopAh" markerWidth="10" markerHeight="10" refX="7.5" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path class="cm-loop-head" d="M1,1 L8,4.5 L1,8 Z" /></marker></defs>' +
+            '<rect class="cm-loop-bg" x="1" y="1" width="638" height="248" rx="16" />' +
+            '<rect class="cm-loop-node" x="60" y="96" width="170" height="64" rx="12" />' +
+            '<text class="cm-loop-title" x="145" y="133" text-anchor="middle" font-size="17" font-weight="600">AI agent</text>' +
+            '<rect class="cm-loop-node" x="410" y="96" width="170" height="64" rx="12" />' +
+            '<text class="cm-loop-title" x="495" y="133" text-anchor="middle" font-size="17" font-weight="600">You</text>' +
+            '<text class="cm-loop-sub" x="320" y="106" text-anchor="middle" font-size="12.5">1. Generates HTML</text>' +
+            '<line class="cm-loop-arrow" x1="236" y1="116" x2="402" y2="116" marker-end="url(#cmLoopAh)" />' +
+            '<text class="cm-loop-sub" x="495" y="52" text-anchor="middle" font-size="12.5">2. Comment inline</text>' +
+            '<path class="cm-loop-arrow" d="M468,95 C 456,60 534,60 522,95" marker-end="url(#cmLoopAh)" />' +
+            '<line class="cm-loop-arrow" x1="404" y1="142" x2="238" y2="142" marker-end="url(#cmLoopAh)" />' +
+            '<text class="cm-loop-sub" x="320" y="160" text-anchor="middle" font-size="12.5">3. Copy all back to the agent</text>' +
+            '<path class="cm-loop-arrow" d="M160,175 C 250,235 380,235 470,161" marker-end="url(#cmLoopAh)" />' +
+            '<text class="cm-loop-sub" x="320" y="242" text-anchor="middle" font-size="12.5">4. Reload and repeat</text>' +
+          '</svg>' +
+          '<figcaption>The self-review loop: an agent generates the file, you comment inline, Copy all hands the notes back, and you reload the updated file until none remain.</figcaption>' +
+        '</figure>' +
+        '<p><strong>Just want to leave a comment?</strong> If someone shared this file with you to review, you do not need an agent or an account - everything you need is in the file itself. Select any text and an <em>Add Comment</em> popup appears; type a note and Save. Your comments live in the panel on the right and persist in this browser. Hand your review back with <strong>Copy all</strong> (paste it to an agent) or <strong>Export as Portable</strong> (one file to send to a person, with your comments baked in).</p>' +
+        '<p>Every topic below is collapsible; use the search box above to jump straight to an answer.</p>', true) +
       T('Leaving a comment',
         '<ul>' +
           '<li><strong>Text and code:</strong> select the words to comment on; the <em>Add Comment</em> popup appears (right-click a selection also works). Re-selecting the exact same range re-opens that comment; a different range starts a new one. Triple-click and block selections that spill onto section chrome still anchor to the real text.</li>' +
@@ -5646,10 +5671,12 @@ function showHelp(restoreEl) {
           '<li>Controls carry hover and focus tooltips; this dialog traps focus and restores it to the control that opened it.</li>' +
         '</ul>') +
       T('Self-contained and privacy',
-        '<p>The review layer is <strong>bundled into this file</strong>. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot load, mermaid stays readable source text and charts stay as a blank canvas. Your comments never leave this browser until you copy or export them yourself.</p>') +
+        '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
+        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas.</p>') +
       '<div class="cm-help-about"><h3>About</h3>' +
         '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by Uri Kanonov.</p>' +
         '<ul>' +
+          '<li><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/" target="_blank" rel="noopener noreferrer">Website and live demo</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace" target="_blank" rel="noopener noreferrer">Source on GitHub</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml" target="_blank" rel="noopener noreferrer">Report an issue</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml" target="_blank" rel="noopener noreferrer">Request a feature</a></li>' +

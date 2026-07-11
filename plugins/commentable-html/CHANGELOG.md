@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-11
+
+### Added
+
+- The Help `Getting started` topic now embeds the review-loop diagram (the agent-to-you-and-back
+  loop) beneath the four steps, themed with the framework's light/dark variables so it follows the
+  active theme.
+- A `Website and live demo` link in the Help About block, pointing at the plugin's GitHub Pages page.
+
+### Changed
+
+- Merged the `The review workflow` and `Getting started` help topics into a single, default-open
+  `Getting started` topic, removing the overlap between them.
+- Reworded the `Self-contained and privacy` help topic: comments are stored in this browser's
+  `localStorage` (private, never uploaded, no account), and the review layer travels inside the file
+  only in Portable mode - a Not portable file references small companion resources. It no longer
+  implies the layer is always bundled into the file.
+
 ## [1.5.1] - 2026-07-11
 
 ### Changed

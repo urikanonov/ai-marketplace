@@ -32,17 +32,19 @@ test("the help buttons are labelled Help & About (CMH-HELP-LABEL-01)", async ({ 
   }
 });
 
-test("help opens with the 4-step review workflow as the default topic (CMH-WF-HELP-01)", async ({ page }) => {
+test("help opens with the 4-step review workflow in the Getting started topic (CMH-WF-HELP-01)", async ({ page }) => {
   await openInline(page);
   await page.locator("#btnHelp").evaluate((el) => el.click());
   const help = page.locator(".cm-help");
   await expect(help).toBeVisible();
   const first = help.locator("details.cm-help-topic").first();
-  await expect(first.locator("summary")).toHaveText(/The review workflow/);
+  await expect(first.locator("summary")).toHaveText(/Getting started/);
   await expect(first).toHaveAttribute("open", "");
   for (const step of [/Generate/, /Review/, /Hand back/, /Refresh and repeat/]) {
     await expect(first).toContainText(step);
   }
+  // The review-loop diagram is embedded below the steps.
+  await expect(first.locator(".cm-loop-figure svg")).toHaveCount(1);
 });
 
 test("clicking a collapsed section title expands it (CMH-SECEXPAND-01)", async ({ page }) => {
