@@ -292,6 +292,19 @@ Copilot branch. If you must consume PR code with a privileged token, split it: r
 in an unprivileged `pull_request` job and do the privileged action in a separate
 `pull_request_target` job that only reads metadata.
 
+One caveat is specific to same-repo PRs (a collaborator's or Copilot's branch, never a fork): their
+gates run on `pull_request`, so the workflow definition that executes is the PR's OWN head version.
+An edit to a `pull_request` gate that widens its `permissions:` or adds a `secrets.*` reference would
+therefore take effect on that PR's first auto-run, before any review - and because
+`require-owner-approval` is published as a plain head-SHA commit status (not an app-scoped check-run),
+a run that granted itself `statuses: write` could in principle post a `success` on that context. Two
+repo settings blunt this (the default `GITHUB_TOKEN` is read-only,
+`default_workflow_permissions: read`, and Actions cannot approve PRs,
+`can_approve_pull_request_reviews: false`), but the real safeguard is to review any diff under
+`.github/workflows/**` (the maintainer PR-template already requires this) BEFORE approving a
+non-maintainer PR's run - not after merge. So "residual risk is compute/runner abuse" holds only
+while the `pull_request` gates' own `permissions:` blocks are never widened in the PR under test.
+
 ### Copilot coding-agent workflow approvals (why they keep prompting)
 
 The Actions "Require approval for first-time contributors" (and the broader "Fork pull request
