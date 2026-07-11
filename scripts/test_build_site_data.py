@@ -43,8 +43,12 @@ class CleanEntryTests(unittest.TestCase):
         self.assertEqual(bsd.clean_entry("commentable-html - no version here", "commentable-html"),
                          "no version here")
 
-    def test_no_filter_only_removes_backticks(self):
-        self.assertEqual(bsd.clean_entry("uses `code` here", None), "uses code here")
+    def test_preserves_body_backticks_for_code_spans(self):
+        self.assertEqual(bsd.clean_entry("`commentable-html` 1.2.3 - uses `code`", "commentable-html"),
+                         "uses `code`")
+
+    def test_no_filter_preserves_backticks(self):
+        self.assertEqual(bsd.clean_entry("uses `code` here", None), "uses `code` here")
 
 
 class ParseChangelogTests(unittest.TestCase):
@@ -138,6 +142,11 @@ class ChangelogInlineTests(unittest.TestCase):
         self.assertIn("<strong>bold</strong>", html)
         self.assertIn("<code>code</code>", html)
         self.assertNotIn("**bold**", html)
+
+    def test_end_to_end_preserves_code_spans(self):
+        text = "## [1.0.0]\n### Added\n- Bounded inside `figure.chart` at narrow widths.\n"
+        html = bsd.render_changelog(bsd.parse_changelog(text, None))
+        self.assertIn("<code>figure.chart</code>", html)
 
 
 class SyncOrphanTests(unittest.TestCase):
