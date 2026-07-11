@@ -54,8 +54,8 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: tests/site/package-lock.json
+      # No npm cache: the tiny dev dependency set installs quickly, and skipping it keeps the
+      # lockfile-keyed npm cache out of reach of the repo-controlled test code that runs later.
       - name: Install test dependencies (no lifecycle scripts)
         working-directory: tests/site
         run: npm ci --ignore-scripts

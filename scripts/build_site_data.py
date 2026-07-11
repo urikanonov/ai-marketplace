@@ -79,6 +79,7 @@ def write_text(path, text):
 # Render-critical assets whose URLs carry a content-hash query, so a browser never serves a
 # stale stylesheet or script after a deploy (the query changes exactly when the file does).
 # Icons are omitted: they change rarely and a cached favicon does not misrender page content.
+# The generated pages always use double-quoted attributes, which this pattern targets.
 CACHE_BUSTED_ASSETS = ("styles.css", "site.js")
 _ASSET_REF_RE = re.compile(
     r'(?P<attr>href|src)="(?P<path>(?:\.{1,2}/)*assets/(?P<file>%s))(?:[?#][^"]*)?"'

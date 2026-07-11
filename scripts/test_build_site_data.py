@@ -395,35 +395,40 @@ class StampWiringTests(unittest.TestCase):
     def test_no_site_html_has_an_unstamped_asset_ref(self):
         import os as _os
         import glob
-        pat = re.compile(r'(?:href|src)="[^"]*?assets/(?:styles\.css|site\.js)(\?v=[0-9a-f]+)?"')
-        unstamped = []
+        pat = re.compile(r'(?:href|src)="[^"]*?assets/(?:styles\.css|site\.js)([^"]*)"')
+        stamp = re.compile(r'^\?v=[0-9a-f]+$')
+        bad = []
         for path in glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True):
             for m in pat.finditer(bsd.read_text(path)):
-                if not m.group(1):
-                    unstamped.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
-        self.assertEqual(unstamped, [])
+                if not stamp.match(m.group(1)):
+                    bad.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
+        self.assertEqual(bad, [])
 
 
 class CheckDriftTests(unittest.TestCase):
-    def _clone_repo_subset(self):
+    _SKIP = {".git", "node_modules", "__pycache__", ".worktrees", "test-results", "playwright-report"}
+
+    def _clone_repo(self):
         import os as _os
         import shutil
         import tempfile
-        skill = "plugins/commentable-html/pkg/skills/commentable-html"
         root = tempfile.mkdtemp()
-        for rel in [".github/plugin/marketplace.json", "plugins/commentable-html/CHANGELOG.md"]:
-            src = _os.path.join(bsd.REPO_ROOT, *rel.split("/"))
-            dst = _os.path.join(root, *rel.split("/"))
-            _os.makedirs(_os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
-        for rel in ["site", skill + "/examples", skill + "/docs"]:
-            shutil.copytree(_os.path.join(bsd.REPO_ROOT, *rel.split("/")),
-                            _os.path.join(root, *rel.split("/")))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        ignore = shutil.ignore_patterns(*self._SKIP)
+        for name in _os.listdir(bsd.REPO_ROOT):
+            if name in self._SKIP:
+                continue
+            src = _os.path.join(bsd.REPO_ROOT, name)
+            dst = _os.path.join(root, name)
+            if _os.path.isdir(src):
+                shutil.copytree(src, dst, ignore=ignore)
+            else:
+                shutil.copy2(src, dst)
         return root
 
     def test_check_flags_a_stale_asset_stamp(self):
         import os as _os
-        root = self._clone_repo_subset()
+        root = self._clone_repo()
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
         with open(_os.path.join(root, "site", "assets", "styles.css"), "a", encoding="utf-8") as fh:
