@@ -1,6 +1,13 @@
 # Exports
 
 
+## Choosing a portability mode
+
+**NonPortable** is the default authoring mode for fast personal iteration with the agent. The live HTML references shared companion assets (`commentable-html.css`, `commentable-html.js`, and `commentable-html.assets.js`), so each regeneration is much cheaper in tokens while the file can reach those assets.
+
+**Portable** is one self-contained file with the CSS, runtime, and comments inlined. Use it for peer review, sharing, or long-term persistence. Create it with **Export as Portable**; from a nonportable source, the export inlines the companion assets and current comments into the downloaded file.
+
+
 ## Export as Portable
 
 > UI label: **Export as Portable** (in the toolbar **...** overflow menu and the sidebar header). Earlier builds labeled it "Save comments" / "Save in HTML"; the behavior is the same, and in nonportable mode it now always produces a combined single file (see below).

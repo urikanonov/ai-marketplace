@@ -68,7 +68,7 @@ The HTML file itself is the durable source of truth for which comments have been
 
 ## Steps
 
-**Defaults from a brief request.** A short request such as "make me a commentable HTML for X, cover: <topics>" is enough on its own. Fill in the rest by default: produce a single self-contained standalone file, add a table of contents, write polished sectioned prose, and add tables, charts, mermaid diagrams, images, KQL blocks, and code-review diffs wherever they aid understanding - all commentable. The user should not have to ask for the review layer, the table of contents, single-file output, or rich content; those are the skill's defaults.
+**Defaults from a brief request.** A short request such as "make me a commentable HTML for X, cover: <topics>" is enough on its own. Fill in the rest by default: produce a NonPortable document for fast local iteration, add a table of contents, write polished sectioned prose, and add tables, charts, mermaid diagrams, images, KQL blocks, and code-review diffs wherever they aid understanding - all commentable. The user should not have to ask for the review layer, the table of contents, the default output mode, or rich content; those are the skill's defaults. Use **Export as Portable** when the file needs to travel.
 
 ### Step 1 - Decide whether to add the layer
 
@@ -76,9 +76,9 @@ The HTML file itself is the durable source of truth for which comments have been
 
 ### Step 2 - Create the document (deterministic tools first)
 
-**SHOULD** first pick the output mode (see "Output modes: standalone vs nonportable"). Default to **standalone** (`dist/PORTABLE.html`, one self-contained file). Choose **nonportable** (copy `dist/` companions + start from `dist/NONPORTABLE.html`) only for local, iterated documents where regeneration cost matters and the file will stay next to its companions.
+**SHOULD** first pick the output mode (see "Output modes: NonPortable vs Portable"). Default to **NonPortable** (`dist/NONPORTABLE.html` plus shared companion assets) because each regeneration is much cheaper in tokens and better for fast personal iteration with the agent. Choose **Portable** (`dist/PORTABLE.html`, one self-contained file, or **Export as Portable** from a nonportable file) when the file will be shared with a peer, moved away from its companion assets, or kept long term.
 
-**For a NEW standalone document, MUST use `tools/new_document.py`** when Python is available. It clones `dist/PORTABLE.html`, drops in only your content fragment, sets the `#commentRoot` data attributes, refuses demo keys, and self-validates before writing. Do NOT hand-copy the five regions for a fresh document - that is the highest-token, most error-prone path and it walks straight into the duplicate-root footgun described in Step 3.
+**For a NEW Portable document, MUST use `tools/new_document.py`** when Python is available. It clones `dist/PORTABLE.html`, drops in only your content fragment, sets the `#commentRoot` data attributes, refuses demo keys, and self-validates before writing. Do NOT hand-copy the five regions for a fresh document - that is the highest-token, most error-prone path and it walks straight into the duplicate-root footgun described in Step 3.
 
 ```
 python tools/new_document.py --content fragment.html --key auto --label "My Report" --out my-report.html
@@ -136,7 +136,7 @@ python tools/mark_handled.py <file.html> <id1> <id2> ...
 python tools/mark_handled.py <file.html> --from-bundle - # pipe the pasted Copy-all bundle on stdin
 ```
 
-This is the near-zero-token iteration step - it never rewrites the document body, which matters most in nonportable mode where the boilerplate lives in companion files.
+This is the near-zero-token iteration step - it never rewrites the document body, which matters most in NonPortable mode where the boilerplate lives in companion files.
 
 **MUST NOT** edit the user's `localStorage` directly. Only the HTML file is the agent's surface.
 
@@ -160,20 +160,20 @@ Once a comment id is in the `<script id="handledCommentIds">` array, it must nev
 
 This is the single most important invariant of the skill: the agent's edit to `handledCommentIds` is the final word on what is gone.
 
-## Output modes: standalone (inline) vs nonportable
+## Output modes: NonPortable vs Portable
 
-The layer ships in two interchangeable forms. Both share the exact same runtime and CSS (built from one source, see "Build pipeline"), and both keep the document-owned state (HANDLED IDS, EMBEDDED COMMENTS) inline. They differ only in whether the ~89 KB of CSS + JS boilerplate is inlined or referenced from companion files.
+The layer ships in two interchangeable forms. Both share the exact same runtime and CSS (built from one source, see "Build pipeline"), and both keep the document-owned state (HANDLED IDS, EMBEDDED COMMENTS) inline. They differ only in whether the shared CSS + JS boilerplate is referenced from companion files or inlined.
 
-| | **Standalone (inline)** - `dist/PORTABLE.html` | **NonPortable** - `dist/NONPORTABLE.html` + companions |
+| | **NonPortable** - `dist/NONPORTABLE.html` + companions | **Portable** - `dist/PORTABLE.html` or **Export as Portable** |
 |---|---|---|
-| Layer CSS/JS | inlined in the file | referenced by `<link>` / `<script src>` from the skill's `dist/` folder (not copied into the report folder) |
-| Portability | one self-contained file - email/move freely | needs the `commentable-html.{css,js,assets.js}` assets reachable at the referenced path; use **Export as Portable** for a self-contained copy |
-| Per (re)generation cost | agent emits the whole ~106 KB file | agent emits a ~17 KB shell; the boilerplate is **referenced from the skill folder**, never emitted (~84% smaller) |
-| Best for | one-shot artifacts, things you email or archive | dashboards/plans you iterate on locally, where regeneration speed and token cost matter |
+| Layer CSS/JS | referenced by `<link>` / `<script src>` from the skill's shared `dist/` assets | inlined in the file |
+| Portability | needs `commentable-html.{css,js,assets.js}` reachable at the referenced path | one self-contained file - email, move, share, or archive freely |
+| Per (re)generation cost | agent emits a lightweight shell and content; the boilerplate is referenced, never re-emitted | agent emits the full inline file, or the browser inlines it during export |
+| Best for | fast personal iteration with the agent where regeneration speed and token cost matter | peer review, long-term persistence, or any file that must travel alone |
 
-**Default to standalone.** NonPortable is opt-in. A loose nonportable HTML opened where it cannot reach the assets is broken, so only choose nonportable when the report can reach the skill's `dist/` folder at a stable path (local iteration) and the user has asked to optimize regeneration cost.
+**Default to NonPortable** for generated artifacts and iterative local drafts. It references the shared companion assets so each regeneration stays cheap. Switch to **Portable** when sharing with a peer or preserving the document long term, or tell the reader to click **Export as Portable** before they send, move, or archive the file. If companion paths will not be stable, produce Portable directly.
 
-### Producing a nonportable document
+### Producing a NonPortable document
 
 1. Point the shell's asset references at the skill's `dist/` folder rather than copying the files into the report folder: set the head `<link href>` and the two `<script src>` to a path that resolves to `.../commentable-html/dist/commentable-html.{css,js,assets.js}`. **Prefer a relative path** from the target HTML; use an absolute path only for clearly local-only documents (an absolute path embeds your local directory / username in the file and breaks for anyone else unless you run **Export as Portable** first). The three assets are **referenced, never regenerated**. (Copying them next to the HTML still works if you want a movable bundle instead.)
 2. Use `dist/NONPORTABLE.html` as the starting shell (head `<link>` + version `<meta>`, the NONPORTABLE BOOTSTRAP banner, the inline state/UI regions, and the two `<script src>` companions at the end of `<body>`); repoint the `href`/`src` at the skill `dist/` path. Replace the demo content inside the CONTENT markers with your own; set a unique `data-comment-key`.
@@ -371,11 +371,12 @@ Call out anchor and browser limitations when they affect a generated document, e
 
 Use these files and folders when producing, validating, or maintaining commentable HTML:
 
-- **`dist/PORTABLE.html`** - complete inline template and demo; copy its five regions for standalone mode.
-- **`dist/`** - nonportable shell and companion CSS/JS/assets bundle for local iterative documents.
+- **`dist/NONPORTABLE.html`** - default shell for cheap local iteration with shared companion assets.
+- **`dist/PORTABLE.html`** - complete inline template and demo for one-file sharing or archiving.
+- **`dist/`** - companion CSS/JS/assets bundle used by NonPortable documents and Export as Portable.
 - **`tools/*`** - deterministic, stdlib-only Python helpers you SHOULD prefer over hand-editing (they remove AI variance and are self-validating). Run any with `python tools/<name>.py --help`:
  - `validate.py [--strict] <file>` - structural/invariant checker (run after every retrofit; `--strict` fails on any warning so one run surfaces everything).
- - `new_document.py --content <file|-> --key K|auto --label L [--source S] [--generated ISO]` - build a fresh standalone commentable doc from a content fragment (safely fills the CONTENT region and `#commentRoot` attrs; avoids the duplicate-root footgun; `--key auto` derives a stable key).
+ - `new_document.py --content <file|-> --key K|auto --label L [--source S] [--generated ISO]` - build a fresh Portable commentable doc from a content fragment (safely fills the CONTENT region and `#commentRoot` attrs; avoids the duplicate-root footgun; `--key auto` derives a stable key).
  - `upgrade.py <file> [--check]` - swap the CSS/COMMENT UI/JS regions of a deployed file to a newer `dist/PORTABLE.html`, preserving comments/state (validates before it commits; never clobbers on failure).
  - `finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] [--strict]` - run the safe assembly steps in a fixed order then validate, in one command.
  - `mark_handled.py <file> --from-bundle -` - append handled ids from a pasted Copy-all bundle (the iteration loop).
