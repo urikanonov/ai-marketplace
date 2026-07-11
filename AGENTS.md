@@ -16,7 +16,7 @@ A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users 
   plugin/marketplace.json     # marketplace manifest: the list of published plugins (source of truth)
   schemas/                    # JSON Schemas for marketplace.json and plugin.json
   workflows/validate.yml      # CI: validates the manifest, plugins, and skills on every PR/push
-  ISSUE_TEMPLATE/             # bug form, feature/plugin-request form, config
+  ISSUE_TEMPLATE/             # bug form, feature-request form, new-plugin-idea form, config
   CODEOWNERS, dependabot.yml, pull_request_template.md
 plugins/
   <plugin>/pkg/               # shipped source: plugin.json + skills/ (+ hooks/ or .mcp.json)
@@ -160,7 +160,7 @@ rulesets are unavailable on public user-owned repos. The required `build` check 
 
 - Every plugin is authored as `Uri Kanonov <urikanonov@gmail.com>` in both `plugin.json` and the manifest entry.
 - External contributions are for improving EXISTING plugins only. New plugins are authored by the maintainer;
-  new-plugin ideas arrive through the plugin/feature request issue form, not as pull requests that add a plugin.
+  new-plugin ideas arrive through the "New plugin or skill idea" issue form, not as pull requests that add a plugin.
 
 ## Branch and PR rules
 

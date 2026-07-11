@@ -7,7 +7,8 @@ Thanks for your interest in this AI marketplace. This guide covers how contribut
 This is a personal marketplace. Every plugin is authored and maintained by Uri Kanonov, so authorship and support stay consistent across the catalog.
 
 - Improving an existing plugin is the main way to contribute. Bug fixes, clearer skill instructions, better docs, and portability fixes are all welcome as pull requests.
-- New plugins are added by the maintainer. If you have an idea for a new plugin or skill, please open a [plugin or feature request](https://github.com/urikanonov/ai-marketplace/issues/new/choose) instead of submitting a new plugin. The maintainer will author it. This keeps every plugin under a single, supportable authorship.
+- Want a plugin to do something it does not do yet? Open a [feature request](https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml) for the existing plugin, or send a pull request that improves it.
+- New plugins are added by the maintainer. If you have an idea for a new plugin or skill, please open a [new plugin or skill idea](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-request.yml) instead of submitting a new plugin. The maintainer will author it. This keeps every plugin under a single, supportable authorship.
 
 ## Branch rules
 
