@@ -123,10 +123,13 @@ test.describe("add-comment affordances", () => {
     const before = await gap();
     expect(before).not.toBeNull();
     await page.evaluate(() => window.scrollBy(0, 40));
-    // Distinct code path from the image button (positionDiffAdd); it must pin the
-    // same way - either it hid (target moved out) or it tracked the line exactly.
-    // Poll for the rAF reposition to settle (deterministic; not flaky under contention).
-    await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 4; },
+    // The button tracks its line via positionDiffAdd on scroll. A correctly pinned button keeps
+    // essentially the same offset from its line, give or take a few px of first-paint and
+    // scroll-settle noise (the initial position can use the fallback button height before layout
+    // flushes, and getBoundingClientRect is sub-pixel); a button that came loose would instead
+    // drift by ~the full scroll distance. Poll until the reposition settles within a tolerance
+    // that absorbs that noise but stays far below the 40px it would move if it failed to track.
+    await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 12; },
       { timeout: 10000 }).toBe(true);
   });
 
