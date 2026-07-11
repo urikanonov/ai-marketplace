@@ -277,11 +277,7 @@ return then true until while
         "string_styles": ("triple_double", "triple_single", "toml_single_literal", "double"),
     },
     "css": {
-        "keywords": _words("""
-auto important inherit initial none unset revert hover focus active block flex grid
-inline absolute relative fixed static solid dashed dotted bold normal center left
-right top bottom
-"""),
+        "keywords": _words("auto important inherit initial none unset revert"),
         "line_comments": (),
         "block_comments": (("/*", "*/"),),
         "string_styles": ("single", "double"),
@@ -346,6 +342,15 @@ if in md move not pause popd pushd rd ren set setlocal shift start title type
 # keyword. (Numbers/strings/identifiers use case-explicit patterns, so they are unaffected.)
 CASE_INSENSITIVE_LANGUAGES = frozenset({"sql", "batch", "powershell", "html", "css"})
 
+# Languages where a single quote delimits a CHAR / rune literal (one character), not a multi-character
+# string. They use the "char" string style so a Rust lifetime (<'a>), a digit separator (1'000), or any
+# other lone ' is never mis-highlighted as a string. The swap is applied here in one place.
+CHAR_LITERAL_LANGUAGES = ("c", "cpp", "csharp", "java", "go", "rust", "objectivec")
+for _lang in CHAR_LITERAL_LANGUAGES:
+    LANGUAGE_CONFIGS[_lang]["string_styles"] = tuple(
+        "char" if _style == "single" else _style
+        for _style in LANGUAGE_CONFIGS[_lang]["string_styles"])
+
 ALIASES = {
     "sh": "bash",
     "shell": "bash",
@@ -373,18 +378,23 @@ _OP_RE = r"[=!<>+\-*/%&|^~?:;.,()\[\]{}#]+"
 _TOKEN_RE_CACHE = {}
 
 _STRING_PATTERNS = {
-    # Multi-line (triple / verbatim / doubled-quote) styles. An unterminated opener still
-    # highlights to end of input via the |\Z fallback (partial snippets are common).
+    # A closing delimiter is OPTIONAL for styles whose delimiter is (almost) never used as a non-string
+    # sigil - double quote, backtick, both triple-quote forms, and @"..." verbatim - so an unterminated
+    # one highlights to end of line / input without eating valid code. SINGLE-quote string styles REQUIRE
+    # their closer, because a lone ' is common in real code (YAML apostrophes like don't, single-quoted
+    # scalars) and an optional closer there would swallow the rest of the line as a string.
     "triple_double": r'"""[\s\S]*?(?:"""|\Z)',
     "triple_single": r"'''[\s\S]*?(?:'''|\Z)",
     "csharp_verbatim": r'@"[^"]*(?:""[^"]*)*"?',
-    "sql_single": r"'[^']*(?:''[^']*)*'?",
-    "toml_single_literal": r"'[^'\n]*'?",
-    # Single-line styles use the "unrolled loop" form (a linear-time equivalent of
-    # (?:[^q\\]|\\.)* ) so pathological escaped-quote input cannot drive superlinear
-    # backtracking. \\[\s\S] (not \\.) so a backslash-newline line continuation stays inside
-    # the string. The optional closing quote highlights an unterminated string to end of line.
-    "single": r"'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'?",
+    "sql_single": r"'[^']*(?:''[^']*)*'",
+    "toml_single_literal": r"'[^'\n]*'",
+    # A single character or escape between single quotes - a C/C++/C#/Java/Go/Rust char or rune literal.
+    # We allow multi-byte escapes (\u1234) but restrict unescaped content to exactly one char to avoid
+    # swallowing Rust lifetimes (<'a>) or C++ digit separators (1'000'000).
+    "char": r"'(?:\\[\s\S][^'\\\n]*|[^'\\\n])'",
+    # Unrolled (linear-time) loop so pathological escaped-quote input cannot backtrack; \\[\s\S]
+    # keeps a backslash-newline line continuation inside the string.
+    "single": r"'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'",
     "double": r'"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"?',
     "backtick": r"`[^`\\]*(?:\\[\s\S][^`\\]*)*`?",
 }

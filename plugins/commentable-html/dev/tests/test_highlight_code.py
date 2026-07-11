@@ -47,7 +47,7 @@ SNIPPETS = {
     "powershell": 'function Foo {\n  $s = "hi"\n  Write-Output 42 # comment\n  <# block #>\n}\n',
     "lua": 'function foo()\n  local s = "hi"\n  bar(42) -- comment\n  --[[ block ]]\nend\n',
     "toml": 'title = "hi"\nenabled = true\ncount = 42 # comment\n',
-    "css": 'a { content: "hi"; width: 42; /* comment */ display: block; }\n',
+    "css": 'a { content: "hi"; z-index: 42; color: inherit; /* comment */ }\n',
     "groovy": 'def foo() { String s = "hi"; bar(42); // comment\n/* block */ }\n',
     "elixir": 'def foo do\n  s = "hi"\n  bar(42) # comment\nend\n',
     "haskell": 'foo :: Int -> String\nfoo x = let s = "hi" in bar 42 -- comment\n{- block -}\n',
@@ -103,7 +103,7 @@ TOKEN_CASES = {
     "powershell": ("function", '"hi"', "# comment", "42", "<# block #>"),
     "lua": ("function", '"hi"', "-- comment", "42", "--[[ block ]]"),
     "toml": ("true", '"hi"', "# comment", "42", None),
-    "css": ("block", '"hi"', "/* comment */", "42", "/* comment */"),
+    "css": ("inherit", '"hi"', "/* comment */", "42", "/* comment */"),
     "groovy": ("def", '"hi"', "// comment", "42", "/* block */"),
     "elixir": ("def", '"hi"', "# comment", "42", None),
     "haskell": ("let", '"hi"', "-- comment", "42", "{- block -}"),
@@ -280,7 +280,7 @@ class HighlightCodeCaseSensitivityTests(unittest.TestCase):
         self.assertIn('<span class="cmh-code-kw">IF</span>', H.highlight_code("batch", "IF exist x del x"))
         self.assertIn('<span class="cmh-code-kw">Function</span>', H.highlight_code("powershell", "Function Foo {}"))
         self.assertIn('<span class="cmh-code-kw">DIV</span>', H.highlight_code("html", "<DIV></DIV>"))
-        self.assertIn('<span class="cmh-code-kw">BLOCK</span>', H.highlight_code("css", "a{display:BLOCK}"))
+        self.assertIn('<span class="cmh-code-kw">INHERIT</span>', H.highlight_code("css", "a{color:INHERIT}"))
 
 
 class HighlightCodeCommentAndStringEdgeTests(unittest.TestCase):
@@ -319,6 +319,31 @@ class HighlightCodeCommentAndStringEdgeTests(unittest.TestCase):
         self.assertIn('<span class="cmh-code-str">"oops</span>', out)
         # The next line is not swallowed into the string.
         self.assertIn('<span class="cmh-code-num">1</span>', out)
+
+    def test_single_quote_sigils_are_not_swallowed_as_strings(self):
+        # A lone ' is common in real code, so single-quote styles require a closing quote and never
+        # run to end of line: Rust lifetimes, YAML apostrophes, and C++ digit separators stay intact.
+        rust = H.highlight_code("rust", 'fn f() -> &\'static str { "hi" }')
+        self.assertEqual(rust.count('class="cmh-code-str"'), 1)  # only "hi", not the 'static lifetime
+        self.assertIn('<span class="cmh-code-str">"hi"</span>', rust)
+        self.assertNotIn('class="cmh-code-str"', H.highlight_code("yaml", "title: don't stop"))
+        self.assertNotIn('class="cmh-code-str"', H.highlight_code("cpp", "int n = 1'000;"))
+
+    def test_char_literal_languages_color_chars_not_lifetimes(self):
+        # C/C++/C#/Java/Go/Rust/Objective-C use ' for a one-character char/rune literal, not a string.
+        for lang in ("c", "cpp", "csharp", "java", "go", "rust", "objectivec"):
+            with self.subTest(language=lang):
+                self.assertIn("<span class=\"cmh-code-str\">'x'</span>", H.highlight_code(lang, "c = 'x';"))
+        # Even paired Rust lifetimes are never mis-colored as a string.
+        self.assertNotIn('class="cmh-code-str"',
+                         H.highlight_code("rust", "fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {"))
+        # A multi-character single-quoted string in a string-quote language still highlights.
+        self.assertIn("<span class=\"cmh-code-str\">'hi'</span>", H.highlight_code("python", "s = 'hi'"))
+        # Escaped and unicode char literals highlight too, not only single raw chars.
+        self.assertIn("<span class=\"cmh-code-str\">'\\n'</span>", H.highlight_code("c", "c = '\\n';"))
+        self.assertIn("<span class=\"cmh-code-str\">'\\x41'</span>", H.highlight_code("c", "c = '\\x41';"))
+        self.assertIn("<span class=\"cmh-code-str\">'\\u0041'</span>", H.highlight_code("java", "c = '\\u0041';"))
+        self.assertIn("<span class=\"cmh-code-str\">'\\u{2764}'</span>", H.highlight_code("rust", "let c = '\\u{2764}';"))
 
     def test_pathological_escaped_quote_input_is_linear(self):
         # A run of `"\` never closes; a backtracking tokenizer rescans to EOF at every quote

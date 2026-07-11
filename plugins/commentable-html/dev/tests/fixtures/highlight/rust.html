@@ -9,6 +9,11 @@
     counts
 <span class="cmh-code-op">}</span>
 
+<span class="cmh-code-com">// Longest slice (explicit lifetime)</span>
+<span class="cmh-code-kw">fn</span> longest<span class="cmh-code-op">&lt;</span>'a<span class="cmh-code-op">&gt;(</span>x<span class="cmh-code-op">:</span> <span class="cmh-code-op">&amp;</span>'a str<span class="cmh-code-op">,</span> y<span class="cmh-code-op">:</span> <span class="cmh-code-op">&amp;</span>'a str<span class="cmh-code-op">)</span> <span class="cmh-code-op">-&gt;</span> <span class="cmh-code-op">&amp;</span>'a str <span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">if</span> x<span class="cmh-code-op">.</span><span class="cmh-code-fn">len</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">&gt;=</span> y<span class="cmh-code-op">.</span><span class="cmh-code-fn">len</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">{</span> x <span class="cmh-code-op">}</span> <span class="cmh-code-kw">else</span> <span class="cmh-code-op">{</span> y <span class="cmh-code-op">}</span>
+<span class="cmh-code-op">}</span>
+
 <span class="cmh-code-kw">fn</span> <span class="cmh-code-fn">main</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">{</span>
     <span class="cmh-code-kw">let</span> counts <span class="cmh-code-op">=</span> <span class="cmh-code-fn">word_counts</span><span class="cmh-code-op">(</span><span class="cmh-code-str">"a b a c a"</span><span class="cmh-code-op">);</span>
     <span class="cmh-code-com">/* prints 3 for "a" */</span>
