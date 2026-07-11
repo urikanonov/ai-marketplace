@@ -247,12 +247,17 @@ class ChangelogCandidatesTests(unittest.TestCase):
 
 
 class SiteTutorialMarkdownTests(unittest.TestCase):
-    def test_rewrites_example_paths_to_site_demo(self):
-        md = "Open `examples/report-community-garden.html` then `examples/report-taxi.html`."
+    def test_rewrites_local_example_links_to_github(self):
+        md = ("Open [`examples/report-community-garden.html`](../examples/report-community-garden.html) "
+              "then [`examples/report-taxi.html`](../examples/report-taxi.html).")
         out = bsd.site_tutorial_markdown(md)
-        self.assertIn("../demo/report-community-garden.html", out)
-        self.assertIn("../demo/report-taxi.html", out)
-        self.assertNotIn("examples/report-", out)
+        # The link target is rewritten to GitHub...
+        self.assertIn("(" + bsd.GITHUB_BLOB_BASE + "examples/report-community-garden.html)", out)
+        self.assertIn("(" + bsd.GITHUB_BLOB_BASE + "examples/report-taxi.html)", out)
+        # ...while the skill-root-relative display text (with no `..`) is preserved.
+        self.assertIn("`examples/report-community-garden.html`", out)
+        self.assertNotIn("../examples/", out)
+        self.assertNotIn("../demo/", out)
 
 
 class SyncDemosDriftTests(unittest.TestCase):

@@ -18,6 +18,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   intact; the reader can copy selected text again, while the floating "Add comment" popup still handles
   commenting.
 
+### Changed
+
+- `docs/TUTORIAL.md` now references the running example with a skill-root-relative display path that links
+  to the local file, so the reference reads cleanly without any `..` path traversal.
+
 ## [1.1.3] - 2026-07-11
 
 ### Fixed
