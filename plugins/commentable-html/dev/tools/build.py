@@ -92,9 +92,12 @@ def sha256(text):
 VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
 PACKAGE_JSON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "package.json")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-# The mermaid CDN version in the shipped templates/examples, so build can stamp it
-# from the single source (package.json) and --check can catch drift.
-_MERMAID_CDN_RE = re.compile(r"(cdn\.jsdelivr\.net/npm/mermaid@)[0-9]+\.[0-9]+\.[0-9]+(/)")
+# The mermaid CDN import in the shipped templates/examples, so build can stamp it
+# from the single source (package.json) and --check can catch drift. The version
+# segment is matched liberally (any non-slash token, not just an exact X.Y.Z) so a
+# drifted major-only or malformed pin is still detected and repaired; it is scoped
+# to the .../mermaid@<ver>/dist/ import path so it never rewrites unrelated text.
+_MERMAID_CDN_RE = re.compile(r"(cdn\.jsdelivr\.net/npm/mermaid@)[^/]+(/dist/)")
 _CMH_CONST_RE = re.compile(r'(?m)^(\s*const\s+CMH_VERSION\s*=\s*")[0-9]+\.[0-9]+\.[0-9]+("\s*;)')
 _JSON_VERSION_RE = re.compile(r'("version"\s*:\s*")([0-9]+\.[0-9]+\.[0-9]+)(")')
 _MARKETPLACE_VERSION_RE = re.compile(
@@ -124,11 +127,16 @@ def read_mermaid_version(package_json=None):
             or (data.get("dependencies") or {}).get("mermaid"))
     if not spec:
         raise SystemExit("build: no mermaid dependency found in %s" % package_json)
-    v = spec.lstrip("^~>=< v").strip()
-    if not _SEMVER_RE.match(v):
-        raise SystemExit("build: the mermaid dependency must resolve to an exact semver "
-                         "like 11.16.0, got %r in %s" % (spec, package_json))
-    return v
+    # Only an exact pin or a caret/tilde range maps unambiguously to a single CDN
+    # version. Reject comparator ranges (>=, <, <=, >), unions, wildcards (11.x, *),
+    # tags (latest), and prereleases - lstrip-style char stripping would silently
+    # mis-pin those (e.g. "<12.0.0" -> "12.0.0"), so fail loudly instead.
+    m = re.match(r"^[\^~]?(\d+\.\d+\.\d+)$", spec.strip())
+    if not m:
+        raise SystemExit("build: the mermaid dependency must be an exact version or a ^/~ pin "
+                         "like 11.16.0 or ^11.16.0 (comparator ranges/tags are unsupported), "
+                         "got %r in %s" % (spec, package_json))
+    return m.group(1)
 
 
 def example_stamps(out_dir, mermaid_version):
@@ -371,7 +379,7 @@ def build_nonportable(shell, version, mermaid_version):
     t = re.sub(r"\n{3,}", "\n\n", t)
     t = t.replace("{{CMH_VERSION}}", version)
     t = t.replace("{{MERMAID_VERSION}}", mermaid_version)
-    if "{{" in t:
+    if "{{CMH_" in t or "{{MERMAID_" in t:
         raise SystemExit("build: an unresolved placeholder remains in NONPORTABLE.html")
     return t
 
