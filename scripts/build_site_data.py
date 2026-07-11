@@ -16,6 +16,7 @@ Usage:
     python scripts/build_site_data.py --check     # fail if the committed output is stale
 """
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -73,6 +74,35 @@ def read_text(path):
 def write_text(path, text):
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
+
+
+# Render-critical assets whose URLs carry a content-hash query, so a browser never serves a
+# stale stylesheet or script after a deploy (the query changes exactly when the file does).
+# Icons are omitted: they change rarely and a cached favicon does not misrender page content.
+CACHE_BUSTED_ASSETS = ("styles.css", "site.js")
+_ASSET_REF_RE = re.compile(
+    r'(?P<attr>href|src)="(?P<path>(?:\.\./)*assets/(?P<file>%s))(?:\?v=[0-9a-f]+)?"'
+    % "|".join(re.escape(name) for name in CACHE_BUSTED_ASSETS))
+
+
+def _asset_hash(root, name):
+    with open(os.path.join(root, "site", "assets", name), "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:12]
+
+
+def stamp_assets(text, root):
+    """Append a ?v=<content-hash> query to every reference to a cache-busted asset, replacing
+    any existing stamp. The stamp is idempotent and always matches the committed asset, so the
+    URL busts the browser cache exactly when the asset's bytes change."""
+    cache = {}
+
+    def repl(match):
+        name = match.group("file")
+        if name not in cache:
+            cache[name] = _asset_hash(root, name)
+        return '%s="%s?v=%s"' % (match.group("attr"), match.group("path"), cache[name])
+
+    return _ASSET_REF_RE.sub(repl, text)
 
 
 def replace_region_block(text, name, inner):
@@ -463,10 +493,12 @@ def main(argv):
 
     hub_src = read_text(hub_path)
     hub_out = replace_region_block(hub_src, "plugins", plugins_html)
+    hub_out = stamp_assets(hub_out, root)
 
     plugin_src = read_text(plugin_path)
     plugin_out = replace_region_inline(plugin_src, "version", "v" + esc(version))
     plugin_out = replace_region_block(plugin_out, "changelog", changelog_html)
+    plugin_out = stamp_assets(plugin_out, root)
 
     tutorial_page_path = os.path.join(root, TUTORIAL_PAGE)
     tutorial_src_path = os.path.join(root, TUTORIAL_SRC)
@@ -481,6 +513,7 @@ def main(argv):
         tutorial_out = replace_region_block(
             tutorial_src, "tutorial",
             render_markdown(site_tutorial_markdown(read_text(tutorial_src_path))))
+        tutorial_out = stamp_assets(tutorial_out, root)
 
     demo_drift = sync_demos(root, args.check)
     tutorial_img_drift = sync_tutorial_images(root, args.check)

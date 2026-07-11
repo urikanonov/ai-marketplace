@@ -336,5 +336,33 @@ class SyncTutorialImagesTests(unittest.TestCase):
         self.assertFalse(_os.path.exists(_os.path.join(dst, "stale.png")))
 
 
+class StampAssetsTests(unittest.TestCase):
+    def test_stamps_css_and_js_with_content_hash_at_every_prefix(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        js = bsd._asset_hash(bsd.REPO_ROOT, "site.js")
+        html = ('<link rel="stylesheet" href="assets/styles.css" />\n'
+                '<link rel="stylesheet" href="../assets/styles.css" />\n'
+                '<script src="../../assets/site.js"></script>')
+        out = bsd.stamp_assets(html, bsd.REPO_ROOT)
+        self.assertIn('href="assets/styles.css?v=%s"' % css, out)
+        self.assertIn('href="../assets/styles.css?v=%s"' % css, out)
+        self.assertIn('src="../../assets/site.js?v=%s"' % js, out)
+
+    def test_replaces_an_existing_stale_stamp(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        out = bsd.stamp_assets('<link href="assets/styles.css?v=deadbeef" />', bsd.REPO_ROOT)
+        self.assertIn('href="assets/styles.css?v=%s"' % css, out)
+        self.assertNotIn("deadbeef", out)
+
+    def test_is_idempotent(self):
+        html = '<link href="../../assets/styles.css" /><script src="../../assets/site.js"></script>'
+        once = bsd.stamp_assets(html, bsd.REPO_ROOT)
+        self.assertEqual(once, bsd.stamp_assets(once, bsd.REPO_ROOT))
+
+    def test_leaves_other_assets_untouched(self):
+        html = '<link rel="icon" href="../assets/commentable-html.svg" />'
+        self.assertEqual(bsd.stamp_assets(html, bsd.REPO_ROOT), html)
+
+
 if __name__ == "__main__":
     unittest.main()

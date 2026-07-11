@@ -6,9 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Least privilege by default. Only the deploy job is granted the Pages/OIDC scopes,
-# so the untrusted npm/browser install and the site tests never run in a job that
-# can mint a deploy token.
+# Least privilege by default. Only the deploy job is granted the Pages/OIDC scopes, and
+# that job runs nothing but our own Python generator plus the Pages actions - the npm
+# install, browser download, and site tests all live in the build job, which can only
+# read, so untrusted install/test steps never run where a deploy token can be minted.
 permissions:
   contents: read
 
@@ -17,6 +18,9 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # Required PR gate: the site must regenerate cleanly and its Playwright suite must pass
+  # before a change can merge. Deploy does NOT depend on this job, so a smoke-test failure
+  # on main never blocks the deploy - the PR gate is where tests are enforced.
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -29,36 +33,50 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
+      - name: Verify committed site data is fresh (pull requests)
+        if: github.event_name == 'pull_request'
+        run: python scripts/build_site_data.py --check
+      - name: Regenerate site data from source (non-PR)
+        if: github.event_name != 'pull_request'
+        run: python scripts/build_site_data.py
+      - name: Run site generator unit tests
+        run: python -m unittest discover -s scripts -p "test_build_site_data.py"
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: tests/site/package-lock.json
-      - name: Verify committed site data is fresh (pull requests)
-        if: github.event_name == 'pull_request'
-        run: python scripts/build_site_data.py --check
-      - name: Regenerate site data from source (deploys)
-        if: github.event_name != 'pull_request'
-        run: python scripts/build_site_data.py
-      - name: Run site generator unit tests
-        run: python -m unittest discover -s scripts -p "test_build_site_data.py"
       - name: Install test dependencies (no lifecycle scripts)
         working-directory: tests/site
         run: npm ci --ignore-scripts
-      - name: Install Playwright browser
+      - name: Resolve Playwright version
+        id: pw
+        working-directory: tests/site
+        shell: bash
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browser
+        id: pwcache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install Playwright browser and system deps (cache miss)
+        if: steps.pwcache.outputs.cache-hit != 'true'
         working-directory: tests/site
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps only (cache hit)
+        if: steps.pwcache.outputs.cache-hit == 'true'
+        working-directory: tests/site
+        run: npx playwright install-deps chromium
       - name: Run site smoke tests
         working-directory: tests/site
         run: npm test
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
-        with:
-          path: site
 
+  # Fast, self-contained publish. It regenerates the site from source and deploys, with no
+  # Node/browser/test steps, so a merge reaches Pages in well under a minute and a flaky or
+  # failing smoke test can never skip the deploy. There is no `needs: build` on purpose.
   deploy:
-    needs: build
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -69,10 +87,66 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Regenerate site data from source
+        run: python scripts/build_site_data.py
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
         with:
           enablement: true
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+
+  # Alert if the main pipeline fails, so a broken build or deploy does not silently leave the
+  # published site stale. Opens a tracking issue (or comments on the open one) for the failure.
+  notify:
+    needs: [build, deploy]
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.build.result == 'failure' || needs.deploy.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the deploy-failure issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        with:
+          script: |
+            const title = "Pages deploy failed on main";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `The \`pages\` workflow failed on \`main\` (build: ${process.env.BUILD_RESULT}, deploy: ${process.env.DEPLOY_RESULT}).`,
+              ``,
+              `- Commit: ${context.sha}`,
+              `- Run: ${runUrl}`,
+              ``,
+              `The published site may be stale until this is resolved. Re-run the workflow (Actions -> pages -> Run workflow) or push a fix.`,
+            ].join("\n");
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, state: "open", per_page: 100,
+            });
+            const existing = open.data.find((i) => !i.pull_request && i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo, title, body,
+              });
+            }
