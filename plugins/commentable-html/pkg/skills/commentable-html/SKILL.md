@@ -21,12 +21,18 @@ commentable-html brings the familiar pull-request code-review experience to plan
 4. The agent acts on each comment, appends the handled ids, and returns the updated HTML.
 5. Reload the file. Handled comments are pruned automatically, leaving only unresolved comments.
 
-### Peer review loop
+### Peer review loop (author side)
 
 1. Start with the self review loop until the artifact is ready for another person.
 2. Click **Export as Portable** and share the downloaded HTML file with the peer.
 3. The peer opens that file, adds comments in place, and sends the Portable HTML back. The comments are embedded in the file.
 4. Feed those embedded comments to the agent, then let the agent act, mark handled ids, and return the next revision.
+
+### Reviewing someone else's plan (reviewer side)
+
+1. When a colleague sends a plan or report as Markdown or HTML, convert it into commentable HTML with this skill.
+2. Review it inline, adding comments on exactly the parts you mean.
+3. Click **Export as Portable** and send the downloaded HTML back with the comments embedded.
 
 This skill turns any standalone HTML file into a code-review surface:
 
