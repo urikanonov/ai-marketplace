@@ -119,7 +119,7 @@ test. The rule is simple and non-negotiable:
 
 This applies to skill runtime/tooling changes, to the site's pages and its generator
 (`scripts/build_site_data.py`), and to any new surface added later. The required CI checks run these
-tests (`summary` for the plugin suites, `build` for the site suite and generator unit tests), so a
+tests (`plugin-tests` for the plugin suites, `site` for the site suite and generator unit tests), so a
 spec row whose test does not exist or does not pass will not merge.
 
 ## Parallel work: use git worktrees under the repo root

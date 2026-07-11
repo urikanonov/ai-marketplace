@@ -19,7 +19,7 @@ GitHub star widget, which is CSP-scoped and degrades to a plain link when blocke
 Coverage notation: each row lists the strongest automated coverage I found. `manual` means the
 behavior is a documented convention rather than an automated test. Browser (E2E) rows cite
 `tests/site/tests/site.spec.js`; generator rows cite `scripts/test_build_site_data.py`. The site is
-gated on `main` by the required `build` check, which runs the generator unit tests and the browser
+gated on `main` by the required `site` check, which runs the generator unit tests and the browser
 suite (see `.github/workflows/pages.yml`).
 
 ## Build pipeline: generation, escaping, and drift
@@ -33,7 +33,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-BUILD-05 | The demo reports under `site/commentable-html/demo/` are synced from the skill's `examples/`; a content difference or a missing destination is flagged under `--check` and fixed on a full run, and an orphaned demo is removed. | `scripts/test_build_site_data.py` - `SyncDemosDriftTests`, `SyncOrphanTests` |
 | SITE-BUILD-06 | Tutorial images are synced from the skill's `docs/tutorial-images/`; a content difference is flagged then synced, an orphaned image whose source is gone is removed, and a missing source directory orphans the committed images. | `scripts/test_build_site_data.py` - `SyncTutorialImagesTests` |
 | SITE-BUILD-07 | Every committed HTML page references its CSS and JS with a content-hash cache-busting query stamp at every path prefix (`assets/`, `./assets/`, `../assets/`); stamping replaces a stale stamp, is idempotent, leaves non-asset URLs untouched, and the committed pages carry current stamps with no stale or unstamped asset ref. | `scripts/test_build_site_data.py` - `StampAssetsTests`, `StampWiringTests` |
-| SITE-BUILD-08 | `build_site_data.py --check` exits non-zero if the committed `site/` is stale versus its sources: a stale generated region, a drifted demo or tutorial image, or a stale asset stamp all fail the check (the required `build` check runs it on every pull request). | `scripts/test_build_site_data.py` - `CheckDriftTests`, `SyncDemosDriftTests`, `SyncTutorialImagesTests`, `StampWiringTests` |
+| SITE-BUILD-08 | `build_site_data.py --check` exits non-zero if the committed `site/` is stale versus its sources: a stale generated region, a drifted demo or tutorial image, or a stale asset stamp all fail the check (the required `site` check runs it on every pull request). | `scripts/test_build_site_data.py` - `CheckDriftTests`, `SyncDemosDriftTests`, `SyncTutorialImagesTests`, `StampWiringTests` |
 | SITE-BUILD-09 | `replace_region` replaces exactly one delimited region and refuses to run when a marker region is missing or duplicated, so a generation step can never silently no-op or double-write. | `scripts/test_build_site_data.py` - `ReplaceRegionTests` |
 | SITE-BUILD-10 | Changelog plugin matching is anchored and case-insensitive so a plugin name matches its own heading but not a mid-text mention or another plugin. | `scripts/test_build_site_data.py` - `MentionsPluginTests` |
 
