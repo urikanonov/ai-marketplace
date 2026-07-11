@@ -7,3 +7,17 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+  - package-ecosystem: "npm"
+    directory: "/plugins/commentable-html/dev"
+    schedule:
+      interval: "weekly"
+    groups:
+      dev-deps:
+        patterns: ["*"]
+  - package-ecosystem: "npm"
+    directory: "/tests/site"
+    schedule:
+      interval: "weekly"
+    groups:
+      site-test-deps:
+        patterns: ["*"]

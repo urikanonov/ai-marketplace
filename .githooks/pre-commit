@@ -22,6 +22,9 @@ status=0
 echo "pre-commit: validating Markdown..."
 "$PY" scripts/validate_markdown.py || status=1
 
+echo "pre-commit: checking for secret-bearing files..."
+"$PY" scripts/check_forbidden_files.py || status=1
+
 if "$PY" -c "import yaml, jsonschema" >/dev/null 2>&1; then
   echo "pre-commit: validating marketplace..."
   "$PY" scripts/validate_marketplace.py || status=1
