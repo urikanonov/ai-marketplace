@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-07-11
+
+### Changed
+
+- Polished the review-loop diagram (`docs/images/review-loop.svg` and its site twin): the step labels use
+  consistent casing ("1. Generates HTML", "2. Comment Inline"), and the "reload and repeat" caption became
+  a fourth curved arrow from the AI agent back to you, so the loop reads as a closed cycle.
+
 ## [1.5.0] - 2026-07-11
 
 ### Added

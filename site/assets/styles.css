@@ -1,6 +1,6 @@
 :root {
-  --cp-bg: #f7f4ef;
-  --cp-bg-elevated: #fcfbf8;
+  --cp-bg: #efe9de;
+  --cp-bg-elevated: #f8f5ef;
   --cp-surface: #ffffff;
   --cp-surface-soft: #f5f5f5;
   --cp-border: #dedede;
@@ -288,7 +288,7 @@ main > section:nth-of-type(even) {
   border-radius: var(--cp-radius);
   overflow: hidden;
   background: var(--cp-surface);
-  box-shadow: var(--cp-shadow);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 16px 40px rgba(0, 0, 0, 0.11);
 }
 .demo-frame .bar {
   display: flex;
@@ -361,18 +361,13 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .tutorial-cta-text p { margin: 0; color: var(--cp-text-muted); font-size: 0.95rem; }
 .tutorial-cta-btn { flex: none; }
 
-/* Demo header row: section title and intro above the demo frame */
-.demo-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
-.demo-head .section-sub { margin-bottom: 0; }
-
 /* Demo switch: segmented control that flips the iframe between reports */
 .demo-switch { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 14px; margin-bottom: 16px; }
 .demo-tab { border: 0; background: transparent; color: var(--cp-text-muted); font: inherit; font-size: 0.9rem; font-weight: 600; padding: 7px 16px; border-radius: 999px; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .demo-tab:hover { color: var(--cp-text); }
 .demo-tab.active { background: var(--cp-accent); color: var(--cp-accent-fg); }
 
-/* Wider demo so the embedded report is roomy enough to show its TOC navigation */
-#demo .wrap { max-width: 1640px; }
+/* The embedded report keeps a tall frame so its TOC navigation is visible */
 .demo-frame iframe { height: 560px; }
 
 /* Review-loop columns (self vs peer) */
@@ -388,7 +383,6 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .loop-fig-bg { fill: var(--cp-surface); stroke: var(--cp-border); }
 .loop-fig-node { fill: var(--cp-bg-elevated); stroke: var(--cp-accent); }
 .loop-fig-title { fill: var(--cp-accent); font-family: var(--cp-mono); font-weight: 600; }
-.loop-fig-lead { fill: var(--cp-text); }
 .loop-fig-sub { fill: var(--cp-text-muted); }
 .loop-fig-arrow { stroke: var(--cp-accent); fill: none; }
 .loop-fig-head { fill: var(--cp-accent); }
