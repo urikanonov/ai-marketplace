@@ -30,6 +30,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   literal (single-quoted) strings are recognized, and a Windows Batch `rem` comment is matched on a word
   boundary (so `rem`, `rem<TAB>`, and a bare `rem` are comments, but `remark` is not).
 
+## [1.2.2] - 2026-07-11
+
+### Changed
+
+- Clarified the NonPortable asset-location wording in the skill reference: the default companion
+  files are referenced by a relative path (the skill's `dist/` folder by default), not "beside the
+  document"; the document sits beside its companions only when they are copied there.
+
 ## [1.2.1] - 2026-07-11
 
 ### Changed
