@@ -31,7 +31,7 @@ jobs:
           # A plugin has a Node/Playwright suite when plugins/<plugin>/dev/package.json exists.
           plugins=$(find plugins -mindepth 3 -maxdepth 3 -type f -path 'plugins/*/dev/package.json' \
             -printf '%h\n' | sed 's:/dev$::' | sort -u \
-            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            | jq -R -s -c 'split("\n") | map(select(length > 0 and test("^plugins/[A-Za-z0-9._-]+$")))')
           {
             echo 'plugins<<__EOF__'
             echo "$plugins"
@@ -78,20 +78,21 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Gate on plugin test results
+        env:
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
+          DISCOVERED: ${{ needs.discover.outputs.plugins }}
         run: |
-          discover_result="${{ needs.discover.result }}"
-          playwright_result="${{ needs.playwright.result }}"
-          discovered='${{ needs.discover.outputs.plugins }}'
-          echo "discover=$discover_result playwright=$playwright_result plugins=$discovered"
-          if [ "$discover_result" != "success" ]; then
+          echo "discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT plugins=$DISCOVERED"
+          if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::plugin discovery failed"
             exit 1
           fi
-          if [ -z "$discovered" ] || [ "$discovered" = "[]" ]; then
+          if [ -z "$DISCOVERED" ] || [ "$DISCOVERED" = "[]" ]; then
             echo "::error::no plugin test suites were discovered; expected at least one plugins/*/dev/package.json"
             exit 1
           fi
-          if [ "$playwright_result" = "failure" ] || [ "$playwright_result" = "cancelled" ]; then
+          if [ "$PLAYWRIGHT_RESULT" = "failure" ] || [ "$PLAYWRIGHT_RESULT" = "cancelled" ]; then
             echo "::error::plugin Playwright tests did not pass"
             exit 1
           fi
