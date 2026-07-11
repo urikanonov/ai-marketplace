@@ -280,6 +280,26 @@ token. If you must consume PR code with a privileged token, split it: run the un
 unprivileged `pull_request` job and do the privileged action in a separate `pull_request_target` job
 that only reads metadata.
 
+### Copilot coding-agent workflow approvals (why they keep prompting)
+
+The Actions "Require approval for first-time contributors" (and the broader "Fork pull request
+workflows from outside collaborators") settings do NOT govern Copilot coding-agent PRs, so choosing
+them does not stop the recurring "Approve and run workflows" prompt. Two reasons:
+
+- Copilot pushes its branches inside this repo and authors its PRs as a bot actor
+  (`copilot-swe-agent[bot]`), not as `@urikanonov` or a collaborator. That bot never "graduates" out
+  of the gated tier the way a human's first merged PR does, so the first-time-contributor exemption
+  never applies to it. The fork settings only affect PRs opened from actual forks by human outside
+  collaborators, which is a different code path.
+- On top of that, GitHub gates Actions on Copilot-agent PRs by its own policy (the agent writes code
+  that would then run in CI). That gate is separate from the fork settings above.
+
+To stop the prompts, allow the Copilot coding agent's workflows to run from the Copilot coding-agent
+policy (org/repo Settings > Copilot > Coding agent), not from the Actions fork settings. Doing so is
+safe here for the same reason the section above gives: the CI gates run on `pull_request` with a
+read-only token and no secrets, the privileged `pull_request_target` workflows never run PR code, and
+`require-owner-approval` still blocks the merge. The only residual exposure is compute/runner abuse.
+
 ## The auto-updater hook (portability notes)
 
 `plugins/urikan-ai-marketplace-auto-updater` runs `hooks/marketplace-update.ps1` on session start.
