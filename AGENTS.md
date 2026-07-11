@@ -262,7 +262,9 @@ Letting an outside contributor's PR run CI without a manual approval is low risk
 the safety rests on one invariant: a workflow that holds secrets or a write-scoped token must never
 check out or run PR-supplied code.
 
-- The CI gates (`validate`, `pages`/`build`, `plugin-tests`) trigger on plain `pull_request`. On a
+- The CI gates - the `validate` check (`validate.yml`), the `build` check (the `pages` workflow,
+  `pages.yml`), and the `summary` check (the `plugin-tests` gate, `plugin-tests.yml`) - trigger on
+  plain `pull_request`. On a
   PR from a fork, GitHub gives that run a read-only `GITHUB_TOKEN` and NO repository secrets, so even
   though those jobs do execute PR code (the Python validators, `npm ci`, the Playwright suites), the
   code runs sandboxed with nothing to steal and no write access. The residual risk is compute/runner
