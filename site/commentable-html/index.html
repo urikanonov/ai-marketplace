@@ -70,10 +70,10 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
     <section id="features">
       <div class="wrap">
         <h2 class="section-title">What you get</h2>
-        <p class="section-sub">A full code-review layer baked into one portable HTML file.</p>
+        <p class="section-sub">A full code-review layer that travels with the document; export to one portable HTML file when you want to share.</p>
         <div class="grid">
           <div class="card feature"><h3>Comment on anything</h3><p>Prose, table cells, code blocks, KQL queries, charts, images, and mermaid diagram nodes are all selectable and commentable.</p></div>
-          <div class="card feature"><h3>Single self-contained file</h3><p>The CSS, UI, and runtime travel inside the document. Email it, archive it, or open it offline - it just works.</p></div>
+          <div class="card feature"><h3>Self-contained when you share</h3><p>By default the layer loads from small companion files for cheap iteration; Export as Portable inlines the CSS, UI, and comments into one file to email, archive, or open offline. The review layer is fully inline; optional mermaid/chart rendering needs bundled assets for full offline fidelity.</p></div>
           <div class="card feature"><h3>Round-trip to the agent</h3><p>Copy all emits a Markdown bundle plus a machine-readable id list, so the agent acts on your notes and marks them handled.</p></div>
           <div class="card feature"><h3>Export as Portable</h3><p>Embed the current comments into the file so a review travels with it. Share it and the recipient sees every note immediately.</p></div>
           <div class="card feature"><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
@@ -199,7 +199,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
             <div class="rel-head"><h3>[1.0.2] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>New documents are now **NonPortable by default** (tools/new_document.py): the layer CSS/JS load from companion files, so authoring and every regeneration during a review loop is materially smaller (about 89% less boilerplate re-emitted). Pass --portable for a single self-contained file.</li>
+              <li>New documents are now <strong>NonPortable by default</strong> (tools/new_document.py): the layer CSS/JS load from companion files, so authoring and every regeneration during a review loop is materially smaller (about 89% less boilerplate re-emitted). Pass --portable for a single self-contained file.</li>
             </ul>
             <div class="group-label">Added</div>
             <ul>
@@ -208,7 +208,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
             </ul>
             <div class="group-label">Notes</div>
             <ul>
-              <li>To hand someone a single shareable file, either regenerate with --portable (for a document that has no in-browser comments yet) or use the in-page **Export as Portable** button. The button is the only path that captures comments the user typed in the browser: those live in localStorage, which no CLI (even a headless browser) can read, so there is deliberately no CLI export.</li>
+              <li>To hand someone a single shareable file, either regenerate with --portable (for a document that has no in-browser comments yet) or use the in-page <strong>Export as Portable</strong> button. The button is the only path that captures comments the user typed in the browser: those live in localStorage, which no CLI (even a headless browser) can read, so there is deliberately no CLI export.</li>
             </ul>
           </div>
           <div class="release">
