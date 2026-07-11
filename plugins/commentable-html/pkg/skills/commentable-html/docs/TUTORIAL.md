@@ -2,6 +2,8 @@
 
 This walkthrough uses [`examples/report-community-garden.html`](../examples/report-community-garden.html) as a running example. It is a single self-contained file with prose, tables, a KQL query, a Chart.js chart, images, Mermaid diagrams, and a code-review diff, so it lets you try every kind of comment in one place.
 
+**Were you sent a commentable HTML file to review?** You do not need an agent or an account. Select any text, click **Add Comment**, and when you are done click **Copy all** (to hand your notes to an agent) or **Export as Portable** (to send the file back with your comments baked in). The steps below show every kind of thing you can comment on.
+
 ## The review workflow
 
 Commentable HTML turns any report into a review you can hand straight back to an AI agent. The loop has four steps:
@@ -31,7 +33,8 @@ The rest of this tutorial walks through step 2 in detail: every kind of thing yo
 
 1. Click **Help & About** in the sidebar header.
 2. The first topic is the review workflow above; the rest cover every control, gesture, keyboard shortcut, the document-type bubble, exports, and the section menu. Use the search box to jump to an answer.
-3. Close it with the X button, Escape, or by clicking the backdrop.
+3. For faster work, open the **Tips and shortcuts** topic: right-click to comment, re-select the same text to reopen its comment, sort back to document order, toggle diff syntax, and the keyboard shortcuts.
+4. Close it with the X button, Escape, or by clicking the backdrop.
 
 ![The Help and About dialog, opened to the review-workflow topic](tutorial-images/garden-07-help.png)
 
