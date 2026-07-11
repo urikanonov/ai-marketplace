@@ -1,0 +1,17 @@
+<span class="cmh-code-kw">package</span> main
+
+<span class="cmh-code-kw">import</span> <span class="cmh-code-str">"fmt"</span>
+
+<span class="cmh-code-com">// Greet builds a greeting string.</span>
+<span class="cmh-code-kw">func</span> <span class="cmh-code-fn">Greet</span><span class="cmh-code-op">(</span>name string<span class="cmh-code-op">)</span> string <span class="cmh-code-op">{</span>
+	<span class="cmh-code-kw">return</span> fmt<span class="cmh-code-op">.</span><span class="cmh-code-fn">Sprintf</span><span class="cmh-code-op">(</span><span class="cmh-code-str">"hello, %s"</span><span class="cmh-code-op">,</span> name<span class="cmh-code-op">)</span>
+<span class="cmh-code-op">}</span>
+
+<span class="cmh-code-kw">func</span> <span class="cmh-code-fn">main</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">{</span>
+	names <span class="cmh-code-op">:=</span> <span class="cmh-code-op">[]</span>string<span class="cmh-code-op">{</span><span class="cmh-code-str">"ada"</span><span class="cmh-code-op">,</span> <span class="cmh-code-str">"grace"</span><span class="cmh-code-op">}</span>
+	<span class="cmh-code-kw">for</span> i<span class="cmh-code-op">,</span> n <span class="cmh-code-op">:=</span> <span class="cmh-code-kw">range</span> names <span class="cmh-code-op">{</span>
+		<span class="cmh-code-com">/* one line per name */</span>
+		fmt<span class="cmh-code-op">.</span><span class="cmh-code-fn">Println</span><span class="cmh-code-op">(</span>i<span class="cmh-code-op">,</span> <span class="cmh-code-fn">Greet</span><span class="cmh-code-op">(</span>n<span class="cmh-code-op">))</span>
+	<span class="cmh-code-op">}</span>
+	fmt<span class="cmh-code-op">.</span><span class="cmh-code-fn">Println</span><span class="cmh-code-op">(</span><span class="cmh-code-str">"count:"</span><span class="cmh-code-op">,</span> <span class="cmh-code-fn">len</span><span class="cmh-code-op">(</span>names<span class="cmh-code-op">)*</span><span class="cmh-code-num">2</span><span class="cmh-code-op">)</span>
+<span class="cmh-code-op">}</span>

@@ -1,0 +1,18 @@
+# Simple stack implementation
+class Stack
+  def initialize
+    @items = []
+  end
+
+  def push(value)
+    @items << value
+  end
+
+  def pop
+    @items.pop
+  end
+end
+
+stack = Stack.new
+stack.push(42)
+puts "top = #{stack.pop}"

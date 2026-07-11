@@ -20,7 +20,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.2.2";
+const CMH_VERSION = "1.3.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -807,17 +807,22 @@ function setDiffSyntaxOn(on) {
 }
 const _HL_FAMILY = {
   javascript: "c", js: "c", jsx: "c", typescript: "c", ts: "c", tsx: "c", java: "c", c: "c", cpp: "c",
-  cs: "c", csharp: "c", go: "c", golang: "c", rust: "c", rs: "c", php: "c", swift: "c", kotlin: "c",
-  kt: "c", scala: "c", dart: "c", json: "c",
+  "c++": "c", cs: "c", csharp: "c", go: "c", golang: "c", rust: "c", rs: "c", php: "c", swift: "c",
+  kotlin: "c", kt: "c", scala: "c", dart: "c", json: "c", groovy: "c", objectivec: "c", objc: "c",
   python: "hash", py: "hash", ruby: "hash", rb: "hash", shell: "hash", bash: "hash", sh: "hash",
-  yaml: "hash", yml: "hash", toml: "hash", perl: "hash", r: "hash",
+  yaml: "hash", yml: "hash", toml: "hash", perl: "hash", pl: "hash", r: "hash", elixir: "hash", ex: "hash", exs: "hash",
   sql: "sql",
+  css: "css", lua: "lua", haskell: "haskell", hs: "haskell",
+  powershell: "powershell", ps1: "powershell", ps: "powershell",
+  batch: "batch", bat: "batch", cmd: "batch",
 };
 const _EXT_LANG = {
   py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", ts: "typescript", tsx: "typescript",
   java: "java", c: "c", h: "c", cpp: "cpp", cc: "cpp", hpp: "cpp", cs: "csharp", go: "go", rs: "rust",
   rb: "ruby", php: "php", swift: "swift", kt: "kotlin", scala: "scala", sql: "sql", sh: "shell",
-  bash: "shell", yml: "yaml", yaml: "yaml", toml: "toml", json: "json",
+  bash: "shell", yml: "yaml", yaml: "yaml", toml: "toml", json: "json", css: "css", lua: "lua",
+  hs: "haskell", ex: "elixir", exs: "elixir", ps1: "powershell", bat: "batch", cmd: "batch",
+  groovy: "groovy", gradle: "groovy", pl: "perl", r: "r", mm: "objectivec",
 };
 function inferDiffLang(el, label) {
   const explicit = (el.getAttribute("data-diff-lang") || "").trim().toLowerCase();
@@ -831,18 +836,26 @@ const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byt
   + "func function global go goto if impl implements import in include instanceof int interface is lambda let long match "
   + "module mut namespace new nil none not null object or override package pass private protected public raise readonly "
   + "ref return self short static struct super switch synchronized template this throw throws trait try type typedef "
-  + "typeof union unsafe use using var virtual void volatile when where while with yield true false and").split(" "));
+  + "typeof union unsafe use using var virtual void volatile when where while with yield true false and "
+  + "cond data defmacro defmodule defp defstruct deriving elseif end filter instance local newtype of param process "
+  + "quote receive rescue repeat then unquote until val").split(" "));
 const _hlCache = {};
 function _hlTokenRe(fam) {
   if (_hlCache[fam]) { _hlCache[fam].lastIndex = 0; return _hlCache[fam]; }
-  let com, str;
-  if (fam === "hash") { com = "#[^\\n]*"; str = "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'"; }
+  const dq = "\"(?:\\\\.|[^\"\\\\])*\"", sq = "'(?:\\\\.|[^'\\\\])*'", bt = "`(?:\\\\.|[^`\\\\])*`";
+  let com, str, flags = "g";
+  if (fam === "hash") { com = "#[^\\n]*"; str = dq + "|" + sq; }
   else if (fam === "sql") { com = "/\\*[\\s\\S]*?\\*/|--[^\\n]*"; str = "'(?:''|[^'])*'"; }
-  else { com = "/\\*[\\s\\S]*?\\*/|//[^\\n]*"; str = "\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|`(?:\\\\.|[^`\\\\])*`"; }
+  else if (fam === "css") { com = "/\\*[\\s\\S]*?\\*/"; str = dq + "|" + sq; }
+  else if (fam === "lua") { com = "--\\[\\[[\\s\\S]*?\\]\\]|--[^\\n]*"; str = dq + "|" + sq; }
+  else if (fam === "haskell") { com = "\\{-[\\s\\S]*?-\\}|--[^\\n]*"; str = dq; }
+  else if (fam === "powershell") { com = "<#[\\s\\S]*?#>|#[^\\n]*"; str = dq + "|" + sq; }
+  else if (fam === "batch") { com = "(?:rem\\b|::)[^\\n]*"; str = dq; flags = "gi"; }
+  else { com = "/\\*[\\s\\S]*?\\*/|//[^\\n]*"; str = dq + "|" + sq + "|" + bt; }
   const num = "0[xX][0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
   const id = "[A-Za-z_$][A-Za-z0-9_$]*";
   const op = "[+\\-*/%=<>!&|^~?:.,;(){}\\[\\]]";
-  const re = new RegExp("(?<com>" + com + ")|(?<str>" + str + ")|(?<num>" + num + ")|(?<id>" + id + ")|(?<op>" + op + ")", "g");
+  const re = new RegExp("(?<com>" + com + ")|(?<str>" + str + ")|(?<num>" + num + ")|(?<id>" + id + ")|(?<op>" + op + ")", flags);
   _hlCache[fam] = re;
   return re;
 }

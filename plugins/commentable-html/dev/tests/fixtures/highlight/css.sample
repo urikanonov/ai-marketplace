@@ -1,0 +1,17 @@
+/* Theme tokens and layout */
+:root {
+  --gap: 8px;
+  --fg: #1f2328;
+}
+
+.card {
+  display: flex;
+  gap: var(--gap);
+  padding: 12px;
+  color: var(--fg);
+  border-radius: 6px;
+}
+
+.card:hover {
+  transform: scale(1.02);
+}

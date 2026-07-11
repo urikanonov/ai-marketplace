@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Demo</title>
+  </head>
+  <body>
+    <!-- greeting -->
+    <main class="content">
+      <h1>Hello</h1>
+      <button onclick="alert('hi')">Click 42</button>
+    </main>
+  </body>
+</html>

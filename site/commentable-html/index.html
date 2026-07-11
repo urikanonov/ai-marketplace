@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.2.2<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.3.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -176,6 +176,20 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.3.0] - 2026-07-11</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Author-time syntax highlighting (<code>tools/highlight_code.py</code>) now covers many more popular languages: Rust, Ruby, PHP, Swift, Kotlin, Scala, Dart, R, Perl, PowerShell, Lua, TOML, CSS, Groovy, Elixir, Haskell, and Objective-C, plus Windows Batch (<code>batch</code>, with <code>bat</code> and <code>cmd</code> aliases), with the usual aliases (<code>rs</code>, <code>rb</code>, <code>kt</code>, <code>pl</code>, <code>ps1</code>, <code>ps</code>, <code>objc</code>, <code>hs</code>, <code>ex</code>, <code>exs</code>). Shell scripts were already covered via the existing <code>shell</code> and <code>sh</code> aliases for <code>bash</code>. Run <code>python tools/highlight_code.py --list</code> for the full set.</li>
+              <li>The in-browser diff highlighter now recognizes the same expanded language set (CSS, Groovy, Elixir, Haskell, Objective-C, Lua, PowerShell, and Windows Batch, plus their aliases), so review diffs in those languages render with token colors instead of plain text.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Keywords are now matched case-sensitively except in genuinely case-insensitive languages (SQL, Batch, PowerShell, HTML, CSS). Previously a global case-insensitive match mis-colored ordinary identifiers as keywords (for example C# <code>String</code>, Python <code>true</code>/<code>none</code>, Rust <code>Fn</code>).</li>
+              <li>String tokenization is now linear time. Pathological input (a long run of escaped quotes) previously drove superlinear rescanning; the string patterns use an unrolled form that stays fast.</li>
+              <li>Strings keep a backslash-newline line continuation inside the string, unterminated block comments and strings still highlight (to end of input / end of line), Swift and Dart triple-quoted strings and TOML literal (single-quoted) strings are recognized, and a Windows Batch <code>rem</code> comment is matched on a word boundary (so <code>rem</code>, <code>rem&lt;TAB&gt;</code>, and a bare <code>rem</code> are comments, but <code>remark</code> is not).</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.2.2] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>

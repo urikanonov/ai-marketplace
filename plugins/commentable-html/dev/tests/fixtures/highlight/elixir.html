@@ -1,0 +1,12 @@
+<span class="cmh-code-kw">defmodule</span> Fib <span class="cmh-code-kw">do</span>
+  <span class="cmh-code-com"># Compute the nth Fibonacci number</span>
+  <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">compute</span><span class="cmh-code-op">(</span><span class="cmh-code-num">0</span><span class="cmh-code-op">),</span> <span class="cmh-code-kw">do</span><span class="cmh-code-op">:</span> <span class="cmh-code-num">0</span>
+  <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">compute</span><span class="cmh-code-op">(</span><span class="cmh-code-num">1</span><span class="cmh-code-op">),</span> <span class="cmh-code-kw">do</span><span class="cmh-code-op">:</span> <span class="cmh-code-num">1</span>
+
+  <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">compute</span><span class="cmh-code-op">(</span>n<span class="cmh-code-op">)</span> <span class="cmh-code-kw">when</span> n <span class="cmh-code-op">&gt;</span> <span class="cmh-code-num">1</span> <span class="cmh-code-kw">do</span>
+    <span class="cmh-code-fn">compute</span><span class="cmh-code-op">(</span>n <span class="cmh-code-op">-</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)</span> <span class="cmh-code-op">+</span> <span class="cmh-code-fn">compute</span><span class="cmh-code-op">(</span>n <span class="cmh-code-op">-</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">)</span>
+  <span class="cmh-code-kw">end</span>
+<span class="cmh-code-kw">end</span>
+
+values <span class="cmh-code-op">=</span> Enum<span class="cmh-code-op">.</span><span class="cmh-code-fn">map</span><span class="cmh-code-op">(</span><span class="cmh-code-num">0</span><span class="cmh-code-op">..</span><span class="cmh-code-num">9</span><span class="cmh-code-op">,</span> <span class="cmh-code-op">&amp;</span>Fib<span class="cmh-code-op">.</span>compute<span class="cmh-code-op">/</span><span class="cmh-code-num">1</span><span class="cmh-code-op">)</span>
+IO<span class="cmh-code-op">.</span><span class="cmh-code-fn">inspect</span><span class="cmh-code-op">(</span>values<span class="cmh-code-op">,</span> label<span class="cmh-code-op">:</span> <span class="cmh-code-str">"fib"</span><span class="cmh-code-op">)</span>

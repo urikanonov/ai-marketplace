@@ -1,0 +1,15 @@
+<span class="cmh-code-kw">import</span> math
+
+
+<span class="cmh-code-kw">def</span> <span class="cmh-code-fn">area</span><span class="cmh-code-op">(</span>radius<span class="cmh-code-op">):</span>
+    <span class="cmh-code-str">"""Return the area of a circle."""</span>
+    pi <span class="cmh-code-op">=</span> <span class="cmh-code-num">3.14159</span>  <span class="cmh-code-com"># not math.pi on purpose</span>
+    <span class="cmh-code-kw">return</span> pi <span class="cmh-code-op">*</span> radius <span class="cmh-code-op">**</span> <span class="cmh-code-num">2</span>
+
+
+<span class="cmh-code-kw">class</span> Circle<span class="cmh-code-op">:</span>
+    <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">__init__</span><span class="cmh-code-op">(</span>self<span class="cmh-code-op">,</span> r<span class="cmh-code-op">):</span>
+        self<span class="cmh-code-op">.</span>r <span class="cmh-code-op">=</span> r
+
+    <span class="cmh-code-kw">def</span> <span class="cmh-code-fn">describe</span><span class="cmh-code-op">(</span>self<span class="cmh-code-op">):</span>
+        <span class="cmh-code-kw">return</span> f<span class="cmh-code-str">"circle r={self.r} area={area(self.r):.2f}"</span>

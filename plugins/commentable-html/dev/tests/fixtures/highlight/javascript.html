@@ -1,0 +1,15 @@
+<span class="cmh-code-com">// Fibonacci with memoization</span>
+<span class="cmh-code-kw">const</span> cache <span class="cmh-code-op">=</span> <span class="cmh-code-kw">new</span> <span class="cmh-code-fn">Map</span><span class="cmh-code-op">();</span>
+
+<span class="cmh-code-kw">function</span> <span class="cmh-code-fn">fib</span><span class="cmh-code-op">(</span>n<span class="cmh-code-op">)</span> <span class="cmh-code-op">{</span>
+  <span class="cmh-code-kw">if</span> <span class="cmh-code-op">(</span>n <span class="cmh-code-op">&lt;</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">)</span> <span class="cmh-code-kw">return</span> n<span class="cmh-code-op">;</span>
+  <span class="cmh-code-kw">if</span> <span class="cmh-code-op">(</span>cache<span class="cmh-code-op">.</span><span class="cmh-code-fn">has</span><span class="cmh-code-op">(</span>n<span class="cmh-code-op">))</span> <span class="cmh-code-kw">return</span> cache<span class="cmh-code-op">.</span><span class="cmh-code-kw">get</span><span class="cmh-code-op">(</span>n<span class="cmh-code-op">);</span>
+  <span class="cmh-code-kw">const</span> value <span class="cmh-code-op">=</span> <span class="cmh-code-fn">fib</span><span class="cmh-code-op">(</span>n <span class="cmh-code-op">-</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)</span> <span class="cmh-code-op">+</span> <span class="cmh-code-fn">fib</span><span class="cmh-code-op">(</span>n <span class="cmh-code-op">-</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">);</span>
+  cache<span class="cmh-code-op">.</span><span class="cmh-code-kw">set</span><span class="cmh-code-op">(</span>n<span class="cmh-code-op">,</span> value<span class="cmh-code-op">);</span>
+  <span class="cmh-code-kw">return</span> value<span class="cmh-code-op">;</span>
+<span class="cmh-code-op">}</span>
+
+<span class="cmh-code-com">/* Print the first 10 numbers */</span>
+<span class="cmh-code-kw">for</span> <span class="cmh-code-op">(</span><span class="cmh-code-kw">let</span> i <span class="cmh-code-op">=</span> <span class="cmh-code-num">0</span><span class="cmh-code-op">;</span> i <span class="cmh-code-op">&lt;</span> <span class="cmh-code-num">10</span><span class="cmh-code-op">;</span> i<span class="cmh-code-op">++)</span> <span class="cmh-code-op">{</span>
+  console<span class="cmh-code-op">.</span><span class="cmh-code-fn">log</span><span class="cmh-code-op">(</span><span class="cmh-code-str">`fib(${i}) = ${fib(i)}`</span><span class="cmh-code-op">);</span>
+<span class="cmh-code-op">}</span>
