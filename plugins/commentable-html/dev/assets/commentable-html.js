@@ -20,7 +20,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.1.3";
+const CMH_VERSION = "1.2.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -1583,10 +1583,18 @@ function selectionInRoot() {
   if (anc && anc.closest(".cm-skip")) return null;
   return { sel, range: r };
 }
+// Touch / coarse-pointer devices have no separate right-click: a long-press both
+// selects text and is the only gesture that opens the browser's native selection
+// menu (Copy, Share, Look up...). Hijacking contextmenu there would leave the reader
+// unable to copy, so on those devices we let the native menu through and rely on the
+// floating "Add comment" popup (raised from the selection/mouseup path) for commenting.
+const _coarsePointer = !!(window.matchMedia
+  && window.matchMedia("(hover: none), (pointer: coarse)").matches);
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
   const got = selectionInRoot();
   if (!got) { hideMenu(); return; }
+  if (_coarsePointer) return;
   e.preventDefault();
   pendingDiffSel = null;
   pendingRange = got.range.cloneRange();
