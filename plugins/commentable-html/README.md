@@ -1,6 +1,6 @@
 # commentable-html
 
-`commentable-html` is a skill that turns any standalone HTML report into a single-file inline-comment review surface you can hand back to an AI agent.
+`commentable-html` is a skill that turns any standalone HTML report into an inline-comment review surface you can hand back to an AI agent.
 
 ## Repository layout
 

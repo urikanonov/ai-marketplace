@@ -30,6 +30,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   literal (single-quoted) strings are recognized, and a Windows Batch `rem` comment is matched on a word
   boundary (so `rem`, `rem<TAB>`, and a bare `rem` are comments, but `remark` is not).
 
+## [1.2.1] - 2026-07-11
+
+### Changed
+
+- Documentation wording now describes the NonPortable default accurately. The skill reference and the
+  plugin README no longer call a generated document "single-file" or "Portable" by default: the default
+  NonPortable document loads its CSS/JS from companion files, while Export as Portable (or `--portable`)
+  produces the one self-contained file.
+
 ## [1.2.0] - 2026-07-11
 
 ### Fixed
