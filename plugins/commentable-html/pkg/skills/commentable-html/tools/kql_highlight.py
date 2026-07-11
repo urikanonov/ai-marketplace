@@ -148,8 +148,17 @@ def _usage():
 
 
 def main(argv):
-    args = [a for a in argv[1:] if not a.startswith("--")]
-    flags = {a for a in argv[1:] if a.startswith("--")}
+    raw = argv[1:]
+    # Support a "--" end-of-flags separator (standard CLI convention) so a positional
+    # value that begins with "--" can still be passed - everything after a bare "--" is
+    # positional, even if it looks like a flag.
+    if "--" in raw:
+        sep = raw.index("--")
+        before, after = raw[:sep], raw[sep + 1:]
+    else:
+        before, after = raw, []
+    args = [a for a in before if not a.startswith("--")] + after
+    flags = {a for a in before if a.startswith("--")}
     if flags - {"--code-only"}:
         sys.stderr.write("kql_highlight: unknown flag(s): %s\n" % ", ".join(sorted(flags - {"--code-only"})))
         return _usage()

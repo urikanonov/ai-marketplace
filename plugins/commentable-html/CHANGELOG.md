@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-07-11
+
+### Fixed
+
+- `chart_block.py`: self-validation writes its temporary file to the system temp directory instead of
+  the current working directory, so it works from a read-only directory (matching `new_document.py`).
+- `kql_highlight.py`: added a `--` end-of-flags separator so a positional value that begins with `--`
+  is taken literally instead of being rejected as an unknown flag.
+
+### Notes
+
+- Follow-up robustness fixes from the agency review pass; no change to the runtime review behavior.
+
 ## [1.1.1] - 2026-07-11
 
 ### Fixed

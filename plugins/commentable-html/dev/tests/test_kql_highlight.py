@@ -170,6 +170,15 @@ class KqlHighlightTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(_text_content(out.getvalue().strip()), "T | take 1")
 
+    def test_main_double_dash_separator_allows_flag_like_positional(self):
+        # A bare "--" ends flag parsing, so a positional value beginning with "--" is
+        # taken literally instead of being treated as an unknown flag.
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = K.main(["kql_highlight.py", "--code-only", "--", "--weird | take 1"])
+        self.assertEqual(code, 0)
+        self.assertEqual(_text_content(out.getvalue().strip()), "--weird | take 1")
+
     def test_main_code_only_empty_stdin_rejected(self):
         err = io.StringIO()
         with mock.patch.object(sys, "stdin", _BinaryStdin(" \r\n")), contextlib.redirect_stderr(err):

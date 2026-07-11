@@ -163,7 +163,10 @@ def _self_validate(figure, scripts, template_path=DEFAULT_TEMPLATE):
         return None
     template_html = _read_text(template_path)
     candidate = _inject_for_validation(template_html, figure, scripts)
-    fd, tmp = tempfile.mkstemp(suffix=".html", dir=os.getcwd())
+    # The temp file location does not affect chart validation (it inspects the fragment,
+    # not companion files), so use the system temp dir rather than os.getcwd(), which may
+    # be read-only (e.g. C:\Windows\System32).
+    fd, tmp = tempfile.mkstemp(suffix=".html")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(candidate)
