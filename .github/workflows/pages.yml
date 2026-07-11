@@ -58,7 +58,14 @@ jobs:
       # lockfile-keyed npm cache out of reach of the repo-controlled test code that runs later.
       - name: Install test dependencies (no lifecycle scripts)
         working-directory: tests/site
-        run: npm ci --ignore-scripts
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci --ignore-scripts; then exit 0; fi
+            echo "npm ci failed (attempt $attempt of 3), retrying..." >&2
+            sleep $((attempt * 5))
+          done
+          exit 1
       - name: Resolve Playwright cache key inputs
         id: pw
         working-directory: tests/site

@@ -392,38 +392,39 @@ class StampWiringTests(unittest.TestCase):
             self.assertIn("styles.css?v=%s" % css, text)
             self.assertIn("site.js?v=%s" % js, text)
 
-    def test_no_site_html_has_an_unstamped_asset_ref(self):
+    def test_no_site_html_has_a_stale_or_unstamped_asset_ref(self):
         import os as _os
         import glob
-        pat = re.compile(r'(?:href|src)="[^"]*?assets/(?:styles\.css|site\.js)([^"]*)"')
-        stamp = re.compile(r'^\?v=[0-9a-f]+$')
+        want = {"styles.css": "?v=" + bsd._asset_hash(bsd.REPO_ROOT, "styles.css"),
+                "site.js": "?v=" + bsd._asset_hash(bsd.REPO_ROOT, "site.js")}
+        pat = re.compile(r'(?:href|src)="[^"]*?assets/(styles\.css|site\.js)([^"]*)"')
         bad = []
         for path in glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True):
             for m in pat.finditer(bsd.read_text(path)):
-                if not stamp.match(m.group(1)):
+                if m.group(2) != want[m.group(1)]:
                     bad.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
         self.assertEqual(bad, [])
 
 
 class CheckDriftTests(unittest.TestCase):
-    _SKIP = {".git", "node_modules", "__pycache__", ".worktrees", "test-results", "playwright-report"}
-
     def _clone_repo(self):
         import os as _os
         import shutil
+        import subprocess
         import tempfile
         root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
-        ignore = shutil.ignore_patterns(*self._SKIP)
-        for name in _os.listdir(bsd.REPO_ROOT):
-            if name in self._SKIP:
+        tracked = subprocess.run(["git", "-C", bsd.REPO_ROOT, "ls-files", "-z"],
+                                 capture_output=True, check=True).stdout.decode("utf-8").split("\0")
+        for rel in tracked:
+            if not rel:
                 continue
-            src = _os.path.join(bsd.REPO_ROOT, name)
-            dst = _os.path.join(root, name)
-            if _os.path.isdir(src):
-                shutil.copytree(src, dst, ignore=ignore)
-            else:
-                shutil.copy2(src, dst)
+            src = _os.path.join(bsd.REPO_ROOT, rel.replace("/", _os.sep))
+            if not _os.path.exists(src):
+                continue
+            dst = _os.path.join(root, rel.replace("/", _os.sep))
+            _os.makedirs(_os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
         return root
 
     def test_check_flags_a_stale_asset_stamp(self):
