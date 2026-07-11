@@ -278,6 +278,9 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   are dismissed on new commits, and force-push and deletion are disallowed.
 - Every non-draft PR gets an automatic Copilot review request (`request-copilot-review.yml`);
   Copilot's review is advisory, and its comment threads are subject to conversation resolution.
+- After addressing a PR review comment (code fix, doc update, or clarification), resolve that
+  comment thread on the PR before pushing so the conversation stays clean and reviewers can see
+  what is still open at a glance.
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
   tests, Markdown, changelog sync, and the secret-bearing-file guard), `version-bump` (a
   shipped-source change requires a version bump), `dist-in-sync` (the commentable-html layer's

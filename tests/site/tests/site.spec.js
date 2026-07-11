@@ -36,9 +36,9 @@ test("every page exposes a skip-to-content link that targets the main region", a
 
 test("footer year is filled in with the current year", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  // site.js sets #year to new Date().getFullYear(), so the expectation tracks the
-  // real current year on purpose - a hardcoded year would go stale every January.
-  const year = String(new Date().getFullYear());
+  // Evaluate in the page context so the year matches the browser's Date (same as site.js),
+  // avoiding a mismatch if the Node and browser runtimes see different timezones.
+  const year = String(await page.evaluate(() => new Date().getFullYear()));
   await expect(page.locator("#year")).toHaveText(year);
 });
 
