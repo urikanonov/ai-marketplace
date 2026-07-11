@@ -8,6 +8,7 @@ import re
 import runpy
 import subprocess
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -247,6 +248,115 @@ class HighlightCodeCliTests(unittest.TestCase):
                 runpy.run_path(HIGHLIGHT_PY, run_name="__main__")
         self.assertEqual(cm.exception.code, 0)
         self.assertIn("python", out.getvalue().splitlines())
+
+
+class HighlightCodeCaseSensitivityTests(unittest.TestCase):
+    def test_case_sensitive_languages_reject_wrong_case_keywords(self):
+        # An identifier that merely case-folds to a keyword must NOT be colored as a keyword in
+        # a case-sensitive language (e.g. C# `String` vs keyword `string`, Python `IF` vs `if`).
+        cases = {
+            "python": "true false none IF Def Class Return",
+            "csharp": "String Object VOID Int Class",
+            "java": "String INT Class Void",
+            "javascript": "FUNCTION Const LET Return",
+            "typescript": "Interface Type CONST",
+            "rust": "IF Fn Impl LET Struct",
+            "go": "FUNC Var Type Package",
+            "cpp": "CLASS Int Void Namespace",
+            "ruby": "DEF Class Module Return",
+            "kotlin": "FUN Val Var Class",
+        }
+        for language, code in cases.items():
+            with self.subTest(language=language):
+                self.assertNotIn("cmh-code-kw", H.highlight_code(language, code))
+
+    def test_case_sensitive_languages_still_match_correct_case(self):
+        self.assertIn('<span class="cmh-code-kw">def</span>', H.highlight_code("python", "def f(): pass"))
+        self.assertIn('<span class="cmh-code-kw">class</span>', H.highlight_code("csharp", "class C {}"))
+        self.assertIn('<span class="cmh-code-kw">fn</span>', H.highlight_code("rust", "fn main() {}"))
+
+    def test_case_insensitive_languages_match_any_case(self):
+        self.assertIn('<span class="cmh-code-kw">SELECT</span>', H.highlight_code("sql", "SELECT 1"))
+        self.assertIn('<span class="cmh-code-kw">IF</span>', H.highlight_code("batch", "IF exist x del x"))
+        self.assertIn('<span class="cmh-code-kw">Function</span>', H.highlight_code("powershell", "Function Foo {}"))
+        self.assertIn('<span class="cmh-code-kw">DIV</span>', H.highlight_code("html", "<DIV></DIV>"))
+        self.assertIn('<span class="cmh-code-kw">BLOCK</span>', H.highlight_code("css", "a{display:BLOCK}"))
+
+
+class HighlightCodeCommentAndStringEdgeTests(unittest.TestCase):
+    def test_secondary_line_comment_prefixes(self):
+        # PHP has both // and #; batch has both rem and ::. Both prefixes must be highlighted.
+        self.assertIn('<span class="cmh-code-com"># hash note</span>', H.highlight_code("php", "$x = 1; # hash note"))
+        self.assertIn('<span class="cmh-code-com">:: colon note</span>',
+                      H.highlight_code("batch", "set x=1\n:: colon note"))
+
+    def test_batch_rem_needs_word_boundary(self):
+        self.assertIn('<span class="cmh-code-com">rem note</span>', H.highlight_code("batch", "echo hi\nrem note"))
+        self.assertIn('<span class="cmh-code-com">rem\tnote</span>', H.highlight_code("batch", "echo hi\nrem\tnote"))
+        self.assertIn('<span class="cmh-code-com">rem</span>', H.highlight_code("batch", "echo hi\nrem"))
+        self.assertNotIn('cmh-code-com">rem', H.highlight_code("batch", "set remainder=1"))
+
+    def test_swift_and_dart_multiline_strings(self):
+        swift = H.highlight_code("swift", 'let s = """\nline\n"""')
+        self.assertIn('<span class="cmh-code-str">"""\nline\n"""</span>', swift)
+        dart = H.highlight_code("dart", "var s = '''\nline\n''';")
+        self.assertIn("<span class=\"cmh-code-str\">'''\nline\n'''</span>", dart)
+
+    def test_toml_literal_string_preserves_backslash(self):
+        out = H.highlight_code("toml", "path = 'C:\\Users\\me'")
+        self.assertIn("<span class=\"cmh-code-str\">'C:\\Users\\me'</span>", out)
+
+    def test_line_continuation_stays_inside_string(self):
+        out = H.highlight_code("javascript", '"a \\\nb"')
+        self.assertIn('<span class="cmh-code-str">"a \\\nb"</span>', out)
+
+    def test_unterminated_block_comment_highlights_to_end(self):
+        out = H.highlight_code("c", "int x; /* todo: finish")
+        self.assertIn('<span class="cmh-code-com">/* todo: finish</span>', out)
+
+    def test_unterminated_string_highlights_to_end_of_line(self):
+        out = H.highlight_code("python", 'x = "oops\ny = 1\n')
+        self.assertIn('<span class="cmh-code-str">"oops</span>', out)
+        # The next line is not swallowed into the string.
+        self.assertIn('<span class="cmh-code-num">1</span>', out)
+
+    def test_pathological_escaped_quote_input_is_linear(self):
+        # A run of `"\` never closes; a backtracking tokenizer rescans to EOF at every quote
+        # (quadratic). The unrolled string patterns keep this linear - a big input is instant.
+        code = '"\\' * 20000
+        start = time.perf_counter()
+        out = H.highlight_code("javascript", code)
+        elapsed = time.perf_counter() - start
+        self.assertEqual(_text_content(out), code)
+        self.assertLess(elapsed, 3.0, "string tokenization must be linear, not superlinear")
+
+
+class HighlightCodeSanitizationTests(unittest.TestCase):
+    def test_class_language_only_emits_safe_characters(self):
+        for label in ["c++", "f#", "  spaced name  ", "../../etc/passwd", '"><script>', "语言"]:
+            with self.subTest(label=label):
+                self.assertRegex(H._class_language(label), r"^[A-Za-z0-9_+.-]*$")
+                block = H.highlight_block(label, "x = 1")
+                self.assertTrue(block.startswith('<pre><code class="language-'))
+                self.assertNotIn('"><', block)
+
+    def test_literal_highlight_span_in_source_is_escaped(self):
+        code = '<span class="cmh-code-kw">danger</span>'
+        block = H.highlight_block("html", code)
+        # The injected angle brackets must be escaped, and the text must roundtrip exactly, so
+        # the source cannot inject real markup even though html marks up `span`/`class` tokens.
+        self.assertIn("&lt;", block)
+        self.assertIn("&gt;", block)
+        self.assertEqual(_text_content(block), code)
+
+
+class HighlightCodeListExactTests(unittest.TestCase):
+    def test_main_list_is_exact_and_sorted(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            H.main(["--list"])
+        listed = [line for line in out.getvalue().split(os.linesep) if line]
+        self.assertEqual(listed, H.supported_languages())
 
 
 if __name__ == "__main__":

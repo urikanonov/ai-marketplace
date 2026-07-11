@@ -2,18 +2,16 @@
 """Generate the pre-annotated highlighter golden fixtures.
 
 For every language in `highlight_samples.SAMPLES` this writes two checked-in files under
-`fixtures/`:
+`fixtures/highlight/`:
 
-  fixtures/<lang>.sample   - the raw source sample (input to the highlighter)
-  fixtures/<lang>.html     - the pre-annotated highlighted output (the golden to diff against)
+  fixtures/highlight/<lang>.sample   - the raw source sample (input to the highlighter)
+  fixtures/highlight/<lang>.html     - the pre-annotated highlighted output (the golden to diff against)
 
 `test_highlight_golden.py` re-runs `highlight_code.highlight_code` on each `.sample` and asserts
 the result equals the committed `.html`, so any change in highlighter behaviour shows up as a
 fixture diff that a human reviews. Regenerate after intentional changes:
 
     python plugins/commentable-html/dev/tests/build_highlight_fixtures.py
-
-The same regeneration runs via `HIGHLIGHT_REGEN=1 python .../test_highlight_golden.py`.
 """
 import os
 import sys

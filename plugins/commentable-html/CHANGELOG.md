@@ -14,6 +14,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   aliases (`rs`, `rb`, `kt`, `pl`, `ps1`, `ps`, `objc`, `hs`, `ex`, `exs`). Shell scripts were already
   covered via the existing `shell` and `sh` aliases for `bash`. Run
   `python tools/highlight_code.py --list` for the full set.
+- The in-browser diff highlighter now recognizes the same expanded language set (CSS, Groovy, Elixir,
+  Haskell, Objective-C, Lua, PowerShell, and Windows Batch, plus their aliases), so review diffs in
+  those languages render with token colors instead of plain text.
+
+### Fixed
+
+- Keywords are now matched case-sensitively except in genuinely case-insensitive languages (SQL, Batch,
+  PowerShell, HTML, CSS). Previously a global case-insensitive match mis-colored ordinary identifiers as
+  keywords (for example C# `String`, Python `true`/`none`, Rust `Fn`).
+- String tokenization is now linear time. Pathological input (a long run of escaped quotes) previously
+  drove superlinear rescanning; the string patterns use an unrolled form that stays fast.
+- Strings keep a backslash-newline line continuation inside the string, unterminated block comments and
+  strings still highlight (to end of input / end of line), Swift and Dart triple-quoted strings and TOML
+  literal (single-quoted) strings are recognized, and a Windows Batch `rem` comment is matched on a word
+  boundary (so `rem`, `rem<TAB>`, and a bare `rem` are comments, but `remark` is not).
 
 ## [1.2.0] - 2026-07-11
 

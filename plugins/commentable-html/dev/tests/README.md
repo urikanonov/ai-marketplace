@@ -8,6 +8,6 @@ Development-only regression suites for the commentable-html layer.
 - `fixtures/highlight/` holds the syntax-highlighter golden fixtures: one realistic `<lang>.sample`
   per supported language plus its pre-annotated `<lang>.html` output. `test_highlight_golden.py`
   re-runs the highlighter and diffs against these; regenerate after intentional changes with
-  `python build_highlight_fixtures.py` (samples live in `highlight_samples.py`).
+  `python tests/build_highlight_fixtures.py` (samples live in `tests/highlight_samples.py`).
 
 Run from `dev/`; see `../README.md` for setup and commands.
