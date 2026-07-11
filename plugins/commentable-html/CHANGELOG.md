@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-07-10
+
+### Changed
+
+- Hardened build stamping so `dev/VERSION` updates `plugin.json`, the marketplace entry, generated files,
+  and skill metadata consistently.
+- Added CI coverage for version-bump checks and NonPortable output so shipped artifacts stay in sync with
+  their sources.
+
 ## [1.0.0] - 2026-07-10
 
 First official release.
