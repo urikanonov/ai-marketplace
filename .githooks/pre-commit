@@ -19,6 +19,14 @@ fi
 
 status=0
 
+if command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: scanning staged content for secrets..."
+  gitleaks git --pre-commit --staged --config .github/gitleaks.toml \
+    --redact --no-banner --no-color || status=1
+else
+  echo "pre-commit: gitleaks not found; skipping local content scan (CI will still run it)." >&2
+fi
+
 echo "pre-commit: validating Markdown..."
 "$PY" scripts/validate_markdown.py || status=1
 

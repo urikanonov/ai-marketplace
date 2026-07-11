@@ -11,6 +11,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 _MODULE_PATH = Path(__file__).with_name("validate_markdown.py")
 _spec = importlib.util.spec_from_file_location("validate_markdown", _MODULE_PATH)
@@ -97,6 +98,20 @@ class TestLinks(unittest.TestCase):
             found = vm.check_links(src, content, root)
             self.assertEqual(codes(found), ["broken-anchor"])
             self.assertIn("ghost", found[0].message)
+
+    def test_query_string_is_stripped_for_path_and_anchor_checks(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "other.md").write_text("# Section One\n", encoding="utf-8")
+            src = root / "s.md"
+            content = (
+                "[ok](other.md?raw=1#section-one) "
+                "[bad-anchor](other.md?raw=1#ghost) "
+                "[missing](missing.md?raw=1)\n"
+            )
+            src.write_text(content, encoding="utf-8")
+            found = vm.check_links(src, content, root)
+            self.assertEqual(codes(found), ["broken-anchor", "broken-link"])
 
     def test_no_links_skipped_via_validate_content(self):
         with TemporaryDirectory() as d:
@@ -225,6 +240,12 @@ class TestMainExitCodes(unittest.TestCase):
             rc, _ = self._run_main([str(root), "--fix"])
             self.assertEqual(rc, 0)
             self.assertNotIn("\u2014", f.read_text(encoding="utf-8"))
+
+    def test_fix_forces_lf_newlines(self):
+        path = Path("example.md")
+        with mock.patch.object(Path, "write_text") as write_text:
+            vm.write_text_lf(path, "first\nsecond\n")
+        write_text.assert_called_once_with("first\nsecond\n", encoding="utf-8", newline="\n")
 
     def test_warning_only_passes_unless_strict(self):
         with TemporaryDirectory() as d:

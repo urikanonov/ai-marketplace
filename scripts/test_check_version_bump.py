@@ -26,9 +26,12 @@ class TestSemver(unittest.TestCase):
     def test_order(self):
         self.assertLess(cvb.semver("1.0.0"), cvb.semver("1.0.1"))
         self.assertGreater(cvb.semver("2.0.0"), cvb.semver("1.5.9"))
+        self.assertLess(cvb.semver("1.6.0-beta.1"), cvb.semver("1.6.0"))
+        self.assertLess(cvb.semver("1.6.0-beta.2"), cvb.semver("1.6.0-beta.10"))
+        self.assertEqual(cvb.semver("1.6.0+build.1"), cvb.semver("1.6.0+build.2"))
 
     def test_invalid(self):
-        for bad in ("1.0", "1.0.0-rc1", "x.y.z", ""):
+        for bad in ("1.0", "1.0.0-", "x.y.z", ""):
             with self.assertRaises(ValueError):
                 cvb.semver(bad)
 
@@ -72,6 +75,10 @@ class TestEvaluate(unittest.TestCase):
 
     def test_changed_with_bump_passes(self):
         self.assertEqual(cvb.evaluate(mf(self._cmt("1.0.1")), mf(self._cmt("1.0.0")),
+                                      ["plugins/commentable-html/pkg/skills/x/SKILL.md"]), [])
+
+    def test_changed_with_prerelease_bump_passes(self):
+        self.assertEqual(cvb.evaluate(mf(self._cmt("1.6.0-beta.1")), mf(self._cmt("1.5.1")),
                                       ["plugins/commentable-html/pkg/skills/x/SKILL.md"]), [])
 
     def test_unchanged_plugin_skipped(self):

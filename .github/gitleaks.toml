@@ -1,0 +1,4 @@
+title = "ai-marketplace secret scanning"
+
+[extend]
+useDefault = true
