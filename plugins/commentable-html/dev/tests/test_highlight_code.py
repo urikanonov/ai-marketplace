@@ -99,7 +99,7 @@ TOKEN_CASES = {
     "dart": ("void", '"hi"', "// comment", "42", "/* block */"),
     "r": ("function", '"hi"', "# comment", "42", None),
     "perl": ("sub", '"hi"', "# comment", "42", None),
-    "powershell": ("function", '"hi"', "<# block #>", "42", "<# block #>"),
+    "powershell": ("function", '"hi"', "# comment", "42", "<# block #>"),
     "lua": ("function", '"hi"', "-- comment", "42", "--[[ block ]]"),
     "toml": ("true", '"hi"', "# comment", "42", None),
     "css": ("block", '"hi"', "/* comment */", "42", "/* comment */"),
