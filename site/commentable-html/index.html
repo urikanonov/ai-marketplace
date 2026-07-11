@@ -201,7 +201,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
             <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams. The dev/test toolchain is bumped to match (mermaid 11.16.0, chart.js 4.5.1), and the <code>adm-zip</code> dev dependency takes the 0.6.0 security fix (CVE-2026-39244).</li>
+              <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams (full Playwright suite green against mermaid 11). This rode in on a dev/test-only dependency bump (mermaid 11.16.0, chart.js 4.5.1, adm-zip 0.6.0); none of those dev dependencies ship in the plugin.</li>
             </ul>
           </div>
           <div class="release">

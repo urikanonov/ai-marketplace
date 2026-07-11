@@ -10,8 +10,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - Adopted mermaid 11: the shipped page templates (`dist/PORTABLE.html`, `dist/NONPORTABLE.html`) and the
   example reports now load `mermaid@11.16.0` from the CDN, and the commenting layer is verified to render,
-  anchor, and comment on mermaid 11 diagrams. The dev/test toolchain is bumped to match (mermaid 11.16.0,
-  chart.js 4.5.1), and the `adm-zip` dev dependency takes the 0.6.0 security fix (CVE-2026-39244).
+  anchor, and comment on mermaid 11 diagrams (full Playwright suite green against mermaid 11). This rode in
+  on a dev/test-only dependency bump (mermaid 11.16.0, chart.js 4.5.1, adm-zip 0.6.0); none of those dev
+  dependencies ship in the plugin.
 
 ## [1.5.1] - 2026-07-11
 
