@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-07-11
+
+### Fixed
+
+- Documentation accuracy from the agency review pass: the generated-document header comment (and the
+  two shipped example reports) now name the Export as Portable download `<stem>-portable.html`, matching
+  the current UI (it previously said `<stem>-comments.html`); and `references/design-decisions.md` now
+  states correctly that a `<canvas>` renders when either the Chart.js loader OR an inline `getContext`
+  draw is present, so a hand-drawn non-Chart.js canvas is accepted and only a canvas with neither is
+  flagged (matching `validate.py` E3).
+
+### Notes
+
+- Documentation-only changes; no code or runtime behavior change.
+
 ## [1.1.2] - 2026-07-11
 
 ### Fixed
