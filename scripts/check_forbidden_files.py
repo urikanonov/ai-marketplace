@@ -59,9 +59,15 @@ def tracked_files() -> "list[str] | None":
     except FileNotFoundError:
         print("check_forbidden_files: git is not installed; skipping the tracked-file scan.")
         return None
-    except subprocess.CalledProcessError:
-        print("check_forbidden_files: not a git repository; skipping the tracked-file scan.")
-        return None
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        if "not a git repository" in stderr.lower():
+            print("check_forbidden_files: not a git repository; skipping the tracked-file scan.")
+            return None
+        # Any other git failure (corrupt index, permissions, locked repo) is unexpected:
+        # fail closed rather than silently skipping the guard.
+        print(f"check_forbidden_files: 'git ls-files' failed (exit {exc.returncode}): {stderr}")
+        raise SystemExit(1)
     return [path for path in result.stdout.split("\0") if path]
 
 

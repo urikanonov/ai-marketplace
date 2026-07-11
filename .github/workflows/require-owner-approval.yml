@@ -1,18 +1,21 @@
 name: require-owner-approval
 
 # Enforces that an EXTERNAL pull request carries an approving review from the
-# maintainer before it can merge. The maintainer's own PRs and Dependabot PRs are
-# exempt so the solo maintainer is never blocked.
+# maintainer, on the CURRENT head commit, before it can merge. The maintainer's
+# own PRs and Dependabot PRs are exempt so the solo maintainer is never blocked.
 #
 # It runs from pull_request_target (plus pull_request_review), so the logic is
 # always read from the trusted base branch: a PR cannot neutralize the gate by
 # editing this file. It never checks out or runs PR code - it only reads the PR's
-# review list and publishes a commit status on the PR head SHA. Make the status
-# context "require-owner-approval" a required status check on main to block merges.
+# review list and publishes a commit status on the PR head SHA. Both triggers are
+# privileged (they run in the base-repo context with a write-capable token and
+# secrets, even for fork PRs), so statuses: write works on fork PRs too; that is
+# also why this workflow must never check out PR code.
 #
-# The gate is expressed ONLY through that commit status (always posted); the job
-# itself stays green so an unapproved PR shows a single red status, not a noisy
-# failed job.
+# Make the commit-status context "require-owner-approval" a required status check
+# on main to block merges (NOT the "evaluate" Actions check-run, which always
+# succeeds). The gate verdict is the status; the job always exits 0 so an
+# unapproved PR shows a single red status rather than a noisy failed job.
 
 on:
   pull_request_target:
@@ -26,8 +29,10 @@ permissions:
   statuses: write
 
 concurrency:
+  # Serialize (do not cancel) so every event posts a final status for its head SHA
+  # and a review event cannot cancel an in-flight run before it publishes.
   group: require-owner-approval-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   evaluate:
@@ -44,14 +49,23 @@ jobs:
           MAINTAINER: urikanonov
         shell: bash
         run: |
-          set -euo pipefail
+          # Deliberately no `-e`: we control every exit path so the gate ALWAYS
+          # publishes a status (fail-closed) and never leaves the required check
+          # stuck "expected/pending".
+          set -uo pipefail
           CONTEXT="require-owner-approval"
 
           post_status() {
-            gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
-              -f "state=$1" \
-              -f "context=$CONTEXT" \
-              -f "description=$2" >/dev/null
+            local st="$1" desc="$2" i
+            for i in 1 2 3; do
+              if gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
+                -f "state=$st" -f "context=$CONTEXT" -f "description=$desc" >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 3
+            done
+            echo "::warning::failed to publish the $CONTEXT status after retries"
+            return 1
           }
 
           # The maintainer's own PRs are exempt: a solo maintainer cannot approve
@@ -71,23 +85,34 @@ jobs:
               ;;
           esac
 
-          # Latest DECISIVE review state from the maintainer, across all pages.
-          # gh --paginate emits one JSON array per page, so slurp with jq (-s),
-          # concatenate (add), and ignore COMMENTED reviews (which do not change an
-          # existing approval, matching GitHub's own latest-review semantics). A new
-          # commit dismisses a stale approval (branch protection), so the state
-          # correctly becomes DISMISSED and the gate re-blocks until re-approval.
-          state="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
-            | jq -s -r --arg m "$MAINTAINER" \
-              '(add // []) | [ .[] | select(.user.login == $m) | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED") ] | last | .state // "NONE"')"
-          echo "Latest decisive review state from $MAINTAINER: $state"
+          if ! reviews="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate 2>/dev/null)"; then
+            echo "::error::could not read reviews for PR #$PR_NUMBER"
+            post_status failure "Could not read reviews; re-run this check."
+            exit 0
+          fi
+
+          # Latest DECISIVE review from the maintainer (ignoring COMMENTED, which does
+          # not change an approval), slurped across all pages. The approval must be on
+          # the CURRENT head commit (commit_id == HEAD_SHA): this makes the gate
+          # self-sufficient rather than relying only on branch protection's
+          # dismiss-stale-reviews to invalidate an approval after a new push.
+          state="$(printf '%s' "$reviews" | jq -s -r --arg m "$MAINTAINER" --arg h "$HEAD_SHA" \
+            '(add // [])
+             | [ .[] | select(.user.login == $m)
+                     | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED") ]
+             | last
+             | if . == null then "NONE"
+               elif (.state == "APPROVED" and .commit_id == $h) then "APPROVED"
+               elif .state == "APPROVED" then "STALE_APPROVAL"
+               else .state end')"
+          echo "Resolved gate state for $MAINTAINER on $HEAD_SHA: $state"
 
           if [ "$state" = "APPROVED" ]; then
-            echo "Approved by the maintainer. Gate passes."
+            echo "Approved by the maintainer on the current commit. Gate passes."
             post_status success "Approved by @$MAINTAINER."
             exit 0
           fi
 
-          echo "::error::PR #$PR_NUMBER must be approved by @$MAINTAINER before it can merge (state: $state)."
-          post_status failure "Requires an approving review from @$MAINTAINER (state: $state)."
+          echo "::error::PR #$PR_NUMBER needs an approving review from @$MAINTAINER on the current commit (state: $state)."
+          post_status failure "Needs an approving review from @$MAINTAINER on the current commit (state: $state)."
           exit 0

@@ -36,9 +36,9 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          if printf '%s' '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' \
-            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - >/dev/null 2>&1; then
+          if resp="$(printf '%s' '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' \
+            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - 2>&1)"; then
             echo "Requested a Copilot review on PR #$PR_NUMBER."
           else
-            echo "Copilot review could not be requested (unavailable on this plan, or already requested); continuing without failing the PR."
+            echo "Copilot review not requested (unavailable on this plan, or already requested); continuing without failing the PR. Detail: $resp"
           fi

@@ -28,14 +28,16 @@ still read the PR before approving.
 
 - New plugins are maintainer-authored: close external PRs that add a new plugin directory or a new
   `marketplace.json` entry, and ask the contributor to open a plugin request instead.
-- Confirm the required checks are green: `validate`, `version-bump`, `build-check`, and `summary`
-  (the `plugin-tests` gate), plus `require-owner-approval` on external PRs (see below).
+- Confirm the required checks are green: `validate`, `version-bump`, `build-check`, `build`, and
+  `summary` (the `plugin-tests` gate), plus `require-owner-approval` on external PRs (see below).
 - External PRs are hard-gated on your approval. The `require-owner-approval` status fails until you
   submit an **Approve** review (a comment or "request changes" does not satisfy it). Because stale
   approvals are dismissed on new commits, a contributor's fresh push re-blocks the PR until you
   re-approve. Your own PRs and Dependabot PRs pass the gate automatically, so you are never blocked.
   The gate runs from the trusted base branch (`pull_request_target`) and posts a commit status, so a
-  PR cannot disable it by editing the workflow file.
+  PR cannot disable it by editing the workflow file. In branch protection the required check is the
+  commit-status context `require-owner-approval` (published by the workflow), not the `evaluate`
+  Actions check-run.
 - Copilot is asked to review every non-draft PR automatically as an advisory second opinion. Its
   threads are subject to conversation resolution, but it never replaces your own read of the diff.
 - Changes to shipped executable content (hooks, `*.ps1`, MCP) ship to end users via the auto-updater - review

@@ -174,10 +174,10 @@ its sources.
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
   tests, Markdown, changelog sync, and the secret-bearing-file guard), `version-bump` (a
   shipped-source change requires a version bump), `build-check` (the commentable-html layer's
-  committed `dist/` matches its `dev/` source), `summary` (the `plugin-tests` gate), and
-  `require-owner-approval` (an external PR carries the maintainer's approving review). The `pages`
-  workflow's `build` job (site regeneration plus its Playwright suite) runs on pull requests that
-  touch the site, but it is path-filtered and so is not a blanket required check.
+  committed `dist/` matches its `dev/` source), `build` (the `pages` workflow regenerates the site
+  and its Playwright suite passes; it runs on every PR), `summary` (the `plugin-tests` gate), and
+  `require-owner-approval` (an external PR carries the maintainer's approving review). Every check
+  that can catch a break is required, so nothing merges that would break the build or the site.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 
