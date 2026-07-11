@@ -321,6 +321,9 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
+   wide content shell, while tables, figures, code, diffs, and callouts keep full width. */
+#commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
 /* Section headings are deep-links: a plain click updates the URL to their anchor. */
 #commentRoot .cm-anchored { cursor: pointer; }
 #commentRoot .cm-anchored:hover { text-decoration-line: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
@@ -385,17 +388,17 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
 /* Add-comment affordances: the text-selection menu button and the floating
    image / diff / mermaid buttons all share ONE accent-pill look + hover, so the
    "Add Comment" control is visually identical wherever it appears. */
-.cm-menu button, .cm-mermaid-add, .cm-diff-add, .cm-image-add {
+.cm-menu button, .cm-mermaid-add, .cm-diff-add, .cm-image-add, .cm-widget-add {
   background: var(--cp-accent); color: var(--cp-accent-fg);
   border: none; border-radius: 999px; padding: 0.3rem 0.85rem;
   font-family: inherit; font-size: 0.78rem; font-weight: 600; line-height: 1.2;
   cursor: pointer; box-shadow: var(--cp-shadow);
   display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap;
 }
-.cm-menu button:hover, .cm-mermaid-add:hover, .cm-diff-add:hover, .cm-image-add:hover {
+.cm-menu button:hover, .cm-mermaid-add:hover, .cm-diff-add:hover, .cm-image-add:hover, .cm-widget-add:hover {
   background: var(--cp-accent-hover); color: var(--cp-accent-fg);
 }
-.cm-menu button:active, .cm-mermaid-add:active, .cm-diff-add:active, .cm-image-add:active {
+.cm-menu button:active, .cm-mermaid-add:active, .cm-diff-add:active, .cm-image-add:active, .cm-widget-add:active {
   transform: translateY(1px);
 }
 
@@ -530,6 +533,10 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
   background: var(--cp-surface-soft); white-space: nowrap;
 }
 .cm-mode-badge.is-nonportable { color: var(--cp-warning); border-color: var(--cp-warning); }
+/* Parity with the sidebar .cm-type-badge: the overflow-menu portability badge is colored
+   and gets a help cursor from the same data-doc-type set by updateDocTypeUi. */
+.cm-mode-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-mode-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 
 /* NonPortable-only controls are hidden until the layer detects nonportable mode. */
 .cm-nonportable-only { display: none !important; }
@@ -734,6 +741,22 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
 #commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
 .cm-image-add { position: fixed; z-index: 200; }
+/* Commentable widget parts (generic opt-in via data-cm-part inside a data-cm-widget).
+   Parts live inside a cm-skip widget but are individually commentable, so they get the
+   same hover/focus/highlight affordances as images. */
+#commentRoot [data-cm-part].cm-part-commentable { cursor: pointer; }
+#commentRoot [data-cm-part].cm-part-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
+#commentRoot [data-cm-part].cm-part-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+#commentRoot [data-cm-part].cm-part-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
+#commentRoot [data-cm-part].cm-part-hl.cm-part-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+.cm-widget-add { position: fixed; z-index: 200; }
+/* Synthetic sidebar cards: document-wide comments and the auto-generated widget
+   state-change record. */
+.cm-card.cm-card-doc .pin { color: var(--cp-accent); }
+.cm-card.cm-card-state { border-color: var(--cp-warning); background: var(--cp-warning-soft); }
+.cm-card.cm-card-state .cm-card-state-title { font-weight: 600; color: var(--cp-text); font-size: 0.82rem; }
+.cm-card.cm-card-state ul { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--cp-text); }
+.cm-card.cm-card-state li { margin: 0.1rem 0; }
 /* Per-code-block Copy button: always visible, pinned to the block's top-right. */
 .cmh-code-wrap { position: relative; }
 /* The language pill + Copy button float over the block's top-right corner; reserve
@@ -869,6 +892,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 .cm-mermaid-add:focus-visible,
 .cm-diff-add:focus-visible,
 .cm-image-add:focus-visible,
+.cm-widget-add:focus-visible,
 .cm-hl-bubble:focus-visible {
   outline: 2px solid var(--cp-accent);
   outline-offset: 2px;
