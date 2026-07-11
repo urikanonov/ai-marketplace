@@ -116,12 +116,19 @@ python scripts/validate_marketplace.py        # deps: jsonschema, pyyaml
 python scripts/validate_markdown.py            # Markdown hygiene; standard library only
 ```
 
-Enable the pre-commit hook once per clone so this runs automatically before every commit (skip a single
-commit with `git commit --no-verify`):
+Enable the git hooks once per clone so they run automatically (skip a single commit with
+`git commit --no-verify`, or a single push with `git push --no-verify`):
 
 ```bash
 git config core.hooksPath .githooks
 ```
+
+This turns on two hooks: `pre-commit` runs the manifest and Markdown validators before each commit,
+and `pre-push` runs the deterministic gate that mirrors the required CI checks before each push -
+the validators, the script unit tests, `check_changelog_sync`, `check_version_bump`, and the
+`build_site_data.py` / layer `build.py` / fixtures `--check` drift guards - so a push that would fail
+a required check is caught locally first. The slower, occasionally flaky browser (Playwright) suites
+are not run by default; set `RUN_E2E=1 git push` to include them (CI is their authoritative gate).
 
 The validator (the pre-commit hook in `.githooks/pre-commit`, and the `validate` CI job which is a required
 status check on `main`) enforces:
