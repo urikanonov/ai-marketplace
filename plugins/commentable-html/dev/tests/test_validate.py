@@ -1358,5 +1358,53 @@ class NewCheckTests(unittest.TestCase):
             self.assertIn("strict", r_strict.stdout.lower())
 
 
+class NonPortableBaseDirTests(unittest.TestCase):
+    """CMH-VAL-05: the optional base_dir controls how companion refs are resolved."""
+
+    def _write(self, d, content):
+        p = os.path.join(d, "doc.html")
+        with open(p, "w", encoding="utf-8", newline="") as fh:
+            fh.write(content)
+        return p
+
+    def test_base_dir_none_skips_existence_check(self):
+        # Companions are MISSING on disk. The default base_dir (the file's dir) flags
+        # them; base_dir=None defers the existence check (placement not yet done).
+        with tempfile.TemporaryDirectory() as d:
+            p = self._write(d, build_nonportable())
+            errors_default, _ = validate.validate(p)
+            errors_none, _ = validate.validate(p, base_dir=None)
+        self.assertTrue(any("not found" in e for e in errors_default),
+                        "default base_dir should flag missing companions: %r" % errors_default)
+        self.assertFalse(any("not found" in e for e in errors_none),
+                         "base_dir=None should skip the existence check: %r" % errors_none)
+
+    def test_base_dir_none_still_runs_structural_checks(self):
+        # A remote companion URL is a structural error that must fire even when the
+        # existence check is deferred with base_dir=None.
+        content = build_nonportable().replace('href="commentable-html.css"',
+                                               'href="https://cdn.example.com/commentable-html.css"')
+        with tempfile.TemporaryDirectory() as d:
+            p = self._write(d, content)
+            errors, _ = validate.validate(p, base_dir=None)
+        self.assertTrue(any("remote/CDN URL" in e for e in errors),
+                        "remote-URL check must run with base_dir=None: %r" % errors)
+
+    def test_explicit_base_dir_resolves_against_that_dir(self):
+        # The document lives in dir A (no companions); companions live in dir B.
+        # base_dir=B resolves the refs there and validates clean.
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            p = self._write(a, build_nonportable())
+            for name in ("commentable-html.css", "commentable-html.js", "commentable-html.assets.js"):
+                with open(os.path.join(b, name), "w", encoding="utf-8") as fh:
+                    fh.write("/* stub */")
+            errors_a, _ = validate.validate(p)
+            errors_b, _ = validate.validate(p, base_dir=b)
+        self.assertTrue(any("not found" in e for e in errors_a),
+                        "refs should be missing when resolved against the file's own dir")
+        self.assertFalse(any("not found" in e for e in errors_b),
+                         "refs should resolve against the explicit base_dir: %r" % errors_b)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

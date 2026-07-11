@@ -109,8 +109,12 @@ def main(argv=None):
     parser.add_argument("--strict", action="store_true", help="exit non-zero if any local image is missing")
     args = parser.parse_args(argv)
 
-    with open(args.html, encoding="utf-8") as fh:
-        html = fh.read()
+    try:
+        with open(args.html, encoding="utf-8") as fh:
+            html = fh.read()
+    except OSError as exc:
+        sys.stderr.write("inline_images: cannot read %s: %s\n" % (args.html, exc))
+        return 1
     base = args.base or os.path.dirname(os.path.abspath(args.html))
     out, inlined, missing = inline_images(html, base)
     if missing and args.strict:

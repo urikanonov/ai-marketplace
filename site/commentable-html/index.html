@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.0<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.1<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -164,6 +164,19 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.1.1] - 2026-07-11</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>new_document.py: corrected docstrings that referenced a removed CLI export tool; --assets-href &quot;/&quot; now produces root-relative companion references instead of dropping the prefix; a cross-drive --out gives an actionable message instead of a raw relpath error; --copy-assets copies the companions before writing the HTML so a failed copy never leaves a broken file; the write path reports OSError cleanly; --copy-assets / --assets-href warn when combined with --portable; a custom --template defers the companion existence check (it previously always failed self-validation); and self-validation no longer writes its temp file under the current working directory, so it works from a read-only directory.</li>
+              <li>validate.py: the NonPortable remote-URL and absolute-path checks always run (they are structural), and only the on-disk existence check is gated on base_dir, so an --assets-href remote/absolute path is caught at generation time. Added direct base_dir unit tests.</li>
+              <li>inline_images.py: a missing or unreadable input file now reports a clean error and exits 1 instead of raising an uncaught OSError.</li>
+            </ul>
+            <div class="group-label">Notes</div>
+            <ul>
+              <li>Fixes surfaced by a 6-model rubber-duck review panel on the NonPortable-first change, plus a plugin-description wording tidy-up (drop &quot;single-file&quot; now that NonPortable is the default). No change to the runtime review behavior.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.1.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
