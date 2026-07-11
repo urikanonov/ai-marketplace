@@ -19,7 +19,7 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 ## One-time setup
 
 Enable the pre-commit hook so the validator runs automatically before every commit (it needs python with
-`jsonschema` and `pyyaml`). This protects the owner too, who can otherwise bypass branch protection:
+`jsonschema` and `pyyaml`). This catches issues locally before CI, even for the maintainer:
 
 ```bash
 pip install jsonschema pyyaml
@@ -39,6 +39,8 @@ Skip the hook for a single commit with `git commit --no-verify`.
    python scripts/validate_markdown.py
    ```
    They also run in CI and are required status checks on `main`. `validate_marketplace.py` verifies the manifest against its JSON Schema, that every `source` path exists, that plugin-directory sources have a `plugin.json` whose version matches the manifest entry, and that skill sources have a `SKILL.md` with `name` and `description` front matter. `validate_markdown.py` checks every Markdown file for non-ASCII "smart" characters, local filesystem paths, and broken relative links.
+
+   CI runs two more checks that need git history and so are awkward to run locally, but they will fail the required `validate` job if violated: `check_changelog_sync.py` (every plugin's current version must have a matching `CHANGELOG.md` release heading, and already-released changelog history must not be edited) and `check_version_bump.py` (changing a plugin's shipped source requires a version bump). If you change a plugin's `CHANGELOG.md`, `docs/TUTORIAL.md`, or an example report that the site embeds, also regenerate the site data with `python scripts/build_site_data.py` and commit the result (CI verifies it with `--check`).
 
 ### Versioning: which file is the source of truth
 

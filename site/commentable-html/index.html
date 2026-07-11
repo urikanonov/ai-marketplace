@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
   <title>commentable-html - inline-comment review surface for any HTML</title>
-  <meta name="description" content="Turn any standalone HTML into a single-file commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
+  <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
   <link rel="stylesheet" href="../assets/styles.css" />
 </head>
@@ -33,7 +33,7 @@
         <a class="back-link" href="../">&larr; All plugins</a>
         <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.3<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
-        <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
+        <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#demo">Try the live demo</a>
           <a class="btn" href="tutorial/">Guided tutorial</a>
@@ -48,7 +48,7 @@
           <h2 class="section-title">Why commentable-html</h2>
           <p>AI agents increasingly answer with <strong>HTML</strong>, not markdown: plans, reports, design docs, code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, design tokens as swatches, data as real charts, long documents as collapsible, navigable sections. A wall of markdown flattens all of that.</p>
           <p>But the moment you want to <em>revise</em> that artifact, the loop breaks down: you alt-tab between the rendered HTML and the AI chat, scroll to the spot you mean, and try to describe in prose what to change. The richer the document, the more painful the round-trip.</p>
-          <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> It turns any standalone HTML into a self-contained review surface: select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, the same way you would review a pull request. When you are done, one <em>Copy all</em> hands the agent a structured bundle of every note. You stay in the document and return to the chat only at the end - the loop gets tighter.</p>
+          <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> It turns any standalone HTML into a commentable review surface: select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, the same way you would review a pull request. When you are done, one <em>Copy all</em> hands the agent a structured bundle of every note. You stay in the document and return to the chat only at the end - the loop gets tighter.</p>
         </div>
       </div>
     </section>
@@ -92,10 +92,10 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           <a class="btn btn-primary" id="demo-fullscreen" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer">Open in full screen</a>
         </div>
         <div class="demo-switch" role="tablist" aria-label="Choose a demo report">
-          <button class="demo-tab active" type="button" role="tab" aria-selected="true" data-demo="demo/report-taxi.html" data-file="report-taxi.html">NYC Taxi Report</button>
-          <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html">Community Garden Plan</button>
+          <button class="demo-tab active" type="button" role="tab" id="demo-tab-taxi" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="demo/report-taxi.html" data-file="report-taxi.html">NYC Taxi Report</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html">Community Garden Plan</button>
         </div>
-        <div class="demo-frame">
+        <div class="demo-frame" id="demo-panel" role="tabpanel" aria-labelledby="demo-tab-taxi" tabindex="0">
           <div class="bar">
             <span class="dot"></span><span class="dot"></span><span class="dot"></span>
             <span class="title" id="demo-filename">report-taxi.html</span>

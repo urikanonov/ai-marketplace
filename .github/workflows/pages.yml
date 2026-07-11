@@ -8,11 +8,9 @@ on:
       - "tests/site/**"
       - "scripts/build_site_data.py"
       - ".github/plugin/marketplace.json"
-      - "CHANGELOG.md"
-      - "plugins/commentable-html/CHANGELOG.md"
-      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-taxi.html"
-      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-community-garden.html"
-      - "plugins/commentable-html/pkg/skills/commentable-html/docs/**"
+      - "plugins/**/CHANGELOG.md"
+      - "plugins/**/examples/*.html"
+      - "plugins/**/docs/**"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
@@ -20,11 +18,9 @@ on:
       - "tests/site/**"
       - "scripts/build_site_data.py"
       - ".github/plugin/marketplace.json"
-      - "CHANGELOG.md"
-      - "plugins/commentable-html/CHANGELOG.md"
-      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-taxi.html"
-      - "plugins/commentable-html/pkg/skills/commentable-html/examples/report-community-garden.html"
-      - "plugins/commentable-html/pkg/skills/commentable-html/docs/**"
+      - "plugins/**/CHANGELOG.md"
+      - "plugins/**/examples/*.html"
+      - "plugins/**/docs/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

@@ -198,6 +198,7 @@ main > section:nth-of-type(even) {
 }
 .cmd .copy-btn:hover { background: rgba(255, 255, 255, 0.16); }
 .cmd .copy-btn.copied { color: #7ee2a8; border-color: rgba(126, 226, 168, 0.5); }
+.cmd .copy-btn.copy-failed { color: #ffd7b0; border-color: rgba(255, 175, 120, 0.6); }
 
 /* Card grids */
 .grid {
@@ -326,7 +327,7 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .demo-head .section-sub { margin-bottom: 0; }
 
 /* Demo switch: segmented control that flips the iframe between reports */
-.demo-switch { display: inline-flex; gap: 4px; padding: 4px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 999px; margin-bottom: 16px; }
+.demo-switch { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 999px; margin-bottom: 16px; }
 .demo-tab { border: 0; background: transparent; color: var(--cp-text-muted); font: inherit; font-size: 0.9rem; font-weight: 600; padding: 7px 16px; border-radius: 999px; cursor: pointer; transition: background 0.15s, color 0.15s; }
 .demo-tab:hover { color: var(--cp-text); }
 .demo-tab.active { background: var(--cp-accent); color: var(--cp-accent-fg); }

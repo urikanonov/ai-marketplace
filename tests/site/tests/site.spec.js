@@ -89,6 +89,55 @@ test("plugin and tutorial pages keep a tight CSP (no widget relaxations)", async
   }
 });
 
+test("star widget degrades to a visible plain link when its script is blocked", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const link = page.locator("a.github-button");
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace");
+});
+
+test("install command copy button copies the command and shows feedback", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const btn = page.locator("#install .copy-btn").first();
+  const command = await btn.getAttribute("data-copy");
+  expect(command).toContain("marketplace add");
+  await btn.click();
+  await expect(btn).toHaveText("copied");
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip).toBe(command);
+});
+
+test("the static test server refuses path traversal out of site/", async () => {
+  // A high-level client normalizes ".." out of the path, so hit the server with a raw
+  // request whose request-target keeps the traversal literal.
+  const http = require("http");
+  const status = await new Promise((resolve, reject) => {
+    const req = http.request(
+      { host: "127.0.0.1", port: 4173, path: "/../../package.json", method: "GET" },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
+  expect(status).toBe(403);
+});
+
+test("demo tabs are keyboard operable (arrow keys switch the shown report)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await page.locator("#demo-tab-taxi").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator("#demo-tab-garden")).toBeFocused();
+  await expect(page.locator(".demo-tab.active")).toHaveText(/Community Garden/i);
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-community-garden\.html/);
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator("#demo-tab-taxi")).toBeFocused();
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-taxi\.html/);
+});
+
 test("demo mounts inside the iframe on the plugin page (CSP allows it)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const frame = page.frameLocator("#demo iframe");

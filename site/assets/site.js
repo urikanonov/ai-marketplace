@@ -9,38 +9,51 @@
     buttons.forEach(function (btn) {
       btn.addEventListener("click", function () {
         var text = btn.getAttribute("data-copy") || "";
+        var original = btn.textContent;
+        var restore = function () {
+          btn.classList.remove("copied", "copy-failed");
+          btn.textContent = original;
+        };
         var done = function () {
-          var original = btn.textContent;
           btn.classList.add("copied");
           btn.textContent = "copied";
-          window.setTimeout(function () {
-            btn.classList.remove("copied");
-            btn.textContent = original;
-          }, 1500);
+          window.setTimeout(restore, 1500);
+        };
+        var fail = function () {
+          btn.classList.add("copy-failed");
+          btn.textContent = "press Ctrl+C";
+          window.setTimeout(restore, 2000);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done, fallbackCopy.bind(null, text, done));
+          navigator.clipboard.writeText(text).then(done, function () {
+            fallbackCopy(text, done, fail);
+          });
         } else {
-          fallbackCopy(text, done);
+          fallbackCopy(text, done, fail);
         }
       });
     });
   }
 
-  function fallbackCopy(text, done) {
+  function fallbackCopy(text, done, fail) {
     var ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
     ta.style.opacity = "0";
     document.body.appendChild(ta);
     ta.select();
+    var ok = false;
     try {
-      document.execCommand("copy");
-      done();
+      ok = document.execCommand("copy");
     } catch (e) {
-      /* clipboard unavailable; leave the command visible for manual copy */
+      ok = false;
     }
     document.body.removeChild(ta);
+    if (ok) {
+      done();
+    } else if (fail) {
+      fail();
+    }
   }
 
   function initYear() {
@@ -53,29 +66,62 @@
   function initDemoSwitch() {
     var tabs = document.querySelectorAll(".demo-tab");
     var frame = document.getElementById("demo-iframe");
+    var panel = document.getElementById("demo-panel");
     var filename = document.getElementById("demo-filename");
     var fullscreen = document.getElementById("demo-fullscreen");
     if (!tabs.length || !frame) {
       return;
     }
-    tabs.forEach(function (tab) {
+    var tabList = Array.prototype.slice.call(tabs);
+
+    function activate(tab, focusIt) {
+      var src = tab.getAttribute("data-demo");
+      var file = tab.getAttribute("data-file") || src;
+      tabList.forEach(function (t) {
+        var active = t === tab;
+        t.classList.toggle("active", active);
+        t.setAttribute("aria-selected", active ? "true" : "false");
+        t.setAttribute("tabindex", active ? "0" : "-1");
+      });
+      if (frame.getAttribute("src") !== src) {
+        frame.setAttribute("src", src);
+      }
+      frame.setAttribute("title", "Live commentable-html demo: " + file);
+      if (panel && tab.id) {
+        panel.setAttribute("aria-labelledby", tab.id);
+      }
+      if (filename) {
+        filename.textContent = file;
+      }
+      if (fullscreen) {
+        fullscreen.setAttribute("href", src);
+      }
+      if (focusIt) {
+        tab.focus();
+      }
+    }
+
+    tabList.forEach(function (tab, i) {
       tab.addEventListener("click", function () {
-        var src = tab.getAttribute("data-demo");
-        var file = tab.getAttribute("data-file") || src;
-        tabs.forEach(function (t) {
-          var active = t === tab;
-          t.classList.toggle("active", active);
-          t.setAttribute("aria-selected", active ? "true" : "false");
-        });
-        if (frame.getAttribute("src") !== src) {
-          frame.setAttribute("src", src);
+        activate(tab, false);
+      });
+      tab.addEventListener("keydown", function (e) {
+        var last = tabList.length - 1;
+        var next = null;
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          next = i >= last ? 0 : i + 1;
+        } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          next = i <= 0 ? last : i - 1;
+        } else if (e.key === "Home") {
+          next = 0;
+        } else if (e.key === "End") {
+          next = last;
         }
-        if (filename) {
-          filename.textContent = file;
+        if (next === null) {
+          return;
         }
-        if (fullscreen) {
-          fullscreen.setAttribute("href", src);
-        }
+        e.preventDefault();
+        activate(tabList[next], true);
       });
     });
   }
