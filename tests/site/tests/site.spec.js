@@ -24,6 +24,29 @@ test("hub renders with plugins, install command, and logo", async ({ page }) => 
   await expect(page.locator("#install .cmd pre")).toContainText("marketplace add");
 });
 
+test("every page exposes a skip-to-content link that targets the main region", async ({ page }) => {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const skip = page.locator("a.skip-link");
+    await expect(skip).toHaveCount(1);
+    await expect(skip).toHaveAttribute("href", "#main");
+    await expect(page.locator("main#main")).toHaveCount(1);
+  }
+});
+
+test("footer year is filled in with the current year", async ({ page }) => {
+  // Force the browser clock to a sentinel year before load so the assertion proves initYear()
+  // writes the live year rather than passing tautologically on the hardcoded fallback baked into
+  // the committed HTML. Overriding getFullYear (what site.js reads) also sidesteps any Node/browser
+  // timezone difference and the New-Year rollover window.
+  const SENTINEL = 2099;
+  await page.addInitScript((year) => {
+    Date.prototype.getFullYear = function () { return year; };
+  }, SENTINEL);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#year")).toHaveText(String(SENTINEL));
+});
+
 test("theme variables are present (light + crimson)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const accent = await page.evaluate(() =>

@@ -15,7 +15,7 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 - `main` is protected: every change lands through a pull request that passes CI.
 - Direct pushes to `main` are blocked for everyone, including the owner. The maintainer's own changes go through a PR too.
 - Contribute through a pull request: fork the repo (or push a feature branch if you are a collaborator) and open a PR against `main`. External pull requests require an approving review from the maintainer (@urikanonov) before they can merge - the `require-owner-approval` check enforces this. Conversation resolution is required, stale approvals are dismissed when you push new commits, and force-push and deletion are disallowed. Every non-draft PR is also sent to Copilot for an advisory review automatically.
-- What must be green to merge: the required checks `validate` (schema, script unit tests, Markdown, changelog sync, and a secret-bearing-file guard), `version-bump` (a shipped-source change needs a version bump), `dist-in-sync` (the commentable-html layer's committed `dist/` matches its `dev/` source), `actionlint` (every GitHub Actions workflow lints clean), `site` (the `pages` workflow regenerates the site cleanly and its Playwright suite passes; it runs on every PR), `plugin-tests` (the plugin Playwright gate), and `require-owner-approval` (external PRs carry the maintainer's approving review; the maintainer's own PRs and Dependabot are exempt). New plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
+- What must be green to merge: the required checks `validate` (schema, script unit tests, Markdown, changelog sync, and a secret-bearing-file guard), `version-bump` (a shipped-source change needs a version bump), `dist-in-sync` (the commentable-html layer's committed `dist/` matches its `dev/` source), `actionlint` (every GitHub Actions workflow lints clean), `site` (the `pages` workflow regenerates the site cleanly and its Playwright suite passes; it runs on every PR), `plugin-tests` (the plugin Playwright gate), `require-owner-approval` (external PRs carry the maintainer's approving review; the maintainer's own PRs and Dependabot are exempt), and `All conversations resolved` (every review thread on the PR must be resolved before merging - the job log lists any open threads by file, line, author, and a body snippet so you know exactly what to address). New plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
 
 ## One-time setup
 
@@ -37,8 +37,9 @@ browser Playwright suites to a push with `RUN_E2E=1 git push`.
 
 1. Find the plugin under `plugins/`. A plugin is either a single skill directory (a `SKILL.md` with `name` and `description` front matter) or a plugin directory with a `plugin.json` (used by hook and MCP plugins, such as the auto-updater).
 2. Make your change: fix a hook, sharpen a `SKILL.md`'s instructions, correct docs, or improve portability.
-3. Bump the version (see Versioning below) and add a matching entry to that plugin's `CHANGELOG.md` (for example `plugins/commentable-html/CHANGELOG.md`).
-4. Run the validators, then open a pull request against `main`:
+3. If you add or change a feature or user-visible behavior, add or update its feature-id row in the owning spec and a covering test in the SAME pull request: a skill's spec is `plugins/<plugin>/dev/SPEC.md` (tests under `plugins/<plugin>/dev/tests/`); the site's spec is `tests/site/SPEC.md` (browser tests under `tests/site/tests/`, generator tests in `scripts/test_build_site_data.py`). A feature the spec does not tie to a passing test is not done - see [AGENTS.md](AGENTS.md), "Spec-and-test discipline". The required `plugin-tests` and `site` checks run these tests.
+4. Bump the version (see Versioning below) and add a matching entry to that plugin's `CHANGELOG.md` (for example `plugins/commentable-html/CHANGELOG.md`).
+5. Run the validators, then open a pull request against `main`:
    ```bash
    python scripts/validate_marketplace.py
    python scripts/validate_markdown.py
