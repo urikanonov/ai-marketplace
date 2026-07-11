@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
+  <title>commentable-html tutorial - a guided walkthrough</title>
+  <meta name="description" content="A guided, step-by-step tutorial for reviewing a document with commentable-html, built from the plugin's own TUTORIAL.md." />
+  <link rel="icon" type="image/svg+xml" href="../../assets/logo.svg" />
+  <link rel="stylesheet" href="../../assets/styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <nav class="navbar">
+    <div class="wrap">
+      <a class="brand" href="../../">
+        <img src="../../assets/logo.svg" alt="" />
+        <span>ai-marketplace</span>
+      </a>
+      <div class="nav-links">
+        <a href="../">commentable-html</a>
+        <a href="../#demo">Try it</a>
+        <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <header class="hero">
+      <div class="wrap">
+        <a class="back-link" href="../">&larr; commentable-html</a>
+        <span class="eyebrow spaced">Tutorial</span>
+        <h1>Guided <span class="accent">tutorial</span></h1>
+        <p class="lead">Follow a real example document to learn the commentable-html review workflow end to end.</p>
+      </div>
+    </header>
+
+    <section>
+      <div class="wrap">
+        <article class="tutorial section-block">
+          <!-- BEGIN:tutorial -->
+          <h2>Commentable HTML tutorial: Planning a Community Garden</h2>
+          <p>This walkthrough uses <code>examples/report-community-garden.html</code> as a running example. It is a single self-contained file with prose, tables, a KQL query, a Chart.js chart, images, Mermaid diagrams, and a code-review diff, so it lets you try every kind of comment in one place.</p>
+          <h3>The review workflow</h3>
+          <p>Commentable HTML turns any report into a review you can hand straight back to an AI agent. The loop has four steps:</p>
+          <ol>
+          <li><strong>Generate.</strong> Ask an AI chat or terminal agent to produce your report or document as a commentable HTML file.</li>
+          <li><strong>Review.</strong> Open the file in your browser and leave inline comments anywhere: text, tables, code, KQL, charts, diagrams, diffs, or images.</li>
+          <li><strong>Hand back.</strong> Click <strong>Copy all</strong> and paste the bundle back to the agent (or export the file and send it along).</li>
+          <li><strong>Refresh and repeat.</strong> The agent edits the source and marks your comments handled; reload the updated file and the addressed comments disappear. Repeat until none remain.</li>
+          </ol>
+          <p>The rest of this tutorial walks through step 2 in detail: every kind of thing you can comment on, and how to hand the batch back.</p>
+          <h3>1. Open the example</h3>
+          <ol>
+          <li>Open <code>examples/report-community-garden.html</code> in a modern browser.</li>
+          <li>If the comments panel is not already open, click <strong>Show</strong> in the floating toolbar (upper right). That control reads <strong>Hide</strong> while the panel is open.</li>
+          <li>Scroll through the plan once to see its sections and the in-page Contents list.</li>
+          </ol>
+          <p><img src="tutorial-images/garden-01-top-light.png" alt="The community garden plan open in a browser, with the Contents list and the floating toolbar" loading="lazy" /></p>
+          <h3>2. Read the document-type bubble and version</h3>
+          <ol>
+          <li>In the sidebar header, look at the document-type bubble.</li>
+          <li>It reads <strong>Portable</strong> (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads <strong>Not portable</strong> (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.</li>
+          <li>Next to the bubble, the version indicator shows <code>v&lt;x.y.z&gt;</code>, telling you which commentable-html runtime produced the file.</li>
+          </ol>
+          <h3>3. Open Help &amp; About</h3>
+          <ol>
+          <li>Click <strong>Help &amp; About</strong> in the sidebar header.</li>
+          <li>The first topic is the review workflow above; the rest cover every control, gesture, keyboard shortcut, the document-type bubble, exports, and the section menu. Use the search box to jump to an answer.</li>
+          <li>Close it with the X button, Escape, or by clicking the backdrop.</li>
+          </ol>
+          <p><img src="tutorial-images/garden-07-help.png" alt="The Help and About dialog, opened to the review-workflow topic" loading="lazy" /></p>
+          <h3>4. Comment on prose</h3>
+          <ol>
+          <li>Go to <strong>Overview</strong>.</li>
+          <li>Select the phrase <code>underused corner lot</code>.</li>
+          <li>Click <strong>Add Comment</strong> in the small popup below the selection.</li>
+          <li>Type a note, then click Save or press Ctrl+Enter.</li>
+          <li>The selected text is highlighted and a card appears in the sidebar.</li>
+          </ol>
+          <p><img src="tutorial-images/garden-05-composer.png" alt="The comment composer open on a selected phrase, with the quoted text and a note field" loading="lazy" /></p>
+          <p><img src="tutorial-images/garden-06-comment-saved.png" alt="The saved comment highlighted in the text with its card in the sidebar" loading="lazy" /></p>
+          <h3>5. Comment on a table cell</h3>
+          <ol>
+          <li>Go to <strong>Garden Layout</strong>.</li>
+          <li>In the bed allocation table, select the text <code>Use a removable trellis</code>.</li>
+          <li>Click <strong>Add Comment</strong> and save a note. The card records which table cell you commented on, so the agent can find it later.</li>
+          </ol>
+          <h3>6. Comment on the KQL block</h3>
+          <ol>
+          <li>Go to <strong>Planting Schedule</strong>.</li>
+          <li>In the KQL card, select a short span inside the query.</li>
+          <li>Click <strong>Add Comment</strong> and save a note. The copied bundle preserves the selected KQL as a fenced code quote.</li>
+          <li>The <strong>Run in Azure Data Explorer</strong> link opens the same query in the Azure Data Explorer web UI, and the cluster name copies to your clipboard when you click it.</li>
+          </ol>
+          <p><img src="tutorial-images/garden-02-kql.png" alt="A highlighted KQL block with a Run in Azure Data Explorer link and a Copy button" loading="lazy" /></p>
+          <h3>7. Comment on the chart</h3>
+          <ol>
+          <li>Stay in <strong>Planting Schedule</strong> and find the watering-needs chart.</li>
+          <li>Move the mouse over the bars to read the tooltip.</li>
+          <li>To comment on the chart, hover it and click <strong>Add Comment</strong> at its corner (the same way you comment on an image), or select text in the chart caption.</li>
+          <li>Save a note. A commented chart gets a highlighted outline so you can see at a glance which figures have feedback.</li>
+          </ol>
+          <p><img src="tutorial-images/garden-03-chart.png" alt="The bar chart of weekly watering needs with a commentable caption" loading="lazy" /></p>
+          <h3>8. Comment on an image</h3>
+          <ol>
+          <li>Go to <strong>Site Selection</strong> or <strong>Garden Layout</strong>.</li>
+          <li>Hover an image (or focus it and press Enter).</li>
+          <li>Click the floating <strong>Add Comment</strong> button at the image corner and save a note. The comment is anchored to the whole image and quotes its alt text.</li>
+          </ol>
+          <h3>9. Comment on a Mermaid diagram</h3>
+          <p>Mermaid diagrams render when you open the file in a modern browser. If one does not render, its source stays readable as plain text.</p>
+          <ol>
+          <li>Go to <strong>Risks and Mitigations</strong> and find the planting decision flowchart.</li>
+          <li>Hover a node such as <code>Frost forecast in next 72 hours?</code>.</li>
+          <li>Click the floating <strong>Add Comment</strong> button on the node and save a note. The node gets a colored ring and the comment attaches to that node, so it survives edits to the rest of the diagram.</li>
+          <li>You can also comment on gantt bars, sequence-diagram messages, and subgraphs the same way, or hover an empty part of a diagram to comment on the whole thing.</li>
+          </ol>
+          <h3>10. Comment on a diff line</h3>
+          <ol>
+          <li>In <strong>Risks and Mitigations</strong>, find the <code>watering_schedule.py</code> diff.</li>
+          <li>Hover the added line <code>+ if rainfall_mm &gt;= 8:</code> and click the floating <strong>Add Comment</strong> button to comment on the whole line.</li>
+          <li>Or select a substring within a single diff line and click <strong>Add Comment</strong> to comment on only that region.</li>
+          <li>Use the diff header button to switch between views: it reads <strong>To inline view</strong> while side-by-side and <strong>To side-by-side view</strong> while inline. Your comments stay attached either way.</li>
+          </ol>
+          <p><img src="tutorial-images/garden-04-diff.png" alt="The unified diff block with the view toggle and a syntax-highlight toggle" loading="lazy" /></p>
+          <h3>11. Navigate and collapse sections</h3>
+          <ol>
+          <li>Widen the browser window to at least 1400px. A generated section menu appears on the left (separate from the author Contents list near the top) and highlights the section you are reading; it has its own collapse toggle.</li>
+          <li>In the document itself, each section title has a small caret to its left: click the caret to collapse or expand that section. When a section is collapsed, clicking its title also expands it again.</li>
+          </ol>
+          <h3>12. Hand your comments back</h3>
+          <ol>
+          <li>Click <strong>Copy all</strong> in the toolbar or the sidebar.</li>
+          <li>This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.</li>
+          <li>Paste the bundle back to the agent. It addresses each comment and marks it handled in the same file.</li>
+          </ol>
+          <p><img src="tutorial-images/garden-09-copyall.png" alt="The Copy all action with the comments panel populated" loading="lazy" /></p>
+          <h3>13. Refresh and repeat</h3>
+          <p>Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.</p>
+          <p>To share the review with another person instead, use <strong>Export as Portable</strong> to bake the comments into a single self-contained copy, or <strong>Export to Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
+          <h3>Dark theme</h3>
+          <p>The layer follows your browser or OS theme and stays readable in both. Everything above works identically in dark mode.</p>
+          <p><img src="tutorial-images/garden-08-top-dark.png" alt="The community garden plan in dark theme" loading="lazy" /></p>
+          <!-- END:tutorial -->
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>MIT License &middot; &copy; <span id="year">2026</span> Uri Kanonov</span>
+      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/pkg/skills/commentable-html/docs/TUTORIAL.md">source: TUTORIAL.md</a></span>
+    </div>
+  </footer>
+
+  <script src="../../assets/site.js"></script>
+</body>
+</html>

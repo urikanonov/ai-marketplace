@@ -42,16 +42,24 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
   await expect(page.locator("#demo iframe")).toHaveAttribute("src", /demo\/report-taxi\.html/);
 });
 
-test("open-full demo links are safe external targets", async ({ page }) => {
+test("demo has one safe full-screen button and a two-option slider", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const links = page.locator(".demo-actions a");
-  const count = await links.count();
-  expect(count).toBeGreaterThanOrEqual(1);
-  for (let i = 0; i < count; i++) {
-    await expect(links.nth(i)).toHaveAttribute("target", "_blank");
-    const rel = (await links.nth(i).getAttribute("rel")) || "";
-    expect(rel).toContain("noopener");
-  }
+  const fs = page.locator("#demo-fullscreen");
+  await expect(fs).toHaveCount(1);
+  await expect(fs).toHaveAttribute("target", "_blank");
+  expect((await fs.getAttribute("rel")) || "").toContain("noopener");
+  await expect(page.locator(".demo-tab")).toHaveCount(2);
+  await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
+});
+
+test("demo slider switches the iframe, filename, and full-screen target", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-taxi\.html/);
+  await page.locator(".demo-tab", { hasText: "Community Garden Plan" }).click();
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-community-garden\.html/);
+  await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-community-garden\.html/);
+  await expect(page.locator("#demo-filename")).toHaveText("report-community-garden.html");
+  await expect(page.locator(".demo-tab.active")).toHaveText(/Community Garden/i);
 });
 
 test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }) => {
@@ -83,8 +91,29 @@ test("both demo reports load and their toolbars mount", async ({ page }) => {
   }
 });
 
+test("tutorial page renders from TUTORIAL.md with working images", async ({ page, request }) => {
+  const resp = await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  expect(resp.status()).toBeLessThan(400);
+  await expect(page).toHaveTitle(/tutorial/i);
+  expect(await page.locator(".tutorial h2, .tutorial h3").count()).toBeGreaterThan(3);
+  const imgs = page.locator(".tutorial img");
+  const n = await imgs.count();
+  expect(n).toBeGreaterThan(0);
+  for (let i = 0; i < n; i++) {
+    const src = await imgs.nth(i).getAttribute("src");
+    const abs = new URL(src, page.url());
+    const r = await request.get(abs.href);
+    expect(r.status(), "broken tutorial image: " + src).toBeLessThan(400);
+  }
+});
+
+test("plugin page links to the tutorial", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('a[href="tutorial/"]').first()).toBeVisible();
+});
+
 test("no internal link or asset uses a root-relative path (would break the project sub-path)", async ({ page }) => {
-  for (const p of ["/", "/commentable-html/"]) {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
     const bad = await page.evaluate(() => {
       const out = [];
@@ -105,7 +134,7 @@ test("no internal link or asset uses a root-relative path (would break the proje
 });
 
 test("no broken internal links or assets", async ({ page, request }) => {
-  const pagesToCrawl = ["/", "/commentable-html/"];
+  const pagesToCrawl = ["/", "/commentable-html/", "/commentable-html/tutorial/"];
   const checked = new Set();
   for (const p of pagesToCrawl) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
