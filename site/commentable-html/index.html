@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.5.1<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.6.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -198,12 +198,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams. The dev/test toolchain is bumped to match (mermaid 11.16.0, chart.js 4.5.1), and the <code>adm-zip</code> dev dependency takes the 0.6.0 security fix (CVE-2026-39244).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.5.1] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Polished the review-loop diagram (<code>docs/images/review-loop.svg</code> and its site twin): the step labels use consistent casing (&quot;1. Generates HTML&quot;, &quot;2. Comment Inline&quot;), and the &quot;reload and repeat&quot; caption became a fourth curved arrow from the AI agent back to you, so the loop reads as a closed cycle.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 14 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.5.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
@@ -219,8 +228,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Authoring guidance: content-conventions now covers shaping content in real layouts, an anti-default-look taste checklist, a readable prose measure (top-level paragraphs are capped while tables, figures, and code keep full width), and mapping a product&#x27;s design tokens onto the <code>--cp-*</code> variables.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 13 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.4.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
