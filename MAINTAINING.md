@@ -16,23 +16,26 @@ first:
   wiring.
 
 CI hardening already in place: `permissions: contents: read`, `persist-credentials: false`, workflows
-trigger on `pull_request` rather than `pull_request_target` (with one deliberate exception -
-`request-copilot-review.yml` uses `pull_request_target` because it needs a write token to request a
-reviewer on fork PRs, but it never checks out or runs PR code, so no untrusted code executes),
-`npm ci --ignore-scripts`, per-job `timeout-minutes`, and no secrets are referenced. The blast radius
-of untrusted CI code is therefore compute/egress, not secret theft - but still read the PR before
-approving.
+trigger on `pull_request` rather than `pull_request_target`, with two deliberate exceptions -
+`require-owner-approval.yml` and `request-copilot-review.yml` use `pull_request_target` so their logic
+runs from the trusted base branch (and, for the Copilot request, so it has a write token on fork PRs).
+Neither checks out or runs PR code; they only call the API with the PR number, so no untrusted code
+executes. Otherwise: `npm ci --ignore-scripts`, per-job `timeout-minutes`, and no secrets are
+referenced. The blast radius of untrusted CI code is therefore compute/egress, not secret theft - but
+still read the PR before approving.
 
 ## Before you merge
 
 - New plugins are maintainer-authored: close external PRs that add a new plugin directory or a new
   `marketplace.json` entry, and ask the contributor to open a plugin request instead.
-- Confirm the required checks are green: `validate` and `summary` (the `plugin-tests` gate job), plus
-  `require-owner-approval` on external PRs (see below).
-- External PRs are hard-gated on your approval. The `require-owner-approval` check fails until you
+- Confirm the required checks are green: `validate`, `version-bump`, `build-check`, and `summary`
+  (the `plugin-tests` gate), plus `require-owner-approval` on external PRs (see below).
+- External PRs are hard-gated on your approval. The `require-owner-approval` status fails until you
   submit an **Approve** review (a comment or "request changes" does not satisfy it). Because stale
   approvals are dismissed on new commits, a contributor's fresh push re-blocks the PR until you
   re-approve. Your own PRs and Dependabot PRs pass the gate automatically, so you are never blocked.
+  The gate runs from the trusted base branch (`pull_request_target`) and posts a commit status, so a
+  PR cannot disable it by editing the workflow file.
 - Copilot is asked to review every non-draft PR automatically as an advisory second opinion. Its
   threads are subject to conversation resolution, but it never replaces your own read of the diff.
 - Changes to shipped executable content (hooks, `*.ps1`, MCP) ship to end users via the auto-updater - review

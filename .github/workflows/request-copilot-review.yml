@@ -1,14 +1,13 @@
 name: request-copilot-review
 
-# Automatically asks Copilot to review every non-draft pull request, so each PR
-# (including PRs from forks) gets an advisory second opinion. Copilot's review is
-# advisory only; its comment threads are still subject to "require conversation
-# resolution" before merge.
+# Requests a Copilot code review on every non-draft PR (an advisory second opinion).
+# It uses pull_request_target so it has a write-scoped token to request a reviewer on
+# fork PRs, but it NEVER checks out or runs PR code - it only calls the REST API with
+# the PR number, so no untrusted code executes. It is best-effort and never blocks the PR.
 #
-# This uses pull_request_target on purpose: it needs a write-scoped token to
-# request a reviewer on fork PRs. It is safe because it NEVER checks out or runs
-# any pull-request code - it only calls the GitHub API with the PR number. The
-# request is best-effort and never fails the PR.
+# The Copilot PR-review bot is requested via the REST requested_reviewers endpoint with
+# the login "copilot-pull-request-reviewer[bot]"; the GraphQL suggestedActors list does
+# not surface that reviewer, so the REST call is the reliable path.
 
 on:
   pull_request_target:
@@ -23,7 +22,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  request-copilot-review:
+  request:
     if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -32,48 +31,14 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          OWNER: ${{ github.repository_owner }}
-          REPO_NAME: ${{ github.event.repository.name }}
+          REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -uo pipefail
-
-          # Find the Copilot code-review bot among the actors that can be requested
-          # on this repository. If the account/plan does not offer it, skip quietly.
-          bot_id="$(gh api graphql -f query='
-            query($owner: String!, $name: String!) {
-              repository(owner: $owner, name: $name) {
-                suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
-                  nodes { login __typename ... on Bot { id } }
-                }
-              }
-            }' -F owner="$OWNER" -F name="$REPO_NAME" \
-            --jq '.data.repository.suggestedActors.nodes[] | select(.login == "copilot-pull-request-reviewer") | .id' 2>/dev/null || true)"
-
-          if [ -z "${bot_id:-}" ]; then
-            echo "Copilot reviewer is not available for this repository/plan; nothing to request."
-            exit 0
-          fi
-
-          pr_id="$(gh api graphql -f query='
-            query($owner: String!, $name: String!, $number: Int!) {
-              repository(owner: $owner, name: $name) { pullRequest(number: $number) { id } }
-            }' -F owner="$OWNER" -F name="$REPO_NAME" -F number="$PR_NUMBER" \
-            --jq '.data.repository.pullRequest.id' 2>/dev/null || true)"
-
-          if [ -z "${pr_id:-}" ]; then
-            echo "Could not resolve the pull request node id; skipping."
-            exit 0
-          fi
-
-          if gh api graphql -f query='
-            mutation($pr: ID!, $ids: [ID!]!) {
-              requestReviews(input: { pullRequestId: $pr, userIds: $ids, union: true }) {
-                pullRequest { id }
-              }
-            }' -F pr="$pr_id" -F ids="$bot_id" >/dev/null 2>&1; then
+          if printf '%s' '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' \
+            | gh api --method POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - >/dev/null 2>&1; then
             echo "Requested a Copilot review on PR #$PR_NUMBER."
           else
-            echo "Copilot review request did not succeed; continuing without failing the PR."
+            echo "Copilot review could not be requested (unavailable on this plan, or already requested); continuing without failing the PR."
           fi

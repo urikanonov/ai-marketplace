@@ -27,6 +27,10 @@ class IsForbiddenTest(unittest.TestCase):
             "home/.ssh/id_rsa",
             "id_ed25519",
             "vendor/keys/id_ecdsa",
+            "SERVER.PEM",
+            "config/PROD.KEY",
+            "ID_RSA",
+            "backup.PFX",
         ]:
             self.assertTrue(cff.is_forbidden(path), path)
 
@@ -35,6 +39,7 @@ class IsForbiddenTest(unittest.TestCase):
             ".env.example",
             ".env.sample",
             "config/.env.template",
+            "config/.ENV.EXAMPLE",
             "README.md",
             "scripts/validate_markdown.py",
             "docs/public.pem.example",

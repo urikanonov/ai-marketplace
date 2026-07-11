@@ -1,16 +1,21 @@
 name: require-owner-approval
 
-# Enforces the review policy that native branch protection cannot express for a
-# solo maintainer: an external pull request must carry an approving review from
-# the maintainer before it can merge, while the maintainer's own PRs are not
-# gated (GitHub never lets an author approve their own PR) and Dependabot is
-# allowlisted for routine dependency bumps.
+# Enforces that an EXTERNAL pull request carries an approving review from the
+# maintainer before it can merge. The maintainer's own PRs and Dependabot PRs are
+# exempt so the solo maintainer is never blocked.
 #
-# Add the job name "require-owner-approval" to the required status checks on
-# `main` for this to block merges.
+# It runs from pull_request_target (plus pull_request_review), so the logic is
+# always read from the trusted base branch: a PR cannot neutralize the gate by
+# editing this file. It never checks out or runs PR code - it only reads the PR's
+# review list and publishes a commit status on the PR head SHA. Make the status
+# context "require-owner-approval" a required status check on main to block merges.
+#
+# The gate is expressed ONLY through that commit status (always posted); the job
+# itself stays green so an unapproved PR shows a single red status, not a noisy
+# failed job.
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
   pull_request_review:
     types: [submitted, dismissed, edited]
@@ -18,56 +23,71 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  statuses: write
 
 concurrency:
   group: require-owner-approval-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  require-owner-approval:
-    name: require-owner-approval
+  evaluate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require a maintainer approval for external pull requests
+      - name: Evaluate maintainer approval and publish the gate status
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MAINTAINER: urikanonov
         shell: bash
         run: |
           set -euo pipefail
+          CONTEXT="require-owner-approval"
 
-          # The maintainer's own PRs are not gated: a solo maintainer cannot
-          # approve their own pull request, so gating them would be a self-lockout.
+          post_status() {
+            gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
+              -f "state=$1" \
+              -f "context=$CONTEXT" \
+              -f "description=$2" >/dev/null
+          }
+
+          # The maintainer's own PRs are exempt: a solo maintainer cannot approve
+          # their own PR, so gating them would be a self-lockout.
           if [ "$PR_AUTHOR" = "$MAINTAINER" ]; then
-            echo "PR #$PR_NUMBER is authored by the maintainer ($MAINTAINER); no external approval required."
+            echo "PR #$PR_NUMBER is maintainer-authored ($MAINTAINER); exempt."
+            post_status success "Maintainer-authored; approval not required."
             exit 0
           fi
 
           # Dependabot is allowlisted for routine dependency bumps.
           case "$PR_AUTHOR" in
             "dependabot[bot]" | "dependabot-preview[bot]")
-              echo "PR #$PR_NUMBER is authored by $PR_AUTHOR (allowlisted bot); no approval required."
+              echo "PR #$PR_NUMBER is authored by $PR_AUTHOR (allowlisted bot); exempt."
+              post_status success "Dependabot PR; approval not required."
               exit 0
               ;;
           esac
 
-          echo "External PR #$PR_NUMBER by '$PR_AUTHOR'. An APPROVED review from '$MAINTAINER' is required."
-
-          # The latest review state from the maintainer across all reviews on this
-          # PR. "dismiss stale reviews" on new commits turns a prior APPROVED into
-          # DISMISSED, so a fresh push correctly re-blocks until re-approval.
+          # Latest DECISIVE review state from the maintainer, across all pages.
+          # gh --paginate emits one JSON array per page, so slurp with jq (-s),
+          # concatenate (add), and ignore COMMENTED reviews (which do not change an
+          # existing approval, matching GitHub's own latest-review semantics). A new
+          # commit dismisses a stale approval (branch protection), so the state
+          # correctly becomes DISMISSED and the gate re-blocks until re-approval.
           state="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
-            --jq "[.[] | select(.user.login == \"$MAINTAINER\")] | last | .state // \"NONE\"")"
-          echo "Latest review state from $MAINTAINER: $state"
+            | jq -s -r --arg m "$MAINTAINER" \
+              '(add // []) | [ .[] | select(.user.login == $m) | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED") ] | last | .state // "NONE"')"
+          echo "Latest decisive review state from $MAINTAINER: $state"
 
           if [ "$state" = "APPROVED" ]; then
             echo "Approved by the maintainer. Gate passes."
+            post_status success "Approved by @$MAINTAINER."
             exit 0
           fi
 
-          echo "::error::PR #$PR_NUMBER must be approved by @$MAINTAINER before it can merge (current state: $state)."
-          exit 1
+          echo "::error::PR #$PR_NUMBER must be approved by @$MAINTAINER before it can merge (state: $state)."
+          post_status failure "Requires an approving review from @$MAINTAINER (state: $state)."
+          exit 0

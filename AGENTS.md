@@ -163,19 +163,21 @@ its sources.
   reaches `main` without going through the gate. History is squash-only, linear history is required,
   and branches must be up to date with `main` (strict mode) before they merge.
 - Native required approvals are `0` because the solo maintainer cannot self-approve, but external
-  pull requests are still gated: the required `require-owner-approval` check fails until `@urikanonov`
+  pull requests are still gated: the required `require-owner-approval` status fails until `@urikanonov`
   submits an approving review. The maintainer's own PRs and Dependabot PRs pass the gate
-  automatically, so the maintainer is never blocked. Conversation resolution is required, stale
-  approvals are dismissed on new commits, and force-push and deletion are disallowed.
+  automatically, so the maintainer is never blocked. The gate runs from `pull_request_target` and
+  publishes a commit status on the PR head, so it reads its logic from the trusted base branch and a
+  PR cannot disable it by editing the workflow. Conversation resolution is required, stale approvals
+  are dismissed on new commits, and force-push and deletion are disallowed.
 - Every non-draft PR gets an automatic Copilot review request (`request-copilot-review.yml`);
   Copilot's review is advisory, and its comment threads are subject to conversation resolution.
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
   tests, Markdown, changelog sync, and the secret-bearing-file guard), `version-bump` (a
   shipped-source change requires a version bump), `build-check` (the commentable-html layer's
-  committed `dist/` matches its `dev/` source), `build` (the site regenerates cleanly and its
-  Playwright suite passes), `summary` (the `plugin-tests` gate), and `require-owner-approval` (an
-  external PR carries the maintainer's approving review). Every check that can catch a break is
-  required, so nothing merges that would break the build or the site.
+  committed `dist/` matches its `dev/` source), `summary` (the `plugin-tests` gate), and
+  `require-owner-approval` (an external PR carries the maintainer's approving review). The `pages`
+  workflow's `build` job (site regeneration plus its Playwright suite) runs on pull requests that
+  touch the site, but it is path-filtered and so is not a blanket required check.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 

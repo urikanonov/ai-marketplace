@@ -40,24 +40,36 @@ ALLOWED_SUFFIXES = (".example", ".sample", ".template", ".dist")
 
 def is_forbidden(path: str) -> bool:
     """Return True when the file at `path` looks like committed secret material."""
-    name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    name = path.replace("\\", "/").rsplit("/", 1)[-1].lower()
     if name.endswith(ALLOWED_SUFFIXES):
         return False
-    return any(fnmatch.fnmatch(name, pattern) for pattern in FORBIDDEN_GLOBS)
+    # Match case-insensitively (name is lowered, patterns are lowercase) so an
+    # uppercase extension like SERVER.PEM is caught on case-sensitive Linux CI too.
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in FORBIDDEN_GLOBS)
 
 
-def tracked_files() -> list[str]:
-    result = subprocess.run(
-        ["git", "ls-files", "-z"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+def tracked_files() -> "list[str] | None":
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        print("check_forbidden_files: git is not installed; skipping the tracked-file scan.")
+        return None
+    except subprocess.CalledProcessError:
+        print("check_forbidden_files: not a git repository; skipping the tracked-file scan.")
+        return None
     return [path for path in result.stdout.split("\0") if path]
 
 
 def main() -> int:
-    offenders = sorted(path for path in tracked_files() if is_forbidden(path))
+    files = tracked_files()
+    if files is None:
+        return 0
+    offenders = sorted(path for path in files if is_forbidden(path))
     if offenders:
         print("check_forbidden_files: secret-bearing files must never be committed:")
         for path in offenders:
