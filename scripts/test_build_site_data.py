@@ -395,9 +395,9 @@ class StampWiringTests(unittest.TestCase):
     def test_no_site_html_has_a_stale_or_unstamped_asset_ref(self):
         import os as _os
         import glob
-        want = {"styles.css": "?v=" + bsd._asset_hash(bsd.REPO_ROOT, "styles.css"),
-                "site.js": "?v=" + bsd._asset_hash(bsd.REPO_ROOT, "site.js")}
-        pat = re.compile(r'(?:href|src)="[^"]*?assets/(styles\.css|site\.js)([^"]*)"')
+        want = {name: "?v=" + bsd._asset_hash(bsd.REPO_ROOT, name) for name in bsd.CACHE_BUSTED_ASSETS}
+        alternation = "|".join(re.escape(name) for name in bsd.CACHE_BUSTED_ASSETS)
+        pat = re.compile(r'(?:href|src)="[^"]*?assets/(%s)([^"]*)"' % alternation)
         bad = []
         for path in glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True):
             for m in pat.finditer(bsd.read_text(path)):
@@ -420,7 +420,7 @@ class CheckDriftTests(unittest.TestCase):
             if not rel:
                 continue
             src = _os.path.join(bsd.REPO_ROOT, rel.replace("/", _os.sep))
-            if not _os.path.exists(src):
+            if not _os.path.isfile(src):
                 continue
             dst = _os.path.join(root, rel.replace("/", _os.sep))
             _os.makedirs(_os.path.dirname(dst), exist_ok=True)

@@ -62,8 +62,10 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if npm ci --ignore-scripts; then exit 0; fi
-            echo "npm ci failed (attempt $attempt of 3), retrying..." >&2
-            sleep $((attempt * 5))
+            if [ "$attempt" -lt 3 ]; then
+              echo "npm ci failed (attempt $attempt of 3), retrying..." >&2
+              sleep $((attempt * 5))
+            fi
           done
           exit 1
       - name: Resolve Playwright cache key inputs
