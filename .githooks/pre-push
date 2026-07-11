@@ -9,10 +9,15 @@
 # Skip for a single push:     git push --no-verify
 # Also run the browser E2E:   RUN_E2E=1 git push
 
-PY=python
-command -v python >/dev/null 2>&1 || PY=python3
-if ! command -v "$PY" >/dev/null 2>&1; then
-  echo "pre-push: python not found; skipping local checks (CI will still run them)." >&2
+PY=""
+for _cand in python python3; do
+  if command -v "$_cand" >/dev/null 2>&1 && "$_cand" -c "" >/dev/null 2>&1; then
+    PY=$_cand
+    break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "pre-push: a working python was not found; skipping local checks (CI will still run them)." >&2
   exit 0
 fi
 
@@ -38,13 +43,14 @@ else
 fi
 
 run "script unit tests" "$PY" -m unittest discover -s scripts -p "test_*.py"
-run "changelog sync and released-history guard" "$PY" scripts/check_changelog_sync.py
 
-# Mirrors the required `version-bump` job. It needs origin/main to diff against.
+# These two need origin/main to diff against, so guard them on it being fetched
+# (they mirror the required `validate` changelog step and the `version-bump` job).
 if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+  run "changelog sync and released-history guard" "$PY" scripts/check_changelog_sync.py
   run "version bump for changed plugins" "$PY" scripts/check_version_bump.py
 else
-  echo "pre-push: origin/main not found locally; 'git fetch origin' to enable the version-bump check (skipping)." >&2
+  echo "pre-push: origin/main not found locally; 'git fetch origin' to enable the changelog-sync and version-bump checks (skipping)." >&2
 fi
 
 # Mirrors the required `build` (site drift) and `build-check` (layer dist) jobs.

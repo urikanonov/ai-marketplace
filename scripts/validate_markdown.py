@@ -121,7 +121,7 @@ PROMO_RE = re.compile(
 )
 
 EXCLUDE_DIRS = {
-    ".git", "node_modules", "bin", "obj", "dist", "build",
+    ".git", ".worktrees", "node_modules", "bin", "obj", "dist", "build",
     "TestResults", "test-results", "playwright-report", "__pycache__",
     ".venv", "venv", ".vscode",
 }
@@ -483,11 +483,14 @@ def validate_content(file_path, content, repo_root, no_links=False, style=False)
 
 
 def find_markdown_files(root):
-    """Collect all .md files under *root*, excluding build and VCS directories."""
+    """Collect all .md files under *root*, excluding build and VCS directories that appear
+    BELOW root. The exclusion is matched on the path relative to root, so running from inside
+    a directory whose name is in EXCLUDE_DIRS (for example a `.worktrees/<name>` checkout)
+    still scans that tree's own files, while a nested excluded directory under root is skipped."""
     root = Path(root)
     files = []
     for path in root.rglob("*.md"):
-        if any(part in EXCLUDE_DIRS for part in path.parts):
+        if any(part in EXCLUDE_DIRS for part in path.relative_to(root).parts):
             continue
         files.append(path)
     return sorted(files)

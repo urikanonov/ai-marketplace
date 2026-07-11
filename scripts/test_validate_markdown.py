@@ -181,6 +181,26 @@ class TestDiscovery(unittest.TestCase):
             files = [p.name for p in vm.find_markdown_files(root)]
             self.assertEqual(files, ["keep.md"])
 
+    def test_excludes_nested_worktrees_dir(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "keep.md").write_text("x", encoding="utf-8")
+            wt = root / ".worktrees" / "feature"
+            wt.mkdir(parents=True)
+            (wt / "other.md").write_text("x", encoding="utf-8")
+            files = [p.name for p in vm.find_markdown_files(root)]
+            self.assertEqual(files, ["keep.md"])
+
+    def test_scans_when_root_is_under_an_excluded_name(self):
+        # Running from inside a .worktrees/<name> checkout: the excluded name is an
+        # ancestor of root, so it must not exclude the tree's own files.
+        with TemporaryDirectory() as d:
+            root = Path(d) / ".worktrees" / "feature"
+            root.mkdir(parents=True)
+            (root / "keep.md").write_text("x", encoding="utf-8")
+            files = [p.name for p in vm.find_markdown_files(root)]
+            self.assertEqual(files, ["keep.md"])
+
 
 class TestMainExitCodes(unittest.TestCase):
     def _run_main(self, argv):
