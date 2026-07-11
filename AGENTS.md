@@ -20,7 +20,10 @@ A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users 
   CODEOWNERS, dependabot.yml, pull_request_template.md
 plugins/
   <plugin>/pkg/               # shipped source: plugin.json + skills/ (+ hooks/ or .mcp.json)
-  <plugin>/dev/               # development-only, NEVER distributed (tests, build tooling, sources, specs)
+  <plugin>/dev/               # development-only, NEVER distributed (tests, build tooling, sources, SPEC.md)
+site/                         # generated static GitHub Pages site (hub, plugin pages, tutorial)
+tests/site/                   # site Playwright suite + SPEC.md (the site's feature spec; not shipped)
+scripts/build_site_data.py          # regenerates site/ from sources; --check gates drift in CI
 scripts/validate_marketplace.py     # the validator CI runs; also run it locally
 scripts/validate_markdown.py        # Markdown hygiene validator CI runs; also run it locally
 .github/workflows/plugin-tests.yml  # runs each plugin's dev/ Playwright suite
@@ -88,6 +91,36 @@ working example):
 - a committed `package-lock.json` (so CI can `npm ci`).
 
 Nothing under `dev/` is distributed. `node_modules/`, `test-results/`, and `playwright-report/` are gitignored.
+
+## Spec-and-test discipline (do not add a feature without a spec row and a test)
+
+Every user-facing surface in this repo has a feature specification that maps each behavior to the
+automated test that covers it:
+
+- Each skill/plugin has one at `plugins/<plugin>/dev/SPEC.md` (for example
+  `plugins/commentable-html/dev/SPEC.md`).
+- The GitHub Pages site has one at `tests/site/SPEC.md`.
+
+The spec is the source of truth for what the surface promises, and every row must name a covering
+test. The rule is simple and non-negotiable:
+
+- Do NOT add or change a feature or user-visible behavior without, in the SAME pull request,
+  updating the owning spec (add or edit a feature-id row) AND adding or updating an automated test
+  that the row names. A feature that is not in the spec, or that the spec does not tie to a passing
+  test, is not done.
+- Give each behavior a stable `AREA-NN` feature id (for example `CMH-DIFF-11`, `SITE-DEMO-06`).
+  Reuse an existing id when you refine its behavior; never renumber or delete a shipped id.
+- If a behavior genuinely cannot be automated (a manual authoring convention or an intentional
+  non-feature), still add the spec row, mark its coverage `manual`, and list it under that spec's
+  "Coverage gaps" section with the reason. Prefer a real test; use `manual` only when automation is
+  not possible.
+- Removing a feature means removing its spec row and its now-dead test together, and bumping the
+  version and changelog as usual.
+
+This applies to skill runtime/tooling changes, to the site's pages and its generator
+(`scripts/build_site_data.py`), and to any new surface added later. The required CI checks run these
+tests (`summary` for the plugin suites, `build` for the site suite and generator unit tests), so a
+spec row whose test does not exist or does not pass will not merge.
 
 ## Parallel work: use git worktrees under the repo root
 
@@ -255,6 +288,12 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   nothing merges that would break the build or the site.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
+- Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature
+  must also update the owning spec and a covering test. This applies to site additions too - a change
+  to the site pages, its assets, or its generator (`site/**`, `scripts/build_site_data.py`) must
+  update `tests/site/SPEC.md` and its Playwright suite / generator unit tests. The required `build`
+  check runs the site suite and `build_site_data.py --check`, and `summary` runs the plugin suites,
+  so a new behavior that lacks a passing spec-named test does not merge.
 
 ### Why auto-running CI on outside PRs is safe here (do not break this invariant)
 
@@ -346,8 +385,16 @@ exposure is compute/runner abuse.
 
 ## Common tasks
 
+- Add a feature to a skill (for example a new commentable-html behavior): implement it, add a
+  feature-id row to `plugins/<plugin>/dev/SPEC.md` naming a new or updated automated test, add that
+  test under `plugins/<plugin>/dev/tests/`, bump versions per the rules, update the plugin's
+  `CHANGELOG.md`, and run the validator and the plugin's test suite.
 - Add a skill to an existing collection plugin: create `plugins/<plugin>/skills/<skill>/SKILL.md`, register it
   in `marketplace.json`, bump versions per the rules, update the plugin's `CHANGELOG.md`, run the validator.
+- Add or change a site behavior: implement it under `site/` or in `scripts/build_site_data.py`, add a
+  feature-id row to `tests/site/SPEC.md` naming a covering test, add that test under
+  `tests/site/tests/` (browser) or `scripts/test_build_site_data.py` (generator), then regenerate
+  with `python scripts/build_site_data.py` and confirm `--check` is clean.
 - Fix the auto-updater: edit `hooks/marketplace-update.ps1`, keep it non-blocking and 5.1-safe, bump the plugin
   version in both its `plugin.json` and the manifest entry, update the plugin's `CHANGELOG.md`, run the validator.
 - Add browser tests to a plugin: add `plugins/<plugin>/dev/package.json` (with `@playwright/test`),

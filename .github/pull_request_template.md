@@ -10,6 +10,7 @@
 
 ## Checklist
 
+- [ ] New or changed feature/behavior has a matching feature-id row in the owning spec (`plugins/<plugin>/dev/SPEC.md` for a skill, `tests/site/SPEC.md` for the site) and a covering automated test named in that row
 - [ ] Version bumped per CONTRIBUTING when a published plugin changed (both `plugin.json` and manifest for a plugin-dir source; manifest only for a single-skill source)
 - [ ] The changed plugin's `CHANGELOG.md` updated when its version changed
 - [ ] `python scripts/validate_marketplace.py` passes locally
