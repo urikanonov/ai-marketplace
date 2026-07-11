@@ -50,6 +50,36 @@
     }
   }
 
+  function initDemoSwitch() {
+    var tabs = document.querySelectorAll(".demo-tab");
+    var frame = document.getElementById("demo-iframe");
+    var filename = document.getElementById("demo-filename");
+    var fullscreen = document.getElementById("demo-fullscreen");
+    if (!tabs.length || !frame) {
+      return;
+    }
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        var src = tab.getAttribute("data-demo");
+        var file = tab.getAttribute("data-file") || src;
+        tabs.forEach(function (t) {
+          var active = t === tab;
+          t.classList.toggle("active", active);
+          t.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        if (frame.getAttribute("src") !== src) {
+          frame.setAttribute("src", src);
+        }
+        if (filename) {
+          filename.textContent = file;
+        }
+        if (fullscreen) {
+          fullscreen.setAttribute("href", src);
+        }
+      });
+    });
+  }
+
   function ready(fn) {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", fn);
@@ -61,5 +91,6 @@
   ready(function () {
     initCopyButtons();
     initYear();
+    initDemoSwitch();
   });
 })();
