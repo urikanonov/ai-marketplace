@@ -4,6 +4,7 @@ Run by the validate CI job via `python -m unittest discover -s scripts -p "test_
 so the site generator's escaping, URL allowlist, and changelog parsing are covered by a
 required status check.
 """
+import re
 import unittest
 
 import build_site_data as bsd
@@ -334,6 +335,106 @@ class SyncTutorialImagesTests(unittest.TestCase):
         self.assertTrue(any("stale.png" in d for d in bsd.sync_tutorial_images(root, check=True)))
         bsd.sync_tutorial_images(root, check=False)
         self.assertFalse(_os.path.exists(_os.path.join(dst, "stale.png")))
+
+
+class StampAssetsTests(unittest.TestCase):
+    def test_stamps_css_and_js_with_content_hash_at_every_prefix(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        js = bsd._asset_hash(bsd.REPO_ROOT, "site.js")
+        html = ('<link rel="stylesheet" href="assets/styles.css" />\n'
+                '<link rel="stylesheet" href="../assets/styles.css" />\n'
+                '<script src="../../assets/site.js"></script>')
+        out = bsd.stamp_assets(html, bsd.REPO_ROOT)
+        self.assertIn('href="assets/styles.css?v=%s"' % css, out)
+        self.assertIn('href="../assets/styles.css?v=%s"' % css, out)
+        self.assertIn('src="../../assets/site.js?v=%s"' % js, out)
+
+    def test_replaces_an_existing_stale_stamp(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        out = bsd.stamp_assets('<link href="assets/styles.css?v=deadbeef" />', bsd.REPO_ROOT)
+        self.assertIn('href="assets/styles.css?v=%s"' % css, out)
+        self.assertNotIn("deadbeef", out)
+
+    def test_is_idempotent(self):
+        html = '<link href="../../assets/styles.css" /><script src="../../assets/site.js"></script>'
+        once = bsd.stamp_assets(html, bsd.REPO_ROOT)
+        self.assertEqual(once, bsd.stamp_assets(once, bsd.REPO_ROOT))
+
+    def test_leaves_other_assets_untouched(self):
+        html = '<link rel="icon" href="../assets/commentable-html.svg" />'
+        self.assertEqual(bsd.stamp_assets(html, bsd.REPO_ROOT), html)
+
+    def test_replaces_any_existing_query_or_fragment(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        for ref in ["assets/styles.css?v=ABC123&t=1", "../assets/styles.css?foo=bar",
+                    "assets/styles.css#frag"]:
+            out = bsd.stamp_assets('<link href="%s" />' % ref, bsd.REPO_ROOT)
+            self.assertRegex(out, r'href="(?:\.\./)*assets/styles\.css\?v=%s"' % css)
+            for stale in ("ABC123", "foo=bar", "#frag"):
+                self.assertNotIn(stale, out)
+
+    def test_matches_dot_slash_prefix(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        out = bsd.stamp_assets('<link href="./assets/styles.css" />', bsd.REPO_ROOT)
+        self.assertIn('href="./assets/styles.css?v=%s"' % css, out)
+
+
+class StampWiringTests(unittest.TestCase):
+    PAGES = ["site/index.html", "site/commentable-html/index.html",
+             "site/commentable-html/tutorial/index.html"]
+
+    def test_committed_pages_carry_current_asset_stamps(self):
+        import os as _os
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        js = bsd._asset_hash(bsd.REPO_ROOT, "site.js")
+        for rel in self.PAGES:
+            text = bsd.read_text(_os.path.join(bsd.REPO_ROOT, *rel.split("/")))
+            self.assertIn("styles.css?v=%s" % css, text)
+            self.assertIn("site.js?v=%s" % js, text)
+
+    def test_no_site_html_has_a_stale_or_unstamped_asset_ref(self):
+        import os as _os
+        import glob
+        want = {name: "?v=" + bsd._asset_hash(bsd.REPO_ROOT, name) for name in bsd.CACHE_BUSTED_ASSETS}
+        alternation = "|".join(re.escape(name) for name in bsd.CACHE_BUSTED_ASSETS)
+        pat = re.compile(r'(?:href|src)="[^"]*?assets/(%s)([^"]*)"' % alternation)
+        bad = []
+        for path in glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True):
+            for m in pat.finditer(bsd.read_text(path)):
+                if m.group(2) != want[m.group(1)]:
+                    bad.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
+        self.assertEqual(bad, [])
+
+
+class CheckDriftTests(unittest.TestCase):
+    def _clone_repo(self):
+        import os as _os
+        import shutil
+        import subprocess
+        import tempfile
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        tracked = subprocess.run(["git", "-C", bsd.REPO_ROOT, "ls-files", "-z"],
+                                 capture_output=True, check=True).stdout.decode("utf-8").split("\0")
+        for rel in tracked:
+            if not rel:
+                continue
+            src = _os.path.join(bsd.REPO_ROOT, rel.replace("/", _os.sep))
+            if not _os.path.isfile(src):
+                continue
+            dst = _os.path.join(root, rel.replace("/", _os.sep))
+            _os.makedirs(_os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+        return root
+
+    def test_check_flags_a_stale_asset_stamp(self):
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        with open(_os.path.join(root, "site", "assets", "styles.css"), "a", encoding="utf-8") as fh:
+            fh.write("\n/* mutate without regenerating */\n")
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
 
 if __name__ == "__main__":
