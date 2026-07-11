@@ -7,9 +7,9 @@
 .card {
   display: flex;
   gap: var(--gap);
-  padding: 12px;
+  margin: 0 auto;
   color: var(--fg);
-  border-radius: 6px;
+  border: none;
 }
 
 .card:hover {

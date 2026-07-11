@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.3.0<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.3.1<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -176,6 +176,15 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.3.1] - 2026-07-11</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Single-quoted string styles now require their closing quote, so a lone <code>&#x27;</code> in valid code (a Rust lifetime like <code>&amp;&#x27;static str</code>, an apostrophe like <code>don&#x27;t</code>, or a C++ digit separator <code>1&#x27;000</code>) is no longer swallowed as a string to the end of the line. Double-quoted and backtick strings still highlight when unterminated, and string scanning stays linear time.</li>
+              <li>CSS highlighting now treats only the CSS-wide keywords (<code>auto</code>, <code>none</code>, <code>inherit</code>, <code>initial</code>, <code>unset</code>, <code>revert</code>, <code>important</code>) as keywords, so class selectors such as <code>.block</code> or <code>.center</code> are no longer colored as keywords.</li>
+              <li>The in-browser diff highlighter matches the case-insensitive keywords of SQL, Batch, and PowerShell (uppercase keywords now color), scans strings and comments in linear time for the newly added languages, maps the <code>.m</code> extension to Objective-C, and no longer over-colors common identifiers (<code>data</code>, <code>local</code>, <code>end</code>, and similar) as keywords in unrelated diffs.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.3.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>

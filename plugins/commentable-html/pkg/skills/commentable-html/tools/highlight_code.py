@@ -277,11 +277,7 @@ return then true until while
         "string_styles": ("triple_double", "triple_single", "toml_single_literal", "double"),
     },
     "css": {
-        "keywords": _words("""
-auto important inherit initial none unset revert hover focus active block flex grid
-inline absolute relative fixed static solid dashed dotted bold normal center left
-right top bottom
-"""),
+        "keywords": _words("auto important inherit initial none unset revert"),
         "line_comments": (),
         "block_comments": (("/*", "*/"),),
         "string_styles": ("single", "double"),
@@ -373,18 +369,20 @@ _OP_RE = r"[=!<>+\-*/%&|^~?:;.,()\[\]{}#]+"
 _TOKEN_RE_CACHE = {}
 
 _STRING_PATTERNS = {
-    # Multi-line (triple / verbatim / doubled-quote) styles. An unterminated opener still
-    # highlights to end of input via the |\Z fallback (partial snippets are common).
+    # A closing delimiter is OPTIONAL only for styles whose delimiter is (almost) never used as a
+    # non-string sigil - double quote, backtick, triple-double, and @"..." verbatim - so an
+    # unterminated one highlights to end of line / input without eating valid code. SINGLE-quote
+    # styles REQUIRE their closer, because a lone ' is common in real code (Rust lifetimes <'a>,
+    # YAML apostrophes like don't, C++ digit separators 1'000); an optional closer there would
+    # swallow the rest of the line as a string.
     "triple_double": r'"""[\s\S]*?(?:"""|\Z)',
-    "triple_single": r"'''[\s\S]*?(?:'''|\Z)",
+    "triple_single": r"'''[\s\S]*?'''",
     "csharp_verbatim": r'@"[^"]*(?:""[^"]*)*"?',
-    "sql_single": r"'[^']*(?:''[^']*)*'?",
-    "toml_single_literal": r"'[^'\n]*'?",
-    # Single-line styles use the "unrolled loop" form (a linear-time equivalent of
-    # (?:[^q\\]|\\.)* ) so pathological escaped-quote input cannot drive superlinear
-    # backtracking. \\[\s\S] (not \\.) so a backslash-newline line continuation stays inside
-    # the string. The optional closing quote highlights an unterminated string to end of line.
-    "single": r"'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'?",
+    "sql_single": r"'[^']*(?:''[^']*)*'",
+    "toml_single_literal": r"'[^'\n]*'",
+    # Unrolled (linear-time) loop so pathological escaped-quote input cannot backtrack; \\[\s\S]
+    # keeps a backslash-newline line continuation inside the string.
+    "single": r"'[^'\\\n]*(?:\\[\s\S][^'\\\n]*)*'",
     "double": r'"[^"\\\n]*(?:\\[\s\S][^"\\\n]*)*"?',
     "backtick": r"`[^`\\]*(?:\\[\s\S][^`\\]*)*`?",
 }
