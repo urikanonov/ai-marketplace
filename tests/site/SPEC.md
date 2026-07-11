@@ -77,7 +77,7 @@ suite (see `.github/workflows/pages.yml`).
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |
 | SITE-COPY-01 | The install copy button copies the exact command to the clipboard and shows a `copied` confirmation. | `tests/site/tests/site.spec.js` - `install command copy button copies the command and shows feedback` |
-| SITE-COPY-02 | When both the async clipboard and `execCommand` fail, the copy button shows a `press Ctrl+C` manual-copy hint and a `copy-failed` state instead of claiming success. | `tests/site/tests/site.spec.js` - `copy button shows a manual-copy hint when the clipboard is unavailable` |
+| SITE-COPY-02 | When both the async clipboard and `execCommand` fail, the copy button shows a platform-neutral manual-copy hint and a `copy-failed` state instead of claiming success. | `tests/site/tests/site.spec.js` - `copy failure gives a platform-neutral manual hint` |
 | SITE-COPY-03 | A rapid double click restores the copy button's original label after its feedback window. | `tests/site/tests/site.spec.js` - `copy button restores its original label after a rapid double click` |
 
 ## Tutorial page
@@ -99,6 +99,14 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-SEC-03 | Every internal link and asset on the hub, plugin, and tutorial pages resolves (no broken internal URLs). | `tests/site/tests/site.spec.js` - `no broken internal links or assets` |
 | SITE-A11Y-01 | Every page exposes a skip-to-content link that targets the `main` region. | `tests/site/tests/site.spec.js` - `every page exposes a skip-to-content link that targets the main region` |
 | SITE-A11Y-02 | Every image on the hub, plugin, and tutorial pages carries non-empty alt text. | `tests/site/tests/site.spec.js` - `every image on every page has non-empty alt text` |
+| SITE-A11Y-03 | Copy success and failure feedback is exposed through a polite, atomic live region so assistive technology announces the outcome. | `tests/site/tests/site.spec.js` - `install command copy button copies the command and shows feedback`, `copy failure gives a platform-neutral manual hint` |
+| SITE-A11Y-04 | A linked plugin card uses its visible title as the single primary link, has a clear keyboard focus ring, and has no stretched overlay or duplicate Learn more link. | `tests/site/tests/site.spec.js` - `plugin cards use one clearly focused title link without a stretched overlay`; `scripts/test_build_site_data.py` - `RenderPluginsTests.test_plugin_page_uses_title_as_single_primary_link` |
+
+## Theme
+
+| Feature id | Behavior | Covering tests |
+| --- | --- | --- |
+| SITE-THEME-01 | The site follows the operating system light or dark color preference with token-based colors that maintain WCAG AA contrast for normal text, links, and primary buttons on page and card backgrounds. | `tests/site/tests/site.spec.js` - `light and dark themes preserve readable contrast` |
 
 ## Coverage gaps
 

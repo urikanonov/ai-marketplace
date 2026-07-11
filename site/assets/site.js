@@ -9,9 +9,15 @@
     buttons.forEach(function (btn) {
       var original = btn.textContent;
       var timer = null;
+      var status = document.createElement("span");
+      status.className = "copy-status";
+      status.setAttribute("aria-live", "polite");
+      status.setAttribute("aria-atomic", "true");
+      btn.parentNode.insertBefore(status, btn.nextSibling);
       var restore = function () {
         btn.classList.remove("copied", "copy-failed");
         btn.textContent = original;
+        status.textContent = "";
       };
       btn.addEventListener("click", function () {
         var text = btn.getAttribute("data-copy") || "";
@@ -22,12 +28,14 @@
           btn.classList.remove("copy-failed");
           btn.classList.add("copied");
           btn.textContent = "copied";
+          status.textContent = "Copied to clipboard.";
           timer = window.setTimeout(restore, 1500);
         };
         var fail = function () {
           btn.classList.remove("copied");
           btn.classList.add("copy-failed");
-          btn.textContent = "press Ctrl+C";
+          btn.textContent = "copy manually";
+          status.textContent = "Copy unavailable. Copy the command manually.";
           timer = window.setTimeout(restore, 2000);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {

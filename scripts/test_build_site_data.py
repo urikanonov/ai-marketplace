@@ -98,6 +98,22 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;bad", out)
         self.assertNotIn('href="//evil.example"', out)
 
+    def test_plugin_page_uses_title_as_single_primary_link(self):
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "plugins": [{
+                "name": "commentable-html",
+                "version": "1.0.0",
+                "description": "Review HTML",
+                "homepage": "https://example.com/source",
+            }],
+        }
+        out = bsd.render_plugins(manifest)
+        self.assertIn('<a class="name" href="./commentable-html/">commentable-html</a>', out)
+        self.assertEqual(out.count('href="./commentable-html/"'), 1)
+        self.assertNotIn("card-link", out)
+        self.assertNotIn("Learn more", out)
+
 
 class RenderMarkdownTests(unittest.TestCase):
     def test_headings_offset_lists_bold_code(self):

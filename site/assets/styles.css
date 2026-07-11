@@ -7,17 +7,42 @@
   --cp-border-strong: #919191;
   --cp-text: #242424;
   --cp-text-muted: #5c5c5c;
-  --cp-text-soft: #6f6f6f;
+  --cp-text-soft: #666666;
   --cp-accent: #b11f4b;
   --cp-accent-hover: #9a1a41;
   --cp-accent-soft: #f7e3ea;
   --cp-accent-fg: #ffffff;
   --cp-success: #16a34a;
-  --cp-link: #0078d4;
+  --cp-link: #0067b8;
+  --cp-navbar-bg: rgba(252, 251, 248, 0.82);
   --cp-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
   --cp-radius: 14px;
   --cp-mono: Consolas, "Courier New", Courier, monospace;
   --cp-maxw: 1200px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cp-bg: #151216;
+    --cp-bg-elevated: #1d191e;
+    --cp-surface: #242026;
+    --cp-surface-soft: #302a31;
+    --cp-border: #4a414b;
+    --cp-border-strong: #8f828f;
+    --cp-text: #f5f0f4;
+    --cp-text-muted: #d0c6cd;
+    --cp-text-soft: #b8adb5;
+    --cp-accent: #ff7aa2;
+    --cp-accent-hover: #ff97b6;
+    --cp-accent-soft: #452532;
+    --cp-accent-fg: #261018;
+    --cp-success: #7ee2a8;
+    --cp-link: #72b7f2;
+    --cp-navbar-bg: rgba(21, 18, 22, 0.88);
+    --cp-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 8px 24px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
+  }
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -60,7 +85,7 @@ code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
   position: sticky;
   top: 0;
   z-index: 60;
-  background: rgba(252, 251, 248, 0.82);
+  background: var(--cp-navbar-bg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--cp-border);
@@ -200,6 +225,17 @@ main > section:nth-of-type(even) {
 .cmd .copy-btn:hover { background: rgba(255, 255, 255, 0.16); }
 .cmd .copy-btn.copied { color: #7ee2a8; border-color: rgba(126, 226, 168, 0.5); }
 .cmd .copy-btn.copy-failed { color: #ffd7b0; border-color: rgba(255, 175, 120, 0.6); }
+.copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* Card grids */
 .grid {
@@ -220,20 +256,15 @@ main > section:nth-of-type(even) {
 /* Plugin cards */
 .plugin-card { display: flex; flex-direction: column; gap: 12px; }
 .plugin-card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.plugin-card .name { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.3px; }
+.plugin-card .name { color: var(--cp-text); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.3px; }
+.plugin-card a.name:focus-visible {
+  outline: 3px solid var(--cp-accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
 .plugin-card .desc { color: var(--cp-text-muted); font-size: 0.95rem; flex: 1; }
 .plugin-card .keywords { display: flex; flex-wrap: wrap; gap: 6px; }
 .plugin-card .foot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-
-/* A linked plugin card is clickable anywhere: the stretched .card-link covers the whole
-   card, while the interactive controls (command copy button and footer buttons) are lifted
-   above it so they keep their own click targets. */
-.plugin-card.is-linked { position: relative; cursor: pointer; }
-.plugin-card .card-link {
-  position: absolute; inset: 0; z-index: 1; border-radius: var(--cp-radius);
-}
-.plugin-card.is-linked .cmd,
-.plugin-card.is-linked .foot { position: relative; z-index: 2; }
 
 .badge {
   display: inline-block;
