@@ -7,22 +7,28 @@
   function initCopyButtons() {
     var buttons = document.querySelectorAll(".copy-btn[data-copy]");
     buttons.forEach(function (btn) {
+      var original = btn.textContent;
+      var timer = null;
+      var restore = function () {
+        btn.classList.remove("copied", "copy-failed");
+        btn.textContent = original;
+      };
       btn.addEventListener("click", function () {
         var text = btn.getAttribute("data-copy") || "";
-        var original = btn.textContent;
-        var restore = function () {
-          btn.classList.remove("copied", "copy-failed");
-          btn.textContent = original;
-        };
+        if (timer) {
+          window.clearTimeout(timer);
+        }
         var done = function () {
+          btn.classList.remove("copy-failed");
           btn.classList.add("copied");
           btn.textContent = "copied";
-          window.setTimeout(restore, 1500);
+          timer = window.setTimeout(restore, 1500);
         };
         var fail = function () {
+          btn.classList.remove("copied");
           btn.classList.add("copy-failed");
           btn.textContent = "press Ctrl+C";
-          window.setTimeout(restore, 2000);
+          timer = window.setTimeout(restore, 2000);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(text).then(done, function () {

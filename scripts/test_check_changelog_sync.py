@@ -172,6 +172,13 @@ class ResolveBaseRefTests(unittest.TestCase):
              unittest.mock.patch.object(ccs, "_git_out", return_value=None):
             self.assertEqual(ccs.resolve_base_ref(ccs.ROOT, "origin/main"), "origin/main")
 
+    def test_merge_base_failure_does_not_downgrade_to_parent(self):
+        # merge-base fails (None) but HEAD^ exists (shallow checkout): must NOT use HEAD^
+        # (that would only check the last commit); fall back to base_ref for a hard fail.
+        with unittest.mock.patch.object(ccs, "_rev_parse", side_effect=lambda r, ref: "parent" if ref == "HEAD^" else "head"), \
+             unittest.mock.patch.object(ccs, "_git_out", return_value=None):
+            self.assertEqual(ccs.resolve_base_ref(ccs.ROOT, "origin/main"), "origin/main")
+
 
 if __name__ == "__main__":
     unittest.main()

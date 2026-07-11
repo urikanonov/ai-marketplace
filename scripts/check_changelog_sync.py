@@ -213,14 +213,16 @@ def resolve_base_ref(root, base_ref):
     base branch (a sibling PR merging while this one is open) does not look like removed
     history and spuriously fail the check. When the merge-base is HEAD itself - which is what
     a push to main looks like, where base_ref (origin/main) is the just-pushed commit - fall
-    back to HEAD's first parent so the push is still checked against the previous tip. Fall
-    back to base_ref when git history is unavailable (git_show_text then reports it)."""
-    head = _rev_parse(root, "HEAD")
+    back to HEAD's first parent so the push is still checked against the previous tip. If the
+    merge-base cannot be computed at all (for example a shallow checkout), fall back to
+    base_ref so git_show_text hard-fails rather than silently downgrading to a HEAD^ check
+    that would only inspect the last commit and could miss tampering in an earlier one."""
     merge_base = _git_out(root, ["merge-base", base_ref, "HEAD"])
-    if merge_base and merge_base != head:
-        return merge_base
-    if head and _rev_parse(root, "HEAD^"):
-        return "HEAD^"
+    if merge_base:
+        if merge_base != _rev_parse(root, "HEAD"):
+            return merge_base
+        if _rev_parse(root, "HEAD^"):
+            return "HEAD^"
     return base_ref
 
 

@@ -190,6 +190,11 @@ class MdInlineTests(unittest.TestCase):
         html = bsd._md_inline(bsd.esc("[`code`](https://e.com)"))
         self.assertIn('<a href="https://e.com"><code>code</code></a>', html)
 
+    def test_nul_sentinel_in_source_cannot_collide(self):
+        html = bsd._md_inline(bsd.esc("before \x00\x000\x00 `x` after"))
+        self.assertIn("<code>x</code>", html)
+        self.assertNotIn("\x00", html)
+
 
 class RenderMarkdownOrderingTests(unittest.TestCase):
     def test_paragraph_after_list_closes_the_list_first(self):
