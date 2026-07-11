@@ -1,7 +1,9 @@
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -9,6 +11,12 @@ import _paths  # noqa: E402  shared pkg/dev split path constants
 SKILL = _paths.PKG
 EXAMPLE = os.path.join(SKILL, "examples", "report-community-garden.html")
 TAXI = os.path.join(SKILL, "examples", "report-taxi.html")
+BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
+
+
+def _read_version():
+    with open(os.path.join(_paths.DEV, "VERSION"), encoding="utf-8") as fh:
+        return fh.read().strip()
 
 
 class ExampleTests(unittest.TestCase):
@@ -51,6 +59,44 @@ class ExampleTests(unittest.TestCase):
         self.assertIn('class="cmh-diff"', html)               # code-review diff
         self.assertIn("<table", html)                         # tables
         self.assertIn('class="cmh-code-kw"', html)            # highlighted code block
+
+    def test_examples_embed_current_version(self):
+        # The examples embed the WHOLE layer, so a version bump must re-stamp them. Both
+        # the <meta> and the runtime CMH_VERSION const must equal dev/VERSION.
+        version = _read_version()
+        for path in (EXAMPLE, TAXI):
+            html = open(path, encoding="utf-8").read()
+            meta = re.search(r'<meta name="commentable-html-version" content="([0-9.]+)"', html)
+            const = re.search(r'const CMH_VERSION = "([0-9.]+)"', html)
+            self.assertIsNotNone(meta, "no version <meta> in " + os.path.basename(path))
+            self.assertIsNotNone(const, "no CMH_VERSION const in " + os.path.basename(path))
+            self.assertEqual(meta.group(1), version,
+                             "%s <meta> version is stale (run build.py)" % os.path.basename(path))
+            self.assertEqual(const.group(1), version,
+                             "%s CMH_VERSION is stale (run build.py)" % os.path.basename(path))
+
+    def test_build_check_catches_example_drift(self):
+        # Regenerate a self-contained temp tree, confirm --check passes, then poison an
+        # example's embedded layer version and confirm --check flags the example (proving
+        # build.py's --check now covers the examples, not just dist/).
+        with tempfile.TemporaryDirectory() as d:
+            assets = os.path.join(d, "assets")
+            out_dir = os.path.join(d, "skill")
+            shutil.copytree(_paths.ASSETS, assets)
+            shutil.copytree(_paths.DIST, os.path.join(out_dir, "dist"))
+            shutil.copytree(_paths.EXAMPLES, os.path.join(out_dir, "examples"))
+            base = [sys.executable, BUILD_PY, "--assets-dir", assets, "--out-dir", out_dir]
+            self.assertEqual(subprocess.run(base + ["--check"], capture_output=True, text=True).returncode, 0,
+                             "freshly copied tree should be in sync")
+            taxi = os.path.join(out_dir, "examples", "report-taxi.html")
+            html = open(taxi, encoding="utf-8").read()
+            poisoned = html.replace('const CMH_VERSION = "', 'const CMH_VERSION = "0.0.0"; //', 1)
+            self.assertNotEqual(poisoned, html, "could not poison the example CMH_VERSION")
+            with open(taxi, "w", encoding="utf-8", newline="") as fh:
+                fh.write(poisoned)
+            r = subprocess.run(base + ["--check"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("report-taxi.html", r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

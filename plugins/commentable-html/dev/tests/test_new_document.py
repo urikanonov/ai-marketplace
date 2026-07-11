@@ -95,14 +95,29 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertIn('data-generated="2026-07-09T20:30:00Z"', tag)
 
     def test_resolve_key_auto_is_stable_and_non_demo(self):
-        k1 = new_document.resolve_key("auto", "My Report")
-        k2 = new_document.resolve_key("auto", "My Report")
-        k3 = new_document.resolve_key("auto", "Another Report")
+        k1 = new_document.resolve_key("auto", "My Report", source="report-a.html")
+        k2 = new_document.resolve_key("auto", "My Report", source="report-a.html")
+        k3 = new_document.resolve_key("auto", "Another Report", source="report-b.html")
         self.assertEqual(k1, k2)
         self.assertNotEqual(k1, k3)
         self.assertTrue(k1.startswith("cmh-"))
         self.assertEqual(len(k1), 16)
         self.assertNotIn(k1, new_document.REFUSED_KEYS)
+
+    def test_resolve_key_auto_same_label_distinct_identity_does_not_collide(self):
+        # Regression: two documents that share a label must NOT share a key just because
+        # the label matches; the key is derived from the document identity, not the label.
+        a = new_document.resolve_key("auto", "Quarterly Report", out="q1/report.html")
+        b = new_document.resolve_key("auto", "Quarterly Report", out="q2/report.html")
+        self.assertNotEqual(a, b)
+        c = new_document.resolve_key("auto", "Quarterly Report", source="q1.html")
+        d = new_document.resolve_key("auto", "Quarterly Report", source="q2.html")
+        self.assertNotEqual(c, d)
+
+    def test_resolve_key_auto_without_identity_requires_explicit_key(self):
+        with self.assertRaises(ValueError) as cm:
+            new_document.resolve_key("auto", "Just A Label")
+        self.assertIn("identity", str(cm.exception).lower())
 
     def test_resolve_key_key_from_source_derivation(self):
         key = new_document.resolve_key("auto", "Label", key_from_source="logical-id")
@@ -189,7 +204,8 @@ class MainCliTests(unittest.TestCase):
 
     def test_stdin_content_to_stdout(self):
         code, out, err = self._call_main(
-            ["new_document.py", "--content", "-", "--key", "cli-v1", "--label", "CLI Doc"],
+            ["new_document.py", "--content", "-", "--key", "cli-v1", "--label", "CLI Doc",
+             "--portable"],
             stdin=CONTENT)
         self.assertEqual(code, 0, err)
         self.assertIn('data-comment-key="cli-v1"', out)
@@ -219,14 +235,26 @@ class MainCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("new_document:", err)
 
-    def test_key_auto_derives_stable_key_from_label(self):
+    def test_key_auto_derives_stable_key_from_out_path(self):
+        d = self._tmpdir()
+        op = os.path.join(d, "auto-report.html")
         code, out, err = self._call_main(
-            ["new_document.py", "--content", "-", "--key", "auto", "--label", "Auto Key Label"],
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "Auto Key Label",
+             "--portable", "--out", op],
             stdin=CONTENT,
         )
         self.assertEqual(code, 0, err)
-        expected = "cmh-" + hashlib.sha256("Auto Key Label".encode("utf-8")).hexdigest()[:12]
-        self.assertIn('data-comment-key="%s"' % expected, out)
+        expected = "cmh-" + hashlib.sha256(os.path.abspath(op).encode("utf-8")).hexdigest()[:12]
+        html = open(op, encoding="utf-8").read()
+        self.assertIn('data-comment-key="%s"' % expected, html)
+
+    def test_key_auto_without_identity_exits_2(self):
+        code, _out, err = self._call_main(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "Auto Key Label"],
+            stdin=CONTENT,
+        )
+        self.assertEqual(code, 2)
+        self.assertIn("identity", err.lower())
 
     def test_key_from_source_derives_key_from_logical_id(self):
         code, out, err = self._call_main(
@@ -240,6 +268,7 @@ class MainCliTests(unittest.TestCase):
                 "logical-id",
                 "--label",
                 "Ignored Label",
+                "--portable",
             ],
             stdin=CONTENT,
         )
@@ -257,8 +286,11 @@ class MainCliTests(unittest.TestCase):
                 "auto",
                 "--label",
                 "Generated Label",
+                "--source",
+                "generated.html",
                 "--generated",
                 "2026-07-09T20:30:00Z",
+                "--portable",
             ],
             stdin=CONTENT,
         )
@@ -277,6 +309,7 @@ class MainCliTests(unittest.TestCase):
                 "logical-id",
                 "--label",
                 "Label",
+                "--portable",
             ],
             stdin=CONTENT,
         )
@@ -330,7 +363,8 @@ class MainCliTests(unittest.TestCase):
 
     def test_cli_subprocess_stdout(self):
         r = subprocess.run(
-            [sys.executable, NEW_DOC_PY, "--content", "-", "--key", "sub-v1", "--label", "Sub"],
+            [sys.executable, NEW_DOC_PY, "--content", "-", "--key", "sub-v1", "--label", "Sub",
+             "--portable"],
             input=CONTENT, capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('data-comment-key="sub-v1"', r.stdout)
@@ -425,12 +459,26 @@ class NonPortableCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("--copy-assets needs --out", err)
 
-    def test_nonportable_stdout_notes_bare_refs(self):
+    def test_nonportable_stdout_is_refused(self):
         code, out, err = self._run(
-            ["new_document.py", "--content", "-", "--key", "auto", "--label", "S"])
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "S", "--source", "s.html"])
+        self.assertEqual(code, 2)
+        self.assertIn("stdout would reference the companions by bare", err)
+        self.assertEqual(out, "")
+
+    def test_nonportable_stdout_ok_with_assets_href(self):
+        code, out, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "S",
+             "--source", "s.html", "--assets-href", "assets"])
         self.assertEqual(code, 0, err)
-        self.assertIn("bare name", err)
-        self.assertIn('href="commentable-html.css"', out)
+        self.assertIn('href="assets/commentable-html.css"', out)
+
+    def test_nonportable_stdout_ok_when_portable(self):
+        code, out, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "S",
+             "--source", "s.html", "--portable"])
+        self.assertEqual(code, 0, err)
+        self.assertNotIn('<link rel="stylesheet" href="commentable-html.css"', out)
 
     def test_portable_and_nonportable_are_mutually_exclusive(self):
         with self.assertRaises(SystemExit):
@@ -441,6 +489,96 @@ class NonPortableCliTests(unittest.TestCase):
         self.assertEqual(
             os.path.abspath(new_document._default_template(nonportable=True)),
             os.path.abspath(os.path.join(_paths.DIST, "NONPORTABLE.html")))
+
+
+class DocTitleTests(unittest.TestCase):
+    def test_ensure_doc_title_prepends_h1_when_missing(self):
+        out = new_document.ensure_doc_title('<section><h2 id="a">Hi</h2></section>', "My Report")
+        self.assertTrue(out.startswith('<header class="cmh-lede">'))
+        self.assertIn("<h1>My Report</h1>", out)
+        self.assertIn('<h2 id="a">Hi</h2>', out)
+
+    def test_ensure_doc_title_escapes_label(self):
+        out = new_document.ensure_doc_title("<p>x</p>", 'A & B "<x>"')
+        self.assertIn("A &amp; B", out)
+        self.assertNotIn("<x>", out)
+
+    def test_ensure_doc_title_left_alone_when_fragment_has_h1(self):
+        frag = "<h1>Author Title</h1><p>x</p>"
+        self.assertEqual(new_document.ensure_doc_title(frag, "Ignored"), frag)
+
+    def test_ensure_doc_title_left_alone_when_fragment_has_lede(self):
+        frag = '<header class="cmh-lede"><h1>Lede</h1></header><p>x</p>'
+        self.assertEqual(new_document.ensure_doc_title(frag, "Ignored"), frag)
+
+    def test_ensure_doc_title_ignores_h1_inside_comment(self):
+        # P2: an <h1> that only appears inside an HTML comment is not a rendered title, so
+        # the raw-text scan wrongly suppressed the header; the parser-based check prepends one.
+        frag = '<!-- <h1>Not a real title</h1> --><section><p>body</p></section>'
+        out = new_document.ensure_doc_title(frag, "Real Title")
+        self.assertTrue(out.startswith('<header class="cmh-lede">'))
+        self.assertIn("<h1>Real Title</h1>", out)
+
+    def test_ensure_doc_title_ignores_h1_inside_script(self):
+        # P2: an <h1> inside a <script> body is data, not a rendered title.
+        frag = '<script>var t = "<h1>fake</h1>";</script><p>body</p>'
+        out = new_document.ensure_doc_title(frag, "Real Title")
+        self.assertTrue(out.startswith('<header class="cmh-lede">'))
+        self.assertIn("<h1>Real Title</h1>", out)
+
+    def test_ensure_doc_title_ignores_nested_h1_and_lede(self):
+        # P2: an h1 or a cmh-lede nested deep in the body is not the document's own top-level
+        # title, so a title is still prepended.
+        frag = ('<section><div class="cmh-lede"><h1>nested</h1></div>'
+                '<article><h1>also nested</h1></article></section>')
+        out = new_document.ensure_doc_title(frag, "Top Title")
+        self.assertTrue(out.startswith('<header class="cmh-lede">'))
+        self.assertIn("<h1>Top Title</h1>", out)
+
+    def test_cli_prepends_visible_title_by_default(self):
+        out = io.StringIO()
+        err = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO('<section><h2 id="a">Hi</h2></section>')), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = new_document.main(
+                ["new_document.py", "--content", "-", "--key", "title-v1",
+                 "--label", "Titled Doc", "--portable"])
+        self.assertEqual(code, 0, err.getvalue())
+        body = out.getvalue()
+        self.assertIn("<h1>Titled Doc</h1>", body)
+
+    def test_cli_no_title_flag_suppresses_added_title(self):
+        out = io.StringIO()
+        err = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO('<section><h2 id="a">Hi</h2></section>')), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = new_document.main(
+                ["new_document.py", "--content", "-", "--key", "notitle-v1",
+                 "--label", "No Title Doc", "--portable", "--no-title"])
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertNotIn("<h1>No Title Doc</h1>", out.getvalue())
+
+    def test_help_documents_the_trust_boundary(self):
+        # CMH-SEC-01: the --content fragment is trusted HTML and is not sanitized;
+        # --help must state this so callers sanitize untrusted host HTML themselves.
+        r = subprocess.run(
+            [sys.executable, NEW_DOC_PY, "--help"],
+            capture_output=True, text=True, cwd=TOOLS, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text = r.stdout.lower()
+        self.assertIn("trust boundary", text)
+        self.assertIn("sanitize", text)
+
+    def test_key_from_source_help_does_not_claim_label_fallback(self):
+        # resolve_key deliberately does NOT fall back to --label; the help must not
+        # claim it does, or callers will expect a same-label collision to be safe.
+        r = subprocess.run(
+            [sys.executable, NEW_DOC_PY, "--help"],
+            capture_output=True, text=True, cwd=TOOLS, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        flat = " ".join(r.stdout.split())
+        self.assertNotIn("defaults to --label", flat)
+        self.assertIn("does not fall back to --label", flat)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when e
 
 - `#commentRoot` has no `data-doc-source`.
 - An unscoped `[hidden] { display: none }` rule exists (should be `.cm-skip[hidden], .cm-skip [hidden]`), or the scoped rule is missing.
-- Export/Import UI is present (removed in v2.4).
+- Export/Import UI is present (removed before the 1.0.0 release).
 - A mermaid block is missing `class="cm-skip"`.
 - A `cmh-kql-run` ("Run in Azure Data Explorer") link does not point at `https://dataexplorer.azure.com/`, or uses `target="_blank"` without `rel="noopener"`.
 - A **section cross-reference in prose is not a link**. The checker reads the `#commentRoot` prose with `<a>` text and `cm-skip` regions removed, so only UNLINKED references remain, then flags directional references ("the section below", "previous section") and named references ("see `<Heading>`", "`<Heading>` section" where `<Heading>` is an actual heading in the document). The fix is to wrap the reference in an in-page anchor (`<a href="#section-id">`); detection is deterministic, the fix is the author's.

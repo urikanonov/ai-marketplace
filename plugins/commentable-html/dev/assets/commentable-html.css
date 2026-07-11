@@ -333,11 +333,16 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
-   wide content shell, while tables, figures, code, diffs, and callouts keep full width. */
+   wide content shell, while tables, figures, code, diffs, and callouts keep full width.
+   The lede is a full-width surface box, so its paragraphs opt out of the measure cap
+   (otherwise they render far narrower than the box and its sibling sections). */
 #commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
-/* Section headings are deep-links: a plain click updates the URL to their anchor. */
+#commentRoot .cmh-lede, #commentRoot .cmh-lede > p { max-width: none; }
+/* Section headings are deep-links: a plain click or Enter/Space updates the URL to their
+   anchor, and they are keyboard-focusable with a visible focus ring. */
 #commentRoot .cm-anchored { cursor: pointer; }
 #commentRoot .cm-anchored:hover { text-decoration-line: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+#commentRoot .cm-anchored:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; border-radius: 3px; }
 /* Collapsible sections: caret on the heading toggles a class that hides the body. */
 .cmh-sec-caret {
   display: inline-flex; align-items: center; justify-content: center;
@@ -685,6 +690,14 @@ html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 
   box-shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 #commentRoot > section > h2:first-child, #commentRoot > section > h3:first-child { margin-top: 0; }
+/* Document title: a themed top-level h1 so a generated or retrofitted document has a
+   visible heading. A bare top-level h1 gets an underline rule; an h1 inside the lede
+   surface stays borderless because the box already frames it. */
+#commentRoot > h1, #commentRoot > header > h1 {
+  font-size: 1.9rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em;
+  margin: 0 0 0.85rem; color: var(--cp-text);
+}
+#commentRoot > h1 { padding-bottom: 0.4rem; border-bottom: 2px solid var(--cp-border); }
 #commentRoot .badge {
   display: inline-block; padding: 1px 8px; border-radius: 10px;
   font-size: 0.78rem; font-weight: 600; line-height: 1.5;

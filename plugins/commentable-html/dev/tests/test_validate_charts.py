@@ -33,11 +33,16 @@ import validate  # noqa: E402
 
 TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 SCRIPT = os.path.join(TOOLS, "validate.py")
+# An optional real-world artifact used by the field test below; skipped when absent.
+# Point CMH_FIELD_ARTIFACT at a local report to exercise it, otherwise a generic
+# Downloads path is probed (no personal/internal paths are hard-coded here).
 _FIELD_CANDIDATES = [
-    os.path.join(os.path.expanduser("~"), "Downloads", "mde-mad-growth.html"),
-    os.path.join(os.path.expanduser("~"), "OneDrive - Microsoft", "COGS", "Forecasting", "mde-mad-growth.html"),
+    p for p in [
+        os.environ.get("CMH_FIELD_ARTIFACT"),
+        os.path.join(os.path.expanduser("~"), "Downloads", "sample-report.html"),
+    ] if p
 ]
-FIELD_ARTIFACT = next((p for p in _FIELD_CANDIDATES if os.path.exists(p)), _FIELD_CANDIDATES[0])
+FIELD_ARTIFACT = next((p for p in _FIELD_CANDIDATES if os.path.exists(p)), _FIELD_CANDIDATES[-1])
 
 CDN_VALID = (
     '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" '

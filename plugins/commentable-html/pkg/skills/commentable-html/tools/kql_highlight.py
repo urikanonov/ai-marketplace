@@ -147,8 +147,25 @@ def _usage():
     return 2
 
 
+def _wants_help(tokens):
+    # Honor -h/--help only before an end-of-options "--"; a -h AFTER "--" is a data value.
+    for t in tokens:
+        if t == "--":
+            return False
+        if t in ("-h", "--help"):
+            return True
+    return False
+
+
 def main(argv):
     raw = argv[1:]
+    if _wants_help(raw):
+        sys.stdout.write(
+            "usage: python tools/kql_highlight.py <cluster> <database> <title> [query]\n"
+            "       python tools/kql_highlight.py --code-only [query]\n"
+            "       the query is read from stdin when its argument is omitted;\n"
+            "       quote a multi-word query so it arrives as one argument.\n")
+        return 0
     # Support a "--" end-of-flags separator (standard CLI convention) so a positional
     # value that begins with "--" can still be passed - everything after a bare "--" is
     # positional, even if it looks like a flag.

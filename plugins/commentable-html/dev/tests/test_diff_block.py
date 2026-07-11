@@ -96,6 +96,23 @@ class DiffBlockDiffTests(unittest.TestCase):
             D.unified_diff(old_text, new_text, "demo.txt"),
         )
 
+    def test_final_newline_only_difference_is_preserved(self):
+        # Old ends with a trailing newline; new does not. The only difference is that
+        # missing final newline, which splitlines() would erase. The diff must be
+        # non-empty and carry the standard git no-newline marker.
+        old_text = "alpha\nbeta\n"
+        new_text = "alpha\nbeta"
+        diff_text = D.unified_diff(old_text, new_text, "x.txt")
+        self.assertNotEqual(diff_text.strip(), "")
+        self.assertIn("@@", diff_text)
+        self.assertIn("\\ No newline at end of file", diff_text)
+        self.assertIn("-beta", diff_text)
+        self.assertIn("+beta", diff_text)
+
+    def test_matching_final_newlines_emit_no_marker(self):
+        diff_text = D.unified_diff("a\nb\n", "a\nc\n", "x.txt")
+        self.assertNotIn("No newline at end of file", diff_text)
+
 
 class DiffBlockCliTests(unittest.TestCase):
     def test_cli_reads_stdin_with_dash(self):

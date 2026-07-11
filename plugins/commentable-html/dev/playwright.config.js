@@ -6,10 +6,10 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
-  // Cap parallelism: several specs spawn a static server and a synchronous python
-  // subprocess (validate.py / mark_handled.py), which thrash the OS at full core
-  // count and can time out. A small worker count keeps the suite fast and stable.
-  workers: process.env.CI ? 4 : 4,
+  // Cap parallelism on CI (shared runners thrash the OS at full core count when several
+  // specs spawn a static server plus a synchronous python subprocess and can time out).
+  // Locally, let Playwright pick the worker count from available cores for a faster run.
+  workers: process.env.CI ? 4 : undefined,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never" }]],

@@ -45,3 +45,12 @@ When a newer version of the skill ships, upgrading a deployed HTML is mechanical
 Net result: an upgrade is "replace three regions (CSS, COMMENT UI, JS), leave three things alone (HANDLED IDS, EMBEDDED COMMENTS, `#commentRoot`), done". No merge, no per-doc patching.
 
 
+
+## Introspection globals (for tests and tooling)
+
+The layer publishes a few `window` globals so an external harness (a Playwright spec, a health check, an upgrade script) can observe it without reaching into the closure. They are stable, read-only signals - do not treat them as a configuration surface.
+
+- `window.__commentableHtmlReady` (boolean) - set to `true` once the layer has fully initialized. Wait on this before driving the UI.
+- `window.__commentableHtmlVersion` (string) - the running layer's `CMH_VERSION`, e.g. `"1.7.0"`. Compare against an expected version to detect a stale deployment.
+- `window.__cmhToMarkdown()` (function) - returns the current document serialized to the same Markdown that **Export to Markdown** writes, without triggering a download. Useful for asserting export output in a test.
+- `window.__COMMENTABLE_ASSETS__` (object `{ version, css, js }` or absent) - present only in the non-portable (companion `commentable-html.assets.js`) shape; it carries the layer CSS/JS strings that **Export as Portable/Standalone** inlines. Its `version` must equal `__commentableHtmlVersion`; a mismatch aborts a standalone export by design.

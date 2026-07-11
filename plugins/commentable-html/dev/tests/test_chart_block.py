@@ -94,6 +94,29 @@ class ChartBlockRenderTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 
+    def test_tools_dir_is_on_sys_path_for_self_validation(self):
+        # chart_block must add its own tools dir to sys.path so `import validate` (and
+        # thus self-validation) is not silently skipped under a non-standard invocation.
+        # Load the module fresh with the tools dir removed from sys.path and the cached
+        # modules dropped: it must re-add its own dir so validate becomes importable.
+        import importlib.util
+        saved_path = list(sys.path)
+        saved_modules = {k: sys.modules[k] for k in ("validate", "chart_block") if k in sys.modules}
+        try:
+            for k in ("validate", "chart_block"):
+                sys.modules.pop(k, None)
+            here = os.path.abspath(chart_block.HERE)
+            sys.path[:] = [p for p in sys.path if os.path.abspath(p) != here]
+            spec = importlib.util.spec_from_file_location(
+                "chart_block", os.path.join(TOOLS, "chart_block.py"))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            self.assertIn(mod.HERE, sys.path)
+            importlib.import_module("validate")
+        finally:
+            sys.path[:] = saved_path
+            sys.modules.update(saved_modules)
+
     def test_init_forces_bounded_responsive_options(self):
         fragments = chart_block.render_chart_fragments(SPEC, "chartA", "Caption", title="Title")
         self.assertIn("config.options.responsive = true;", fragments["scripts"])

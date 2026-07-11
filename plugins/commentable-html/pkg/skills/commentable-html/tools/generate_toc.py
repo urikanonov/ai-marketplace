@@ -49,6 +49,7 @@ class _TocParser(HTMLParser):
         self._starts = _line_starts(text)
         self.stack = []
         self.root_depth = None
+        self.root_closed = False
         self.root_start_end = None
         self.all_ids = []
         self.headings = []
@@ -68,7 +69,8 @@ class _TocParser(HTMLParser):
         return any(skip for _tag, skip in self.stack)
 
     def _inside_root(self):
-        return self.root_depth is not None and len(self.stack) > self.root_depth
+        return (self.root_depth is not None and not self.root_closed
+                and len(self.stack) > self.root_depth)
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -141,6 +143,10 @@ class _TocParser(HTMLParser):
 
         for index in range(len(self.stack) - 1, -1, -1):
             if self.stack[index][0] == tag:
+                # Closing #commentRoot (or an ancestor of it) ends the root subtree for
+                # good, so headings/refs in a later sibling container are not collected.
+                if self.root_depth is not None and index <= self.root_depth:
+                    self.root_closed = True
                 del self.stack[index:]
                 return
 

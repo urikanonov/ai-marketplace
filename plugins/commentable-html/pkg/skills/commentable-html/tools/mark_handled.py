@@ -173,24 +173,44 @@ def _ids_from_bundle(text):
     return json.loads(matches[-1].group(1))
 
 
+def _wants_help(tokens):
+    # Honor -h/--help only before an end-of-options "--"; a -h AFTER "--" is a comment id.
+    for t in tokens:
+        if t == "--":
+            return False
+        if t in ("-h", "--help"):
+            return True
+    return False
+
+
 def main(argv):
     args = argv[1:]
+    if _wants_help(args):
+        sys.stdout.write(__doc__)
+        return 0
     if not args:
         sys.stderr.write(__doc__)
         return 1
     path = args[0]
     rest = args[1:]
+    # A bare "--" ends options: the tokens after it are positional comment ids, even if
+    # dash-prefixed. Flags (--json/--from-bundle) are recognized only before the separator.
+    if "--" in rest:
+        sep = rest.index("--")
+        opt, tail = rest[:sep], rest[sep + 1:]
+    else:
+        opt, tail = rest, []
     if not os.path.exists(path):
         sys.stderr.write("mark_handled: file not found: %s\n" % path)
         return 1
 
     try:
-        if rest[:1] == ["--json"]:
-            if len(rest) < 2:
+        if opt[:1] == ["--json"]:
+            if len(opt) < 2:
                 raise ValueError("--json requires a JSON array argument, e.g. --json '[\"cabc123\"]'")
-            ids = json.loads(rest[1])
-        elif rest[:1] == ["--from-bundle"]:
-            src = rest[1] if len(rest) > 1 else "-"
+            ids = json.loads(opt[1])
+        elif opt[:1] == ["--from-bundle"]:
+            src = opt[1] if len(opt) > 1 else "-"
             if src == "-":
                 text = sys.stdin.read()
             else:
@@ -198,7 +218,7 @@ def main(argv):
                     text = fh.read()
             ids = _ids_from_bundle(text)
         else:
-            ids = rest
+            ids = opt + tail
         if not isinstance(ids, list):
             raise ValueError("expected a list of ids")
         added = mark_handled(path, [str(x) for x in ids])
