@@ -13,9 +13,16 @@ name: require-owner-approval
 # also why this workflow must never check out PR code.
 #
 # Make the commit-status context "require-owner-approval" a required status check
-# on main to block merges (NOT the "evaluate" Actions check-run, which always
-# succeeds). The gate verdict is the status; the job always exits 0 so an
-# unapproved PR shows a single red status rather than a noisy failed job.
+# on main to block merges (NOT the "evaluate" Actions check-run: a
+# pull_request_target run attributes its check-run to the base commit, so requiring
+# it would leave every PR head stuck "expected" and lock out all merges). The gate
+# verdict is the head-SHA commit status. The job exits 0 on the normal paths and
+# exits 1 only when it cannot publish the status after retries, so a publish
+# failure is a visible, re-runnable red job rather than a silent pass. An external
+# PR posts a "pending" status before evaluating, clearing any stale success on the
+# same SHA; the only residual is a total statuses-API outage that exhausts all
+# retries mid-transition, which is fail-visible and recoverable by re-running - not
+# a silent stale pass.
 
 on:
   pull_request_target:
