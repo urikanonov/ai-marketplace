@@ -262,25 +262,35 @@ Letting an outside contributor's PR run CI without a manual approval is low risk
 the safety rests on one invariant: a workflow that holds secrets or a write-scoped token must never
 check out or run PR-supplied code.
 
-- The CI gates - the `validate` check (`validate.yml`), the `build` check (the `pages` workflow,
-  `pages.yml`), and the `summary` check (the `plugin-tests` gate, `plugin-tests.yml`) - trigger on
-  plain `pull_request`. On a
-  PR from a fork, GitHub gives that run a read-only `GITHUB_TOKEN` and NO repository secrets, so even
-  though those jobs do execute PR code (the Python validators, `npm ci`, the Playwright suites), the
-  code runs sandboxed with nothing to steal and no write access. The residual risk is compute/runner
-  abuse (a PR opened purely to run arbitrary code), which the read-only, no-secrets sandbox contains.
-- The privileged workflows (`require-owner-approval.yml`, `request-copilot-review.yml`) run on
-  `pull_request_target`, so they DO have a write-capable token and secrets - but they never check out
-  or run PR code; they only call the REST API with the PR number. That is what keeps them safe.
+- The CI gates - the `validate`, `version-bump`, and `build-check` checks (all jobs of
+  `validate.yml`), the `build` check (the `pages` workflow, `pages.yml`), and the `summary` check
+  (the `plugin-tests` gate, `plugin-tests.yml`) - trigger on plain `pull_request`. Those jobs DO
+  execute PR code (the Python validators, `npm ci`, the Playwright suites), but each workflow declares
+  `permissions: contents: read` and references no repository secrets (`secrets.*`). For a PR from a
+  fork GitHub adds a second, independent layer: it forces a read-only `GITHUB_TOKEN` and withholds
+  secrets no matter what the workflow asks for. For a same-repo branch PR (which is what Copilot's
+  agent opens - see the next section) that fork sandbox does NOT engage, so the read-only, no-secrets
+  property comes entirely from those explicit `permissions:` blocks and the absence of `secrets.*`.
+  Either way the PR code runs with nothing to steal and no write access; the residual risk is
+  compute/runner abuse (a PR opened purely to run arbitrary code), which the read-only, no-secrets
+  execution contains.
+- The privileged workflows run in the trusted base-repo context: `request-copilot-review.yml` on
+  `pull_request_target`, and `require-owner-approval.yml` on `pull_request_target` plus
+  `pull_request_review`. They DO have a write-capable token and secrets even for fork PRs - but they
+  never check out or run PR code; they only call the REST API with the PR number and publish a commit
+  status. That is what keeps them safe.
 - Merge protection is independent of who runs CI: `main` stays protected and `require-owner-approval`
   still blocks external PRs until `@urikanonov` approves, so auto-running CI never lets anyone merge.
 
 Therefore: never add a checkout of the PR head (or any step that runs PR-authored code) to a
-`pull_request_target` job or any job that can read secrets, and never add secrets to a
-`pull_request` job. Doing either would turn auto-run into arbitrary code execution with a privileged
-token. If you must consume PR code with a privileged token, split it: run the untrusted code in an
-unprivileged `pull_request` job and do the privileged action in a separate `pull_request_target` job
-that only reads metadata.
+`pull_request_target` job or any job that can read secrets; never add secrets (or a `secrets.*`
+reference) to a `pull_request` job; and never remove or widen the least-privilege
+`permissions: contents: read` blocks on the `pull_request` gates - on a same-repo PR those blocks,
+not any GitHub sandbox, are what keep the token read-only. Doing any of these would turn auto-run
+into arbitrary code execution with a privileged token, or leak a secret to every collaborator or
+Copilot branch. If you must consume PR code with a privileged token, split it: run the untrusted code
+in an unprivileged `pull_request` job and do the privileged action in a separate
+`pull_request_target` job that only reads metadata.
 
 ### Copilot coding-agent workflow approvals (why they keep prompting)
 
@@ -289,18 +299,19 @@ workflows from outside collaborators") settings do NOT govern Copilot coding-age
 them does not stop the recurring "Approve and run workflows" prompt. Two reasons:
 
 - Copilot pushes its branches inside this repo and authors its PRs as a bot actor
-  (`copilot-swe-agent[bot]`), not as `@urikanonov` or a collaborator. That bot never "graduates" out
-  of the gated tier the way a human's first merged PR does, so the first-time-contributor exemption
-  never applies to it. The fork settings only affect PRs opened from actual forks by human outside
-  collaborators, which is a different code path.
-- On top of that, GitHub gates Actions on Copilot-agent PRs by its own policy (the agent writes code
-  that would then run in CI). That gate is separate from the fork settings above.
+  (`copilot-swe-agent[bot]`), so they are same-repository PRs, not fork PRs. The
+  first-time-contributor and fork-workflow settings only govern PRs opened from actual forks by
+  outside collaborators - a different code path - so they never apply to Copilot's in-repo PRs.
+- Instead, GitHub gates Actions on Copilot coding-agent PRs through its own separate policy (the
+  agent authors code that would then run in CI), independent of the fork settings above.
 
 To stop the prompts, allow the Copilot coding agent's workflows to run from the Copilot coding-agent
 policy (org/repo Settings > Copilot > Coding agent), not from the Actions fork settings. Doing so is
-safe here for the same reason the section above gives: the CI gates run on `pull_request` with a
-read-only token and no secrets, the privileged `pull_request_target` workflows never run PR code, and
-`require-owner-approval` still blocks the merge. The only residual exposure is compute/runner abuse.
+safe here for the reason the section above gives, with one caveat specific to these in-repo PRs: they
+are NOT fork-sandboxed, so their safety rests on the `pull_request` gates keeping
+`permissions: contents: read` and using no secrets, the privileged `pull_request_target` workflows
+never running PR code, and `require-owner-approval` still blocking the merge. The only residual
+exposure is compute/runner abuse.
 
 ## The auto-updater hook (portability notes)
 
