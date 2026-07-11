@@ -153,6 +153,104 @@ td template textarea th thead title tr ul
         "block_comments": (("<!--", "-->"),),
         "string_styles": ("single", "double"),
     },
+    "rust": {
+        "keywords": _words("""
+as async await break const continue crate dyn else enum extern false fn for if
+impl in let loop match mod move mut pub ref return self Self static struct super
+trait true type union unsafe use where while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "ruby": {
+        "keywords": _words("""
+BEGIN END alias and begin break case class def defined do else elsif end ensure
+false for if in module next nil not or redo rescue retry return self super then
+true undef unless until when while yield
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("single", "double", "backtick"),
+    },
+    "php": {
+        "keywords": _words("""
+abstract and array as break callable case catch class clone const continue declare
+default do echo else elseif empty enddeclare endfor endforeach endif endswitch
+endwhile enum extends false final finally fn for foreach function global goto if
+implements include include_once instanceof insteadof interface isset list match
+namespace new null or print private protected public readonly require require_once
+return static switch throw trait true try unset use var while xor yield
+"""),
+        "line_comments": ("//", "#"),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "swift": {
+        "keywords": _words("""
+as associatedtype break case catch class continue default defer deinit do else
+enum extension fallthrough false fileprivate for func guard if import in init inout
+internal is let nil open operator private protocol public repeat rethrows return
+self Self static struct subscript super switch throw throws true try typealias var
+where while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("double",),
+    },
+    "kotlin": {
+        "keywords": _words("""
+abstract actual annotation as break by catch class companion const constructor
+continue crossinline data delegate do dynamic else enum external false final finally
+for fun get if import in infix init inline inner interface internal is lateinit lazy
+noinline null object open operator out override package private protected public
+reified return sealed super suspend this throw true try typealias typeof val var
+vararg when where while
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "double"),
+    },
+    "scala": {
+        "keywords": _words("""
+abstract case catch class def do else extends false final finally for forSome if
+implicit import lazy match new null object override package private protected return
+sealed super this throw trait true try type val var while with yield
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("triple_double", "double"),
+    },
+    "dart": {
+        "keywords": _words("""
+abstract as assert async await break case catch class const continue covariant
+default deferred do dynamic else enum export extends extension external factory
+false final finally for get hide if implements import in interface is late library
+mixin new null on operator part required rethrow return set show static super switch
+sync this throw true try typedef var void while with yield
+"""),
+        "line_comments": ("//",),
+        "block_comments": (("/*", "*/"),),
+        "string_styles": ("single", "double"),
+    },
+    "r": {
+        "keywords": _words("""
+break else for function if in next repeat while TRUE FALSE NULL Inf NaN NA
+NA_integer_ NA_real_ NA_character_ NA_complex_
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("single", "double"),
+    },
+    "perl": {
+        "keywords": _words("""
+and cmp do else elsif eq for foreach ge gt if last le local lt my ne next no not
+or our package redo require return sub unless until use while x
+"""),
+        "line_comments": ("#",),
+        "block_comments": (),
+        "string_styles": ("single", "double", "backtick"),
+    },
 }
 
 ALIASES = {
@@ -162,6 +260,10 @@ ALIASES = {
     "golang": "go",
     "yml": "yaml",
     "c++": "cpp",
+    "rs": "rust",
+    "rb": "ruby",
+    "kt": "kotlin",
+    "pl": "perl",
 }
 
 _IDENTIFIER_RE = r"@?[A-Za-z_$][A-Za-z0-9_$]*"

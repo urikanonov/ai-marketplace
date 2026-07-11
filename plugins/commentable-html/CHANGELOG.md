@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-11
+
+### Added
+
+- Author-time syntax highlighting (`tools/highlight_code.py`) now covers more popular languages: Rust,
+  Ruby, PHP, Swift, Kotlin, Scala, Dart, R, and Perl, with the usual aliases (`rs`, `rb`, `kt`, `pl`).
+  Run `python tools/highlight_code.py --list` for the full set.
+
 ## [1.1.3] - 2026-07-11
 
 ### Fixed

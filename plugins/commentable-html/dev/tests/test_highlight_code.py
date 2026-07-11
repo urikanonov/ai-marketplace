@@ -34,6 +34,15 @@ SNIPPETS = {
     "cpp": 'class C { public: void m(){ auto s = "hi"; // comment\n/* block */ foo(42); } };\n',
     "xml": '<!-- comment --><root attr="hi">42</root>\n',
     "html": '<!-- comment --><div class="hi">42</div>\n',
+    "rust": 'fn main() { let s = "hi"; foo(42); // comment\n/* block */ }\n',
+    "ruby": 'def foo\n  s = "hi"\n  puts 42 # comment\nend\n',
+    "php": 'function foo() { $s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "swift": 'func foo() { let s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "kotlin": 'fun foo() { val s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "scala": 'def foo() { val s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "dart": 'void foo() { var s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "r": 'foo <- function(x) {\n  s <- "hi"\n  bar(42) # comment\n}\n',
+    "perl": 'sub foo {\n  my $s = "hi";\n  bar(42); # comment\n}\n',
 }
 
 ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
@@ -43,6 +52,10 @@ ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
     "golang": SNIPPETS["go"],
     "yml": SNIPPETS["yaml"],
     "c++": SNIPPETS["cpp"],
+    "rs": SNIPPETS["rust"],
+    "rb": SNIPPETS["ruby"],
+    "kt": SNIPPETS["kotlin"],
+    "pl": SNIPPETS["perl"],
 })
 
 TOKEN_CASES = {
@@ -60,6 +73,15 @@ TOKEN_CASES = {
     "cpp": ("class", '"hi"', "// comment", "42", "/* block */"),
     "xml": ("root", '"hi"', "<!-- comment -->", "42", "<!-- comment -->"),
     "html": ("div", '"hi"', "<!-- comment -->", "42", "<!-- comment -->"),
+    "rust": ("fn", '"hi"', "// comment", "42", "/* block */"),
+    "ruby": ("def", '"hi"', "# comment", "42", None),
+    "php": ("function", '"hi"', "// comment", "42", "/* block */"),
+    "swift": ("func", '"hi"', "// comment", "42", "/* block */"),
+    "kotlin": ("fun", '"hi"', "// comment", "42", "/* block */"),
+    "scala": ("def", '"hi"', "// comment", "42", "/* block */"),
+    "dart": ("void", '"hi"', "// comment", "42", "/* block */"),
+    "r": ("function", '"hi"', "# comment", "42", None),
+    "perl": ("sub", '"hi"', "# comment", "42", None),
 }
 
 
@@ -167,6 +189,7 @@ class HighlightCodeCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("python", result.stdout.splitlines())
         self.assertIn("c++", result.stdout.splitlines())
+        self.assertIn("rust", result.stdout.splitlines())
 
     def test_main_list_direct(self):
         out = io.StringIO()
