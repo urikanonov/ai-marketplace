@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-11
+
+### Added
+
+- Author-time syntax highlighting (`tools/highlight_code.py`) now recognizes Windows Batch scripts
+  (`batch`, with `bat` and `cmd` aliases). Shell scripts were already covered via the existing `shell`
+  and `sh` aliases for `bash`. Run `python tools/highlight_code.py --list` for the full set.
+
 ## [1.2.0] - 2026-07-11
 
 ### Added

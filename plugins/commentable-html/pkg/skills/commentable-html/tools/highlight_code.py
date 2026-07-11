@@ -329,6 +329,15 @@ typedef union unsigned void volatile while id nil BOOL YES NO self super @interf
         "block_comments": (("/*", "*/"),),
         "string_styles": ("single", "double"),
     },
+    "batch": {
+        "keywords": _words("""
+call cd cls copy defined del do echo else endlocal errorlevel exist exit for goto
+if in md move not pause popd pushd rd ren set setlocal shift start title type
+"""),
+        "line_comments": ("rem ", "::"),
+        "block_comments": (),
+        "string_styles": ("double",),
+    },
 }
 
 ALIASES = {
@@ -348,6 +357,8 @@ ALIASES = {
     "hs": "haskell",
     "ex": "elixir",
     "exs": "elixir",
+    "bat": "batch",
+    "cmd": "batch",
 }
 
 _IDENTIFIER_RE = r"@?[A-Za-z_$][A-Za-z0-9_$]*"

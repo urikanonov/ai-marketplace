@@ -51,6 +51,7 @@ SNIPPETS = {
     "elixir": 'def foo do\n  s = "hi"\n  bar(42) # comment\nend\n',
     "haskell": 'foo :: Int -> String\nfoo x = let s = "hi" in bar 42 -- comment\n{- block -}\n',
     "objectivec": '- (void)foo { char *s = "hi"; bar(42); // comment\n/* block */ }\n',
+    "batch": '@echo off\nset MSG="hi"\necho 42\nrem comment\n',
 }
 
 ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
@@ -70,6 +71,8 @@ ROUNDTRIP_SNIPPETS = dict(SNIPPETS, **{
     "hs": SNIPPETS["haskell"],
     "ex": SNIPPETS["elixir"],
     "exs": SNIPPETS["elixir"],
+    "bat": SNIPPETS["batch"],
+    "cmd": SNIPPETS["batch"],
 })
 
 TOKEN_CASES = {
@@ -104,6 +107,7 @@ TOKEN_CASES = {
     "elixir": ("def", '"hi"', "# comment", "42", None),
     "haskell": ("let", '"hi"', "-- comment", "42", "{- block -}"),
     "objectivec": ("void", '"hi"', "// comment", "42", "/* block */"),
+    "batch": ("echo", '"hi"', "rem comment", "42", None),
 }
 
 
