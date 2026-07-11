@@ -326,6 +326,19 @@ main > section:nth-of-type(even) {
 .changelog li { position: relative; padding-left: 18px; color: var(--cp-text-muted); font-size: 0.93rem; }
 .changelog li::before { content: "-"; position: absolute; left: 0; color: var(--cp-accent); }
 .changelog .empty { color: var(--cp-text-soft); }
+.changelog .older-releases { display: flex; flex-direction: column; gap: 18px; }
+.changelog .older-releases > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-family: var(--cp-mono);
+  font-size: 0.85rem;
+  color: var(--cp-accent);
+  list-style: none;
+}
+.changelog .older-releases > summary::-webkit-details-marker { display: none; }
+.changelog .older-releases > summary::before { content: "\25B8  "; }
+.changelog .older-releases[open] > summary::before { content: "\25BE  "; }
+.changelog .older-releases > summary:hover { text-decoration: underline; }
 
 /* Section blocks (visual separation between home-page sections) */
 .section-block {
