@@ -66,13 +66,65 @@ jobs:
         run: test -f package-lock.json || { echo "::error::this plugin's dev/ needs a committed package-lock.json for npm ci"; exit 1; }
       - name: Install dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts
-      - name: Install Playwright browser
+      - name: Verify committed test fixtures
+        if: matrix.plugin == 'plugins/commentable-html'
+        working-directory: .
+        run: node plugins/commentable-html/dev/tests/fixtures/generate.mjs --check
+      - name: Resolve Playwright cache key inputs
+        id: pw
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'process.stdout.write("version=" + require("@playwright/test/package.json").version + "\n")' >> "$GITHUB_OUTPUT"
+          echo "imageos=${ImageOS:-$RUNNER_OS}" >> "$GITHUB_OUTPUT"
+      - name: Restore Playwright browser cache
+        id: pwcache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
+      - name: Install Playwright browser and system deps
         run: npx playwright install --with-deps chromium
+      - name: Save Playwright browser cache
+        if: steps.pwcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
       - name: Run Playwright tests
         run: npm test
 
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Run plugin Python test suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for tests in plugins/*/dev/tests; do
+            [ -d "$tests" ] || continue
+            if find "$tests" -maxdepth 1 -type f -name 'test_*.py' -print -quit | grep -q .; then
+              found=1
+              python -m unittest discover -s "$tests" -p "test_*.py"
+            fi
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "::error::no plugin Python test suites were discovered"
+            exit 1
+          fi
+
   plugin-tests:
-    needs: [discover, playwright]
+    needs: [discover, playwright, python]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -81,9 +133,10 @@ jobs:
         env:
           DISCOVER_RESULT: ${{ needs.discover.result }}
           PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
           DISCOVERED: ${{ needs.discover.outputs.plugins }}
         run: |
-          echo "discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT plugins=$DISCOVERED"
+          echo "discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
           if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::plugin discovery failed"
             exit 1
@@ -94,5 +147,9 @@ jobs:
           fi
           if [ "$PLAYWRIGHT_RESULT" = "failure" ] || [ "$PLAYWRIGHT_RESULT" = "cancelled" ]; then
             echo "::error::plugin Playwright tests did not pass"
+            exit 1
+          fi
+          if [ "$PYTHON_RESULT" != "success" ]; then
+            echo "::error::plugin Python tests did not pass"
             exit 1
           fi

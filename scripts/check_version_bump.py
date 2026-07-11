@@ -28,11 +28,15 @@ import argparse
 import json
 import os
 import posixpath
+import re
 import subprocess
 import sys
 
 MANIFEST = ".github/plugin/marketplace.json"
 _ZERO_SHA = "0" * 40
+_SEMVER = re.compile(
+    r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
+)
 
 
 def _git(*args):
@@ -40,10 +44,18 @@ def _git(*args):
 
 
 def semver(v):
-    parts = str(v).strip().split(".")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+    match = _SEMVER.fullmatch(str(v).strip())
+    if match is None:
         raise ValueError("not a semver: %r" % v)
-    return tuple(int(p) for p in parts)
+    major, minor, patch = (int(part) for part in match.group(1, 2, 3))
+    prerelease = match.group(4)
+    if prerelease is None:
+        return major, minor, patch, 1, ()
+    identifiers = tuple(
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in prerelease.split(".")
+    )
+    return major, minor, patch, 0, identifiers
 
 
 def ref_exists(ref):

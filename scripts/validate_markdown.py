@@ -208,6 +208,10 @@ def fix_ai_characters(content):
     return new_content, count
 
 
+def write_text_lf(path, content):
+    Path(path).write_text(content, encoding="utf-8", newline="\n")
+
+
 def check_local_paths(content):
     """Flag absolute local filesystem paths embedded in prose."""
     findings = []
@@ -305,7 +309,8 @@ def check_links(file_path, content, repo_root):
                 anchor = anchor.lower()
             else:
                 path_part, anchor = url, None
-            if "?" in path_part or not path_part:
+            path_part = path_part.split("?", 1)[0]
+            if not path_part:
                 continue
 
             if path_part.startswith("/"):
@@ -553,7 +558,7 @@ def main(argv=None):
         if args.fix:
             new_content, count = fix_ai_characters(content)
             if count:
-                md_file.write_text(new_content, encoding="utf-8")
+                write_text_lf(md_file, new_content)
                 content = new_content
                 fixed_here = count
                 total_fixed += count

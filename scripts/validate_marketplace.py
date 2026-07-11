@@ -63,6 +63,11 @@ def git_ignores(path: Path) -> bool:
     return result.returncode == 0
 
 
+def _sort_walk_entries(dirnames: list[str], filenames: list[str]) -> None:
+    dirnames.sort()
+    filenames.sort()
+
+
 def load_json(path: Path):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -140,6 +145,7 @@ def main() -> int:
             for d in list(dirnames):
                 if d.lower() in RESERVED_DEV_DIRS and git_ignores(base / d):
                     dirnames.remove(d)
+            _sort_walk_entries(dirnames, filenames)
             for entry in list(dirnames) + filenames:
                 if (base / entry).is_symlink():
                     err(f"{name}: shipped source must not contain a symlink: {rel(base / entry)}")
