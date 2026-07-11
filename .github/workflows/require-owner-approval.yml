@@ -68,27 +68,39 @@ jobs:
             return 1
           }
 
+          # Publish the final verdict, then exit: on a publish failure fail the job
+          # (visible + re-runnable) rather than exiting 0 as if the gate had spoken.
+          finalize() {
+            if post_status "$1" "$2"; then
+              exit 0
+            fi
+            echo "::error::could not publish the $CONTEXT status after retries; failing the job so it is visible and can be re-run."
+            exit 1
+          }
+
           # The maintainer's own PRs are exempt: a solo maintainer cannot approve
           # their own PR, so gating them would be a self-lockout.
           if [ "$PR_AUTHOR" = "$MAINTAINER" ]; then
             echo "PR #$PR_NUMBER is maintainer-authored ($MAINTAINER); exempt."
-            post_status success "Maintainer-authored; approval not required."
-            exit 0
+            finalize success "Maintainer-authored; approval not required."
           fi
 
           # Dependabot is allowlisted for routine dependency bumps.
           case "$PR_AUTHOR" in
             "dependabot[bot]" | "dependabot-preview[bot]")
               echo "PR #$PR_NUMBER is authored by $PR_AUTHOR (allowlisted bot); exempt."
-              post_status success "Dependabot PR; approval not required."
-              exit 0
+              finalize success "Dependabot PR; approval not required."
               ;;
           esac
 
+          # Clear any prior status on this head SHA before evaluating, so a stale
+          # success (e.g. an approval later dismissed on the same commit) cannot
+          # survive if the final publish fails - the gate then stays fail-closed.
+          post_status pending "Checking for a maintainer approval..." || true
+
           if ! reviews="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate 2>/dev/null)"; then
             echo "::error::could not read reviews for PR #$PR_NUMBER"
-            post_status failure "Could not read reviews; re-run this check."
-            exit 0
+            finalize failure "Could not read reviews; re-run this check."
           fi
 
           # Latest DECISIVE review from the maintainer (ignoring COMMENTED, which does
@@ -109,10 +121,8 @@ jobs:
 
           if [ "$state" = "APPROVED" ]; then
             echo "Approved by the maintainer on the current commit. Gate passes."
-            post_status success "Approved by @$MAINTAINER."
-            exit 0
+            finalize success "Approved by @$MAINTAINER."
           fi
 
           echo "::error::PR #$PR_NUMBER needs an approving review from @$MAINTAINER on the current commit (state: $state)."
-          post_status failure "Needs an approving review from @$MAINTAINER on the current commit (state: $state)."
-          exit 0
+          finalize failure "Needs an approving review from @$MAINTAINER on the current commit (state: $state)."
