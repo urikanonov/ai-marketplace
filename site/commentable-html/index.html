@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.2.0<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.2.1<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -176,6 +176,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.2.1] - 2026-07-11</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Documentation wording now describes the NonPortable default accurately. The skill reference and the plugin README no longer call a generated document &quot;single-file&quot; or &quot;Portable&quot; by default: the default NonPortable document loads its CSS/JS from companion files, while Export as Portable (or <code>--portable</code>) produces the one self-contained file.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.2.0] - 2026-07-11</h3></div>
             <div class="group-label">Fixed</div>

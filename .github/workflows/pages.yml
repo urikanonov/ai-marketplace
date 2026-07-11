@@ -3,25 +3,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths:
-      - "site/**"
-      - "tests/site/**"
-      - "scripts/build_site_data.py"
-      - ".github/plugin/marketplace.json"
-      - "plugins/**/CHANGELOG.md"
-      - "plugins/**/examples/*.html"
-      - "plugins/**/docs/**"
-      - ".github/workflows/pages.yml"
   pull_request:
-    paths:
-      - "site/**"
-      - "tests/site/**"
-      - "scripts/build_site_data.py"
-      - ".github/plugin/marketplace.json"
-      - "plugins/**/CHANGELOG.md"
-      - "plugins/**/examples/*.html"
-      - "plugins/**/docs/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 # Least privilege by default. Only the deploy job is granted the Pages/OIDC scopes,

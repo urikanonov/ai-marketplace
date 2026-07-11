@@ -307,7 +307,7 @@ Chart.js charts are supported when the canvas lives in `figure.chart`, the wrapp
 
 ## Network requirements
 
-The commentable review layer is bundled into the single HTML file - its CSS, state, UI, and runtime all travel inside the document. Optional rich content loads from a CDN: mermaid diagrams and Chart.js charts (and any tooltip library a host page adds) fetch their library from a CDN by default and fall back gracefully when they cannot (mermaid to readable source text, a chart to a blank canvas). For a fully self-contained file that renders identically wherever it is opened, self-host or inline those assets. Treat CDN loading as an explicit choice, since it means the finished report depends on the network to render that content.
+The commentable review layer is loaded, by default (NonPortable), from the companion `commentable-html.{css,js,assets.js}` files beside the document; in a Portable file (the in-page Export as Portable button, or `new_document.py --portable`) that CSS, state, UI, and runtime are inlined so everything travels inside the one document. Optional rich content loads from a CDN: mermaid diagrams and Chart.js charts (and any tooltip library a host page adds) fetch their library from a CDN by default and fall back gracefully when they cannot (mermaid to readable source text, a chart to a blank canvas). For a fully self-contained file that renders identically wherever it is opened, use Portable and self-host or inline those CDN assets. Treat CDN loading as an explicit choice, since it means the finished report depends on the network to render that content.
 
 ## Theme (light by default)
 
@@ -393,7 +393,7 @@ Use these files and folders when producing, validating, or maintaining commentab
 - **`dist/`** - companion CSS/JS/assets bundle used by NonPortable documents and Export as Portable.
 - **`tools/*`** - deterministic, stdlib-only Python helpers you SHOULD prefer over hand-editing (they remove AI variance and are self-validating). Run any with `python tools/<name>.py --help`:
  - `validate.py [--strict] <file>` - structural/invariant checker (run after every retrofit; `--strict` fails on any warning so one run surfaces everything).
- - `new_document.py --content <file|-> --key K|auto --label L [--source S] [--generated ISO]` - build a fresh Portable commentable doc from a content fragment (safely fills the CONTENT region and `#commentRoot` attrs; avoids the duplicate-root footgun; `--key auto` derives a stable key).
+ - `new_document.py --content <file|-> --key K|auto --label L [--source S] [--generated ISO]` - build a fresh NonPortable commentable doc (companion CSS/JS; pass `--portable` for one self-contained file) from a content fragment (safely fills the CONTENT region and `#commentRoot` attrs; avoids the duplicate-root footgun; `--key auto` derives a stable key).
  - `upgrade.py <file> [--check]` - swap the CSS/COMMENT UI/JS regions of a deployed file to a newer `dist/PORTABLE.html`, preserving comments/state (validates before it commits; never clobbers on failure).
  - `finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] [--strict]` - run the safe assembly steps in a fixed order then validate, in one command.
  - `mark_handled.py <file> --from-bundle -` - append handled ids from a pasted Copy-all bundle (the iteration loop).

@@ -76,8 +76,8 @@ Prefer a plugin-dir source; it is the most forward-compatible.
 
 `.github/workflows/plugin-tests.yml` discovers every plugin with a Node/Playwright suite at
 `plugins/<plugin>/dev/package.json` and runs it in a matrix (one job per plugin): Node 22, `npm ci --ignore-scripts`,
-`npx playwright install --with-deps chromium`, then `npm test`. If no plugin has such a suite the job is a
-no-op.
+`npx playwright install --with-deps chromium`, then `npm test`. The `summary` job fails if no plugin
+test suite is discovered, so an accidentally removed suite cannot pass the gate silently.
 
 To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/commentable-html/dev/` for a
 working example):
@@ -88,6 +88,26 @@ working example):
 - a committed `package-lock.json` (so CI can `npm ci`).
 
 Nothing under `dev/` is distributed. `node_modules/`, `test-results/`, and `playwright-report/` are gitignored.
+
+## Parallel work: use git worktrees under the repo root
+
+When more than one change is in flight at once (multiple agents, or a human working alongside an
+agent), do NOT edit the primary working tree from two places at once - concurrent edits to shared,
+generated files (the site under `site/`, a plugin's `pkg/dist/`, `examples/`) collide and produce
+merge churn. Instead give each independent workstream its own git worktree, checked out UNDER the
+repo root in `.worktrees/<name>` (which is gitignored, so the nested checkout is never committed):
+
+```bash
+git fetch origin                                             # pull the latest main first
+git worktree add -b <branch> .worktrees/<name> origin/main   # branch from the latest main
+# ...edit, commit, push, and open a PR from .worktrees/<name>...
+git worktree remove .worktrees/<name>                        # once the PR is merged
+```
+
+Rules: always branch from the latest `origin/main` (fetch first); keep the primary tree clean and
+do each workstream in its own `.worktrees/<name>`; and resolve any conflict on generated files by
+REBUILDING (rerun `python scripts/build_site_data.py` and, for the commentable-html layer,
+`plugins/commentable-html/dev/tools/build.py`) rather than hand-merging.
 
 ## Validate before you commit
 
@@ -141,10 +161,14 @@ its sources.
 - No approvals are required (`0` required reviewers) so the solo maintainer is never blocked waiting
   for a review they cannot self-give; conversation resolution is still required, and force-push and
   deletion are disallowed.
-- Required status checks on `main`: `validate` and `summary` (the `plugin-tests` gate). A PR merges
-  once those are green.
-- Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`) or bypass
-  the validator.
+- Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
+  tests, Markdown, and changelog sync), `version-bump` (a shipped-source change requires a version
+  bump), `build-check` (the commentable-html layer's committed `dist/` matches its `dev/` source),
+  `build` (the site regenerates cleanly and its Playwright suite passes), and `summary` (the
+  `plugin-tests` gate). Every check that can catch a break is required, so nothing merges that would
+  break the build or the site.
+- Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
+  not drop a required check) or bypass the validator.
 
 ## The auto-updater hook (portability notes)
 

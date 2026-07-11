@@ -52,13 +52,13 @@ test("demo has one safe full-screen button and a two-option slider", async ({ pa
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
 });
 
-test("demo slider switches the iframe, filename, and full-screen target", async ({ page }) => {
+test("demo slider switches the iframe, title, and full-screen target", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-taxi\.html/);
   await page.locator(".demo-tab", { hasText: "Community Garden Plan" }).click();
   await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-community-garden\.html/);
   await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-community-garden\.html/);
-  await expect(page.locator("#demo-filename")).toHaveText("report-community-garden.html");
+  await expect(page.locator("#demo-title")).toHaveText("Community Garden Plan");
   await expect(page.locator(".demo-tab.active")).toHaveText(/Community Garden/i);
 });
 

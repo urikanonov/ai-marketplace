@@ -14,7 +14,7 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 - `main` is protected: every change lands through a pull request that passes CI.
 - Direct pushes to `main` are blocked for everyone, including the owner. The maintainer's own changes go through a PR too.
 - Contribute through a pull request: fork the repo (or push a feature branch if you are a collaborator) and open a PR against `main`. No approvals are required to merge, so the solo maintainer is never blocked; conversation resolution is required, and force-push and deletion are disallowed.
-- What must be green to merge: the required checks `validate` and `summary` (the `plugin-tests` gate). New plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
+- What must be green to merge: the required checks `validate` (schema, script unit tests, Markdown, changelog sync), `version-bump` (a shipped-source change needs a version bump), `build-check` (the commentable-html layer's committed `dist/` matches its `dev/` source), `build` (the site regenerates cleanly and its Playwright suite passes), and `summary` (the `plugin-tests` gate). New plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
 
 ## One-time setup
 
@@ -40,7 +40,7 @@ Skip the hook for a single commit with `git commit --no-verify`.
    ```
    They also run in CI and are required status checks on `main`. `validate_marketplace.py` verifies the manifest against its JSON Schema, that every `source` path exists, that plugin-directory sources have a `plugin.json` whose version matches the manifest entry, and that skill sources have a `SKILL.md` with `name` and `description` front matter. `validate_markdown.py` checks every Markdown file for non-ASCII "smart" characters, local filesystem paths, and broken relative links.
 
-   CI runs two more checks that need git history and so are awkward to run locally: `check_changelog_sync.py` (every plugin's current version must have a matching `CHANGELOG.md` release heading, and already-released changelog history must not be edited) runs inside the required `validate` job, and `check_version_bump.py` (changing a plugin's shipped source requires a version bump) runs in a separate `version-bump` job. Keep both green. If you change a plugin's `CHANGELOG.md`, `docs/TUTORIAL.md`, or an example report that the site embeds, also regenerate the site data with `python scripts/build_site_data.py` and commit the result (the `pages` workflow verifies it with `--check`).
+   CI runs two more checks that need git history and so are awkward to run locally: `check_changelog_sync.py` (every plugin's current version must have a matching `CHANGELOG.md` release heading, and already-released changelog history must not be edited) runs inside the required `validate` job, and `check_version_bump.py` (changing a plugin's shipped source requires a version bump) runs in the required `version-bump` job. If you change a plugin's `CHANGELOG.md`, `docs/TUTORIAL.md`, or an example report that the site embeds, also regenerate the site data with `python scripts/build_site_data.py` and commit the result; the required `build` check fails if the committed `site/` is stale versus its sources.
 
 ### Versioning: which file is the source of truth
 

@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-11
+
+### Changed
+
+- Documentation wording now describes the NonPortable default accurately. The skill reference and the
+  plugin README no longer call a generated document "single-file" or "Portable" by default: the default
+  NonPortable document loads its CSS/JS from companion files, while Export as Portable (or `--portable`)
+  produces the one self-contained file.
+
 ## [1.2.0] - 2026-07-11
 
 ### Fixed

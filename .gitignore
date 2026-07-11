@@ -15,6 +15,9 @@ Thumbs.db
 *.tmp
 tmp/
 
+# Git worktrees for parallel local editing (kept under the repo root, never committed)
+.worktrees/
+
 # Node (in case a plugin ships tooling)
 node_modules/
 

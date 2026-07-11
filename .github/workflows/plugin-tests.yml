@@ -81,9 +81,14 @@ jobs:
         run: |
           discover_result="${{ needs.discover.result }}"
           playwright_result="${{ needs.playwright.result }}"
-          echo "discover=$discover_result playwright=$playwright_result"
+          discovered='${{ needs.discover.outputs.plugins }}'
+          echo "discover=$discover_result playwright=$playwright_result plugins=$discovered"
           if [ "$discover_result" != "success" ]; then
             echo "::error::plugin discovery failed"
+            exit 1
+          fi
+          if [ -z "$discovered" ] || [ "$discovered" = "[]" ]; then
+            echo "::error::no plugin test suites were discovered; expected at least one plugins/*/dev/package.json"
             exit 1
           fi
           if [ "$playwright_result" = "failure" ] || [ "$playwright_result" = "cancelled" ]; then
