@@ -67,7 +67,7 @@ class ChartBlockRenderTests(unittest.TestCase):
     def test_render_contains_expected_figure_shape(self):
         out = chart_block.render_output(SPEC, "wateringNeedsChart", "Weekly water use", title="Garden chart")
         self.assertIn('<figure class="chart" aria-labelledby="wateringNeedsChart-caption">', out)
-        self.assertIn('class="chart-wrap cm-skip" style="position: relative; height: 360px;"', out)
+        self.assertIn('class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;"', out)
         self.assertIn(
             '<canvas id="wateringNeedsChart" role="img" aria-label="Chart: Garden chart. Weekly water use"></canvas>',
             out,
@@ -93,6 +93,11 @@ class ChartBlockRenderTests(unittest.TestCase):
         errors, warnings = result
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
+
+    def test_init_forces_bounded_responsive_options(self):
+        fragments = chart_block.render_chart_fragments(SPEC, "chartA", "Caption", title="Title")
+        self.assertIn("config.options.responsive = true;", fragments["scripts"])
+        self.assertIn("config.options.maintainAspectRatio = false;", fragments["scripts"])
 
     def test_invalid_canvas_id_rejected(self):
         with self.assertRaises(ValueError):

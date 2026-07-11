@@ -341,5 +341,107 @@ def _rmtree(path):
     shutil.rmtree(path, ignore_errors=True)
 
 
+class ActiveRootAndReservedKeyTests(unittest.TestCase):
+    def test_active_root_attrs_returns_root_attributes(self):
+        out = new_document.make_document(_template(), CONTENT, "cmh-abc123", "Lbl", "src.md")
+        attrs = dict(new_document.active_root_attrs(out))
+        self.assertEqual(attrs.get("data-comment-key"), "cmh-abc123")
+        self.assertEqual(attrs.get("data-doc-label"), "Lbl")
+        self.assertEqual(attrs.get("data-doc-source"), "src.md")
+
+    def test_allow_reserved_key_permits_demo_key(self):
+        # A brand-new document still refuses a demo key ...
+        with self.assertRaises(ValueError):
+            new_document.make_document(_template(), CONTENT, "commentable-html-demo", "L")
+        # ... but re-stamping an existing document that owns it (export) is allowed.
+        out = new_document.make_document(
+            _template(), CONTENT, "commentable-html-demo", "L", allow_reserved_key=True)
+        self.assertIn('data-comment-key="commentable-html-demo"', out)
+
+
+class NonPortableCliTests(unittest.TestCase):
+    _LINK_RE = re.compile(r'<link\b[^>]*href="[^"]*commentable-html\.css"')
+
+    def _tmpdir(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: _rmtree(d))
+        return d
+
+    def _run(self, argv, stdin=CONTENT):
+        out = io.StringIO()
+        err = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = new_document.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_default_mode_is_nonportable_and_refs_resolve_to_dist(self):
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP", "--out", op])
+        self.assertEqual(code, 0, err)  # validates only because the refs resolve to the skill dist/
+        html = open(op, encoding="utf-8").read()
+        self.assertNotIn("BEGIN: commentable-html - CSS", html)  # layer CSS is NOT inlined
+        self.assertRegex(html, r'<link\b[^>]*href="[^"]*/dist/commentable-html\.css"')
+
+    def test_portable_flag_inlines_layer(self):
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "P",
+             "--portable", "--out", op])
+        self.assertEqual(code, 0, err)
+        html = open(op, encoding="utf-8").read()
+        self.assertIn("BEGIN: commentable-html - CSS", html)      # layer CSS inlined
+        self.assertIsNone(self._LINK_RE.search(html))             # no companion <link>
+
+    def test_copy_assets_copies_companions_and_uses_bare_refs(self):
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "C",
+             "--copy-assets", "--out", op])
+        self.assertEqual(code, 0, err)
+        for name in new_document.COMPANIONS:
+            self.assertTrue(os.path.exists(os.path.join(d, name)), "missing companion %s" % name)
+        html = open(op, encoding="utf-8").read()
+        self.assertIn('href="commentable-html.css"', html)
+
+    def test_assets_href_prefixes_refs(self):
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "H",
+             "--assets-href", "assets", "--out", op])
+        self.assertEqual(code, 0, err)
+        html = open(op, encoding="utf-8").read()
+        self.assertIn('href="assets/commentable-html.css"', html)
+        self.assertIn('src="assets/commentable-html.js"', html)
+
+    def test_copy_assets_without_out_exits_2(self):
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "X", "--copy-assets"])
+        self.assertEqual(code, 2)
+        self.assertIn("--copy-assets needs --out", err)
+
+    def test_nonportable_stdout_notes_bare_refs(self):
+        code, out, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "S"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("bare name", err)
+        self.assertIn('href="commentable-html.css"', out)
+
+    def test_portable_and_nonportable_are_mutually_exclusive(self):
+        with self.assertRaises(SystemExit):
+            self._run(["new_document.py", "--content", "-", "--key", "auto", "--label", "X",
+                       "--portable", "--nonportable"])
+
+    def test_default_template_nonportable_is_dist_nonportable(self):
+        self.assertEqual(
+            os.path.abspath(new_document._default_template(nonportable=True)),
+            os.path.abspath(os.path.join(_paths.DIST, "NONPORTABLE.html")))
+
+
 if __name__ == "__main__":
     unittest.main()

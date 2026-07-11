@@ -21,6 +21,10 @@ pre mark.cm-hl, code mark.cm-hl {
   border-radius: 3px;
 }
 
+:root {
+  --cm-sidebar-w: 400px;
+}
+
 .cm-toolbar {
   position: fixed; top: 1rem; right: 1rem; z-index: 100;
   display: flex; gap: 0.4rem;
@@ -52,7 +56,7 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
 
 .cm-sidebar {
   position: fixed; top: 0; right: 0; bottom: 0;
-  width: 400px; max-width: 90vw;
+  width: var(--cm-sidebar-w, 400px); min-width: min(16rem, calc(100vw - 24px)); max-width: calc(100vw - 24px);
   background: var(--cp-bg-elevated); border-left: 1px solid var(--cp-border);
   box-shadow: var(--cp-shadow);
   display: flex; flex-direction: column;
@@ -60,6 +64,20 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
   z-index: 90;
 }
 body.sidebar-open .cm-sidebar { transform: translateX(0); }
+.cm-sidebar-resize {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 8px; z-index: 3;
+  cursor: ew-resize; touch-action: none; background: rgba(0, 0, 0, 0.01);
+}
+.cm-sidebar-resize::before {
+  content: ""; position: absolute; left: 0; top: 0.75rem; bottom: 0.75rem; width: 2px;
+  border-radius: 999px; background: transparent; transition: background 0.15s;
+}
+.cm-sidebar-resize:hover::before,
+.cm-sidebar-resize:focus-visible::before,
+body.cm-sidebar-resizing .cm-sidebar-resize::before { background: var(--cp-accent); }
+.cm-sidebar-resize:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+body.cm-sidebar-resizing { cursor: ew-resize; user-select: none; }
+body.cm-sidebar-resizing .cm-sidebar { transition: none; }
 /* When the panel is open, hide the floating toolbar entirely - every action it
    offers is present in the panel header, so there is no reason to keep a pill
    hovering over the document content. It returns when the panel is closed. */
@@ -71,25 +89,32 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   body.sidebar-open .app {
     max-width: none; margin: 0;
     padding-left: 2rem;
-    padding-right: calc(400px + 2rem);
+    padding-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
   }
 }
 @media (min-width: 1700px) {
   body.sidebar-open .app {
-    padding-left: calc((100vw - 400px - 1300px) / 2);
-    padding-right: calc(400px + (100vw - 400px - 1300px) / 2);
+    padding-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
+    padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
   }
 }
 
 .cm-sidebar header {
-  padding: 1rem 1.1rem; border-bottom: 1px solid var(--cp-border);
+  padding: clamp(0.75rem, 3vw, 1rem) clamp(0.75rem, 3vw, 1.1rem); border-bottom: 1px solid var(--cp-border);
   display: flex; flex-direction: column; gap: 0.5rem;
 }
-.cm-sidebar .head-top { display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem; }
-.cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
-.cm-sidebar .head-actions { display: flex; flex-wrap: nowrap; gap: 0.35rem; }
-.cm-sidebar .head-actions button { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
-.cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 0.45rem 0.6rem; }
+.cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex: 1 1 8rem; min-width: 0; }
+.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
+.cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: normal; }
+.cm-sidebar.is-narrow .head-meta .cm-head-actions { margin-left: 0; width: 100%; justify-content: stretch; }
+.cm-sidebar.is-narrow .head-meta .cm-head-actions button { flex: 1 1 8rem; }
+.cm-sidebar.is-narrow .head-top { align-items: stretch; }
+.cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
+.cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
+.cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
+.cm-sidebar.is-narrow .head-actions button { flex-basis: 100%; justify-content: flex-start; }
 .cm-ui-ico { flex: none; vertical-align: middle; }
 
 /* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with
@@ -169,7 +194,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-modal-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); color: var(--cp-danger); }
 
 /* Sidebar header meta row: document-type bubble, version, and Help. */
-.cm-sidebar .head-meta { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
+.cm-sidebar .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
 .cm-type-badge {
   font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
   padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
@@ -180,7 +205,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
-.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; }
+.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .cm-help-btn {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
   padding: 0.2rem 0.6rem; border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: 0.72rem;
@@ -259,7 +284,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   color: var(--cp-text-soft); box-shadow: var(--cp-shadow);
   min-width: 2.6rem; text-align: center; pointer-events: none;
 }
-body.sidebar-open .cm-scroll-progress { right: calc(400px + 1rem); }
+body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) + 1rem); }
 @media (max-width: 700px) { body.sidebar-open .cm-scroll-progress { right: 1rem; } }
 /* Collapsed: shrink to a single clear chevron box (the >> expand affordance). */
 .cm-side-toc.is-collapsed { width: auto; padding: 0.25rem; }
@@ -288,7 +313,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-footer-sep { opacity: 0.5; }
 /* When the comments panel is open, span the visible (non-sidebar) area so the centered
    flex content reads as centralized in that region rather than hidden behind the panel. */
-body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(400px + 1rem); max-width: none; }
+body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-sidebar-w, 400px) + 1rem); max-width: none; }
 @media (max-width: 700px) { body.sidebar-open .cm-footer { margin-right: auto; max-width: 1240px; } }
 /* TOC section numbers. */
 .cm-side-toc-list .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
@@ -766,7 +791,16 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 /* Chart figures are boxed for readability, like code and KQL blocks. */
 #commentRoot figure.chart {
   margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
-  padding: 0.85rem 1rem; background: var(--cp-surface);
+  padding: 0.85rem 1rem; background: var(--cp-surface); max-width: 100%; overflow: hidden;
+}
+#commentRoot figure.chart > .chart-wrap {
+  position: relative; width: 100%; max-width: 100%; height: clamp(220px, 42vw, 440px);
+  max-height: min(60vh, 480px); min-height: 160px; overflow: hidden;
+}
+#commentRoot figure.chart canvas,
+#commentRoot canvas.cmh-chart {
+  display: block; width: 100% !important; max-width: 100% !important;
+  height: 100% !important; max-height: 100% !important; box-sizing: border-box;
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain

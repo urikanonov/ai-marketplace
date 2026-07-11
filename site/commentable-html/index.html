@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.0.1<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -165,11 +165,49 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.1.0] - 2026-07-11</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Resizable comments sidebar with a keyboard-focusable drag handle, persisted width, viewport clamps, and matching reserved page space.</li>
+              <li>Problem statement plus self-review, peer-review, and reviewer-side review-loop documentation for the generated review surface.</li>
+              <li>Documentation that explains when to use NonPortable for fast local iteration and when to Export as Portable for sharing or long-term storage.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Runtime left navigation side menu now labels itself as &quot;Navigation&quot; while leaving author-authored table-of-contents titles alone.</li>
+              <li>Sidebar header actions wrap into narrower rows instead of overflowing when the viewport or resized sidebar is narrow.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Chart.js canvases, including pie and doughnut charts, stay bounded inside figure.chart at narrow widths.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.0.2] - 2026-07-11</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>New documents are now **NonPortable by default** (tools/new_document.py): the layer CSS/JS load from companion files, so authoring and every regeneration during a review loop is materially smaller (about 89% less boilerplate re-emitted). Pass --portable for a single self-contained file.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>tools/new_document.py gains --portable, --nonportable (the default), --copy-assets, and --assets-href to control how a NonPortable document references its companion files, plus active_root_attrs and an allow_reserved_key option for re-stamping an existing document.</li>
+              <li>validate.validate() accepts an optional base_dir so NonPortable companion references can be resolved against the file&#x27;s final location, or the path checks skipped (structure only) when placement is deferred.</li>
+            </ul>
+            <div class="group-label">Notes</div>
+            <ul>
+              <li>To hand someone a single shareable file, either regenerate with --portable (for a document that has no in-browser comments yet) or use the in-page **Export as Portable** button. The button is the only path that captures comments the user typed in the browser: those live in localStorage, which no CLI (even a headless browser) can read, so there is deliberately no CLI export.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.0.1] - 2026-07-10</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>Hardened build stamping so dev/VERSION updates plugin.json, the marketplace entry, generated files, and skill metadata consistently.</li>
-              <li>Added CI coverage for version-bump checks and NonPortable output so shipped artifacts stay in sync with their sources.</li>
+              <li>Hardened the CI version-bump gate (scripts/check_version_bump.py): it now diffs from the merge base so a PR is judged only on its own changes, fails closed on an invalid or unfetched base ref, normalizes source paths correctly, and requires a version bump when a plugin&#x27;s source path changes.</li>
+              <li>Hardened build.py version stamping and the build --check drift guard.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Quality fixes surfaced by a multi-model (multi-duck) review of the 1.0.0 refactor, including a statically pinned Chart.js loader for a stable SRI hash and assorted tool and documentation polish. No change to the runtime review behavior.</li>
             </ul>
           </div>
           <div class="release">
