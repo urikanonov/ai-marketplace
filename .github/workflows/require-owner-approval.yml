@@ -63,8 +63,8 @@ jobs:
           CONTEXT="require-owner-approval"
 
           post_status() {
-            local st="$1" desc="$2" i
-            for i in 1 2 3; do
+            local st="$1" desc="$2"
+            for _ in 1 2 3; do
               if gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
                 -f "state=$st" -f "context=$CONTEXT" -f "description=$desc" >/dev/null 2>&1; then
                 return 0

@@ -59,7 +59,7 @@ jobs:
           BUMP_EVENT: ${{ github.event_name }}
         run: python scripts/check_version_bump.py
 
-  build-check:
+  dist-in-sync:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -76,3 +76,27 @@ jobs:
           python plugins/commentable-html/dev/tools/build.py
           --assets-dir plugins/commentable-html/dev/assets
           --out-dir plugins/commentable-html/pkg/skills/commentable-html --check
+
+  # Lints every GitHub Actions workflow on each PR, so a broken workflow definition (bad expression,
+  # undefined `needs`/context, shell mistake) is caught before it can fail a run on main - closing the
+  # gap that the main-only pages deploy/notify jobs are never exercised on a PR.
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Lint workflows with actionlint
+        shell: bash
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSL -o actionlint.tar.gz "$url"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color

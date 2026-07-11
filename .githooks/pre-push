@@ -3,7 +3,7 @@
 # that would fail a required check is caught locally before the CI round-trip.
 # The fast, reliable checks always run. The browser (Playwright) suites are
 # slower and occasionally flaky, so they run only when RUN_E2E=1 is set - CI is
-# the authoritative gate for them (the required `build` and `summary` checks).
+# the authoritative gate for them (the required `site` and `plugin-tests` checks).
 #
 # Enable once per clone:      git config core.hooksPath .githooks
 # Skip for a single push:     git push --no-verify
@@ -53,7 +53,7 @@ else
   echo "pre-push: origin/main not found locally; 'git fetch origin' to enable the changelog-sync and version-bump checks (skipping)." >&2
 fi
 
-# Mirrors the required `build` (site drift) and `build-check` (layer dist) jobs.
+# Mirrors the required `site` (site drift) and `dist-in-sync` (layer dist) jobs.
 run "site data in sync (build_site_data --check)" "$PY" scripts/build_site_data.py --check
 run "commentable-html layer dist in sync (build.py --check)" "$PY" \
   plugins/commentable-html/dev/tools/build.py \
@@ -67,8 +67,8 @@ else
   echo "pre-push: node not found; skipping the fixtures --check (CI will run it)." >&2
 fi
 
-# Browser E2E suites: opt-in. CI runs them on every PR as the required `build`
-# (site) and `summary` (plugin) checks, so a push that regresses them is caught
+# Browser E2E suites: opt-in. CI runs them on every PR as the required `site`
+# (site) and `plugin-tests` (plugin) checks, so a push that regresses them is caught
 # there; running them locally is available with RUN_E2E=1 for a full pre-push.
 if [ "${RUN_E2E:-0}" = "1" ]; then
   if command -v node >/dev/null 2>&1; then
