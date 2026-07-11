@@ -395,13 +395,40 @@ class StampWiringTests(unittest.TestCase):
     def test_no_site_html_has_an_unstamped_asset_ref(self):
         import os as _os
         import glob
-        pat = re.compile(r'(?:href|src)="[^"]*?(?:styles\.css|site\.js)(\?v=[0-9a-f]+)?"')
+        pat = re.compile(r'(?:href|src)="[^"]*?assets/(?:styles\.css|site\.js)(\?v=[0-9a-f]+)?"')
         unstamped = []
         for path in glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True):
             for m in pat.finditer(bsd.read_text(path)):
                 if not m.group(1):
                     unstamped.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
         self.assertEqual(unstamped, [])
+
+
+class CheckDriftTests(unittest.TestCase):
+    def _clone_repo_subset(self):
+        import os as _os
+        import shutil
+        import tempfile
+        skill = "plugins/commentable-html/pkg/skills/commentable-html"
+        root = tempfile.mkdtemp()
+        for rel in [".github/plugin/marketplace.json", "plugins/commentable-html/CHANGELOG.md"]:
+            src = _os.path.join(bsd.REPO_ROOT, *rel.split("/"))
+            dst = _os.path.join(root, *rel.split("/"))
+            _os.makedirs(_os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+        for rel in ["site", skill + "/examples", skill + "/docs"]:
+            shutil.copytree(_os.path.join(bsd.REPO_ROOT, *rel.split("/")),
+                            _os.path.join(root, *rel.split("/")))
+        return root
+
+    def test_check_flags_a_stale_asset_stamp(self):
+        import os as _os
+        root = self._clone_repo_subset()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        with open(_os.path.join(root, "site", "assets", "styles.css"), "a", encoding="utf-8") as fh:
+            fh.write("\n/* mutate without regenerating */\n")
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
 
 if __name__ == "__main__":

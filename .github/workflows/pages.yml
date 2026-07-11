@@ -67,20 +67,21 @@ jobs:
           set -euo pipefail
           node -e 'process.stdout.write("version=" + require("@playwright/test/package.json").version + "\n")' >> "$GITHUB_OUTPUT"
           echo "imageos=${ImageOS:-$RUNNER_OS}" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browser
+      - name: Restore Playwright browser cache
         id: pwcache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
-      - name: Install Playwright browser and system deps (cache miss)
-        if: steps.pwcache.outputs.cache-hit != 'true'
+      - name: Install Playwright browser and system deps
         working-directory: tests/site
         run: npx playwright install --with-deps chromium
-      - name: Install Playwright system deps only (cache hit)
-        if: steps.pwcache.outputs.cache-hit == 'true'
-        working-directory: tests/site
-        run: npx playwright install-deps chromium
+      - name: Save Playwright browser cache
+        if: steps.pwcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
       - name: Run site smoke tests
         working-directory: tests/site
         run: npm test
@@ -136,10 +137,10 @@ jobs:
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const buildResult = process.env.BUILD_RESULT;
             const deployResult = process.env.DEPLOY_RESULT;
-            const deployBad = deployResult === "failure" || deployResult === "cancelled";
-            const impact = deployBad
-              ? "The deploy did not complete, so the published site may be stale."
-              : "The deploy completed, but the build job failed after the artifact was uploaded, so the published site may contain a regression that the smoke tests would have caught.";
+            const deployOk = deployResult === "success";
+            const impact = deployOk
+              ? "The deploy completed, but the build job did not finish all its checks, so the published site may contain a regression the checks would have caught."
+              : "The deploy did not complete, so the published site may be stale.";
             const body = [
               `The \`pages\` workflow failed on \`main\` (build: ${buildResult}, deploy: ${deployResult}).`,
               ``,
@@ -150,16 +151,12 @@ jobs:
               ``,
               `Re-run the workflow (Actions -> pages -> Run workflow) or push a fix.`,
             ].join("\n");
-            try {
-              const open = await github.paginate(github.rest.issues.listForRepo, {
-                owner, repo, state: "open", per_page: 100,
-              });
-              const existing = open.find((i) => !i.pull_request && i.title === title);
-              if (existing) {
-                await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
-                return;
-              }
-            } catch (e) {
-              core.warning("Could not scan existing issues, creating a new one: " + e.message);
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", per_page: 100,
+            });
+            const existing = open.find((i) => !i.pull_request && i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner, repo, title, body });
             }
-            await github.rest.issues.create({ owner, repo, title, body });
