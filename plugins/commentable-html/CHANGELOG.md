@@ -8,18 +8,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 ### Added
 
-- Author-time syntax highlighting (`tools/highlight_code.py`) now recognizes Windows Batch scripts
-  (`batch`, with `bat` and `cmd` aliases). Shell scripts were already covered via the existing `shell`
-  and `sh` aliases for `bash`. Run `python tools/highlight_code.py --list` for the full set.
+- Author-time syntax highlighting (`tools/highlight_code.py`) now covers many more popular languages:
+  Rust, Ruby, PHP, Swift, Kotlin, Scala, Dart, R, Perl, PowerShell, Lua, TOML, CSS, Groovy, Elixir,
+  Haskell, and Objective-C, plus Windows Batch (`batch`, with `bat` and `cmd` aliases), with the usual
+  aliases (`rs`, `rb`, `kt`, `pl`, `ps1`, `ps`, `objc`, `hs`, `ex`, `exs`). Shell scripts were already
+  covered via the existing `shell` and `sh` aliases for `bash`. Run
+  `python tools/highlight_code.py --list` for the full set.
 
 ## [1.2.0] - 2026-07-11
 
-### Added
+### Fixed
 
-- Author-time syntax highlighting (`tools/highlight_code.py`) now covers many more popular languages:
-  Rust, Ruby, PHP, Swift, Kotlin, Scala, Dart, R, Perl, PowerShell, Lua, TOML, CSS, Groovy, Elixir,
-  Haskell, and Objective-C, with the usual aliases (`rs`, `rb`, `kt`, `pl`, `ps1`, `ps`, `objc`, `hs`,
-  `ex`, `exs`). Run `python tools/highlight_code.py --list` for the full set.
+- Mobile responsiveness of generated documents. Wide tables now scroll horizontally inside their own
+  box on narrow screens instead of forcing the whole page to overflow. The Kusto query caption stacks
+  the cluster title and the "Run in Azure Data Explorer" link onto separate lines below 700px so they
+  no longer cramp. The floating Copy/language pills reserve top headroom over every code block (KQL
+  figures included) so they no longer overlap the first line of code. Figures use symmetric vertical
+  margins with no side indent so embedded images and charts get the full content width.
+- On touch / coarse-pointer devices the browser's native selection menu (Copy, Share, Look up) is left
+  intact; the reader can copy selected text again, while the floating "Add comment" popup still handles
+  commenting.
+
+### Changed
+
+- `docs/TUTORIAL.md` now references the running example with a skill-root-relative display path that links
+  to the local file, so the reference reads cleanly without any `..` path traversal.
 
 ## [1.1.3] - 2026-07-11
 

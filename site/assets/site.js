@@ -73,7 +73,7 @@
     var tabs = document.querySelectorAll(".demo-tab");
     var frame = document.getElementById("demo-iframe");
     var panel = document.getElementById("demo-panel");
-    var filename = document.getElementById("demo-filename");
+    var title = document.getElementById("demo-title");
     var fullscreen = document.getElementById("demo-fullscreen");
     if (!tabs.length || !frame) {
       return;
@@ -83,6 +83,7 @@
     function activate(tab, focusIt) {
       var src = tab.getAttribute("data-demo");
       var file = tab.getAttribute("data-file") || src;
+      var label = tab.getAttribute("data-label") || file;
       tabList.forEach(function (t) {
         var active = t === tab;
         t.classList.toggle("active", active);
@@ -92,12 +93,12 @@
       if (frame.getAttribute("src") !== src) {
         frame.setAttribute("src", src);
       }
-      frame.setAttribute("title", "Live commentable-html demo: " + file);
+      frame.setAttribute("title", "Live commentable-html demo: " + label);
       if (panel && tab.id) {
         panel.setAttribute("aria-labelledby", tab.id);
       }
-      if (filename) {
-        filename.textContent = file;
+      if (title) {
+        title.textContent = label;
       }
       if (fullscreen) {
         fullscreen.setAttribute("href", src);

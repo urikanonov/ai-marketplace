@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="commentable-html logo">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#b11f4b"/>
+  <rect x="12" y="10" width="30" height="38" rx="5" fill="#fcfbf8"/>
+  <rect x="17" y="17" width="20" height="3" rx="1.5" fill="#b11f4b" opacity="0.66"/>
+  <rect x="17" y="24" width="20" height="3" rx="1.5" fill="#b11f4b" opacity="0.5"/>
+  <rect x="17" y="31" width="13" height="3" rx="1.5" fill="#b11f4b" opacity="0.5"/>
+  <path d="M30 30h20a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4h-9l-6 5v-5h-5a4 4 0 0 1-4-4V34a4 4 0 0 1 4-4z" fill="#f7c9d6"/>
+  <rect x="35" y="38" width="14" height="3" rx="1.5" fill="#b11f4b" opacity="0.82"/>
+  <rect x="35" y="44" width="10" height="3" rx="1.5" fill="#b11f4b" opacity="0.66"/>
+</svg>
