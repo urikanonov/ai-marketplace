@@ -24,12 +24,18 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PLUGIN_PAGES = {"commentable-html": "./commentable-html/index.html"}
+PLUGIN_PAGES = {"commentable-html": "./commentable-html/"}
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html"]
 EXAMPLES_REL = os.path.join(
     "plugins", "commentable-html", "pkg", "skills", "commentable-html", "examples")
 DEMO_REL = os.path.join("site", "commentable-html", "demo")
+TUTORIAL_SRC = os.path.join(
+    "plugins", "commentable-html", "pkg", "skills", "commentable-html", "docs", "TUTORIAL.md")
+TUTORIAL_IMAGES_SRC = os.path.join(
+    "plugins", "commentable-html", "pkg", "skills", "commentable-html", "docs", "tutorial-images")
+TUTORIAL_PAGE = os.path.join("site", "commentable-html", "tutorial", "index.html")
+TUTORIAL_IMAGES_DST = os.path.join("site", "commentable-html", "tutorial", "tutorial-images")
 
 
 def esc(value):
@@ -245,6 +251,115 @@ def plugin_version(manifest, name):
     return ""
 
 
+_MD_IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+_MD_CODE = re.compile(r"`([^`]+)`")
+
+
+def _md_inline(escaped):
+    """Apply inline markdown to already-HTML-escaped text. Images run before links so
+    an image is not mis-parsed as a link. URLs are passed through safe_url."""
+    escaped = _MD_IMAGE.sub(
+        lambda m: '<img src="%s" alt="%s" loading="lazy" />' % (esc(safe_url(m.group(2))), m.group(1)),
+        escaped)
+    escaped = _MD_LINK.sub(
+        lambda m: '<a href="%s">%s</a>' % (esc(safe_url(m.group(2))), m.group(1)),
+        escaped)
+    escaped = _MD_BOLD.sub(r"<strong>\1</strong>", escaped)
+    escaped = _MD_CODE.sub(r"<code>\1</code>", escaped)
+    return escaped
+
+
+def render_markdown(md, heading_offset=1):
+    """A small, escape-first Markdown-to-HTML renderer for the tutorial page. Handles
+    headings, paragraphs, unordered/ordered lists, fenced code blocks, images, links,
+    bold, and inline code. All text is HTML-escaped before any markup is applied, so
+    raw HTML in the source cannot inject."""
+    lines = md.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out = []
+    para = []
+    list_items = []
+    state = {"list_tag": None, "code": None}
+
+    def flush_para():
+        if para:
+            out.append("<p>%s</p>" % _md_inline(esc(" ".join(para))))
+            del para[:]
+
+    def flush_list():
+        if list_items:
+            out.append("<%s>" % state["list_tag"])
+            for item in list_items:
+                out.append("<li>%s</li>" % _md_inline(esc(item)))
+            out.append("</%s>" % state["list_tag"])
+            del list_items[:]
+        state["list_tag"] = None
+
+    for raw in lines:
+        stripped = raw.strip()
+        if state["code"] is not None:
+            if stripped.startswith("```"):
+                out.append("<pre><code>%s</code></pre>" % esc("\n".join(state["code"])))
+                state["code"] = None
+            else:
+                state["code"].append(raw)
+            continue
+        if stripped.startswith("```"):
+            flush_para()
+            flush_list()
+            state["code"] = []
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.*)$", stripped)
+        if heading:
+            flush_para()
+            flush_list()
+            level = min(6, len(heading.group(1)) + heading_offset)
+            out.append("<h%d>%s</h%d>" % (level, _md_inline(esc(heading.group(2).strip())), level))
+            continue
+        bullet = re.match(r"^[-*]\s+(.*)$", stripped)
+        ordered = re.match(r"^\d+\.\s+(.*)$", stripped)
+        if bullet or ordered:
+            flush_para()
+            want = "ul" if bullet else "ol"
+            if state["list_tag"] and state["list_tag"] != want:
+                flush_list()
+            state["list_tag"] = want
+            list_items.append((bullet or ordered).group(1).strip())
+            continue
+        if stripped == "":
+            flush_para()
+            flush_list()
+            continue
+        para.append(stripped)
+    flush_para()
+    flush_list()
+    return "\n".join(out)
+
+
+def sync_tutorial_images(root, check):
+    src_dir = os.path.join(root, TUTORIAL_IMAGES_SRC)
+    dst_dir = os.path.join(root, TUTORIAL_IMAGES_DST)
+    drift = []
+    if not os.path.isdir(src_dir):
+        return drift
+    for name in sorted(os.listdir(src_dir)):
+        src = os.path.join(src_dir, name)
+        if not os.path.isfile(src):
+            continue
+        dst = os.path.join(dst_dir, name)
+        with open(src, "rb") as fh:
+            data = fh.read()
+        if check:
+            if not os.path.exists(dst) or open(dst, "rb").read() != data:
+                drift.append(name)
+        else:
+            os.makedirs(dst_dir, exist_ok=True)
+            with open(dst, "wb") as fh:
+                fh.write(data)
+    return drift
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description="Generate static site data.")
     parser.add_argument("--check", action="store_true",
@@ -281,7 +396,17 @@ def main(argv):
     plugin_out = replace_region_inline(plugin_src, "version", "v" + esc(version))
     plugin_out = replace_region_block(plugin_out, "changelog", changelog_html)
 
+    tutorial_page_path = os.path.join(root, TUTORIAL_PAGE)
+    tutorial_src_path = os.path.join(root, TUTORIAL_SRC)
+    tutorial_src = None
+    tutorial_out = None
+    if os.path.exists(tutorial_page_path) and os.path.exists(tutorial_src_path):
+        tutorial_src = read_text(tutorial_page_path)
+        tutorial_out = replace_region_block(
+            tutorial_src, "tutorial", render_markdown(read_text(tutorial_src_path)))
+
     demo_drift = sync_demos(root, args.check)
+    tutorial_img_drift = sync_tutorial_images(root, args.check)
 
     if args.check:
         problems = []
@@ -289,8 +414,12 @@ def main(argv):
             problems.append("site/index.html plugins region is stale")
         if plugin_out != plugin_src:
             problems.append("site/commentable-html/index.html version/changelog region is stale")
+        if tutorial_out is not None and tutorial_out != tutorial_src:
+            problems.append("site/commentable-html/tutorial/index.html is stale vs TUTORIAL.md")
         if demo_drift:
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
+        if tutorial_img_drift:
+            problems.append("tutorial images differ from source: " + ", ".join(tutorial_img_drift))
         if problems:
             for problem in problems:
                 sys.stderr.write("drift: %s\n" % problem)
@@ -301,7 +430,9 @@ def main(argv):
 
     write_text(hub_path, hub_out)
     write_text(plugin_path, plugin_out)
-    print("site data generated (plugins, version v%s, changelog, demos)" % version)
+    if tutorial_out is not None:
+        write_text(tutorial_page_path, tutorial_out)
+    print("site data generated (plugins, version v%s, changelog, demos, tutorial)" % version)
     return 0
 
 
