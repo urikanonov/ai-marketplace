@@ -95,7 +95,7 @@ MAIN = (
 
 _MERMAID_LOADER = (
     '<script type="module">const m = (await import('
-    '"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs")).default; '
+    '"https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
     'm.initialize({ startOnLoad: false }); m.run().catch(() => {});</script>'
 )
 
@@ -735,17 +735,17 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_mermaid_gated_loader_warns(self):
         gated = ('<script type="module">if (new URLSearchParams(location.search).get("mermaid") === "1") '
-                 '{ const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs")).default; '
+                 '{ const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
                  'm.initialize({ startOnLoad: false }); m.run(); }</script>')
         self.assertTrue(self._mermaid_warns(gated))
 
     def test_mermaid_loader_without_run_warns(self):
-        norun = ('<script type="module">const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs")).default; '
+        norun = ('<script type="module">const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
                  'm.initialize({ startOnLoad: false });</script>')
         self.assertTrue(self._mermaid_warns(norun))
 
     def test_mermaid_startonload_true_ok(self):
-        s = ('<script type="module">const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs")).default; '
+        s = ('<script type="module">const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
              'm.initialize({ startOnLoad: true });</script>')
         self.assertFalse(self._mermaid_warns(s))
 
