@@ -285,5 +285,51 @@ class SyncDemosDriftTests(unittest.TestCase):
         self.assertEqual(sorted(drift), sorted(bsd.DEMO_FILES))
 
 
+class SyncTutorialImagesTests(unittest.TestCase):
+    def _make_root(self, with_src=True):
+        import os as _os
+        import tempfile
+        root = tempfile.mkdtemp()
+        if with_src:
+            src = _os.path.join(root, bsd.TUTORIAL_IMAGES_SRC)
+            _os.makedirs(src)
+            with open(_os.path.join(src, "a.png"), "wb") as fh:
+                fh.write(b"IMG-A")
+        _os.makedirs(_os.path.join(root, bsd.TUTORIAL_IMAGES_DST))
+        return root
+
+    def test_content_difference_flagged_then_synced(self):
+        import os as _os
+        root = self._make_root()
+        dst = _os.path.join(root, bsd.TUTORIAL_IMAGES_DST)
+        with open(_os.path.join(dst, "a.png"), "wb") as fh:
+            fh.write(b"STALE")
+        self.assertIn("a.png", bsd.sync_tutorial_images(root, check=True))
+        self.assertFalse(bsd.sync_tutorial_images(root, check=False))
+        self.assertFalse(bsd.sync_tutorial_images(root, check=True))
+
+    def test_orphan_removed_when_source_file_gone(self):
+        import os as _os
+        root = self._make_root()
+        dst = _os.path.join(root, bsd.TUTORIAL_IMAGES_DST)
+        bsd.sync_tutorial_images(root, check=False)
+        with open(_os.path.join(dst, "gone.png"), "wb") as fh:
+            fh.write(b"ORPHAN")
+        self.assertTrue(any("gone.png" in d for d in bsd.sync_tutorial_images(root, check=True)))
+        bsd.sync_tutorial_images(root, check=False)
+        self.assertFalse(_os.path.exists(_os.path.join(dst, "gone.png")))
+        self.assertTrue(_os.path.exists(_os.path.join(dst, "a.png")))
+
+    def test_missing_source_dir_orphans_committed_images(self):
+        import os as _os
+        root = self._make_root(with_src=False)
+        dst = _os.path.join(root, bsd.TUTORIAL_IMAGES_DST)
+        with open(_os.path.join(dst, "stale.png"), "wb") as fh:
+            fh.write(b"X")
+        self.assertTrue(any("stale.png" in d for d in bsd.sync_tutorial_images(root, check=True)))
+        bsd.sync_tutorial_images(root, check=False)
+        self.assertFalse(_os.path.exists(_os.path.join(dst, "stale.png")))
+
+
 if __name__ == "__main__":
     unittest.main()
