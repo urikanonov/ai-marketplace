@@ -329,6 +329,17 @@ class HighlightCodeCommentAndStringEdgeTests(unittest.TestCase):
         self.assertNotIn('class="cmh-code-str"', H.highlight_code("yaml", "title: don't stop"))
         self.assertNotIn('class="cmh-code-str"', H.highlight_code("cpp", "int n = 1'000;"))
 
+    def test_char_literal_languages_color_chars_not_lifetimes(self):
+        # C/C++/C#/Java/Go/Rust/Objective-C use ' for a one-character char/rune literal, not a string.
+        for lang in ("c", "cpp", "csharp", "java", "go", "rust", "objectivec"):
+            with self.subTest(language=lang):
+                self.assertIn("<span class=\"cmh-code-str\">'x'</span>", H.highlight_code(lang, "c = 'x';"))
+        # Even paired Rust lifetimes are never mis-colored as a string.
+        self.assertNotIn('class="cmh-code-str"',
+                         H.highlight_code("rust", "fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {"))
+        # A multi-character single-quoted string in a string-quote language still highlights.
+        self.assertIn("<span class=\"cmh-code-str\">'hi'</span>", H.highlight_code("python", "s = 'hi'"))
+
     def test_pathological_escaped_quote_input_is_linear(self):
         # A run of `"\` never closes; a backtracking tokenizer rescans to EOF at every quote
         # (quadratic). The unrolled string patterns keep this linear - a big input is instant.

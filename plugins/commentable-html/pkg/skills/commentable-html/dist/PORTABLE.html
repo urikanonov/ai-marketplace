@@ -2200,11 +2200,11 @@ function _hlTokenRe(fam) {
   const bt = "`[^`\\\\]*(?:\\\\[\\s\\S][^`\\\\]*)*`?";
   let com, str, flags = "g";
   if (fam === "hash") { com = "#[^\\n]*"; str = dq + "|" + sq; }
-  else if (fam === "sql") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|--[^\\n]*"; str = "'[^']*(?:''[^']*)*'"; }
+  else if (fam === "sql") { com = "/\\*[\\s\\S]*?(?:\\*/|$)|--[^\\n]*"; str = "'[^']*(?:''[^']*)*'"; flags = "gi"; }
   else if (fam === "css") { com = "/\\*[\\s\\S]*?(?:\\*/|$)"; str = dq + "|" + sq; }
   else if (fam === "lua") { com = "--\\[\\[[\\s\\S]*?(?:\\]\\]|$)|--[^\\n]*"; str = dq + "|" + sq; }
   else if (fam === "haskell") { com = "\\{-[\\s\\S]*?(?:-\\}|$)|--[^\\n]*"; str = dq; }
-  else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; }
+  else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "batch") { com = "(?:rem\\b|::)[^\\n]*"; str = dq; flags = "gi"; }
   else { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq + "|" + sq + "|" + bt; }
   const num = "0[xX][0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";

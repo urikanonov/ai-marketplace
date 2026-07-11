@@ -10,7 +10,7 @@
 <span class="cmh-code-op">}</span>
 
 <span class="cmh-code-com">// Longest slice (explicit lifetime)</span>
-<span class="cmh-code-kw">fn</span> longest<span class="cmh-code-op">&lt;</span><span class="cmh-code-str">'a&gt;(x: &amp;'</span>a str<span class="cmh-code-op">,</span> y<span class="cmh-code-op">:</span> <span class="cmh-code-op">&amp;</span><span class="cmh-code-str">'a str) -&gt; &amp;'</span>a str <span class="cmh-code-op">{</span>
+<span class="cmh-code-kw">fn</span> longest<span class="cmh-code-op">&lt;</span>'a<span class="cmh-code-op">&gt;(</span>x<span class="cmh-code-op">:</span> <span class="cmh-code-op">&amp;</span>'a str<span class="cmh-code-op">,</span> y<span class="cmh-code-op">:</span> <span class="cmh-code-op">&amp;</span>'a str<span class="cmh-code-op">)</span> <span class="cmh-code-op">-&gt;</span> <span class="cmh-code-op">&amp;</span>'a str <span class="cmh-code-op">{</span>
     <span class="cmh-code-kw">if</span> x<span class="cmh-code-op">.</span><span class="cmh-code-fn">len</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">&gt;=</span> y<span class="cmh-code-op">.</span><span class="cmh-code-fn">len</span><span class="cmh-code-op">()</span> <span class="cmh-code-op">{</span> x <span class="cmh-code-op">}</span> <span class="cmh-code-kw">else</span> <span class="cmh-code-op">{</span> y <span class="cmh-code-op">}</span>
 <span class="cmh-code-op">}</span>
 

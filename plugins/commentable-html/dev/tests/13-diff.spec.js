@@ -704,3 +704,21 @@ test("newly-supported languages are syntax-highlighted in diffs (runtime parity)
       c.label).toBeVisible();
   }
 });
+
+test("diff highlighter colors uppercase SQL and PowerShell keywords (case-insensitive parity)", async ({ page }) => {
+  const cases = [
+    { label: "probe.sql", body: "@@ -1 +1 @@\n-x\n+SELECT id FROM users", kw: "FROM" },
+    { label: "probe.ps1", body: "@@ -1 +1 @@\n-x\n+Function Foo { }", kw: "Function" },
+    { label: "probe.bat", body: "@@ -1 +1 @@\n-x\n+IF exist a del a", kw: "IF" },
+  ];
+  for (const c of cases) {
+    const doc = docWithDiff(c.body, c.label);
+    await page.goto(fileUrl(doc));
+    await ready(page);
+    const view = page.locator(".cmh-diff-view").first();
+    await expect(view, c.label).toBeVisible();
+    // The uppercase keyword must color even though the shared keyword set is lowercase.
+    await expect(view.locator(".cmh-dl-code .cmh-code-kw", { hasText: c.kw }).first(),
+      c.label).toBeVisible();
+  }
+});
