@@ -137,7 +137,10 @@ Two more checks run in CI on every PR (they need git history, so they are awkwar
 locally): `check_changelog_sync.py` (a plugin's current version must have a matching
 `CHANGELOG.md` release heading, and already-released history must not be edited) runs inside
 the required `validate` job, while `check_version_bump.py` (a change to a plugin's shipped
-source requires a version bump) runs in a separate `version-bump` job. The `pages` workflow
+source requires a version bump) runs in a separate `version-bump` job. The required `validate`
+job also runs `check_forbidden_files.py`, which fails if a secret-bearing file (`.env`, `*.pem`,
+`*.key`, a keystore, or a private SSH key) is ever tracked - the enforceable stand-in for a push
+rule, since GitHub push rulesets are unavailable on public user-owned repos. The `pages` workflow
 also runs `build_site_data.py --check`, which fails if the committed `site/` is stale versus
 its sources.
 
@@ -157,16 +160,22 @@ its sources.
 
 - `main` is protected: every change lands through a pull request that passes CI. Direct pushes to
   `main` are blocked for everyone, including the owner/admin (`enforce_admins` is on), so nothing
-  reaches `main` without going through the gate.
-- No approvals are required (`0` required reviewers) so the solo maintainer is never blocked waiting
-  for a review they cannot self-give; conversation resolution is still required, and force-push and
-  deletion are disallowed.
+  reaches `main` without going through the gate. History is squash-only, linear history is required,
+  and branches must be up to date with `main` (strict mode) before they merge.
+- Native required approvals are `0` because the solo maintainer cannot self-approve, but external
+  pull requests are still gated: the required `require-owner-approval` check fails until `@urikanonov`
+  submits an approving review. The maintainer's own PRs and Dependabot PRs pass the gate
+  automatically, so the maintainer is never blocked. Conversation resolution is required, stale
+  approvals are dismissed on new commits, and force-push and deletion are disallowed.
+- Every non-draft PR gets an automatic Copilot review request (`request-copilot-review.yml`);
+  Copilot's review is advisory, and its comment threads are subject to conversation resolution.
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
-  tests, Markdown, and changelog sync), `version-bump` (a shipped-source change requires a version
-  bump), `build-check` (the commentable-html layer's committed `dist/` matches its `dev/` source),
-  `build` (the site regenerates cleanly and its Playwright suite passes), and `summary` (the
-  `plugin-tests` gate). Every check that can catch a break is required, so nothing merges that would
-  break the build or the site.
+  tests, Markdown, changelog sync, and the secret-bearing-file guard), `version-bump` (a
+  shipped-source change requires a version bump), `build-check` (the commentable-html layer's
+  committed `dist/` matches its `dev/` source), `build` (the site regenerates cleanly and its
+  Playwright suite passes), `summary` (the `plugin-tests` gate), and `require-owner-approval` (an
+  external PR carries the maintainer's approving review). Every check that can catch a break is
+  required, so nothing merges that would break the build or the site.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 

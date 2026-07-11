@@ -1,0 +1,73 @@
+name: require-owner-approval
+
+# Enforces the review policy that native branch protection cannot express for a
+# solo maintainer: an external pull request must carry an approving review from
+# the maintainer before it can merge, while the maintainer's own PRs are not
+# gated (GitHub never lets an author approve their own PR) and Dependabot is
+# allowlisted for routine dependency bumps.
+#
+# Add the job name "require-owner-approval" to the required status checks on
+# `main` for this to block merges.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: require-owner-approval-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  require-owner-approval:
+    name: require-owner-approval
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require a maintainer approval for external pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          MAINTAINER: urikanonov
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # The maintainer's own PRs are not gated: a solo maintainer cannot
+          # approve their own pull request, so gating them would be a self-lockout.
+          if [ "$PR_AUTHOR" = "$MAINTAINER" ]; then
+            echo "PR #$PR_NUMBER is authored by the maintainer ($MAINTAINER); no external approval required."
+            exit 0
+          fi
+
+          # Dependabot is allowlisted for routine dependency bumps.
+          case "$PR_AUTHOR" in
+            "dependabot[bot]" | "dependabot-preview[bot]")
+              echo "PR #$PR_NUMBER is authored by $PR_AUTHOR (allowlisted bot); no approval required."
+              exit 0
+              ;;
+          esac
+
+          echo "External PR #$PR_NUMBER by '$PR_AUTHOR'. An APPROVED review from '$MAINTAINER' is required."
+
+          # The latest review state from the maintainer across all reviews on this
+          # PR. "dismiss stale reviews" on new commits turns a prior APPROVED into
+          # DISMISSED, so a fresh push correctly re-blocks until re-approval.
+          state="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
+            --jq "[.[] | select(.user.login == \"$MAINTAINER\")] | last | .state // \"NONE\"")"
+          echo "Latest review state from $MAINTAINER: $state"
+
+          if [ "$state" = "APPROVED" ]; then
+            echo "Approved by the maintainer. Gate passes."
+            exit 0
+          fi
+
+          echo "::error::PR #$PR_NUMBER must be approved by @$MAINTAINER before it can merge (current state: $state)."
+          exit 1

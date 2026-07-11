@@ -13,8 +13,8 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 
 - `main` is protected: every change lands through a pull request that passes CI.
 - Direct pushes to `main` are blocked for everyone, including the owner. The maintainer's own changes go through a PR too.
-- Contribute through a pull request: fork the repo (or push a feature branch if you are a collaborator) and open a PR against `main`. No approvals are required to merge, so the solo maintainer is never blocked; conversation resolution is required, and force-push and deletion are disallowed.
-- What must be green to merge: the required checks `validate` (schema, script unit tests, Markdown, changelog sync), `version-bump` (a shipped-source change needs a version bump), `build-check` (the commentable-html layer's committed `dist/` matches its `dev/` source), `build` (the site regenerates cleanly and its Playwright suite passes), and `summary` (the `plugin-tests` gate). New plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
+- Contribute through a pull request: fork the repo (or push a feature branch if you are a collaborator) and open a PR against `main`. External pull requests require an approving review from the maintainer (@urikanonov) before they can merge - the `require-owner-approval` check enforces this. Conversation resolution is required, stale approvals are dismissed when you push new commits, and force-push and deletion are disallowed. Every non-draft PR is also sent to Copilot for an advisory review automatically.
+- What must be green to merge: the required checks `validate` (schema, script unit tests, Markdown, changelog sync, and a secret-bearing-file guard), `version-bump` (a shipped-source change needs a version bump), `build-check` (the commentable-html layer's committed `dist/` matches its `dev/` source), `build` (the site regenerates cleanly and its Playwright suite passes), `summary` (the `plugin-tests` gate), and `require-owner-approval` (external PRs carry the maintainer's approving review). New plugins are maintainer-authored (see [MAINTAINING.md](MAINTAINING.md)).
 
 ## One-time setup
 
