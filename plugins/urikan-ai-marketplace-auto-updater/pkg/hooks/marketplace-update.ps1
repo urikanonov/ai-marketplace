@@ -10,7 +10,12 @@ $copilotHome = if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $HO
 
 # Use the nested 2-arg Join-Path form; the 3-arg form is not supported on Windows PowerShell 5.1.
 $installed = Join-Path (Join-Path $copilotHome "installed-plugins") $marketplace
-$logFile = Join-Path (Join-Path $copilotHome "plugin-data") "$self.log"
+$pluginData = Join-Path $copilotHome "plugin-data"
+$logFile = Join-Path $pluginData "$self.log"
+$throttleFile = Join-Path $pluginData "$self.last-run"
+
+# Skip the whole update pass when the previous pass ran within this many hours.
+$throttleHours = 20
 
 function Write-UpdaterLog($message) {
     try {
@@ -22,12 +27,30 @@ function Write-UpdaterLog($message) {
 
 try {
     if (-Not (Test-Path $installed)) { return }
+
+    # Last-run throttle: a corrupt or unreadable stamp must never block updates.
+    try {
+        if (Test-Path $throttleFile) {
+            $raw = (Get-Content -Path $throttleFile -Raw).Trim()
+            $last = [datetimeoffset]::Parse($raw, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+            $elapsedHours = ([datetimeoffset]::Now - $last).TotalHours
+            if ($elapsedHours -ge 0 -and $elapsedHours -lt $throttleHours) {
+                Write-UpdaterLog ("skipping auto-update; last run {0:0.0}h ago (throttle {1}h)." -f $elapsedHours, $throttleHours)
+                return
+            }
+        }
+    } catch {
+        Write-UpdaterLog "throttle check failed; proceeding: $($_.Exception.Message)"
+    }
+
     if (-Not (Get-Command copilot -ErrorAction SilentlyContinue)) {
         Write-UpdaterLog "copilot CLI not found on PATH; skipping auto-update."
         return
     }
 
+    # Sort by name so the log order is deterministic across platforms.
     Get-ChildItem -Path $installed -Directory |
+        Sort-Object Name |
         Where-Object { $_.Name -ne $self } |
         ForEach-Object {
             $plugin = $_.Name
@@ -40,6 +63,12 @@ try {
                 Write-UpdaterLog "update errored for $plugin : $($_.Exception.Message)"
             }
         }
+
+    # Record the pass so the next session can throttle. Failure here is non-fatal.
+    try {
+        if (-Not (Test-Path $pluginData)) { New-Item -ItemType Directory -Force -Path $pluginData | Out-Null }
+        ([datetimeoffset]::Now).ToString('o') | Set-Content -Path $throttleFile -Encoding utf8
+    } catch { }
 } catch {
     Write-UpdaterLog "auto-update aborted: $($_.Exception.Message)"
 }
