@@ -13,7 +13,9 @@ The fifth region, **EMBEDDED COMMENTS**, is an optional in-file snapshot of the 
 </script>
 ```
 
-The overflow menu and sidebar both expose an **Export as Portable** button. Clicking it:
+The overflow menu and sidebar both expose an **Export as Portable** button. It is the handoff point for the peer review loop: after your self review pass, export the Portable file, share it with a peer, then feed the peer's returned Portable HTML with embedded comments back to the agent.
+
+Clicking it:
 
 1. Fetches the on-disk HTML (`fetch(location.href)`). If that fails (file://, network unavailable, CSP), falls back to a snapshot of `document.documentElement.outerHTML` captured on the very first line of the layer's IIFE, before any DOM mutation.
 2. Replaces the contents of the `<script id="embeddedComments">` block with the current `comments` array (pretty-printed JSON, two-space indent, for git-friendly diffs).

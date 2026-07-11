@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-11
+
+### Added
+
+- Resizable comments sidebar with a keyboard-focusable drag handle, persisted width, viewport clamps, and matching reserved page space.
+- Problem statement and self-review plus peer-review loop documentation for the generated review surface.
+
+### Changed
+
+- Runtime left navigation side menu now labels itself as "Navigation" while leaving author-authored table-of-contents titles alone.
+- Sidebar header actions wrap into narrower rows instead of overflowing when the viewport or resized sidebar is narrow.
+
+### Fixed
+
+- Chart.js canvases, including pie and doughnut charts, stay bounded inside `figure.chart` at narrow widths.
+
 ## [1.0.0] - 2026-07-10
 
 First official release.

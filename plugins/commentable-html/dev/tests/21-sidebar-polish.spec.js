@@ -1,5 +1,13 @@
 import { test, expect } from "@playwright/test";
-import { openKitchenSink, addTextComment, lastCopied } from "./helpers.js";
+import { openKitchenSink, addTextComment, lastCopied, ready } from "./helpers.js";
+
+async function openSidebarPanel(page) {
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  await expect(page.locator("body")).toHaveClass(/sidebar-open/);
+}
+
 
 test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () => {
   test("comment timestamps are 24-hour (no AM/PM) on the card", async ({ page }) => {
@@ -59,6 +67,74 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     await page.click("#btnSortDesc");
     await page.reload();
     await expect(page.locator("#btnSortDesc")).toHaveAttribute("aria-pressed", "true");
+  });
+
+
+  test("the sidebar resize handle persists width and reserves matching page space", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 800 });
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    const handle = page.locator("#sidebarResizeHandle");
+    await expect(handle).toHaveClass(/cm-skip/);
+    await expect(handle).toHaveAttribute("role", "separator");
+    await expect(handle).toHaveAttribute("tabindex", "0");
+
+    const box = await handle.boundingBox();
+    expect(box).toBeTruthy();
+    const targetWidth = 520;
+    await page.evaluate((width) => {
+      const h = document.getElementById("sidebarResizeHandle");
+      const y = h.getBoundingClientRect().top + 40;
+      const pointerId = 7;
+      h.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId, clientX: window.innerWidth - 400, clientY: y }));
+      document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId, clientX: window.innerWidth - width, clientY: y }));
+      document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId, clientX: window.innerWidth - width, clientY: y }));
+    }, targetWidth);
+
+    const metrics = await page.evaluate(() => {
+      const sidebar = document.getElementById("sidebar");
+      const app = document.querySelector(".app");
+      return {
+        sidebarWidth: sidebar.getBoundingClientRect().width,
+        appPaddingRight: parseFloat(getComputedStyle(app).paddingRight),
+        stored: localStorage.getItem("commentable-html::sidebarWidth"),
+        ariaNow: document.getElementById("sidebarResizeHandle").getAttribute("aria-valuenow"),
+      };
+    });
+    expect(Math.abs(metrics.sidebarWidth - targetWidth)).toBeLessThanOrEqual(4);
+    expect(metrics.appPaddingRight).toBeGreaterThan(targetWidth);
+    expect(Number(metrics.stored)).toBeCloseTo(metrics.sidebarWidth, 0);
+    expect(Number(metrics.ariaNow)).toBeCloseTo(metrics.sidebarWidth, 0);
+
+    await page.reload();
+    await ready(page);
+    await openSidebarPanel(page);
+    const restored = await page.evaluate(() => document.getElementById("sidebar").getBoundingClientRect().width);
+    expect(restored).toBeCloseTo(metrics.sidebarWidth, 0);
+  });
+
+  test("the sidebar header wraps without overflowing when resized narrow", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    await page.locator("#sidebarResizeHandle").focus();
+    await page.keyboard.press("Home");
+
+    const metrics = await page.evaluate(() => {
+      const sidebar = document.getElementById("sidebar");
+      const header = sidebar.querySelector("header").getBoundingClientRect();
+      const buttons = Array.from(sidebar.querySelectorAll("header button")).filter((b) => b.offsetParent !== null);
+      const overflowing = buttons.filter((b) => {
+        const r = b.getBoundingClientRect();
+        return r.left < header.left - 1 || r.right > header.right + 1;
+      }).length;
+      const actionRows = new Set(Array.from(sidebar.querySelectorAll(".head-actions button")).map((b) => Math.round(b.getBoundingClientRect().top))).size;
+      return { width: sidebar.getBoundingClientRect().width, narrow: sidebar.classList.contains("is-narrow"), overflowing, actionRows };
+    });
+    expect(metrics.width).toBeLessThanOrEqual(340);
+    expect(metrics.narrow).toBe(true);
+    expect(metrics.overflowing).toBe(0);
+    expect(metrics.actionRows).toBeGreaterThan(1);
   });
 
   test("the sidebar shows Generated-on and Last-comment info rows", async ({ page }) => {

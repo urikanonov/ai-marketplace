@@ -5,6 +5,29 @@ description: Turn any standalone HTML into a single-file commentable review surf
 
 # Commentable HTML
 
+## Problem this skill solves
+
+AI increasingly returns rich HTML artifacts - plans, reports, reviews, dashboards, and design docs - because HTML is a spatial, richer medium than Markdown for diffs, diagrams, charts, collapsible sections, and tabbed structure. The pain starts when the artifact needs revision: the reviewer alt-tabs between the HTML and the AI chat and describes changes in prose.
+
+commentable-html makes the artifact a self-contained review surface. Reviewers comment in place, then hand a structured bundle back to the agent, returning to the chat only at the end. You stay in the loop; the loop gets tighter.
+
+## Review loops
+
+### Self review loop
+
+1. Generate the commentable HTML artifact.
+2. Open it, comment directly on prose, code, diffs, diagrams, charts, images, headings, and tables.
+3. Click **Copy all** and paste the bundle back to the agent.
+4. The agent acts on each comment, appends the handled ids, and returns the updated HTML.
+5. Reload the file. Handled comments are pruned automatically, leaving only unresolved comments.
+
+### Peer review loop
+
+1. Start with the self review loop until the artifact is ready for another person.
+2. Click **Export as Portable** and share the downloaded HTML file with the peer.
+3. The peer opens that file, adds comments in place, and sends the Portable HTML back. The comments are embedded in the file.
+4. Feed those embedded comments to the agent, then let the agent act, mark handled ids, and return the next revision.
+
 This skill turns any standalone HTML file into a code-review surface:
 
 1. User selects text in the document.
@@ -330,7 +353,7 @@ It refuses nonportable documents (companion assets), preserves the document's st
 
 ## Layout recipes
 
-The fixed 400px sidebar needs reserved space when `body.sidebar-open` is active. See [Document layout](references/document-layout.md) for centered, full-bleed, and default-open recipes.
+The resizable sidebar stores its width in localStorage and reserves matching space when `body.sidebar-open` is active. See [Document layout](references/document-layout.md) for centered, full-bleed, and default-open recipes.
 
 ## Copy payload format
 

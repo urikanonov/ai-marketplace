@@ -13,7 +13,7 @@ It is light-theme by default; a dark-theme note is at the end.
 
 ## Dependency and portability
 
-`chart_block.py` emits a guarded Chart.js CDN loader by default: it pins the full version, adds SRI plus `crossorigin="anonymous"`, keeps the loader synchronous, and guards init with `if (typeof Chart === "undefined") return;` so blocked loading leaves a blank canvas instead of throwing. Chart.js built-in tooltips need no extra library.
+`chart_block.py` emits a bounded canvas wrapper and a guarded Chart.js CDN loader by default: it pins the full version, adds SRI plus `crossorigin="anonymous"`, keeps the loader synchronous, and guards init with `if (typeof Chart === "undefined") return;` so blocked loading leaves a blank canvas instead of throwing. Chart.js built-in tooltips need no extra library.
 
 For a fully self-contained / offline file, vendor or inline Chart.js instead: place `chart.umd.min.js` next to the HTML and load it with a relative synchronous `<script src="./vendor/chart.umd.min.js"></script>`, or inline the library when the deliverable must be one file. Prefer this whenever a shared file must render without network access.
 
@@ -98,15 +98,17 @@ For a fully self-contained / offline file, vendor or inline Chart.js instead: pl
  integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo"
  crossorigin="anonymous"></script>
 <style>
- .chart { margin: 1.2rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; }
- .chart .chart-wrap { position: relative; height: 440px; } /* REQUIRED: fixed-height wrapper */
+ .chart { margin: 1.2rem 0; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; max-width: 100%; overflow: hidden; }
+ .chart .chart-wrap { position: relative; width: 100%; height: 440px; max-height: min(60vh, 480px); overflow: hidden; } /* REQUIRED: bounded wrapper */
+ .chart canvas { display: block; width: 100% !important; height: 100% !important; max-width: 100% !important; max-height: 100% !important; }
  .chart figcaption { font-size: .82rem; color: #64748b; margin-top: .5rem; }
 </style>
 ```
 
-The fixed-height `.chart-wrap` with `position: relative` is required: Chart.js uses
+The bounded `.chart-wrap` with `position: relative` is required: Chart.js uses
 `responsive: true, maintainAspectRatio: false` and sizes the canvas to its parent. Without a
-sized parent the canvas collapses to zero or grows unbounded.
+sized parent the canvas collapses to zero or grows unbounded. The canvas rules keep pie and
+doughnut charts inside the figure when the report or comments sidebar makes the container narrow.
 
 **Inside `#commentRoot`** (the canvas):
 
@@ -375,7 +377,7 @@ at init; note that Chart.js does not re-theme a rendered chart, so a live theme 
 - Added `defer`/`async`/`type="module"` to the CDN tag -> the inline init runs before `Chart` exists
  and silently no-ops. Keep the CDN tag synchronous and before the init (or wrap the init in a
  `DOMContentLoaded` listener and load Chart.js with `defer`).
-- No fixed-height `.chart-wrap` -> canvas has zero or runaway height.
+- No bounded `.chart-wrap` -> canvas has zero or runaway height, especially for pie and doughnut charts in narrow containers.
 - Forgot `cm-skip` on the chart wrapper (or put it on the whole `<figure>`) -> either the chart pixels
  catch comment selections, or (if on the figure) the `<figcaption>` becomes uncommentable. Put it on the
  `.chart-wrap` that directly wraps the `<canvas>`.

@@ -1,7 +1,7 @@
 {
   "name": "commentable-html",
   "description": "Turn any standalone HTML into a single-file commentable review surface: reviewers select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent. Ships deterministic Python tools and a validator.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": { "name": "Uri Kanonov", "email": "urikanonov@gmail.com" },
   "keywords": ["commentable", "html", "code-review", "comments", "documentation", "kusto", "charts"],
   "license": "MIT",

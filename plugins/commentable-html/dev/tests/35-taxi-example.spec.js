@@ -152,6 +152,39 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     expect(fare.scales).toContain("yDist");
   });
 
+
+  test("the doughnut chart stays contained on a narrow viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 520, height: 800 });
+    await openExample(page);
+    await page.waitForFunction(
+      () => !!(window.Chart && window.Chart.getChart && window.Chart.getChart("taxiPaymentChart")),
+      null, { timeout: 20000 });
+    const metrics = await page.evaluate(() => {
+      const chart = window.Chart.getChart("taxiPaymentChart");
+      const canvas = document.getElementById("taxiPaymentChart").getBoundingClientRect();
+      const wrap = document.getElementById("taxiPaymentChart").closest(".chart-wrap").getBoundingClientRect();
+      const figure = document.getElementById("taxiPaymentChart").closest("figure.chart").getBoundingClientRect();
+      return {
+        maintainAspectRatio: chart.options.maintainAspectRatio,
+        responsive: chart.options.responsive,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        wrapWidth: wrap.width,
+        wrapHeight: wrap.height,
+        figureWidth: figure.width,
+        overflowRight: canvas.right - figure.right,
+        overflowBottom: canvas.bottom - figure.bottom,
+      };
+    });
+    expect(metrics.responsive).toBe(true);
+    expect(metrics.maintainAspectRatio).toBe(false);
+    expect(metrics.canvasWidth).toBeLessThanOrEqual(metrics.wrapWidth + 1);
+    expect(metrics.canvasHeight).toBeLessThanOrEqual(metrics.wrapHeight + 1);
+    expect(metrics.wrapHeight).toBeLessThanOrEqual(480);
+    expect(metrics.overflowRight).toBeLessThanOrEqual(1);
+    expect(metrics.overflowBottom).toBeLessThanOrEqual(1);
+  });
+
   test("commenting a chart canvas rings it with a visible highlight (CMH-CHART-HL-01)", async ({ page }) => {
     await openExample(page);
     await page.waitForFunction(

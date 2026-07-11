@@ -101,7 +101,7 @@ def render_chart_fragments(spec, canvas_id, caption, title=None):
 
     figure = (
         '<figure class="chart" aria-labelledby="%s">\n'
-        '  <div class="chart-wrap cm-skip" style="position: relative; height: 360px;">\n'
+        '  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">\n'
         '    <canvas id="%s" role="img" aria-label="%s"></canvas>\n'
         "  </div>\n"
         '  <figcaption id="%s">%s</figcaption>\n'
@@ -117,6 +117,9 @@ def render_chart_fragments(spec, canvas_id, caption, title=None):
         + '  var el = document.getElementById("%s");\n'
         + '  if (!el || typeof Chart === "undefined") return;\n'
         + '  var config = JSON.parse(document.getElementById("%s").textContent);\n'
+        + "  config.options = config.options || {};\n"
+        + "  config.options.responsive = true;\n"
+        + "  config.options.maintainAspectRatio = false;\n"
         + "  new Chart(el, config);\n"
         + "})();\n"
         + "</script>"

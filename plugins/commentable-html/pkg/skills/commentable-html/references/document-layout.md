@@ -27,7 +27,7 @@ For a document with roughly **4+ top-level sections**, add a table of contents s
 - Give each heading a stable, kebab-case `id` derived from its text.
 - Place the `nav.cm-toc` at the top of `#commentRoot`, after any intro paragraph.
 - Keep it inside `#commentRoot` as normal content. Anchor links still work because highlighted links can be opened through the hover comment bubble.
-- The runtime side menu appears on wide screens. It uses author `.cm-toc` links when present, otherwise `h2`/`h3` ids. It numbers entries, scroll-spies the active section, collapses to `Navigation >>`, expands with `<<`, and adds **Scroll to Top** / **Scroll to Bottom**.
+- The runtime side menu appears on wide screens. It uses author `.cm-toc` links when present, otherwise `h2`/`h3` ids. Its runtime heading is **Navigation** (the author-provided `.cm-toc-title` can still say **Contents**), it numbers entries, scroll-spies the active section, collapses to `Navigation >>`, expands with `<<`, and adds **Scroll to Top** / **Scroll to Bottom**.
 - If collapsible sections exist, the side menu also adds **Expand All** and **Collapse All**.
 - A runtime `cm-skip` scroll-progress bubble appears at bottom-right and shows the percent scrolled. It moves left when the comments panel is open.
 
@@ -57,7 +57,7 @@ For a before/after of code, prefer a [code review diff block](code-review-diffs.
 
 ## Layout recipes
 
-The sidebar is `position: fixed` with width 400px. When `body.sidebar-open` is set, the page should reserve room for it.
+The sidebar is `position: fixed` and resizable. The runtime stores the chosen width in localStorage, exposes it as `--cm-sidebar-w`, and clamps it to the viewport. When `body.sidebar-open` is set, the page should reserve room for the current width on wide screens and let the panel overlay on narrow screens.
 
 ### Recipe A: centered max-width layout (most pages)
 
@@ -71,14 +71,14 @@ body.sidebar-open .app { padding-right: 1.5rem; }
  max-width: none;
  margin: 0;
  padding-left: 2rem;
- padding-right: calc(400px + 2rem);
+ padding-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
  }
 }
 
 @media (min-width: 1900px) {
  body.sidebar-open .app {
- padding-left: calc((100vw - 400px - 1480px) / 2);
- padding-right: calc(400px + (100vw - 400px - 1480px) / 2);
+ padding-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1480px) / 2));
+ padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1480px) / 2)));
  }
 }
 ```
@@ -86,7 +86,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 ### Recipe B: full-bleed dashboard layout
 
 ```css
-body.sidebar-open main { padding-right: 420px; }
+body.sidebar-open main { padding-right: calc(var(--cm-sidebar-w, 400px) + 20px); }
 ```
 
 ### Default sidebar state
