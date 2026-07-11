@@ -7,14 +7,14 @@
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=f11d3d43a98f" />
+  <link rel="stylesheet" href="../assets/styles.css?v=1fcbd39763d7" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
   <nav class="navbar">
     <div class="wrap">
-      <a class="brand" href="../">
-        <img src="../assets/commentable-html.svg" alt="" />
+      <a class="brand" href="./">
+        <img src="../assets/commentable-html.svg" alt="Commentable HTML logo" />
         <span>Commentable HTML</span>
       </a>
       <div class="nav-links">
@@ -23,6 +23,7 @@
         <a href="tutorial/">Tutorial</a>
         <a href="#changelog" class="hide-sm">Changelog</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">GitHub</a>
+        <a href="../">Marketplace</a>
       </div>
     </div>
   </nav>
@@ -31,8 +32,9 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.6.0<!-- END:version --></span></span>
-        <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
+        <img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" />
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.6.1<!-- END:version --></span></span>
+        <h1><span class="accent">Comment</span> on any <span class="accent">HTML</span>,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#demo">Try the live demo</a>
@@ -151,14 +153,14 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           <button class="demo-tab active" type="button" role="tab" id="demo-tab-taxi" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="demo/report-taxi.html" data-file="report-taxi.html" data-label="NYC Taxi Report">NYC Taxi Report</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html" data-label="Community Garden Plan">Community Garden Plan</button>
         </div>
-        <div class="demo-frame" id="demo-panel" role="tabpanel" aria-labelledby="demo-tab-taxi" tabindex="0">
-          <div class="bar">
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-            <a class="demo-fs" id="demo-fullscreen" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer" title="Open this demo in a full browser tab">Full screen &#8599;</a>
-            <span class="title" id="demo-title">NYC Taxi Report</span>
-          </div>
-          <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
+      </div>
+      <div class="demo-frame full-bleed" id="demo-panel" role="tabpanel" aria-labelledby="demo-tab-taxi" tabindex="0">
+        <div class="bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <a class="demo-fs" id="demo-fullscreen" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer" title="Open this demo in a full browser tab">Full screen &#8599;</a>
+          <span class="title" id="demo-title">NYC Taxi Report</span>
         </div>
+        <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
       </div>
     </section>
 
@@ -198,12 +200,27 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.6.1] - 2026-07-11</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The Help <code>Getting started</code> topic now embeds the review-loop diagram (the agent-to-you-and-back loop) beneath the four steps, themed with the framework&#x27;s light/dark variables so it follows the active theme.</li>
+              <li>A <code>Website and live demo</code> link in the Help About block, pointing at the plugin&#x27;s GitHub Pages page.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Merged the <code>The review workflow</code> and <code>Getting started</code> help topics into a single, default-open <code>Getting started</code> topic, removing the overlap between them.</li>
+              <li>Reworded the <code>Self-contained and privacy</code> help topic: comments are stored in this browser&#x27;s <code>localStorage</code> (private, never uploaded, no account), and the review layer travels inside the file only in Portable mode - a Not portable file references small companion resources. It no longer implies the layer is always bundled into the file.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams (full Playwright suite green against mermaid 11). This rode in on a dev/test-only dependency bump (mermaid 11.16.0, chart.js 4.5.1, adm-zip 0.6.0); none of those dev dependencies ship in the plugin.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.5.1] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
@@ -211,8 +228,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Polished the review-loop diagram (<code>docs/images/review-loop.svg</code> and its site twin): the step labels use consistent casing (&quot;1. Generates HTML&quot;, &quot;2. Comment Inline&quot;), and the &quot;reload and repeat&quot; caption became a fourth curved arrow from the AI agent back to you, so the loop reads as a closed cycle.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 14 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.5.0] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
@@ -264,129 +279,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Strings keep a backslash-newline line continuation inside the string, unterminated block comments and strings still highlight (to end of input / end of line), Swift and Dart triple-quoted strings and TOML literal (single-quoted) strings are recognized, and a Windows Batch <code>rem</code> comment is matched on a word boundary (so <code>rem</code>, <code>rem&lt;TAB&gt;</code>, and a bare <code>rem</code> are comments, but <code>remark</code> is not).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.2.2] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Clarified the NonPortable asset-location wording in the skill reference: the default companion files are referenced by a relative path (the skill&#x27;s <code>dist/</code> folder by default), not &quot;beside the document&quot;; the document sits beside its companions only when they are copied there.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.2.1] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Documentation wording now describes the NonPortable default accurately. The skill reference and the plugin README no longer call a generated document &quot;single-file&quot; or &quot;Portable&quot; by default: the default NonPortable document loads its CSS/JS from companion files, while Export as Portable (or <code>--portable</code>) produces the one self-contained file.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.2.0] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Mobile responsiveness of generated documents. Wide tables now scroll horizontally inside their own box on narrow screens instead of forcing the whole page to overflow. The Kusto query caption stacks the cluster title and the &quot;Run in Azure Data Explorer&quot; link onto separate lines below 700px so they no longer cramp. The floating Copy/language pills reserve top headroom over every code block (KQL figures included) so they no longer overlap the first line of code. Figures use symmetric vertical margins with no side indent so embedded images and charts get the full content width.</li>
-              <li>On touch / coarse-pointer devices the browser&#x27;s native selection menu (Copy, Share, Look up) is left intact; the reader can copy selected text again, while the floating &quot;Add comment&quot; popup still handles commenting.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>docs/TUTORIAL.md</code> now references the running example with a skill-root-relative display path that links to the local file, so the reference reads cleanly without any <code>..</code> path traversal.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.1.3] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Documentation accuracy from the agency review pass: the generated-document header comment (and the two shipped example reports) now name the Export as Portable download <code>&lt;stem&gt;-portable.html</code>, matching the current UI (it previously said <code>&lt;stem&gt;-comments.html</code>); and <code>references/design-decisions.md</code> now states correctly that a <code>&lt;canvas&gt;</code> renders when either the Chart.js loader OR an inline <code>getContext</code> draw is present, so a hand-drawn non-Chart.js canvas is accepted and only a canvas with neither is flagged (matching <code>validate.py</code> E3).</li>
-            </ul>
-            <div class="group-label">Notes</div>
-            <ul>
-              <li>Documentation-only changes; no code or runtime behavior change.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.1.2] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>chart_block.py</code>: self-validation writes its temporary file to the system temp directory instead of the current working directory, so it works from a read-only directory (matching <code>new_document.py</code>).</li>
-              <li><code>kql_highlight.py</code>: added a <code>--</code> end-of-flags separator so a positional value that begins with <code>--</code> is taken literally instead of being rejected as an unknown flag.</li>
-            </ul>
-            <div class="group-label">Notes</div>
-            <ul>
-              <li>Follow-up robustness fixes from the agency review pass; no change to the runtime review behavior.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.1.1] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>new_document.py</code>: corrected docstrings that referenced a removed CLI export tool; <code>--assets-href &quot;/&quot;</code> now produces root-relative companion references instead of dropping the prefix; a cross-drive <code>--out</code> gives an actionable message instead of a raw <code>relpath</code> error; <code>--copy-assets</code> copies the companions before writing the HTML so a failed copy never leaves a broken file; the write path reports <code>OSError</code> cleanly; <code>--copy-assets</code> / <code>--assets-href</code> warn when combined with <code>--portable</code>; a custom <code>--template</code> defers the companion existence check (it previously always failed self-validation); and self-validation no longer writes its temp file under the current working directory, so it works from a read-only directory.</li>
-              <li><code>validate.py</code>: the NonPortable remote-URL and absolute-path checks always run (they are structural), and only the on-disk existence check is gated on <code>base_dir</code>, so an <code>--assets-href</code> remote/absolute path is caught at generation time. Added direct <code>base_dir</code> unit tests.</li>
-              <li><code>inline_images.py</code>: a missing or unreadable input file now reports a clean error and exits 1 instead of raising an uncaught <code>OSError</code>.</li>
-            </ul>
-            <div class="group-label">Notes</div>
-            <ul>
-              <li>Fixes surfaced by a 6-model rubber-duck review panel on the NonPortable-first change, plus a plugin-description wording tidy-up (drop &quot;single-file&quot; now that NonPortable is the default). No change to the runtime review behavior.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.1.0] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Resizable comments sidebar with a keyboard-focusable drag handle, persisted width, viewport clamps, and matching reserved page space.</li>
-              <li>Problem statement plus self-review, peer-review, and reviewer-side review-loop documentation for the generated review surface.</li>
-              <li>Documentation that explains when to use NonPortable for fast local iteration and when to Export as Portable for sharing or long-term storage.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Runtime left navigation side menu now labels itself as &quot;Navigation&quot; while leaving author-authored table-of-contents titles alone.</li>
-              <li>Sidebar header actions wrap into narrower rows instead of overflowing when the viewport or resized sidebar is narrow.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Chart.js canvases, including pie and doughnut charts, stay bounded inside <code>figure.chart</code> at narrow widths.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.0.2] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>New documents are now <strong>NonPortable by default</strong> (<code>tools/new_document.py</code>): the layer CSS/JS load from companion files, so authoring and every regeneration during a review loop is materially smaller (about 89% less boilerplate re-emitted). Pass <code>--portable</code> for a single self-contained file.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li><code>tools/new_document.py</code> gains <code>--portable</code>, <code>--nonportable</code> (the default), <code>--copy-assets</code>, and <code>--assets-href</code> to control how a NonPortable document references its companion files, plus <code>active_root_attrs</code> and an <code>allow_reserved_key</code> option for re-stamping an existing document.</li>
-              <li><code>validate.validate()</code> accepts an optional <code>base_dir</code> so NonPortable companion references can be resolved against the file&#x27;s final location, or the path checks skipped (structure only) when placement is deferred.</li>
-            </ul>
-            <div class="group-label">Notes</div>
-            <ul>
-              <li>To hand someone a single shareable file, either regenerate with <code>--portable</code> (for a document that has no in-browser comments yet) or use the in-page <strong>Export as Portable</strong> button. The button is the only path that captures comments the user typed in the browser: those live in <code>localStorage</code>, which no CLI (even a headless browser) can read, so there is deliberately no CLI export.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.0.1] - 2026-07-10</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Hardened the CI version-bump gate (<code>scripts/check_version_bump.py</code>): it now diffs from the merge base so a PR is judged only on its own changes, fails closed on an invalid or unfetched base ref, normalizes source paths correctly, and requires a version bump when a plugin&#x27;s source path changes.</li>
-              <li>Hardened <code>build.py</code> version stamping and the build <code>--check</code> drift guard.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Quality fixes surfaced by a multi-model (multi-duck) review of the 1.0.0 refactor, including a statically pinned Chart.js loader for a stable SRI hash and assorted tool and documentation polish. No change to the runtime review behavior.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.0.0] - 2026-07-10</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Offline, single-file commentable HTML review surface: reviewers select any paragraph, table cell, code block, KQL block, chart, image, or mermaid diagram and leave inline comments, then copy or export a bundle back to an agent, with no network dependency.</li>
-              <li>Portable mode (one self-contained file) and NonPortable mode (companion CSS/JS files).</li>
-              <li>Deterministic Python tooling (<code>new_document</code>, <code>inline_images</code>, <code>chart_block</code>, <code>upgrade</code>, <code>validate</code>, and more) plus a standard-library validator that enforces the structural invariants of a generated file.</li>
-              <li>Rich, commentable content: tables, Chart.js charts, mermaid diagrams, KQL blocks, code-review diffs, and inlined images.</li>
-              <li>Each generated file stamps the skill version that produced it in a <code>&lt;meta name=&quot;commentable-html-version&quot;&gt;</code> in the head and in the visible footer.</li>
-            </ul>
-            <div class="group-label">Notes</div>
-            <ul>
-              <li>The injected layer is version-agnostic: the region markers, the companion filenames, and the demo storage keys no longer embed a version. The single source of truth for the release version is <code>dev/VERSION</code>; <code>build.py</code> stamps it into the layer constant, <code>plugin.json</code>, the marketplace entry, and each document&#x27;s version <code>&lt;meta&gt;</code>, and <code>build.py --check</code> guards against drift.</li>
-            </ul>
-          </div>
+            <p class="changelog-more">10 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
@@ -396,11 +289,11 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
 
   <footer class="footer">
     <div class="wrap">
-      <span>MIT License &middot; &copy; <span id="year">2026</span> Uri Kanonov</span>
-      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md">Contribute</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml">Request a feature</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">plugin source</a></span>
+      <span>MIT License &middot; &copy; <span id="year">2026</span> <a href="https://www.linkedin.com/in/uri-kanonov-946761119">Uri Kanonov</a></span>
+      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md">Contribute</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml">Request a feature</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new/choose">File an issue</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">Plugin source</a></span>
     </div>
   </footer>
 
-  <script src="../assets/site.js?v=3fc8853e981a"></script>
+  <script src="../assets/site.js?v=db7952db51c4"></script>
 </body>
 </html>

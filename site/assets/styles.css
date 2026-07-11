@@ -110,6 +110,7 @@ code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
   margin-bottom: 18px;
 }
 .hero .eyebrow.spaced { margin-top: 14px; }
+.hero-logo { width: 56px; height: 56px; display: block; margin-bottom: 6px; }
 .hero h1 {
   font-size: clamp(2.1rem, 5vw, 3.2rem);
   line-height: 1.1;
@@ -301,13 +302,16 @@ main > section:nth-of-type(even) {
 .demo-frame .bar .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--cp-border-strong); }
 .demo-frame .bar .demo-fs {
   margin-left: 8px; font-size: 0.78rem; font-weight: 600; line-height: 1;
-  color: var(--cp-text-muted); text-decoration: none;
-  border: 1px solid var(--cp-border); border-radius: 999px; padding: 4px 10px;
-  background: var(--cp-surface); transition: color 0.15s ease, border-color 0.15s ease;
+  color: var(--cp-accent); text-decoration: none;
+  border: 1px solid var(--cp-accent); border-radius: 999px; padding: 4px 10px;
+  background: var(--cp-accent-soft); transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-.demo-frame .bar .demo-fs:hover { color: var(--cp-accent); border-color: var(--cp-accent); }
+.demo-frame .bar .demo-fs:hover { color: var(--cp-accent-fg); border-color: var(--cp-accent); background: var(--cp-accent); }
 .demo-frame .bar .title { margin-left: auto; font-size: 0.82rem; color: var(--cp-text-muted); font-family: var(--cp-mono); }
 .demo-frame iframe { width: 100%; height: 420px; border: 0; display: block; background: var(--cp-bg); }
+/* The demo frame breaks out of the content column to span the full viewport width; the
+   section title, description, and tabs stay in the column above it. */
+.demo-frame.full-bleed { border-left: 0; border-right: 0; border-radius: 0; }
 .demo-actions { margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Changelog */
@@ -396,6 +400,34 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .tutorial ul, .tutorial ol { margin: 0 0 14px 22px; }
 .tutorial li { margin-bottom: 6px; color: var(--cp-text); }
 .tutorial img { display: block; max-width: 100%; height: auto; margin: 16px 0; border: 1px solid var(--cp-border); border-radius: 10px; box-shadow: var(--cp-shadow); }
+/* Content images are clickable to open a full-size lightbox (wired up in site.js). */
+.tutorial img { cursor: zoom-in; }
+
+/* Lightbox: a full-viewport overlay that shows a content image at full size. */
+.lightbox {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+.lightbox[hidden] { display: none; }
+.lightbox img {
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
+  border-radius: 8px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+.lightbox-close {
+  position: absolute; top: 16px; right: 20px;
+  width: 40px; height: 40px; line-height: 1;
+  font-size: 1.6rem; color: #fff;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 999px;
+  cursor: pointer;
+}
+.lightbox-close:hover { background: rgba(0, 0, 0, 0.7); }
 .tutorial code { background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: var(--cp-mono); font-size: 0.9em; }
 .tutorial pre { background: #1f1720; color: #fbeef2; border: 1px solid var(--cp-accent-hover); border-radius: 10px; padding: 14px 16px; overflow-x: auto; font-family: var(--cp-mono); font-size: 0.88rem; margin-bottom: 14px; }
 .tutorial pre code { background: transparent; border: 0; padding: 0; color: inherit; }

@@ -133,6 +133,66 @@
     });
   }
 
+  function initLightbox() {
+    // Content images (the tutorial screenshots) open at full size in an overlay.
+    // Decorative chrome images (nav brand/hero logo) are excluded.
+    var images = document.querySelectorAll(".tutorial img");
+    if (!images.length) {
+      return;
+    }
+    var overlay = document.createElement("div");
+    overlay.className = "lightbox";
+    overlay.setAttribute("hidden", "");
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Image preview");
+    var full = document.createElement("img");
+    full.setAttribute("alt", "Enlarged image");
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "lightbox-close";
+    close.setAttribute("aria-label", "Close image preview");
+    close.innerHTML = "&times;";
+    overlay.appendChild(full);
+    overlay.appendChild(close);
+    document.body.appendChild(overlay);
+
+    var lastFocus = null;
+
+    function open(img) {
+      full.setAttribute("src", img.currentSrc || img.src);
+      full.setAttribute("alt", img.getAttribute("alt") || "");
+      lastFocus = document.activeElement;
+      overlay.removeAttribute("hidden");
+      close.focus();
+    }
+
+    function hide() {
+      overlay.setAttribute("hidden", "");
+      full.setAttribute("src", "");
+      if (lastFocus && typeof lastFocus.focus === "function") {
+        lastFocus.focus();
+      }
+    }
+
+    images.forEach(function (img) {
+      img.addEventListener("click", function () {
+        open(img);
+      });
+    });
+    overlay.addEventListener("click", function (e) {
+      // Click the backdrop or the close button to dismiss; clicks on the image itself stay open.
+      if (e.target !== full) {
+        hide();
+      }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !overlay.hasAttribute("hidden")) {
+        hide();
+      }
+    });
+  }
+
   function ready(fn) {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", fn);
@@ -145,5 +205,6 @@
     initCopyButtons();
     initYear();
     initDemoSwitch();
+    initLightbox();
   });
 })();

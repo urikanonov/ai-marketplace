@@ -60,6 +60,27 @@ test.describe("Help is grouped, collapsible, and searchable", () => {
     await page.locator(".cm-help-search-input").fill("diff");
     await expect(about).toBeVisible(); // always shown, never collapsed or filtered out
   });
+
+  test("the About block links to the project website and live demo (CMH-HELP-SITE-01)", async ({ page }) => {
+    await openHelp(page);
+    const site = page.locator(".cm-help-about a", { hasText: "Website and live demo" });
+    await expect(site).toHaveCount(1);
+    await expect(site).toHaveAttribute("href", /urikanonov\.github\.io\/ai-marketplace\/commentable-html\//);
+    await expect(site).toHaveAttribute("rel", /noopener/);
+  });
+
+  test("the Self-contained and privacy topic explains localStorage privacy and portable bundling (CMH-PRIVACY-01)", async ({ page }) => {
+    await openHelp(page);
+    const topic = page.locator(".cm-help-topic", { hasText: "Self-contained and privacy" });
+    await expect(topic).toHaveCount(1);
+    await topic.locator("summary").click(); // expand the collapsed topic
+    const body = topic.locator(".cm-help-topic-body");
+    await expect(body).toContainText("localStorage");
+    await expect(body).toContainText(/private/i);
+    // The review layer is described as embedded only in Portable mode, not always bundled.
+    await expect(body).toContainText(/Portable/);
+    await expect(body).not.toContainText("bundled into this file");
+  });
 });
 
 test.describe("custom tooltips (no jQuery/CDN)", () => {
