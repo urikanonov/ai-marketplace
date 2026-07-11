@@ -7,9 +7,9 @@ description: Turn any standalone HTML into a single-file commentable review surf
 
 ## Problem this skill solves
 
-AI increasingly returns rich HTML artifacts - plans, reports, reviews, dashboards, and design docs - because HTML is a spatial, richer medium than Markdown for diffs, diagrams, charts, collapsible sections, and tabbed structure. The pain starts when the artifact needs revision: the reviewer alt-tabs between the HTML and the AI chat and describes changes in prose.
+Think of commentable-html as a code review for your plan. AI increasingly returns rich HTML artifacts - plans, reports, reviews, dashboards, and design docs - because HTML is a spatial, richer medium than Markdown for diffs, diagrams, charts, collapsible sections, and tabbed structure. The pain starts when the artifact needs revision: the reviewer alt-tabs between the HTML and the AI chat and describes changes in prose.
 
-commentable-html makes the artifact a self-contained review surface. Reviewers comment in place, then hand a structured bundle back to the agent, returning to the chat only at the end. You stay in the loop; the loop gets tighter.
+commentable-html brings the familiar pull-request code-review experience to plans, reports, and design docs: inline comments on exactly the line, paragraph, chart, or diagram you mean, then a structured bundle back to the agent. Revising an AI-generated artifact feels like reviewing a PR instead of narrating changes in chat. You stay in the loop; the loop gets tighter.
 
 ## Review loops
 
