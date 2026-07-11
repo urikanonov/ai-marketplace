@@ -52,6 +52,8 @@ python tools\build.py --assets-dir assets --out-dir ..\pkg\skills\commentable-ht
 
 To bump the version, edit `VERSION` then run `build.py`; it restamps every version spot (the layer `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each document's `<meta name="commentable-html-version">`). Companion filenames are version-agnostic, so the bump does not rename any dist files. `build.py --check` fails if any stamped spot drifts from `VERSION`.
 
+To bump mermaid (usually a Dependabot PR against `package.json`): the mermaid CDN version is single-sourced from the `mermaid` dependency in `package.json`, so after the version changes just run `npm install` (updates `node_modules` + `package-lock.json`) then `python tools/build.py` and `node tests/fixtures/generate.mjs`. The build stamps the new `mermaid@<version>` into `template.shell.html` -> `dist/PORTABLE.html`/`NONPORTABLE.html` and into the `examples/*.html` reports; the fixtures derive from `dist/`, so they follow automatically. `build.py --check` (the `dist-in-sync` gate) fails clearly if any shipped mermaid pin drifts from `package.json`, and `tests/helpers.js` `routeMermaidLocal` only needs the served template's major to match the vendored `node_modules/mermaid` major. Do not hand-edit the `mermaid@<version>` string in any generated file.
+
 ## Python suite
 
 The Python tests use standard-library `unittest`. They import the runtime tools from `../pkg/skills/commentable-html/tools` and validate the generated artifacts in `../pkg`, so a pass covers what ships.

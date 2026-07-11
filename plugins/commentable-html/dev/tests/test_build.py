@@ -90,7 +90,7 @@ class BuildTests(unittest.TestCase):
     def test_inline_template_round_trips_from_shell_and_assets(self):
         css, js, shell, version = build.load_sources()
         js = build._stamp_const(js, version, "commentable-html.js")
-        rebuilt = build.build_inline(css, js, shell, version)
+        rebuilt = build.build_inline(css, js, shell, version, build.read_mermaid_version())
         self.assertEqual(rebuilt, _read(os.path.join(ROOT, "dist", "PORTABLE.html")))
 
     # -- versioning / manifest --------------------------------------------- #
@@ -109,6 +109,41 @@ class BuildTests(unittest.TestCase):
         for name in ("PORTABLE.html", "NONPORTABLE.html"):
             html = _read(os.path.join(DIST, name))
             self.assertIn('<meta name="commentable-html-version" content="%s"' % v, html)
+
+    def test_mermaid_version_is_single_sourced(self):
+        mv = build.read_mermaid_version()
+        self.assertRegex(mv, r"^\d+\.\d+\.\d+$")
+        # read_mermaid_version pins the package.json mermaid dependency to its exact base.
+        pkg = json.loads(_read(build.PACKAGE_JSON))
+        spec = pkg["devDependencies"]["mermaid"]
+        self.assertEqual(spec.lstrip("^~>=< v").strip(), mv)
+        # Every shipped mermaid CDN reference (dist + examples) uses that single version.
+        ref_re = re.compile(r"cdn\.jsdelivr\.net/npm/mermaid@(\d+\.\d+\.\d+)/")
+        shipped = [os.path.join(DIST, "PORTABLE.html"), os.path.join(DIST, "NONPORTABLE.html")]
+        ex_dir = os.path.join(ROOT, "examples")
+        if os.path.isdir(ex_dir):
+            shipped += [os.path.join(ex_dir, n) for n in os.listdir(ex_dir) if n.endswith(".html")]
+        for path in shipped:
+            refs = ref_re.findall(_read(path))
+            self.assertTrue(refs, "%s has no mermaid CDN reference" % os.path.relpath(path, ROOT))
+            for found in refs:
+                self.assertEqual(found, mv, "%s pins mermaid@%s but package.json single-sources %s; run build.py"
+                                 % (os.path.relpath(path, ROOT), found, mv))
+
+    def test_example_stamps_repairs_mermaid_drift(self):
+        mv = build.read_mermaid_version()
+        drift = ('x <script>import("https://cdn.jsdelivr.net/npm/mermaid@9.9.9/'
+                 'dist/mermaid.esm.min.mjs")</script> y')
+        with tempfile.TemporaryDirectory() as d:
+            ex = os.path.join(d, "examples")
+            os.makedirs(ex)
+            p = os.path.join(ex, "report-drift.html")
+            with open(p, "w", encoding="utf-8") as fh:
+                fh.write(drift)
+            stamps = build.example_stamps(d, mv)
+            self.assertIn(p, stamps)
+            self.assertIn("mermaid@%s/" % mv, stamps[p])
+            self.assertNotIn("mermaid@9.9.9/", stamps[p])
 
     def test_manifest_hashes_match_dist_files(self):
         manifest = json.loads(_read(os.path.join(DIST, "manifest.json")))
@@ -197,7 +232,7 @@ class BuildTests(unittest.TestCase):
 
     def test_build_inline_requires_both_placeholders(self):
         with self.assertRaises(SystemExit) as cm:
-            build.build_inline("css", "js", "<style>{{CMH_CSS}}</style>", "1.0.0")
+            build.build_inline("css", "js", "<style>{{CMH_CSS}}</style>", "1.0.0", "11.16.0")
         self.assertIn("missing placeholder", str(cm.exception))
 
     def test_build_assets_js_rejects_raw_script_close(self):
@@ -220,7 +255,7 @@ class BuildTests(unittest.TestCase):
         for bad_shell, message in cases:
             with self.subTest(message=message):
                 with self.assertRaises(SystemExit) as cm:
-                    build.build_nonportable(bad_shell, version)
+                    build.build_nonportable(bad_shell, version, "11.16.0")
                 self.assertIn(message, str(cm.exception))
 
     def test_main_check_reports_missing_outdated_and_stale(self):
