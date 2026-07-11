@@ -8,11 +8,17 @@ Single source of truth
                                   it into the layer const, plugin.json, the
                                   marketplace entry, and each document's
                                   <meta name="commentable-html-version">.
+  package.json (mermaid dep)    - the ONE place the mermaid CDN version is set;
+                                  build reads it and stamps the mermaid@<ver> import
+                                  into the shipped templates and the example reports,
+                                  so they never drift from the version the tests
+                                  vendor. Dependabot bumps it; --check flags drift.
   assets/commentable-html.css   - the layer CSS (region body)
   assets/commentable-html.js    - the runtime JS (region body); its CMH_VERSION
                                   constant is stamped from VERSION by build.
   assets/template.shell.html    - the page shell with {{CMH_CSS}} / {{CMH_JS}} /
-                                  {{CMH_VERSION}} placeholders and the demo content.
+                                  {{CMH_VERSION}} / {{MERMAID_VERSION}} placeholders
+                                  and the demo content.
 
 Generated (never hand-edit; `--check` fails if they drift)
 ----------------------------------------------------------
@@ -84,7 +90,14 @@ def sha256(text):
 # entry, and the per-document <meta>. --check verifies every stamped spot.
 # --------------------------------------------------------------------------- #
 VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+PACKAGE_JSON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "package.json")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+# The mermaid CDN import in the shipped templates/examples, so build can stamp it
+# from the single source (package.json) and --check can catch drift. The version
+# segment is matched liberally (any non-slash token, not just an exact X.Y.Z) so a
+# drifted major-only or malformed pin is still detected and repaired; it is scoped
+# to the .../mermaid@<ver>/dist/ import path so it never rewrites unrelated text.
+_MERMAID_CDN_RE = re.compile(r"(cdn\.jsdelivr\.net/npm/mermaid@)[^/]+(/dist/)")
 _CMH_CONST_RE = re.compile(r'(?m)^(\s*const\s+CMH_VERSION\s*=\s*")[0-9]+\.[0-9]+\.[0-9]+("\s*;)')
 _JSON_VERSION_RE = re.compile(r'("version"\s*:\s*")([0-9]+\.[0-9]+\.[0-9]+)(")')
 _MARKETPLACE_VERSION_RE = re.compile(
@@ -98,6 +111,52 @@ def read_version(version_file=None):
     if not _SEMVER_RE.match(v):
         raise SystemExit("build: VERSION must be a semver like 1.2.3, got %r" % v)
     return v
+
+
+def read_mermaid_version(package_json=None):
+    """The mermaid CDN version is single-sourced from the dev package.json's
+    mermaid dependency. build stamps it into the shipped templates and examples so
+    they never drift from the version the tests vendor (dev/tests/helpers.js
+    routeMermaidLocal fails when the served template's major differs from the
+    node_modules major). The declared range (e.g. ^11.16.0) is pinned to its exact
+    base version (11.16.0) in the stamped output."""
+    package_json = PACKAGE_JSON if package_json is None else package_json
+    with open(package_json, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    spec = ((data.get("devDependencies") or {}).get("mermaid")
+            or (data.get("dependencies") or {}).get("mermaid"))
+    if not spec:
+        raise SystemExit("build: no mermaid dependency found in %s" % package_json)
+    # Only an exact pin or a caret/tilde range maps unambiguously to a single CDN
+    # version. Reject comparator ranges (>=, <, <=, >), unions, wildcards (11.x, *),
+    # tags (latest), and prereleases - lstrip-style char stripping would silently
+    # mis-pin those (e.g. "<12.0.0" -> "12.0.0"), so fail loudly instead.
+    m = re.match(r"^[\^~]?(\d+\.\d+\.\d+)$", spec.strip())
+    if not m:
+        raise SystemExit("build: the mermaid dependency must be an exact version or a ^/~ pin "
+                         "like 11.16.0 or ^11.16.0 (comparator ranges/tags are unsupported), "
+                         "got %r in %s" % (spec, package_json))
+    return m.group(1)
+
+
+def example_stamps(out_dir, mermaid_version):
+    """Return {path: stamped_text} for the hand-maintained example reports, with only
+    their mermaid CDN version rewritten to the single source (package.json). Nothing
+    else in the examples is touched, so they stay hand-authored while their mermaid
+    pin is kept in lock-step with the tests' vendored mermaid. --check flags drift."""
+    stamps = {}
+    ex_dir = os.path.join(out_dir, "examples")
+    if not os.path.isdir(ex_dir):
+        return stamps
+    for name in sorted(os.listdir(ex_dir)):
+        if not name.endswith(".html"):
+            continue
+        path = os.path.join(ex_dir, name)
+        text = read(path)
+        new, n = _MERMAID_CDN_RE.subn(lambda m: m.group(1) + mermaid_version + m.group(2), text)
+        if n:
+            stamps[path] = new
+    return stamps
 
 
 def _stamp_const(text, version, label):
@@ -209,13 +268,14 @@ def _names():
 # --------------------------------------------------------------------------- #
 # Output builders
 # --------------------------------------------------------------------------- #
-def build_inline(css, js, shell, version):
-    for ph in ("{{CMH_CSS}}", "{{CMH_JS}}", "{{CMH_VERSION}}"):
+def build_inline(css, js, shell, version, mermaid_version):
+    for ph in ("{{CMH_CSS}}", "{{CMH_JS}}", "{{CMH_VERSION}}", "{{MERMAID_VERSION}}"):
         if ph not in shell:
             raise SystemExit("build: shell is missing placeholder " + ph)
     return (shell.replace("{{CMH_CSS}}", css)
                  .replace("{{CMH_JS}}", js)
-                 .replace("{{CMH_VERSION}}", version))
+                 .replace("{{CMH_VERSION}}", version)
+                 .replace("{{MERMAID_VERSION}}", mermaid_version))
 
 
 def build_assets_js(css, js, version):
@@ -256,7 +316,7 @@ _BOOTSTRAP = (
 )
 
 
-def build_nonportable(shell, version):
+def build_nonportable(shell, version, mermaid_version):
     css_name, js_name, assets_name = _names()
     t = shell
 
@@ -318,7 +378,8 @@ def build_nonportable(shell, version):
     t = re.sub(r"\n{3,}", "\n\n", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     t = t.replace("{{CMH_VERSION}}", version)
-    if "{{CMH_" in t:
+    t = t.replace("{{MERMAID_VERSION}}", mermaid_version)
+    if "{{CMH_" in t or "{{MERMAID_" in t:
         raise SystemExit("build: an unresolved placeholder remains in NONPORTABLE.html")
     return t
 
@@ -328,6 +389,7 @@ def build_all(assets_dir=None, out_dir=None):
     out_dir = HERE if out_dir is None else out_dir
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
+    mermaid_version = read_mermaid_version()
     js = _stamp_const(js, version, "commentable-html.js")
     css_name, js_name, assets_name = _names()
     assets_js = build_assets_js(css, js, version)
@@ -341,12 +403,12 @@ def build_all(assets_dir=None, out_dir=None):
         },
     }
     return {
-        os.path.join(dist_dir, "PORTABLE.html"): build_inline(css, js, shell, version),
+        os.path.join(dist_dir, "PORTABLE.html"): build_inline(css, js, shell, version, mermaid_version),
         os.path.join(dist_dir, css_name): css_file,
         os.path.join(dist_dir, js_name): js_file,
         os.path.join(dist_dir, assets_name): assets_js,
         os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2) + "\n",
-        os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version),
+        os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version),
     }, version
 
 
@@ -382,6 +444,7 @@ def main(argv):
     dist_dir = os.path.join(out_dir, "dist")
     outputs, version = build_all(assets_dir, out_dir)
     stamps = source_stamps(version, assets_dir, out_dir)
+    stamps.update(example_stamps(out_dir, read_mermaid_version()))
     stale = _unexpected_dist_files(outputs.keys(), dist_dir)
     legacy = [p for p in _legacy_generated_files(out_dir) if os.path.exists(p)]
     if ns.check:
