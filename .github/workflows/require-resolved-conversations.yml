@@ -6,9 +6,10 @@ name: Require Resolved Conversations
 # author and a body snippet of the first comment, and the direct URL, so
 # contributors know exactly which conversations to resolve.
 #
-# Triggers on every event that can change the resolved/unresolved state:
+# Triggers on the pull-request events that can change the resolved/unresolved state.
+# GitHub Actions has no pull_request_review_thread trigger, so a bare thread
+# resolve/unresolve is re-evaluated on the next review or push:
 # - pull_request_review: a review is submitted, edited, or dismissed
-# - pull_request_review_thread: a thread is resolved or unresolved
 # - pull_request_review_comment: a standalone inline comment is created/edited/deleted
 #   (this can open a new unresolved thread without a review submission)
 # - pull_request opened/reopened/synchronize/ready_for_review: fresh evaluation
@@ -21,7 +22,6 @@ name: Require Resolved Conversations
 
 on:
   pull_request_review:
-  pull_request_review_thread:
   pull_request_review_comment:
     types: [created, edited, deleted]
   pull_request:

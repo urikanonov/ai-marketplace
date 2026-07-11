@@ -240,6 +240,17 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-help-topic[open] > summary::before { transform: rotate(90deg); }
 .cm-help-topic > summary:hover { color: var(--cp-accent); }
 .cm-help-topic-body { padding: 0 0.2rem 0.7rem 1.3rem; }
+/* Review-loop diagram in the "Getting started" help topic. Themed with the framework's
+   --cp-* variables so it follows the light/dark theme like the rest of the UI. */
+.cm-loop-figure { margin: 0.7rem 0 0.3rem; }
+.cm-loop-figure svg { width: 100%; height: auto; max-width: 560px; display: block; }
+.cm-loop-figure figcaption { margin-top: 0.35rem; font-size: 0.82rem; color: var(--cp-text-muted); }
+.cm-loop-bg { fill: var(--cp-surface-soft); stroke: var(--cp-border); }
+.cm-loop-node { fill: var(--cp-surface); stroke: var(--cp-accent); stroke-width: 1.5; }
+.cm-loop-title { fill: var(--cp-accent); }
+.cm-loop-sub { fill: var(--cp-text-muted); }
+.cm-loop-arrow { stroke: var(--cp-accent); stroke-width: 1.8; fill: none; }
+.cm-loop-head { fill: var(--cp-accent); }
 .cm-help-noresults { color: var(--cp-text-soft); font-style: italic; padding: 0.9rem 0.2rem; }
 /* About is a static, always-shown block (not a collapsible topic). */
 .cm-help-about { border-top: 1px solid var(--cp-border); padding: 0.2rem 0.2rem 0.4rem; }

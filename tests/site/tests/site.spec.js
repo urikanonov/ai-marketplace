@@ -248,6 +248,115 @@ test("plugin page links to the tutorial", async ({ page }) => {
   await expect(page.locator('a[href="tutorial/"]').first()).toBeVisible();
 });
 
+test("every image on every page has non-empty alt text", async ({ page }) => {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const missing = await page.evaluate(() =>
+      Array.prototype.filter
+        .call(document.querySelectorAll("img"), (img) => !(img.getAttribute("alt") || "").trim())
+        .map((img) => img.getAttribute("src"))
+    );
+    expect(missing, "images without alt text on " + p + ": " + missing.join(", ")).toEqual([]);
+  }
+});
+
+test("commentable-html nav keeps the user on the page and offers a Marketplace link", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  // The top-left brand icon stays on the commentable-html page (does not jump to the hub).
+  await expect(page.locator(".brand")).toHaveAttribute("href", "./");
+  // A Marketplace link sits to the right of GitHub and goes back to the hub.
+  const market = page.locator('.nav-links a', { hasText: "Marketplace" });
+  await expect(market).toHaveAttribute("href", "../");
+  const links = page.locator(".nav-links a");
+  const count = await links.count();
+  const texts = [];
+  for (let linkIndex = 0; linkIndex < count; linkIndex++) texts.push((await links.nth(linkIndex).textContent()).trim());
+  expect(texts.indexOf("Marketplace")).toBe(texts.indexOf("GitHub") + 1);
+});
+
+test("commentable-html hero shows the plugin logo", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const logo = page.locator(".hero-logo");
+  await expect(logo).toHaveCount(1);
+  await expect(logo).toHaveAttribute("alt", /commentable html/i);
+});
+
+test("the full-screen button has a light-red (accent-tinted) background", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const bg = await page.locator("#demo-fullscreen").evaluate(
+    (el) => getComputedStyle(el).backgroundColor
+  );
+  const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  expect(m, "unexpected background color: " + bg).not.toBeNull();
+  const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  // A light red tint: red channel clearly dominant and the fill is light.
+  expect(r).toBeGreaterThan(g);
+  expect(r).toBeGreaterThan(b);
+  expect(r).toBeGreaterThan(220);
+});
+
+test("clicking a tutorial image opens a full-size lightbox that Escape closes", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const overlay = page.locator(".lightbox");
+  await expect(overlay).toBeHidden();
+  const firstImg = page.locator(".tutorial img").first();
+  const src = await firstImg.getAttribute("src");
+  await firstImg.click();
+  await expect(overlay).toBeVisible();
+  expect(await overlay.locator("img").getAttribute("src")).toContain(src);
+  await page.keyboard.press("Escape");
+  await expect(overlay).toBeHidden();
+});
+
+test("tutorial brand keeps the user in the commentable-html section", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  // The brand icon returns to the commentable-html plugin home, not the hub root.
+  await expect(page.locator(".brand")).toHaveAttribute("href", "../");
+});
+
+test("tutorial example links open the live demo, not a GitHub blob", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const exampleLinks = page.locator('.tutorial a[href*="report-community-garden.html"]');
+  const n = await exampleLinks.count();
+  expect(n).toBeGreaterThan(0);
+  for (let linkIndex = 0; linkIndex < n; linkIndex++) {
+    const href = await exampleLinks.nth(linkIndex).getAttribute("href");
+    expect(href).toMatch(/(^|\/)demo\/report-community-garden\.html$/);
+    expect(href).not.toContain("github.com");
+  }
+});
+
+test("the demo frame spans the full viewport width while its heading stays in the content column", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  const frame = await page.locator("#demo-panel").boundingBox();
+  // The demo frame breaks out of the content column to span the full layout width.
+  expect(frame.x).toBeLessThanOrEqual(2);
+  expect(frame.width).toBeGreaterThanOrEqual(clientWidth - 2);
+  // It is clearly wider than the constrained content column (proving the breakout).
+  const wrap = await page.locator("#features .wrap").boundingBox();
+  expect(frame.width).toBeGreaterThan(wrap.width + 20);
+  // The heading, description, and tabs stay in the content column, aligned with every other
+  // section heading (only the frame is full-bleed, not the whole section).
+  const demoTitle = await page.locator("#demo .section-title").boundingBox();
+  expect(demoTitle.x).toBeGreaterThan(frame.x + 8);
+  for (const id of ["#install", "#features", "#loop", "#modes"]) {
+    const other = await page.locator(id + " .section-title").boundingBox();
+    expect(Math.abs(other.x - demoTitle.x)).toBeLessThanOrEqual(2);
+  }
+});
+
+test("the plugin page footer links to contribute, feature request, issues, source, and the author's LinkedIn", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const footer = page.locator("footer.footer");
+  await expect(footer.locator("a", { hasText: "Contribute" })).toHaveAttribute("href", /\/CONTRIBUTING\.md$/);
+  await expect(footer.locator("a", { hasText: "Request a feature" })).toHaveAttribute("href", /feature-request\.yml$/);
+  await expect(footer.locator("a", { hasText: "File an issue" })).toHaveAttribute("href", /\/issues\/new\/choose$/);
+  await expect(footer.locator("a", { hasText: "Plugin source" })).toHaveAttribute("href", /\/plugins\/commentable-html$/);
+  await expect(footer.locator("a", { hasText: "Uri Kanonov" })).toHaveAttribute("href", /linkedin\.com\/in\/uri-kanonov/);
+});
+
 test("no internal link or asset uses a root-relative path (would break the project sub-path)", async ({ page }) => {
   for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
