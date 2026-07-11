@@ -286,17 +286,19 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   shipped-source change requires a version bump), `dist-in-sync` (the commentable-html layer's
   committed `dist/` matches its `dev/` source), `actionlint` (every workflow file lints clean),
   `site` (the `pages` workflow regenerates the site and its Playwright suite passes; it runs on
-  every PR), `plugin-tests` (the plugin Playwright gate), and `require-owner-approval` (an external
-  PR carries the maintainer's approving review). Every check that can catch a break is required, so
-  nothing merges that would break the build or the site.
+  every PR), `plugin-tests` (the plugin Playwright gate), `require-owner-approval` (an external
+  PR carries the maintainer's approving review), and `All conversations resolved` (every review
+  thread must be resolved - the job log lists open threads by file, line, author, and body snippet).
+  Every check that can catch a break is required, so nothing merges that would break the build or
+  the site.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 - Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature
   must also update the owning spec and a covering test. This applies to site additions too - a change
   to the site pages, its assets, or its generator (`site/**`, `scripts/build_site_data.py`) must
-  update `tests/site/SPEC.md` and its Playwright suite / generator unit tests. The required `build`
-  check runs the site suite and `build_site_data.py --check`, and `summary` runs the plugin suites,
-  so a new behavior that lacks a passing spec-named test does not merge.
+  update `tests/site/SPEC.md` and its Playwright suite / generator unit tests. The required `site`
+  check runs the site suite and `build_site_data.py --check`, and `plugin-tests` runs the plugin
+  suites, so a new behavior that lacks a passing spec-named test does not merge.
 
 ### Why auto-running CI on outside PRs is safe here (do not break this invariant)
 

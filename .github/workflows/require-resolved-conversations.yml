@@ -1,0 +1,125 @@
+name: Require Resolved Conversations
+
+# Fails the "All conversations resolved" check when a PR has unresolved review
+# threads, making the blocking reason visible in the Checks tab (not only in the
+# merge box). For each open thread it logs the file path, line number, the
+# author and a body snippet of the first comment, and the direct URL, so
+# contributors know exactly which conversations to resolve.
+#
+# Triggers on every event that can change the resolved/unresolved state:
+# - pull_request_review / pull_request_review_thread: a resolution or new comment
+# - pull_request opened/reopened/synchronize/ready_for_review: fresh evaluation
+#
+# Uses only the default GITHUB_TOKEN and no third-party actions beyond
+# actions/github-script. Make the Actions check-run "All conversations resolved"
+# a required status check on main to block merges.
+
+on:
+  pull_request_review:
+  pull_request_review_thread:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+concurrency:
+  group: require-resolved-conversations-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unresolved-conversations:
+    name: All conversations resolved
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check for unresolved review threads
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info("No pull_request context (workflow_dispatch or similar); skipping.");
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const name  = context.repo.repo;
+            const number = pr.number;
+
+            // Paginate through all review threads, collecting detail on each
+            // unresolved one so the failure log is actionable.
+            const BODY_LIMIT = 120;
+            let cursor = null;
+            let total = 0;
+            const open = [];
+
+            do {
+              const result = await github.graphql(`
+                query($owner: String!, $name: String!, $number: Int!, $after: String) {
+                  repository(owner: $owner, name: $name) {
+                    pullRequest(number: $number) {
+                      reviewThreads(first: 100, after: $after) {
+                        nodes {
+                          isResolved
+                          path
+                          line
+                          comments(first: 1) {
+                            nodes {
+                              author { login }
+                              body
+                              url
+                            }
+                          }
+                        }
+                        pageInfo { hasNextPage endCursor }
+                      }
+                    }
+                  }
+                }
+              `, { owner, name, number, after: cursor });
+
+              const threads = result.repository.pullRequest.reviewThreads;
+              for (const t of threads.nodes) {
+                total++;
+                if (!t.isResolved) {
+                  const c = t.comments.nodes[0] || {};
+                  const body = (c.body || "").replace(/\s+/g, " ").trim();
+                  open.push({
+                    path: t.path || "(unknown)",
+                    line: t.line  || "?",
+                    author: c.author ? c.author.login : "unknown",
+                    snippet: body.length > BODY_LIMIT
+                      ? body.slice(0, BODY_LIMIT) + "..."
+                      : body,
+                    url: c.url || "",
+                  });
+                }
+              }
+
+              cursor = threads.pageInfo.hasNextPage ? threads.pageInfo.endCursor : null;
+            } while (cursor);
+
+            core.info(`Review threads: ${total} total, ${open.length} unresolved.`);
+
+            if (open.length === 0) {
+              core.info("All review conversations are resolved. Good to merge.");
+              return;
+            }
+
+            // Log each open thread so contributors can navigate directly to them.
+            core.info(`\nUnresolved conversations (${open.length}):`);
+            for (let i = 0; i < open.length; i++) {
+              const t = open[i];
+              core.info(
+                `  ${i + 1}. ${t.path}:${t.line} - @${t.author}: "${t.snippet}"` +
+                (t.url ? `\n     ${t.url}` : "")
+              );
+            }
+
+            core.setFailed(
+              `Blocked: ${open.length} unresolved review conversation` +
+              (open.length === 1 ? "" : "s") +
+              ". See the job log for details on which threads are open."
+            );
