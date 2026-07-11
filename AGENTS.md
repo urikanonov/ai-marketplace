@@ -76,7 +76,7 @@ Prefer a plugin-dir source; it is the most forward-compatible.
 
 `.github/workflows/plugin-tests.yml` discovers every plugin with a Node/Playwright suite at
 `plugins/<plugin>/dev/package.json` and runs it in a matrix (one job per plugin): Node 22, `npm ci --ignore-scripts`,
-`npx playwright install --with-deps chromium`, then `npm test`. The `summary` job fails if no plugin
+`npx playwright install --with-deps chromium`, then `npm test`. The `plugin-tests` job fails if no plugin
 test suite is discovered, so an accidentally removed suite cannot pass the gate silently.
 
 To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/commentable-html/dev/` for a
@@ -177,7 +177,7 @@ the required `validate` job, and `check_version_bump.py` (a change to a plugin's
 requires a version bump) runs in the required `version-bump` job. The required `validate` job also runs
 `check_forbidden_files.py`, which fails if a secret-bearing file (`.env`, `*.pem`, `*.key`, a keystore,
 or a private SSH key) is ever tracked - the enforceable stand-in for a push rule, since GitHub push
-rulesets are unavailable on public user-owned repos. The required `build` check runs
+rulesets are unavailable on public user-owned repos. The required `site` check runs
 `build_site_data.py --check`, which fails if the committed `site/` is stale versus its sources.
 
 ## Versioning
@@ -209,11 +209,12 @@ rulesets are unavailable on public user-owned repos. The required `build` check 
   Copilot's review is advisory, and its comment threads are subject to conversation resolution.
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
   tests, Markdown, changelog sync, and the secret-bearing-file guard), `version-bump` (a
-  shipped-source change requires a version bump), `build-check` (the commentable-html layer's
-  committed `dist/` matches its `dev/` source), `build` (the `pages` workflow regenerates the site
-  and its Playwright suite passes; it runs on every PR), `summary` (the `plugin-tests` gate), and
-  `require-owner-approval` (an external PR carries the maintainer's approving review). Every check
-  that can catch a break is required, so nothing merges that would break the build or the site.
+  shipped-source change requires a version bump), `dist-in-sync` (the commentable-html layer's
+  committed `dist/` matches its `dev/` source), `actionlint` (every workflow file lints clean),
+  `site` (the `pages` workflow regenerates the site and its Playwright suite passes; it runs on
+  every PR), `plugin-tests` (the plugin Playwright gate), and `require-owner-approval` (an external
+  PR carries the maintainer's approving review). Every check that can catch a break is required, so
+  nothing merges that would break the build or the site.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 
@@ -248,7 +249,7 @@ rulesets are unavailable on public user-owned repos. The required `build` check 
   `python scripts/build_site_data.py` (plugins grid, version badge, per-plugin changelog, and the tutorial page
   built from the skill's `docs/TUTORIAL.md`, plus synced demo reports and tutorial images). After editing a
   plugin's `CHANGELOG.md`, its skill `docs/TUTORIAL.md`, or an embedded example report, rerun it and commit the
-  result; the required `build` check enforces freshness with `build_site_data.py --check`.
+  result; the required `site` check enforces freshness with `build_site_data.py --check`.
 - Rebase a plugin PR onto a newer main: if `main` already merged the same version number, bump the
   plugin version (see "Resolving plugin conflicts when rebasing onto main" above), run the plugin's
   build script (`tools/build.py`) to regenerate dist files with the new version, run

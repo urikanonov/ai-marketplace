@@ -71,7 +71,7 @@ jobs:
       - name: Run Playwright tests
         run: npm test
 
-  summary:
+  plugin-tests:
     needs: [discover, playwright]
     if: always()
     runs-on: ubuntu-latest

@@ -6,9 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Least privilege. The site is generated and tested in the unprivileged `build` job; only the
+# Least privilege. The site is generated and tested in the unprivileged `site` job; only the
 # `deploy` job holds the Pages/OIDC scopes, and it runs nothing but the GitHub-owned Pages
-# actions on the artifact `build` already produced - it checks out no repo code, so merged code
+# actions on the artifact `site` already produced - it checks out no repo code, so merged code
 # never executes where a deploy token can be minted.
 permissions:
   contents: read
@@ -23,7 +23,7 @@ jobs:
   # then runs the browser smoke suite. The artifact is uploaded BEFORE the smoke suite so that a
   # smoke failure does not withhold the artifact from deploy (tests do not gate the deploy), while
   # a generator/unit failure happens first and does withhold it (a broken generator is not shipped).
-  build:
+  site:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -95,13 +95,13 @@ jobs:
         working-directory: tests/site
         run: npm test
 
-  # Privileged publish. It consumes the artifact `build` produced and runs only GitHub-owned Pages
-  # actions - no checkout, no repo code - so the deploy token is never exposed to merged code. It
-  # runs even when `build` fails its smoke suite (`!cancelled()`), so a failing or flaky test never
-  # skips the deploy; if `build` fails before uploading the artifact, deploy-pages fails loudly and
+  # Privileged publish. It consumes the artifact the `site` job produced and runs only GitHub-owned
+  # Pages actions - no checkout, no repo code - so the deploy token is never exposed to merged code.
+  # It runs even when `site` fails its smoke suite (`!cancelled()`), so a failing or flaky test never
+  # skips the deploy; if `site` fails before uploading the artifact, deploy-pages fails loudly and
   # `notify` fires.
   deploy:
-    needs: build
+    needs: site
     if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -120,13 +120,13 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
-  # Alert if the pipeline fails on main (build or deploy, including workflow_dispatch runs and
-  # cancellations), so a broken build or a failed deploy never silently leaves the site wrong.
-  # Opens a tracking issue, or comments on the open one, distinguishing a stale site (deploy failed)
-  # from a deployed-but-regressed site (build failed after the artifact was uploaded).
+  # Alert if the pipeline fails on main (the site build or the deploy, including workflow_dispatch
+  # runs and cancellations), so a broken build or a failed deploy never silently leaves the site
+  # wrong. Opens a tracking issue, or comments on the open one, distinguishing a stale site (deploy
+  # failed) from a deployed-but-regressed site (the site job failed after the artifact was uploaded).
   notify:
-    needs: [build, deploy]
-    if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (contains(fromJSON('["failure", "cancelled"]'), needs.build.result) || contains(fromJSON('["failure", "cancelled"]'), needs.deploy.result)) }}
+    needs: [site, deploy]
+    if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (contains(fromJSON('["failure", "cancelled"]'), needs.site.result) || contains(fromJSON('["failure", "cancelled"]'), needs.deploy.result)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -136,7 +136,7 @@ jobs:
       - name: Open or update the failure issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          BUILD_RESULT: ${{ needs.build.result }}
+          SITE_RESULT: ${{ needs.site.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
         with:
           script: |
@@ -144,14 +144,14 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-            const buildResult = process.env.BUILD_RESULT;
+            const siteResult = process.env.SITE_RESULT;
             const deployResult = process.env.DEPLOY_RESULT;
             const deployOk = deployResult === "success";
             const impact = deployOk
-              ? "The deploy completed, but the build job did not finish all its checks, so the published site may contain a regression the checks would have caught."
+              ? "The deploy completed, but the site job did not finish all its checks, so the published site may contain a regression the checks would have caught."
               : "The deploy did not complete, so the published site may be stale.";
             const body = [
-              `The \`pages\` workflow failed on \`main\` (build: ${buildResult}, deploy: ${deployResult}).`,
+              `The \`pages\` workflow failed on \`main\` (site: ${siteResult}, deploy: ${deployResult}).`,
               ``,
               impact,
               ``,
