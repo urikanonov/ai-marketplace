@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-07-11
+
+### Fixed
+
+- Single-quoted string styles now require their closing quote, so a lone `'` in valid code (a Rust
+  lifetime like `&'static str`, an apostrophe like `don't`, or a C++ digit separator `1'000`) is no
+  longer swallowed as a string to the end of the line. Double-quoted and backtick strings still
+  highlight when unterminated, and string scanning stays linear time.
+- CSS highlighting now treats only the CSS-wide keywords (`auto`, `none`, `inherit`, `initial`,
+  `unset`, `revert`, `important`) as keywords, so class selectors such as `.block` or `.center` are no
+  longer colored as keywords.
+- The in-browser diff highlighter matches the case-insensitive keywords of SQL, Batch, and PowerShell
+  (uppercase keywords now color), scans strings and comments in linear time for the newly added
+  languages, maps the `.m` extension to Objective-C, and no longer over-colors common identifiers
+  (`data`, `local`, `end`, and similar) as keywords in unrelated diffs.
+
 ## [1.3.0] - 2026-07-11
 
 ### Added

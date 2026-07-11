@@ -240,6 +240,11 @@ fn word_counts(text: &str) -> HashMap<&str, u32> {
     counts
 }
 
+// Longest slice (explicit lifetime)
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() >= y.len() { x } else { y }
+}
+
 fn main() {
     let counts = word_counts("a b a c a");
     /* prints 3 for "a" */
@@ -429,9 +434,9 @@ port = 8080
 .card {
   display: flex;
   gap: var(--gap);
-  padding: 12px;
+  margin: 0 auto;
   color: var(--fg);
-  border-radius: 6px;
+  border: none;
 }
 
 .card:hover {

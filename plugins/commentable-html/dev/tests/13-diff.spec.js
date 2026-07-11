@@ -682,14 +682,15 @@ test("newly-supported languages are syntax-highlighted in diffs (runtime parity)
   // Each of these languages was previously unknown to the diff highlighter (rendered as plain
   // text); they must now emit token spans, matching the author-time highlighter's coverage.
   const cases = [
-    { label: "probe.lua", body: '@@ -1 +1 @@\n-x = 1\n+s = "hi" -- note' },
-    { label: "probe.ps1", body: '@@ -1 +1 @@\n-x = 1\n+$s = "hi" # note' },
-    { label: "probe.ex", body: '@@ -1 +1 @@\n-x = 1\n+s = "hi" # note' },
-    { label: "probe.css", body: '@@ -1 +1 @@\n-a{}\n+a { color: "x"; /* note */ }' },
-    { label: "probe.hs", body: '@@ -1 +1 @@\n-x = 1\n+s = "hi" -- note' },
-    { label: "probe.bat", body: "@@ -1 +1 @@\n-echo a\n+rem a note" },
-    { label: "probe.mm", body: '@@ -1 +1 @@\n-int x;\n+id s = @"hi"; // note' },
-    { label: "probe.groovy", body: '@@ -1 +1 @@\n-x = 1\n+def s = "hi" // note' },
+    { label: "probe.lua", body: '@@ -1 +1 @@\n-x = 1\n+s = "hi" -- note', com: "-- note" },
+    { label: "probe.ps1", body: '@@ -1 +1 @@\n-x = 1\n+$s = "hi" # note', com: "# note" },
+    { label: "probe.ex", body: '@@ -1 +1 @@\n-x = 1\n+s = "hi" # note', com: "# note" },
+    { label: "probe.css", body: '@@ -1 +1 @@\n-a{}\n+a { color: "x"; /* note */ }', com: "/* note */" },
+    { label: "probe.hs", body: '@@ -1 +1 @@\n-x = 1\n+s = "hi" -- note', com: "-- note" },
+    { label: "probe.bat", body: "@@ -1 +1 @@\n-echo a\n+rem a note", com: "rem a note" },
+    { label: "probe.mm", body: '@@ -1 +1 @@\n-int x;\n+id s = @"hi"; // note', com: "// note" },
+    { label: "probe.m", body: '@@ -1 +1 @@\n-int x;\n+id s = @"hi"; // note', com: "// note" },
+    { label: "probe.groovy", body: '@@ -1 +1 @@\n-x = 1\n+def s = "hi" // note', com: "// note" },
   ];
   for (const c of cases) {
     const doc = docWithDiff(c.body, c.label);
@@ -697,8 +698,28 @@ test("newly-supported languages are syntax-highlighted in diffs (runtime parity)
     await ready(page);
     const view = page.locator(".cmh-diff-view").first();
     await expect(view, c.label).toBeVisible();
-    // A string or comment token span proves the language is highlighted, not left plain.
-    await expect(view.locator(".cmh-dl-code .cmh-code-str, .cmh-dl-code .cmh-code-com").first(),
+    // Assert the LANGUAGE-SPECIFIC comment token. A "c"-family fallback for an unknown language
+    // cannot produce a --, #, or rem comment, so matching the exact comment proves the right
+    // family is wired up (not just that some string/comment span happens to render).
+    await expect(view.locator(".cmh-dl-code .cmh-code-com", { hasText: c.com }).first(),
+      c.label).toBeVisible();
+  }
+});
+
+test("diff highlighter colors uppercase SQL and PowerShell keywords (case-insensitive parity)", async ({ page }) => {
+  const cases = [
+    { label: "probe.sql", body: "@@ -1 +1 @@\n-x\n+SELECT id FROM users", kw: "FROM" },
+    { label: "probe.ps1", body: "@@ -1 +1 @@\n-x\n+Function Foo { }", kw: "Function" },
+    { label: "probe.bat", body: "@@ -1 +1 @@\n-x\n+IF exist a del a", kw: "IF" },
+  ];
+  for (const c of cases) {
+    const doc = docWithDiff(c.body, c.label);
+    await page.goto(fileUrl(doc));
+    await ready(page);
+    const view = page.locator(".cmh-diff-view").first();
+    await expect(view, c.label).toBeVisible();
+    // The uppercase keyword must color even though the shared keyword set is lowercase.
+    await expect(view.locator(".cmh-dl-code .cmh-code-kw", { hasText: c.kw }).first(),
       c.label).toBeVisible();
   }
 });
