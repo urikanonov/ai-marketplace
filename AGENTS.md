@@ -109,6 +109,44 @@ do each workstream in its own `.worktrees/<name>`; and resolve any conflict on g
 REBUILDING (rerun `python scripts/build_site_data.py` and, for the commentable-html layer,
 `plugins/commentable-html/dev/tools/build.py`) rather than hand-merging.
 
+## Concurrent-merge clobbers: confirm your change actually survived
+
+Worktrees stop local collisions, but they do NOT stop a subtler hazard: a long-lived PR that rewrites or
+regenerates a shared, semi-generated file can silently DROP another PR's edits to that same file - with no
+merge conflict - because it replaces the whole region wholesale. This is not hypothetical. The review-loop
+diagram and section reorder that shipped in #34 (`site/commentable-html/index.html`) were wiped out an hour
+later when #28 regenerated that page from a snapshot that predated #34, even though #28's branch was based
+AFTER #34. The plugin runtime, docs, and `CHANGELOG.md` survived; only the hand-edited site page was lost,
+and nothing failed - CI stayed green because the clobbered file was still valid.
+
+Highest-risk files (hand-editable AND regenerated or rewritten by tooling or big feature branches):
+everything under `site/` (especially the static sections of `site/commentable-html/index.html` and
+`site/index.html`), `pkg/**/dist/**`, generated fixtures, and any asset a build stamps. Treat any file that
+more than one in-flight PR touches as CONTENDED.
+
+Before you merge:
+
+- Rebase onto the LATEST `origin/main` immediately before merging (strict "up to date with main" is required
+  anyway), then run `git --no-pager diff origin/main -- <contended file>` and read every removal: confirm you
+  are not reverting content that landed in the meantime. If you are, re-apply it (or rebuild the file from its
+  current source) rather than shipping your stale version.
+- Prefer SURGICAL edits to shared static files over wholesale regeneration, so a 3-way merge can keep
+  concurrent edits. If your change regenerates a whole file (a site page, a dist bundle), regenerate it from
+  the CURRENT `origin/main` sources, not from a local snapshot.
+
+After you merge, if `origin/main` has advanced past your merge, VERIFY your change is still present rather
+than assuming it stuck - this is how the #34 clobber was found:
+
+```bash
+git fetch origin
+git --no-pager log --oneline -S "<distinctive string from your change>" origin/main -- <file>
+git --no-pager show origin/main:<file> | grep -F "<distinctive string>"
+```
+
+The `-S` pickaxe shows exactly which commits added or removed the string; if a later commit removed it, your
+change was clobbered and must be re-applied on top of current `main`. Run this for site pages and for any
+file a concurrent PR also touched.
+
 ## Resolving plugin conflicts when rebasing onto main
 
 When rebasing a plugin PR onto `main` and the same version number has already been merged into main,
