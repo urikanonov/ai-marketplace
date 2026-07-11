@@ -1,0 +1,135 @@
+name: require-owner-approval
+
+# Enforces that an EXTERNAL pull request carries an approving review from the
+# maintainer, on the CURRENT head commit, before it can merge. The maintainer's
+# own PRs and Dependabot PRs are exempt so the solo maintainer is never blocked.
+#
+# It runs from pull_request_target (plus pull_request_review), so the logic is
+# always read from the trusted base branch: a PR cannot neutralize the gate by
+# editing this file. It never checks out or runs PR code - it only reads the PR's
+# review list and publishes a commit status on the PR head SHA. Both triggers are
+# privileged (they run in the base-repo context with a write-capable token and
+# secrets, even for fork PRs), so statuses: write works on fork PRs too; that is
+# also why this workflow must never check out PR code.
+#
+# Make the commit-status context "require-owner-approval" a required status check
+# on main to block merges (NOT the "evaluate" Actions check-run: a
+# pull_request_target run attributes its check-run to the base commit, so requiring
+# it would leave every PR head stuck "expected" and lock out all merges). The gate
+# verdict is the head-SHA commit status. The job exits 0 on the normal paths and
+# exits 1 only when it cannot publish the status after retries, so a publish
+# failure is a visible, re-runnable red job rather than a silent pass. An external
+# PR posts a "pending" status before evaluating, clearing any stale success on the
+# same SHA; the only residual is a total statuses-API outage that exhausts all
+# retries mid-transition, which is fail-visible and recoverable by re-running - not
+# a silent stale pass.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  # Serialize (do not cancel) so every event posts a final status for its head SHA
+  # and a review event cannot cancel an in-flight run before it publishes.
+  group: require-owner-approval-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate maintainer approval and publish the gate status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MAINTAINER: urikanonov
+        shell: bash
+        run: |
+          # Deliberately no `-e`: we control every exit path so the gate ALWAYS
+          # publishes a status (fail-closed) and never leaves the required check
+          # stuck "expected/pending".
+          set -uo pipefail
+          CONTEXT="require-owner-approval"
+
+          post_status() {
+            local st="$1" desc="$2" i
+            for i in 1 2 3; do
+              if gh api --method POST "repos/$REPO/statuses/$HEAD_SHA" \
+                -f "state=$st" -f "context=$CONTEXT" -f "description=$desc" >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 3
+            done
+            echo "::warning::failed to publish the $CONTEXT status after retries"
+            return 1
+          }
+
+          # Publish the final verdict, then exit: on a publish failure fail the job
+          # (visible + re-runnable) rather than exiting 0 as if the gate had spoken.
+          finalize() {
+            if post_status "$1" "$2"; then
+              exit 0
+            fi
+            echo "::error::could not publish the $CONTEXT status after retries; failing the job so it is visible and can be re-run."
+            exit 1
+          }
+
+          # The maintainer's own PRs are exempt: a solo maintainer cannot approve
+          # their own PR, so gating them would be a self-lockout.
+          if [ "$PR_AUTHOR" = "$MAINTAINER" ]; then
+            echo "PR #$PR_NUMBER is maintainer-authored ($MAINTAINER); exempt."
+            finalize success "Maintainer-authored; approval not required."
+          fi
+
+          # Dependabot is allowlisted for routine dependency bumps.
+          case "$PR_AUTHOR" in
+            "dependabot[bot]" | "dependabot-preview[bot]")
+              echo "PR #$PR_NUMBER is authored by $PR_AUTHOR (allowlisted bot); exempt."
+              finalize success "Dependabot PR; approval not required."
+              ;;
+          esac
+
+          # Clear any prior status on this head SHA before evaluating, so a stale
+          # success (e.g. an approval later dismissed on the same commit) cannot
+          # survive if the final publish fails - the gate then stays fail-closed.
+          post_status pending "Checking for a maintainer approval..." || true
+
+          if ! reviews="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate 2>/dev/null)"; then
+            echo "::error::could not read reviews for PR #$PR_NUMBER"
+            finalize failure "Could not read reviews; re-run this check."
+          fi
+
+          # Latest DECISIVE review from the maintainer (ignoring COMMENTED, which does
+          # not change an approval), slurped across all pages. The approval must be on
+          # the CURRENT head commit (commit_id == HEAD_SHA): this makes the gate
+          # self-sufficient rather than relying only on branch protection's
+          # dismiss-stale-reviews to invalidate an approval after a new push.
+          state="$(printf '%s' "$reviews" | jq -s -r --arg m "$MAINTAINER" --arg h "$HEAD_SHA" \
+            '(add // [])
+             | [ .[] | select(.user.login == $m)
+                     | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED") ]
+             | last
+             | if . == null then "NONE"
+               elif (.state == "APPROVED" and .commit_id == $h) then "APPROVED"
+               elif .state == "APPROVED" then "STALE_APPROVAL"
+               else .state end')"
+          echo "Resolved gate state for $MAINTAINER on $HEAD_SHA: $state"
+
+          if [ "$state" = "APPROVED" ]; then
+            echo "Approved by the maintainer on the current commit. Gate passes."
+            finalize success "Approved by @$MAINTAINER."
+          fi
+
+          echo "::error::PR #$PR_NUMBER needs an approving review from @$MAINTAINER on the current commit (state: $state)."
+          finalize failure "Needs an approving review from @$MAINTAINER on the current commit (state: $state)."
