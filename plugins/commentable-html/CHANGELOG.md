@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-07-11
+
+### Changed
+
+- Clarified the NonPortable asset-location wording in the skill reference: the default companion
+  files are referenced by a relative path (the skill's `dist/` folder by default), not "beside the
+  document"; the document sits beside its companions only when they are copied there.
+
 ## [1.2.1] - 2026-07-11
 
 ### Changed
