@@ -7,8 +7,13 @@ name: Require Resolved Conversations
 # contributors know exactly which conversations to resolve.
 #
 # Triggers on every event that can change the resolved/unresolved state:
-# - pull_request_review / pull_request_review_thread: a resolution or new comment
+# - pull_request_review: a review is submitted, edited, or dismissed
+# - pull_request_review_thread: a thread is resolved or unresolved
+# - pull_request_review_comment: a standalone inline comment is created/edited/deleted
+#   (this can open a new unresolved thread without a review submission)
 # - pull_request opened/reopened/synchronize/ready_for_review: fresh evaluation
+# cancel-in-progress is false so a superseding event never cancels an in-flight run
+# before it publishes the final status for the head SHA.
 #
 # Uses only the default GITHUB_TOKEN and no third-party actions beyond
 # actions/github-script. Make the Actions check-run "All conversations resolved"
@@ -17,6 +22,8 @@ name: Require Resolved Conversations
 on:
   pull_request_review:
   pull_request_review_thread:
+  pull_request_review_comment:
+    types: [created, edited, deleted]
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
 
@@ -26,7 +33,7 @@ permissions:
 
 concurrency:
   group: require-resolved-conversations-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   unresolved-conversations:

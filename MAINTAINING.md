@@ -43,6 +43,11 @@ still read the PR before approving.
   Actions check-run.
 - Copilot is asked to review every non-draft PR automatically as an advisory second opinion. Its
   threads are subject to conversation resolution, but it never replaces your own read of the diff.
+- One-time setup for the conversation-resolution gate: the `require-resolved-conversations.yml`
+  workflow publishes an "All conversations resolved" check-run, but a check-run only blocks merges
+  once it is added to branch protection. After this workflow reaches `main`, add "All conversations
+  resolved" to the required status checks for `main` (Settings > Branches, or the API) so an
+  unresolved thread actually blocks the merge; until then the check is advisory.
 - Changes to shipped executable content (hooks, `*.ps1`, MCP) ship to end users via the auto-updater - review
   them with extra care.
 
