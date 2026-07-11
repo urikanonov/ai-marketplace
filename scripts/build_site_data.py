@@ -81,19 +81,24 @@ def write_text(path, text):
 # Icons are omitted: they change rarely and a cached favicon does not misrender page content.
 CACHE_BUSTED_ASSETS = ("styles.css", "site.js")
 _ASSET_REF_RE = re.compile(
-    r'(?P<attr>href|src)="(?P<path>(?:\.\./)*assets/(?P<file>%s))(?:\?v=[0-9a-f]+)?"'
+    r'(?P<attr>href|src)="(?P<path>(?:\.{1,2}/)*assets/(?P<file>%s))(?:[?#][^"]*)?"'
     % "|".join(re.escape(name) for name in CACHE_BUSTED_ASSETS))
 
 
 def _asset_hash(root, name):
-    with open(os.path.join(root, "site", "assets", name), "rb") as fh:
-        return hashlib.sha256(fh.read()).hexdigest()[:12]
+    path = os.path.join(root, "site", "assets", name)
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except FileNotFoundError:
+        raise SystemExit("cache-busted asset missing: %s" % path)
+    return hashlib.sha256(data).hexdigest()[:12]
 
 
 def stamp_assets(text, root):
-    """Append a ?v=<content-hash> query to every reference to a cache-busted asset, replacing
-    any existing stamp. The stamp is idempotent and always matches the committed asset, so the
-    URL busts the browser cache exactly when the asset's bytes change."""
+    """Append a ?v=<content-hash> query to every reference to a cache-busted asset, replacing any
+    existing query or fragment on it. The stamp is idempotent and always matches the committed
+    asset, so the URL busts the browser cache exactly when the asset's bytes change."""
     cache = {}
 
     def repl(match):

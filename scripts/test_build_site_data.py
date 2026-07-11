@@ -4,6 +4,7 @@ Run by the validate CI job via `python -m unittest discover -s scripts -p "test_
 so the site generator's escaping, URL allowlist, and changelog parsing are covered by a
 required status check.
 """
+import re
 import unittest
 
 import build_site_data as bsd
@@ -362,6 +363,45 @@ class StampAssetsTests(unittest.TestCase):
     def test_leaves_other_assets_untouched(self):
         html = '<link rel="icon" href="../assets/commentable-html.svg" />'
         self.assertEqual(bsd.stamp_assets(html, bsd.REPO_ROOT), html)
+
+    def test_replaces_any_existing_query_or_fragment(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        for ref in ["assets/styles.css?v=ABC123&t=1", "../assets/styles.css?foo=bar",
+                    "assets/styles.css#frag"]:
+            out = bsd.stamp_assets('<link href="%s" />' % ref, bsd.REPO_ROOT)
+            self.assertRegex(out, r'href="(?:\.\./)*assets/styles\.css\?v=%s"' % css)
+            for stale in ("ABC123", "foo=bar", "#frag"):
+                self.assertNotIn(stale, out)
+
+    def test_matches_dot_slash_prefix(self):
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        out = bsd.stamp_assets('<link href="./assets/styles.css" />', bsd.REPO_ROOT)
+        self.assertIn('href="./assets/styles.css?v=%s"' % css, out)
+
+
+class StampWiringTests(unittest.TestCase):
+    PAGES = ["site/index.html", "site/commentable-html/index.html",
+             "site/commentable-html/tutorial/index.html"]
+
+    def test_committed_pages_carry_current_asset_stamps(self):
+        import os as _os
+        css = bsd._asset_hash(bsd.REPO_ROOT, "styles.css")
+        js = bsd._asset_hash(bsd.REPO_ROOT, "site.js")
+        for rel in self.PAGES:
+            text = bsd.read_text(_os.path.join(bsd.REPO_ROOT, *rel.split("/")))
+            self.assertIn("styles.css?v=%s" % css, text)
+            self.assertIn("site.js?v=%s" % js, text)
+
+    def test_no_site_html_has_an_unstamped_asset_ref(self):
+        import os as _os
+        import glob
+        pat = re.compile(r'(?:href|src)="[^"]*?(?:styles\.css|site\.js)(\?v=[0-9a-f]+)?"')
+        unstamped = []
+        for path in glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True):
+            for m in pat.finditer(bsd.read_text(path)):
+                if not m.group(1):
+                    unstamped.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
+        self.assertEqual(unstamped, [])
 
 
 if __name__ == "__main__":
