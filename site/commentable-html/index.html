@@ -31,7 +31,7 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.2<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.1.3<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any HTML,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a single-file review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -164,6 +164,17 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.1.3] - 2026-07-11</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Documentation accuracy from the agency review pass: the generated-document header comment (and the two shipped example reports) now name the Export as Portable download <code>&lt;stem&gt;-portable.html</code>, matching the current UI (it previously said <code>&lt;stem&gt;-comments.html</code>); and <code>references/design-decisions.md</code> now states correctly that a <code>&lt;canvas&gt;</code> renders when either the Chart.js loader OR an inline <code>getContext</code> draw is present, so a hand-drawn non-Chart.js canvas is accepted and only a canvas with neither is flagged (matching <code>validate.py</code> E3).</li>
+            </ul>
+            <div class="group-label">Notes</div>
+            <ul>
+              <li>Documentation-only changes; no code or runtime behavior change.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.1.2] - 2026-07-11</h3></div>
             <div class="group-label">Fixed</div>
