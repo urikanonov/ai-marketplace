@@ -113,11 +113,13 @@ status check on `main`) enforces:
 - Every `plugins/**/plugin.json` matches `.github/schemas/plugin.schema.json` with a semver `version`.
 - Development-only folders (`dev/`, `node_modules/`, `__pycache__/`) are ignored. A gitignored one (for example a generated `__pycache__/`) nested inside a shipped source is pruned, since git can never commit or ship it; a tracked one (for example a nested `dev/`) is rejected.
 
-Two more checks run in the required `validate` CI job (they need git history, so they are awkward to run
-locally but are enforced on every PR): `check_changelog_sync.py` (a plugin's current version must have a
-matching `CHANGELOG.md` release heading, and already-released history must not be edited) and
-`check_version_bump.py` (a change to a plugin's shipped source requires a version bump). The `pages` workflow
-also runs `build_site_data.py --check`, which fails if the committed `site/` is stale versus its sources.
+Two more checks run in CI on every PR (they need git history, so they are awkward to run
+locally): `check_changelog_sync.py` (a plugin's current version must have a matching
+`CHANGELOG.md` release heading, and already-released history must not be edited) runs inside
+the required `validate` job, while `check_version_bump.py` (a change to a plugin's shipped
+source requires a version bump) runs in a separate `version-bump` job. The `pages` workflow
+also runs `build_site_data.py --check`, which fails if the committed `site/` is stale versus
+its sources.
 
 ## Versioning
 

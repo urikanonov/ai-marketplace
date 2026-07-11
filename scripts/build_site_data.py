@@ -282,13 +282,16 @@ def _md_inline(escaped):
     generated tags are also stashed, so a later bold pass can never turn a `**` inside a
     URL into <strong> or corrupt an emitted tag. Captured URLs are already HTML-escaped
     (attribute-safe), so they pass through safe_url without re-escaping. Placeholders are
-    restored last, repeatedly, so a code span nested in a link is also emitted."""
+    restored last, repeatedly, so a code span nested in a link is also emitted. The NUL
+    sentinel char is stripped from the input first so source text can never collide with a
+    placeholder."""
     tokens = []
 
     def _stash(markup):
         tokens.append(markup)
         return "\x00%d\x00" % (len(tokens) - 1)
 
+    escaped = escaped.replace("\x00", "")
     escaped = _MD_CODE.sub(lambda m: _stash("<code>%s</code>" % m.group(1)), escaped)
     escaped = _MD_IMAGE.sub(
         lambda m: _stash('<img src="%s" alt="%s" loading="lazy" />' % (safe_url(m.group(2)), m.group(1))),

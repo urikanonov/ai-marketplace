@@ -108,6 +108,31 @@ test("install command copy button copies the command and shows feedback", async 
   expect(clip).toBe(command);
 });
 
+test("copy button shows a manual-copy hint when the clipboard is unavailable", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      get: () => ({ writeText: () => Promise.reject(new Error("blocked")) }),
+    });
+    document.execCommand = () => false;
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const btn = page.locator("#install .copy-btn").first();
+  await btn.click();
+  await expect(btn).toHaveText("press Ctrl+C");
+  await expect(btn).toHaveClass(/copy-failed/);
+});
+
+test("copy button restores its original label after a rapid double click", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const btn = page.locator("#install .copy-btn").first();
+  const label = (await btn.textContent()).trim();
+  await btn.click();
+  await btn.click();
+  await expect(btn).toHaveText(label, { timeout: 4000 });
+});
+
 test("the static test server refuses path traversal out of site/", async () => {
   // A high-level client normalizes ".." out of the path, so hit the server with a raw
   // request whose request-target keeps the traversal literal.
@@ -136,6 +161,32 @@ test("demo tabs are keyboard operable (arrow keys switch the shown report)", asy
   await page.keyboard.press("ArrowLeft");
   await expect(page.locator("#demo-tab-taxi")).toBeFocused();
   await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-taxi\.html/);
+});
+
+test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const taxi = page.locator("#demo-tab-taxi");
+  const garden = page.locator("#demo-tab-garden");
+  const panel = page.locator("#demo-panel");
+  await expect(panel).toHaveAttribute("role", "tabpanel");
+  await expect(taxi).toHaveAttribute("aria-controls", "demo-panel");
+  // Initial state: only the active tab is in the tab order and labels the panel.
+  await expect(taxi).toHaveAttribute("aria-selected", "true");
+  await expect(taxi).toHaveAttribute("tabindex", "0");
+  await expect(garden).toHaveAttribute("aria-selected", "false");
+  await expect(garden).toHaveAttribute("tabindex", "-1");
+  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-taxi");
+  // Home/End jump to the first/last tab and move the roving tabindex + panel label.
+  await taxi.focus();
+  await page.keyboard.press("End");
+  await expect(garden).toHaveAttribute("aria-selected", "true");
+  await expect(garden).toHaveAttribute("tabindex", "0");
+  await expect(taxi).toHaveAttribute("tabindex", "-1");
+  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-garden");
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("title", /Community Garden|report-community-garden/);
+  await page.keyboard.press("Home");
+  await expect(taxi).toHaveAttribute("aria-selected", "true");
+  await expect(taxi).toBeFocused();
 });
 
 test("demo mounts inside the iframe on the plugin page (CSP allows it)", async ({ page }) => {
