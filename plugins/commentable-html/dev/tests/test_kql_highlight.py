@@ -83,7 +83,7 @@ class KqlHighlightTests(unittest.TestCase):
         self.assertEqual(_text_content(block), QUERY)
 
     def test_render_block_is_full_figure(self):
-        block = K.render_block("wcdprod.kusto.windows.net", "Geneva", "My & <title>", QUERY)
+        block = K.render_block("help.kusto.windows.net", "Samples", "My & <title>", QUERY)
         self.assertIn('<figure class="cmh-kql">', block)
         self.assertIn('<figcaption class="cm-skip cmh-kql-cap">', block)
         self.assertIn('class="cmh-kql-run" href="https://dataexplorer.azure.com/', block)
@@ -105,12 +105,12 @@ class KqlHighlightTests(unittest.TestCase):
     def test_render_block_title_is_cluster_copy(self):
         # The caption title (cluster / database) is itself the click-to-copy button
         # for the cluster name; there is no separate middle chip.
-        block = K.render_block("wcdprod.kusto.windows.net", "Geneva", "wcdprod.kusto.windows.net / Geneva", QUERY)
+        block = K.render_block("help.kusto.windows.net", "Samples", "help.kusto.windows.net / Samples", QUERY)
         self.assertIn(
             '<button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" '
-            'data-cmh-copy="wcdprod.kusto.windows.net"',
+            'data-cmh-copy="help.kusto.windows.net"',
             block)
-        self.assertIn(">wcdprod.kusto.windows.net / Geneva</button>", block)
+        self.assertIn(">help.kusto.windows.net / Samples</button>", block)
 
     def test_deterministic(self):
         self.assertEqual(K.render_block("c.kusto.windows.net", "db", "t", QUERY),

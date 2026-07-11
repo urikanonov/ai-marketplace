@@ -21,6 +21,7 @@ Stdlib-only, local-only, deterministic. Usage:
 """
 import argparse
 import os
+import re
 import sys
 import tempfile
 
@@ -40,20 +41,32 @@ REQUIRED_MARKERS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "CONTENT",
 NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
 
 
+def _marker_re(kind, name):
+    # A region marker occupies its OWN line: the keyword phrase alone, optionally wrapped by
+    # a comment delimiter (<!-- ... --> or /* ... */) and/or a ==== banner rule, with nothing
+    # else on the line. Anchoring to the full line (not a loose substring) means authored
+    # content that merely mentions the phrase - e.g. "BEGIN: commentable-html - CSS notes" or
+    # the plain-export code that reconstructs marker text inside a JS string literal (those
+    # lines start with `+ "`) - can never be mistaken for a real region boundary.
+    return re.compile(
+        r"(?m)^[ \t]*(?:<!--[ \t]*)?(?:/\*[ \t]*)?(?:=+[ \t]*)?(%s: commentable-html - %s)"
+        r"[ \t]*(?:=+[ \t]*)?(?:-->|\*/)?[ \t]*$"
+        % (kind, re.escape(name)))
+
+
 def _region_inner(text, name, where):
     """Return (start, end) byte offsets of a region's inner content (between the BEGIN
-    and END marker texts). For JS the END is the LAST occurrence, because the JS body
-    contains marker-like strings that would fool a first match."""
-    begin = "BEGIN: commentable-html - " + name
-    end = "END: commentable-html - " + name
-    bi = text.find(begin)
-    if bi < 0:
+    and END marker texts). For JS the END is the LAST marker line, because the JS body
+    contains marker-like strings; the line-anchored match ignores those literals."""
+    bm = _marker_re("BEGIN", name).search(text)
+    if not bm:
         raise ValueError("%s: '%s' region BEGIN marker not found" % (where, name))
-    b = bi + len(begin)
-    ei = text.rfind(end) if name == "JS" else text.find(end, b)
-    if ei < 0 or ei < b:
+    b = bm.end(1)
+    ends = [m for m in _marker_re("END", name).finditer(text) if m.start(1) >= b]
+    if not ends:
         raise ValueError("%s: '%s' region END marker not found after BEGIN" % (where, name))
-    return b, ei
+    em = ends[-1] if name == "JS" else ends[0]
+    return b, em.start(1)
 
 
 def upgrade(target_html, template_html, target_name="<target>", template_name="<template>"):

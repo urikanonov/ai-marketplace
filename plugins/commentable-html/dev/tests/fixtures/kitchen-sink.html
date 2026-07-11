@@ -45,7 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.6.1" />
+<meta name="commentable-html-version" content="1.7.0" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (inline)</title>
 
@@ -497,11 +497,16 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
-   wide content shell, while tables, figures, code, diffs, and callouts keep full width. */
+   wide content shell, while tables, figures, code, diffs, and callouts keep full width.
+   The lede is a full-width surface box, so its paragraphs opt out of the measure cap
+   (otherwise they render far narrower than the box and its sibling sections). */
 #commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
-/* Section headings are deep-links: a plain click updates the URL to their anchor. */
+#commentRoot .cmh-lede, #commentRoot .cmh-lede > p { max-width: none; }
+/* Section headings are deep-links: a plain click or Enter/Space updates the URL to their
+   anchor, and they are keyboard-focusable with a visible focus ring. */
 #commentRoot .cm-anchored { cursor: pointer; }
 #commentRoot .cm-anchored:hover { text-decoration-line: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+#commentRoot .cm-anchored:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; border-radius: 3px; }
 /* Collapsible sections: caret on the heading toggles a class that hides the body. */
 .cmh-sec-caret {
   display: inline-flex; align-items: center; justify-content: center;
@@ -849,6 +854,14 @@ html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 
   box-shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 #commentRoot > section > h2:first-child, #commentRoot > section > h3:first-child { margin-top: 0; }
+/* Document title: a themed top-level h1 so a generated or retrofitted document has a
+   visible heading. A bare top-level h1 gets an underline rule; an h1 inside the lede
+   surface stays borderless because the box already frames it. */
+#commentRoot > h1, #commentRoot > header > h1 {
+  font-size: 1.9rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em;
+  margin: 0 0 0.85rem; color: var(--cp-text);
+}
+#commentRoot > h1 { padding-bottom: 0.4rem; border-bottom: 2px solid var(--cp-border); }
 #commentRoot .badge {
   display: inline-block; padding: 1px 8px; border-radius: 10px;
   font-size: 0.78rem; font-weight: 600; line-height: 1.5;
@@ -1314,6 +1327,18 @@ flowchart LR
 // (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
 const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+// The layer runs synchronously during parse, so SNAPSHOT_HTML stops at THIS <script>:
+// host content placed after the layer (per charts.md, chart data + init scripts land
+// after the "END: commentable-html - JS" marker, before the final </body>) has not been
+// parsed yet and is absent from the snapshot. Capture the script element now, while
+// document.currentScript is still valid, so an export can recover that tail from the
+// fully-parsed DOM (see _snapshotWithTail).
+const CMH_LAYER_SCRIPT = document.currentScript;
+// Layer chrome injected during init (footer, side-TOC, scroll progress) is captured in
+// this set at the end of the IIFE - before the browser parses any host content that
+// follows the layer <script> - so a file:// export tail can exclude it while keeping
+// host content (which may itself be cm-skip, e.g. a chart <canvas>). See _snapshotWithTail.
+const CMH_INJECTED_CHROME = new Set();
 
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
 const root = document.getElementById("commentRoot") || document.body;
@@ -1329,7 +1354,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.6.1";
+const CMH_VERSION = "1.7.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -1450,8 +1475,13 @@ function mergeCommentSets(a, b) {
   const order = [];
   for (const c of (a || [])) {
     if (!c || !c.id || !SAFE_ID_RE.test(c.id)) continue;
-    map.set(c.id, c);
-    order.push(c.id);
+    const existing = map.get(c.id);
+    if (!existing) {
+      map.set(c.id, c);
+      order.push(c.id);            // dedupe: an id repeated in the persisted array appears once
+    } else if (commentTimestamp(c) > commentTimestamp(existing)) {
+      map.set(c.id, c);
+    }
   }
   for (const c of (b || [])) {
     if (!c || !c.id || !SAFE_ID_RE.test(c.id)) continue;
@@ -2807,7 +2837,7 @@ function _imgCids(im) {
   return (im.getAttribute("data-cids") || im.getAttribute("data-cid") || "").split(/\s+/).filter(Boolean);
 }
 function clearImageHighlight(id) {
-  root.querySelectorAll("img.cm-img-hl").forEach(im => {
+  root.querySelectorAll("img.cm-img-hl, canvas.cm-img-hl").forEach(im => {
     const cids = _imgCids(im);
     const rest = cids.filter(c => c !== id);
     if (rest.length === cids.length) return;
@@ -2822,7 +2852,7 @@ function clearImageHighlight(id) {
   });
 }
 function flashImage(id) {
-  const img = [...root.querySelectorAll("img.cm-img-hl")].find(im => _imgCids(im).includes(id));
+  const img = [...root.querySelectorAll("img.cm-img-hl, canvas.cm-img-hl")].find(im => _imgCids(im).includes(id));
   if (!img) return;
   img.classList.add("cm-img-active");
   setTimeout(() => img.classList.remove("cm-img-active"), 2200);
@@ -3228,9 +3258,12 @@ document.addEventListener("keydown", (e) => {
     if (tmenu && !tmenu.hidden) {
       tmenu.hidden = true;
       const tbtn = document.getElementById("btnToolbarMenu");
-      if (tbtn) tbtn.setAttribute("aria-expanded", "false");
+      if (tbtn) { tbtn.setAttribute("aria-expanded", "false"); tbtn.focus(); }
       return;
     }
+    // An open add-comment selection menu closes first and consumes Escape, so the key
+    // does not also discard an open composer draft behind it.
+    if (menu && !menu.hidden) { hideMenu(); return; }
     hideMenu();
     let target = (lastFocusedComposer && openComposers.has(lastFocusedComposer)) ? lastFocusedComposer : null;
     if (!target && openComposers.size) target = [...openComposers].pop();
@@ -3340,7 +3373,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       <span class="label">drag to move</span>
     </div>
     <div class="quote"></div>
-    <textarea aria-label="Review comment" placeholder="Write your review comment... (Ctrl+Enter to save, Esc to cancel)"></textarea>
+    <textarea aria-label="Review comment" placeholder="Write your review comment... (Ctrl/Cmd+Enter to save, Esc to cancel)"></textarea>
     <div class="row">
       <button type="button" data-act="cancel">Cancel</button>
       <button type="button" class="primary" data-act="save">Save comment</button>
@@ -4488,8 +4521,11 @@ function _mdLinkLabel(text) { return _mdText(text); }
 function _mdUrl(url) {
   const u = String(url == null ? "" : url).replace(/[\x00-\x1f\x7f]+/g, "").trim();
   // Neutralize executable schemes that have no legitimate use in an exported document; leave
-  // http/https/mailto/tel/data and relative/anchor destinations untouched.
+  // http/https/mailto/tel and relative/anchor destinations untouched.
   if (/^(?:javascript|vbscript):/i.test(u)) return "about:blank";
+  // Allow only image data URLs; a bare data: URL (data:text/html, data:application/..., etc.)
+  // is an inline-payload vector with no place in exported prose, so drop it.
+  if (/^data:/i.test(u) && !/^data:image\//i.test(u)) return "about:blank";
   if (/[()\s<>]/.test(u)) return "<" + u.replace(/</g, "%3C").replace(/>/g, "%3E") + ">";
   return u;
 }
@@ -4514,22 +4550,32 @@ function _mdEscapeLeading(s) {
     return ws + "\\" + tok;
   });
 }
+function _mdInlineOne(ch) {
+  if (ch.nodeType === 3) return _mdText(ch.nodeValue);
+  if (ch.nodeType !== 1 || _mdSkip(ch)) return "";
+  const t = ch.tagName;
+  if (t === "STRONG" || t === "B") return "**" + _mdCollapse(_mdInlineText(ch)) + "**";
+  if (t === "EM" || t === "I") return "*" + _mdCollapse(_mdInlineText(ch)) + "*";
+  if (t === "CODE") return _mdInlineCode(ch.textContent || "");
+  if (t === "A") return "[" + _mdCollapse(_mdInlineText(ch)) + "](" + _mdUrl(ch.getAttribute("href") || "") + ")";
+  if (t === "IMG") return "![" + _mdLinkLabel(ch.getAttribute("alt") || "") + "](" + _mdUrl(ch.getAttribute("src") || "") + ")";
+  if (t === "BR") return " ";
+  if (t === "SPAN" && ch.classList.contains("badge")) return _mdInlineCode(ch.textContent || "");
+  return _mdInlineText(ch);
+}
+// Append one child's inline serialization to acc, escaping a trailing "!" so an <a> that
+// follows a literal "!" cannot forge image syntax.
+function _mdAppendInline(acc, ch) {
+  const piece = _mdInlineOne(ch);
+  if (!piece) return acc;
+  if (piece[0] === "[" && acc.slice(-1) === "!") acc = acc.slice(0, -1) + "\\!";
+  return acc + piece;
+}
 function _mdInlineText(node) {
   let out = "";
   const kids = node.childNodes;
   for (let i = 0; i < kids.length; i++) {
-    const ch = kids[i];
-    if (ch.nodeType === 3) { out += _mdText(ch.nodeValue); continue; }
-    if (ch.nodeType !== 1 || _mdSkip(ch)) continue;
-    const t = ch.tagName;
-    if (t === "STRONG" || t === "B") out += "**" + _mdCollapse(_mdInlineText(ch)) + "**";
-    else if (t === "EM" || t === "I") out += "*" + _mdCollapse(_mdInlineText(ch)) + "*";
-    else if (t === "CODE") out += _mdInlineCode(ch.textContent || "");
-    else if (t === "A") { if (out.slice(-1) === "!") out = out.slice(0, -1) + "\\!"; out += "[" + _mdCollapse(_mdInlineText(ch)) + "](" + _mdUrl(ch.getAttribute("href") || "") + ")"; }
-    else if (t === "IMG") out += "![" + _mdLinkLabel(ch.getAttribute("alt") || "") + "](" + _mdUrl(ch.getAttribute("src") || "") + ")";
-    else if (t === "BR") out += " ";
-    else if (t === "SPAN" && ch.classList.contains("badge")) out += _mdInlineCode(ch.textContent || "");
-    else out += _mdInlineText(ch);
+    out = _mdAppendInline(out, kids[i]);
   }
   return out;
 }
@@ -4592,8 +4638,8 @@ function _mdList(el, indent) {
         flush();
         const md = _mdBlock(ch);
         if (md && md.trim()) segs.push({ t: "block", v: md.split("\n").map((l) => cont + l).join("\n") });
-      } else if (ch.nodeType === 3) inline += _mdText(ch.nodeValue);
-      else if (ch.nodeType === 1 && !_mdSkip(ch)) inline += _mdInlineText(ch);
+      } else if (ch.nodeType === 3) inline = _mdAppendInline(inline, ch);
+      else if (ch.nodeType === 1 && !_mdSkip(ch)) inline = _mdAppendInline(inline, ch);
     });
     flush();
     const lines = [];
@@ -5072,12 +5118,12 @@ function showConfirm(opts) {
       }
       if (e.key === "Tab") {
         // Trap focus between the two buttons so Tab cannot reach the page behind the modal.
+        // Always consume Tab; if focus escaped the dialog, pull it back to the default (Cancel).
+        e.preventDefault();
         const order = [okBtn, cancelBtn];
         const i = order.indexOf(document.activeElement);
-        if (i !== -1) {
-          e.preventDefault();
-          order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length].focus();
-        }
+        if (i === -1) { cancelBtn.focus(); return; }
+        order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length].focus();
       }
     }
     okBtn.addEventListener("click", () => close(true));
@@ -5126,7 +5172,49 @@ async function _getBaseHtml() {
       if (t && t.includes('id="embeddedComments"')) return t;
     }
   } catch (e) { /* fall through to snapshot */ }
-  return SNAPSHOT_HTML;
+  return _snapshotWithTail();
+}
+function _isInjectedChrome(n) {
+  if (n.nodeType !== 1) return false;
+  if (CMH_INJECTED_CHROME.has(n)) return true;
+  // Lazy chrome (tooltip, composer, modal, toast) is created after init and so is not in
+  // the captured set; it always carries one of these layer classes, which host tail
+  // content (a chart canvas, its data/init scripts) never uses.
+  const cls = (n.getAttribute && n.getAttribute("class")) || "";
+  return /(^|\s)(cm-tooltip|cm-composer|cm-modal-overlay|cm-toast)(\s|$)/.test(cls);
+}
+function _snapshotWithTail() {
+  // SNAPSHOT_HTML is pristine (captured before any runtime mutation) but stops at the
+  // layer <script>, so any host content parsed after it (chart data/init scripts placed
+  // after the JS region, per charts.md) is missing and would be dropped on a file://
+  // export. That tail is host-owned and never mutated by the layer, so recover it now
+  // from the fully-parsed live DOM and splice it back in before the snapshot's </body>.
+  const anchor = CMH_LAYER_SCRIPT;
+  if (!anchor || !anchor.parentNode) return SNAPSHOT_HTML;
+  const serial = function (n) {
+    if (n.nodeType === 1) {
+      // Skip layer-injected chrome (footer, side-TOC, scroll progress captured at init,
+      // plus lazily-created tooltip/composer/modal/toast) appended after the layer
+      // script; host content authored after the JS region (e.g. a chart canvas + init
+      // scripts, which are themselves cm-skip) must be kept.
+      if (_isInjectedChrome(n)) return "";
+      return n.outerHTML;
+    }
+    if (n.nodeType === 8) return "<!--" + n.nodeValue + "-->";
+    if (n.nodeType === 3) return n.nodeValue;
+    return "";
+  };
+  // Collect everything after the layer script in document order, climbing out of any
+  // wrapper up to <body> so a nested script still recovers the whole tail.
+  let tail = "";
+  for (let cur = anchor; cur && cur.parentNode; cur = cur.parentNode) {
+    for (let s = cur.nextSibling; s; s = s.nextSibling) tail += serial(s);
+    if (cur.parentNode === document.body) break;
+  }
+  if (!tail) return SNAPSHOT_HTML;
+  const idx = SNAPSHOT_HTML.toLowerCase().lastIndexOf("</body>");
+  if (idx < 0) return SNAPSHOT_HTML + tail;
+  return SNAPSHOT_HTML.slice(0, idx) + tail + SNAPSHOT_HTML.slice(idx);
 }
 function _buildSavedHtml(baseHtml, commentArr) {
   // Escape "<" as \u003c so a comment note containing a closing script tag (or an
@@ -5139,7 +5227,14 @@ function _buildSavedHtml(baseHtml, commentArr) {
   const repl = '<script type="application\/json" id="embeddedComments">\n'
              + json
              + '\n<\/script>';
-  const rx = /<script type="application\/json" id="embeddedComments">[\s\S]*?<\/script>/;
+  // Match the embedded-comments script by a real, whitespace-delimited id attribute,
+  // regardless of the remaining attribute order or spacing: a document authored or re-saved
+  // as `<script id="embeddedComments" type="...">` must still be found. Requiring whitespace
+  // before `id` (not a bare word boundary) means a decoy `data-id="embeddedComments"` or
+  // `aria-id="embeddedComments"` on another script is never mistaken for the real block. The
+  // body is non-greedy to the first closing tag; comment JSON escapes every "<" as \u003c,
+  // so no closing script tag can appear inside it.
+  const rx = /<script\b[^>]*?\sid\s*=\s*(["'])embeddedComments\1[^>]*>[\s\S]*?<\/script>/i;
   if (!rx.test(baseHtml)) {
     throw new Error('Could not find <scr' + 'ipt id="embeddedComments"> in the source HTML. Make sure the EMBEDDED COMMENTS region is present.');
   }
@@ -5286,6 +5381,14 @@ function _inlineNonPortableAssets(baseHtml) {
       + "(__COMMENTABLE_ASSETS__) did not load. Keep the companion .assets.js next "
       + "to this HTML, or keep the companion files alongside it.");
   }
+  if (CMH_ASSETS.version && CMH_VERSION && CMH_ASSETS.version !== CMH_VERSION) {
+    // Inlining a companion whose CSS/JS is a different version than the running layer
+    // would bake a mismatched runtime into the portable file. Abort with guidance
+    // rather than emit a document that silently disagrees with itself.
+    throw new Error("Cannot export standalone: the companion assets file is version "
+      + CMH_ASSETS.version + " but this document's runtime is " + CMH_VERSION
+      + ". Refresh the companion .assets.js (or regenerate the document) so both match, then export again.");
+  }
   let t = baseHtml;
   if (!/<link\b[^>]*commentable-html[^>]*\.css/i.test(t)) {
     throw new Error("Could not find the commentable-html stylesheet <link> to inline.");
@@ -5330,11 +5433,6 @@ function _inlineNonPortableAssets(baseHtml) {
 function _buildStandaloneHtml(baseHtml, commentArr) {
   return _inlineNonPortableAssets(_buildSavedHtml(baseHtml, commentArr));
 }
-function _suggestedStandaloneFilename() {
-  const name = _suggestedFilename();
-  const m = name.match(/^(.*?)(-comments)?(\.html?)$/i);
-  return m ? m[1] + ".standalone" + m[3] : name;
-}
 async function saveStandalone() {
   // "Export as Portable" always yields ONE combined file with the
   // comments embedded. An inline document is already self-contained, so the plain
@@ -5347,7 +5445,7 @@ async function saveStandalone() {
   let text;
   try { text = _buildStandaloneHtml(baseHtml, _canonicalCommentsForExport()); }
   catch (e) { showToast(e.message); return; }
-  const filename = _suggestedStandaloneFilename();
+  const filename = _suggestedFilename();
   const n = comments.length;
   _downloadHtml(text, filename);
   showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
@@ -5412,7 +5510,19 @@ function updateDocTypeUi() {
   const st = currentDocState();
   ["cmTypeBadge", "cmhModeBadge"].forEach(function (id) {
     const el = document.getElementById(id);
-    if (el) { el.textContent = st.type; el.setAttribute("data-doc-type", st.type); el.title = st.reason; }
+    if (!el) return;
+    el.textContent = st.type;
+    el.setAttribute("data-doc-type", st.type);
+    // If the tooltip layer already adopted this control (title moved to data-cmh-tip),
+    // update the managed attributes in place so the new reason shows without a native-title
+    // flash; otherwise set title and let the tooltip layer adopt it on first hover.
+    if (el.hasAttribute("data-cmh-tip")) {
+      el.setAttribute("data-cmh-tip", st.reason);
+      if (el.getAttribute("aria-label")) el.setAttribute("aria-label", st.reason);
+      el.removeAttribute("title");
+    } else {
+      el.title = st.reason;
+    }
   });
 }
 function setupModeUi() {
@@ -5784,17 +5894,35 @@ function setupHeadingAnchors() {
     }
     seen[h.id] = true;
     h.classList.add("cm-anchored");
-    if (!h.title) h.title = "Click to link to this section (hover to comment on it)";
+    if (!h.title) h.title = "Click or press Enter to link to this section (hover or focus to comment on it)";
+    // Keyboard parity: the heading is a deep-link affordance, so make it focusable and
+    // activate the link on Enter/Space just like a click (a visible :focus-visible outline
+    // is defined in CSS). Focusing it also reveals the add-comment button, which is itself
+    // a real focusable button reachable by Tab.
+    if (!h.hasAttribute("tabindex")) h.setAttribute("tabindex", "0");
+    function deepLink() {
+      if (window.history && history.pushState) history.pushState(null, "", "#" + h.id);
+      else location.hash = h.id;
+      h.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     h.addEventListener("click", function (e) {
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed) return;              // selecting text to comment
       if (e.target.closest("a, mark.cm-hl")) return;    // let links / highlight-clicks win
-      if (window.history && history.pushState) history.pushState(null, "", "#" + h.id);
-      else location.hash = h.id;
-      h.scrollIntoView({ behavior: "smooth", block: "start" });
+      deepLink();
+    });
+    h.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      if (e.target !== h) return;                       // let a focused child (link) act
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+      e.preventDefault();
+      deepLink();
     });
     h.addEventListener("mouseenter", function () { showHeadingAdd(h); });
     h.addEventListener("mouseleave", scheduleHideHeadingAdd);
+    h.addEventListener("focus", function () { showHeadingAdd(h); });
+    h.addEventListener("blur", scheduleHideHeadingAdd);
   });
 }
 // Every authored <section> with a heading becomes collapsible: a caret on the heading
@@ -5961,6 +6089,10 @@ function setupSideToc() {
       const top = items[i].el.getBoundingClientRect().top;
       if (top <= 120 && top > bestTop) { bestTop = top; activeIdx = i; }
     }
+    // At the page bottom a short trailing section never reaches the 120px threshold, so the
+    // final item would never light up. Force it active once the document is fully scrolled.
+    const doc = document.documentElement;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) activeIdx = items.length - 1;
     for (let i = 0; i < links.length; i++) links[i].classList.toggle("is-active", i === activeIdx);
   }
   let raf = 0;
@@ -6207,6 +6339,14 @@ setupSideToc();
 setupFooter();
 setupScrollProgress();
 setupTooltips();
+// Capture the layer chrome injected above while the host content that follows the layer
+// <script> is still unparsed, so an export tail can exclude it (see _snapshotWithTail).
+for (let cur = CMH_LAYER_SCRIPT; cur && cur.parentNode; cur = cur.parentNode) {
+  for (let s = cur.nextSibling; s; s = s.nextSibling) {
+    if (s.nodeType === 1) CMH_INJECTED_CHROME.add(s);
+  }
+  if (cur.parentNode === document.body) break;
+}
 renderComments();
 if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);

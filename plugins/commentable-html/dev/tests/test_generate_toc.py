@@ -53,6 +53,20 @@ class GenerateTocTests(unittest.TestCase):
         toc = generate_toc.build_toc(html)
         self.assertIn('<a href="#alpha-2">Alpha</a>', toc)
 
+    def test_headings_after_root_close_are_ignored(self):
+        html = (
+            "<!doctype html>\n<html><body>\n"
+            '<main id="commentRoot" data-comment-key="k">'
+            '<h2 id="inside">Inside</h2>'
+            "</main>\n"
+            '<footer><h2 id="after-root">After Root</h2></footer>\n'
+            "</body></html>\n"
+        )
+        toc = generate_toc.build_toc(html)
+        self.assertIn("#inside", toc)
+        self.assertNotIn("after-root", toc)
+        self.assertNotIn("After Root", toc)
+
     def test_only_headings_inside_comment_root_and_not_cm_skip_are_included(self):
         html = (
             '<h2 id="outside">Outside</h2>'

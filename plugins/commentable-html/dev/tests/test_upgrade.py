@@ -65,18 +65,52 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertIn("KEEP-EMBEDDED-SENTINEL", out)
         self.assertNotIn("STALE-JS", out)             # JS region refreshed
 
-    def test_js_region_end_uses_the_last_marker_occurrence(self):
-        # A JS body that itself mentions the END marker text must not truncate the region.
-        text = ("x BEGIN: commentable-html - JS"
-                " real-js-body-with END: commentable-html - JS inside a string"
-                " more-js END: commentable-html - JS y")
+    def test_js_region_end_ignores_inline_marker_mentions(self):
+        # C2: only a genuine marker LINE bounds a region. A JS body that mentions the END
+        # marker text inline (a string literal, or the plain-export code that reconstructs
+        # marker text) must not truncate the region - the real trailing marker line wins.
+        text = ("     BEGIN: commentable-html - JS\n"
+                "   var note = 'see END: commentable-html - JS in a string';\n"
+                "   out += \"<!-- END: commentable-html - JS -->\\n\";\n"
+                "<!-- END: commentable-html - JS -->\n"
+                "trailing\n")
         b, e = upgrade._region_inner(text, "JS", "<t>")
         inner = text[b:e]
-        # the inner must extend to the LAST occurrence, so it still contains the first
-        # (marker-like) occurrence rather than stopping at it
-        self.assertIn("inside a string", inner)
-        self.assertIn("more-js", inner)
-        self.assertEqual(e, text.rfind("END: commentable-html - JS"))
+        # the inline mentions live inside the region (not treated as boundaries)
+        self.assertIn("see END: commentable-html - JS in a string", inner)
+        self.assertIn("out +=", inner)
+        # the region ends at the real trailing marker line, not an inline mention
+        self.assertEqual(e, text.rindex("<!-- END: commentable-html - JS -->") + len("<!-- "))
+        self.assertNotIn("trailing", inner)
+
+    def test_region_marker_must_be_on_its_own_line(self):
+        # A bare inline BEGIN mention (line does not start with the marker or its comment
+        # delimiter) is not a region start, so a document that quotes the markers in prose
+        # or code cannot be mistaken for a real region and corrupted by a swap.
+        text = ("prefix x BEGIN: commentable-html - JS not-a-marker\n"
+                "     BEGIN: commentable-html - JS\n"
+                "body\n"
+                "<!-- END: commentable-html - JS -->\n")
+        b, e = upgrade._region_inner(text, "JS", "<t>")
+        inner = text[b:e]
+        self.assertIn("body", inner)
+        self.assertNotIn("not-a-marker", inner)
+
+    def test_region_marker_rejects_trailing_authored_text(self):
+        # C2: a line that STARTS with the marker phrase but carries trailing authored words
+        # is NOT a region boundary (the old \b-terminated match accepted it). The real, bare
+        # marker line that follows is the genuine BEGIN, so authored prose that quotes the
+        # phrase before the real region cannot pull the region start earlier and swallow content.
+        text = ("     BEGIN: commentable-html - JS as discussed in this authored note\n"
+                "poison-before\n"
+                "     BEGIN: commentable-html - JS\n"
+                "body\n"
+                "<!-- END: commentable-html - JS -->\n")
+        b, e = upgrade._region_inner(text, "JS", "<t>")
+        inner = text[b:e]
+        self.assertIn("body", inner)
+        self.assertNotIn("poison-before", inner)
+        self.assertNotIn("authored note", inner)
 
     def test_nonportable_document_is_refused(self):
         tpl = _tpl()

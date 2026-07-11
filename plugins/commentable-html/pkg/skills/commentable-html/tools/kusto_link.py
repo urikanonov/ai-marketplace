@@ -19,7 +19,7 @@ CLI:
     python tools/kusto_link.py <cluster> <database> "<query>"
     python tools/kusto_link.py <cluster> <database>          # query on stdin
 
-<cluster> may be a bare host (wcdprod.kusto.windows.net) or a full https URL; the
+<cluster> may be a bare host (help.kusto.windows.net) or a full https URL; the
 scheme and any trailing slash are stripped.
 """
 import base64
@@ -32,7 +32,7 @@ from urllib.parse import quote, urlsplit
 _BASE = "https://dataexplorer.azure.com"
 
 # A Kusto cluster is a plain DNS host (optionally with a port), e.g.
-# "wcdprod.kusto.windows.net" or "m365dcogs.westus.kusto.windows.net". Anything
+# "help.kusto.windows.net" or "mycluster.westus.kusto.windows.net". Anything
 # outside this set (quotes, spaces, '/', '?', '#', '&', ...) must be rejected: the
 # host is placed into the report's <a href="...">, so a stray quote would break the
 # attribute and a stray '?'/'#' would corrupt the URL.
@@ -93,16 +93,40 @@ def kusto_link(cluster, database, query):
         _BASE, host, quote(database, safe=""), payload)
 
 
+def _wants_help(tokens):
+    # Honor -h/--help only before an end-of-options "--"; a -h AFTER "--" is a positional.
+    for t in tokens:
+        if t == "--":
+            return False
+        if t in ("-h", "--help"):
+            return True
+    return False
+
+
 def main(argv):
-    if len(argv) < 3 or len(argv) > 4:
+    raw = argv[1:]
+    if _wants_help(raw):
+        sys.stdout.write(
+            "usage: python tools/kusto_link.py <cluster> <database> [query]\n"
+            "       the query is read from stdin when the 3rd argument is omitted;\n"
+            "       quote a multi-word query so it arrives as one argument.\n")
+        return 0
+    # A bare "--" ends options: the tokens after it are positional (cluster/database/query),
+    # so a query beginning with a dash can still be passed.
+    if "--" in raw:
+        sep = raw.index("--")
+        pos = raw[:sep] + raw[sep + 1:]
+    else:
+        pos = raw
+    if len(pos) < 2 or len(pos) > 3:
         sys.stderr.write(
             "usage: python tools/kusto_link.py <cluster> <database> [query]\n"
             "       the query is read from stdin when the 3rd argument is omitted;\n"
             "       quote a multi-word query so it arrives as one argument.\n")
         return 2
-    cluster, database = argv[1], argv[2]
-    if len(argv) > 3:
-        query = argv[3]
+    cluster, database = pos[0], pos[1]
+    if len(pos) > 2:
+        query = pos[2]
     else:
         # Read stdin as raw bytes and decode UTF-8 explicitly: sys.stdin.read()
         # would use the platform locale (cp1252 on Windows) and corrupt unicode.

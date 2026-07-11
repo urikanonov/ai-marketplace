@@ -4,6 +4,64 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-11
+
+### Fixed
+
+- Export on `file://` no longer drops content authored after the layer script. The export base is now
+  captured from the fully parsed DOM at export time (then re-stripped of runtime artifacts) instead of a
+  snapshot taken before late content (for example a `chart_block` chart placed after the layer) was parsed.
+- `Export as Portable/Standalone` finds the embedded-comments script regardless of its attribute order, and
+  aborts with a clear error when the companion assets version does not match the running runtime.
+- `Export to Markdown` now serializes `<strong>`/`<em>`/`<a>`/`<code>`/`<img>` that are direct children of a
+  list item, and its URL allowlist keeps only image data URLs (a bare `data:` destination is neutralized
+  while `data:image` is preserved).
+- Image/canvas comment highlights clear and flash correctly on `<canvas>` widgets, not just `<img>`.
+- Duplicate persisted comment ids are de-duplicated on load so a corrupted store cannot render twin cards.
+- `generate_toc.py` and `validate.py` reset the `#commentRoot` scope on the root's closing tag, so a heading
+  or cross-reference in a later footer or sibling container is no longer collected into the TOC or validated
+  as document content.
+- `validate.py` accepts cache-busted companion references, stripping a `?query`/`#fragment` before the
+  `.js`/`.css` suffix and the on-disk existence check.
+- `diff_block.py` preserves a file-final-newline-only difference and emits the standard
+  `\ No newline at end of file` marker instead of silently dropping it.
+- `new_document.py` refuses NonPortable output to stdout unless `--assets-href` is given, because bare
+  companion names written to a stream are unreachable; its `--key-from-source` help no longer claims a
+  `--label` fallback.
+- `chart_block.py` adds its own tools directory to `sys.path` on import so the sibling `validate` module is
+  importable and self-validation is never silently skipped.
+- `--help`/`-h` now exits 0 with usage on every shipped tool (`validate.py`, `kql_highlight.py`,
+  `kusto_link.py`, `mark_handled.py`, and the rest), instead of treating the flag as a filename.
+- `new_document.py --key auto` derives the comment key from the output/source path identity rather than the
+  label, so two documents that share a title no longer collide and leak comments across each other.
+- The lede/intro block is no longer clamped by the 72ch prose measure, so it renders at the section width.
+- The confirm dialog always traps Tab and pulls escaped focus back to Cancel; Escape closing the toolbar
+  overflow menu or the add-comment menu restores focus and no longer discards an open composer draft; the
+  side-TOC highlights the last section once the page is fully scrolled.
+
+### Added
+
+- Headings are keyboard-focusable with a visible focus style and Enter/Space activation for the deep-link /
+  add-comment affordance, matching the mouse-only behavior.
+- Generated documents carry a visible themed document title (`#commentRoot > h1`); `new_document.py` adds a
+  visible `<h1>` from `--label` unless the fragment already has one or `--no-title` is passed.
+- The trust boundary is documented in `SKILL.md` and `new_document.py --help`: authored content is trusted
+  HTML and is not sanitized; callers must sanitize untrusted host HTML before wrapping it.
+- A `new_document.py` quickstart example in the plugin README; `retrofitting.md` documents the
+  `window.__cmh*` / `__commentable*` introspection globals.
+
+### Changed
+
+- `validate.py` requires `headingAddBtn`, `widgetAddBtn`, and `menuDocComment`, and its stale version note
+  now points at the correct removal version.
+- `upgrade.py` matches its replace regions by exact begin/end markers; the composer placeholder documents the
+  `Ctrl/Cmd+Enter` save shortcut; `kusto_link.py` and the dev tests use public/generic cluster, path, and
+  database names in place of internal ones.
+- `build.py` now regenerates the example reports' layer regions and version stamps from the freshly built
+  dist and covers them in `--check`.
+- Both export modes download `<stem>-portable.html`; the NonPortable "Export as Portable" no longer emits a
+  `<stem>.standalone.html` filename.
+
 ## [1.6.1] - 2026-07-11
 
 ### Added

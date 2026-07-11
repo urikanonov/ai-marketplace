@@ -21,6 +21,10 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    # Ensure the sibling `validate` module is importable so self-validation is not
+    # silently skipped under a non-standard invocation (matches the other tools).
+    sys.path.insert(0, HERE)
 SKILL_ROOT = os.path.dirname(HERE)
 DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 

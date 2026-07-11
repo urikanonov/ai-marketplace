@@ -28,7 +28,7 @@ QUERY_HARD = 'T | where Name == "a&b?c#d %e+f/=g" and Msg == "\u65e5\u672c\u8a9e
 # A frozen known-good link. If the encoding scheme drifts (mtime unpinned, safe=
 # changed, zlib swapped in), this fails even though the self-consistent roundtrip
 # would still pass. Generated once from the helper itself.
-GOLDEN = ("https://dataexplorer.azure.com/clusters/wcdprod.kusto.windows.net/databases/Geneva?query="
+GOLDEN = ("https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query="
           "H4sIAAAAAAAC%2F3NJLUlNLsnMzwtKLcgvKinmqlEoz0gtSlXwLA5JLS7xL0pXsLVVSEvMKU4FShWX5uYmFmVWpSqk"
           "JOeX5pVouMC0e6ZoAgCrjgbiSwAAAA%3D%3D")
 
@@ -50,12 +50,12 @@ def _decode_query_param(url):
 
 class KustoLinkTests(unittest.TestCase):
     def test_roundtrip_recovers_query(self):
-        url = kusto_link.kusto_link("wcdprod.kusto.windows.net", "Geneva", QUERY)
+        url = kusto_link.kusto_link("help.kusto.windows.net", "Samples", QUERY)
         self.assertEqual(_decode_query_param(url), QUERY)
 
     def test_golden_link_is_stable(self):
         # Pins the exact URL contract so an encoding regression cannot ship silently.
-        self.assertEqual(kusto_link.kusto_link("wcdprod.kusto.windows.net", "Geneva", QUERY), GOLDEN)
+        self.assertEqual(kusto_link.kusto_link("help.kusto.windows.net", "Samples", QUERY), GOLDEN)
 
     def test_url_special_and_unicode_query_roundtrips(self):
         url = kusto_link.kusto_link("c.kusto.windows.net", "db", QUERY_HARD)
@@ -66,9 +66,9 @@ class KustoLinkTests(unittest.TestCase):
             self.assertNotIn(ch, param)
 
     def test_url_shape(self):
-        url = kusto_link.kusto_link("wcdprod.kusto.windows.net", "Geneva", QUERY)
+        url = kusto_link.kusto_link("help.kusto.windows.net", "Samples", QUERY)
         self.assertTrue(url.startswith(
-            "https://dataexplorer.azure.com/clusters/wcdprod.kusto.windows.net/databases/Geneva?query="))
+            "https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query="))
 
     def test_gzip_magic_and_deterministic(self):
         # mtime is pinned, so the same query yields byte-identical links.
@@ -113,8 +113,8 @@ class KustoLinkTests(unittest.TestCase):
         self.assertIn("/clusters/c.kusto.windows.net/databases/db?query=", url)
 
     def test_database_with_space_is_encoded(self):
-        url = kusto_link.kusto_link("c.kusto.windows.net", "AzureSpend MBIP", QUERY)
-        self.assertIn("/databases/AzureSpend%20MBIP?query=", url)
+        url = kusto_link.kusto_link("c.kusto.windows.net", "Sample DB", QUERY)
+        self.assertIn("/databases/Sample%20DB?query=", url)
 
     def test_payload_is_percent_encoded(self):
         # A raw '+' or '/' from base64 must not appear unencoded in the query param.

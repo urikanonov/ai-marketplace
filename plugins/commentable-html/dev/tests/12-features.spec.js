@@ -402,7 +402,7 @@ test.describe("exports preserve comments", () => {
         page.waitForEvent("download"),
         page.click("#btnSaveHtml"),
       ]);
-      expect(dl.suggestedFilename()).toMatch(/\.standalone\.html$/);
+      expect(dl.suggestedFilename()).toMatch(/-portable\.html$/);
       const html = await readDownload(dl);
       const tmp = path.join(os.tmpdir(), "cmh_std_comments_" + Date.now() + ".html");
       fs.writeFileSync(tmp, html);

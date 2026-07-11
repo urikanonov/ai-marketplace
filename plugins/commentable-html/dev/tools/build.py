@@ -140,16 +140,17 @@ def read_mermaid_version(package_json=None):
 
 
 def example_stamps(out_dir, mermaid_version):
-    """Return {path: stamped_text} for the hand-maintained example reports, with only
-    their mermaid CDN version rewritten to the single source (package.json). Nothing
-    else in the examples is touched, so they stay hand-authored while their mermaid
-    pin is kept in lock-step with the tests' vendored mermaid. --check flags drift."""
+    """Return {path: stamped_text} for hand-maintained example reports that build_examples
+    does NOT fully regenerate, with only their mermaid CDN version rewritten to the single
+    source (package.json). report-*.html files are owned by build_examples (which stamps
+    mermaid itself), so they are skipped here to avoid two producers writing the same path.
+    --check flags drift."""
     stamps = {}
     ex_dir = os.path.join(out_dir, "examples")
     if not os.path.isdir(ex_dir):
         return stamps
     for name in sorted(os.listdir(ex_dir)):
-        if not name.endswith(".html"):
+        if not name.endswith(".html") or _EXAMPLE_NAME_RE.match(name):
             continue
         path = os.path.join(ex_dir, name)
         text = read(path)
@@ -384,8 +385,77 @@ def build_nonportable(shell, version, mermaid_version):
     return t
 
 
+def _marker_re(kind, name):
+    # Match a region marker only when it occupies its OWN line (optionally wrapped by a
+    # comment delimiter and/or a ==== banner), never a loose substring. This mirrors
+    # tools/upgrade.py so example regeneration and end-user upgrades agree on the boundaries,
+    # and it prevents authored content that merely mentions the phrase - or the plain-export
+    # code that reconstructs marker text inside a JS string literal (lines starting with
+    # `+ "`) - from being mistaken for a real region boundary.
+    return re.compile(
+        r"(?m)^[ \t]*(?:<!--[ \t]*)?(?:/\*[ \t]*)?(?:=+[ \t]*)?(%s: commentable-html - %s)"
+        r"[ \t]*(?:=+[ \t]*)?(?:-->|\*/)?[ \t]*$"
+        % (kind, re.escape(name)))
+
+
+def _region_inner(text, name, where):
+    """Return (start, end) offsets of a layer region's inner content (between the BEGIN
+    and END marker lines). For JS the END is the LAST marker line, because the JS body
+    contains marker-like strings (the plain-export code) that a first match would fool.
+    Mirrors tools/upgrade.py so example regeneration and end-user upgrades agree."""
+    bm = _marker_re("BEGIN", name).search(text)
+    if not bm:
+        raise SystemExit("build: %s: '%s' region BEGIN marker not found" % (where, name))
+    b = bm.end(1)
+    ends = [m for m in _marker_re("END", name).finditer(text) if m.start(1) >= b]
+    if not ends:
+        raise SystemExit("build: %s: '%s' region END marker not found after BEGIN" % (where, name))
+    em = ends[-1] if name == "JS" else ends[0]
+    return b, em.start(1)
+
+
+# Layer regions swapped into each example from the freshly built PORTABLE.html. HANDLED
+# IDS, EMBEDDED COMMENTS, CONTENT, and the #commentRoot wrapper are the report's own data
+# and are never touched.
+_EXAMPLE_SWAP_REGIONS = ("CSS", "COMMENT UI", "JS")
+_EXAMPLE_NAME_RE = re.compile(r"^report-.*\.html$")
+_META_VERSION_RE = re.compile(
+    r'(<meta name="commentable-html-version" content=")[0-9]+\.[0-9]+\.[0-9]+(")')
+
+
+def regen_example(example_html, portable_html, version, mermaid_version, where="<example>"):
+    """Return the example with its CSS/COMMENT UI/JS regions replaced by the current
+    layer from portable_html, its <meta> version re-stamped, and its mermaid CDN pin
+    rewritten to the single source. The report's content and embedded comments are
+    preserved."""
+    out = example_html
+    for name in _EXAMPLE_SWAP_REGIONS:
+        tb, te = _region_inner(portable_html, name, "dist/PORTABLE.html")
+        db, de = _region_inner(out, name, where)
+        out = out[:db] + portable_html[tb:te] + out[de:]
+    out, n = _META_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), out, count=1)
+    if n != 1:
+        raise SystemExit("build: %s has no commentable-html-version <meta> to stamp" % where)
+    out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
+    return out
+
+
+def build_examples(portable_html, version, mermaid_version, out_dir):
+    """Regenerate every examples/report-*.html found under out_dir. Returns {path: text}.
+    An absent examples/ directory (e.g. a temp-dir build) yields no entries."""
+    examples_dir = os.path.join(out_dir, "examples")
+    result = {}
+    if not os.path.isdir(examples_dir):
+        return result
+    for name in sorted(os.listdir(examples_dir)):
+        if not _EXAMPLE_NAME_RE.match(name):
+            continue
+        path = os.path.join(examples_dir, name)
+        result[path] = regen_example(read(path), portable_html, version, mermaid_version, name)
+    return result
+
+
 def build_all(assets_dir=None, out_dir=None):
-    assets_dir = ASSETS if assets_dir is None else assets_dir
     out_dir = HERE if out_dir is None else out_dir
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
@@ -402,14 +472,17 @@ def build_all(assets_dir=None, out_dir=None):
             assets_name: {"sha256": sha256(assets_js), "bytes": len(assets_js.encode("utf-8"))},
         },
     }
-    return {
-        os.path.join(dist_dir, "PORTABLE.html"): build_inline(css, js, shell, version, mermaid_version),
+    portable = build_inline(css, js, shell, version, mermaid_version)
+    outputs = {
+        os.path.join(dist_dir, "PORTABLE.html"): portable,
         os.path.join(dist_dir, css_name): css_file,
         os.path.join(dist_dir, js_name): js_file,
         os.path.join(dist_dir, assets_name): assets_js,
-        os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2) + "\n",
+        os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version),
-    }, version
+    }
+    outputs.update(build_examples(portable, version, mermaid_version, out_dir))
+    return outputs, version
 
 
 # --------------------------------------------------------------------------- #

@@ -37,6 +37,23 @@ python skills\commentable-html\tools\validate.py --strict <file.html>
 
 The review loop is also documented in `skills/commentable-html/SKILL.md`: the user copies all comments, the agent processes the bundle, and `tools\mark_handled.py` appends handled ids so processed comments disappear on reload.
 
+### Quickstart: build a document from a content fragment
+
+`tools/new_document.py` wraps a ready HTML content fragment (the part that goes inside `#commentRoot`) in the review layer. Given a `report-body.html` fragment, produce a single self-contained file:
+
+```powershell
+python skills\commentable-html\tools\new_document.py `
+  --content report-body.html `
+  --portable `
+  --label "Q3 Cost Review" `
+  --key auto `
+  --source report-body.html `
+  --out q3-cost-review.html
+python skills\commentable-html\tools\validate.py --strict q3-cost-review.html
+```
+
+`--key auto` derives a stable, collision-free `data-comment-key` from the output/source path (not from `--label`), so two same-titled reports keep separate comment stores. Drop `--portable` for a NonPortable file that references the companion assets, and pass `--content -` to read the fragment from stdin. The fragment is trusted HTML and is not sanitized; sanitize any untrusted host HTML before wrapping it.
+
 Contributors: see the [contributing guide](https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md). Use the issue tracker to [report a bug](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml), [request a feature](https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml) for an existing plugin, or [suggest a new plugin or skill](https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-request.yml). Packaged installs do not include the development harness.
 
 ## Directory layout

@@ -4,9 +4,13 @@ import argparse
 import difflib
 import html
 import os
+import re
 import sys
 
 _WARN_LINE_THRESHOLD = 2000
+
+_NO_NEWLINE_MARKER = "\\ No newline at end of file"
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@")
 
 
 def _normalize_newlines(text):
@@ -23,17 +27,38 @@ def render_diff_block(diff_text, label, lang=None):
 
 
 def unified_diff(old_text, new_text, label):
-    """Return a deterministic unified diff with LF line endings."""
+    """Return a deterministic unified diff with LF line endings.
+
+    Lines are compared with their terminators kept, so a difference that is ONLY a
+    missing final newline is not erased (splitlines() would drop it). A file whose last
+    line lacks a trailing newline is annotated with the standard git marker
+    `\\ No newline at end of file`, matching what real diff tooling emits.
+    """
     normalized_old = _normalize_newlines(old_text)
     normalized_new = _normalize_newlines(new_text)
-    diff_lines = difflib.unified_diff(
-        normalized_old.splitlines(),
-        normalized_new.splitlines(),
+    raw = difflib.unified_diff(
+        normalized_old.splitlines(keepends=True),
+        normalized_new.splitlines(keepends=True),
         fromfile="a/%s" % label,
         tofile="b/%s" % label,
         lineterm="",
     )
-    return "\n".join(diff_lines)
+    out = []
+    seen_hunk = False
+    for line in raw:
+        if not seen_hunk and (line.startswith("--- ") or line.startswith("+++ ")):
+            out.append(line)
+            continue
+        if _HUNK_RE.match(line):
+            seen_hunk = True
+            out.append(line)
+            continue
+        if line.endswith("\n"):
+            out.append(line[:-1])
+        else:
+            out.append(line)
+            out.append(_NO_NEWLINE_MARKER)
+    return "\n".join(out)
 
 
 def _build_parser():

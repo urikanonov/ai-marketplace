@@ -54,9 +54,10 @@ REQUIRED_IDS = [
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
+    "headingAddBtn", "widgetAddBtn", "menuDocComment",
 ]
 
-# Export/Import was removed in v2.4 (redundant with Export with embedded comments). Its presence
+# Export/Import was removed before the 1.0.0 release (redundant with Export with embedded comments). Its presence
 # means an augmentation reintroduced the retired feature.
 FORBIDDEN_IDS = [
     "btnExport", "btnExportTop", "btnImport", "btnImportTop",
@@ -214,6 +215,7 @@ class _DocParser(HTMLParser):
         self._cur_body = []
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
         self._cr_depth = None        # stack depth at which #commentRoot was entered
+        self._cr_closed = False      # True once #commentRoot (or an ancestor) has closed
         self.headings = []           # [{"id": str|None, "text": str}] for headings in #commentRoot
         self._cur_heading = None     # (tag, id, [parts]) while capturing a heading's text
         self._figure_chart = []      # stack of bool: is each open <figure> a chart figure
@@ -299,7 +301,7 @@ class _DocParser(HTMLParser):
             self._cur_script = (self._off(), ad)
             self._cur_body = []
         if (tag in _HEADING_TAGS and self._cur_heading is None and self._cr_depth is not None
-                and len(self.stack) > self._cr_depth and not own_skip
+                and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
             self._cur_heading = (tag, ad.get("id"), [])
         if tag not in VOID:
@@ -329,7 +331,7 @@ class _DocParser(HTMLParser):
             return  # heading text is captured separately, not treated as cross-ref prose
         # Prose inside #commentRoot but NOT inside a link or a cm-skip element. A cross
         # reference that IS a link never lands here, so only UNLINKED references remain.
-        if (self._cr_depth is not None and len(self.stack) > self._cr_depth
+        if (self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
                 and not self._skip_ancestor()
                 and not any(t == "a" for (t, _s) in self.stack)):
             self.commentroot_prose.append(data)
@@ -352,6 +354,10 @@ class _DocParser(HTMLParser):
                 for _ in range(removed_figures):
                     if self._figure_chart:
                         self._figure_chart.pop()
+                # Closing #commentRoot (or an ancestor of it) ends the root subtree for
+                # good, so headings/prose in a later sibling container are not collected.
+                if self._cr_depth is not None and i <= self._cr_depth:
+                    self._cr_closed = True
                 del self.stack[i:]
                 return
 
@@ -502,14 +508,23 @@ def _find_tag_attrs(html, tag):
 # value, an unquoted href/src, a reordered <meta content=.. name=..>, or a decoy
 # tag inside a comment/script body is handled the same way as the rest of the
 # validator.
+def _ref_path(ref):
+    """The path portion of a companion ref, without a ?query or #fragment cache-buster
+    (e.g. 'commentable-html.js?v=1.7.0' -> 'commentable-html.js'), so suffix detection
+    and the on-disk existence check ignore the cache-buster the browser strips too."""
+    return re.split(r"[?#]", ref or "", maxsplit=1)[0]
+
+
 def _nonportable_css_refs(html):
-    return [a["href"] for a in _find_tag_attrs(html, "link")
-            if "commentable-html" in a.get("href", "").lower() and a.get("href", "").lower().endswith(".css")]
+    return [_ref_path(a["href"]) for a in _find_tag_attrs(html, "link")
+            if "commentable-html" in a.get("href", "").lower()
+            and _ref_path(a.get("href", "")).lower().endswith(".css")]
 
 
 def _nonportable_js_refs(html):
-    return [a["src"] for a in _find_tag_attrs(html, "script")
-            if "commentable-html" in a.get("src", "").lower() and a.get("src", "").lower().endswith(".js")]
+    return [_ref_path(a["src"]) for a in _find_tag_attrs(html, "script")
+            if "commentable-html" in a.get("src", "").lower()
+            and _ref_path(a.get("src", "")).lower().endswith(".js")]
 
 
 def _nonportable_meta_versions(html):
@@ -874,10 +889,10 @@ def check_layer(html, parser, base_dir=None):
         if c > 1:
             errors.append(f'<script id="{uid}"> appears {c} times (must be unique)')
 
-    # 8) Export/Import must stay removed (v2.4).
+    # 8) Export/Import must stay removed (dropped before the 1.0.0 release).
     present_forbidden = [uid for uid in FORBIDDEN_IDS if uid in id_counts]
     if present_forbidden or "--START-COMMENTS-EXPORT--" in html:
-        warnings.append("Export/Import UI detected - this was removed in v2.4 (redundant with Export with embedded comments): "
+        warnings.append("Export/Import UI detected - this was removed before the 1.0.0 release (redundant with Export with embedded comments): "
                         + ", ".join(present_forbidden or ["--START-COMMENTS-EXPORT-- marker"]))
 
     # 9) The global [hidden] reset must be scoped to the layer.
@@ -1207,20 +1222,48 @@ def validate_charts(path):
     return check_charts(html, parser)
 
 
+_USAGE = "usage: python tools/validate.py [--charts-only|--layer-only] [--strict] <file.html> [more.html ...]"
+
+
+def _wants_help(tokens):
+    # Honor -h/--help only before an end-of-options "--"; a -h AFTER "--" is a filename.
+    for t in tokens:
+        if t == "--":
+            return False
+        if t in ("-h", "--help"):
+            return True
+    return False
+
+
 def main(argv):
-    args = [a for a in argv[1:] if not a.startswith("--")]
-    flags = {a for a in argv[1:] if a.startswith("--")}
+    raw = argv[1:]
+    if _wants_help(raw):
+        print(_USAGE)
+        print("\nValidate one or more commentable-html documents.")
+        print("  --charts-only  run only the Chart.js checks")
+        print("  --layer-only   run only the commentable-html layer checks")
+        print("  --strict       exit non-zero if any warning remains")
+        return 0
+    # A bare "--" ends options: everything after it is a positional path, even if it
+    # begins with a dash. Flags are only recognized before the separator.
+    if "--" in raw:
+        sep = raw.index("--")
+        before, after = raw[:sep], raw[sep + 1:]
+    else:
+        before, after = raw, []
+    args = [a for a in before if not a.startswith("--")] + after
+    flags = {a for a in before if a.startswith("--")}
     known_flags = {"--charts-only", "--layer-only", "--strict"}
     unknown = sorted(flags - known_flags)
     if unknown:
         sys.stderr.write("unknown flag(s): %s\n" % ", ".join(unknown))
-        sys.stderr.write("usage: python tools/validate.py [--charts-only|--layer-only] [--strict] <file.html> [more.html ...]\n")
+        sys.stderr.write(_USAGE + "\n")
         return 2
     layer = "--charts-only" not in flags
     charts = "--layer-only" not in flags
     strict = "--strict" in flags
     if not args or (not layer and not charts):
-        sys.stderr.write("usage: python tools/validate.py [--charts-only|--layer-only] [--strict] <file.html> [more.html ...]\n")
+        sys.stderr.write(_USAGE + "\n")
         return 2
     any_errors = False
     any_warnings = False

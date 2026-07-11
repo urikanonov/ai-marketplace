@@ -44,6 +44,7 @@ EXPECTED_REQUIRED_IDS = frozenset({
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
+    "headingAddBtn", "widgetAddBtn", "menuDocComment",
 })
 
 
@@ -645,6 +646,18 @@ class ValidateUnitTests(unittest.TestCase):
         doc = build().replace('<span id="sidebar" class="cm-skip"></span>', "")
         self.assertError(doc, 'required element id="sidebar" is missing')
 
+    def test_missing_required_id_heading_add_btn(self):
+        doc = build().replace('<span id="headingAddBtn" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="headingAddBtn" is missing')
+
+    def test_missing_required_id_widget_add_btn(self):
+        doc = build().replace('<span id="widgetAddBtn" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="widgetAddBtn" is missing')
+
+    def test_missing_required_id_menu_doc_comment(self):
+        doc = build().replace('<span id="menuDocComment" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="menuDocComment" is missing')
+
     def test_required_id_only_in_comment_is_ignored(self):
         doc = build().replace('<span id="btnCopyAll" class="cm-skip"></span>', "")
         doc = doc.replace("<body>\n", '<body>\n<!-- <span id="btnCopyAll"></span> -->\n', 1)
@@ -659,6 +672,11 @@ class ValidateUnitTests(unittest.TestCase):
         body = [HANDLED_REGION, EMBEDDED_REGION,
                 comment_ui(extra='  <button id="btnExport"></button>\n'), MAIN, JS_REGION]
         self.assertWarn(build(body=body), "Export/Import UI detected")
+
+    def test_export_removal_note_cites_exact_version(self):
+        body = [HANDLED_REGION, EMBEDDED_REGION,
+                comment_ui(extra='  <button id="btnExport"></button>\n'), MAIN, JS_REGION]
+        self.assertWarn(build(body=body), "removed before the 1.0.0 release")
 
     def test_export_marker_warns(self):
         doc = build().replace("<p>content</p>", "<p>--START-COMMENTS-EXPORT--</p>")
@@ -843,6 +861,18 @@ class SectionReferenceLinkTests(unittest.TestCase):
     def test_reference_inside_cm_skip_ignored(self):
         self.assertFalse(self._warns(self.HEADS + '<nav class="cm-skip"><p>see the section above</p></nav><p>body</p>'))
 
+    def test_reference_after_root_close_ignored(self):
+        # A directional cross-reference in a sibling <footer> AFTER </main id=commentRoot>
+        # is outside the reviewable content and must not be validated as prose.
+        body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                self._main(self.HEADS + "<p>Body text.</p>"),
+                '<footer><h2 id="c">Gamma plan</h2>'
+                "<p>See the section below for details.</p></footer>",
+                JS_REGION]
+        errors, warnings = _validate_text(build(body=body))
+        self.assertEqual(errors, [], errors)
+        self.assertFalse(any("cross-reference" in w for w in warnings), warnings)
+
     def test_named_reference_to_nonexistent_heading_not_flagged(self):
         self.assertFalse(self._warns(self.HEADS + "<p>Refer to Gamma plan for details.</p>"))
 
@@ -949,6 +979,26 @@ class NonPortableTests(unittest.TestCase):
         self.assertEqual(validate._nonportable_css_refs(commented), [])
         in_script = '<script>var s = "<link href=\'commentable-html.css\'>";</script>'
         self.assertEqual(validate._nonportable_css_refs(in_script), [])
+
+    def test_nonportable_detection_accepts_cache_busted_refs(self):
+        # A ?query / #fragment cache-buster is stripped by the browser before it
+        # fetches the file, so detection and the on-disk check must ignore it too.
+        busted = (
+            '<link rel="stylesheet" href="commentable-html.css?v=1.7.0">'
+            '<script src="commentable-html.js#build9"></script>'
+            '<script src="commentable-html.assets.js?v=1.7.0"></script>')
+        self.assertEqual(validate._nonportable_css_refs(busted), ["commentable-html.css"])
+        self.assertEqual(validate._nonportable_js_refs(busted),
+                         ["commentable-html.js", "commentable-html.assets.js"])
+
+    def test_cache_busted_companion_refs_validate_clean(self):
+        doc = (build_nonportable()
+               .replace('href="commentable-html.css"', 'href="commentable-html.css?v=1.7.0"')
+               .replace('src="commentable-html.assets.js"', 'src="commentable-html.assets.js?v=1.7.0"')
+               .replace('src="commentable-html.js"', 'src="commentable-html.js?v=1.7.0"'))
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "cache-busted refs should validate clean: %r" % errors)
+        self.assertEqual(warnings, [], "cache-busted refs should not warn: %r" % warnings)
 
 
     def test_missing_stylesheet_link_errors(self):

@@ -33,7 +33,7 @@
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
         <img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" />
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.6.1<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.7.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any <span class="accent">HTML</span>,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -200,6 +200,40 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.7.0] - 2026-07-11</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Export on <code>file://</code> no longer drops content authored after the layer script. The export base is now captured from the fully parsed DOM at export time (then re-stripped of runtime artifacts) instead of a snapshot taken before late content (for example a <code>chart_block</code> chart placed after the layer) was parsed.</li>
+              <li><code>Export as Portable/Standalone</code> finds the embedded-comments script regardless of its attribute order, and aborts with a clear error when the companion assets version does not match the running runtime.</li>
+              <li><code>Export to Markdown</code> now serializes <code>&lt;strong&gt;</code>/<code>&lt;em&gt;</code>/<code>&lt;a&gt;</code>/<code>&lt;code&gt;</code>/<code>&lt;img&gt;</code> that are direct children of a list item, and its URL allowlist keeps only image data URLs (a bare <code>data:</code> destination is neutralized while <code>data:image</code> is preserved).</li>
+              <li>Image/canvas comment highlights clear and flash correctly on <code>&lt;canvas&gt;</code> widgets, not just <code>&lt;img&gt;</code>.</li>
+              <li>Duplicate persisted comment ids are de-duplicated on load so a corrupted store cannot render twin cards.</li>
+              <li><code>generate_toc.py</code> and <code>validate.py</code> reset the <code>#commentRoot</code> scope on the root&#x27;s closing tag, so a heading or cross-reference in a later footer or sibling container is no longer collected into the TOC or validated as document content.</li>
+              <li><code>validate.py</code> accepts cache-busted companion references, stripping a <code>?query</code>/<code>#fragment</code> before the <code>.js</code>/<code>.css</code> suffix and the on-disk existence check.</li>
+              <li><code>diff_block.py</code> preserves a file-final-newline-only difference and emits the standard <code>\ No newline at end of file</code> marker instead of silently dropping it.</li>
+              <li><code>new_document.py</code> refuses NonPortable output to stdout unless <code>--assets-href</code> is given, because bare companion names written to a stream are unreachable; its <code>--key-from-source</code> help no longer claims a <code>--label</code> fallback.</li>
+              <li><code>chart_block.py</code> adds its own tools directory to <code>sys.path</code> on import so the sibling <code>validate</code> module is importable and self-validation is never silently skipped.</li>
+              <li><code>--help</code>/<code>-h</code> now exits 0 with usage on every shipped tool (<code>validate.py</code>, <code>kql_highlight.py</code>, <code>kusto_link.py</code>, <code>mark_handled.py</code>, and the rest), instead of treating the flag as a filename.</li>
+              <li><code>new_document.py --key auto</code> derives the comment key from the output/source path identity rather than the label, so two documents that share a title no longer collide and leak comments across each other.</li>
+              <li>The lede/intro block is no longer clamped by the 72ch prose measure, so it renders at the section width.</li>
+              <li>The confirm dialog always traps Tab and pulls escaped focus back to Cancel; Escape closing the toolbar overflow menu or the add-comment menu restores focus and no longer discards an open composer draft; the side-TOC highlights the last section once the page is fully scrolled.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Headings are keyboard-focusable with a visible focus style and Enter/Space activation for the deep-link / add-comment affordance, matching the mouse-only behavior.</li>
+              <li>Generated documents carry a visible themed document title (<code>#commentRoot &gt; h1</code>); <code>new_document.py</code> adds a visible <code>&lt;h1&gt;</code> from <code>--label</code> unless the fragment already has one or <code>--no-title</code> is passed.</li>
+              <li>The trust boundary is documented in <code>SKILL.md</code> and <code>new_document.py --help</code>: authored content is trusted HTML and is not sanitized; callers must sanitize untrusted host HTML before wrapping it.</li>
+              <li>A <code>new_document.py</code> quickstart example in the plugin README; <code>retrofitting.md</code> documents the <code>window.__cmh*</code> / <code>__commentable*</code> introspection globals.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li><code>validate.py</code> requires <code>headingAddBtn</code>, <code>widgetAddBtn</code>, and <code>menuDocComment</code>, and its stale version note now points at the correct removal version.</li>
+              <li><code>upgrade.py</code> matches its replace regions by exact begin/end markers; the composer placeholder documents the <code>Ctrl/Cmd+Enter</code> save shortcut; <code>kusto_link.py</code> and the dev tests use public/generic cluster, path, and database names in place of internal ones.</li>
+              <li><code>build.py</code> now regenerates the example reports&#x27; layer regions and version stamps from the freshly built dist and covers them in <code>--check</code>.</li>
+              <li>Both export modes download <code>&lt;stem&gt;-portable.html</code>; the NonPortable &quot;Export as Portable&quot; no longer emits a <code>&lt;stem&gt;.standalone.html</code> filename.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.6.1] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -212,6 +246,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Reworded the <code>Self-contained and privacy</code> help topic: comments are stored in this browser&#x27;s <code>localStorage</code> (private, never uploaded, no account), and the review layer travels inside the file only in Portable mode - a Not portable file references small companion resources. It no longer implies the layer is always bundled into the file.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
@@ -219,8 +255,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams (full Playwright suite green against mermaid 11). This rode in on a dev/test-only dependency bump (mermaid 11.16.0, chart.js 4.5.1, adm-zip 0.6.0); none of those dev dependencies ship in the plugin.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.5.1] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
@@ -265,21 +299,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The in-browser diff highlighter matches the case-insensitive keywords of SQL, Batch, and PowerShell (uppercase keywords now color), scans strings and comments in linear time for the newly added languages, maps the <code>.m</code> extension to Objective-C, and no longer over-colors common identifiers (<code>data</code>, <code>local</code>, <code>end</code>, and similar) as keywords in unrelated diffs.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.3.0] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Author-time syntax highlighting (<code>tools/highlight_code.py</code>) now covers many more popular languages: Rust, Ruby, PHP, Swift, Kotlin, Scala, Dart, R, Perl, PowerShell, Lua, TOML, CSS, Groovy, Elixir, Haskell, and Objective-C, plus Windows Batch (<code>batch</code>, with <code>bat</code> and <code>cmd</code> aliases), with the usual aliases (<code>rs</code>, <code>rb</code>, <code>kt</code>, <code>pl</code>, <code>ps1</code>, <code>ps</code>, <code>objc</code>, <code>hs</code>, <code>ex</code>, <code>exs</code>). Shell scripts were already covered via the existing <code>shell</code> and <code>sh</code> aliases for <code>bash</code>. Run <code>python tools/highlight_code.py --list</code> for the full set.</li>
-              <li>The in-browser diff highlighter now recognizes the same expanded language set (CSS, Groovy, Elixir, Haskell, Objective-C, Lua, PowerShell, and Windows Batch, plus their aliases), so review diffs in those languages render with token colors instead of plain text.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Keywords are now matched case-sensitively except in genuinely case-insensitive languages (SQL, Batch, PowerShell, HTML, CSS). Previously a global case-insensitive match mis-colored ordinary identifiers as keywords (for example C# <code>String</code>, Python <code>true</code>/<code>none</code>, Rust <code>Fn</code>).</li>
-              <li>String tokenization is now linear time. Pathological input (a long run of escaped quotes) previously drove superlinear rescanning; the string patterns use an unrolled form that stays fast.</li>
-              <li>Strings keep a backslash-newline line continuation inside the string, unterminated block comments and strings still highlight (to end of input / end of line), Swift and Dart triple-quoted strings and TOML literal (single-quoted) strings are recognized, and a Windows Batch <code>rem</code> comment is matched on a word boundary (so <code>rem</code>, <code>rem&lt;TAB&gt;</code>, and a bare <code>rem</code> are comments, but <code>remark</code> is not).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">10 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">11 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

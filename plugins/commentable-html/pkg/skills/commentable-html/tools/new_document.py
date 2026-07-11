@@ -29,8 +29,9 @@ inlined single file directly instead.
 For NonPortable output the companion references default to a relative path from --out to
 the skill's dist/ folder; use --assets-href PREFIX to reference them elsewhere, or
 --copy-assets to copy the three files next to --out and reference them by bare name (a
-movable self-contained folder). Writing NonPortable to stdout (no --out) falls back to
-bare companion names, which assume the companions sit next to the eventual file.
+movable self-contained folder). Writing NonPortable to stdout (no --out) is refused
+because bare companion names have no on-disk folder to resolve against; pass --assets-href
+PREFIX, use --out (optionally with --copy-assets), or emit --portable instead.
 
 Usage (run from the skill root):
     python tools/new_document.py --content body.html --key auto --label "My Report" --out r.html
@@ -44,6 +45,7 @@ errors print to stderr and exit 1. Output goes to stdout unless --out is given.
 import argparse
 import hashlib
 import html as _html
+import html.parser as _html_parser
 import os
 import re
 import shutil
@@ -76,6 +78,75 @@ _MAIN_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*["\']?commentRoot["\']?(?=[
 # name / optional value (double-quoted, single-quoted, or bare) for tag attrs.
 _ATTR_RE = re.compile(r'([^\s=/<>]+)(?:\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+))?')
 _TITLE_RE = re.compile(r'(<title[^>]*>).*?(</title>)', re.IGNORECASE | re.DOTALL)
+# HTML void elements never open a nesting level, so they must not shift the top-level depth
+# used to decide whether the fragment already carries its own document title.
+_VOID_ELEMENTS = frozenset((
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr"))
+_LEDE_CLASS_RE = re.compile(r'(^|\s)cmh-lede(\s|$)')
+
+
+class _TitleDetector(_html_parser.HTMLParser):
+    """Detect a genuine, rendered document title at the TOP level of a content fragment:
+    a top-level <h1> or a top-level element carrying the cmh-lede class. Parsing (rather
+    than a raw-text scan) means an <h1> inside an HTML comment, <script>, or <style> is not
+    seen as a tag, and the depth check means a nested h1/lede deep in the body does not
+    count as the document's own title."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.depth = 0
+        self.found = False
+
+    def _check_top_level(self, tag, attrs):
+        if self.depth != 0 or self.found:
+            return
+        if tag == "h1":
+            self.found = True
+            return
+        cls = dict(attrs).get("class") or ""
+        if _LEDE_CLASS_RE.search(cls):
+            self.found = True
+
+    def handle_starttag(self, tag, attrs):
+        self._check_top_level(tag, attrs)
+        if tag not in _VOID_ELEMENTS:
+            self.depth += 1
+
+    def handle_startendtag(self, tag, attrs):
+        self._check_top_level(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if tag not in _VOID_ELEMENTS and self.depth > 0:
+            self.depth -= 1
+
+
+def _has_active_title(content):
+    """True if `content` already carries a rendered top-level <h1> or cmh-lede header."""
+    if not content:
+        return False
+    det = _TitleDetector()
+    try:
+        det.feed(content)
+        det.close()
+    except Exception:
+        # A malformed fragment cannot be trusted to already carry a title; prepend one.
+        return False
+    return det.found
+
+
+def ensure_doc_title(content, label):
+    """Return `content` with a visible document title prepended when it has none.
+
+    A generated document should show a heading. If the fragment already opens with a
+    rendered top-level <h1> or lede header, it is left untouched; otherwise a themed lede
+    header carrying the label as an <h1> is prepended so the document is never title-less."""
+    if _has_active_title(content or ""):
+        return content
+    header = ('<header class="cmh-lede">\n  <h1>%s</h1>\n</header>'
+              % _html.escape((label or "").strip()))
+    body = (content or "").strip("\n")
+    return header + ("\n\n" + body if body else "")
 
 
 def _tag_end(html, start):
@@ -263,7 +334,7 @@ def _repoint_companions(html, prefix):
 
 
 def _companion_prefix(out_path, assets_href, copy_assets):
-    """Resolve (prefix, note, validate_base) for a NonPortable document's companion
+    """Resolve (prefix, validate_base) for a NonPortable document's companion
     references.
 
     - --copy-assets  -> bare names ("") and the caller copies the files next to --out;
@@ -273,19 +344,22 @@ def _companion_prefix(out_path, assets_href, copy_assets):
     - --out (default)-> a relative path from --out's directory to the skill's dist/,
                         and validate_base = --out's directory so the existence check
                         genuinely confirms the refs resolve to the skill dist/;
-    - stdout default -> bare names with a note; validate_base None (no final directory).
+    - stdout default -> bare names ("") and validate_base None; main() refuses the write
+                        afterwards (bare companion names on a stream are unreachable) unless
+                        the doc fails to build/validate first, so those errors surface first.
     """
     if copy_assets:
         if not out_path:
             raise ValueError("--copy-assets needs --out FILE (cannot copy companions next to a stream)")
-        return "", None, None
+        return "", None
     if assets_href is not None:
         # Return the prefix verbatim - _join_ref trims a trailing "/" without losing a
         # bare root "/" (rstrip here would turn "/" into "" and drop the prefix).
-        return assets_href, None, None
+        return assets_href, None
     if not out_path:
-        return "", ("nonportable output to stdout references the companions by bare name; keep "
-                    "commentable-html.{css,js,assets.js} next to the saved file, or pass --assets-href"), None
+        # Bare names are unreachable on a stream, but defer the refusal to main() so a
+        # bad key/marker/validation error surfaces first; here we just pick bare names.
+        return "", None
     out_dir = os.path.dirname(os.path.abspath(out_path))
     dist = os.path.join(_skill_root(), "dist")
     try:
@@ -294,7 +368,7 @@ def _companion_prefix(out_path, assets_href, copy_assets):
         # Windows raises when --out is on a different drive/mount than the skill dist/.
         raise ValueError("cannot compute a relative companion path (--out is on a different "
                          "drive than the skill); use --assets-href PREFIX or --copy-assets")
-    return rel.replace(os.sep, "/"), None, out_dir
+    return rel.replace(os.sep, "/"), out_dir
 
 
 def _copy_companions(dest_dir):
@@ -311,12 +385,33 @@ def _derive_auto_key(seed):
     return "cmh-" + digest[:12]
 
 
-def resolve_key(key, label, key_from_source=None):
+def resolve_key(key, label, key_from_source=None, source=None, out=None):
+    """Resolve the final data-comment-key.
+
+    An explicit key is used as-is. `--key auto` derives a stable, collision-resistant
+    key from the document's IDENTITY, not its label (two distinct documents can share a
+    label, and a label-derived key would leak comments across them). The seed precedence
+    is: an explicit --key-from-source logical id, then --source (the doc's declared
+    source), then the --out path. With none of these - a stdout document with no
+    source - auto cannot be made collision-free, so an explicit --key (or --source) is
+    required rather than silently reusing a label-derived key.
+    """
     value = (key or "").strip()
     if value and value.lower() != "auto":
         return value
-    source = key_from_source if key_from_source is not None else label
-    return _derive_auto_key(source)
+    seed = None
+    if key_from_source is not None and key_from_source.strip():
+        seed = key_from_source.strip()
+    elif source is not None and source.strip():
+        seed = source.strip()
+    elif out is not None and str(out).strip():
+        seed = os.path.abspath(str(out).strip())
+    if not seed:
+        raise ValueError(
+            '--key auto needs a stable document identity: pass --out, --source, or '
+            '--key-from-source. A bare --label is not unique across documents, so it '
+            "cannot be a collision-free key; give the document an explicit --key instead.")
+    return _derive_auto_key(seed)
 
 
 def _read_file(path):
@@ -339,14 +434,24 @@ def _read_content(source):
 def main(argv):
     parser = argparse.ArgumentParser(
         prog="new_document.py",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Create a commentable-html document from a content fragment "
-                    "(NonPortable by default; pass --portable for a single self-contained file).")
+                    "(NonPortable by default; pass --portable for a single self-contained file).",
+        epilog=(
+            "Trust boundary: the --content fragment is treated as TRUSTED HTML and is copied into\n"
+            "the document verbatim - new_document.py does NOT sanitize it. The runtime protects only\n"
+            "reviewer-supplied data (it escapes/textContents comment text and metadata, validates\n"
+            "comment ids against SAFE_ID_RE, and escapes '<' in the embeddedComments JSON); it does\n"
+            "not neutralize scripts or event handlers in the authored content. If any part of the\n"
+            "fragment comes from an untrusted source, sanitize it yourself before passing it in."))
     parser.add_argument("--content", required=True,
                         help="content fragment file, or '-' to read the fragment from stdin")
     parser.add_argument("--key", required=True,
-                        help='unique data-comment-key for the content root, or "auto"')
+                        help='unique data-comment-key for the content root, or "auto" to derive a '
+                             'stable key from --out/--source/--key-from-source (not from --label)')
     parser.add_argument("--key-from-source", default=None,
-                        help="logical id used to derive --key auto (defaults to --label)")
+                        help="explicit logical id used to derive --key auto; requires a stable "
+                             "identity and does not fall back to --label")
     parser.add_argument("--label", required=True, help="data-doc-label (also used as the <title>)")
     parser.add_argument("--source", default=None, help="optional data-doc-source")
     parser.add_argument("--generated", default=None,
@@ -368,6 +473,9 @@ def main(argv):
                         help="template to clone (default: the skill's dist/NONPORTABLE.html, "
                              "or dist/PORTABLE.html with --portable)")
     parser.add_argument("--out", default=None, help="output file (default: stdout)")
+    parser.add_argument("--no-title", action="store_true",
+                        help="do not prepend a document title header (by default a visible "
+                             "<h1> from --label is added when the fragment has none)")
     args = parser.parse_args(argv[1:])
 
     nonportable = not args.portable
@@ -385,13 +493,15 @@ def main(argv):
     except OSError as exc:
         sys.stderr.write("new_document: cannot read content: %s\n" % exc)
         return 1
+    if not args.no_title:
+        content = ensure_doc_title(content, args.label)
 
     prefix = ""
     copy_here = False
     validate_base = None
     if nonportable:
         try:
-            prefix, note, validate_base = _companion_prefix(args.out, args.assets_href, args.copy_assets)
+            prefix, validate_base = _companion_prefix(args.out, args.assets_href, args.copy_assets)
         except ValueError as exc:
             sys.stderr.write("new_document: %s\n" % exc)
             return 2
@@ -401,14 +511,13 @@ def main(argv):
             # we do not rewrite them and cannot assume they resolve to the skill dist/,
             # so defer the companion existence check to when the placed file is validated.
             validate_base = None
-        if note:
-            sys.stderr.write("new_document: %s\n" % note)
     elif args.copy_assets or args.assets_href is not None:
         sys.stderr.write("new_document: --copy-assets / --assets-href are ignored with --portable "
                          "(a Portable file inlines the layer and references no companions)\n")
 
     try:
-        key = resolve_key(args.key, args.label, key_from_source=args.key_from_source)
+        key = resolve_key(args.key, args.label, key_from_source=args.key_from_source,
+                          source=args.source, out=args.out)
         out_html = make_document(template_html, content, key, args.label, args.source, generated=args.generated)
     except ValueError as exc:
         sys.stderr.write("new_document: %s\n" % exc)
@@ -442,6 +551,12 @@ def main(argv):
             return 1
         sys.stderr.write("new_document: wrote %s\n" % args.out)
     else:
+        if nonportable and args.assets_href is None and not args.copy_assets:
+            sys.stderr.write("new_document: nonportable output to stdout would reference the "
+                             "companions by bare name, which is unreachable with no on-disk "
+                             "folder; pass --assets-href PREFIX (or --out FILE, optionally with "
+                             "--copy-assets), or use --portable\n")
+            return 2
         sys.stdout.write(out_html)
     return 0
 
