@@ -256,6 +256,30 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 
+### Why auto-running CI on outside PRs is safe here (do not break this invariant)
+
+Letting an outside contributor's PR run CI without a manual approval is low risk in THIS repo, and
+the safety rests on one invariant: a workflow that holds secrets or a write-scoped token must never
+check out or run PR-supplied code.
+
+- The CI gates (`validate`, `pages`/`build`, `plugin-tests`) trigger on plain `pull_request`. On a
+  PR from a fork, GitHub gives that run a read-only `GITHUB_TOKEN` and NO repository secrets, so even
+  though those jobs do execute PR code (the Python validators, `npm ci`, the Playwright suites), the
+  code runs sandboxed with nothing to steal and no write access. The residual risk is compute/runner
+  abuse (a PR opened purely to run arbitrary code), which the read-only, no-secrets sandbox contains.
+- The privileged workflows (`require-owner-approval.yml`, `request-copilot-review.yml`) run on
+  `pull_request_target`, so they DO have a write-capable token and secrets - but they never check out
+  or run PR code; they only call the REST API with the PR number. That is what keeps them safe.
+- Merge protection is independent of who runs CI: `main` stays protected and `require-owner-approval`
+  still blocks external PRs until `@urikanonov` approves, so auto-running CI never lets anyone merge.
+
+Therefore: never add a checkout of the PR head (or any step that runs PR-authored code) to a
+`pull_request_target` job or any job that can read secrets, and never add secrets to a
+`pull_request` job. Doing either would turn auto-run into arbitrary code execution with a privileged
+token. If you must consume PR code with a privileged token, split it: run the untrusted code in an
+unprivileged `pull_request` job and do the privileged action in a separate `pull_request_target` job
+that only reads metadata.
+
 ## The auto-updater hook (portability notes)
 
 `plugins/urikan-ai-marketplace-auto-updater` runs `hooks/marketplace-update.ps1` on session start.
