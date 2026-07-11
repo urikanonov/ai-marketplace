@@ -1,6 +1,6 @@
 ---
 name: commentable-html
-description: Turn any standalone HTML into a single-file commentable review surface with inline comments and an exportable review bundle.
+description: Turn any standalone HTML into a commentable review surface with inline comments, iterated locally and exported to a single portable file for sharing.
 ---
 
 # Commentable HTML
@@ -45,7 +45,7 @@ The HTML file itself is the durable source of truth for which comments have been
 
 ## Steps
 
-**Defaults from a brief request.** A short request such as "make me a commentable HTML for X, cover: <topics>" is enough on its own. Fill in the rest by default: produce a single self-contained standalone file, add a table of contents, write polished sectioned prose, and add tables, charts, mermaid diagrams, images, KQL blocks, and code-review diffs wherever they aid understanding - all commentable. The user should not have to ask for the review layer, the table of contents, single-file output, or rich content; those are the skill's defaults.
+**Defaults from a brief request.** A short request such as "make me a commentable HTML for X, cover: <topics>" is enough on its own. Fill in the rest by default: produce a **NonPortable** document (the layer's CSS/JS load from companion files, so the document is small and cheap to iterate on), add a table of contents, write polished sectioned prose, and add tables, charts, mermaid diagrams, images, KQL blocks, and code-review diffs wherever they aid understanding - all commentable. The user should not have to ask for the review layer, the table of contents, NonPortable output, or rich content; those are the skill's defaults. Export to a single Portable file only when sharing (see Step 2).
 
 ### Step 1 - Decide whether to add the layer
 
@@ -53,15 +53,24 @@ The HTML file itself is the durable source of truth for which comments have been
 
 ### Step 2 - Create the document (deterministic tools first)
 
-**SHOULD** first pick the output mode (see "Output modes: standalone vs nonportable"). Default to **standalone** (`dist/PORTABLE.html`, one self-contained file). Choose **nonportable** (copy `dist/` companions + start from `dist/NONPORTABLE.html`) only for local, iterated documents where regeneration cost matters and the file will stay next to its companions.
+**Default to NonPortable.** `tools/new_document.py` produces a **NonPortable** document by DEFAULT: the ~89 KB of layer CSS/JS is referenced from the companion `commentable-html.{css,js,assets.js}` files instead of inlined, so the document (and every regeneration during a review loop) is small and cheap to edit. Pass `--portable` for a single self-contained file (see "Output modes" for the trade-off).
 
-**For a NEW standalone document, MUST use `tools/new_document.py`** when Python is available. It clones `dist/PORTABLE.html`, drops in only your content fragment, sets the `#commentRoot` data attributes, refuses demo keys, and self-validates before writing. Do NOT hand-copy the five regions for a fresh document - that is the highest-token, most error-prone path and it walks straight into the duplicate-root footgun described in Step 3.
+**For a NEW document, MUST use `tools/new_document.py`** when Python is available. It clones the dist template, drops in only your content fragment, sets the `#commentRoot` data attributes, refuses demo keys, repoints the companion references, and self-validates before writing. Do NOT hand-copy the regions for a fresh document - that is the highest-token, most error-prone path and it walks straight into the duplicate-root footgun described in Step 3.
 
 ```
+# NonPortable (default): companions referenced from the skill's dist/ by a relative path
 python tools/new_document.py --content fragment.html --key auto --label "My Report" --out my-report.html
+# ... or copy the companions next to the file for a movable folder:
+python tools/new_document.py --content fragment.html --key auto --label "My Report" --copy-assets --out my-report.html
+# Single self-contained Portable file (for sharing / archiving):
+python tools/new_document.py --content fragment.html --key auto --label "My Report" --portable --out my-report.html
 # --key auto derives a stable, collision-free key from the label (CMH-PERSIST-02);
 # pass --generated <ISO-8601> for a reproducible "Generated on" line instead of the file mtime.
 ```
+
+**"Make it portable" - getting a single file to share.** A NonPortable document needs its companions reachable, so it is for local iteration, not sharing. There is deliberately **no CLI export**: a tool (even a headless browser) cannot read the browser's `localStorage`, so a CLI export would silently drop comments the user typed but has not saved into the file. Instead:
+- If the document has NO in-browser comments yet (e.g. one you just generated), regenerate it with `--portable` from the same content fragment - safe and complete.
+- If the user has been leaving comments in the browser, only the page itself can read them: use the in-page **Export as Portable** button (or **Save in HTML** first). That is the single source of a complete, self-contained copy.
 
 **Only when RETROFITTING an existing host HTML you cannot regenerate**, copy all five `BEGIN/END: commentable-html - <REGION>` blocks verbatim, in this order: CSS (in `<head>`), HANDLED IDS (top of `<body>`), EMBEDDED COMMENTS (immediately after HANDLED IDS), COMMENT UI (immediately after EMBEDDED COMMENTS), JS (just before `</body>`). See "Add the layer to an existing HTML" for the full recipe. To bring an already-layered file up to a newer `dist/PORTABLE.html`, **MUST** use `tools/upgrade.py` (it swaps only the CSS/COMMENT UI/JS regions, preserves your content and state, and leaves the file untouched if the result would fail validation) rather than hand-swapping regions.
 
@@ -148,9 +157,11 @@ The layer ships in two interchangeable forms. Both share the exact same runtime 
 | Per (re)generation cost | agent emits the whole ~106 KB file | agent emits a ~17 KB shell; the boilerplate is **referenced from the skill folder**, never emitted (~84% smaller) |
 | Best for | one-shot artifacts, things you email or archive | dashboards/plans you iterate on locally, where regeneration speed and token cost matter |
 
-**Default to standalone.** NonPortable is opt-in. A loose nonportable HTML opened where it cannot reach the assets is broken, so only choose nonportable when the report can reach the skill's `dist/` folder at a stable path (local iteration) and the user has asked to optimize regeneration cost.
+**Default to NonPortable.** It is the skill's default output because a review document is edited many times and NonPortable keeps each regeneration ~84% smaller. A loose NonPortable HTML opened where it cannot reach its companions is broken, so it is for local iteration; get a self-contained copy to share by regenerating with `--portable` (for a document with no in-browser comments yet) or via the in-page **Export as Portable** button (the only path that captures comments the user typed in the browser). Choose Portable up front only for a one-shot artifact you will email or archive without iterating.
 
 ### Producing a nonportable document
+
+The easiest and recommended way is `tools/new_document.py` (NonPortable by default): it starts from `dist/NONPORTABLE.html`, repoints the companion `<link>`/`<script src>` references (a relative path to the skill's `dist/` by default, bare names with `--copy-assets`, or a custom prefix with `--assets-href`), sets the version `<meta>`, and self-validates. If you must hand-produce one:
 
 1. Point the shell's asset references at the skill's `dist/` folder rather than copying the files into the report folder: set the head `<link href>` and the two `<script src>` to a path that resolves to `.../commentable-html/dist/commentable-html.{css,js,assets.js}`. **Prefer a relative path** from the target HTML; use an absolute path only for clearly local-only documents (an absolute path embeds your local directory / username in the file and breaks for anyone else unless you run **Export as Portable** first). The three assets are **referenced, never regenerated**. (Copying them next to the HTML still works if you want a movable bundle instead.)
 2. Use `dist/NONPORTABLE.html` as the starting shell (head `<link>` + version `<meta>`, the NONPORTABLE BOOTSTRAP banner, the inline state/UI regions, and the two `<script src>` companions at the end of `<body>`); repoint the `href`/`src` at the skill `dist/` path. Replace the demo content inside the CONTENT markers with your own; set a unique `data-comment-key`.

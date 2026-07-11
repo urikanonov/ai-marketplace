@@ -1156,9 +1156,19 @@ _PARSE_FAIL = ("the document could not be parsed as HTML (malformed markup) - "
                "fix the markup and re-run")
 
 
-def validate(path, layer=True, charts=True):
+_BASE_DIR_UNSET = object()
+
+
+def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
     """Unified check. Returns (errors, warnings). Runs the layer checks and,
-    when the document has a <canvas>, the chart checks too."""
+    when the document has a <canvas>, the chart checks too.
+
+    base_dir controls how NonPortable companion references are resolved for the
+    existence/remote/absolute checks: by default it is the document's own directory.
+    Pass an explicit directory to resolve refs against the file's FINAL location (used
+    when validating before the file is written there), or None to skip the companion
+    path checks entirely (structure is still validated) - appropriate when the
+    companions are supplied separately or placement is deferred."""
     try:
         html = _read(path)
     except (OSError, UnicodeDecodeError) as exc:
@@ -1168,7 +1178,8 @@ def validate(path, layer=True, charts=True):
         return [_PARSE_FAIL], []
     errors, warnings = [], []
     if layer:
-        e, w = check_layer(html, parser, base_dir=os.path.dirname(os.path.abspath(path)))
+        bd = os.path.dirname(os.path.abspath(path)) if base_dir is _BASE_DIR_UNSET else base_dir
+        e, w = check_layer(html, parser, base_dir=bd)
         errors += e
         warnings += w
     if charts:
