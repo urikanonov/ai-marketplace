@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-07-12
+
+### Added
+
+- The shipped plugin `README.md` and `SKILL.md` now explain why commentable-html beats planning in chat, a
+  Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic's "unreasonable
+  effectiveness of HTML" blog post - so the motivation matches the project website.
+
 ## [1.9.0] - 2026-07-12
 
 ### Added
