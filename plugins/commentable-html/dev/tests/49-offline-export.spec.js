@@ -121,8 +121,6 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     });
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
-    await page2.waitForTimeout(300);
-    expect(external).toEqual([]);
     await expect(page2.locator("#commentList")).toContainText("offline note travels");
 
     const mermaid = page2.locator("#commentRoot pre.mermaid svg").first();
@@ -141,6 +139,7 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     expect(chartMetrics.naturalWidth).toBeGreaterThan(0);
     expect(chartMetrics.width).toBeGreaterThan(20);
     expect(chartMetrics.height).toBeGreaterThan(20);
+    expect(external).toEqual([]);
   } finally {
     if (ctx2) await ctx2.close();
     await server.close();

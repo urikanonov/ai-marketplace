@@ -203,7 +203,6 @@ test("a part node replaced in the same slot is re-wired for commenting", async (
     fresh.textContent = "Card A (new node)";
     old.replaceWith(fresh);
   });
-  await page.waitForTimeout(90);
   const part = page.locator('[data-cm-part="a"]');
   await expect(part).toHaveClass(/cm-part-commentable/);
   await part.hover();

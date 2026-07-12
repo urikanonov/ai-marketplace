@@ -6,6 +6,26 @@ import { openInline, selectText, ready, fileUrl, INLINE, startStaticServer, rout
 
 const IMG = "#commentRoot img.cm-img-commentable";
 
+async function waitForStableTop(page, selector) {
+  await page.waitForFunction((sel) => new Promise((resolve) => {
+    const el = document.querySelector(sel);
+    if (!el) {
+      resolve(false);
+      return;
+    }
+    let last = el.getBoundingClientRect().top;
+    let stableFrames = 0;
+    const tick = () => {
+      const top = el.getBoundingClientRect().top;
+      stableFrames = Math.abs(top - last) < 0.5 ? stableFrames + 1 : 0;
+      last = top;
+      if (stableFrames >= 10) resolve(true);
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }), selector, { timeout: 3000 });
+}
+
 test.describe("add-comment affordances", () => {
   test("every add-comment control reads \"Add Comment\"", async ({ page }) => {
     await openInline(page);
@@ -75,7 +95,6 @@ test.describe("add-comment affordances", () => {
     // the document, so scrolling to the top pushes it far below the fold; the button
     // must hide (the other half of the pin behavior), not clamp to a viewport edge.
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(100);
     await expect(page.locator("#imageAddBtn")).toBeHidden();
   });
 
@@ -107,11 +126,11 @@ test.describe("add-comment affordances", () => {
 
   test("the diff add button stays pinned to its line on scroll (no drift)", async ({ page }) => {
     await openInline(page);
-    await page.evaluate(() => {
-      const el = document.querySelector("#commentRoot .cmh-dl-add");
-      el.scrollIntoView({ block: "center" });
-      el.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 50, clientY: 50 }));
-    });
+    const line = page.locator("#commentRoot .cmh-dl-add").first();
+    await line.scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollBy(0, 40));
+    await waitForStableTop(page, "#commentRoot .cmh-dl-add");
+    await line.hover();
     await expect(page.locator("#diffAddBtn")).toBeVisible();
     const gap = () => page.evaluate(() => {
       const b = document.getElementById("diffAddBtn");
