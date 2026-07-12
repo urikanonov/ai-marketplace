@@ -11,6 +11,9 @@ import _paths  # noqa: E402  shared pkg/dev split path constants
 SKILL = _paths.PKG
 EXAMPLE = os.path.join(SKILL, "examples", "report-community-garden.html")
 TAXI = os.path.join(SKILL, "examples", "report-taxi.html")
+TRIAGE = os.path.join(SKILL, "examples", "report-triage.html")
+METRICS = os.path.join(SKILL, "examples", "report-metrics.html")
+EXAMPLES = (EXAMPLE, TAXI, TRIAGE, METRICS)
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 
 
@@ -19,19 +22,32 @@ def _read_version():
         return fh.read().strip()
 
 
+def _read(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _active_root_attr(html, attr):
+    matches = list(re.finditer(r'<main\b[^>]*\bid="commentRoot"[^>]*\b' + re.escape(attr) + r'="([^"]*)"', html))
+    if not matches:
+        matches = list(re.finditer(r'<main\b[^>]*\b' + re.escape(attr) + r'="([^"]*)"[^>]*\bid="commentRoot"', html))
+    return matches[-1].group(1) if matches else None
+
+
 class ExampleTests(unittest.TestCase):
     def test_example_exists(self):
-        self.assertTrue(os.path.isfile(EXAMPLE), "examples/report-community-garden.html is missing")
+        for path in EXAMPLES:
+            self.assertTrue(os.path.isfile(path), "example is missing: " + os.path.basename(path))
 
     def test_example_validates_clean(self):
         r = subprocess.run(
-            [sys.executable, os.path.join(SKILL, "tools", "validate.py"), EXAMPLE],
+            [sys.executable, os.path.join(SKILL, "tools", "validate.py"), *EXAMPLES],
             capture_output=True, text=True, cwd=SKILL)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertRegex(r.stdout, r"\b0 warning")
 
     def test_example_images_are_inlined_and_self_contained(self):
-        html = open(EXAMPLE, encoding="utf-8").read()
+        html = _read(EXAMPLE)
         srcs = re.findall(r'<img\b[^>]*\bsrc\s*=\s*"([^"]*)"', html)
         self.assertTrue(srcs, "the example should contain images")
         for s in srcs:
@@ -40,17 +56,17 @@ class ExampleTests(unittest.TestCase):
     def test_example_data_doc_source_matches_shipped_filename(self):
         # After the file renames, each example's data-doc-source must name the file that
         # actually ships (a stale value hands an agent a filename removed by this batch).
-        for path in (EXAMPLE, TAXI):
-            html = open(path, encoding="utf-8").read()
-            m = re.search(r'data-doc-source="([^"]*)"', html)
-            self.assertIsNotNone(m, "example is missing data-doc-source: " + path)
-            self.assertEqual(m.group(1), os.path.basename(path),
+        for path in EXAMPLES:
+            html = _read(path)
+            source = _active_root_attr(html, "data-doc-source")
+            self.assertIsNotNone(source, "example is missing data-doc-source: " + path)
+            self.assertEqual(source, os.path.basename(path),
                              "data-doc-source does not match the shipped filename in " + path)
-            self.assertTrue(os.path.isfile(os.path.join(SKILL, "examples", m.group(1))),
-                            "data-doc-source names a file that does not exist: " + m.group(1))
+            self.assertTrue(os.path.isfile(os.path.join(SKILL, "examples", source)),
+                            "data-doc-source names a file that does not exist: " + source)
 
     def test_example_exercises_every_feature(self):
-        html = open(EXAMPLE, encoding="utf-8").read()
+        html = _read(EXAMPLE)
         self.assertIn('class="cm-toc"', html)                 # author TOC (drives the side menu)
         self.assertRegex(html, r'<h2 id=')                    # sectioned headings
         self.assertIn("dataexplorer.azure.com", html)         # Run in Azure Data Explorer link
@@ -60,12 +76,40 @@ class ExampleTests(unittest.TestCase):
         self.assertIn("<table", html)                         # tables
         self.assertIn('class="cmh-code-kw"', html)            # highlighted code block
 
+    def test_new_showcase_examples_cover_triage_and_visuals(self):
+        triage = _read(TRIAGE)
+        self.assertIn('data-cm-widget="incident-triage-board"', triage)
+        for slot in ("New", "Investigating", "Fixed"):
+            self.assertIn('data-cm-slot="' + slot + '"', triage)
+        self.assertIn('data-cm-part-label="API saturation"', triage)
+        self.assertIn("<table", triage)
+        self.assertIn("<canvas", triage)
+
+        metrics = _read(METRICS)
+        for snippet in ("flowchart LR", "sequenceDiagram", "gantt", "stateDiagram-v2",
+                        "classDiagram", "erDiagram", "pie title"):
+            self.assertIn(snippet, metrics)
+        for canvas_id in ("metricsBarChart", "metricsLineChart", "metricsPieChart", "metricsDoughnutChart"):
+            self.assertIn('id="' + canvas_id + '"', metrics)
+        self.assertIn('class="cmh-diff"', metrics)
+        self.assertIn('class="cmh-kql"', metrics)
+
+    def test_examples_have_unique_comment_keys(self):
+        keys = {}
+        for path in EXAMPLES:
+            html = _read(path)
+            key = _active_root_attr(html, "data-comment-key")
+            self.assertIsNotNone(key, "example is missing data-comment-key: " + path)
+            keys.setdefault(key, []).append(os.path.basename(path))
+        dupes = {k: v for k, v in keys.items() if len(v) > 1}
+        self.assertEqual(dupes, {})
+
     def test_examples_embed_current_version(self):
         # The examples embed the WHOLE layer, so a version bump must re-stamp them. Both
         # the <meta> and the runtime CMH_VERSION const must equal dev/VERSION.
         version = _read_version()
-        for path in (EXAMPLE, TAXI):
-            html = open(path, encoding="utf-8").read()
+        for path in EXAMPLES:
+            html = _read(path)
             meta = re.search(r'<meta name="commentable-html-version" content="([0-9.]+)"', html)
             const = re.search(r'const CMH_VERSION = "([0-9.]+)"', html)
             self.assertIsNotNone(meta, "no version <meta> in " + os.path.basename(path))
@@ -89,7 +133,7 @@ class ExampleTests(unittest.TestCase):
             self.assertEqual(subprocess.run(base + ["--check"], capture_output=True, text=True).returncode, 0,
                              "freshly copied tree should be in sync")
             taxi = os.path.join(out_dir, "examples", "report-taxi.html")
-            html = open(taxi, encoding="utf-8").read()
+            html = _read(taxi)
             poisoned = html.replace('const CMH_VERSION = "', 'const CMH_VERSION = "0.0.0"; //', 1)
             self.assertNotEqual(poisoned, html, "could not poison the example CMH_VERSION")
             with open(taxi, "w", encoding="utf-8", newline="") as fh:

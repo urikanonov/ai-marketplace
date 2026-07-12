@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import path from "path";
 import { SKILL, fileUrl, ready } from "./helpers.js";
 
-// Mobile responsiveness regression for the two shipped showcase examples. A narrow
+// Mobile responsiveness regression for the shipped showcase examples. A narrow
 // phone viewport must never produce a content box that spills past the viewport: wide
 // tables scroll inside their own box, the KQL caption stacks, code blocks reserve
 // headroom for the floating pills, and figures/images fit the column. We assert against
@@ -10,6 +10,8 @@ import { SKILL, fileUrl, ready } from "./helpers.js";
 const EXAMPLES = {
   "report-taxi.html": path.join(SKILL, "examples", "report-taxi.html"),
   "report-community-garden.html": path.join(SKILL, "examples", "report-community-garden.html"),
+  "report-triage.html": path.join(SKILL, "examples", "report-triage.html"),
+  "report-metrics.html": path.join(SKILL, "examples", "report-metrics.html"),
 };
 const WIDTHS = [360, 390];
 
