@@ -11,6 +11,8 @@ Think of commentable-html as a code review for your plan. AI increasingly return
 
 commentable-html brings the familiar pull-request code-review experience to plans, reports, and design docs: inline comments on exactly the line, paragraph, chart, or diagram you mean, then a structured bundle back to the agent. Revising an AI-generated artifact feels like reviewing a PR instead of narrating changes in chat. It drastically shortens the AI planning and iteration loop: you stay in the loop, and the loop gets tighter.
 
+Every medium you might plan in trades something away. In the chat window the plan scrolls past and is gone. A Markdown file survives but stays flat - no real tables, diagrams, or charts, and few people read a long `.md`. Plain HTML is dense and readable (Anthropic makes this case in ["The unreasonable effectiveness of HTML"](https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html)), but review is still out-of-band: you read in the browser, then switch back to the chat to describe what to change and where. commentable-html keeps the rich HTML and adds review in place, taking that blog's "two-way interaction" idea - review the HTML, then feed your changes back to the model - and making it first-class.
+
 ## Review loops
 
 ### Self review loop

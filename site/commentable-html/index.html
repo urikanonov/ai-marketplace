@@ -39,7 +39,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.9.0<!-- END:version --></span></a>
+        <span class="eyebrow spaced identity"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.9.1<!-- END:version --></span></span>
       </div>
     </header>
 
@@ -86,10 +86,10 @@
               <tr><th>Where you plan</th><th>Handles a big plan</th><th>Visual richness</th><th>Interactive</th><th>In-place review</th><th>Review loop</th></tr>
             </thead>
             <tbody>
-              <tr><td>Chat / terminal</td><td data-label="Handles a big plan">Poor</td><td data-label="Visual richness">None</td><td data-label="Interactive">No</td><td data-label="In-place review">No</td><td data-label="Review loop">Painful</td></tr>
-              <tr><td>Markdown file</td><td data-label="Handles a big plan">OK (needs a viewer)</td><td data-label="Visual richness">Limited</td><td data-label="Interactive">No</td><td data-label="In-place review">No</td><td data-label="Review loop">Manual</td></tr>
-              <tr><td>Plain HTML</td><td data-label="Handles a big plan">Good</td><td data-label="Visual richness">Rich</td><td data-label="Interactive">Yes</td><td data-label="In-place review">No</td><td data-label="Review loop">Out-of-band</td></tr>
-              <tr class="compare-hero"><td>commentable-html</td><td data-label="Handles a big plan">Good</td><td data-label="Visual richness">Rich</td><td data-label="Interactive">Yes</td><td data-label="In-place review">Yes</td><td data-label="Review loop">Tight</td></tr>
+              <tr><td>Chat / terminal</td><td>Poor</td><td>None</td><td>No</td><td>No</td><td>Painful</td></tr>
+              <tr><td>Markdown file</td><td>OK (needs a viewer)</td><td>Limited</td><td>No</td><td>No</td><td>Manual</td></tr>
+              <tr><td>Plain HTML</td><td>Good</td><td>Rich</td><td>Yes</td><td>No</td><td>Out-of-band</td></tr>
+              <tr class="compare-hero"><td>commentable-html</td><td>Good</td><td>Rich</td><td>Yes</td><td>Yes</td><td>Tight</td></tr>
             </tbody>
           </table>
           <ul class="why-list">
@@ -222,6 +222,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.9.1] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The shipped plugin <code>README.md</code> and <code>SKILL.md</code> now explain why commentable-html beats planning in chat, a Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic&#x27;s &quot;unreasonable effectiveness of HTML&quot; blog post - so the motivation matches the project website.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.9.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -235,6 +242,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>validate.py</code> treats only <code>http://</code> and <code>https://</code> companion refs as remote/CDN URLs. Local <code>file://</code> refs and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are local-only.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.8.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -254,8 +263,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>On touch / coarse-pointer devices the &quot;Add Comment&quot; popup now appears when a text selection settles. Selecting text on a phone drags the native handles and never fires <code>mouseup</code>, so the popup previously never showed; a debounced <code>selectionchange</code> now raises the same popup (and hides it when the selection collapses). Desktop mouse behavior is unchanged.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.7.0] - 2026-07-11</h3></div>
             <div class="group-label">Fixed</div>
@@ -317,22 +324,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Polished the review-loop diagram (<code>docs/images/review-loop.svg</code> and its site twin): the step labels use consistent casing (&quot;1. Generates HTML&quot;, &quot;2. Comment Inline&quot;), and the &quot;reload and repeat&quot; caption became a fourth curved arrow from the AI agent back to you, so the loop reads as a closed cycle.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.5.0] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Commentable widgets and SVG nodes. A generic opt-in contract (<code>data-cm-widget</code>, <code>data-cm-part</code>, optional <code>data-cm-part-label</code>, and <code>data-cm-slot</code>) makes individual parts of an interactive widget or a labeled SVG <code>&lt;g&gt;</code> node commentable, with a hover/keyboard Add Comment affordance and a <code>widget</code> anchor type that restores across reloads and exports.</li>
-              <li>Widget layout-change tracking. When parts sit in <code>data-cm-slot</code> containers, drag/drop moves are detected against the load-time baseline and surfaced as a synthetic sidebar card and a &quot;Widget layout changes&quot; section in the Copy-all bundle; the document is flagged Not portable until it is re-exported.</li>
-              <li>Document-wide comments. Right-clicking empty space adds an unanchored, whole-document comment (<code>document</code> anchor type) that carries no highlight and copies as a document-wide anchor.</li>
-              <li>Export to Markdown. A new sidebar and overflow-menu action copies the document content to the clipboard and downloads a <code>.md</code> file via a deterministic, block-by-block conversion (headings, lists, GFM tables, fenced code / diff / mermaid / kusto, callouts as GitHub alerts, charts and SVG figures as caption notes), with the current comments appended as a section. Untrusted text, attributes, and comment notes are escaped so the exported Markdown cannot inject raw HTML or forge document structure.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The overflow-menu portability badge now shares the sidebar badge&#x27;s coloring and tooltip (via <code>data-doc-type</code>), so both convey the same Portable / Not portable semantics.</li>
-              <li>Authoring guidance: content-conventions now covers shaping content in real layouts, an anti-default-look taste checklist, a readable prose measure (top-level paragraphs are capped while tables, figures, and code keep full width), and mapping a product&#x27;s design tokens onto the <code>--cp-*</code> variables.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">13 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">14 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
