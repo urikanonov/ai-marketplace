@@ -117,6 +117,19 @@ suite (see `.github/workflows/pages.yml`).
 | --- | --- | --- |
 | SITE-THEME-01 | The site follows the operating system light or dark color preference with token-based colors that maintain WCAG AA contrast for normal text, links, and primary buttons on page and card backgrounds. | `tests/site/tests/site.spec.js` - `light and dark themes preserve readable contrast` |
 
+## Discoverability (SEO, social, and AI answer engines)
+
+| Feature id | Behavior | Covering tests |
+| --- | --- | --- |
+| SITE-SEO-01 | Every page carries a self-referencing `<link rel="canonical">` with its absolute production URL, so the trailing-slash/non-slash duplicates do not split indexing. | `tests/site/tests/site.spec.js` - `hub head exposes canonical, Open Graph, and Twitter Card tags`, `plugin and tutorial pages carry a self-referencing canonical and Open Graph metadata` |
+| SITE-SEO-02 | Every page emits Open Graph (type, site_name, title, description, url, image + dimensions/alt) and Twitter `summary_large_image` Card tags, so a shared link renders a real preview card on social and chat. | `tests/site/tests/site.spec.js` - `hub head exposes canonical, Open Graph, and Twitter Card tags`, `plugin and tutorial pages carry a self-referencing canonical and Open Graph metadata` |
+| SITE-SEO-03 | The hub embeds a JSON-LD graph (WebSite + author Person + an ItemList of the plugins as SoftwareApplication) generated from `marketplace.json`, with `<`, `>`, and `&` escaped so manifest text cannot break out of the `<script>` block; the strict `script-src 'self'` CSP does not block the data block. | `scripts/test_build_site_data.py` - `JsonLdTests`; `tests/site/tests/site.spec.js` - `the hub embeds valid JSON-LD describing the site and its plugins` |
+| SITE-SEO-04 | The plugin page embeds a static SoftwareApplication + BreadcrumbList JSON-LD graph (no version field, so it cannot drift). | `tests/site/tests/site.spec.js` - `the plugin page embeds SoftwareApplication and BreadcrumbList JSON-LD` |
+| SITE-SEO-05 | `build_site_data.py` generates `site/sitemap.xml` listing the hub, each plugin page, and the tutorial; `--check` fails when the committed sitemap is stale. | `scripts/test_build_site_data.py` - `SitemapTests`, `WriteOrCheckTests`, `CheckDriftTests`; `tests/site/tests/site.spec.js` - `sitemap.xml is served and lists the hub, plugin, and tutorial pages` |
+| SITE-SEO-06 | `build_site_data.py` generates `site/llms.txt` (marketplace summary, install commands, per-plugin links and descriptions, and the tutorial link) from the manifest; `--check` fails when it is stale. | `scripts/test_build_site_data.py` - `LlmsTests`, `WriteOrCheckTests`, `CheckDriftTests`; `tests/site/tests/site.spec.js` - `llms.txt is served and links each plugin and the tutorial` |
+| SITE-SEO-07 | A 1200x630 social cover image (`site/assets/og-cover.png`) is served and is referenced by `og:image` on every page. | `tests/site/tests/site.spec.js` - `the og:image cover asset is served as a PNG`, `hub head exposes canonical, Open Graph, and Twitter Card tags` |
+| SITE-SEO-08 | The hub H1 reads as continuous, correctly spaced text ("A marketplace of AI plugins for the Copilot CLI") so crawlers and screen readers get clean wording despite the styled line break. | `tests/site/tests/site.spec.js` - `the hub H1 reads as continuous text with correct word spacing` |
+
 ## Coverage gaps
 
 Every behavior in the tables above has an automated test. The `site/assets/styles.css` visual and

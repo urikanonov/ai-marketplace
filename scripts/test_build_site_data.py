@@ -493,6 +493,93 @@ class StampWiringTests(unittest.TestCase):
         self.assertEqual(bad, [])
 
 
+class JsonLdTests(unittest.TestCase):
+    def _parse(self, script):
+        self.assertTrue(script.startswith('<script type="application/ld+json">'))
+        self.assertTrue(script.rstrip().endswith("</script>"))
+        inner = script[script.index(">") + 1: script.rindex("</script>")]
+        return json.loads(inner)
+
+    def test_graph_has_website_person_and_plugin_itemlist(self):
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "metadata": {"description": "Desc."},
+            "owner": {"name": "Uri Kanonov"},
+            "plugins": [
+                {"name": "commentable-html", "description": "d1"},
+                {"name": "other", "description": "d2",
+                 "homepage": "https://github.com/urikanonov/ai-marketplace"},
+            ],
+        }
+        graph = self._parse(bsd.render_jsonld(manifest))["@graph"]
+        self.assertEqual([n["@type"] for n in graph], ["WebSite", "Person", "ItemList"])
+        website, person, itemlist = graph
+        self.assertEqual(website["author"]["@id"], person["@id"])
+        self.assertIn(bsd.OWNER_LINKEDIN_URL, person["sameAs"])
+        apps = [li["item"] for li in itemlist["itemListElement"]]
+        self.assertEqual([a["name"] for a in apps], ["commentable-html", "other"])
+        # A plugin with a site page links to it; one without falls back to its homepage.
+        self.assertEqual(apps[0]["url"], bsd.SITE_BASE_URL + "commentable-html/")
+        self.assertEqual(apps[1]["url"], "https://github.com/urikanonov/ai-marketplace")
+        self.assertTrue(all(a["applicationCategory"] == "DeveloperApplication" for a in apps))
+
+    def test_script_break_out_is_neutralized(self):
+        manifest = {"name": "m", "metadata": {"description": "x</script><b>y"},
+                    "owner": {"name": "O"}, "plugins": []}
+        script = bsd.render_jsonld(manifest)
+        self.assertNotIn("</script><b>", script)
+        self.assertIn("\\u003c/script\\u003e", script)
+        self.assertEqual(self._parse(script)["@graph"][0]["description"], "x</script><b>y")
+
+    def test_real_manifest_parses_and_lists_both_plugins(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, ".github", "plugin", "marketplace.json"), encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        itemlist = self._parse(bsd.render_jsonld(manifest))["@graph"][2]
+        names = [li["item"]["name"] for li in itemlist["itemListElement"]]
+        self.assertIn("commentable-html", names)
+        self.assertIn("urikan-ai-marketplace-auto-updater", names)
+
+
+class SitemapTests(unittest.TestCase):
+    def test_lists_hub_plugin_and_tutorial(self):
+        xml = bsd.render_sitemap(bsd.REPO_ROOT)
+        self.assertTrue(xml.startswith('<?xml version="1.0" encoding="UTF-8"?>'))
+        self.assertIn("<urlset", xml)
+        for url in [bsd.SITE_BASE_URL,
+                    bsd.SITE_BASE_URL + "commentable-html/",
+                    bsd.SITE_BASE_URL + "commentable-html/tutorial/"]:
+            self.assertIn("<loc>%s</loc>" % url, xml)
+
+
+class LlmsTests(unittest.TestCase):
+    def test_contains_summary_install_and_plugin_links(self):
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "metadata": {"description": "Marketplace summary."},
+            "plugins": [{"name": "commentable-html", "description": "d1"}],
+        }
+        text = bsd.render_llms(manifest)
+        self.assertTrue(text.startswith("# ai-marketplace"))
+        self.assertIn("> Marketplace summary.", text)
+        self.assertIn("copilot plugin install <name>@urikan-ai-marketplace", text)
+        self.assertIn("[commentable-html](%scommentable-html/): d1" % bsd.SITE_BASE_URL, text)
+        self.assertIn("commentable-html/tutorial/)", text)
+
+
+class WriteOrCheckTests(unittest.TestCase):
+    def test_writes_then_reports_drift_only_on_change(self):
+        import shutil
+        import tempfile
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        path = os.path.join(d, "sitemap.xml")
+        self.assertEqual(bsd.write_or_check(path, "a\nb\n", False), [])
+        self.assertEqual(bsd.write_or_check(path, "a\nb\n", True), [])
+        self.assertEqual(bsd.write_or_check(path, "a\nc\n", True), ["sitemap.xml"])
+        self.assertEqual(bsd.write_or_check(os.path.join(d, "gone.txt"), "x", True), ["gone.txt"])
+
+
 class CheckDriftTests(unittest.TestCase):
     def _clone_repo(self):
         import os as _os
