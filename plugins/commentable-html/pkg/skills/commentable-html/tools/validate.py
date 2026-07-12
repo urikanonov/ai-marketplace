@@ -113,7 +113,7 @@ _SCRIPT_STYLE_RE = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.DOTALL |
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 # id is case-sensitive (getElementById("commentRoot") is exact-case), but the value
 # may be quoted or unquoted; the lookahead stops "commentRootX" from matching.
-_COMMENT_ROOT_ATTR_RE = re.compile(r'(?i:id)\s*=\s*["\']?commentRoot["\']?(?=[\s>/])')
+_COMMENT_ROOT_ATTR_RE = re.compile(r'(?<![\w:-])(?i:id)\s*=\s*["\']?commentRoot["\']?(?=[\s>/])')
 _DATA_KEY_RE = re.compile(r'(?i:data-comment-key)\s*=\s*["\']?([^\s"\'<>]+)')
 
 # --------------------------------------------------------------------------- #
@@ -212,6 +212,7 @@ class _DocParser(HTMLParser):
         self.canvases = []
         self.figcaptions = []
         self.scripts = []
+        self.styles = []
         self.has_comment_root = False
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
@@ -219,6 +220,7 @@ class _DocParser(HTMLParser):
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
         self._cur_script = None   # (pos, attrs_dict) while inside a <script>
+        self._cur_style = None    # (pos, attrs_dict) while inside a <style>
         self._cur_body = []
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
         self._cr_depth = None        # stack depth at which #commentRoot was entered
@@ -316,6 +318,9 @@ class _DocParser(HTMLParser):
         if tag == "script" and not self._in_template():
             self._cur_script = (self._off(), ad)
             self._cur_body = []
+        if tag == "style" and not self._in_template():
+            self._cur_style = (self._off(), ad)
+            self._cur_body = []
         if (tag in _HEADING_TAGS and self._cur_heading is None and self._cr_depth is not None
                 and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
@@ -350,6 +355,9 @@ class _DocParser(HTMLParser):
         if self._cur_script is not None:
             self._cur_body.append(data)
             return
+        if self._cur_style is not None:
+            self._cur_body.append(data)
+            return
         if self._cur_heading is not None:
             self._cur_heading[2].append(data)
             return  # heading text is captured separately, not treated as cross-ref prose
@@ -366,6 +374,11 @@ class _DocParser(HTMLParser):
             pos, ad = self._cur_script
             self.scripts.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})
             self._cur_script = None
+            self._cur_body = []
+        if tag == "style" and self._cur_style is not None:
+            pos, ad = self._cur_style
+            self.styles.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})
+            self._cur_style = None
             self._cur_body = []
         if self._cur_heading is not None and tag == self._cur_heading[0]:
             text = re.sub(r"\s+", " ", "".join(self._cur_heading[2])).strip()
@@ -570,6 +583,17 @@ def _is_nonportable(html):
     return bool(_nonportable_css_refs(html) or _nonportable_js_refs(html))
 
 
+def _layer_descriptor_data(parser):
+    scripts = [s for s in parser.scripts if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID]
+    if not scripts:
+        return None
+    try:
+        data = json.loads((scripts[0]["body"] or "").strip())
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _check_layer_descriptor(parser, nonportable, active_regions):
     errors = []
     scripts = [s for s in parser.scripts if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID]
@@ -721,22 +745,24 @@ def _check_nonportable(html, base_dir, id_counts):
     # Referenced companion files must resolve to a local file that exists. NonPortable
     # intentionally points at the skill's dist/ folder (a relative subdirectory or a
     # ../ path, or an absolute file:// URL), so a subfolder / parent reference is
-    # allowed - only http(s) remote/CDN URLs are rejected (they break the
-    # self-contained guarantee), absolute filesystem paths are warned about (they
-    # leak a local directory and are not portable), and a missing target errors.
+    # allowed. Network URLs and non-file schemes are rejected, absolute filesystem
+    # paths are warned about, and a missing target errors.
     # The remote-URL and absolute-path checks are structural (they inspect the ref
     # string only), so they always run. Only the on-disk existence check needs a
     # base_dir; when base_dir is None the placement is deferred (e.g. generation-time
     # validation of a not-yet-placed document), so existence is not checked - the
     # structure is still validated.
     for ref in css_refs + js_refs:
-        if re.match(r"https?://", ref, re.I):
+        if re.match(r"(?:https?:)?//", ref, re.I):
             errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
             continue
         norm = ref.replace("\\", "/")
         file_target = _file_url_to_path(ref)
         if file_target is not None:
             target = file_target
+        elif re.match(r"[a-zA-Z][a-zA-Z0-9+.\-]*:", ref) and not re.match(r"[a-zA-Z]:[\\/]", ref):
+            errors.append('nonportable mode: companion reference "%s" must be a local file, not a non-file URL scheme' % ref)
+            continue
         elif norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
             # Absolute path: usable but leaks a local directory and is not portable.
             warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
@@ -965,14 +991,17 @@ def check_layer(html, parser, base_dir=None):
         elif c > 1:
             errors.append(f'required element id="{uid}" appears {c} times (must be unique)')
 
-    # 7b) The document-owned JSON script blocks must also be unique. A duplicated
-    # id="handledCommentIds"/"embeddedComments" makes getElementById() (and
-    # mark_handled.py) bind to the wrong <script>, silently reading/writing a
-    # decoy. Absence is already reported by checks 4/5, so only flag duplicates.
-    for uid in sorted(LAYER_JSON_IDS - {LAYER_DESCRIPTOR_ID}):
+    # 7b) The document-owned JSON script blocks must also be unique across the
+    # whole active DOM. A duplicated id makes getElementById() bind to a decoy,
+    # silently reading/writing the wrong element. Absence is already reported by
+    # dedicated checks above, so only flag duplicates.
+    for uid in sorted(LAYER_JSON_IDS):
         c = id_counts.get(uid, 0)
         if c > 1:
-            errors.append(f'<script id="{uid}"> appears {c} times (must be unique)')
+            if uid == LAYER_DESCRIPTOR_ID:
+                errors.append(f'id="{uid}" appears {c} times (must be unique)')
+            else:
+                errors.append(f'<script id="{uid}"> appears {c} times (must be unique)')
 
     # 8) Export/Import must stay removed (dropped before the 1.0.0 release).
     present_forbidden = [uid for uid in FORBIDDEN_IDS if uid in id_counts]
@@ -1047,34 +1076,88 @@ def check_layer(html, parser, base_dir=None):
     # 11e) Self-contained guarantee: the finished document must not pull resources over the
     #      network (the core promise is a single self-contained file). <a href> links
     #      are navigation, not resource loads, so they are exempt; Chart.js from a CDN
-    #      is a documented opt-in (its SRI/version are checked in check_charts); mermaid
-    #      CDN imports are handled by check_mermaid_renders.
+    #      is a documented opt-in in portable mode (its SRI/version are checked in
+    #      check_charts); mermaid CDN imports are handled by check_mermaid_renders.
+    #      Offline mode is stricter: no network-loading resource is allowed.
     def _is_network(v):
         return bool(re.match(r"(?:https?:)?//", v or "", re.I))
-    for img in _find_tag_attrs(html, "img"):
-        src = img.get("src", "")
-        if not src or src.startswith("data:"):
-            continue
-        if _is_network(src):
-            errors.append('<img src="%s"> loads over the network - inline it with '
-                          "tools/inline_images.py (external images break self-contained use and portability)"
-                          % src[:80])
-        elif not re.match(r"[a-z][a-z0-9+.\-]*:", src, re.I):
-            warnings.append('<img src="%s"> is a local path - run tools/inline_images.py to embed '
-                            "it as a data: URI so the image travels with the file" % src[:80])
-    for tag, attr in (("link", "href"), ("script", "src"), ("iframe", "src")):
-        for el in _find_tag_attrs(html, tag):
-            val = el.get(attr, "")
-            if not val or not _is_network(val):
-                continue
+    descriptor = _layer_descriptor_data(parser) or {}
+    offline_mode = (not nonportable and descriptor.get("mode") == "offline")
+    def _network_values(value, srcset=False):
+        if srcset:
+            return [part.strip().split()[0] for part in (value or "").split(",") if part.strip()]
+        return [value or ""]
+    def _network_error(tag, attr, val):
+        label = "<%s %s=\"%s\">" % (tag, attr, val[:80])
+        if offline_mode:
             if tag == "script" and CHARTJS_SRC_RE.search(val):
-                continue  # Chart.js CDN is an opt-in; its SRI/version are checked separately
+                return "offline mode: %s loads Chart.js over the network - inline it or export offline after rendering" % label
+            return "offline mode: %s loads over the network - inline or remove it" % label
+        return None
+    def _check_network_attr(tag, attrs, attr, srcset=False):
+        val = attrs.get(attr, "")
+        if not val:
+            return
+        for item in _network_values(val, srcset=srcset):
+            if not _is_network(item):
+                continue
+            e = _network_error(tag, attr, item)
+            if e:
+                errors.append(e)
+                continue
+            if tag == "script" and CHARTJS_SRC_RE.search(item):
+                continue
             if tag == "link":
                 warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
-                                "guarantee - inline or remove it" % (attr, val[:80]))
+                                "guarantee - inline or remove it" % (attr, item[:80]))
             else:
                 errors.append('<%s %s="%s"> loads over the network and breaks the self-contained guarantee - '
-                              "inline or remove it" % (tag, attr, val[:80]))
+                              "inline or remove it" % (tag, attr, item[:80]))
+    for img in _find_tag_attrs(html, "img"):
+        src = img.get("src", "")
+        if src and not src.startswith("data:"):
+            if _is_network(src):
+                e = _network_error("img", "src", src)
+                if e:
+                    errors.append(e)
+                else:
+                    errors.append('<img src="%s"> loads over the network - inline it with '
+                                  "tools/inline_images.py (external images break self-contained use and portability)"
+                                  % src[:80])
+            elif not re.match(r"[a-z][a-z0-9+.\-]*:", src, re.I):
+                warnings.append('<img src="%s"> is a local path - run tools/inline_images.py to embed '
+                                "it as a data: URI so the image travels with the file" % src[:80])
+        _check_network_attr("img", img, "srcset", srcset=True)
+    for tag, attr in (("link", "href"), ("script", "src"), ("iframe", "src")):
+        for el in _find_tag_attrs(html, tag):
+            _check_network_attr(tag, el, attr)
+    if offline_mode:
+        media_attrs = (
+            ("video", "src", False), ("video", "poster", False),
+            ("audio", "src", False), ("source", "src", False), ("source", "srcset", True),
+            ("object", "data", False), ("embed", "src", False), ("track", "src", False),
+            ("image", "href", False), ("image", "xlink:href", False),
+            ("use", "href", False), ("use", "xlink:href", False),
+        )
+        for tag, attr, is_srcset in media_attrs:
+            for el in _find_tag_attrs(html, tag):
+                _check_network_attr(tag, el, attr, srcset=is_srcset)
+        for el in _find_tag_attrs(html, "input"):
+            if (el.get("type") or "").lower() == "image":
+                _check_network_attr("input", el, "src")
+        for tag in ("body", "table", "td", "th", "div"):
+            for el in _find_tag_attrs(html, tag):
+                _check_network_attr(tag, el, "background")
+        for style in parser.styles:
+            for m in re.finditer(r"@import\s+(?:url\()?['\"]?((?:https?:)?//[^;'\"\)]+)", style.get("body", ""), re.I):
+                errors.append('offline mode: @import "%s" loads over the network - inline or remove it' % m.group(1)[:80])
+        for script in parser.scripts:
+            if not _is_executable_js(script["attrs"]):
+                continue
+            body = script.get("body", "")
+            if (re.search(r"\bimport\s*\(", body) and re.search(r"(?:https?:)?//", body, re.I)) or \
+                    re.search(r"\b(?:import|from)\s+['\"](?:https?:)?//", body, re.I):
+                errors.append("offline mode: inline script imports a network module - inline or remove it")
 
     # 11f) Duplicate heading ids collide in-page anchors: the TOC and prose links bind
     #      to the first occurrence, so later sections become unreachable.

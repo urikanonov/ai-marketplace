@@ -129,6 +129,32 @@ class UpgradeUnitTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             upgrade._region_inner("no markers here", "CSS", "<t>")
 
+    def test_duplicate_begin_marker_raises(self):
+        text = ("     BEGIN: commentable-html - CSS\n"
+                "body\n"
+                "     BEGIN: commentable-html - CSS\n"
+                "more\n"
+                "<!-- END: commentable-html - CSS -->\n")
+        with self.assertRaisesRegex(ValueError, "duplicate region"):
+            upgrade._region_inner(text, "CSS", "<t>")
+
+    def test_duplicate_end_marker_raises(self):
+        text = ("     BEGIN: commentable-html - JS\n"
+                "body\n"
+                "<!-- END: commentable-html - JS -->\n"
+                "<!-- END: commentable-html - JS -->\n")
+        with self.assertRaisesRegex(ValueError, "duplicate region"):
+            upgrade._region_inner(text, "JS", "<t>")
+
+    def test_upgrade_rejects_duplicate_state_region_end(self):
+        tpl = _tpl()
+        target = tpl.replace(
+            "<!-- END: commentable-html - HANDLED IDS -->",
+            "<!-- END: commentable-html - HANDLED IDS -->\n<!-- END: commentable-html - HANDLED IDS -->",
+            1)
+        with self.assertRaisesRegex(ValueError, "duplicate region: HANDLED IDS"):
+            upgrade.upgrade(target, tpl)
+
 
 class UpgradeCliTests(unittest.TestCase):
     def _write(self, text):

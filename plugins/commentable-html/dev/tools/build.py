@@ -410,8 +410,7 @@ def _marker_re(kind, name):
 
 def _region_inner(text, name, where):
     """Return (start, end) offsets of a layer region's inner content (between the BEGIN
-    and END marker lines). For JS the END is the LAST marker line, because the JS body
-    contains marker-like strings (the plain-export code) that a first match would fool.
+    and END marker lines). The line-anchored match ignores marker-like strings.
     Mirrors tools/upgrade.py so example regeneration and end-user upgrades agree."""
     begins = list(_marker_re("BEGIN", name).finditer(text))
     if not begins:
@@ -423,13 +422,16 @@ def _region_inner(text, name, where):
     ends = [m for m in _marker_re("END", name).finditer(text) if m.start(1) >= b]
     if not ends:
         raise SystemExit("build: %s: '%s' region END marker not found after BEGIN" % (where, name))
-    em = ends[-1] if name == "JS" else ends[0]
+    if len(ends) > 1:
+        raise SystemExit("duplicate region: %s" % name)
+    em = ends[0]
     return b, em.start(1)
 
 
 # Layer regions swapped into each example from the freshly built PORTABLE.html. HANDLED
 # IDS, EMBEDDED COMMENTS, CONTENT, and the #commentRoot wrapper are the report's own data
 # and are never touched.
+_LAYER_REGIONS = ("CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS")
 _EXAMPLE_SWAP_REGIONS = ("CSS", "COMMENT UI", "JS")
 _EXAMPLE_NAME_RE = re.compile(r"^report-.*\.html$")
 _META_VERSION_RE = re.compile(
@@ -485,6 +487,9 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
     rewritten to the single source. The report's content and embedded comments are
     preserved."""
     out = example_html
+    for name in _LAYER_REGIONS:
+        _region_inner(portable_html, name, "dist/PORTABLE.html")
+        _region_inner(out, name, where)
     for name in _EXAMPLE_SWAP_REGIONS:
         tb, te = _region_inner(portable_html, name, "dist/PORTABLE.html")
         db, de = _region_inner(out, name, where)

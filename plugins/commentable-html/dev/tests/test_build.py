@@ -218,6 +218,26 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "duplicate region: CSS"):
             build._region_inner(text, "CSS", "<duplicate>")
 
+    def test_region_inner_rejects_duplicate_end_marker(self):
+        text = ("/* ============================================================\n"
+                "   BEGIN: commentable-html - JS\n"
+                "   ============================================================ */\n"
+                "body();\n"
+                "<!-- END: commentable-html - JS -->\n"
+                "<!-- END: commentable-html - JS -->\n")
+        with self.assertRaisesRegex(SystemExit, "duplicate region: JS"):
+            build._region_inner(text, "JS", "<duplicate>")
+
+    def test_regen_example_rejects_duplicate_state_region_end(self):
+        portable = _read(os.path.join(DIST, "PORTABLE.html"))
+        example = portable.replace(
+            "<!-- END: commentable-html - EMBEDDED COMMENTS -->",
+            "<!-- END: commentable-html - EMBEDDED COMMENTS -->\n"
+            "<!-- END: commentable-html - EMBEDDED COMMENTS -->",
+            1)
+        with self.assertRaisesRegex(SystemExit, "duplicate region: EMBEDDED COMMENTS"):
+            build.regen_example(example, portable, build.read_version(), build.read_mermaid_version(), "<duplicate>")
+
     def test_region_inner_rejects_trailing_authored_text(self):
         # C2: build's example regen bounds a region only by a COMPLETE marker line, never a
         # loose substring. A line-leading marker phrase with trailing authored words (or an

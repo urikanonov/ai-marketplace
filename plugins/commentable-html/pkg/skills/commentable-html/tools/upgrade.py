@@ -32,6 +32,7 @@ DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 # Regions swapped from the template. HANDLED IDS, EMBEDDED COMMENTS, CONTENT, and the
 # #commentRoot wrapper are the document's own state and are deliberately left alone.
 SWAP_REGIONS = ["CSS", "COMMENT UI", "JS"]
+LAYER_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 # State/content markers a valid target must contain (so we never "upgrade" a file that
 # is not actually a commentable-html document).
 REQUIRED_MARKERS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "CONTENT", "CSS", "JS"]
@@ -56,16 +57,20 @@ def _marker_re(kind, name):
 
 def _region_inner(text, name, where):
     """Return (start, end) byte offsets of a region's inner content (between the BEGIN
-    and END marker texts). For JS the END is the LAST marker line, because the JS body
-    contains marker-like strings; the line-anchored match ignores those literals."""
-    bm = _marker_re("BEGIN", name).search(text)
-    if not bm:
+    and END marker texts). The line-anchored match ignores marker-like strings."""
+    begins = list(_marker_re("BEGIN", name).finditer(text))
+    if not begins:
         raise ValueError("%s: '%s' region BEGIN marker not found" % (where, name))
+    if len(begins) > 1:
+        raise ValueError("%s: duplicate region: %s" % (where, name))
+    bm = begins[0]
     b = bm.end(1)
     ends = [m for m in _marker_re("END", name).finditer(text) if m.start(1) >= b]
     if not ends:
         raise ValueError("%s: '%s' region END marker not found after BEGIN" % (where, name))
-    em = ends[-1] if name == "JS" else ends[0]
+    if len(ends) > 1:
+        raise ValueError("%s: duplicate region: %s" % (where, name))
+    em = ends[0]
     return b, em.start(1)
 
 
@@ -78,6 +83,9 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
     for marker in REQUIRED_MARKERS:
         if ("BEGIN: commentable-html - " + marker) not in target_html:
             raise ValueError("%s is not a commentable-html document (missing '%s' region)" % (target_name, marker))
+    for name in LAYER_REGIONS:
+        _region_inner(template_html, name, template_name)
+        _region_inner(target_html, name, target_name)
     out = target_html
     changed = []
     for name in SWAP_REGIONS:

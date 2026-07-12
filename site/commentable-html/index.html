@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.18.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.19.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -281,6 +281,17 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.19.0] - 2026-07-12</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Offline export now adds a zero-network CSP, removes event-handler attributes, strips same-origin absolute media and additional preload/media/SVG/CSS/refresh egress vectors, and validates offline documents with no Chart.js CDN exemption.</li>
+              <li>Region replacement tools and runtime export slicers now reject duplicate BEGIN or END markers instead of risking content loss.</li>
+              <li>Validator hardening now rejects protocol-relative and non-file companion refs, descriptor id decoys, and commented <code>data-id=&quot;commentRoot&quot;</code> false positives.</li>
+              <li>Save, Portable, and Offline exports now filter handled comments so resolved feedback cannot reappear in exported embedded comment JSON.</li>
+              <li>Markdown export now summarizes offline chart snapshots by label instead of embedding base64 chart images.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.18.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -295,6 +306,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The forward-compatible layout reference now clarifies that <code>validate.py --strict</code> validates the current contract only and legacy pre-1.15 documents must be regenerated or upgraded before validation.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.17.0] - 2026-07-12</h3></div>
             <div class="group-label">Fixed</div>
@@ -308,8 +321,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Plain export and layer retargeting now ignore <code>data-id=&quot;commentableHtmlLayer&quot;</code> decoys when locating the real descriptor.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.16.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -347,14 +358,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Export to Markdown now preserves <code>data-cm-widget</code> boards as a widget note plus a GFM table, so the triage board survives Markdown export instead of being skipped as <code>cm-skip</code> chrome.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.12.0] - 2026-07-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Added <strong>Export Offline</strong>, which builds a Portable export with current comments, snapshots rendered mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content loaders, and produces a strict-valid zero-network HTML handoff.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">21 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">22 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

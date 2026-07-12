@@ -63,6 +63,18 @@ test("callouts, charts, and diffs map to their fixed Markdown forms", async ({ p
   expect(md).toContain("-old line");
 });
 
+test("offline chart snapshots export label text without embedding the data image (CMH-MD-06)", async ({ page }) => {
+  const C = '<h1>Snapshot</h1>'
+    + '<figure class="chart"><div class="chart-wrap cm-skip">'
+    + '<img id="snapChart" class="cmh-chart" data-cm-offline-chart="true" '
+    + 'src="data:image/png;base64,AAAA" alt="Offline revenue chart">'
+    + '</div></figure>';
+  await openRich(page, C, "cmh-md-offline-chart");
+  const md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toContain("_[Chart snapshot: Offline revenue chart]_");
+  expect(md).not.toContain("data:image/png;base64");
+});
+
 test("a mermaid diagram exports its source, not the rendered SVG", async ({ page }) => {
   const M = `<h1>M</h1><pre class="mermaid cm-skip">\nflowchart LR\n  A --> B\n</pre>`;
   await openRich(page, M, "cmh-md-mermaid");
