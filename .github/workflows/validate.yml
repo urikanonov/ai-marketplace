@@ -103,6 +103,26 @@ jobs:
           BUMP_EVENT: ${{ github.event_name }}
         run: python scripts/check_version_bump.py
 
+  dependency-cooldown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Enforce npm dependency publish cooldown
+        env:
+          COOLDOWN_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          COOLDOWN_HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          COOLDOWN_EVENT: ${{ github.event_name }}
+        run: python scripts/check_dependency_cooldown.py
+
   dist-in-sync:
     runs-on: ubuntu-latest
     timeout-minutes: 5

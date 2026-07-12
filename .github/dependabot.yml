@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14
     groups:
       github-actions:
         patterns: ["*"]
@@ -11,6 +13,8 @@ updates:
     directory: "/plugins/commentable-html/dev"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14
     groups:
       dev-deps:
         patterns: ["*"]
@@ -18,6 +22,8 @@ updates:
     directory: "/tests/site"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14
     groups:
       site-test-deps:
         patterns: ["*"]
