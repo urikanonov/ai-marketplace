@@ -45,8 +45,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.19.0" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.19.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<meta name="commentable-html-version" content="1.20.0" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.20.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -1457,7 +1457,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.19.0";
+const CMH_VERSION = "1.20.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5771,14 +5771,65 @@ function _cmhScriptTagPattern(attrs, tail, flags) {
 function _cmhEscapeRegExp(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-function _cmhRegionMarkerPattern(kind, name) {
-  return new RegExp("^[ \\t]*(?:<!--[ \\t]*)?(?:/\\*[ \\t]*)?(?:=+[ \\t]*)?"
-    + _cmhEscapeRegExp(kind + ": commentable-html - " + name)
-    + "[ \\t]*(?:=+[ \\t]*)?(?:-->|\\*/)?[ \\t]*$", "gm");
+function _cmhAdvanceCommentState(line, state) {
+  let i = 0;
+  while (i < line.length) {
+    if (state === "html") {
+      const close = line.indexOf("-->", i);
+      if (close < 0) return "html";
+      state = "";
+      i = close + 3;
+      continue;
+    }
+    if (state === "css") {
+      const close = line.indexOf("*/", i);
+      if (close < 0) return "css";
+      state = "";
+      i = close + 2;
+      continue;
+    }
+    const htmlOpen = line.indexOf("<!--", i);
+    const cssOpen = line.indexOf("/*", i);
+    let open = -1, next = "";
+    if (htmlOpen >= 0 && (cssOpen < 0 || htmlOpen < cssOpen)) {
+      open = htmlOpen;
+      next = "html";
+    } else if (cssOpen >= 0) {
+      open = cssOpen;
+      next = "css";
+    }
+    if (open < 0) return "";
+    state = next;
+    i = open + (next === "html" ? 4 : 2);
+  }
+  return state;
+}
+function _cmhRegionMarkerMatches(html, kind, name) {
+  const marker = kind + ": commentable-html - " + name;
+  const markerSource = _cmhEscapeRegExp(marker);
+  const bare = new RegExp("^[ \\t]*(?:=+[ \\t]*)?(" + markerSource + ")[ \\t]*(?:=+[ \\t]*)?$");
+  const inline = new RegExp("^[ \\t]*(?:<!--[ \\t]*|/\\*[ \\t]*)(?:=+[ \\t]*)?(" + markerSource + ")[ \\t]*(?:=+[ \\t]*)?(?:-->|\\*/)[ \\t]*$");
+  const out = [];
+  const lines = String(html || "").match(/[^\n]*(?:\n|$)/g) || [];
+  let offset = 0, state = "";
+  lines.forEach(function (line) {
+    if (!line) return;
+    const body = line.replace(/\r?\n$/, "");
+    const inlineMatch = body.match(inline);
+    const bareMatch = body.match(bare);
+    const match = inlineMatch || ((state === "html" || state === "css") ? bareMatch : null);
+    if (match) {
+      const markerOffset = body.indexOf(match[1]);
+      out.push({ index: offset + markerOffset });
+    }
+    state = _cmhAdvanceCommentState(body, state);
+    offset += line.length;
+  });
+  return out;
 }
 function _assertSingleRegionMarkers(html, name) {
-  const begins = Array.from(String(html || "").matchAll(_cmhRegionMarkerPattern("BEGIN", name)));
-  const ends = Array.from(String(html || "").matchAll(_cmhRegionMarkerPattern("END", name)));
+  const begins = _cmhRegionMarkerMatches(html, "BEGIN", name);
+  const ends = _cmhRegionMarkerMatches(html, "END", name);
   if (begins.length !== 1 || ends.length !== 1) {
     throw new Error("Export aborted: malformed commentable-html region markers for " + name + ".");
   }
@@ -5941,12 +5992,13 @@ function _ensureOfflineCsp(doc) {
   });
   const meta = doc.createElement("meta");
   meta.setAttribute("http-equiv", "Content-Security-Policy");
-  meta.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'");
+  meta.setAttribute("content", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
   head.insertBefore(meta, head.firstChild);
 }
 function _offlineScriptHasNetworkImport(body) {
   const src = String(body || "");
-  return (/\bimport\s*\(/.test(src) && /(?:https?:)?\/\//i.test(src)) ||
+  return /\bimport\s*\(\s*["'](?:https?:)?\/\//i.test(src) ||
+    (/\bimport\s*\(/.test(src) && /["'](?:https?:)?\/\/[^"']*["']/i.test(src)) ||
     /\bfrom\s+["'](?:https?:)?\/\//i.test(src) ||
     /\bimport\s+["'](?:https?:)?\/\//i.test(src);
 }
@@ -5992,6 +6044,8 @@ function _stripOfflineNetworkLoads(doc) {
   doc.querySelectorAll("input[src]").forEach(function (el) {
     if ((el.getAttribute("type") || "").toLowerCase() === "image") clearAttr(el, "src");
   });
+  doc.querySelectorAll("form[action]").forEach(function (el) { clearAttr(el, "action"); });
+  doc.querySelectorAll("button[formaction], input[formaction]").forEach(function (el) { clearAttr(el, "formaction"); });
   doc.querySelectorAll("object").forEach(function (el) { clearAttr(el, "data"); });
   doc.querySelectorAll("embed").forEach(function (el) { clearAttr(el, "src"); });
   doc.querySelectorAll("[background]").forEach(function (el) { clearAttr(el, "background"); });
@@ -6005,6 +6059,13 @@ function _stripOfflineNetworkLoads(doc) {
   });
 }
 function _stripOfflineRichRenderers(doc) {
+  const offlineChartIds = Array.from(doc.querySelectorAll("[data-cm-offline-chart][id]"))
+    .map(function (el) { return el.getAttribute("id") || ""; })
+    .filter(Boolean);
+  const referencesOfflineChart = function (body) {
+    return /\b(?:cmh-chart|figure\.chart|data-cm-offline-chart)\b/i.test(body) ||
+      offlineChartIds.some(function (id) { return new RegExp(_cmhEscapeRegExp(id)).test(body); });
+  };
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
@@ -6020,7 +6081,8 @@ function _stripOfflineRichRenderers(doc) {
       s.remove();
       return;
     }
-    if (/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) || /\.getContext\s*\(/.test(body)) {
+    if (/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) ||
+        (/\.getContext\s*\(/.test(body) && referencesOfflineChart(body))) {
       s.remove();
     }
   });

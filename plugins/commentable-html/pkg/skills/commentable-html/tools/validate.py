@@ -149,6 +149,26 @@ CHARTJS_SRC_RE = re.compile(
     r"(?:^|/)chart(?:\.umd)?(?:\.min)?\.js(?:$|[?#])"
     r"|(?:^|/)chart\.js@\d+\.\d+\.\d+(?:$|[/?#])",
     re.IGNORECASE)
+FETCHING_LINK_RELS = {
+    "stylesheet", "preload", "modulepreload", "prefetch", "prerender",
+    "preconnect", "dns-prefetch", "icon", "apple-touch-icon",
+    "apple-touch-icon-precomposed", "manifest",
+}
+OFFLINE_CSP_REQUIRED = {
+    "default-src": ("'none'",),
+    "script-src": ("'unsafe-inline'",),
+    "style-src": ("'unsafe-inline'",),
+    "img-src": ("data:",),
+    "font-src": ("data:",),
+    "connect-src": ("'none'",),
+    "frame-src": ("'none'",),
+    "object-src": ("'none'",),
+    "base-uri": ("'none'",),
+    "form-action": ("'none'",),
+    "frame-ancestors": ("'none'",),
+}
+CSS_NETWORK_URL_RE = re.compile(r"url\(\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
+META_REFRESH_NETWORK_RE = re.compile(r"(?:^|[;,\s])url\s*=\s*(['\"]?)(?:https?:)?//", re.IGNORECASE)
 # A real network-failure guard (typeof Chart ==/===/!=/!== "undefined", optionally
 # parenthesised as typeof(Chart)), not the bare substring "typeof Chart".
 GUARD_RE = re.compile(r"typeof\s*\(?\s*Chart\s*\)?\s*[!=]={1,2}\s*(['\"])undefined\1", re.IGNORECASE)
@@ -166,16 +186,69 @@ CANVAS_RENDER_RE = re.compile(r"\.getContext\s*\(")
 # or an `id="..."` sitting inside another attribute's value never fools them.
 # --------------------------------------------------------------------------- #
 
-def _begin_re(region):
-    return re.compile(r"(?m)^[ \t]*BEGIN: commentable-html - " + re.escape(region) + r"[ \t]*$")
+class _MarkerMatch:
+    def __init__(self, marker_start, marker_end):
+        self._marker_start = marker_start
+        self._marker_end = marker_end
+
+    def start(self):
+        return self._marker_start
+
+    def end(self):
+        return self._marker_end
 
 
-def _end_re(region):
-    # Banner form ("   END: ... CSS") or inline HTML comment ("<!-- END: ... JS -->").
-    return re.compile(
-        r"(?m)^[ \t]*(?:<!--[ \t]*)?END: commentable-html - "
-        + re.escape(region) + r"(?:[ \t]*-->)?[ \t]*$"
-    )
+def _advance_comment_state(line, state):
+    i = 0
+    while i < len(line):
+        if state == "html":
+            close = line.find("-->", i)
+            if close < 0:
+                return "html"
+            state = ""
+            i = close + 3
+            continue
+        if state == "css":
+            close = line.find("*/", i)
+            if close < 0:
+                return "css"
+            state = ""
+            i = close + 2
+            continue
+        html_open = line.find("<!--", i)
+        css_open = line.find("/*", i)
+        if html_open >= 0 and (css_open < 0 or html_open < css_open):
+            state = "html"
+            i = html_open + 4
+            continue
+        if css_open >= 0:
+            state = "css"
+            i = css_open + 2
+            continue
+        return ""
+    return state
+
+
+def _region_marker_matches(html, kind, region):
+    marker = "%s: commentable-html - %s" % (kind, region)
+    marker_re = re.escape(marker)
+    bare = re.compile(r"^[ \t]*(?:=+[ \t]*)?(%s)[ \t]*(?:=+[ \t]*)?$" % marker_re)
+    inline = re.compile(r"^[ \t]*(?:<!--[ \t]*|/\*[ \t]*)(?:=+[ \t]*)?(%s)[ \t]*(?:=+[ \t]*)?(?:-->|\*/)[ \t]*$" % marker_re)
+    matches = []
+    state = ""
+    offset = 0
+    for line in (html or "").splitlines(True):
+        body = line[:-1] if line.endswith("\n") else line
+        if body.endswith("\r"):
+            body = body[:-1]
+        m = inline.match(body)
+        if m is None and state in ("html", "css"):
+            m = bare.match(body)
+        if m is not None:
+            matches.append(_MarkerMatch(offset + m.start(1), offset + m.end(1)))
+        state = _advance_comment_state(body, state)
+        offset += len(line)
+    return matches
 
 
 # --------------------------------------------------------------------------- #
@@ -213,6 +286,7 @@ class _DocParser(HTMLParser):
         self.figcaptions = []
         self.scripts = []
         self.styles = []
+        self.inline_styles = []
         self.has_comment_root = False
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
@@ -293,6 +367,8 @@ class _DocParser(HTMLParser):
                                      "in_chart_figure": any(self._figure_chart)})
         if "data-cm-offline-chart" in ad:
             self.has_offline_chart = True
+        if "style" in ad:
+            self.inline_styles.append({"tag": tag, "value": ad.get("style", "")})
         if tag in ("pre", "div") and "mermaid" in set((ad.get("class") or "").split()):
             self.mermaid_blocks.append({"cm_skip": own_skip, "has_svg": False})
         idv = ad.get("id")
@@ -541,6 +617,45 @@ def _find_tag_attrs(html, tag):
     return p.found
 
 
+def _link_loads(attrs):
+    rels = set((attrs.get("rel") or "").lower().split())
+    return bool(rels & FETCHING_LINK_RELS)
+
+
+def _csp_directives(content):
+    directives = {}
+    for part in (content or "").split(";"):
+        bits = part.strip().split()
+        if bits:
+            directives[bits[0].lower()] = bits[1:]
+    return directives
+
+
+def _offline_csp_errors(html):
+    csp = [
+        meta.get("content", "")
+        for meta in _find_tag_attrs(html, "meta")
+        if (meta.get("http-equiv") or "").lower() == "content-security-policy"
+    ]
+    if not csp:
+        return ["offline mode: missing Content-Security-Policy meta tag with restrictive offline directives"]
+    directives = _csp_directives(csp[0])
+    errors = []
+    for name, required_tokens in OFFLINE_CSP_REQUIRED.items():
+        values = directives.get(name)
+        if values is None:
+            errors.append("offline mode: Content-Security-Policy must include %s %s"
+                          % (name, " ".join(required_tokens)))
+            continue
+        missing = [token for token in required_tokens if token not in values]
+        if missing:
+            errors.append("offline mode: Content-Security-Policy %s must include %s"
+                          % (name, " ".join(missing)))
+        if "'none'" in required_tokens and values != ["'none'"]:
+            errors.append("offline mode: Content-Security-Policy %s must be exactly 'none'" % name)
+    return errors
+
+
 # NonPortable companion references are detected by parsing real link/script/meta
 # attributes with the tolerant HTMLParser (not a regex), so a '>' in a quoted
 # value, an unquoted href/src, a reordered <meta content=.. name=..>, or a decoy
@@ -787,8 +902,8 @@ def check_layer(html, parser, base_dir=None):
     # 1) Exactly one BEGIN and one END marker per (active) region, BEGIN before END.
     begin_idx, end_idx = {}, {}
     for region in active_regions:
-        begins = list(_begin_re(region).finditer(html))
-        ends = list(_end_re(region).finditer(html))
+        begins = _region_marker_matches(html, "BEGIN", region)
+        ends = _region_marker_matches(html, "END", region)
         if len(begins) != 1:
             errors.append(f"region '{region}': expected 1 BEGIN marker, found {len(begins)}")
         else:
@@ -1095,6 +1210,8 @@ def check_layer(html, parser, base_dir=None):
             return "offline mode: %s loads over the network - inline or remove it" % label
         return None
     def _check_network_attr(tag, attrs, attr, srcset=False):
+        if tag == "link" and attr == "href" and not _link_loads(attrs):
+            return
         val = attrs.get(attr, "")
         if not val:
             return
@@ -1132,6 +1249,7 @@ def check_layer(html, parser, base_dir=None):
         for el in _find_tag_attrs(html, tag):
             _check_network_attr(tag, el, attr)
     if offline_mode:
+        errors.extend(_offline_csp_errors(html))
         media_attrs = (
             ("video", "src", False), ("video", "poster", False),
             ("audio", "src", False), ("source", "src", False), ("source", "srcset", True),
@@ -1145,17 +1263,32 @@ def check_layer(html, parser, base_dir=None):
         for el in _find_tag_attrs(html, "input"):
             if (el.get("type") or "").lower() == "image":
                 _check_network_attr("input", el, "src")
+        for el in _find_tag_attrs(html, "form"):
+            _check_network_attr("form", el, "action")
+        for tag in ("button", "input"):
+            for el in _find_tag_attrs(html, tag):
+                _check_network_attr(tag, el, "formaction")
+        for el in _find_tag_attrs(html, "meta"):
+            if (el.get("http-equiv") or "").lower() == "refresh" and META_REFRESH_NETWORK_RE.search(el.get("content", "")):
+                errors.append("offline mode: meta refresh points at a network URL - remove it")
         for tag in ("body", "table", "td", "th", "div"):
             for el in _find_tag_attrs(html, tag):
                 _check_network_attr(tag, el, "background")
         for style in parser.styles:
             for m in re.finditer(r"@import\s+(?:url\()?['\"]?((?:https?:)?//[^;'\"\)]+)", style.get("body", ""), re.I):
                 errors.append('offline mode: @import "%s" loads over the network - inline or remove it' % m.group(1)[:80])
+            if CSS_NETWORK_URL_RE.search(style.get("body", "")):
+                errors.append("offline mode: style block contains a network url(...) - inline or remove it")
+        for style in parser.inline_styles:
+            if CSS_NETWORK_URL_RE.search(style.get("value", "")):
+                errors.append("offline mode: inline style on <%s> contains a network url(...) - inline or remove it"
+                              % style.get("tag", "element"))
         for script in parser.scripts:
             if not _is_executable_js(script["attrs"]):
                 continue
             body = script.get("body", "")
-            if (re.search(r"\bimport\s*\(", body) and re.search(r"(?:https?:)?//", body, re.I)) or \
+            if re.search(r"\bimport\s*\(\s*['\"](?:https?:)?//", body, re.I) or \
+                    (re.search(r"\bimport\s*\(", body) and re.search(r"['\"](?:https?:)?//[^'\"]*['\"]", body, re.I)) or \
                     re.search(r"\b(?:import|from)\s+['\"](?:https?:)?//", body, re.I):
                 errors.append("offline mode: inline script imports a network module - inline or remove it")
 

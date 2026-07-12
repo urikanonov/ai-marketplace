@@ -153,6 +153,21 @@ def build(css=None, body=None):
     )
 
 
+OFFLINE_CSP = (
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; "
+    "font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; "
+    "form-action 'none'; frame-ancestors 'none'"
+)
+
+
+def with_offline_mode(doc, csp=True):
+    doc = doc.replace('"mode":"portable"', '"mode":"offline"', 1)
+    if csp:
+        meta = '<meta http-equiv="Content-Security-Policy" content="%s">\n' % OFFLINE_CSP
+        doc = doc.replace("<head>\n", "<head>\n" + meta, 1)
+    return doc
+
+
 def _validate_text(content, crlf=False):
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "doc.html")
@@ -325,6 +340,10 @@ class ValidateUnitTests(unittest.TestCase):
             1)
         self.assertError(doc, "expected 1 END marker, found 2")
 
+    def test_region_marker_text_inside_pre_is_content_not_duplicate(self):
+        main = MAIN.replace("<p>content</p>", "<pre>\nBEGIN: commentable-html - CSS\n</pre>")
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
     def test_missing_end_marker(self):
         doc = build().replace("<!-- END: commentable-html - HANDLED IDS -->", "", 1)
         self.assertError(doc, "expected 1 END marker, found 0")
@@ -360,7 +379,7 @@ class ValidateUnitTests(unittest.TestCase):
         self.assertError(doc, 'commentableHtmlLayer.mode must be "portable" or "offline"')
 
     def test_layer_descriptor_offline_mode_is_clean_for_inline_document(self):
-        doc = build().replace('"mode":"portable"', '"mode":"offline"', 1)
+        doc = with_offline_mode(build())
         self.assertOkNoWarn(doc)
 
     def test_layer_descriptor_offline_artifact_requires_offline_mode(self):
@@ -1483,7 +1502,7 @@ class NewCheckTests(unittest.TestCase):
 
     def test_offline_mode_rejects_chartjs_cdn_script(self):
         script = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>'
-        doc = build(body=self._body(MAIN, script)).replace('"mode":"portable"', '"mode":"offline"', 1)
+        doc = with_offline_mode(build(body=self._body(MAIN, script)))
         errors, _ = self._errs_warns(doc)
         self.assertTrue(any("offline mode" in e and "Chart.js" in e for e in errors), errors)
 
@@ -1501,7 +1520,7 @@ class NewCheckTests(unittest.TestCase):
             '<link rel="stylesheet" href="https://example.com/app.css">',
             '<script src="https://example.com/app.js"></script>',
         ]
-        doc = build(css=css, body=self._body(main, *extras)).replace('"mode":"portable"', '"mode":"offline"', 1)
+        doc = with_offline_mode(build(css=css, body=self._body(main, *extras)))
         errors, _ = self._errs_warns(doc)
         for needle in ("<img", "<iframe", "<video", "<track", "<link", "<script", "@import"):
             self.assertTrue(any("offline mode" in e and needle in e for e in errors),
@@ -1512,8 +1531,50 @@ class NewCheckTests(unittest.TestCase):
             "<p>content</p>",
             '<img src="data:image/png;base64,AAAA" alt="x">\n'
             '<video poster="data:image/png;base64,AAAA"></video>')
-        doc = build(body=self._body(main)).replace('"mode":"portable"', '"mode":"offline"', 1)
+        doc = with_offline_mode(build(body=self._body(main)))
         errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    def test_offline_mode_requires_restrictive_csp(self):
+        errors, _ = self._errs_warns(with_offline_mode(build(), csp=False))
+        self.assertTrue(any("Content-Security-Policy" in e for e in errors), errors)
+        weak = with_offline_mode(build()).replace("form-action 'none'; ", "", 1)
+        errors, _ = self._errs_warns(weak)
+        self.assertTrue(any("form-action 'none'" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_network_form_actions(self):
+        main = MAIN.replace(
+            "<p>content</p>",
+            '<form action="https://example.com/post"><button formaction="//example.com/button">Send</button>'
+            '<input formaction="https://example.com/input" value="Send"></form>')
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(main))))
+        for needle in ("<form action", "<button formaction", "<input formaction"):
+            self.assertTrue(any("offline mode" in e and needle in e for e in errors),
+                            "expected offline form error for %s, got %r" % (needle, errors))
+
+    def test_offline_mode_rejects_network_meta_refresh(self):
+        doc = with_offline_mode(build(body=self._body(MAIN, '<meta http-equiv="refresh" content="0; url=https://example.com/out">')))
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("offline mode" in e and "meta refresh" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_network_css_urls(self):
+        css = CSS_REGION.replace(
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; }",
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; background-image: url(https://example.com/bg.png); }")
+        main = MAIN.replace("<p>content</p>", '<p style="background: url(//example.com/inline.png)">content</p>')
+        errors, _ = self._errs_warns(with_offline_mode(build(css=css, body=self._body(main))))
+        for needle in ("style block", "inline style"):
+            self.assertTrue(any("offline mode" in e and "url(" in e and needle in e for e in errors),
+                            "expected offline CSS url error for %s, got %r" % (needle, errors))
+
+    def test_offline_mode_allows_non_fetching_network_links(self):
+        links = (
+            '<link rel="canonical" href="https://example.com/report">\n'
+            '<link rel="alternate" href="https://example.com/report.atom" type="application/atom+xml">\n'
+            '<link rel="author" href="https://example.com/about">'
+        )
+        errors, warnings = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, links))))
         self.assertEqual(errors, [], errors)
         self.assertEqual(warnings, [], warnings)
 

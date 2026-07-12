@@ -395,31 +395,83 @@ def build_nonportable(shell, version, mermaid_version):
     return t
 
 
-def _marker_re(kind, name):
-    # Match a region marker only when it occupies its OWN line (optionally wrapped by a
-    # comment delimiter and/or a ==== banner), never a loose substring. This mirrors
-    # tools/upgrade.py so example regeneration and end-user upgrades agree on the boundaries,
-    # and it prevents authored content that merely mentions the phrase - or the plain-export
-    # code that reconstructs marker text inside a JS string literal (lines starting with
-    # `+ "`) - from being mistaken for a real region boundary.
-    return re.compile(
-        r"(?m)^[ \t]*(?:<!--[ \t]*)?(?:/\*[ \t]*)?(?:=+[ \t]*)?(%s: commentable-html - %s)"
-        r"[ \t]*(?:=+[ \t]*)?(?:-->|\*/)?[ \t]*$"
-        % (kind, re.escape(name)))
+class _MarkerMatch:
+    def __init__(self, marker_start, marker_end):
+        self._marker_start = marker_start
+        self._marker_end = marker_end
+
+    def start(self, group=0):
+        return self._marker_start
+
+    def end(self, group=0):
+        return self._marker_end
+
+
+def _advance_comment_state(line, state):
+    i = 0
+    while i < len(line):
+        if state == "html":
+            close = line.find("-->", i)
+            if close < 0:
+                return "html"
+            state = ""
+            i = close + 3
+            continue
+        if state == "css":
+            close = line.find("*/", i)
+            if close < 0:
+                return "css"
+            state = ""
+            i = close + 2
+            continue
+        html_open = line.find("<!--", i)
+        css_open = line.find("/*", i)
+        if html_open >= 0 and (css_open < 0 or html_open < css_open):
+            state = "html"
+            i = html_open + 4
+            continue
+        if css_open >= 0:
+            state = "css"
+            i = css_open + 2
+            continue
+        return ""
+    return state
+
+
+def _region_marker_matches(text, kind, name):
+    marker = "%s: commentable-html - %s" % (kind, name)
+    marker_re = re.escape(marker)
+    bare = re.compile(r"^[ \t]*(?:=+[ \t]*)?(%s)[ \t]*(?:=+[ \t]*)?$" % marker_re)
+    inline = re.compile(r"^[ \t]*(?:<!--[ \t]*|/\*[ \t]*)(?:=+[ \t]*)?(%s)[ \t]*(?:=+[ \t]*)?(?:-->|\*/)[ \t]*$" % marker_re)
+    matches = []
+    state = ""
+    offset = 0
+    for line in (text or "").splitlines(True):
+        body = line[:-1] if line.endswith("\n") else line
+        if body.endswith("\r"):
+            body = body[:-1]
+        m = inline.match(body)
+        if m is None and state in ("html", "css"):
+            m = bare.match(body)
+        if m is not None:
+            matches.append(_MarkerMatch(offset + m.start(1), offset + m.end(1)))
+        state = _advance_comment_state(body, state)
+        offset += len(line)
+    return matches
 
 
 def _region_inner(text, name, where):
     """Return (start, end) offsets of a layer region's inner content (between the BEGIN
     and END marker lines). The line-anchored match ignores marker-like strings.
     Mirrors tools/upgrade.py so example regeneration and end-user upgrades agree."""
-    begins = list(_marker_re("BEGIN", name).finditer(text))
+    begins = _region_marker_matches(text, "BEGIN", name)
     if not begins:
         raise SystemExit("build: %s: '%s' region BEGIN marker not found" % (where, name))
     if len(begins) > 1:
         raise SystemExit("duplicate region: %s" % name)
     bm = begins[0]
     b = bm.end(1)
-    ends = [m for m in _marker_re("END", name).finditer(text) if m.start(1) >= b]
+    ends = [m for m in _region_marker_matches(text, "END", name) if m.start(1) >= b]
     if not ends:
         raise SystemExit("build: %s: '%s' region END marker not found after BEGIN" % (where, name))
     if len(ends) > 1:
