@@ -116,6 +116,10 @@ test. The rule is simple and non-negotiable:
   not possible.
 - Removing a feature means removing its spec row and its now-dead test together; for a published
   plugin, also bump the version and update the changelog.
+- For BUG FIXES, work test-first (TDD): add a test that reproduces the defect and FAILS on the
+  current code, confirm it is red, then make the fix so it passes. Commit the failing test and the
+  fix together in the same PR - the red-then-green test is the proof the bug was real and is fixed,
+  and it guards against regressions. Never fix the code first and backfill a test that never failed.
 
 This applies to skill runtime/tooling changes, to the site's pages and its generator
 (`scripts/build_site_data.py`), and to any new surface added later. The required CI checks run these

@@ -116,6 +116,10 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .compare tbody tr:last-child td { border-bottom: none; }
 .compare .compare-hero td { background: var(--cp-accent-soft); color: var(--cp-text); font-weight: 700; }
 .compare .compare-hero td:first-child { border-left: 3px solid var(--cp-accent); }
+/* Verdict pill + good/total score. Inert on desktop (no visual change); the mobile card
+   treatment below tints each verdict green/red and reveals the score next to the card title. */
+.cmp-v { display: inline; }
+.cmp-score { display: none; }
 /* Narrow screens: the six-column comparison overflows, so stack each medium as a card and
    label every value with its column name (from data-label). Desktop/tablet is unchanged. */
 @media (max-width: 640px) {
@@ -129,6 +133,15 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
   .compare td[data-label]::before { content: attr(data-label); float: left; font-weight: 600; color: var(--cp-text-muted); padding-right: 12px; }
   .compare .compare-hero td:first-child { border-left: none; }
   .compare .compare-hero { border-color: var(--cp-accent); border-left: 3px solid var(--cp-accent); }
+  /* No full-card fill: color only the verdicts (green good, red bad) and show a good/total score. */
+  .compare .compare-hero td { background: none; }
+  .compare td[data-v] .cmp-v { display: inline-block; padding: 2px 11px; border-radius: 999px; font-weight: 700; }
+  .compare td[data-v="good"] .cmp-v { background: color-mix(in srgb, var(--cp-success) 22%, transparent); }
+  .compare td[data-v="bad"] .cmp-v { background: color-mix(in srgb, var(--cp-danger) 20%, transparent); }
+  .cmp-score { display: inline-block; margin-left: 8px; font-size: 0.8rem; font-weight: 700; color: var(--cp-text-muted); background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 999px; padding: 1px 9px; vertical-align: middle; }
+  /* Enlarge the review-loop diagram labels so they stay legible when the SVG scales down. */
+  .loop-fig-title { font-size: 24px; }
+  .loop-fig-sub { font-size: 18px; }
 }
 .why-list { margin: 14px 0 0; padding-left: 20px; }
 .why-list li { margin-bottom: 10px; color: var(--cp-text); }

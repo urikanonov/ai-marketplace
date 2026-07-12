@@ -21,7 +21,7 @@
   <meta name="twitter:description" content="Inline comments on any static HTML report that round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=c4b0696a8a11" />
+  <link rel="stylesheet" href="../assets/styles.css?v=bcdd25e8b748" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -77,16 +77,16 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.15.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.15.0<!-- END:version --></span></a>
       </div>
     </header>
 
     <section id="why">
       <div class="wrap">
         <div class="section-block prose">
-          <h2 class="section-title">Why commentable-html</h2>
+          <h2 class="section-title">Why Commentable HTML</h2>
           <p>AI agents increasingly answer with <strong>HTML</strong>, not Markdown: plans, reports, design docs, and code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, data as real charts, long documents as navigable sections. (Anthropic makes the same case in <a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html" target="_blank" rel="noopener noreferrer">"The unreasonable effectiveness of HTML"</a>.) But the moment you want to <em>revise</em> that artifact the loop breaks down: you alt-tab between the render and the chat and describe in prose what to change. The richer the document, the more painful the round-trip.</p>
-          <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> Select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, then one <em>Copy all</em> hands the agent a structured bundle of every note. It <strong>drastically shortens the AI planning and iteration loop</strong>: you stay in the document and return to the chat only at the end.</p>
+          <p><strong>Commentable HTML closes that loop - it is a code review for your plan.</strong> Select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, then one <em>Copy all</em> hands the agent a structured bundle of every note. It <strong>drastically shortens the AI planning and iteration loop</strong>: you stay in the document and return to the chat only at the end.</p>
         </div>
         <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg; keep the two in sync if the labels or flow change. -->
         <div class="section-block why-loop-block">
@@ -124,17 +124,17 @@
               <tr><th>Where you plan</th><th>Handles a big plan</th><th>Visual richness</th><th>Interactive</th><th>In-place review</th><th>Review loop</th></tr>
             </thead>
             <tbody>
-              <tr><td>Chat / terminal</td><td data-label="Handles a big plan">Poor</td><td data-label="Visual richness">None</td><td data-label="Interactive">No</td><td data-label="In-place review">No</td><td data-label="Review loop">Painful</td></tr>
-              <tr><td>Markdown file</td><td data-label="Handles a big plan">OK (needs a viewer)</td><td data-label="Visual richness">Limited</td><td data-label="Interactive">No</td><td data-label="In-place review">No</td><td data-label="Review loop">Manual</td></tr>
-              <tr><td>Plain HTML</td><td data-label="Handles a big plan">Good</td><td data-label="Visual richness">Rich</td><td data-label="Interactive">Yes</td><td data-label="In-place review">No</td><td data-label="Review loop">Out-of-band</td></tr>
-              <tr class="compare-hero"><td>commentable-html</td><td data-label="Handles a big plan">Good</td><td data-label="Visual richness">Rich</td><td data-label="Interactive">Yes</td><td data-label="In-place review">Yes</td><td data-label="Review loop">Tight</td></tr>
+              <tr><td>Chat / terminal <span class="cmp-score" aria-hidden="true">0/5</span></td><td data-label="Handles a big plan" data-v="bad"><span class="cmp-v">Poor</span></td><td data-label="Visual richness" data-v="bad"><span class="cmp-v">None</span></td><td data-label="Interactive" data-v="bad"><span class="cmp-v">No</span></td><td data-label="In-place review" data-v="bad"><span class="cmp-v">No</span></td><td data-label="Review loop" data-v="bad"><span class="cmp-v">Painful</span></td></tr>
+              <tr><td>Markdown file <span class="cmp-score" aria-hidden="true">0/5</span></td><td data-label="Handles a big plan" data-v="bad"><span class="cmp-v">OK (needs a viewer)</span></td><td data-label="Visual richness" data-v="bad"><span class="cmp-v">Limited</span></td><td data-label="Interactive" data-v="bad"><span class="cmp-v">No</span></td><td data-label="In-place review" data-v="bad"><span class="cmp-v">No</span></td><td data-label="Review loop" data-v="bad"><span class="cmp-v">Manual</span></td></tr>
+              <tr><td>Plain HTML <span class="cmp-score" aria-hidden="true">3/5</span></td><td data-label="Handles a big plan" data-v="good"><span class="cmp-v">Good</span></td><td data-label="Visual richness" data-v="good"><span class="cmp-v">Rich</span></td><td data-label="Interactive" data-v="good"><span class="cmp-v">Yes</span></td><td data-label="In-place review" data-v="bad"><span class="cmp-v">No</span></td><td data-label="Review loop" data-v="bad"><span class="cmp-v">Out-of-band</span></td></tr>
+              <tr class="compare-hero"><td>Commentable HTML <span class="cmp-score" aria-hidden="true">5/5</span></td><td data-label="Handles a big plan" data-v="good"><span class="cmp-v">Good</span></td><td data-label="Visual richness" data-v="good"><span class="cmp-v">Rich</span></td><td data-label="Interactive" data-v="good"><span class="cmp-v">Yes</span></td><td data-label="In-place review" data-v="good"><span class="cmp-v">Yes</span></td><td data-label="Review loop" data-v="good"><span class="cmp-v">Tight</span></td></tr>
             </tbody>
           </table>
           <ul class="why-list">
             <li><strong>In the chat window.</strong> The plan scrolls past in a terminal or chat app and is gone. Long plans are a chore to navigate and hard to keep or share - great for a sentence, hopeless for a spec.</li>
             <li><strong>In a Markdown file.</strong> It survives, but raw Markdown is a slog to read and even a viewer stays flat: no real tables, diagrams, or charts. Few teammates read a 300-line <code>.md</code>.</li>
             <li><strong>In plain HTML.</strong> Dense, structured, and nice to look at. But review still breaks: you read in the browser, then switch to the chat and describe, in words, what to change and where. Out-of-band and slow.</li>
-            <li><strong>With commentable-html.</strong> The same rich HTML - plus review in place. Comment on the exact sentence, table cell, chart, or diagram node; one <em>Copy all</em> hands the agent every note. The loop collapses to a single tight cycle.</li>
+            <li><strong>With Commentable HTML.</strong> The same rich HTML - plus review in place. Comment on the exact sentence, table cell, chart, or diagram node; one <em>Copy all</em> hands the agent every note. The loop collapses to a single tight cycle.</li>
           </ul>
         </div>
       </div>
@@ -222,7 +222,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           <!-- BEGIN:demo-fullscreen --><a class="demo-fs" id="demo-fullscreen" href="demo/report-taxi.html" target="_blank" rel="noopener noreferrer" aria-label="Open this demo full screen in a new tab" title="Open this demo in a full browser tab">Full screen &#8599;</a><!-- END:demo-fullscreen -->
           <span class="title" id="demo-title">NYC Taxi Report</span>
         </div>
-        <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live commentable-html demo report" loading="lazy" allow="clipboard-write"></iframe>
+        <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live Commentable HTML demo report" loading="lazy" allow="clipboard-write"></iframe>
       </div>
     </section>
 
@@ -240,16 +240,35 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
 
     <section id="modes">
       <div class="wrap">
-        <h2 class="section-title">Two portability modes</h2>
-        <p class="section-sub">Pick based on whether the document stays local or travels.</p>
+        <h2 class="section-title">Three portability modes</h2>
+        <p class="section-sub">Same document, three ways to assemble it - pick based on whether it stays local, travels, or must work with no network. The graph in each card shows where every part comes from.</p>
         <div class="grid">
-          <div class="card feature">
+          <div class="card feature mode-card">
             <h3>Non-portable <span class="badge">default</span></h3>
             <p>References shared companion assets instead of inlining them, so each regeneration is far cheaper in tokens. Best for fast, personal iteration while you and the agent shape the document.</p>
+            <dl class="mode-sources" aria-label="Where each part comes from in Non-portable mode">
+              <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-folder">skill folder</span></dd></div>
+              <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>
+              <div class="mode-source"><dt>Comments</dt><dd><span class="src src-storage">browser storage</span></dd></div>
+            </dl>
           </div>
-          <div class="card feature">
+          <div class="card feature mode-card">
             <h3>Portable</h3>
             <p>One self-contained file with the CSS, runtime, and comments inlined. Best when you want to share the document with a peer or keep it as a durable, long-term artifact - one click via Export as Portable.</p>
+            <dl class="mode-sources" aria-label="Where each part comes from in Portable mode">
+              <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-inline">inlined</span></dd></div>
+              <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>
+              <div class="mode-source"><dt>Comments</dt><dd><span class="src src-seed">seeded from HTML</span><span class="src src-storage">then browser storage</span></dd></div>
+            </dl>
+          </div>
+          <div class="card feature mode-card">
+            <h3>Offline</h3>
+            <p>Everything Portable does, plus the mermaid diagrams and charts are rendered and inlined as snapshots and every remote loader is stripped, so the file opens with zero network - archive it or read it on a plane. One click via Export Offline.</p>
+            <dl class="mode-sources" aria-label="Where each part comes from in Offline mode">
+              <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-inline">inlined</span></dd></div>
+              <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-inline">inlined snapshots</span></dd></div>
+              <div class="mode-source"><dt>Comments</dt><dd><span class="src src-seed">seeded from HTML</span><span class="src src-storage">then browser storage</span></dd></div>
+            </dl>
           </div>
         </div>
       </div>
@@ -258,7 +277,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
     <section id="changelog">
       <div class="wrap">
         <h2 class="section-title">Changelog</h2>
-        <p class="section-sub">Changes to commentable-html. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+        <p class="section-sub">Changes to Commentable HTML. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">

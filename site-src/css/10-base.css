@@ -13,6 +13,8 @@
   --cp-accent-soft: #f7e3ea;
   --cp-accent-fg: #ffffff;
   --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #b45309;
   --cp-link: #0067b8;
   --cp-navbar-bg: rgba(252, 251, 248, 0.82);
   --cp-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
@@ -38,6 +40,8 @@
     --cp-accent-soft: #452532;
     --cp-accent-fg: #261018;
     --cp-success: #7ee2a8;
+    --cp-danger: #f5a3a3;
+    --cp-warning: #f0b866;
     --cp-link: #72b7f2;
     --cp-navbar-bg: rgba(21, 18, 22, 0.88);
     --cp-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 8px 24px rgba(0, 0, 0, 0.35);
