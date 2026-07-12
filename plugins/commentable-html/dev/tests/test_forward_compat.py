@@ -94,6 +94,10 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
         )
         self.assert_contract(html, "portable")
 
+    def test_offline_descriptor_mode_is_valid_contract(self):
+        html = _read(os.path.join(_paths.DIST, "PORTABLE.html")).replace('"mode":"portable"', '"mode":"offline"', 1)
+        self.assert_contract(html, "offline")
+
 
 if __name__ == "__main__":
     unittest.main()

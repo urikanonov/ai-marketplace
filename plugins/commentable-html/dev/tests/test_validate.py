@@ -357,7 +357,19 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_layer_descriptor_mode_must_match_document_mode(self):
         doc = build().replace('"mode":"portable"', '"mode":"nonportable"', 1)
-        self.assertError(doc, 'commentableHtmlLayer.mode must be "portable"')
+        self.assertError(doc, 'commentableHtmlLayer.mode must be "portable" or "offline"')
+
+    def test_layer_descriptor_offline_mode_is_clean_for_inline_document(self):
+        doc = build().replace('"mode":"portable"', '"mode":"offline"', 1)
+        self.assertOkNoWarn(doc)
+
+    def test_layer_descriptor_offline_artifact_requires_offline_mode(self):
+        doc = build().replace(
+            "<p>content</p>",
+            '<img class="cmh-chart" data-cm-offline-chart="true" '
+            'src="data:image/png;base64,AA==" alt="Offline chart">'
+        )
+        self.assertError(doc, 'commentableHtmlLayer.mode must be "offline" when offline chart snapshots are present')
 
     def test_id_in_attribute_value_is_not_a_real_id(self):
         # id="commentRoot" appearing INSIDE another attribute's value must not
@@ -983,6 +995,10 @@ class NonPortableTests(unittest.TestCase):
         errors, warnings = self._validate(build_nonportable())
         self.assertEqual(errors, [], "nonportable errors: %r" % errors)
         self.assertEqual(warnings, [], "nonportable warnings: %r" % warnings)
+
+    def test_nonportable_document_rejects_offline_mode(self):
+        html = build_nonportable().replace('"mode":"nonportable"', '"mode":"offline"', 1)
+        self.assertNonPortableError(html, 'commentableHtmlLayer.mode must be "nonportable"')
 
     def test_real_nonportable_template_is_clean(self):
         eco = os.path.join(ROOT, "dist", "NONPORTABLE.html")

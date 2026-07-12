@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.15.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.16.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -281,6 +281,19 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.16.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Offline exports now declare descriptor mode <code>offline</code>, reopen with an Offline badge, preserve that mode when edited, and validate offline chart snapshots as first-class portable artifacts.</li>
+              <li>Triage board cards can opt in to mouse drag-and-drop with <code>data-cm-draggable</code>, and moved cards are copied as widget layout changes.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Mermaid diagrams and chart figures now stay inside narrow mobile viewports by scrolling wide rich content inside their own blocks.</li>
+              <li>Shipped prose now refers to the user-facing skill as Commentable HTML while preserving the <code>commentable-html</code> identifier in commands, paths, and code.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.15.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -289,6 +302,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The forward-compatible content/infra layout contract is documented in <code>references/forward-compatible-layout.md</code>.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.14.0] - 2026-07-12</h3></div>
             <div class="group-label">Changed</div>
@@ -296,8 +311,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Top-level prose is no longer width-capped. Ordinary paragraphs (and the lede) now fill the full content column, the same width as tables, figures, code, and callouts, so prose no longer renders narrow next to full-width content in wide reports. The previous 72ch readable-measure cap is removed.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.13.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -334,26 +347,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>validate.py</code> treats only <code>http://</code> and <code>https://</code> companion refs as remote/CDN URLs. Local <code>file://</code> refs and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are local-only.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.8.0] - 2026-07-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Two mermaid diagrams in <code>references/exports.md</code> (linked from the SKILL.md Output modes section) showing what is bundled in the file versus fetched from where: Portable inlines the layer CSS/JS, NonPortable loads the <code>commentable-html.{css,js,assets.js}</code> companions from the skill <code>dist/</code>, and both keep the plan content and comments inline while fetching optional mermaid/Chart.js from a CDN.</li>
-              <li>The <code>analysis</code>, <code>plan</code>, and <code>report</code> keywords, and the &quot;drastically shortens the AI planning and iteration loop&quot; framing in the SKILL.md intro and the plugin READMEs. The marketplace category is now <code>planning and analysis</code>.</li>
-              <li>The brand mark now links to the project site (<code>https://urikanonov.github.io/ai-marketplace/commentable-html/</code>) in a new tab, in the footer (icon plus versioned name) and on the sidebar meta-row brand icon. The link is chrome, so it never leaks into a Plain HTML export.</li>
-              <li>The Help modal title now includes the running layer version (<code>Commentable HTML v&lt;version&gt; - Help</code>).</li>
-              <li>Each overflow (<code>...</code>) menu item (Show, Export as Portable, Export to Plain HTML, Export to Markdown, Help &amp; About) now carries a leading decorative icon matching the chrome icon style.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>Export to Markdown</code> is now download-only: it downloads the <code>.md</code> file and no longer writes the clipboard. The toast, Help topic, button tooltips, SKILL.md, and <code>references/exports.md</code> were updated to drop the clipboard claim.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>On touch / coarse-pointer devices the &quot;Add Comment&quot; popup now appears when a text selection settles. Selecting text on a phone drags the native handles and never fires <code>mouseup</code>, so the popup previously never showed; a debounced <code>selectionchange</code> now raises the same popup (and hides it when the selection collapses). Desktop mouse behavior is unchanged.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">18 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">19 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -4,7 +4,7 @@
 
 AI now often produces rich HTML artifacts because they can show spatial layouts, diffs, Mermaid diagrams, Chart.js charts, collapsible sections, and other structure that Markdown cannot express as well. Without this layer, review means switching between the rendered HTML and chat, then describing every requested change in prose.
 
-commentable-html keeps review in the artifact. The reviewer comments in place, copies or exports structured state, and returns to chat only when it is time for the agent to act. You stay in the loop; the loop gets tighter.
+Commentable HTML keeps review in the artifact. The reviewer comments in place, copies or exports structured state, and returns to chat only when it is time for the agent to act. You stay in the loop; the loop gets tighter.
 
 **Self review loop:** generate the artifact, comment in place, click **Copy all**, paste the bundle to the agent, let the agent update the source and mark handled ids, then reload so handled comments are pruned.
 

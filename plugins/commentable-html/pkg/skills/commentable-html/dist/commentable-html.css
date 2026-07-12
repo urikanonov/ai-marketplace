@@ -201,6 +201,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   border: 1px solid var(--cp-border); color: var(--cp-text-soft);
 }
 .cm-type-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-type-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 .cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
@@ -551,6 +552,7 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
 /* Parity with the sidebar .cm-type-badge: the overflow-menu portability badge is colored
    and gets a help cursor from the same data-doc-type set by updateDocTypeUi. */
 .cm-mode-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-mode-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-mode-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 
 /* NonPortable-only controls are hidden until the layer detects nonportable mode. */
@@ -783,6 +785,13 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot [data-cm-part].cm-part-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
 #commentRoot [data-cm-part].cm-part-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
 #commentRoot [data-cm-part].cm-part-hl.cm-part-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+#commentRoot [data-cm-widget][data-cm-draggable] [data-cm-slot] > [data-cm-part],
+#commentRoot [data-cm-slot][data-cm-draggable] > [data-cm-part] { cursor: grab; }
+#commentRoot [data-cm-part].cm-widget-drag-source { opacity: 0.55; cursor: grabbing; }
+#commentRoot [data-cm-slot].cm-widget-drop-target {
+  outline: 2px solid var(--cp-accent); outline-offset: 3px; background: var(--cp-accent-soft);
+}
+body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing; user-select: none; }
 .cm-widget-add { position: fixed; z-index: 200; }
 /* Synthetic sidebar cards: document-wide comments and the auto-generated widget
    state-change record. */
@@ -869,11 +878,12 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
   border-radius: 10px; padding: 0.85rem 1rem; overflow-x: auto;
 }
-#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; overflow: visible; }
+#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+#commentRoot pre.mermaid svg { max-width: none; }
 /* Chart figures are boxed for readability, like code and KQL blocks. */
 #commentRoot figure.chart {
   margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
-  padding: 0.85rem 1rem; background: var(--cp-surface); max-width: 100%; overflow: hidden;
+  padding: 0.85rem 1rem; background: var(--cp-surface); max-width: 100%; overflow-x: auto; overflow-y: hidden;
 }
 #commentRoot figure.chart > .chart-wrap {
   position: relative; width: 100%; max-width: 100%; height: clamp(220px, 42vw, 440px);
@@ -887,6 +897,10 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   object-fit: contain;
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
+@media (max-width: 480px) {
+  #commentRoot pre.mermaid svg { min-width: 560px; }
+  #commentRoot figure.chart > .chart-wrap { min-width: 560px; max-width: none; }
+}
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */
 #commentRoot .cmh-kql-kw  { color: #8250df; font-weight: 600; }

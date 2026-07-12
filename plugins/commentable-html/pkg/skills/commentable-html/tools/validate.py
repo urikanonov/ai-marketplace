@@ -226,6 +226,7 @@ class _DocParser(HTMLParser):
         self.headings = []           # [{"id": str|None, "text": str}] for headings in #commentRoot
         self._cur_heading = None     # (tag, id, [parts]) while capturing a heading's text
         self._figure_chart = []      # stack of bool: is each open <figure> a chart figure
+        self.has_offline_chart = False
 
     def _off(self):
         ln, col = self.getpos()
@@ -288,6 +289,8 @@ class _DocParser(HTMLParser):
             self.figcaptions.append({"skip": self._skip_ancestor() or own_skip,
                                      "in_canvas": self._in_canvas(),
                                      "in_chart_figure": any(self._figure_chart)})
+        if "data-cm-offline-chart" in ad:
+            self.has_offline_chart = True
         if tag in ("pre", "div") and "mermaid" in set((ad.get("class") or "").split()):
             self.mermaid_blocks.append({"cm_skip": own_skip, "has_svg": False})
         idv = ad.get("id")
@@ -588,9 +591,15 @@ def _check_layer_descriptor(parser, nonportable, active_regions):
     version = data.get("version")
     if not isinstance(version, str) or not version.strip():
         errors.append('%s.version must be a non-empty string' % LAYER_DESCRIPTOR_ID)
-    expected_mode = "nonportable" if nonportable else "portable"
-    if data.get("mode") != expected_mode:
-        errors.append('%s.mode must be "%s" for this document' % (LAYER_DESCRIPTOR_ID, expected_mode))
+    mode = data.get("mode")
+    if nonportable:
+        if mode != "nonportable":
+            errors.append('%s.mode must be "nonportable" for this document' % LAYER_DESCRIPTOR_ID)
+    else:
+        if mode not in ("portable", "offline"):
+            errors.append('%s.mode must be "portable" or "offline" for this document' % LAYER_DESCRIPTOR_ID)
+        if parser.has_offline_chart and mode != "offline":
+            errors.append('%s.mode must be "offline" when offline chart snapshots are present' % LAYER_DESCRIPTOR_ID)
     if data.get("regions") != active_regions:
         errors.append("%s.regions must list exactly the active region markers in order: %s"
                       % (LAYER_DESCRIPTOR_ID, ", ".join(active_regions)))

@@ -52,7 +52,7 @@ class MotivationDocsTests(unittest.TestCase):
     def test_readme_has_comparison_table_and_blog_reference(self):
         text = _read(PLUGIN_README)
         self.assertIn("Why not just plan in chat, Markdown, or plain HTML?", text)
-        self.assertIn("| **commentable-html** |", text)
+        self.assertIn("| **Commentable HTML** |", text)
         for medium in ("Chat / terminal", "Markdown file", "Plain HTML"):
             self.assertIn(medium, text)
         self.assertIn(BLOG_URL, text)
