@@ -600,3 +600,85 @@ test("no broken internal links or assets", async ({ page, request }) => {
     }
   }
 });
+
+const PROD = "https://urikanonov.github.io/ai-marketplace/";
+
+test("hub head exposes canonical, Open Graph, and Twitter Card tags", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", PROD);
+  await expect(page.locator('meta[property="og:type"]')).toHaveAttribute("content", "website");
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /ai-marketplace/);
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", PROD);
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", PROD + "assets/og-cover.png");
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+});
+
+test("plugin and tutorial pages carry a self-referencing canonical and Open Graph metadata", async ({ page }) => {
+  const cases = [
+    ["/commentable-html/", PROD + "commentable-html/"],
+    ["/commentable-html/tutorial/", PROD + "commentable-html/tutorial/"],
+  ];
+  for (const [p, canonical] of cases) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", canonical);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", canonical);
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /.+/);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+  }
+});
+
+test("the hub embeds valid JSON-LD describing the site and its plugins", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const raw = await page.locator('script[type="application/ld+json"]').first().textContent();
+  const graph = JSON.parse(raw)["@graph"];
+  const types = graph.map((n) => n["@type"]);
+  expect(types).toContain("WebSite");
+  expect(types).toContain("Person");
+  expect(types).toContain("ItemList");
+  const itemList = graph.find((n) => n["@type"] === "ItemList");
+  const names = itemList.itemListElement.map((li) => li.item.name);
+  expect(names).toContain("commentable-html");
+  expect(names.length).toBeGreaterThanOrEqual(2);
+});
+
+test("the plugin page embeds SoftwareApplication and BreadcrumbList JSON-LD", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const raw = await page.locator('script[type="application/ld+json"]').first().textContent();
+  const graph = JSON.parse(raw)["@graph"];
+  const types = graph.map((n) => n["@type"]);
+  expect(types).toContain("SoftwareApplication");
+  expect(types).toContain("BreadcrumbList");
+  const app = graph.find((n) => n["@type"] === "SoftwareApplication");
+  expect(app.name).toBe("commentable-html");
+});
+
+test("sitemap.xml is served and lists the hub, plugin, and tutorial pages", async ({ request }) => {
+  const r = await request.get("/sitemap.xml");
+  expect(r.status()).toBeLessThan(400);
+  const body = await r.text();
+  expect(body).toContain("<urlset");
+  for (const u of [PROD, PROD + "commentable-html/", PROD + "commentable-html/tutorial/"]) {
+    expect(body).toContain("<loc>" + u + "</loc>");
+  }
+});
+
+test("llms.txt is served and links each plugin and the tutorial", async ({ request }) => {
+  const r = await request.get("/llms.txt");
+  expect(r.status()).toBeLessThan(400);
+  const body = await r.text();
+  expect(body).toContain("# ai-marketplace");
+  expect(body).toContain("(" + PROD + "commentable-html/)");
+  expect(body).toContain("commentable-html/tutorial/");
+});
+
+test("the og:image cover asset is served as a PNG", async ({ request }) => {
+  const r = await request.get("/assets/og-cover.png");
+  expect(r.status()).toBeLessThan(400);
+  expect(r.headers()["content-type"]).toContain("image/png");
+});
+
+test("the hub H1 reads as continuous text with correct word spacing", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const text = (await page.locator("h1").first().textContent()).replace(/\s+/g, " ").trim();
+  expect(text).toBe("A marketplace of AI plugins for the Copilot CLI");
+});

@@ -23,6 +23,9 @@ tmp/*
 # Git worktrees for parallel local editing (kept under the repo root, never committed)
 .worktrees/
 
+# Local feature/implementation plans (scratch space, never committed)
+.plans/
+
 # Node (in case a plugin ships tooling)
 node_modules/
 

@@ -389,6 +389,15 @@ exposure is compute/runner abuse.
 - Never commit secrets.
 - Put temporary artifacts (scratch files, downloaded data, one-off test outputs, generated HTML you are not committing) in the gitignored `tmp/` directory at the repo root, never in the repo root itself or another tracked folder. `tmp/` is tracked only by its `.gitkeep`, so everything else inside it is ignored and the working tree stays clean.
 
+## Feature plans (local, not committed)
+
+Write intermediate feature and implementation plans as Markdown under `.plans/` at the repo root.
+That folder is git-ignored, so plans are a local scratch space for agents and humans and are never
+committed or shipped. Create one file per workstream (for example `.plans/seo-discoverability.md`),
+keep it updated as the work evolves, and do not scatter plan files elsewhere in the tree. Anything
+that must be shared or survive belongs in a tracked doc instead (a spec, a README, or the pull
+request description), not in `.plans/`.
+
 ## Common tasks
 
 - Add a feature to a skill (for example a new commentable-html behavior): implement it, add a
