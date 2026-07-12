@@ -387,6 +387,7 @@ exposure is compute/runner abuse.
 - Comment only what the code cannot say; keep comments minimal.
 - Pin third-party GitHub Actions by full commit SHA (Dependabot keeps them current).
 - Never commit secrets.
+- Put temporary artifacts (scratch files, downloaded data, one-off test outputs, generated HTML you are not committing) in the gitignored `tmp/` directory at the repo root, never in the repo root itself or another tracked folder. `tmp/` is tracked only by its `.gitkeep`, so everything else inside it is ignored and the working tree stays clean.
 
 ## Common tasks
 
