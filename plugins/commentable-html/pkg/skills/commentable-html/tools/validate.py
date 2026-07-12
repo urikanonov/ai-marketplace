@@ -35,6 +35,8 @@ import sys
 import traceback
 from collections import Counter
 from html.parser import HTMLParser
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 # --------------------------------------------------------------------------- #
 # Layer contract
@@ -515,6 +517,14 @@ def _ref_path(ref):
     return re.split(r"[?#]", ref or "", maxsplit=1)[0]
 
 
+def _file_url_to_path(ref):
+    parsed = urlparse(ref or "")
+    if parsed.scheme.lower() != "file":
+        return None
+    raw = ("//" + parsed.netloc + parsed.path) if parsed.netloc and parsed.netloc.lower() != "localhost" else parsed.path
+    return os.path.abspath(url2pathname(raw))
+
+
 def _nonportable_css_refs(html):
     return [_ref_path(a["href"]) for a in _find_tag_attrs(html, "link")
             if "commentable-html" in a.get("href", "").lower()
@@ -652,20 +662,24 @@ def _check_nonportable(html, base_dir, id_counts):
 
     # Referenced companion files must resolve to a local file that exists. NonPortable
     # intentionally points at the skill's dist/ folder (a relative subdirectory or a
-    # ../ path), so a subfolder / parent reference is allowed - only remote/CDN URLs
-    # are rejected (they break the self-contained guarantee), absolute paths are warned about
-    # (they leak a local directory and are not portable), and a missing target errors.
+    # ../ path, or an absolute file:// URL), so a subfolder / parent reference is
+    # allowed - only http(s) remote/CDN URLs are rejected (they break the
+    # self-contained guarantee), absolute filesystem paths are warned about (they
+    # leak a local directory and are not portable), and a missing target errors.
     # The remote-URL and absolute-path checks are structural (they inspect the ref
     # string only), so they always run. Only the on-disk existence check needs a
     # base_dir; when base_dir is None the placement is deferred (e.g. generation-time
     # validation of a not-yet-placed document), so existence is not checked - the
     # structure is still validated.
     for ref in css_refs + js_refs:
-        if re.match(r"[a-z]+://", ref, re.I) or ref.startswith("//"):
+        if re.match(r"https?://", ref, re.I):
             errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
             continue
         norm = ref.replace("\\", "/")
-        if norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
+        file_target = _file_url_to_path(ref)
+        if file_target is not None:
+            target = file_target
+        elif norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
             # Absolute path: usable but leaks a local directory and is not portable.
             warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
             target = os.path.abspath(ref)
@@ -675,7 +689,7 @@ def _check_nonportable(html, base_dir, id_counts):
             target = os.path.abspath(os.path.join(os.path.abspath(base_dir), norm))
         else:
             target = None
-        if base_dir is not None and target is not None and not os.path.exists(target):
+        if target is not None and (base_dir is not None or file_target is not None) and not os.path.exists(target):
             errors.append('nonportable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
 
     return errors, warnings

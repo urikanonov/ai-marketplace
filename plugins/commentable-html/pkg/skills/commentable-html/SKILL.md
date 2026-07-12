@@ -82,13 +82,15 @@ The HTML file itself is the durable source of truth for which comments have been
 
 ### Step 2 - Create the document (deterministic tools first)
 
-**Default to NonPortable.** `tools/new_document.py` produces a **NonPortable** document by DEFAULT: the layer CSS/JS is referenced from the companion `commentable-html.{css,js,assets.js}` files instead of inlined, so the document and every regeneration during a review loop are small and cheap to edit. Pass `--portable` for a single self-contained file when the artifact will be shared with a peer, moved away from its companion assets, or kept long term. If comments were typed in the browser, use the in-page **Export as Portable** button so those `localStorage` comments are captured.
+**Default to NonPortable.** `tools/new_document.py` produces a **NonPortable** document by DEFAULT: the layer CSS/JS is referenced from the companion `commentable-html.{css,js,assets.js}` files instead of inlined, so the document and every regeneration during a review loop are small and cheap to edit. The default companion references are absolute `file://` URLs to this installed skill's `dist/`, so the HTML can move anywhere on the same machine and still open correctly. Pass `--portable` for a single self-contained file when the artifact will be shared with a peer, moved to another machine, or kept long term. If comments were typed in the browser, use the in-page **Export as Portable** button so those `localStorage` comments are captured.
 
 **For a NEW document, MUST use `tools/new_document.py`** when Python is available. It clones the dist template, drops in only your content fragment, sets the `#commentRoot` data attributes, refuses demo keys, repoints the companion references, and self-validates before writing. Do NOT hand-copy the regions for a fresh document - that is the highest-token, most error-prone path and it walks straight into the duplicate-root footgun described in Step 3.
 
 ```
-# NonPortable (default): companions referenced from the skill's dist/ by a relative path
+# NonPortable (default): companions referenced from the skill's dist/ by absolute file:// URLs
 python tools/new_document.py --content fragment.html --key auto --label "My Report" --out my-report.html
+# ... or use relative refs for a movable folder on this machine:
+python tools/new_document.py --content fragment.html --key auto --label "My Report" --assets-relative --out my-report.html
 # ... or copy the companions next to the file for a movable folder:
 python tools/new_document.py --content fragment.html --key auto --label "My Report" --copy-assets --out my-report.html
 # Single self-contained Portable file (for sharing / archiving):
@@ -188,21 +190,25 @@ The layer ships in two interchangeable forms. Both share the exact same runtime 
 | Per (re)generation cost | agent emits a lightweight shell and content; the boilerplate is referenced, never re-emitted | agent emits the full inline file, or the browser inlines it during export |
 | Best for | fast personal iteration with the agent where regeneration speed and token cost matter | peer review, long-term persistence, or any file that must travel alone |
 
-**Default to NonPortable.** It is the skill's default output because a review document is edited many times and NonPortable keeps each regeneration much smaller. A loose NonPortable HTML opened where it cannot reach its companions is broken, so it is for local iteration. Get a self-contained copy for peer review or long-term persistence by regenerating with `--portable` before browser comments exist, or via the in-page **Export as Portable** button after review starts. That button is the only path that captures comments the user typed in the browser. Choose Portable up front only for a one-shot artifact you will email or archive without iterating.
+**Default to NonPortable.** It is the skill's default output because a review document is edited many times and NonPortable keeps each regeneration much smaller. `tools/new_document.py` points a new NonPortable document at this installed skill's `dist/` with absolute `file://` companion URLs, so a loose HTML can be moved on the same machine without losing its CSS/JS. It is still local-only: moving it to another machine breaks those references, so get a self-contained copy for peer review or long-term persistence by regenerating with `--portable` before browser comments exist, or via the in-page **Export as Portable** button after review starts. That button is the only path that captures comments the user typed in the browser. Choose Portable up front only for a one-shot artifact you will email or archive without iterating.
 
 ### Producing a NonPortable document
 
-The easiest and recommended way is `tools/new_document.py` (NonPortable by default): it starts from `dist/NONPORTABLE.html`, repoints the companion `<link>`/`<script src>` references (a relative path to the skill's `dist/` by default, bare names with `--copy-assets`, or a custom prefix with `--assets-href`), sets the version `<meta>`, and self-validates. If you must hand-produce one:
+The easiest and recommended way is `tools/new_document.py` (NonPortable by default): it starts from `dist/NONPORTABLE.html`, repoints the companion `<link>`/`<script src>` references (absolute `file://` URLs to the skill's `dist/` by default, relative refs with `--assets-relative`, bare names with `--copy-assets`, or a custom prefix with `--assets-href`), sets the version `<meta>`, and self-validates. If you must hand-produce one:
 
-1. Point the shell's asset references at the skill's `dist/` folder rather than copying the files into the report folder: set the head `<link href>` and the two `<script src>` to a path that resolves to `.../commentable-html/dist/commentable-html.{css,js,assets.js}`. **Prefer a relative path** from the target HTML; use an absolute path only for clearly local-only documents (an absolute path embeds your local directory / username in the file and breaks for anyone else unless you run **Export as Portable** first). The three assets are **referenced, never regenerated**. (Copying them next to the HTML still works if you want a movable bundle instead.)
+1. Point the shell's asset references at the skill's `dist/` folder rather than copying the files into the report folder: set the head `<link href>` and the two `<script src>` to paths that resolve to `.../commentable-html/dist/commentable-html.{css,js,assets.js}`. `file://` URLs are best for a loose file that moves on the same machine; use `--assets-relative` or copy the companions next to the HTML when you need a movable folder bundle. The three assets are **referenced, never regenerated**.
 2. Use `dist/NONPORTABLE.html` as the starting shell (head `<link>` + version `<meta>`, the NONPORTABLE BOOTSTRAP banner, the inline state/UI regions, and the two `<script src>` companions at the end of `<body>`); repoint the `href`/`src` at the skill `dist/` path. Replace the demo content inside the CONTENT markers with your own; set a unique `data-comment-key`.
 3. Keep the version `<meta name="commentable-html-version" content="<V>">` matching the referenced asset version.
 
 ### Guardrails that make nonportable safe (built in)
 
-- **Version stamp and handshake.** Every generated document (portable and nonportable) carries `<meta name="commentable-html-version" content="<V>">` in `<head>` and shows `Commentable HTML v<V>` in the runtime footer. In nonportable mode the runtime reads that meta and warns loudly via a banner if the loaded companion version differs (stale cache / mismatched files).
+- **Version stamp and handshake.** Every generated document (portable and nonportable) carries `<meta name="commentable-html-version" content="<V>">` in `<head>` and shows `Commentable HTML v<V>` in the runtime footer. In nonportable mode the runtime reads that meta and warns via a dismissible banner only when the versions are not compatible: a newer same-major runtime can open older same-major pages without warning, an older same-major runtime gets a soft update notice, and a different major is incompatible.
 - **Missing-asset banner.** The NONPORTABLE BOOTSTRAP block reveals a visible red banner if the companion runtime does not initialize within 3 s, so a broken share never fails silently.
 - **Export as Portable embeds everything.** In nonportable mode the export action is labeled **Export as Portable**: it rebuilds ONE self-contained inline file - reading the CSS/JS string payloads from the loaded `.assets.js` registry (works from `file://` without `fetch`), inlining them, and embedding the current comments - so the downloaded file no longer depends on the skill folder or any companion. A user always gets a portable single file, even starting from a nonportable document. Producing the nonportable (referenced-asset) variant is the agent's job at generation time, not an in-page conversion.
+
+### Versioning and compatibility
+
+The page/runtime contract is backward-compatible within a major version. Any `1.x` page works with the same or a newer `1.x` runtime, so updating the skill should not put a warning banner on existing NonPortable documents. If a page needs features from a newer same-major runtime, the banner asks the user to update or refresh the companion files. Breaking changes to the page/runtime contract require a major version bump.
 
 ### Toolbar
 

@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-07-12
+
+### Added
+
+- `new_document.py` now defaults NonPortable companion references to absolute `file://` URLs that point at
+  the installed skill `dist/`, so the generated HTML can move anywhere on the same machine without losing
+  its CSS/JS. Use `--assets-relative` to restore the old relative-path behavior for a movable folder bundle.
+- The NonPortable asset banner now has an accessible `Dismiss` button. A dismissed version warning stays
+  hidden across reloads for that document key and page/runtime version pair.
+- The SKILL.md documents the page/runtime compatibility contract: same-major newer runtimes can open older
+  same-major pages without warning, and breaking page/runtime changes require a major version bump.
+
+### Changed
+
+- The NonPortable version handshake is now semver-aware. Same-major older pages no longer show a scary
+  mismatch banner after a safe skill update, newer same-major pages show a soft update notice, and
+  different-major pages show the incompatible-runtime warning.
+- `validate.py` treats only `http://` and `https://` companion refs as remote/CDN URLs. Local `file://` refs
+  and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are
+  local-only.
+
 ## [1.8.0] - 2026-07-12
 
 ### Added

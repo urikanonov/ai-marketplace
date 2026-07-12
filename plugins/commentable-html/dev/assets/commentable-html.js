@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.8.0";
+const CMH_VERSION = "1.9.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -84,6 +84,24 @@ const NONPORTABLE_MODE = !!CMH_ASSETS
 function declaredAssetVersion() {
   const meta = document.querySelector('meta[name="commentable-html-version"]');
   return meta ? (meta.getAttribute("content") || "").trim() : "";
+}
+function parseSemver(s) {
+  const m = String(s || "").trim().match(/^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/);
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
+}
+function compareSemver(a, b) {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
+}
+function runtimeCompatibleWith(pageVer, runtimeVer) {
+  const page = parseSemver(pageVer);
+  const runtime = parseSemver(runtimeVer);
+  if (!page || !runtime) return null;
+  if (page.major !== runtime.major) return { kind: "major", page, runtime };
+  if (compareSemver(runtime, page) < 0) return { kind: "runtime-older", page, runtime };
+  return { kind: "compatible", page, runtime };
 }
 
 const sidebar = document.getElementById("sidebar");
@@ -4168,11 +4186,78 @@ async function saveStandalone() {
 }
 
 /* ---------- Mode badge + asset-version handshake ---------- */
-function revealAssetBanner(msg) {
+function assetBannerDismissKey(pageVer, runtimeVer) {
+  return "commentable-html::assetBannerDismissed::" + COMMENT_KEY + "::" + String(pageVer || "")
+    + "::" + String(runtimeVer || "");
+}
+function assetBannerDismissed(key) {
+  if (!key) return false;
+  try { return localStorage.getItem(key) === "1"; } catch (e) { return false; }
+}
+function ensureAssetBannerChrome(b) {
+  let msgEl = b.querySelector(".cmh-asset-message");
+  let btn = b.querySelector(".cmh-asset-dismiss");
+  if (!msgEl) {
+    const current = b.innerHTML;
+    b.innerHTML = '<span class="cmh-asset-message"></span>'
+      + '<button type="button" class="cmh-asset-dismiss cm-skip" aria-label="Dismiss">X</button>';
+    msgEl = b.querySelector(".cmh-asset-message");
+    btn = b.querySelector(".cmh-asset-dismiss");
+    if (msgEl) msgEl.innerHTML = current;
+  }
+  if (btn && !btn.dataset.cmhBound) {
+    btn.dataset.cmhBound = "1";
+    btn.addEventListener("click", function () {
+      const key = b.dataset.cmhDismissKey || "";
+      if (key) {
+        try { localStorage.setItem(key, "1"); } catch (e) { /* ignore */ }
+      }
+      b.hidden = true;
+    });
+  }
+  return msgEl;
+}
+function revealAssetBanner(msg, pageVer, runtimeVer) {
   const b = document.getElementById("cmhAssetBanner");
   if (!b) return;
-  if (msg) b.innerHTML = msg;
+  const key = (pageVer || runtimeVer) ? assetBannerDismissKey(pageVer, runtimeVer) : "";
+  if (assetBannerDismissed(key)) {
+    b.hidden = true;
+    return;
+  }
+  const msgEl = ensureAssetBannerChrome(b);
+  if (msg && msgEl) msgEl.innerHTML = msg;
+  b.dataset.cmhDismissKey = key;
   b.hidden = false;
+}
+function versionBannerMessage(label, pageVer, runtimeVer) {
+  const compat = runtimeCompatibleWith(pageVer, runtimeVer);
+  const pageHtml = '<code>' + escapeHtml(pageVer) + '</code>';
+  const runtimeHtml = '<code>' + escapeHtml(runtimeVer) + '</code>';
+  if (compat && compat.kind === "compatible") return null;
+  if (compat && compat.kind === "major") {
+    return "Commentable-html version mismatch: " + label + " was generated for commentable-html "
+      + '<code>' + compat.page.major + ".x</code> but the loaded runtime is " + runtimeHtml
+      + "; they are not compatible. Regenerate the document or restore a matching runtime.";
+  }
+  if (compat && compat.kind === "runtime-older") {
+    return "Commentable-html version notice: " + label + " expects a newer commentable-html "
+      + pageHtml + " than the loaded runtime " + runtimeHtml
+      + "; update the companion files or refresh with cache disabled.";
+  }
+  if (String(pageVer || "") !== String(runtimeVer || "")) {
+    return "Commentable-html version mismatch: " + label + " expects assets "
+      + pageHtml + " but the loaded runtime is " + runtimeHtml
+      + ". Refresh with cache disabled, or update the companion files.";
+  }
+  return null;
+}
+function maybeRevealVersionBanner(label, pageVer, runtimeVer) {
+  if (!pageVer || !runtimeVer) return false;
+  const msg = versionBannerMessage(label, pageVer, runtimeVer);
+  if (!msg) return false;
+  revealAssetBanner(msg, pageVer, runtimeVer);
+  return true;
 }
 let _embeddedSigCache = null;
 // Map of embedded comment id -> a content signature (updatedAt, else createdAt) so the
@@ -4263,17 +4348,14 @@ function setupModeUi() {
   }
   updateDocTypeUi();
   // Version handshake: the document declares the asset version it was generated
-  // against; if the loaded runtime differs (stale cache / mismatched companion),
-  // warn loudly rather than fail silently. Version strings are HTML-escaped since
+  // against. Same-major newer runtimes are compatible; older or breaking-major
+  // runtimes warn rather than fail silently. Version strings are HTML-escaped since
   // they originate from an author-controlled <meta> / companion file.
   const declared = declaredAssetVersion();
-  if (declared && declared !== CMH_VERSION) {
-    revealAssetBanner('Commentable-html version mismatch: this page expects assets '
-      + '<code>' + escapeHtml(declared) + '</code> but the loaded runtime is <code>' + escapeHtml(CMH_VERSION)
-      + '</code>. Refresh with cache disabled, or update the companion files.');
-  } else if (CMH_ASSETS && CMH_ASSETS.version && CMH_ASSETS.version !== CMH_VERSION) {
-    revealAssetBanner('Commentable-html version mismatch: assets file is '
-      + '<code>' + escapeHtml(CMH_ASSETS.version) + '</code> but the runtime is <code>' + escapeHtml(CMH_VERSION) + '</code>.');
+  if (maybeRevealVersionBanner("this page", declared, CMH_VERSION)) {
+    return;
+  } else if (CMH_ASSETS && maybeRevealVersionBanner("the assets file", CMH_ASSETS.version, CMH_VERSION)) {
+    return;
   } else {
     // No mismatch: make sure a banner the bootstrap watchdog may have raced to
     // show (slow-but-successful load) is hidden now that the runtime is up.
