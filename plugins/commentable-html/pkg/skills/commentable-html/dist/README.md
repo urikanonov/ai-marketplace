@@ -1,6 +1,6 @@
 # dist
 
-Generated commentable-html bundle. Do not hand-edit these files.
+Generated Commentable HTML bundle. Do not hand-edit these files.
 
 | File | Role |
 | --- | --- |

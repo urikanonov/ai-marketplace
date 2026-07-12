@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-07-12
+
+### Added
+
+- Offline exports now declare descriptor mode `offline`, reopen with an Offline badge, preserve that mode when
+  edited, and validate offline chart snapshots as first-class portable artifacts.
+- Triage board cards can opt in to mouse drag-and-drop with `data-cm-draggable`, and moved cards are copied as
+  widget layout changes.
+
+### Fixed
+
+- Mermaid diagrams and chart figures now stay inside narrow mobile viewports by scrolling wide rich content inside
+  their own blocks.
+- Shipped prose now refers to the user-facing skill as Commentable HTML while preserving the `commentable-html`
+  identifier in commands, paths, and code.
+
 ## [1.15.0] - 2026-07-12
 
 ### Added

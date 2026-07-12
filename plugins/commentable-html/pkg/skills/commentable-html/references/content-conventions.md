@@ -47,7 +47,7 @@ Pick the layout that makes the *shape* of the content visible before writing pro
 - **Status report**: shipped / in-flight / blocked columns, one line per item, and a small chart.
 - **Code review**: annotations pinned to lines with severity colors, and a "where to focus" note.
 
-commentable-html already makes tables, charts, mermaid, diffs, code, images, and (via `data-cm-part`) widget parts commentable, so these shapes need no extra wiring - only that you author them.
+Commentable HTML already makes tables, charts, mermaid, diffs, code, images, and (via `data-cm-part`) widget parts commentable, so these shapes need no extra wiring - only that you author them.
 
 ## Taste: restraint over decoration
 

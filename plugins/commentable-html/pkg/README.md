@@ -1,4 +1,4 @@
-# commentable-html plugin
+# Commentable HTML plugin
 
 `commentable-html` turns standalone HTML reports into inline-comment review surfaces. A reviewer can select text, code, diff lines, Mermaid nodes, images, or charts, leave comments in the page, copy a compact Markdown bundle back to an agent, and export a portable file with comments embedded. It drastically shortens the AI planning and iteration loop: you review the artifact in place and hand the agent structured notes instead of narrating changes in chat.
 
@@ -11,12 +11,12 @@ Your agent can draft a plan in seconds; the real bottleneck is everything after 
 | Chat / terminal | Poor | None | No | No | Painful |
 | Markdown file | OK (needs a viewer) | Limited | No | No | Manual |
 | Plain HTML | Good | Rich | Yes | No | Out-of-band |
-| **commentable-html** | Good | Rich | Yes | **Yes** | **Tight** |
+| **Commentable HTML** | Good | Rich | Yes | **Yes** | **Tight** |
 
 - **In the chat window** the plan scrolls past and is gone: hard to navigate, keep, or share.
 - **In a Markdown file** it survives, but raw Markdown is a slog to read and stays flat - no real tables, diagrams, or charts.
 - **In plain HTML** it is dense and nice to look at (Anthropic makes this case in ["The unreasonable effectiveness of HTML"](https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html)), but review still breaks: you read in the browser, then switch to the chat and describe, in prose, what to change and where.
-- **With commentable-html** you keep the rich HTML and add review in place: comment on the exact sentence, table cell, chart, or diagram node, then one `Copy all` hands the agent every note. The loop collapses to a single tight cycle. It takes the blog's "two-way interaction" idea - review the HTML, then feed your changes back to the model - and makes it first-class and in-place.
+- **With Commentable HTML** you keep the rich HTML and add review in place: comment on the exact sentence, table cell, chart, or diagram node, then one `Copy all` hands the agent every note. The loop collapses to a single tight cycle. It takes the blog's "two-way interaction" idea - review the HTML, then feed your changes back to the model - and makes it first-class and in-place.
 
 ## Features
 

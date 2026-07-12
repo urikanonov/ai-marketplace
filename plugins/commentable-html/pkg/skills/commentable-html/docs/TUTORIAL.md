@@ -27,7 +27,7 @@ The rest of this tutorial walks through step 2 in detail: every kind of thing yo
 
 1. In the sidebar header, look at the document-type bubble.
 2. It reads **Portable** (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads **Not portable** (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.
-3. Next to the bubble, the version indicator shows `v<x.y.z>`, telling you which commentable-html runtime produced the file.
+3. Next to the bubble, the version indicator shows `v<x.y.z>`, telling you which Commentable HTML runtime produced the file.
 
 ## 3. Open Help & About
 

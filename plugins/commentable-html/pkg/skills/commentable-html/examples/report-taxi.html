@@ -45,8 +45,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.15.0" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.15.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<meta name="commentable-html-version" content="1.16.0" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.16.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -377,6 +377,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   border: 1px solid var(--cp-border); color: var(--cp-text-soft);
 }
 .cm-type-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-type-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 .cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
@@ -727,6 +728,7 @@ text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; f
 /* Parity with the sidebar .cm-type-badge: the overflow-menu portability badge is colored
    and gets a help cursor from the same data-doc-type set by updateDocTypeUi. */
 .cm-mode-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-mode-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-mode-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 
 /* NonPortable-only controls are hidden until the layer detects nonportable mode. */
@@ -959,6 +961,13 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot [data-cm-part].cm-part-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
 #commentRoot [data-cm-part].cm-part-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
 #commentRoot [data-cm-part].cm-part-hl.cm-part-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+#commentRoot [data-cm-widget][data-cm-draggable] [data-cm-slot] > [data-cm-part],
+#commentRoot [data-cm-slot][data-cm-draggable] > [data-cm-part] { cursor: grab; }
+#commentRoot [data-cm-part].cm-widget-drag-source { opacity: 0.55; cursor: grabbing; }
+#commentRoot [data-cm-slot].cm-widget-drop-target {
+  outline: 2px solid var(--cp-accent); outline-offset: 3px; background: var(--cp-accent-soft);
+}
+body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing; user-select: none; }
 .cm-widget-add { position: fixed; z-index: 200; }
 /* Synthetic sidebar cards: document-wide comments and the auto-generated widget
    state-change record. */
@@ -1045,11 +1054,12 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
   border-radius: 10px; padding: 0.85rem 1rem; overflow-x: auto;
 }
-#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; overflow: visible; }
+#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+#commentRoot pre.mermaid svg { max-width: none; }
 /* Chart figures are boxed for readability, like code and KQL blocks. */
 #commentRoot figure.chart {
   margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
-  padding: 0.85rem 1rem; background: var(--cp-surface); max-width: 100%; overflow: hidden;
+  padding: 0.85rem 1rem; background: var(--cp-surface); max-width: 100%; overflow-x: auto; overflow-y: hidden;
 }
 #commentRoot figure.chart > .chart-wrap {
   position: relative; width: 100%; max-width: 100%; height: clamp(220px, 42vw, 440px);
@@ -1063,6 +1073,10 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   object-fit: contain;
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
+@media (max-width: 480px) {
+  #commentRoot pre.mermaid svg { min-width: 560px; }
+  #commentRoot figure.chart > .chart-wrap { min-width: 560px; max-width: none; }
+}
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */
 #commentRoot .cmh-kql-kw  { color: #8250df; font-weight: 600; }
@@ -1565,7 +1579,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.15.0";
+const CMH_VERSION = "1.16.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3189,6 +3203,7 @@ let _widgetRaf = 0;
 let _hadWidgetChanges = false;
 let _widgetOrder = new Map(); // Map partKey -> document order (O(1) sort lookup)
 let _lastWidgetSig = null;    // last widget state signature, to skip no-op re-renders
+let _widgetDrag = null;
 
 function _cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
 function widgetName(el) { const w = el.closest("[data-cm-widget]"); return w ? (w.getAttribute("data-cm-widget") || "widget") : "widget"; }
@@ -3247,6 +3262,99 @@ function findWidgetPart(widget, id) {
 function widgetInfo(el) {
   const widget = widgetName(el), id = partId(el), label = partLabel(el);
   return { widget, part: id, label, slot: partSlot(el), quote: label || id || widget };
+}
+function _widgetDragOptIn(slot, widget) {
+  return !!(widget && (widget.hasAttribute("data-cm-draggable") || slot.hasAttribute("data-cm-draggable")));
+}
+function _widgetDragPartFromEvent(e) {
+  if (e.button !== 0 || (e.pointerType && e.pointerType !== "mouse")) return null;
+  const target = e.target && e.target.closest ? e.target : null;
+  if (!target || target.closest("button, input, textarea, select, option, a[href], [contenteditable='true']")) return null;
+  const part = target.closest("[data-cm-widget] [data-cm-part]");
+  if (!part || !root.contains(part)) return null;
+  const slot = part.closest("[data-cm-slot]");
+  const widget = part.closest("[data-cm-widget]");
+  if (!slot || !widget || part === slot || !_widgetDragOptIn(slot, widget)) return null;
+  return { part, slot, widget };
+}
+function _widgetSlotAtPoint(x, y, widget) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  const slot = el.closest && el.closest("[data-cm-slot]");
+  return slot && widget.contains(slot) ? slot : null;
+}
+function _setWidgetDropSlot(slot) {
+  if (_widgetDrag && _widgetDrag.dropSlot === slot) return;
+  if (_widgetDrag && _widgetDrag.dropSlot) _widgetDrag.dropSlot.classList.remove("cm-widget-drop-target");
+  if (_widgetDrag) _widgetDrag.dropSlot = slot || null;
+  if (slot) slot.classList.add("cm-widget-drop-target");
+}
+function _clearWidgetDrag() {
+  if (!_widgetDrag) return;
+  if (_widgetDrag.dropSlot) _widgetDrag.dropSlot.classList.remove("cm-widget-drop-target");
+  _widgetDrag.part.classList.remove("cm-widget-drag-source");
+  document.body.classList.remove("cm-widget-dragging");
+  try { _widgetDrag.part.releasePointerCapture(_widgetDrag.pointerId); } catch (e) { /* already released */ }
+  document.removeEventListener("pointermove", _onWidgetPointerMove, true);
+  document.removeEventListener("pointerup", _onWidgetPointerUp, true);
+  document.removeEventListener("pointercancel", _onWidgetPointerCancel, true);
+  _widgetDrag = null;
+}
+function _startWidgetDrag(e, hit) {
+  _widgetDrag = {
+    pointerId: e.pointerId,
+    part: hit.part,
+    fromSlot: hit.slot,
+    widget: hit.widget,
+    startX: e.clientX,
+    startY: e.clientY,
+    active: false,
+    dropSlot: null,
+  };
+  document.addEventListener("pointermove", _onWidgetPointerMove, true);
+  document.addEventListener("pointerup", _onWidgetPointerUp, true);
+  document.addEventListener("pointercancel", _onWidgetPointerCancel, true);
+}
+function _activateWidgetDrag(e) {
+  _widgetDrag.active = true;
+  _widgetDrag.part.classList.add("cm-widget-drag-source");
+  document.body.classList.add("cm-widget-dragging");
+  if (widgetAddBtn) { widgetAddBtn.hidden = true; pendingWidget = null; }
+  try { window.getSelection().removeAllRanges(); } catch (err) { /* selection may be unavailable */ }
+  try { _widgetDrag.part.setPointerCapture(_widgetDrag.pointerId); } catch (err) { /* capture can fail after cancellation */ }
+  _setWidgetDropSlot(_widgetSlotAtPoint(e.clientX, e.clientY, _widgetDrag.widget));
+}
+function _onWidgetPointerMove(e) {
+  if (!_widgetDrag || e.pointerId !== _widgetDrag.pointerId) return;
+  const dx = e.clientX - _widgetDrag.startX;
+  const dy = e.clientY - _widgetDrag.startY;
+  if (!_widgetDrag.active && Math.sqrt(dx * dx + dy * dy) < 6) return;
+  if (!_widgetDrag.active) _activateWidgetDrag(e);
+  e.preventDefault();
+  _setWidgetDropSlot(_widgetSlotAtPoint(e.clientX, e.clientY, _widgetDrag.widget));
+}
+function _onWidgetPointerUp(e) {
+  if (!_widgetDrag || e.pointerId !== _widgetDrag.pointerId) return;
+  if (_widgetDrag.active) {
+    e.preventDefault();
+    const target = _widgetDrag.dropSlot;
+    if (target && target !== _widgetDrag.fromSlot) {
+      target.appendChild(_widgetDrag.part);
+      _onWidgetMutation();
+    }
+  }
+  _clearWidgetDrag();
+}
+function _onWidgetPointerCancel(e) {
+  if (_widgetDrag && e.pointerId === _widgetDrag.pointerId) _clearWidgetDrag();
+}
+function setupWidgetDragDrop() {
+  if (root._cmWidgetDragAttached) return;
+  root._cmWidgetDragAttached = true;
+  root.addEventListener("pointerdown", function (e) {
+    const hit = _widgetDragPartFromEvent(e);
+    if (hit) _startWidgetDrag(e, hit);
+  }, true);
 }
 function applyWidgetHighlight(comment) {
   const el = findWidgetPart(comment.widget, comment.part);
@@ -3382,6 +3490,7 @@ function _onWidgetMutation() {
 function setupWidgetLayer() {
   if (!widgetAddBtn) return;
   indexWidgetParts();
+  setupWidgetDragDrop();
   _snapshotWidgetState();
   _lastWidgetSig = _widgetStateSig();
   _hadWidgetChanges = widgetStateChanges().length > 0;
@@ -5940,7 +6049,7 @@ function _buildOfflineHtml(portableHtml) {
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
   if (charts.length) _insertOfflineChartGuard(doc);
-  return _serializeOfflineDoc(doc).replace(/\n{3,}/g, "\n\n");
+  return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }
 async function saveOffline() {
   let baseHtml;
@@ -6058,6 +6167,16 @@ function _embeddedCommentSig() {
 // and every current comment embedded, or none) or "Not portable" (it references external
 // skill/companion resources, and/or has comments that are not embedded in the file). The
 // bubble hover explains WHY a file is not portable.
+function isOfflineDocument() {
+  const script = document.getElementById("commentableHtmlLayer");
+  if (script) {
+    try {
+      const data = JSON.parse((script.textContent || "").trim() || "{}");
+      if (data && data.mode === "offline") return true;
+    } catch (e) { /* malformed descriptors are handled by validate.py */ }
+  }
+  return !!document.querySelector("#commentRoot [data-cm-offline-chart]");
+}
 function currentDocState() {
   const reasons = [];
   if (NONPORTABLE_MODE) reasons.push("it references external skill / companion resources");
@@ -6082,6 +6201,9 @@ function currentDocState() {
     if (hasStale) reasons.push("it still contains embedded comments that were removed in this session (re-export to drop them from the file)");
   }
   if (reasons.length === 0) {
+    if (isOfflineDocument()) {
+      return { type: "Offline", reason: "Offline: self-contained and works with no network - the review layer, styles, charts, and diagrams are all embedded in this one file." };
+    }
     return { type: "Portable", reason: "Portable: self-contained and safe to share (assets embedded and every comment embedded)." };
   }
   return { type: "Not portable", reason: "Not portable because " + reasons.join(", and ") + ". Use Export as Portable to share it." };
@@ -6232,6 +6354,7 @@ function showHelp(restoreEl) {
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
         '<ul>' +
           '<li><strong>Portable</strong> - self-contained: assets are embedded and every comment is embedded in the file, so a recipient sees exactly what you see.</li>' +
+          '<li><strong>Offline</strong> - portable plus rendered mermaid diagrams and chart snapshots embedded, with remote loaders removed for no-network review.</li>' +
           '<li><strong>Not portable</strong> - the file references external companion resources, or has comments that are not embedded yet, or has embedded comments you deleted this session that are still in the file until you re-export. Hover the bubble for the exact reason.</li>' +
         '</ul>' +
           '<p>Use <em>Export as Portable</em> to produce a portable copy. Use <em>Export Offline</em> when rendered mermaid diagrams and charts must also work with no network.</p>') +

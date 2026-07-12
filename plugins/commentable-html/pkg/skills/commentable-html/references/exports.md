@@ -115,7 +115,7 @@ Clicking it:
 
 Mermaid diagrams must already be rendered when you click the button. If a mermaid block is still source text, the export aborts with a toast rather than producing a file that would fail offline. A chart snapshot can fail only when the canvas is tainted by cross-origin pixels; in that case the export also aborts and leaves the open document unchanged.
 
-The exported file still has the five commentable-html regions, embedded comments, and version metadata. It is intended to pass `tools/validate.py --strict` and reopen with all external network blocked.
+The exported file still has the five Commentable HTML regions, embedded comments, and version metadata. It is intended to pass `tools/validate.py --strict` and reopen with all external network blocked.
 
 
 ## Combined file from a nonportable document

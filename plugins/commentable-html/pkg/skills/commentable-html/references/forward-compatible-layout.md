@@ -1,6 +1,6 @@
 # Forward-compatible layout
 
-Generated commentable-html documents separate user content from the review layer with a small machine-readable contract.
+Generated Commentable HTML documents separate user content from the review layer with a small machine-readable contract.
 
 ## Layer descriptor
 
@@ -10,11 +10,12 @@ Every generated document contains this head descriptor:
 <script type="application/json" id="commentableHtmlLayer">{"version":"1.13.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 ```
 
-- `version` is the commentable-html layer version that generated the document.
-- `mode` is `portable` or `nonportable`.
+- `version` is the Commentable HTML layer version that generated the document.
+- `mode` is `portable`, `offline`, or `nonportable`.
 - `regions` lists the infra region marker names in document order. The names are the exact text that appears after `BEGIN: commentable-html - ` and `END: commentable-html - `.
 
 Portable documents inline the CSS and JS region bodies. NonPortable documents keep the same marker names, but their CSS and JS regions contain companion `<link>` and `<script src>` references.
+Offline is the same descriptor contract with `mode` set to `offline`, not a second signal. Offline documents are portable documents with rendered mermaid SVG and rasterized chart PNG snapshots inlined, plus network loaders removed.
 
 ## Content root
 

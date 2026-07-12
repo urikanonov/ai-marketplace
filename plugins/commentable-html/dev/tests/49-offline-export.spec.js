@@ -77,7 +77,65 @@ function makeTmpDir() {
   return fs.mkdtempSync(path.join(tmpRoot, "cmh_offline_"));
 }
 
-test("Export Offline snapshots mermaid and Chart.js charts for zero-network reopen (CMH-OFFLINE-01)", async ({ page, browser }) => {
+function layerDescriptor(html) {
+  const m = html.match(/<script\b[^>]*\bid=(["'])commentableHtmlLayer\1[^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) throw new Error("missing layer descriptor");
+  return JSON.parse(m[2]);
+}
+
+const EXPECTED_LAYER_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
+const CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->";
+const CONTENT_END = "<!-- END: commentable-html - CONTENT -->";
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function markerLine(kind, region) {
+  return new RegExp(
+    `^[ \\t]*(?:<!--[ \\t]*)?(?:/\\*[ \\t]*)?(?:=+[ \\t]*)?${
+      escapeRegExp(`${kind}: commentable-html - ${region}`)
+    }[ \\t]*(?:=+[ \\t]*)?(?:-->|\\*/)?[ \\t]*$`,
+    "gm"
+  );
+}
+
+function expectForwardCompatibleContract(html, mode) {
+  const descriptor = layerDescriptor(html);
+  expect(descriptor.mode).toBe(mode);
+  expect(descriptor.regions).toEqual(EXPECTED_LAYER_REGIONS);
+
+  let lastBegin = -1;
+  for (const region of EXPECTED_LAYER_REGIONS) {
+    const begins = [...html.matchAll(markerLine("BEGIN", region))];
+    const ends = [...html.matchAll(markerLine("END", region))];
+    expect(begins, `BEGIN marker for ${region}`).toHaveLength(1);
+    expect(ends, `END marker for ${region}`).toHaveLength(1);
+    expect(begins[0].index).toBeLessThan(ends[0].index);
+    expect(begins[0].index).toBeGreaterThan(lastBegin);
+    lastBegin = begins[0].index;
+  }
+
+  const begin = html.indexOf(CONTENT_BEGIN);
+  const end = html.indexOf(CONTENT_END);
+  expect(begin).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(begin);
+  const beforeContent = html.slice(0, begin);
+  const rootMatches = [...beforeContent.matchAll(/<main\b[^>]*\bid=(["'])commentRoot\1[^>]*>/gi)];
+  expect(rootMatches).toHaveLength(1);
+  expect(rootMatches[0][0]).toContain("data-cmh-content-root");
+  expect(html.indexOf("</main>", end)).toBeGreaterThan(end);
+}
+
+function networkLoadRefs(html) {
+  const refs = [];
+  for (const m of html.matchAll(/<(script|link|img|source|iframe|video|audio)\b[^>]*\b(?:href|src)=["']([^"']+)["'][^>]*>/gi)) {
+    if (/^(?:https?:)?\/\//i.test(m[2])) refs.push(m[2]);
+  }
+  return refs;
+}
+
+test("Export Offline snapshots mermaid and Chart.js charts for zero-network reopen (CMH-OFFLINE-01, CMH-OFFLINE-02)", async ({ page, browser }) => {
   test.setTimeout(60000);
   const staged = stageContent(CONTENT, { key: "cmh-offline-export", source: "offline-export.html" });
   const server = await startStaticServer(staged.dir);
@@ -103,6 +161,7 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     ]);
     expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
     const exportedHtml = await readDownload(download);
+    expectForwardCompatibleContract(exportedHtml, "offline");
     expect(exportedHtml).toContain('id="embeddedComments"');
     expect(exportedHtml).toContain('data-cm-offline-chart="true"');
     expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/mermaid");
@@ -121,6 +180,7 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     });
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
+    await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
     await expect(page2.locator("#commentList")).toContainText("offline note travels");
 
     const mermaid = page2.locator("#commentRoot pre.mermaid svg").first();
@@ -145,5 +205,53 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
     fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("editing an already-offline document preserves offline mode and offline export is idempotent (CMH-OFFLINE-03)", async ({ page }) => {
+  const offlineContent = `
+<h1>Already offline</h1>
+<p id="offline-preserve-note">Offline files can still collect review notes.</p>
+<figure class="chart">
+  <div class="chart-wrap cm-skip">
+    <img id="offlinePreservedChart" class="cmh-chart" data-cm-offline-chart="true"
+      src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l1pK4wAAAABJRU5ErkJggg=="
+      alt="Offline chart snapshot" width="1" height="1">
+  </div>
+  <figcaption>Offline chart snapshot.</figcaption>
+</figure>`;
+  const staged = stageContent(offlineContent, { key: "cmh-offline-preserve", source: "offline-preserve.html" });
+  const html = fs.readFileSync(staged.html, "utf8")
+    .replace('"mode":"portable"', '"mode":"offline"', 1);
+  fs.writeFileSync(staged.html, html);
+  try {
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect(page.locator("#cmTypeBadge")).toHaveText("Offline");
+    await addTextComment(page, "#offline-preserve-note", "preserve this offline note");
+
+    const [portableDownload] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnSaveHtml").click(),
+    ]);
+    const portableHtml = await readDownload(portableDownload);
+    expect(layerDescriptor(portableHtml).mode).toBe("offline");
+    expect(portableHtml).toContain("preserve this offline note");
+    expect(portableHtml).toContain('data-cm-offline-chart="true"');
+    expect(networkLoadRefs(portableHtml)).toEqual([]);
+
+    const [offlineDownload] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOffline").click(),
+    ]);
+    const offlineHtml = await readDownload(offlineDownload);
+    expect(layerDescriptor(offlineHtml).mode).toBe("offline");
+    expect((offlineHtml.match(/data-cm-offline-chart="true"/g) || []).length).toBe(1);
+    expect(networkLoadRefs(offlineHtml)).toEqual([]);
+    expect(offlineHtml).not.toContain('<canvas id="offlinePreservedChart"');
+    expect(offlineHtml).toContain("preserve this offline note");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });

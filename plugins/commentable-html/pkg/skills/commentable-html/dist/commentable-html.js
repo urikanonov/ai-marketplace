@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.15.0";
+const CMH_VERSION = "1.16.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1656,6 +1656,7 @@ let _widgetRaf = 0;
 let _hadWidgetChanges = false;
 let _widgetOrder = new Map(); // Map partKey -> document order (O(1) sort lookup)
 let _lastWidgetSig = null;    // last widget state signature, to skip no-op re-renders
+let _widgetDrag = null;
 
 function _cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
 function widgetName(el) { const w = el.closest("[data-cm-widget]"); return w ? (w.getAttribute("data-cm-widget") || "widget") : "widget"; }
@@ -1714,6 +1715,99 @@ function findWidgetPart(widget, id) {
 function widgetInfo(el) {
   const widget = widgetName(el), id = partId(el), label = partLabel(el);
   return { widget, part: id, label, slot: partSlot(el), quote: label || id || widget };
+}
+function _widgetDragOptIn(slot, widget) {
+  return !!(widget && (widget.hasAttribute("data-cm-draggable") || slot.hasAttribute("data-cm-draggable")));
+}
+function _widgetDragPartFromEvent(e) {
+  if (e.button !== 0 || (e.pointerType && e.pointerType !== "mouse")) return null;
+  const target = e.target && e.target.closest ? e.target : null;
+  if (!target || target.closest("button, input, textarea, select, option, a[href], [contenteditable='true']")) return null;
+  const part = target.closest("[data-cm-widget] [data-cm-part]");
+  if (!part || !root.contains(part)) return null;
+  const slot = part.closest("[data-cm-slot]");
+  const widget = part.closest("[data-cm-widget]");
+  if (!slot || !widget || part === slot || !_widgetDragOptIn(slot, widget)) return null;
+  return { part, slot, widget };
+}
+function _widgetSlotAtPoint(x, y, widget) {
+  const el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  const slot = el.closest && el.closest("[data-cm-slot]");
+  return slot && widget.contains(slot) ? slot : null;
+}
+function _setWidgetDropSlot(slot) {
+  if (_widgetDrag && _widgetDrag.dropSlot === slot) return;
+  if (_widgetDrag && _widgetDrag.dropSlot) _widgetDrag.dropSlot.classList.remove("cm-widget-drop-target");
+  if (_widgetDrag) _widgetDrag.dropSlot = slot || null;
+  if (slot) slot.classList.add("cm-widget-drop-target");
+}
+function _clearWidgetDrag() {
+  if (!_widgetDrag) return;
+  if (_widgetDrag.dropSlot) _widgetDrag.dropSlot.classList.remove("cm-widget-drop-target");
+  _widgetDrag.part.classList.remove("cm-widget-drag-source");
+  document.body.classList.remove("cm-widget-dragging");
+  try { _widgetDrag.part.releasePointerCapture(_widgetDrag.pointerId); } catch (e) { /* already released */ }
+  document.removeEventListener("pointermove", _onWidgetPointerMove, true);
+  document.removeEventListener("pointerup", _onWidgetPointerUp, true);
+  document.removeEventListener("pointercancel", _onWidgetPointerCancel, true);
+  _widgetDrag = null;
+}
+function _startWidgetDrag(e, hit) {
+  _widgetDrag = {
+    pointerId: e.pointerId,
+    part: hit.part,
+    fromSlot: hit.slot,
+    widget: hit.widget,
+    startX: e.clientX,
+    startY: e.clientY,
+    active: false,
+    dropSlot: null,
+  };
+  document.addEventListener("pointermove", _onWidgetPointerMove, true);
+  document.addEventListener("pointerup", _onWidgetPointerUp, true);
+  document.addEventListener("pointercancel", _onWidgetPointerCancel, true);
+}
+function _activateWidgetDrag(e) {
+  _widgetDrag.active = true;
+  _widgetDrag.part.classList.add("cm-widget-drag-source");
+  document.body.classList.add("cm-widget-dragging");
+  if (widgetAddBtn) { widgetAddBtn.hidden = true; pendingWidget = null; }
+  try { window.getSelection().removeAllRanges(); } catch (err) { /* selection may be unavailable */ }
+  try { _widgetDrag.part.setPointerCapture(_widgetDrag.pointerId); } catch (err) { /* capture can fail after cancellation */ }
+  _setWidgetDropSlot(_widgetSlotAtPoint(e.clientX, e.clientY, _widgetDrag.widget));
+}
+function _onWidgetPointerMove(e) {
+  if (!_widgetDrag || e.pointerId !== _widgetDrag.pointerId) return;
+  const dx = e.clientX - _widgetDrag.startX;
+  const dy = e.clientY - _widgetDrag.startY;
+  if (!_widgetDrag.active && Math.sqrt(dx * dx + dy * dy) < 6) return;
+  if (!_widgetDrag.active) _activateWidgetDrag(e);
+  e.preventDefault();
+  _setWidgetDropSlot(_widgetSlotAtPoint(e.clientX, e.clientY, _widgetDrag.widget));
+}
+function _onWidgetPointerUp(e) {
+  if (!_widgetDrag || e.pointerId !== _widgetDrag.pointerId) return;
+  if (_widgetDrag.active) {
+    e.preventDefault();
+    const target = _widgetDrag.dropSlot;
+    if (target && target !== _widgetDrag.fromSlot) {
+      target.appendChild(_widgetDrag.part);
+      _onWidgetMutation();
+    }
+  }
+  _clearWidgetDrag();
+}
+function _onWidgetPointerCancel(e) {
+  if (_widgetDrag && e.pointerId === _widgetDrag.pointerId) _clearWidgetDrag();
+}
+function setupWidgetDragDrop() {
+  if (root._cmWidgetDragAttached) return;
+  root._cmWidgetDragAttached = true;
+  root.addEventListener("pointerdown", function (e) {
+    const hit = _widgetDragPartFromEvent(e);
+    if (hit) _startWidgetDrag(e, hit);
+  }, true);
 }
 function applyWidgetHighlight(comment) {
   const el = findWidgetPart(comment.widget, comment.part);
@@ -1849,6 +1943,7 @@ function _onWidgetMutation() {
 function setupWidgetLayer() {
   if (!widgetAddBtn) return;
   indexWidgetParts();
+  setupWidgetDragDrop();
   _snapshotWidgetState();
   _lastWidgetSig = _widgetStateSig();
   _hadWidgetChanges = widgetStateChanges().length > 0;
@@ -4407,7 +4502,7 @@ function _buildOfflineHtml(portableHtml) {
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
   if (charts.length) _insertOfflineChartGuard(doc);
-  return _serializeOfflineDoc(doc).replace(/\n{3,}/g, "\n\n");
+  return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }
 async function saveOffline() {
   let baseHtml;
@@ -4525,6 +4620,16 @@ function _embeddedCommentSig() {
 // and every current comment embedded, or none) or "Not portable" (it references external
 // skill/companion resources, and/or has comments that are not embedded in the file). The
 // bubble hover explains WHY a file is not portable.
+function isOfflineDocument() {
+  const script = document.getElementById("commentableHtmlLayer");
+  if (script) {
+    try {
+      const data = JSON.parse((script.textContent || "").trim() || "{}");
+      if (data && data.mode === "offline") return true;
+    } catch (e) { /* malformed descriptors are handled by validate.py */ }
+  }
+  return !!document.querySelector("#commentRoot [data-cm-offline-chart]");
+}
 function currentDocState() {
   const reasons = [];
   if (NONPORTABLE_MODE) reasons.push("it references external skill / companion resources");
@@ -4549,6 +4654,9 @@ function currentDocState() {
     if (hasStale) reasons.push("it still contains embedded comments that were removed in this session (re-export to drop them from the file)");
   }
   if (reasons.length === 0) {
+    if (isOfflineDocument()) {
+      return { type: "Offline", reason: "Offline: self-contained and works with no network - the review layer, styles, charts, and diagrams are all embedded in this one file." };
+    }
     return { type: "Portable", reason: "Portable: self-contained and safe to share (assets embedded and every comment embedded)." };
   }
   return { type: "Not portable", reason: "Not portable because " + reasons.join(", and ") + ". Use Export as Portable to share it." };
@@ -4699,6 +4807,7 @@ function showHelp(restoreEl) {
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
         '<ul>' +
           '<li><strong>Portable</strong> - self-contained: assets are embedded and every comment is embedded in the file, so a recipient sees exactly what you see.</li>' +
+          '<li><strong>Offline</strong> - portable plus rendered mermaid diagrams and chart snapshots embedded, with remote loaders removed for no-network review.</li>' +
           '<li><strong>Not portable</strong> - the file references external companion resources, or has comments that are not embedded yet, or has embedded comments you deleted this session that are still in the file until you re-export. Hover the bubble for the exact reason.</li>' +
         '</ul>' +
           '<p>Use <em>Export as Portable</em> to produce a portable copy. Use <em>Export Offline</em> when rendered mermaid diagrams and charts must also work with no network.</p>') +

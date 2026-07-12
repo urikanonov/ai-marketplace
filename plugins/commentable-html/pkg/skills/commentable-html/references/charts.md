@@ -7,7 +7,7 @@ hover tooltips, shared multi-series readouts, log scales, or a legend. Use **Cha
 out of the box, and its tooltip is the single most reliable way to satisfy a "show exact
 values when I hover" request.
 
-This reference is the recipe for embedding Chart.js charts inside a commentable-html
+This reference is the recipe for embedding Chart.js charts inside a Commentable HTML
 document so that tooltips work and the chart coexists cleanly with the commenting layer.
 It is light-theme by default; a dark-theme note is at the end.
 

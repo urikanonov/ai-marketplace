@@ -13,6 +13,8 @@ than the whole figure. Mark the widget and its parts:
   `data-cm-part-label="<label>"` (the label defaults to the part's trimmed text).
 - `data-cm-slot="<slot>"` on each container that holds parts, when you want layout-change
   tracking (see below).
+- `data-cm-draggable` on the widget root or on selected slot containers, when cards should
+  move by mouse drag-and-drop. Only direct `data-cm-part` children inside slots are moved.
 
 A labeled SVG node is just a part:
 `<g data-cm-part="ingest" data-cm-part-label="Ingest"> ... </g>`.
@@ -23,7 +25,7 @@ and label, and it restores by widget + part across reloads, Copy all, and Export
 The Copy-all bundle records `Anchor: widget "<name>", part "<label>"`.
 
 ```html
-<div class="board cm-skip" data-cm-widget="triage">
+<div class="board cm-skip" data-cm-widget="triage" data-cm-draggable>
   <div class="col" data-cm-slot="Now">
     <div class="card" data-cm-part="t-101" data-cm-part-label="Add SSE backpressure">Add SSE backpressure</div>
   </div>
@@ -34,8 +36,8 @@ The Copy-all bundle records `Anchor: widget "<name>", part "<label>"`.
 ## Widget layout-change tracking
 
 When parts sit inside `data-cm-slot` containers, the layer snapshots each part's slot at load.
-If the user later moves a part to another slot (for example dragging a triage card), the change
-is surfaced deterministically:
+If the user later moves a part to another slot, including by mouse drag-and-drop on a widget or
+slot that carries `data-cm-draggable`, the change is surfaced deterministically:
 
 - a synthetic **Layout change** card appears in the sidebar listing every moved part (and the
   panel opens so the change is not missed),
