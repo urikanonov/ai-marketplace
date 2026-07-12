@@ -45,7 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.13.0" />
+<meta name="commentable-html-version" content="1.14.0" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - Demo</title>
 
@@ -499,12 +499,8 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
-   wide content shell, while tables, figures, code, diffs, and callouts keep full width.
-   The lede is a full-width surface box, so its paragraphs opt out of the measure cap
-   (otherwise they render far narrower than the box and its sibling sections). */
-#commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
-#commentRoot .cmh-lede, #commentRoot .cmh-lede > p { max-width: none; }
+/* Top-level prose fills the content column (no readable-measure cap): paragraphs, like
+   tables, figures, code, and callouts, use the full width of the 1480px content shell. */
 /* Section headings are deep-links: a plain click or Enter/Space updates the URL to their
    anchor, and they are keyboard-focusable with a visible focus ring. */
 #commentRoot .cm-anchored { cursor: pointer; }
@@ -1452,7 +1448,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.13.0";
+const CMH_VERSION = "1.14.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (

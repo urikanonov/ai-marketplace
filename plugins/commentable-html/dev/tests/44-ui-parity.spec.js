@@ -24,16 +24,15 @@ test("overflow-menu portability badge mirrors the sidebar badge", async ({ page 
   expect(overflow.border).toBe(sidebar.border);
 });
 
-test("top-level prose paragraphs get a readable measure cap", async ({ page }) => {
+test("top-level prose paragraphs fill the content width (no measure cap)", async ({ page }) => {
   await openKitchenSink(page);
   const rootP = await page.evaluate(() => {
     const p = document.querySelector("#commentRoot > p");
     return p ? getComputedStyle(p).maxWidth : null;
   });
-  expect(rootP).toBeTruthy();
-  expect(rootP).not.toBe("none");
-  expect(rootP).toMatch(/px$/);
-  // Tables keep full width (no cap).
+  // Prose is no longer capped: it fills the content column like tables and figures.
+  expect(rootP).toBe("none");
+  // Tables also keep full width (no cap).
   const tableMax = await page.evaluate(() => {
     const t = document.querySelector("#commentRoot table");
     return t ? getComputedStyle(t).maxWidth : "none";

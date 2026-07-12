@@ -335,12 +335,8 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
-   wide content shell, while tables, figures, code, diffs, and callouts keep full width.
-   The lede is a full-width surface box, so its paragraphs opt out of the measure cap
-   (otherwise they render far narrower than the box and its sibling sections). */
-#commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
-#commentRoot .cmh-lede, #commentRoot .cmh-lede > p { max-width: none; }
+/* Top-level prose fills the content column (no readable-measure cap): paragraphs, like
+   tables, figures, code, and callouts, use the full width of the 1480px content shell. */
 /* Section headings are deep-links: a plain click or Enter/Space updates the URL to their
    anchor, and they are keyboard-focusable with a visible focus ring. */
 #commentRoot .cm-anchored { cursor: pointer; }
