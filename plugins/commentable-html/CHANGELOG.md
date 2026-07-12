@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-07-12
+
+### Added
+
+- Added two shipped live demo reports: an incident triage board with commentable widget columns and cards, and a
+  visuals matrix covering flowchart, sequence, gantt, state, class, ER, and pie mermaid diagrams, four Chart.js
+  chart kinds, a code-review diff, a KQL block, and an SVG figure.
+- Export to Markdown now preserves `data-cm-widget` boards as a widget note plus a GFM table, so the triage board
+  survives Markdown export instead of being skipped as `cm-skip` chrome.
+
 ## [1.12.0] - 2026-07-12
 
 ### Added

@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.12.0";
+const CMH_VERSION = "1.13.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -3216,6 +3216,7 @@ function _mdSkip(el) {
   // from a stashed source, so they are never skipped even though they are cm-skip.
   if (el.classList && el.classList.contains("mermaid")) return false;
   if (el.classList && el.classList.contains("cmh-diff-host")) return false;
+  if (el.hasAttribute && el.hasAttribute("data-cm-widget")) return false;
   return !!(el.classList && (el.classList.contains("cm-skip") || el.classList.contains("cm-toc")));
 }
 function _mdDedent(text) {
@@ -3420,9 +3421,37 @@ function _mdDiff(el) {
   }
   return _mdFence("diff", raw || "");
 }
+function _mdPartLabel(el) {
+  return _mdEscapePipes(_mdCollapse(_mdText(el.getAttribute("data-cm-part-label") || el.textContent || "")));
+}
+function _mdWidget(el) {
+  const title = _mdCollapse(_mdText(el.getAttribute("aria-label") || el.getAttribute("data-cm-widget") || "Widget"));
+  const slots = Array.prototype.filter.call(el.querySelectorAll("[data-cm-slot]"), (slot) =>
+    slot.closest("[data-cm-widget]") === el);
+  if (slots.length) {
+    const headers = slots.map((slot) =>
+      _mdEscapePipes(_mdCollapse(_mdText(slot.getAttribute("data-cm-slot") || slot.getAttribute("aria-label") || "Slot"))));
+    const columns = slots.map((slot) =>
+      Array.prototype.filter.call(slot.querySelectorAll("[data-cm-part]"), (part) =>
+        part !== slot && part.closest("[data-cm-widget]") === el && part.closest("[data-cm-slot]") === slot)
+        .map(_mdPartLabel));
+    const rows = [];
+    const height = Math.max.apply(null, columns.map((col) => col.length).concat([0]));
+    rows.push("| " + headers.join(" | ") + " |");
+    rows.push("| " + headers.map(() => "---").join(" | ") + " |");
+    for (let r = 0; r < height; r++) {
+      rows.push("| " + columns.map((col) => col[r] || "").join(" | ") + " |");
+    }
+    return "_[Widget: " + title + "]_\n\n" + rows.join("\n");
+  }
+  const parts = Array.prototype.filter.call(el.querySelectorAll("[data-cm-part]"), (part) =>
+    part.closest("[data-cm-widget]") === el).map((part) => "- " + _mdPartLabel(part));
+  return parts.length ? "_[Widget: " + title + "]_\n\n" + parts.join("\n") : "";
+}
 function _mdBlock(el) {
   const t = el.tagName;
   if (el.classList && el.classList.contains("mermaid")) return _mdFence("mermaid", el.getAttribute("data-cmh-md-src") || el.textContent || "");
+  if (el.hasAttribute && el.hasAttribute("data-cm-widget")) return _mdWidget(el);
   if (/^H[1-6]$/.test(t)) return "#".repeat(+t[1]) + " " + _mdCollapse(_mdInlineText(el));
   if (t === "P") return _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
   if (t === "UL" || t === "OL") return _mdList(el, "");
@@ -4049,11 +4078,12 @@ function _buildPlainHtml(baseHtml) {
   // _getBaseHtml() returns a DOM snapshot taken while THIS script runs - the
   // parser has not reached the trailing "END ... JS" comment yet, so anchor on
   // the script's own closing tag instead (eat a trailing END marker if present).
-  t = t.replace(/<!--\s*=+\s*BEGIN: commentable-html - JS[\s\S]*?<\/script>\s*(?:<!--\s*=*\s*END: commentable-html - JS\s*-->)?/, "");
+  t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
+    + _cmhScriptClosePattern() + "\\s*(?:<!--\\s*=*\\s*END: commentable-html - JS\\s*-->)?"), "");
   // NonPortable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
   t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[^\n]*-->\s*/i, "");
-  t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>\s*/ig, "");
+  t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "\\s*", "ig"), "");
   t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->\s*/i, "");
   t = t.replace(/(<body[^>]*class=")([^"]*)(")/, function (m, a, cls, c) {
     return a + cls.replace(/\bsidebar-open\b/, "").replace(/\s+/g, " ").trim() + c;
@@ -4105,6 +4135,11 @@ if (_btnSavePlainTop) _btnSavePlainTop.addEventListener("click", saveAsPlain);
 // from window.__COMMENTABLE_ASSETS__, which loaded as a classic <script src> and
 // therefore works even when the document is opened by double-click (file://).
 function _escClose(s) { return String(s).replace(/<\/(script|style)>/gi, "<\\/$1>"); }
+function _cmhScriptClosePattern() { return String.fromCharCode(60) + "\\/" + "script>"; }
+function _cmhScriptTagPattern(attrs, tail, flags) {
+  return new RegExp("[ \\t]*" + String.fromCharCode(60) + "script\\b" + attrs + ">\\s*"
+    + _cmhScriptClosePattern() + (tail || ""), flags);
+}
 // Insert `insertion` immediately before the LAST occurrence of </tag>. The real
 // closing tag of a well-formed document is the last one; earlier matches can sit
 // inside the pre-<html> documentation comment (whose prose literally mentions
@@ -4145,7 +4180,7 @@ function _inlineNonPortableAssets(baseHtml) {
   //    rather than trusting the snapshot's line breaks.
   t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
   t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
-  t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>[ \t]*\n?/ig, "");
+  t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "[ \\t]*\\n?", "ig"), "");
   t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
   t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
 

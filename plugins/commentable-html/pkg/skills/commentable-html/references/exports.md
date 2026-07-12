@@ -163,6 +163,6 @@ Downloads the document content as a Markdown (`.md`) file. It is a deterministic
 | Charts and inline SVG figures | a `_[Chart: caption]_` / `_[Figure: caption]_` note (not representable in plain Markdown) |
 | Images | Markdown image syntax with the `alt` text and `src` |
 | Callouts (`cmh-callout-*`) | GitHub alerts (`> [!NOTE]` / `[!TIP]` / `[!WARNING]` / `[!CAUTION]`) |
-| Interactive widgets (`cm-skip`) | omitted (a widget carries its own state) |
+| Interactive widgets (`data-cm-widget`) | a `_[Widget: caption]_` note plus a GFM table when the widget has `data-cm-slot` columns; otherwise a bullet list of `data-cm-part-label` values |
 
 Your current review comments are appended as a `## Review comments` section. `cm-skip` UI chrome is never included, except a `pre.mermaid` (its source is content) and a figure caption. Because the output is a pure function of the DOM - whitespace-normalized, theme- and sort-independent, idempotent - it is covered by golden Playwright tests.

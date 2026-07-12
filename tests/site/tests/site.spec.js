@@ -128,15 +128,18 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
   await expect(page.locator("#demo iframe")).toHaveAttribute("src", /demo\/report-taxi\.html/);
 });
 
-test("demo has one safe full-screen button and a two-option slider", async ({ page }) => {
+test("demo has one safe full-screen button and a four-option slider", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const fs = page.locator("#demo-fullscreen");
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
   await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
-  await expect(page.locator(".demo-tab")).toHaveCount(2);
+  await expect(page.locator(".demo-tab")).toHaveCount(4);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
+  for (const id of ["#demo-tab-taxi", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics"]) {
+    await expect(page.locator(id)).toBeVisible();
+  }
 });
 
 test("demo slider switches the iframe, title, and full-screen target", async ({ page }) => {
@@ -147,6 +150,10 @@ test("demo slider switches the iframe, title, and full-screen target", async ({ 
   await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-community-garden\.html/);
   await expect(page.locator("#demo-title")).toHaveText("Community Garden Plan");
   await expect(page.locator(".demo-tab.active")).toHaveText(/Community Garden/i);
+  await page.locator(".demo-tab", { hasText: "Triage Board" }).click();
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-triage\.html/);
+  await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-triage\.html/);
+  await expect(page.locator("#demo-title")).toHaveText("Triage Board");
 });
 
 test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }) => {
@@ -376,6 +383,7 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const taxi = page.locator("#demo-tab-taxi");
   const garden = page.locator("#demo-tab-garden");
+  const metrics = page.locator("#demo-tab-metrics");
   const panel = page.locator("#demo-panel");
   await expect(panel).toHaveAttribute("role", "tabpanel");
   await expect(taxi).toHaveAttribute("aria-controls", "demo-panel");
@@ -388,11 +396,11 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
   // Home/End jump to the first/last tab and move the roving tabindex + panel label.
   await taxi.focus();
   await page.keyboard.press("End");
-  await expect(garden).toHaveAttribute("aria-selected", "true");
-  await expect(garden).toHaveAttribute("tabindex", "0");
+  await expect(metrics).toHaveAttribute("aria-selected", "true");
+  await expect(metrics).toHaveAttribute("tabindex", "0");
   await expect(taxi).toHaveAttribute("tabindex", "-1");
-  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-garden");
-  await expect(page.locator("#demo-iframe")).toHaveAttribute("title", /Community Garden|report-community-garden/);
+  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-metrics");
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("title", /Visuals Matrix|report-metrics/);
   await page.keyboard.press("Home");
   await expect(taxi).toHaveAttribute("aria-selected", "true");
   await expect(taxi).toBeFocused();
@@ -405,8 +413,8 @@ test("demo mounts inside the iframe on the plugin page (CSP allows it)", async (
   await expect(frame.locator("#btnCopyAll")).toBeAttached({ timeout: 20000 });
 });
 
-test("both demo reports load and their toolbars mount", async ({ page }) => {
-  for (const report of ["report-taxi.html", "report-community-garden.html"]) {
+test("all demo reports load and their toolbars mount", async ({ page }) => {
+  for (const report of ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html"]) {
     await page.goto("/commentable-html/demo/" + report, { waitUntil: "domcontentloaded" });
     await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });
     await expect(page.locator("#btnCopyAll")).toBeAttached({ timeout: 15000 });

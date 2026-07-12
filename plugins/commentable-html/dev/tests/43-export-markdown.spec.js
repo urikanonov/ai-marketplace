@@ -148,6 +148,88 @@ test("a KQL figure exports a kusto fence and the run link", async ({ page }) => 
   expect(md).toContain("[Run in Azure Data Explorer](https://dataexplorer.azure.com/x)");
 });
 
+test("expanded demo item kinds convert to Markdown", async ({ page }) => {
+  const C = `
+    <h1>Demo item kinds</h1>
+    <div class="cmh-callout cmh-callout-info"><strong>Scope.</strong> Review rich blocks.</div>
+    <div class="triage-board cm-skip" data-cm-widget="incident-triage-board" aria-label="Incident triage board">
+      <div data-cm-slot="New" data-cm-part="slot-new" data-cm-part-label="New column">
+        <article data-cm-part="card-api" data-cm-part-label="API latency">API latency</article>
+      </div>
+      <div data-cm-slot="Investigating" data-cm-part="slot-investigating" data-cm-part-label="Investigating column">
+        <article data-cm-part="card-auth" data-cm-part-label="Auth retries">Auth retries</article>
+      </div>
+      <div data-cm-slot="Fixed" data-cm-part="slot-fixed" data-cm-part-label="Fixed column">
+        <article data-cm-part="card-cache" data-cm-part-label="Cache patch">Cache patch</article>
+      </div>
+    </div>
+    <div class="cm-skip" data-cm-widget="review-checklist" aria-label="Review checklist">
+      <button type="button" data-cm-part="owner" data-cm-part-label="Owner assigned">Owner assigned</button>
+      <button type="button" data-cm-part="runbook" data-cm-part-label="Runbook linked">Runbook linked</button>
+    </div>
+    <pre class="mermaid cm-skip">flowchart LR
+  A[Alert] --> B{Known?}
+  B --> C[Route]</pre>
+    <pre class="mermaid cm-skip">sequenceDiagram
+  participant Bot
+  participant Owner
+  Bot->>Owner: page</pre>
+    <pre class="mermaid cm-skip">gantt
+  title Fix plan
+  dateFormat  YYYY-MM-DD
+  section Now
+  Patch :a1, 2026-07-12, 1d</pre>
+    <pre class="mermaid cm-skip">stateDiagram-v2
+  [*] --> Intake
+  Intake --> Done</pre>
+    <pre class="mermaid cm-skip">classDiagram
+  class AlertRouter
+  AlertRouter : +route()</pre>
+    <pre class="mermaid cm-skip">erDiagram
+  INCIDENT ||--o{ SIGNAL : has</pre>
+    <pre class="mermaid cm-skip">pie title Alert mix
+  "Latency" : 3
+  "Errors" : 2</pre>
+    <figure class="chart"><div class="chart-wrap cm-skip"><canvas id="barChart" role="img" aria-label="Bar chart"></canvas></div><figcaption>Bar chart: incidents by queue</figcaption></figure>
+    <figure class="chart"><div class="chart-wrap cm-skip"><canvas id="lineChart" role="img" aria-label="Line chart"></canvas></div><figcaption>Line chart: error rate</figcaption></figure>
+    <figure class="chart"><div class="chart-wrap cm-skip"><canvas id="pieChart" role="img" aria-label="Pie chart"></canvas></div><figcaption>Pie chart: owner mix</figcaption></figure>
+    <figure class="chart"><div class="chart-wrap cm-skip"><canvas id="doughnutChart" role="img" aria-label="Doughnut chart"></canvas></div><figcaption>Doughnut chart: severity mix</figcaption></figure>
+    <figure><svg class="cm-skip" data-cm-widget="mini-svg" aria-label="Mini SVG" viewBox="0 0 160 40" role="img"><g data-cm-part="ingest" data-cm-part-label="Ingest node"><rect width="60" height="30"></rect><text x="8" y="20">Ingest</text></g></svg><figcaption>SVG: signal path</figcaption></figure>
+    <pre class="cmh-diff" data-diff-label="router.py">--- a/router.py
++++ b/router.py
+@@ -1 +1 @@
+-return slow()
++return fast()</pre>
+    <figure class="cmh-kql"><pre><code class="language-kusto">Incidents | summarize Count=count() by Severity</code></pre>
+      <a class="cmh-kql-run" href="https://dataexplorer.azure.com/x">Run</a><figcaption>Incident query</figcaption></figure>`;
+  await openRich(page, C, "cmh-md-demo-kinds");
+  const md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toContain("> [!NOTE]");
+  expect(md).toContain("_[Widget: Incident triage board]_");
+  expect(md).toContain("| New | Investigating | Fixed |");
+  expect(md).toContain("| API latency | Auth retries | Cache patch |");
+  expect(md).toContain("_[Widget: Review checklist]_");
+  expect(md).toContain("- Owner assigned");
+  expect(md).toContain("- Runbook linked");
+  expect((md.match(/```mermaid/g) || []).length).toBe(7);
+  for (const snippet of ["flowchart LR", "sequenceDiagram", "gantt", "stateDiagram-v2", "classDiagram", "erDiagram", "pie title Alert mix"]) {
+    expect(md).toContain(snippet);
+  }
+  for (const caption of [
+    "_[Chart: Bar chart: incidents by queue]_",
+    "_[Chart: Line chart: error rate]_",
+    "_[Chart: Pie chart: owner mix]_",
+    "_[Chart: Doughnut chart: severity mix]_",
+    "_[Figure: SVG: signal path]_",
+  ]) {
+    expect(md).toContain(caption);
+  }
+  expect(md).toContain("```diff");
+  expect(md).toContain("+return fast()");
+  expect(md).toContain("```kusto");
+  expect(md).toContain("Incidents | summarize Count=count() by Severity");
+});
+
 test("a comment note cannot forge headings/fences or inject HTML in the appendix", async ({ page }) => {
   await openKitchenSink(page);
   await addTextComment(page, "#dup-a", "line one\n## Injected heading\n```\nnot a real fence\n<img src=x onerror=alert(1)>");

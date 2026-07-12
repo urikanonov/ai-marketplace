@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.12.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.13.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -212,6 +212,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="demo-switch" role="tablist" aria-label="Choose a demo report">
           <button class="demo-tab active" type="button" role="tab" id="demo-tab-taxi" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="demo/report-taxi.html" data-file="report-taxi.html" data-label="NYC Taxi Report">NYC Taxi Report</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html" data-label="Community Garden Plan">Community Garden Plan</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-triage" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-triage.html" data-file="report-triage.html" data-label="Triage Board">Triage Board</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-metrics" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-metrics.html" data-file="report-metrics.html" data-label="Visuals Matrix">Visuals Matrix</button>
         </div>
       </div>
       <div class="demo-frame full-bleed" id="demo-panel" role="tabpanel" aria-labelledby="demo-tab-taxi" tabindex="0">
@@ -260,12 +262,22 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.13.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Added two shipped live demo reports: an incident triage board with commentable widget columns and cards, and a visuals matrix covering flowchart, sequence, gantt, state, class, ER, and pie mermaid diagrams, four Chart.js chart kinds, a code-review diff, a KQL block, and an SVG figure.</li>
+              <li>Export to Markdown now preserves <code>data-cm-widget</code> boards as a widget note plus a GFM table, so the triage board survives Markdown export instead of being skipped as <code>cm-skip</code> chrome.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.12.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Added <strong>Export Offline</strong>, which builds a Portable export with current comments, snapshots rendered mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content loaders, and produces a strict-valid zero-network HTML handoff.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.9.1] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -273,8 +285,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The shipped plugin <code>README.md</code> and <code>SKILL.md</code> now explain why commentable-html beats planning in chat, a Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic&#x27;s &quot;unreasonable effectiveness of HTML&quot; blog post - so the motivation matches the project website.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.9.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -355,14 +365,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Reworded the <code>Self-contained and privacy</code> help topic: comments are stored in this browser&#x27;s <code>localStorage</code> (private, never uploaded, no account), and the review layer travels inside the file only in Portable mode - a Not portable file references small companion resources. It no longer implies the layer is always bundled into the file.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams (full Playwright suite green against mermaid 11). This rode in on a dev/test-only dependency bump (mermaid 11.16.0, chart.js 4.5.1, adm-zip 0.6.0); none of those dev dependencies ship in the plugin.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">15 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">16 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
