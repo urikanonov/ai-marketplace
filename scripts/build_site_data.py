@@ -314,7 +314,7 @@ def render_llms(manifest):
         lines.append("- [%s](%s): %s" % (
             plugin.get("name", ""), _plugin_app_url(plugin), plugin.get("description", "")))
     lines.extend(["", "## Documentation",
-                  "- [commentable-html tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
+                  "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
     return "\n".join(lines)
 
 

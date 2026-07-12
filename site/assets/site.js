@@ -77,6 +77,44 @@
     }
   }
 
+  function initPluginCards() {
+    var cards = document.querySelectorAll(".plugin-card");
+    cards.forEach(function (card) {
+      var link = card.querySelector(".name a[href]");
+      if (!link) {
+        return;
+      }
+      var pointerDown = null;
+      card.addEventListener("pointerdown", function (e) {
+        if (e.button === 0) {
+          pointerDown = { x: e.clientX, y: e.clientY };
+        }
+      });
+      card.addEventListener("click", function (e) {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+          return;
+        }
+        var moved = pointerDown &&
+          (Math.abs(e.clientX - pointerDown.x) > 4 || Math.abs(e.clientY - pointerDown.y) > 4);
+        pointerDown = null;
+        if (moved) {
+          e.preventDefault();
+          return;
+        }
+        if (window.getSelection && window.getSelection().toString().trim()) {
+          e.preventDefault();
+          return;
+        }
+        var target = e.target;
+        if (target && target.closest && target.closest(".cmd, .foot, a, button, input, select, textarea, summary")) {
+          return;
+        }
+        e.preventDefault();
+        link.click();
+      });
+    });
+  }
+
   function initDemoSwitch() {
     var tabs = document.querySelectorAll(".demo-tab");
     var frame = document.getElementById("demo-iframe");
@@ -212,6 +250,7 @@
   ready(function () {
     initCopyButtons();
     initYear();
+    initPluginCards();
     initDemoSwitch();
     initLightbox();
   });
