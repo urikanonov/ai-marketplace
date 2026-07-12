@@ -218,51 +218,23 @@ test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
   await expect(btn).toHaveClass(/copy-failed/);
 });
 
-test("the whole plugin card is clickable via one stretched Learn more link, Source and copy stay independent", async ({ page }) => {
+test("a plugin card exposes explicit title and Learn more links to its page, no whole-card overlay", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const card = page.locator(".plugin-card", { hasText: "commentable-html" });
-  // (a) The card has a Learn more link pointing at the plugin page.
+  // The visible title is an explicit, keyboard-focusable link to the plugin page.
+  const titleLink = card.locator(".name a");
+  await expect(titleLink).toHaveAttribute("href", "./commentable-html/");
+  // The warm-amber Learn more button also links to the page.
   const learn = card.locator("a.learn-more");
   await expect(learn).toHaveAttribute("href", "./commentable-html/");
-  await expect(card.getByText("Learn more", { exact: true })).toHaveCount(1);
-  // (d) Exactly one link (one tab stop) leads to the plugin page: no duplicate.
-  await expect(card.locator('a[href="./commentable-html/"]')).toHaveCount(1);
-  await expect(card.locator("a.name")).toHaveCount(0);
-
-  // (c) The Source link and copy button sit above the overlay (independently clickable),
-  // while the title area does not (the overlay covers it).
-  await card.scrollIntoViewIfNeeded();
-  const hitTest = await card.evaluate((el) => {
-    el.scrollIntoView({ block: "center" });
-    const topAt = (target) => {
-      const r = target.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return hit === target || target.contains(hit);
-    };
-    const source = el.querySelector(".foot a.btn:not(.learn-more)");
-    const copy = el.querySelector(".copy-btn");
-    const title = el.querySelector(".name");
-    const learnMore = el.querySelector(".learn-more");
-    const titleRect = title.getBoundingClientRect();
-    const titleHit = document.elementFromPoint(titleRect.x + 4, titleRect.y + 4);
-    return {
-      sourceIndependent: topAt(source),
-      copyIndependent: topAt(copy),
-      titleCoveredByLearn: learnMore.contains(titleHit) || titleHit === learnMore,
-    };
-  });
-  expect(hitTest.sourceIndependent, "Source link must not be hijacked by the overlay").toBe(true);
-  expect(hitTest.copyIndependent, "copy button must not be hijacked by the overlay").toBe(true);
-  expect(hitTest.titleCoveredByLearn, "clicking the title must trigger the stretched link").toBe(true);
-
-  // (b) Clicking the title area (covered by the stretched overlay) activates the Learn more link.
-  await card.scrollIntoViewIfNeeded();
-  await card.evaluate((el) => {
-    el.scrollIntoView({ block: "center" });
-    const title = el.querySelector(".name");
-    const r = title.getBoundingClientRect();
-    document.elementFromPoint(r.x + 8, r.y + 8).click();
-  });
+  // No whole-card stretched overlay: the description is not wrapped in a card-wide link.
+  const descInLink = await card.locator(".desc").evaluate((el) => !!el.closest("a"));
+  expect(descInLink, "description must not be inside a card-wide link").toBe(false);
+  // The copy button and Source link are present and independent (copy behavior covered separately).
+  await expect(card.locator(".copy-btn")).toBeVisible();
+  await expect(card.locator(".foot a.btn:not(.learn-more)")).toHaveCount(1);
+  // Clicking the title link navigates to the plugin page.
+  await titleLink.click();
   await expect(page).toHaveURL(/\/commentable-html\/$/);
 });
 
@@ -298,14 +270,32 @@ test("the Learn more button keeps AA contrast in light and dark themes", async (
   }
 });
 
-test("the plugin page hero logo is horizontally centered under the title", async ({ page }) => {
+test("the plugin page identity line (logo, name, version) sits below the call-to-action buttons", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const logo = await page.locator(".hero-logo").boundingBox();
-  const hero = await page.locator(".hero .wrap").boundingBox();
-  const logoCenter = logo.x + logo.width / 2;
-  const heroCenter = hero.x + hero.width / 2;
-  expect(Math.abs(logoCenter - heroCenter)).toBeLessThanOrEqual(2);
+  const identity = page.locator(".hero .identity");
+  await expect(identity).toBeVisible();
+  // The identity line carries the logo and the version badge.
+  await expect(identity.locator(".hero-logo")).toHaveCount(1);
+  await expect(identity.locator(".badge.version")).toHaveCount(1);
+  // It sits below the call-to-action buttons.
+  const actions = await page.locator(".hero-actions").boundingBox();
+  const idBox = await identity.boundingBox();
+  expect(idBox.y).toBeGreaterThan(actions.y + actions.height - 1);
+});
+
+test("the Why section presents the medium comparison table and the HTML blog reference", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const why = page.locator("#why");
+  const table = why.locator("table.compare");
+  await expect(table).toBeVisible();
+  // Four media rows, with commentable-html as the highlighted row.
+  await expect(table.locator("tbody tr")).toHaveCount(4);
+  await expect(table.locator("tr.compare-hero", { hasText: "commentable-html" })).toHaveCount(1);
+  // The section references the external HTML blog post, opening in a new tab.
+  const blog = why.locator('a[href*="unreasonable-effectiveness-of-html"]').first();
+  await expect(blog).toHaveAttribute("target", "_blank");
+  await expect(blog).toHaveAttribute("rel", /noopener/);
 });
 
 test("the review-loop diagram lives in the Why section, not the loop section", async ({ page }) => {

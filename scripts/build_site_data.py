@@ -162,6 +162,8 @@ def render_plugins(manifest):
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
         title = '<span class="name">%s</span>' % esc(name)
+        if page:
+            title = '<span class="name"><a href="%s">%s</a></span>' % (esc(page), esc(name))
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
         learn_more = ('<a class="btn learn-more" href="%s">Learn more</a>' % esc(page)) if page else ""
         foot = learn_more + source
