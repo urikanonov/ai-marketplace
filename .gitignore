@@ -13,7 +13,12 @@ Thumbs.db
 # Logs and temp
 *.log
 *.tmp
-tmp/
+
+# Scratch space for temporary artifacts (see AGENTS.md, House style). The
+# directory is tracked only by its .gitkeep; everything else inside is ignored,
+# so temporary files never clutter the repo root or show up in git status.
+tmp/*
+!tmp/.gitkeep
 
 # Git worktrees for parallel local editing (kept under the repo root, never committed)
 .worktrees/
