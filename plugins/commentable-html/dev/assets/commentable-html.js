@@ -32,7 +32,8 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.14.0";
+const CMH_VERSION = "1.15.0";
+const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -4037,6 +4038,15 @@ function _downloadHtml(text, filename) {
   a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
 }
+function _layerDescriptorJson(mode) {
+  return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
+}
+function _retargetLayerDescriptor(html, mode) {
+  const rx = /(<script\b[^>]*\bid\s*=\s*(["'])commentableHtmlLayer\2[^>]*>)([\s\S]*?)(<\/script>)/i;
+  if (rx.test(html)) return html.replace(rx, "$1" + _layerDescriptorJson(mode) + "$4");
+  return html.replace(/(<meta name="commentable-html-version" content="[^"]+" \/?>\s*)/i,
+    "$1" + '<script type="application/json" id="commentableHtmlLayer">' + _layerDescriptorJson(mode) + "</scr" + "ipt>\n");
+}
 async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
@@ -4065,6 +4075,9 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
+  const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\bid\\s*=\\s*([\"'])"
+    + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
+  t = t.replace(layerDescriptorScript, "");
   t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
@@ -4178,11 +4191,24 @@ function _inlineNonPortableAssets(baseHtml) {
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
+  t = _retargetLayerDescriptor(t, "portable");
   t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
-  t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
-  t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "[ \\t]*\\n?", "ig"), "");
-  t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
-  t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
+  const cssRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - CSS[\s\S]*?<!--\s*=*\s*END: commentable-html - CSS\s*=*\s*-->[ \t]*\n?/i;
+  const jsRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - JS[\s\S]*?<!--\s*=*\s*END: commentable-html - JS\s*=*\s*-->[ \t]*\n?/i;
+  if (cssRegion.test(t)) {
+    t = t.replace(cssRegion, "");
+  } else {
+    t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
+  }
+  if (jsRegion.test(t)) {
+    t = t.replace(jsRegion, "");
+  } else {
+    const companionScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*commentable-html[^>]*\\.js[^>]*>"
+      + "\\s*<\\/scr" + "ipt>[ \\t]*\\n?", "ig");
+    t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
+    t = t.replace(companionScript, "");
+    t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
+  }
 
   // 2) Inline the CSS in place of the removed <link>, and the runtime just before
   //    </body>. Each block carries its own region markers on their own lines.

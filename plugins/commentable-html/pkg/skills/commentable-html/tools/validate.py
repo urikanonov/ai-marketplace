@@ -43,6 +43,9 @@ from urllib.request import url2pathname
 # --------------------------------------------------------------------------- #
 
 REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
+LAYER_DESCRIPTOR_ID = "commentableHtmlLayer"
+CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
+CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 
 # Structural ids the layer's JS wires up. Missing ones make the layer throw or
 # silently no-op, so their absence is an error. (handledCommentIds and
@@ -120,7 +123,7 @@ _DATA_KEY_RE = re.compile(r'(?i:data-comment-key)\s*=\s*["\']?([^\s"\'<>]+)')
 # The real region marker is an HTML comment, not bare text in prose.
 JS_END_MARKER_TEXT = "END: commentable-html - JS"
 # JSON <script> ids owned by the commentable layer, not chart data.
-LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments"}
+LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", LAYER_DESCRIPTOR_ID}
 # HTML void elements never get pushed on the stack.
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr"}
@@ -484,10 +487,10 @@ def _parser_script_body(parser, script_id, lo=None, hi=None):
 # NonPortable mode: the layer's CSS/JS live in companion commentable-html.{css,js,assets.js}
 # files referenced via <link>/<script src> instead of being inlined. Only CSS
 # and JS leave the document; HANDLED IDS, EMBEDDED COMMENTS and COMMENT UI stay
-# inline (document-owned state + controls), so those three regions are still
-# validated exactly as in inline mode.
+# inline (document-owned state + controls). CSS and JS are marker-delimited
+# companion references, so the same region descriptor works in both modes.
 # --------------------------------------------------------------------------- #
-NONPORTABLE_REGIONS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"]
+NONPORTABLE_REGIONS = REGIONS
 
 
 class _TagAttrParser(HTMLParser):
@@ -560,11 +563,38 @@ def _nonportable_meta_versions(html):
 
 
 def _is_nonportable(html):
-    """NonPortable = the layer's CSS is NOT inlined (no inline CSS region) and the
-    document references external commentable-html companion files."""
-    if _begin_re("CSS").search(html):
-        return False
+    """NonPortable = the document references external commentable-html companion files."""
     return bool(_nonportable_css_refs(html) or _nonportable_js_refs(html))
+
+
+def _check_layer_descriptor(parser, nonportable, active_regions):
+    errors = []
+    scripts = [s for s in parser.scripts if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID]
+    if not scripts:
+        return ['missing <script id="%s" type="application/json"> layer descriptor' % LAYER_DESCRIPTOR_ID]
+    if len(scripts) > 1:
+        errors.append('<script id="%s"> appears %d times (must be unique)' % (LAYER_DESCRIPTOR_ID, len(scripts)))
+    script = scripts[0]
+    if not _is_json_attrs(script["attrs"]):
+        errors.append('the <script id="%s"> block must be type="application/json"' % LAYER_DESCRIPTOR_ID)
+    try:
+        data = json.loads((script["body"] or "").strip())
+    except json.JSONDecodeError as exc:
+        errors.append("%s is not valid JSON: %s" % (LAYER_DESCRIPTOR_ID, exc))
+        return errors
+    if not isinstance(data, dict):
+        errors.append("%s must be a JSON object" % LAYER_DESCRIPTOR_ID)
+        return errors
+    version = data.get("version")
+    if not isinstance(version, str) or not version.strip():
+        errors.append('%s.version must be a non-empty string' % LAYER_DESCRIPTOR_ID)
+    expected_mode = "nonportable" if nonportable else "portable"
+    if data.get("mode") != expected_mode:
+        errors.append('%s.mode must be "%s" for this document' % (LAYER_DESCRIPTOR_ID, expected_mode))
+    if data.get("regions") != active_regions:
+        errors.append("%s.regions must list exactly the active region markers in order: %s"
+                      % (LAYER_DESCRIPTOR_ID, ", ".join(active_regions)))
+    return errors
 
 
 _SECTION_DIR_RE = re.compile(
@@ -742,6 +772,17 @@ def check_layer(html, parser, base_dir=None):
     if len(positions) >= 2 and positions != sorted(positions):
         errors.append("regions are out of order (expected order: %s)" % ", ".join(active_regions))
 
+    errors.extend(_check_layer_descriptor(parser, nonportable, active_regions))
+
+    content_begin_count = html.count(CONTENT_BEGIN)
+    content_end_count = html.count(CONTENT_END)
+    if content_begin_count != 1:
+        errors.append("CONTENT region: expected 1 BEGIN marker, found %d" % content_begin_count)
+    if content_end_count != 1:
+        errors.append("CONTENT region: expected 1 END marker, found %d" % content_end_count)
+    if content_begin_count == 1 and content_end_count == 1 and html.index(CONTENT_BEGIN) >= html.index(CONTENT_END):
+        errors.append("CONTENT region: END marker appears before its BEGIN marker")
+
     # 3) #commentRoot present (real element id, via the parser) with required data-* attributes.
     n_roots = parser.all_ids.count("commentRoot")
     if n_roots == 0:
@@ -750,6 +791,8 @@ def check_layer(html, parser, base_dir=None):
         errors.append(f'id="commentRoot" appears {n_roots} times (must be unique)')
     else:
         attrs = parser.comment_root_attrs or {}
+        if "data-cmh-content-root" not in attrs:
+            errors.append('#commentRoot is missing data-cmh-content-root (stable hook for content/infra tooling)')
         if not attrs.get("data-comment-key", "").strip():
             errors.append('#commentRoot is missing a non-empty data-comment-key (the layer falls back to "commentable-html:" + location.pathname, but set an explicit key so comments do not collide across pages on the same origin)')
         if not attrs.get("data-doc-label", "").strip():
@@ -893,7 +936,7 @@ def check_layer(html, parser, base_dir=None):
             errors.append(f"embeddedComments is not valid JSON: {exc}")
 
     # 6) The JS region must contain exactly one real </script>.
-    if "JS" in begin_idx and "JS" in end_idx:
+    if not nonportable and "JS" in begin_idx and "JS" in end_idx:
         lo, hi = sorted((begin_idx["JS"], end_idx["JS"]))
         js_slice = html[lo:hi]
         n_close = len(re.findall(r"</script\s*>", js_slice, re.IGNORECASE))
@@ -917,7 +960,7 @@ def check_layer(html, parser, base_dir=None):
     # id="handledCommentIds"/"embeddedComments" makes getElementById() (and
     # mark_handled.py) bind to the wrong <script>, silently reading/writing a
     # decoy. Absence is already reported by checks 4/5, so only flag duplicates.
-    for uid in sorted(LAYER_JSON_IDS):
+    for uid in sorted(LAYER_JSON_IDS - {LAYER_DESCRIPTOR_ID}):
         c = id_counts.get(uid, 0)
         if c > 1:
             errors.append(f'<script id="{uid}"> appears {c} times (must be unique)')
