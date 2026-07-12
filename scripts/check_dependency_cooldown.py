@@ -3,6 +3,7 @@
 
 import argparse
 import concurrent.futures
+import glob
 import json
 import os
 import subprocess
@@ -16,13 +17,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 
 COOLDOWN_DAYS = 14
-LOCKFILES = (
-    "plugins/commentable-html/dev/package-lock.json",
+LOCKFILE_PATTERNS = (
+    "plugins/*/dev/package-lock.json",
     "tests/site/package-lock.json",
 )
 REQUEST_TIMEOUT_SECONDS = 10
 REQUEST_RETRIES = 3
 MAX_WORKERS = 8
+GLOBAL_DEADLINE_SECONDS = 60
 _ZERO_SHA = "0" * 40
 
 
@@ -30,6 +32,14 @@ _ZERO_SHA = "0" * 40
 class DependencyVersion:
     name: str
     version: str
+
+
+@dataclass(frozen=True)
+class LockfileDependency:
+    name: str
+    version: str
+    resolved: str
+    registry: bool
 
 
 @dataclass(frozen=True)
@@ -81,6 +91,15 @@ def lockfile_at(ref, path):
     )
 
 
+def discover_lockfiles(root="."):
+    found = set()
+    for pattern in LOCKFILE_PATTERNS:
+        for path in glob.glob(os.path.join(root, pattern.replace("/", os.sep))):
+            if os.path.isfile(path):
+                found.add(os.path.relpath(path, root).replace(os.sep, "/"))
+    return tuple(sorted(found))
+
+
 def _package_name_from_key(key):
     parts = PurePosixPath(key.replace("\\", "/")).parts
     if "node_modules" not in parts:
@@ -105,35 +124,68 @@ def _is_registry_npm(resolved):
         return False
 
 
-def parse_lockfile_versions(lockfile, require_registry=True):
-    versions = {}
+def _package_name_from_entry(key, entry):
+    name = entry.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return _package_name_from_key(key)
+
+
+def parse_lockfile_dependencies(lockfile):
+    deps = set()
     for key, entry in (lockfile or {}).get("packages", {}).items():
         if key == "" or not isinstance(entry, dict):
             continue
         version = entry.get("version")
-        if not version or (require_registry and not _is_registry_npm(entry.get("resolved"))):
+        if not version:
             continue
-        name = _package_name_from_key(key)
+        name = _package_name_from_entry(key, entry)
         if name:
-            versions[key.replace("\\", "/")] = DependencyVersion(name, str(version))
+            resolved = str(entry.get("resolved") or "")
+            deps.add(LockfileDependency(name, str(version), resolved, _is_registry_npm(resolved)))
+    return deps
+
+
+def parse_lockfile_versions(lockfile, require_registry=True):
+    versions = set()
+    for dep in parse_lockfile_dependencies(lockfile):
+        if require_registry and not dep.registry:
+            continue
+        versions.add(DependencyVersion(dep.name, dep.version))
     return versions
 
 
-def changed_dependency_versions(head_lockfile, base_lockfile):
-    head_versions = parse_lockfile_versions(head_lockfile)
+def _non_registry_warning(dep):
+    source = dep.resolved or "(no resolved URL)"
+    return (
+        "check-dependency-cooldown: WARNING - %s@%s is a changed npm dependency from a non-registry source "
+        "(%s) and is not cooldown-checked."
+        % (dep.name, dep.version, source)
+    )
+
+
+def changed_dependency_versions(head_lockfile, base_lockfile, include_warnings=False):
+    head_deps = parse_lockfile_dependencies(head_lockfile)
     base_versions = parse_lockfile_versions(base_lockfile, require_registry=False)
     changed = set()
-    for key, head_dep in head_versions.items():
-        base_dep = base_versions.get(key)
-        if base_dep is None or base_dep.version != head_dep.version or base_dep.name != head_dep.name:
-            changed.add(head_dep)
+    warnings = []
+    for head_dep in sorted(head_deps, key=lambda d: (d.name, d.version, d.resolved)):
+        identity = DependencyVersion(head_dep.name, head_dep.version)
+        if identity in base_versions:
+            continue
+        if head_dep.registry:
+            changed.add(identity)
+        else:
+            warnings.append(_non_registry_warning(head_dep))
+    if include_warnings:
+        return changed, sorted(warnings)
     return changed
 
 
-def changed_pairs_from_git(base_ref, head_ref, event):
+def changed_pairs_from_git(base_ref, head_ref, event, include_warnings=False):
     if not base_ref or base_ref.startswith(_ZERO_SHA):
         print("check-dependency-cooldown: no base ref (new branch / first commit); skipping.")
-        return set()
+        return (set(), []) if include_warnings else set()
     if not ref_exists(base_ref):
         raise SystemExit(
             "check-dependency-cooldown: base ref %r is not a valid commit (fetch it, "
@@ -143,16 +195,21 @@ def changed_pairs_from_git(base_ref, head_ref, event):
         raise SystemExit("check-dependency-cooldown: head ref %r is not a valid commit." % head_ref)
     if rev_parse(base_ref) == rev_parse(head_ref):
         print("check-dependency-cooldown: base and head resolve to the same commit; no changed npm versions.")
-        return set()
+        return (set(), []) if include_warnings else set()
 
     from_ref = base_ref if event == "push" else merge_base(base_ref, head_ref)
     changed = set()
-    for path in LOCKFILES:
+    warnings = []
+    for path in discover_lockfiles():
         head_lockfile = lockfile_at(head_ref, path)
         if head_lockfile is None:
             continue
         base_lockfile = lockfile_at(from_ref, path)
-        changed.update(changed_dependency_versions(head_lockfile, base_lockfile))
+        path_changed, path_warnings = changed_dependency_versions(head_lockfile, base_lockfile, include_warnings=True)
+        changed.update(path_changed)
+        warnings.extend(path_warnings)
+    if include_warnings:
+        return changed, sorted(warnings)
     return changed
 
 
@@ -165,24 +222,53 @@ def parse_npm_time(value):
         return None
 
 
-def fetch_publish_time(dep):
-    package_url = "https://registry.npmjs.org/%s" % urllib.parse.quote(dep.name, safe="@")
+def fetch_publish_times_for_name(name, versions, deadline_at):
+    package_url = "https://registry.npmjs.org/%s" % urllib.parse.quote(name, safe="@")
     last_error = None
+    versions = sorted(set(str(v) for v in versions))
     for attempt in range(REQUEST_RETRIES):
+        remaining = deadline_at - time.monotonic()
+        if remaining <= 0:
+            last_error = TimeoutError("global deadline exceeded")
+            break
         try:
             request = urllib.request.Request(package_url, headers={"User-Agent": "ai-marketplace-dependency-cooldown"})
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+            with urllib.request.urlopen(request, timeout=min(REQUEST_TIMEOUT_SECONDS, max(0.1, remaining))) as response:
                 packument = json.loads(response.read().decode("utf-8"))
             time_map = packument.get("time")
-            published = parse_npm_time(time_map.get(dep.version) if isinstance(time_map, dict) else None)
-            if published is None:
-                raise ValueError("packument has no parseable time[%s]" % dep.version)
-            return dep, published, None
+            if not isinstance(time_map, dict):
+                raise ValueError("packument has no parseable time map")
+            publish_times = {}
+            warnings = []
+            for version in versions:
+                published = parse_npm_time(time_map.get(version))
+                dep = DependencyVersion(name, version)
+                if published is None:
+                    warnings.append(
+                        "check-dependency-cooldown: WARNING - could not verify %s@%s from npm registry after %d attempts; "
+                        "skipping this package (packument has no parseable time[%s])."
+                        % (name, version, REQUEST_RETRIES, version)
+                    )
+                else:
+                    publish_times[dep] = published
+            return publish_times, warnings
         except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError) as exc:
             last_error = exc
             if attempt + 1 < REQUEST_RETRIES:
-                time.sleep(0.5 * (2 ** attempt))
-    return dep, None, last_error
+                sleep_for = min(0.5 * (2 ** attempt), max(0, deadline_at - time.monotonic()))
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+    return {}, [
+        "check-dependency-cooldown: WARNING - could not verify %s@%s from npm registry after %d attempts; "
+        "skipping this package (%s)."
+        % (name, version, REQUEST_RETRIES, last_error)
+        for version in versions
+    ]
+
+
+def fetch_publish_time(dep):
+    times, warnings = fetch_publish_times_for_name(dep.name, [dep.version], time.monotonic() + GLOBAL_DEADLINE_SECONDS)
+    return dep, times.get(dep), None if not warnings else ValueError(warnings[0])
 
 
 def fetch_publish_times(changed_pairs):
@@ -190,19 +276,51 @@ def fetch_publish_times(changed_pairs):
     warnings = []
     if not changed_pairs:
         return publish_times, sorted(warnings)
-    workers = min(MAX_WORKERS, len(changed_pairs))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(fetch_publish_time, dep) for dep in sorted(changed_pairs)]
-        for future in concurrent.futures.as_completed(futures):
-            dep, published, error = future.result()
-            if error is None:
-                publish_times[dep] = published
-            else:
+    grouped = {}
+    for dep in sorted(changed_pairs):
+        grouped.setdefault(dep.name, set()).add(dep.version)
+    deadline_at = time.monotonic() + GLOBAL_DEADLINE_SECONDS
+    workers = min(MAX_WORKERS, len(grouped))
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+    future_to_name = {}
+    try:
+        for name, versions in sorted(grouped.items()):
+            future = executor.submit(fetch_publish_times_for_name, name, sorted(versions), deadline_at)
+            future_to_name[future] = name
+        pending = set(future_to_name)
+        while pending:
+            remaining = deadline_at - time.monotonic()
+            if remaining <= 0:
+                break
+            done, pending = concurrent.futures.wait(
+                pending,
+                timeout=remaining,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for future in done:
+                try:
+                    found, found_warnings = future.result()
+                    publish_times.update(found)
+                    warnings.extend(found_warnings)
+                except Exception as exc:
+                    name = future_to_name[future]
+                    for version in sorted(grouped[name]):
+                        warnings.append(
+                            "check-dependency-cooldown: WARNING - could not verify %s@%s from npm registry after %d attempts; "
+                            "skipping this package (%s)."
+                            % (name, version, REQUEST_RETRIES, exc)
+                        )
+        for future in pending:
+            future.cancel()
+            name = future_to_name[future]
+            for version in sorted(grouped[name]):
                 warnings.append(
-                    "check-dependency-cooldown: WARNING - could not verify %s@%s from npm registry after %d attempts; "
-                    "skipping this package (%s)."
-                    % (dep.name, dep.version, REQUEST_RETRIES, error)
+                    "check-dependency-cooldown: WARNING - could not verify %s@%s from npm registry before the %d-second deadline; "
+                    "skipping this package."
+                    % (name, version, GLOBAL_DEADLINE_SECONDS)
                 )
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
     return publish_times, sorted(warnings)
 
 
@@ -230,7 +348,9 @@ def main(argv=None):
     parser.add_argument("--event", default=os.environ.get("COOLDOWN_EVENT", "pull_request"))
     args = parser.parse_args(argv)
 
-    changed = changed_pairs_from_git(args.base, args.head, args.event)
+    changed, policy_warnings = changed_pairs_from_git(args.base, args.head, args.event, include_warnings=True)
+    for warning in policy_warnings:
+        sys.stderr.write(warning + "\n")
     if not changed:
         print("check-dependency-cooldown OK (no added or bumped npm dependency versions).")
         return 0

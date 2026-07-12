@@ -39,3 +39,5 @@ Tooling should treat everything between those CONTENT markers as the user's docu
 ## Compatibility guarantee
 
 Within a major version, a tool can read `#commentableHtmlLayer.regions`, locate and replace those infra regions in order, and leave the CONTENT region untouched. Region marker names stay stable within the major version. A breaking change to the descriptor shape, marker names, or content-root hook requires a major version bump.
+
+`validate.py --strict` validates the current contract only, so legacy pre-1.15 documents must be regenerated or upgraded before validating.

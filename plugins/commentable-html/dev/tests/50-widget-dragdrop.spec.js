@@ -1,7 +1,10 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
-import { DEV, SKILL, fileUrl, ready, installClipboardCapture, copiedBundle, stageContent, readDownload } from "./helpers.js";
+import {
+  DEV, SKILL, fileUrl, ready, installClipboardCapture, copiedBundle, stageContent, readDownload,
+  addTextComment,
+} from "./helpers.js";
 
 const TRIAGE = path.join(SKILL, "examples", "report-triage.html");
 
@@ -117,6 +120,19 @@ function makeNestedSlotBoard() {
   </div>
   <div class="col" data-cm-slot="Done" id="nestedDone" style="min-height: 180px; padding: 16px;"></div>
 </div>`;
+}
+
+function makeOffsetBoard() {
+  return `
+<h1>Widget text offset board</h1>
+<section data-cm-widget="offset-board" data-cm-draggable>
+  <div data-cm-slot="Before" id="offsetBefore" style="min-height: 110px; padding: 12px; border: 1px solid #999;">
+    <article data-cm-part="alpha" data-cm-part-label="Alpha card" id="offsetCard"
+      style="min-height: 70px; padding: 10px; border: 1px solid #666;">Alpha card text that changes text offsets.</article>
+  </div>
+  <p id="offsetTarget">The correct review sentence should stay highlighted after export.</p>
+  <div data-cm-slot="After" id="offsetAfter" style="min-height: 110px; padding: 12px; border: 1px solid #999;"></div>
+</section>`;
 }
 
 async function stageBoard(page, content, key) {
@@ -402,6 +418,40 @@ test("exporting after a move persists the new DOM order and keeps widget comment
     await expect(page2.locator("#commentList")).toContainText("follow this card");
   } finally {
     await ctx.close();
+    fs.rmSync(exportedPath, { force: true });
+  }
+});
+
+test("exporting after a widget move refreshes later prose text comment offsets (CMH-WIDGET-17)", async ({ page, browser }) => {
+  const staged = await stageBoard(page, makeOffsetBoard(), "cmh-widget-export-text-offsets");
+  const exportedPath = path.join(path.resolve(DEV, "..", "..", "..", "tmp"), "cmh-widget-text-offset-exported.html");
+  try {
+    await addTextComment(page, "#offsetTarget", "plain text near a widget move");
+    await expect(page.locator("#offsetTarget mark.cm-hl")).toContainText("correct review sentence should stay highlighted after export.");
+    await dragCardToSlot(page, "#offsetCard", "#offsetAfter");
+    await expect(page.locator("#offsetAfter > #offsetCard")).toHaveCount(1);
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnSaveHtml").click(),
+    ]);
+    const html = await readDownload(download);
+    fs.mkdirSync(path.dirname(exportedPath), { recursive: true });
+    fs.writeFileSync(exportedPath, html);
+
+    const ctx = await browser.newContext();
+    try {
+      const page2 = await ctx.newPage();
+      await page2.goto(fileUrl(exportedPath));
+      await ready(page2);
+      await expect(page2.locator("#offsetAfter > #offsetCard")).toHaveCount(1);
+      await expect(page2.locator("#offsetTarget mark.cm-hl")).toContainText("correct review sentence should stay highlighted after export.");
+      await expect(page2.locator("#commentList")).toContainText("plain text near a widget move");
+    } finally {
+      await ctx.close();
+    }
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
     fs.rmSync(exportedPath, { force: true });
   }
 });

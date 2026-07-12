@@ -194,6 +194,8 @@ Generated documents also carry a small machine-readable content/infra contract f
 | Per (re)generation cost | agent emits a lightweight shell and content; the boilerplate is referenced, never re-emitted | agent emits the full inline file, or the browser inlines it during export |
 | Best for | fast personal iteration with the agent where regeneration speed and token cost matter | peer review, long-term persistence, or any file that must travel alone |
 
+NonPortable is for fast iteration, Portable is for peer review, and Offline is for zero-network handoff. Offline files are Portable exports with rendered mermaid SVG and chart PNG snapshots inlined, remote loaders stripped, and the badge state set to **Offline**.
+
 **Default to NonPortable.** It is the skill's default output because a review document is edited many times and NonPortable keeps each regeneration much smaller. `tools/new_document.py` points a new NonPortable document at this installed skill's `dist/` with absolute `file://` companion URLs, so a loose HTML can be moved on the same machine without losing its CSS/JS. It is still local-only: moving it to another machine breaks those references, so get a self-contained copy for peer review or long-term persistence by regenerating with `--portable` before browser comments exist, or via the in-page **Export as Portable** button after review starts. That button is the only path that captures comments the user typed in the browser. Choose Portable up front only for a one-shot artifact you will email or archive without iterating.
 
 ### Producing a NonPortable document
@@ -222,7 +224,7 @@ The toolbar is intentionally minimal: **Copy all**, the open-comment **count bub
 
 **Timestamps and the card body.** Comment times render in an unambiguous 24-hour local format with a month NAME (e.g. `Jul 9, 2026, 13:07`, so it reads the same in M/D/Y and D/M/Y locales; no AM/PM) on the card and in the Copy bundle. The card shows reader-facing anchor info only; the internal pinpoint (`in <li> - match 2 of 4`) is omitted from the card but still emitted on the Copy bundle's `Pinpoint:` line for the agent. "Generated on" reads an optional `data-generated` attribute on `#commentRoot` (set it for a deterministic value) and otherwise falls back to the file's last-modified time.
 
-**Document-type bubble.** The bubble shows whether the open file is **Portable** or **Not portable**. Hover **Not portable** to see the reason: the page references nonportable companion assets, has live comments that are not embedded, or still contains embedded comments that were deleted this session and need a re-export to leave the file. Deleting an embedded comment is durable across reload via a tombstone, but the file stays **Not portable** until **Export as Portable** writes a fresh copy.
+**Document-type bubble.** The bubble shows whether the open file is **Portable**, **Offline**, or **Not portable**. Hover or focus the bubble to see the reason: Portable is self-contained, Offline is self-contained and works with no network, and Not portable means the page references companion assets, has live comments that are not embedded, or still contains embedded comments that were deleted this session and need a re-export to leave the file. Deleting an embedded comment is durable across reload via a tombstone, but the file stays **Not portable** until **Export as Portable** writes a fresh copy.
 
 **Help.** The Help button (sidebar meta row, overflow menu, and the footer **Help & about** link) opens a modal whose content is grouped into **collapsible topics** with a **live search box** (focused on open) that filters topics and their entries as you type and shows an empty-state when nothing matches. Topics cover leaving a comment, managing comments, the panel and toolbar, Portable / Not portable, exporting and sharing, sending comments to an agent, navigation, reading aids, keyboard and accessibility, self-contained and privacy, and an **About** section (layer version, source-repo link `github.com/urikanonov/ai-marketplace`, Raise-an-issue link, and author). It is trusted static content, traps Tab focus inside itself (including the search box and topic summaries), closes on Escape / backdrop / the X, and restores focus.
 
@@ -343,7 +345,7 @@ Images inside `#commentRoot` can receive whole-image comments restored by image 
 
 ## Commentable widgets, SVG nodes, and document-wide comments
 
-Interactive widgets and SVG figures become commentable per part via a generic opt-in contract (`data-cm-widget` / `data-cm-part` / `data-cm-slot`); parts inside `data-cm-slot` containers also get deterministic layout-change tracking, and right-clicking empty space adds a document-wide comment. See [Commentable widgets](references/commentable-widgets.md) for the markup, restore behavior, state-change bundle, and portability effect.
+Interactive widgets and SVG figures become commentable per part via a generic opt-in contract (`data-cm-widget` / `data-cm-part` / `data-cm-slot`); parts inside `data-cm-slot` containers also get deterministic layout-change tracking, and right-clicking empty space adds a document-wide comment. Add `data-cm-draggable` to the widget root or to individual slot containers when cards should be movable. Only direct `data-cm-part` children of a slot are movable, so nested controls and sub-widgets stay stable unless they opt in separately. See [Commentable widgets](references/commentable-widgets.md) for the markup, restore behavior, state-change bundle, and portability effect.
 
 ## Leaving comments (interaction model)
 
@@ -356,6 +358,10 @@ Make source references actionable with real ADO links and stable in-page cross-r
 ## Export as Portable
 
 The export action downloads a fresh copy with the current comments written into `#embeddedComments`; in nonportable mode it also inlines the companion assets into one portable file. See [Exports](references/exports.md) for merge semantics and implementation details.
+
+## Export Offline
+
+Use **Export Offline** when the recipient needs a zero-network handoff. It first builds the Portable export, then snapshots rendered mermaid diagrams as inline SVG, snapshots Chart.js canvases as PNG images, and strips remote rich-content loaders. Run it after mermaid diagrams and charts have rendered in the browser; otherwise there is nothing rendered to snapshot.
 
 ## Combined file from a nonportable document
 

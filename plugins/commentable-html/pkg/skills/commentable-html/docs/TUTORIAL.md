@@ -26,7 +26,7 @@ The rest of this tutorial walks through step 2 in detail: every kind of thing yo
 ## 2. Read the document-type bubble and version
 
 1. In the sidebar header, look at the document-type bubble.
-2. It reads **Portable** (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads **Not portable** (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.
+2. It reads **Portable** (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads **Offline** when the file is also ready for a zero-network handoff: rendered Mermaid diagrams and chart snapshots are embedded and remote loaders are stripped. It reads **Not portable** (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.
 3. Next to the bubble, the version indicator shows `v<x.y.z>`, telling you which Commentable HTML runtime produced the file.
 
 ## 3. Open Help & About
@@ -116,6 +116,8 @@ Mermaid diagrams render when you open the file in a modern browser. If one does 
 Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.
 
 To share the review with another person instead, use **Export as Portable** to bake the comments into a single self-contained copy, or **Export to Plain HTML** to hand over a clean copy with the commenting layer removed.
+
+Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, inlines the rendered Mermaid SVG and Chart.js chart PNG snapshots, strips remote loaders, and reopens with the **Offline** badge.
 
 ## Dark theme
 

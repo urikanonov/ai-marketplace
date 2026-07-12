@@ -11,6 +11,7 @@ import _paths
 
 EXPORTS_MD = os.path.join(_paths.PKG, "references", "exports.md")
 SKILL_MD = os.path.join(_paths.PKG, "SKILL.md")
+TUTORIAL_MD = os.path.join(_paths.PKG, "docs", "TUTORIAL.md")
 
 
 def _read(path):
@@ -59,6 +60,33 @@ class MotivationDocsTests(unittest.TestCase):
 
     def test_skill_cites_the_blog_reference(self):
         self.assertIn(BLOG_URL, _read(SKILL_MD))
+
+
+class NewFeatureDocsTests(unittest.TestCase):
+    """CMH-DOC-02: the shipped guidance covers widget drag opt-in, Offline state, and Export Offline."""
+
+    def test_skill_documents_widget_drag_and_offline_modes(self):
+        text = _read(SKILL_MD)
+        for snippet in (
+            "NonPortable is for fast iteration",
+            "Portable is for peer review",
+            "Offline is for zero-network handoff",
+            "data-cm-draggable",
+            "Only direct `data-cm-part` children of a slot are movable",
+            "Export Offline",
+            "after mermaid diagrams and charts have rendered",
+        ):
+            self.assertIn(snippet, text)
+
+    def test_tutorial_documents_offline_export(self):
+        text = _read(TUTORIAL_MD)
+        for snippet in (
+            "Offline",
+            "Export Offline",
+            "zero-network handoff",
+            "after Mermaid diagrams and charts have rendered",
+        ):
+            self.assertIn(snippet, text)
 
 
 if __name__ == "__main__":

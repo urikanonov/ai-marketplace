@@ -98,6 +98,11 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
         html = _read(os.path.join(_paths.DIST, "PORTABLE.html")).replace('"mode":"portable"', '"mode":"offline"', 1)
         self.assert_contract(html, "offline")
 
+    def test_reference_notes_strict_validator_current_contract_scope(self):
+        text = _read(os.path.join(_paths.PKG, "references", "forward-compatible-layout.md"))
+        self.assertIn("`validate.py --strict` validates the current contract only", text)
+        self.assertIn("pre-1.15", text)
+
 
 if __name__ == "__main__":
     unittest.main()
