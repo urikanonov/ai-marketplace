@@ -38,6 +38,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-BUILD-10 | Changelog plugin matching is anchored and case-insensitive so a plugin name matches its own heading but not a mid-text mention or another plugin. | `scripts/test_build_site_data.py` - `MentionsPluginTests` |
 | SITE-BUILD-11 | The changelog shows the two most recent releases inline and folds the next five into a collapsed `<details>`; any releases beyond those seven are not rendered inline but are summarized with a link to the full changelog in source, so the page never grows without bound. | `scripts/test_build_site_data.py` - `ChangelogInlineTests.test_older_releases_capped_and_rest_linked_to_source` |
 | SITE-BUILD-12 | Each plugin card renders its manifest `category` as a badge and its `keywords` as chips; for `commentable-html` this is the "planning and analysis" category badge and the analysis/plan/report keyword chips. | `scripts/test_build_site_data.py` - `RenderPluginsTests.test_real_manifest_commentable_badge_and_chips` |
+| SITE-BUILD-13 | The served `site/assets/styles.css` is assembled by `build_site_data.py` from ordered source partials under `site-src/css/` (concatenated in a fixed, cascade-preserving order); the committed stylesheet is byte-identical to the concatenation and `--check` fails if it drifts from the partials. | `scripts/test_build_site_data.py` - `StylesConcatTests.test_concat_matches_committed_stylesheet`, `StylesConcatTests.test_parts_exist_and_base_loads_first` |
 
 ## Hub page
 
