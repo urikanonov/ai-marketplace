@@ -1,5 +1,87 @@
 const { test, expect } = require("@playwright/test");
 
+function contrastRatio(foreground, background) {
+  const channel = (value) => {
+    const normalized = value / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  };
+  const luminance = (color) => {
+    const r = channel(color.r);
+    const g = channel(color.g);
+    const b = channel(color.b);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const a = luminance(foreground);
+  const b = luminance(background);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+async function compositedContrast(page, selector) {
+  return page.locator(selector).first().evaluate((el) => {
+    const parseColor = (value) => {
+      const raw = (value || "").trim().toLowerCase();
+      if (!raw || raw === "transparent") return { r: 0, g: 0, b: 0, a: 0 };
+      const hex = raw.match(/^#([0-9a-f]{6})$/i);
+      if (hex) {
+        return {
+          r: parseInt(hex[1].slice(0, 2), 16),
+          g: parseInt(hex[1].slice(2, 4), 16),
+          b: parseInt(hex[1].slice(4, 6), 16),
+          a: 1,
+        };
+      }
+      const rgb = raw.match(/^rgba?\((.*)\)$/);
+      if (rgb) {
+        const parts = rgb[1].replace(/\//g, " ").split(/[,\s]+/).filter(Boolean);
+        const channel = (part) => part.endsWith("%") ? Number(part.slice(0, -1)) * 2.55 : Number(part);
+        return {
+          r: channel(parts[0]),
+          g: channel(parts[1]),
+          b: channel(parts[2]),
+          a: parts[3] === undefined ? 1 : Number(parts[3]),
+        };
+      }
+      const srgb = raw.match(/^color\(srgb\s+(.+)\)$/);
+      if (srgb) {
+        const parts = srgb[1].replace(/\//g, " ").split(/\s+/).filter(Boolean);
+        return {
+          r: Number(parts[0]) * 255,
+          g: Number(parts[1]) * 255,
+          b: Number(parts[2]) * 255,
+          a: parts[3] === undefined ? 1 : Number(parts[3]),
+        };
+      }
+      throw new Error("unsupported color format: " + value);
+    };
+    const blend = (top, bottom) => {
+      const alpha = top.a + bottom.a * (1 - top.a);
+      if (alpha === 0) return { r: 0, g: 0, b: 0, a: 0 };
+      return {
+        r: (top.r * top.a + bottom.r * bottom.a * (1 - top.a)) / alpha,
+        g: (top.g * top.a + bottom.g * bottom.a * (1 - top.a)) / alpha,
+        b: (top.b * top.a + bottom.b * bottom.a * (1 - top.a)) / alpha,
+        a: alpha,
+      };
+    };
+    let background = { r: 0, g: 0, b: 0, a: 0 };
+    let node = el;
+    while (node && node.nodeType === Node.ELEMENT_NODE) {
+      background = blend(background, parseColor(getComputedStyle(node).backgroundColor));
+      if (background.a >= 0.999) break;
+      node = node.parentElement;
+    }
+    if (background.a < 0.999) {
+      background = blend(background, { r: 255, g: 255, b: 255, a: 1 });
+    }
+    return {
+      foreground: parseColor(getComputedStyle(el).color),
+      background: background,
+    };
+  });
+}
+
 // Keep the suite hermetic and deterministic: block every request that is not our
 // local static server so a flaky GitHub API, the star-widget CDN, or the mermaid
 // CDN can never fail the deploy gate. We validate the built static output only.
@@ -27,8 +109,6 @@ test("hub renders with plugins, install command, and logo", async ({ page }) => 
 test("a plugin card is clickable across its body, navigating to the plugin page (SITE-HUB-06)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
-  // A stretched title link covers the card body. Click the coordinate over the description
-  // (mouse.click hits whatever is topmost - the stretched link) and expect navigation.
   const desc = card.locator(".desc");
   await desc.scrollIntoViewIfNeeded();
   const box = await desc.boundingBox();
@@ -39,8 +119,6 @@ test("a plugin card is clickable across its body, navigating to the plugin page 
 test("the card copy button and Learn more stay independently clickable over the card link (SITE-HUB-06)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
-  // The interactive controls are raised above the stretched link so they act on their own
-  // (no navigation, no cursor flicker): the copy button copies rather than navigating.
   await card.locator(".copy-btn").click();
   await expect(page).toHaveURL(/\/$/);
 });
@@ -99,6 +177,18 @@ test("the portability section shows three modes including Offline with a source 
   await expect(offline.locator(".src-inline")).not.toHaveCount(0);
   // Non-portable still pulls mermaid + charts from a CDN.
   await expect(page.locator(".mode-card", { hasText: "Non-portable" }).locator(".src-cdn")).not.toHaveCount(0);
+});
+
+test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  for (const selector of [".src-cdn", ".src-inline"]) {
+    const colors = await compositedContrast(page, selector);
+    expect(
+      contrastRatio(colors.foreground, colors.background),
+      selector + " contrast"
+    ).toBeGreaterThanOrEqual(4.5);
+  }
 });
 
 test("every page exposes a skip-to-content link that targets the main region", async ({ page }) => {
@@ -198,7 +288,7 @@ test("light and dark themes preserve readable contrast", async ({ page }) => {
 test("plugin page renders version, features, changelog, and demo", async ({ page }) => {
   const resp = await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   expect(resp.status()).toBeLessThan(400);
-  await expect(page).toHaveTitle(/commentable-html/i);
+  await expect(page).toHaveTitle(/Commentable HTML/i);
   await expect(page.locator(".badge.version")).toContainText(/v\d+\.\d+\.\d+/);
   expect(await page.locator("#features .feature").count()).toBeGreaterThanOrEqual(4);
   expect(await page.locator("#changelog .release").count()).toBeGreaterThanOrEqual(1);
@@ -302,22 +392,24 @@ test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
   await expect(btn).toHaveClass(/copy-failed/);
 });
 
-test("a plugin card exposes explicit title and Learn more links to its page, no whole-card overlay", async ({ page }) => {
+test("plugin card keeps keyboard links plus the stretched overlay and independent controls (SITE-A11Y-04)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const card = page.locator(".plugin-card", { hasText: "commentable-html" });
-  // The visible title is an explicit, keyboard-focusable link to the plugin page.
   const titleLink = card.locator(".name a");
   await expect(titleLink).toHaveAttribute("href", "./commentable-html/");
-  // The warm-amber Learn more button also links to the page.
+  const overlay = await titleLink.evaluate((el) => {
+    const after = getComputedStyle(el, "::after");
+    return { content: after.content, position: after.position, zIndex: after.zIndex };
+  });
+  expect(overlay.content).not.toBe("none");
+  expect(overlay.position).toBe("absolute");
+  expect(overlay.zIndex).toBe("1");
   const learn = card.locator("a.learn-more");
   await expect(learn).toHaveAttribute("href", "./commentable-html/");
-  // No whole-card stretched overlay: the description is not wrapped in a card-wide link.
   const descInLink = await card.locator(".desc").evaluate((el) => !!el.closest("a"));
   expect(descInLink, "description must not be inside a card-wide link").toBe(false);
-  // The copy button and Source link are present and independent (copy behavior covered separately).
   await expect(card.locator(".copy-btn")).toBeVisible();
   await expect(card.locator(".foot a.btn:not(.learn-more)")).toHaveCount(1);
-  // Clicking the title link navigates to the plugin page.
   await titleLink.click();
   await expect(page).toHaveURL(/\/commentable-html\/$/);
 });
@@ -712,6 +804,36 @@ test("plugin and tutorial pages carry a self-referencing canonical and Open Grap
   }
 });
 
+test("plugin and tutorial metadata use display titles while stable identifiers keep the slug (SITE-SEO-09)", async ({ page }) => {
+  const cases = [
+    {
+      path: "/commentable-html/",
+      title: "Commentable HTML - inline-comment review surface for any HTML",
+      canonical: PROD + "commentable-html/",
+      jsonLdName: "commentable-html",
+    },
+    {
+      path: "/commentable-html/tutorial/",
+      title: "Commentable HTML tutorial - a guided walkthrough",
+      canonical: PROD + "commentable-html/tutorial/",
+    },
+  ];
+  for (const c of cases) {
+    await page.goto(c.path, { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveTitle(c.title);
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", c.title);
+    await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute("content", c.title);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", c.canonical);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", c.canonical);
+    if (c.jsonLdName) {
+      const raw = await page.locator('script[type="application/ld+json"]').first().textContent();
+      const graph = JSON.parse(raw)["@graph"];
+      const app = graph.find((n) => n["@type"] === "SoftwareApplication");
+      expect(app.name).toBe(c.jsonLdName);
+    }
+  }
+});
+
 test("the hub embeds valid JSON-LD describing the site and its plugins", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const raw = await page.locator('script[type="application/ld+json"]').first().textContent();
@@ -766,4 +888,30 @@ test("the hub H1 reads as continuous text with correct word spacing", async ({ p
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const text = (await page.locator("h1").first().textContent()).replace(/\s+/g, " ").trim();
   expect(text).toBe("A marketplace of AI plugins for the Copilot CLI");
+});
+
+test("plugin card text can be selected without navigation and plain body clicks still navigate (SITE-HUB-08)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
+  const desc = card.locator(".desc");
+  await desc.scrollIntoViewIfNeeded();
+  const box = await desc.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = Array.from(range.getClientRects()).find((r) => r.width > 80 && r.height > 8);
+    range.detach();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
+  await page.evaluate(() => window.getSelection().removeAllRanges());
+  await page.mouse.move(box.x + 8, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + Math.min(box.width - 8, 240), box.y + box.height / 2, { steps: 12 });
+  await page.mouse.up();
+  const selected = await page.evaluate(() => window.getSelection().toString());
+  expect(selected.trim().length).toBeGreaterThan(0);
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.evaluate(() => window.getSelection().removeAllRanges());
+  await page.mouse.click(box.x + 20, box.y + box.height / 2);
+  await expect(page).toHaveURL(/\/commentable-html\/$/);
 });

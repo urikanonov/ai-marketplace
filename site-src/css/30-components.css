@@ -101,14 +101,11 @@ main > section:nth-of-type(even) {
 .plugin-card .keywords { display: flex; flex-wrap: wrap; gap: 6px; }
 .plugin-card .foot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-/* The whole card is a click target to the plugin page again: a stretched pseudo-link over the
-   card body. Interactive controls (install/copy block, foot buttons) are raised ABOVE it so they
-   act on their own without navigating and without the cursor flicker the old full-card overlay had. */
 .plugin-card .name a { color: inherit; text-decoration: none; }
 .plugin-card .name a:hover { color: var(--cp-accent); text-decoration: underline; }
 .plugin-card .name a:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; border-radius: 4px; }
-.plugin-card .name a::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
-.plugin-card .cmd, .plugin-card .foot { position: relative; z-index: 2; }
+.plugin-card .name a::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; }
+.plugin-card .desc, .plugin-card .keywords, .plugin-card .cmd, .plugin-card .foot { position: relative; z-index: 2; }
 .plugin-card .learn-more {
   background: var(--cp-accent);
   color: var(--cp-accent-fg);
@@ -116,20 +113,34 @@ main > section:nth-of-type(even) {
 }
 .plugin-card .learn-more:hover { background: var(--cp-accent-hover); border-color: var(--cp-accent-hover); color: var(--cp-accent-fg); }
 
-/* Portability-mode "where each part comes from" graph: one row per part, with a color-coded
-   source chip (skill folder / CDN / inlined / seeded-from-HTML / browser storage). */
 .mode-card { display: flex; flex-direction: column; }
 .mode-card p { flex: 1; }
 .mode-sources { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--cp-border); display: flex; flex-direction: column; gap: 8px; }
 .mode-source { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .mode-source dt { color: var(--cp-text-muted); font-size: 0.88rem; font-weight: 600; }
 .mode-source dd { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.src { font-family: var(--cp-mono); font-size: 0.72rem; padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.src {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--cp-mono);
+  font-size: 0.72rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--cp-text);
+  white-space: nowrap;
+}
+.src::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--cp-border-strong); flex: 0 0 auto; }
 .src-folder { background: var(--cp-surface-soft); color: var(--cp-text-muted); border-color: var(--cp-border); }
-.src-cdn { background: color-mix(in srgb, var(--cp-warning) 18%, transparent); color: var(--cp-warning); }
-.src-inline { background: color-mix(in srgb, var(--cp-success) 18%, transparent); color: var(--cp-success); }
-.src-storage { background: var(--cp-accent-soft); color: var(--cp-accent); }
-.src-seed { background: color-mix(in srgb, var(--cp-link) 15%, transparent); color: var(--cp-link); }
+.src-cdn { background: color-mix(in srgb, var(--cp-warning) 18%, transparent); border-color: var(--cp-warning); }
+.src-cdn::before { background: var(--cp-warning); }
+.src-inline { background: color-mix(in srgb, var(--cp-success) 18%, transparent); border-color: var(--cp-success); }
+.src-inline::before { background: var(--cp-success); }
+.src-storage { background: var(--cp-accent-soft); border-color: var(--cp-accent); }
+.src-storage::before { background: var(--cp-accent); }
+.src-seed { background: color-mix(in srgb, var(--cp-link) 15%, transparent); border-color: var(--cp-link); }
+.src-seed::before { background: var(--cp-link); }
 
 .badge {
   display: inline-block;
@@ -178,4 +189,3 @@ main > section:nth-of-type(even) {
 }
 .step h3, .step h4 { font-size: 1.02rem; margin-bottom: 4px; }
 .step p { color: var(--cp-text-muted); font-size: 0.93rem; }
-

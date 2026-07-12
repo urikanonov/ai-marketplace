@@ -111,11 +111,11 @@ class RenderPluginsTests(unittest.TestCase):
             }],
         }
         out = bsd.render_plugins(manifest)
-        # The title is an explicit link to the plugin page (no whole-card stretched overlay).
+        # The title is a keyboard-focusable link to the plugin page; CSS stretches it over the card.
         self.assertIn('<span class="name"><a href="./commentable-html/">commentable-html</a></span>', out)
-        # The warm-amber Learn more button also links to the page.
+        # The Learn more button also links to the page.
         self.assertIn('<a class="btn learn-more" href="./commentable-html/">Learn more</a>', out)
-        # Two explicit links (title + Learn more) point at the page; no hidden overlay link.
+        # Two generated links (title + Learn more) point at the page; CSS supplies the stretched area.
         self.assertEqual(out.count('href="./commentable-html/"'), 2)
         # The Source link is still present and independent of the page links.
         self.assertIn('<a class="btn" href="https://example.com/source">Source</a>', out)

@@ -9,4 +9,4 @@ Add the marketplace once with `copilot plugin marketplace add https://github.com
 - [urikan-ai-marketplace-auto-updater](https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater): Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.
 
 ## Documentation
-- [commentable-html tutorial](https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/)
+- [Commentable HTML tutorial](https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/)
