@@ -592,11 +592,21 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
    inline bootstrap when the external runtime fails to initialize in time. */
 #cmhAssetBanner {
   position: fixed; top: 0; left: 0; right: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
   padding: 10px 16px; font-size: 13px; line-height: 1.4;
   background: var(--cp-danger); color: #fff;
   box-shadow: var(--cp-shadow); text-align: center;
 }
 #cmhAssetBanner code { background: rgba(0,0,0,0.18); padding: 1px 5px; border-radius: 4px; }
+#cmhAssetBanner .cmh-asset-message { flex: 0 1 auto; }
+#cmhAssetBanner .cmh-asset-dismiss {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.55); background: rgba(0,0,0,0.18);
+  color: #fff; font-weight: 700; line-height: 1;
+}
+#cmhAssetBanner .cmh-asset-dismiss:hover, #cmhAssetBanner .cmh-asset-dismiss:focus-visible {
+  background: rgba(0,0,0,0.32); outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px;
+}
 
 /* --- Diff / code-review layer (pre.cmh-diff / div.cmh-diff) --- */
 .cmh-diff-host { margin: 1rem 0; }

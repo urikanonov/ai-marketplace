@@ -301,9 +301,11 @@ _JS_REGION_RE = re.compile(
 _BOOTSTRAP = (
     "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->\n"
     '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>\n'
-    "  Commentable-html could not load its companion files. Keep\n"
+    '  <span class="cmh-asset-message">Commentable-html could not load its companion files. Keep\n'
     "  <code>__JSNAME__</code>, <code>__ASSETSNAME__</code> and <code>__CSSNAME__</code>\n"
-    "  in the same folder as this HTML, or open the standalone copy instead.\n"
+    "  in the same folder as this HTML, or open the standalone copy instead.</span>\n"
+    '  <button type="button" class="cmh-asset-dismiss cm-skip" aria-label="Dismiss" '
+    'onclick="var b=this.closest(\'#cmhAssetBanner\'); if (b) b.hidden=true;">X</button>\n'
     "</div>\n"
     "<script>\n"
     "  window.setTimeout(function () {\n"

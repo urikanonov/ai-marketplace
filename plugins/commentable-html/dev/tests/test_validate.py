@@ -17,6 +17,7 @@ each validator branch there is a test that fails if the branch is deleted.
 import contextlib
 import io
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -1056,6 +1057,25 @@ class NonPortableTests(unittest.TestCase):
             errors, warnings = validate.validate(p)
         self.assertEqual(errors, [], errors)
         self.assertTrue(any("absolute path" in w for w in warnings), warnings)
+
+    def test_file_url_companion_refs_validate_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            urls = {}
+            for ext in (".css", ".js", ".assets.js"):
+                p = os.path.join(d, "commentable-html%s" % ext)
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write("/* stub */")
+                urls[ext] = Path(p).resolve().as_uri()
+            html = (build_nonportable()
+                    .replace('href="commentable-html.css"', 'href="%s"' % urls[".css"])
+                    .replace('src="commentable-html.js"', 'src="%s"' % urls[".js"])
+                    .replace('src="commentable-html.assets.js"', 'src="%s"' % urls[".assets.js"]))
+            p = os.path.join(d, "doc.html")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, warnings = validate.validate(p)
+        self.assertEqual(errors, [], errors)
+        self.assertFalse(any("remote/CDN URL" in w or "absolute path" in w for w in warnings), warnings)
 
     def test_companion_parent_relative_ref_ok(self):
         # NonPortable may point at the skill dist/ folder via a ../ path; if the target

@@ -39,7 +39,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <span class="eyebrow spaced identity"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.8.0<!-- END:version --></span></span>
+        <span class="eyebrow spaced identity"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.9.0<!-- END:version --></span></span>
       </div>
     </header>
 
@@ -222,6 +222,20 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.9.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li><code>new_document.py</code> now defaults NonPortable companion references to absolute <code>file://</code> URLs that point at the installed skill <code>dist/</code>, so the generated HTML can move anywhere on the same machine without losing its CSS/JS. Use <code>--assets-relative</code> to restore the old relative-path behavior for a movable folder bundle.</li>
+              <li>The NonPortable asset banner now has an accessible <code>Dismiss</code> button. A dismissed version warning stays hidden across reloads for that document key and page/runtime version pair.</li>
+              <li>The SKILL.md documents the page/runtime compatibility contract: same-major newer runtimes can open older same-major pages without warning, and breaking page/runtime changes require a major version bump.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The NonPortable version handshake is now semver-aware. Same-major older pages no longer show a scary mismatch banner after a safe skill update, newer same-major pages show a soft update notice, and different-major pages show the incompatible-runtime warning.</li>
+              <li><code>validate.py</code> treats only <code>http://</code> and <code>https://</code> companion refs as remote/CDN URLs. Local <code>file://</code> refs and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are local-only.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.8.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -240,6 +254,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>On touch / coarse-pointer devices the &quot;Add Comment&quot; popup now appears when a text selection settles. Selecting text on a phone drags the native handles and never fires <code>mouseup</code>, so the popup previously never showed; a debounced <code>selectionchange</code> now raises the same popup (and hides it when the selection collapses). Desktop mouse behavior is unchanged.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.7.0] - 2026-07-11</h3></div>
             <div class="group-label">Fixed</div>
@@ -274,8 +290,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Both export modes download <code>&lt;stem&gt;-portable.html</code>; the NonPortable &quot;Export as Portable&quot; no longer emits a <code>&lt;stem&gt;.standalone.html</code> filename.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.6.1] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
@@ -318,20 +332,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Authoring guidance: content-conventions now covers shaping content in real layouts, an anti-default-look taste checklist, a readable prose measure (top-level paragraphs are capped while tables, figures, and code keep full width), and mapping a product&#x27;s design tokens onto the <code>--cp-*</code> variables.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.4.0] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Help &amp; About: a &quot;Tips and shortcuts&quot; topic for power users (right-click to comment, re-select the same text to reopen a comment, multiple and draggable composers, sort back to document order, the Expand and Collapse controls, the diff Syntax toggle, and the keyboard shortcuts), plus &quot;Request a feature&quot; and &quot;Contribute&quot; links in the About block alongside the existing source and issue links.</li>
-              <li>A review-loop diagram (<code>docs/images/review-loop.svg</code>) embedded in a new &quot;Review workflow&quot; section of the plugin README, showing the agent-to-you-and-back loop and naming the self, peer, and reviewer variants.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Help &amp; About now orients a first-time reviewer. The review-workflow topic points a recipient who was sent a file straight to leaving a comment (no agent or account needed), the &quot;Getting started&quot; topic is retitled for reviewing a shared file, and the search box suggests &quot;shortcuts&quot;.</li>
-              <li><code>docs/TUTORIAL.md</code> gained a short &quot;you were sent a file to review&quot; quick start and a pointer to the new Tips and shortcuts help topic.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">12 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">13 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
