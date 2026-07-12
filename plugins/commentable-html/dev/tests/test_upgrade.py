@@ -198,7 +198,7 @@ class UpgradeCliTests(unittest.TestCase):
         with open(p, "rb") as fh:
             self.assertEqual(fh.read(), original_bytes)
         parent = os.path.dirname(os.path.abspath(p))
-        leftovers = [f for f in os.listdir(parent) if f.startswith(".cmh-upgrade-")]
+        leftovers = sorted(f for f in os.listdir(parent) if f.startswith(".cmh-upgrade-"))
         self.assertEqual(leftovers, [])
 
     def test_validator_crash_is_surfaced_not_swallowed(self):
@@ -224,7 +224,7 @@ class UpgradeCliTests(unittest.TestCase):
         with open(p, "rb") as fh:
             self.assertEqual(fh.read(), original_bytes)
         parent = os.path.dirname(os.path.abspath(p))
-        leftovers = [f for f in os.listdir(parent) if f.startswith(".cmh-upgrade-")]
+        leftovers = sorted(f for f in os.listdir(parent) if f.startswith(".cmh-upgrade-"))
         self.assertEqual(leftovers, [])
 
     def test_out_flag_does_not_clobber_source_on_validation_fail(self):

@@ -7,10 +7,11 @@ Generated Commentable HTML documents separate user content from the review layer
 Every generated document contains this head descriptor:
 
 ```html
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.13.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"<current-runtime-version>","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 ```
 
 - `version` is the Commentable HTML layer version that generated the document.
+  This value equals the runtime version that emitted the document.
 - `mode` is `portable`, `offline`, or `nonportable`.
 - `regions` lists the infra region marker names in document order. The names are the exact text that appears after `BEGIN: commentable-html - ` and `END: commentable-html - `.
 

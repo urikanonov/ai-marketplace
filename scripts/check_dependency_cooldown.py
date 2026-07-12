@@ -173,7 +173,8 @@ def fetch_publish_time(dep):
             request = urllib.request.Request(package_url, headers={"User-Agent": "ai-marketplace-dependency-cooldown"})
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
                 packument = json.loads(response.read().decode("utf-8"))
-            published = parse_npm_time(packument.get("time", {}).get(dep.version))
+            time_map = packument.get("time")
+            published = parse_npm_time(time_map.get(dep.version) if isinstance(time_map, dict) else None)
             if published is None:
                 raise ValueError("packument has no parseable time[%s]" % dep.version)
             return dep, published, None
@@ -188,7 +189,7 @@ def fetch_publish_times(changed_pairs):
     publish_times = {}
     warnings = []
     if not changed_pairs:
-        return publish_times, warnings
+        return publish_times, sorted(warnings)
     workers = min(MAX_WORKERS, len(changed_pairs))
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
         futures = [executor.submit(fetch_publish_time, dep) for dep in sorted(changed_pairs)]
@@ -202,7 +203,7 @@ def fetch_publish_times(changed_pairs):
                     "skipping this package (%s)."
                     % (dep.name, dep.version, REQUEST_RETRIES, error)
                 )
-    return publish_times, warnings
+    return publish_times, sorted(warnings)
 
 
 def cooldown_violations(changed_pairs, publish_times, now, days):

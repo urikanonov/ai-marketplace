@@ -486,7 +486,7 @@ class StampWiringTests(unittest.TestCase):
         alternation = "|".join(re.escape(name) for name in bsd.CACHE_BUSTED_ASSETS)
         pat = re.compile(r'(?:href|src)="[^"]*?assets/(%s)([^"]*)"' % alternation)
         bad = []
-        for path in glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True):
+        for path in sorted(glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True)):
             for m in pat.finditer(bsd.read_text(path)):
                 if m.group(2) != want[m.group(1)]:
                     bad.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
