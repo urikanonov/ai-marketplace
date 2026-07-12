@@ -80,6 +80,16 @@ async function doAction(page, name) {
   }, name);
 }
 
+async function waitForAnimationFrame(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== "function") {
+      resolve();
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+}
+
 // Best-effort comment add on a random not-yet-highlighted paragraph, interleaved with
 // the chrome fuzz so comment CRUD races the UI. It NEVER asserts success (that is
 // 08-noise's job); it only proves the flow throws nothing and leaves no stuck composer.
@@ -102,8 +112,8 @@ async function tryAddComment(page, note) {
     return true;
   });
   if (!popped) return;
-  await page.waitForTimeout(10);
   const menu = page.locator("#menuComment");
+  await menu.waitFor({ state: "visible", timeout: 1000 }).catch(() => {});
   if (!(await menu.isVisible().catch(() => false))) return;
   await menu.click().catch(() => {});
   const composer = page.locator(".cm-composer").last();
@@ -131,7 +141,7 @@ async function monkey(page, errors, { steps, addEvery, minDistinct }) {
     expect(err, `step ${i} (${action}) threw synchronously`).toBeNull();
     if (hit) exercised.add(action);
     if (addEvery && i % addEvery === addEvery - 1) await tryAddComment(page, "monkey " + i);
-    await page.waitForTimeout(8);
+    await waitForAnimationFrame(page);
     expect(errors, `hard error after step ${i} (${action})`).toEqual([]);
     const alive = await page.evaluate(() => window.__commentableHtmlReady === true);
     expect(alive, `layer still alive after step ${i} (${action})`).toBe(true);
@@ -171,9 +181,13 @@ test("monkey: full-feature fuzz including mermaid + chart never crashes (example
     await routeMermaidLocal(page);
     await page.addInitScript(prngInit(0xbead5));
     await page.goto(`${server.url}/${path.basename(html)}`);
-    // let mermaid + the chart canvas finish their async render before fuzzing them
     await ready(page);
-    await page.waitForTimeout(400);
+    await expect(page.locator(".cm-mermaid-host svg").first()).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("#wateringNeedsChart")).toHaveClass(/cm-img-commentable/, { timeout: 20000 });
+    await page.waitForFunction(() => {
+      const chart = window.Chart && window.Chart.getChart && window.Chart.getChart("wateringNeedsChart");
+      return !!(chart && chart.getDatasetMeta(0).data.length > 0);
+    }, null, { timeout: 30000 });
     await monkey(page, errors, { steps: 30, addEvery: 5, minDistinct: 8 });
   } finally {
     await server.close();

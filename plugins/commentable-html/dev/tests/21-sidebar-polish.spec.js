@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openKitchenSink, addTextComment, lastCopied, ready } from "./helpers.js";
+import { openKitchenSink, addTextComment, lastCopied, ready, storedComments } from "./helpers.js";
 
 async function openSidebarPanel(page) {
   if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
@@ -42,7 +42,8 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
   test("sort arrows order comments oldest/newest first and toggle aria-pressed", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "older one", 0);
-    await page.waitForTimeout(80); // ensure a distinct createdAt millisecond
+    const olderCreatedAt = (await storedComments(page))[0].createdAt;
+    await page.waitForFunction((createdAt) => Date.now() > Date.parse(createdAt), olderCreatedAt);
     await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "newer one", 0);
 
     const firstCardText = () => page.locator(".cm-card").first().innerText();

@@ -208,7 +208,6 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
       await expect(toc.locator(".cm-side-toc-list .cm-toc-num").first()).toHaveText(/^\d/);
       await expect(toc.locator("a.is-active")).toContainText("Try it");
       await page.evaluate(() => document.getElementById("diffs").scrollIntoView());
-      await page.waitForTimeout(80);
       await expect(toc.locator("a.is-active")).toContainText("Code review diffs");
     });
 

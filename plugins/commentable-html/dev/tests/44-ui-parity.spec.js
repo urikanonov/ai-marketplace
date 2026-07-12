@@ -66,7 +66,8 @@ test("both portability badges flip together (color, background, border) on a lay
   expect(s.oBg).toBe(s.sBg);
   // Trigger a layout change so both flip to Not portable.
   await page.evaluate(() => document.getElementById("l").appendChild(document.querySelector('[data-cm-part="a"]')));
-  await page.waitForTimeout(80);
+  await expect(page.locator("#cmTypeBadge")).toHaveAttribute("data-doc-type", "Not portable");
+  await expect(page.locator("#cmhModeBadge")).toHaveAttribute("data-doc-type", "Not portable");
   s = await read();
   expect(s.sType).toBe("Not portable");
   expect(s.oType).toBe("Not portable");

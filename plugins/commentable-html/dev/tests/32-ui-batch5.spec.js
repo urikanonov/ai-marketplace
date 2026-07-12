@@ -204,9 +204,10 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
         ? { matches: true, media: q, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return false; } }
         : orig(q));
     });
+    await page.clock.install();
     await openInline(page);
     await page.locator("#btnToolbarMenu").hover();
-    await page.waitForTimeout(500);
+    await page.clock.fastForward(400);
     expect(await page.locator(".cm-tooltip.is-visible").count()).toBe(0); // no hover tooltips
     await page.locator("#btnToolbarMenu").focus();
     await expect(page.locator(".cm-tooltip.is-visible")).toBeVisible({ timeout: 1500 }); // focus still works
