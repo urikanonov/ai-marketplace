@@ -142,6 +142,47 @@ do each workstream in its own `.worktrees/<name>`; and resolve any conflict on g
 REBUILDING (rerun `python scripts/build_site_data.py` and, for the commentable-html layer,
 `plugins/commentable-html/dev/tools/build.py`) rather than hand-merging.
 
+### Maximizing concurrency: choosing parallel-safe workstreams
+
+Worktrees remove filesystem collisions, but two PRs are only truly parallel-safe when their
+HAND-EDITED (non-generated) source files are DISJOINT. Plan the split by file ownership, not by
+topic, and sequence the rest. The rules that let this repo run many PRs at once without merge pain:
+
+- Partition by hand-edited file set. New files (a new example report, a new test, a new `site-src/`
+  partial) never collide. Two PRs that touch different source files are fully parallel; merge order
+  does not matter for them.
+- A single contended file edited in DIFFERENT regions is still parallel-safe: two PRs that both edit
+  `plugins/commentable-html/dev/assets/commentable-html.js` in unrelated functions 3-way merge fine,
+  and the SECOND to merge just rebases. Prefer surgical, region-local edits so this stays true.
+- A WHOLE-FILE reorganization must run ALONE and LAST. Any change that moves or regenerates an entire
+  file wholesale - splitting `commentable-html.js` into ordered `dev/assets/src/*.js` partials, or a
+  big regeneration of a site page - invalidates every concurrent diff to that file (a 3-way merge
+  cannot follow lines that all moved). Do NOT run it beside other edits to the same file. Let every
+  other PR that touches that file merge first, then DERIVE the reorganization from the final file and
+  merge it by itself.
+- Generated files (`site/**`, `pkg/**/dist/**`, `examples/report-*.html`, fixtures, `manifest.json`)
+  will always "overlap" across PRs, and that is fine: never hand-merge them - take the base version
+  and REBUILD (`build.py` then `build_site_data.py`), which is deterministic. See the two sections
+  below for the survive-the-clobber check and the rebase mechanics.
+- Version lanes: every shipped-source change bumps the plugin version, and two PRs cannot claim the
+  same version (the `version-bump` gate requires the shipped version to be strictly greater than the
+  base branch, and `check_changelog_sync` needs a matching heading). Assign distinct versions up
+  front (for example `1.10.0`, `1.11.0`, `1.12.0` for three concurrent feature PRs) and MERGE IN
+  VERSION ORDER, rebasing each onto the one before it. If they land out of order, the later-numbered
+  one that merged first forces the lower-numbered one to rebase and re-bump to the next free version.
+  Test-only PRs (no shipped-source change) take no version and can merge any time.
+- Rebase conflict direction is INVERTED versus a merge. During `git rebase`, `--ours` is the branch
+  you are rebasing ONTO (`origin/main`) and `--theirs` is YOUR replayed commits - the opposite of a
+  merge. For a generated or semi-generated file, do not blind-pick `--theirs`: take main's version
+  (`git checkout origin/main -- <file>`) so you keep whatever landed in the meantime, then re-run the
+  generator to re-stamp your change on top, and confirm `--check` is clean. Picking the wrong side
+  here is exactly how a concurrent PR's edits get silently reverted.
+- After ANY commentable-html version bump, also regenerate the Playwright fixtures: from
+  `plugins/commentable-html/dev` run `node tests/fixtures/generate.mjs`. The fixtures embed the
+  runtime version, are gated by the required `plugin-tests` job (`fixtures --check`), but are NOT
+  covered by `build.py --check` or the pre-push hook, so a bump that regenerates `dist/` and `site/`
+  can still fail CI on stale fixtures.
+
 ## Concurrent-merge clobbers: confirm your change actually survived
 
 Worktrees stop local collisions, but they do NOT stop a subtler hazard: a long-lived PR that rewrites or
