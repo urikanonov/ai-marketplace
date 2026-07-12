@@ -7,7 +7,7 @@
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=5ab8e41c8499" />
+  <link rel="stylesheet" href="../assets/styles.css?v=fb55a04bcb80" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -33,7 +33,7 @@
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
         <img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" />
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.7.0<!-- END:version --></span></span>
+        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.8.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any <span class="accent">HTML</span>,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -48,10 +48,34 @@
       <div class="wrap">
         <div class="section-block prose">
           <h2 class="section-title">Why commentable-html</h2>
-          <p>AI agents increasingly answer with <strong>HTML</strong>, not markdown: plans, reports, design docs, code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, design tokens as swatches, data as real charts, long documents as collapsible, navigable sections. A wall of markdown flattens all of that.</p>
-          <p>But the moment you want to <em>revise</em> that artifact, the loop breaks down: you alt-tab between the rendered HTML and the AI chat, scroll to the spot you mean, and try to describe in prose what to change. The richer the document, the more painful the round-trip.</p>
-          <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> It turns any standalone HTML into a commentable review surface: select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, the same way you would review a pull request. When you are done, one <em>Copy all</em> hands the agent a structured bundle of every note. You stay in the document and return to the chat only at the end - the loop gets tighter.</p>
+          <p>AI agents increasingly answer with <strong>HTML</strong>, not markdown: plans, reports, design docs, and code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, data as real charts, long documents as navigable sections. But the moment you want to <em>revise</em> that artifact the loop breaks down: you alt-tab between the render and the chat and describe in prose what to change. The richer the document, the more painful the round-trip.</p>
+          <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> Select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, then one <em>Copy all</em> hands the agent a structured bundle of every note. It <strong>drastically shortens the AI planning and iteration loop</strong>: you stay in the document and return to the chat only at the end.</p>
         </div>
+        <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg; keep the two in sync if the labels or flow change. -->
+        <figure class="loop-figure">
+          <svg viewBox="0 0 640 250" role="img" aria-labelledby="loopFigTitle loopFigDesc">
+            <title id="loopFigTitle">Commentable HTML self-review loop</title>
+            <desc id="loopFigDesc">An AI agent generates a commentable HTML report; you review it and leave inline comments; you Copy all the comments back to the agent; the agent returns the updated file and you repeat until every comment is resolved.</desc>
+            <defs>
+              <marker id="loopFigAh" markerWidth="10" markerHeight="10" refX="7.5" refY="4.5" orient="auto" markerUnits="userSpaceOnUse">
+                <path class="loop-fig-head" d="M1,1 L8,4.5 L1,8 Z" />
+              </marker>
+            </defs>
+            <rect class="loop-fig-bg" x="1" y="1" width="638" height="248" rx="16" />
+            <rect class="loop-fig-node" x="60" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
+            <text class="loop-fig-title" x="145" y="133" text-anchor="middle" font-size="17">AI agent</text>
+            <rect class="loop-fig-node" x="410" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
+            <text class="loop-fig-title" x="495" y="133" text-anchor="middle" font-size="17">You</text>
+            <text class="loop-fig-sub" x="320" y="106" text-anchor="middle" font-size="12.5">1. Generates HTML</text>
+            <line class="loop-fig-arrow" x1="236" y1="116" x2="402" y2="116" stroke-width="1.8" marker-end="url(#loopFigAh)" />
+            <text class="loop-fig-sub" x="495" y="52" text-anchor="middle" font-size="12.5">2. Comment Inline</text>
+            <path class="loop-fig-arrow" d="M468,95 C 456,60 534,60 522,95" stroke-width="1.8" marker-end="url(#loopFigAh)" />
+            <line class="loop-fig-arrow" x1="404" y1="142" x2="238" y2="142" stroke-width="1.8" marker-end="url(#loopFigAh)" />
+            <text class="loop-fig-sub" x="320" y="160" text-anchor="middle" font-size="12.5">3. Copy all back to the agent</text>
+            <path class="loop-fig-arrow" d="M160,175 C 250,235 380,235 470,161" stroke-width="1.8" marker-end="url(#loopFigAh)" />
+            <text class="loop-fig-sub" x="320" y="242" text-anchor="middle" font-size="12.5">4. reload and repeat</text>
+          </svg>
+        </figure>
       </div>
     </section>
 
@@ -88,31 +112,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
       <div class="wrap">
         <h2 class="section-title">How the review loop works</h2>
         <p class="section-sub">Feedback goes back to the agent as structured data, not pasted prose.</p>
-        <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg; keep the two in sync if the labels or flow change. -->
-        <figure class="loop-figure">
-          <svg viewBox="0 0 640 250" role="img" aria-labelledby="loopFigTitle loopFigDesc">
-            <title id="loopFigTitle">Commentable HTML self-review loop</title>
-            <desc id="loopFigDesc">An AI agent generates a commentable HTML report; you review it and leave inline comments; you Copy all the comments back to the agent; the agent returns the updated file and you repeat until every comment is resolved.</desc>
-            <defs>
-              <marker id="loopFigAh" markerWidth="10" markerHeight="10" refX="7.5" refY="4.5" orient="auto" markerUnits="userSpaceOnUse">
-                <path class="loop-fig-head" d="M1,1 L8,4.5 L1,8 Z" />
-              </marker>
-            </defs>
-            <rect class="loop-fig-bg" x="1" y="1" width="638" height="248" rx="16" />
-            <rect class="loop-fig-node" x="60" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
-            <text class="loop-fig-title" x="145" y="133" text-anchor="middle" font-size="17">AI agent</text>
-            <rect class="loop-fig-node" x="410" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
-            <text class="loop-fig-title" x="495" y="133" text-anchor="middle" font-size="17">You</text>
-            <text class="loop-fig-sub" x="320" y="106" text-anchor="middle" font-size="12.5">1. Generates HTML</text>
-            <line class="loop-fig-arrow" x1="236" y1="116" x2="402" y2="116" stroke-width="1.8" marker-end="url(#loopFigAh)" />
-            <text class="loop-fig-sub" x="495" y="52" text-anchor="middle" font-size="12.5">2. Comment Inline</text>
-            <path class="loop-fig-arrow" d="M468,95 C 456,60 534,60 522,95" stroke-width="1.8" marker-end="url(#loopFigAh)" />
-            <line class="loop-fig-arrow" x1="404" y1="142" x2="238" y2="142" stroke-width="1.8" marker-end="url(#loopFigAh)" />
-            <text class="loop-fig-sub" x="320" y="160" text-anchor="middle" font-size="12.5">3. Copy all back to the agent</text>
-            <path class="loop-fig-arrow" d="M160,175 C 250,235 380,235 470,161" stroke-width="1.8" marker-end="url(#loopFigAh)" />
-            <text class="loop-fig-sub" x="320" y="242" text-anchor="middle" font-size="12.5">4. reload and repeat</text>
-          </svg>
-        </figure>
         <div class="loop-grid">
           <div class="section-block loop-col">
             <h3 class="loop-title">Self review</h3>
@@ -200,6 +199,25 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.8.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Two mermaid diagrams in <code>references/exports.md</code> (linked from the SKILL.md Output modes section) showing what is bundled in the file versus fetched from where: Portable inlines the layer CSS/JS, NonPortable loads the <code>commentable-html.{css,js,assets.js}</code> companions from the skill <code>dist/</code>, and both keep the plan content and comments inline while fetching optional mermaid/Chart.js from a CDN.</li>
+              <li>The <code>analysis</code>, <code>plan</code>, and <code>report</code> keywords, and the &quot;drastically shortens the AI planning and iteration loop&quot; framing in the SKILL.md intro and the plugin READMEs. The marketplace category is now <code>planning and analysis</code>.</li>
+              <li>The brand mark now links to the project site (<code>https://urikanonov.github.io/ai-marketplace/commentable-html/</code>) in a new tab, in the footer (icon plus versioned name) and on the sidebar meta-row brand icon. The link is chrome, so it never leaks into a Plain HTML export.</li>
+              <li>The Help modal title now includes the running layer version (<code>Commentable HTML v&lt;version&gt; - Help</code>).</li>
+              <li>Each overflow (<code>...</code>) menu item (Show, Export as Portable, Export to Plain HTML, Export to Markdown, Help &amp; About) now carries a leading decorative icon matching the chrome icon style.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li><code>Export to Markdown</code> is now download-only: it downloads the <code>.md</code> file and no longer writes the clipboard. The toast, Help topic, button tooltips, SKILL.md, and <code>references/exports.md</code> were updated to drop the clipboard claim.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>On touch / coarse-pointer devices the &quot;Add Comment&quot; popup now appears when a text selection settles. Selecting text on a phone drags the native handles and never fires <code>mouseup</code>, so the popup previously never showed; a debounced <code>selectionchange</code> now raises the same popup (and hides it when the selection collapses). Desktop mouse behavior is unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.7.0] - 2026-07-11</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -233,6 +251,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Both export modes download <code>&lt;stem&gt;-portable.html</code>; the NonPortable &quot;Export as Portable&quot; no longer emits a <code>&lt;stem&gt;.standalone.html</code> filename.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.6.1] - 2026-07-11</h3></div>
             <div class="group-label">Added</div>
@@ -246,8 +266,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Reworded the <code>Self-contained and privacy</code> help topic: comments are stored in this browser&#x27;s <code>localStorage</code> (private, never uploaded, no account), and the review layer travels inside the file only in Portable mode - a Not portable file references small companion resources. It no longer implies the layer is always bundled into the file.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
             <div class="group-label">Changed</div>
@@ -290,16 +308,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>docs/TUTORIAL.md</code> gained a short &quot;you were sent a file to review&quot; quick start and a pointer to the new Tips and shortcuts help topic.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.3.1] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Single-quoted string styles now require their closing quote, so a lone <code>&#x27;</code> in valid code (a Rust lifetime like <code>&amp;&#x27;static str</code>, an apostrophe like <code>don&#x27;t</code>, or a C++ digit separator <code>1&#x27;000</code>) is no longer swallowed as a string to the end of the line. Double-quoted and backtick strings still highlight when unterminated, and string scanning stays linear time.</li>
-              <li>CSS highlighting now treats only the CSS-wide keywords (<code>auto</code>, <code>none</code>, <code>inherit</code>, <code>initial</code>, <code>unset</code>, <code>revert</code>, <code>important</code>) as keywords, so class selectors such as <code>.block</code> or <code>.center</code> are no longer colored as keywords.</li>
-              <li>The in-browser diff highlighter matches the case-insensitive keywords of SQL, Batch, and PowerShell (uppercase keywords now color), scans strings and comments in linear time for the newly added languages, maps the <code>.m</code> extension to Objective-C, and no longer over-colors common identifiers (<code>data</code>, <code>local</code>, <code>end</code>, and similar) as keywords in unrelated diffs.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">11 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">12 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

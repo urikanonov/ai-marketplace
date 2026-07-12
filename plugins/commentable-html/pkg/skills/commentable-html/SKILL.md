@@ -9,7 +9,7 @@ description: Turn any standalone HTML into a commentable review surface with inl
 
 Think of commentable-html as a code review for your plan. AI increasingly returns rich HTML artifacts - plans, reports, reviews, dashboards, and design docs - because HTML is a spatial, richer medium than Markdown for diffs, diagrams, charts, collapsible sections, and tabbed structure. The pain starts when the artifact needs revision: the reviewer alt-tabs between the HTML and the AI chat and describes changes in prose.
 
-commentable-html brings the familiar pull-request code-review experience to plans, reports, and design docs: inline comments on exactly the line, paragraph, chart, or diagram you mean, then a structured bundle back to the agent. Revising an AI-generated artifact feels like reviewing a PR instead of narrating changes in chat. You stay in the loop; the loop gets tighter.
+commentable-html brings the familiar pull-request code-review experience to plans, reports, and design docs: inline comments on exactly the line, paragraph, chart, or diagram you mean, then a structured bundle back to the agent. Revising an AI-generated artifact feels like reviewing a PR instead of narrating changes in chat. It drastically shortens the AI planning and iteration loop: you stay in the loop, and the loop gets tighter.
 
 ## Review loops
 
@@ -179,7 +179,7 @@ This is the single most important invariant of the skill: the agent's edit to `h
 
 ## Output modes: NonPortable vs Portable
 
-The layer ships in two interchangeable forms. Both share the exact same runtime and CSS (built from one source, see "Build pipeline"), and both keep the document-owned state (HANDLED IDS, EMBEDDED COMMENTS) inline. They differ only in whether the shared CSS + JS boilerplate is referenced from companion files or inlined.
+The layer ships in two interchangeable forms. Both share the exact same runtime and CSS (built from one source, see "Build pipeline"), and both keep the document-owned state (HANDLED IDS, EMBEDDED COMMENTS) inline. They differ only in whether the shared CSS + JS boilerplate is referenced from companion files or inlined. See [Exports](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where) for the two diagrams showing what is bundled in the file versus fetched from where in each mode.
 
 | | **NonPortable** - `dist/NONPORTABLE.html` + companions | **Portable** - `dist/PORTABLE.html` or **Export as Portable** |
 |---|---|---|
@@ -357,7 +357,7 @@ Plain export removes the review UI and runtime while keeping the document stylin
 
 ## Export to Markdown
 
-Export to Markdown copies the document content to the clipboard and downloads a `.md` file via a deterministic block-by-block conversion (headings, lists, GFM tables, fenced code / diff / mermaid / kusto, callouts as GitHub alerts, charts and SVG as caption notes), with the current comments appended as a section. See [Exports](references/exports.md#export-to-markdown) for the full block mapping.
+Export to Markdown downloads a `.md` file via a deterministic block-by-block conversion (headings, lists, GFM tables, fenced code / diff / mermaid / kusto, callouts as GitHub alerts, charts and SVG as caption notes), with the current comments appended as a section. See [Exports](references/exports.md#export-to-markdown) for the full block mapping.
 
 ## Add the layer to an existing HTML
 

@@ -12,7 +12,7 @@
     {
       "name": "commentable-html",
       "description": "Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.",
-      "version": "1.7.0",
+      "version": "1.8.0",
       "source": "./plugins/commentable-html/pkg",
       "author": {
         "name": "Uri Kanonov",
@@ -21,7 +21,7 @@
       "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/pkg",
       "repository": "https://github.com/urikanonov/ai-marketplace",
       "license": "MIT",
-      "category": "documentation",
+      "category": "planning and analysis",
       "keywords": [
         "commentable",
         "html",
@@ -29,7 +29,10 @@
         "comments",
         "documentation",
         "kusto",
-        "charts"
+        "charts",
+        "analysis",
+        "plan",
+        "report"
       ],
       "strict": false
     },

@@ -218,21 +218,108 @@ test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
   await expect(btn).toHaveClass(/copy-failed/);
 });
 
-test("plugin cards use one clearly focused title link without a stretched overlay", async ({ page }) => {
+test("the whole plugin card is clickable via one stretched Learn more link, Source and copy stay independent", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const card = page.locator(".plugin-card", { hasText: "commentable-html" });
-  const title = card.locator("a.name");
-  await expect(title).toHaveAttribute("href", "./commentable-html/");
+  // (a) The card has a Learn more link pointing at the plugin page.
+  const learn = card.locator("a.learn-more");
+  await expect(learn).toHaveAttribute("href", "./commentable-html/");
+  await expect(card.getByText("Learn more", { exact: true })).toHaveCount(1);
+  // (d) Exactly one link (one tab stop) leads to the plugin page: no duplicate.
   await expect(card.locator('a[href="./commentable-html/"]')).toHaveCount(1);
-  await expect(card.locator(".card-link")).toHaveCount(0);
-  await expect(card.getByText("Learn more", { exact: true })).toHaveCount(0);
-  await title.focus();
-  const focus = await title.evaluate((el) => {
-    const style = getComputedStyle(el);
-    return { style: style.outlineStyle, width: parseFloat(style.outlineWidth) };
+  await expect(card.locator("a.name")).toHaveCount(0);
+
+  // (c) The Source link and copy button sit above the overlay (independently clickable),
+  // while the title area does not (the overlay covers it).
+  await card.scrollIntoViewIfNeeded();
+  const hitTest = await card.evaluate((el) => {
+    el.scrollIntoView({ block: "center" });
+    const topAt = (target) => {
+      const r = target.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return hit === target || target.contains(hit);
+    };
+    const source = el.querySelector(".foot a.btn:not(.learn-more)");
+    const copy = el.querySelector(".copy-btn");
+    const title = el.querySelector(".name");
+    const learnMore = el.querySelector(".learn-more");
+    const titleRect = title.getBoundingClientRect();
+    const titleHit = document.elementFromPoint(titleRect.x + 4, titleRect.y + 4);
+    return {
+      sourceIndependent: topAt(source),
+      copyIndependent: topAt(copy),
+      titleCoveredByLearn: learnMore.contains(titleHit) || titleHit === learnMore,
+    };
   });
-  expect(focus.style).toBe("solid");
-  expect(focus.width).toBeGreaterThanOrEqual(2);
+  expect(hitTest.sourceIndependent, "Source link must not be hijacked by the overlay").toBe(true);
+  expect(hitTest.copyIndependent, "copy button must not be hijacked by the overlay").toBe(true);
+  expect(hitTest.titleCoveredByLearn, "clicking the title must trigger the stretched link").toBe(true);
+
+  // (b) Clicking the title area (covered by the stretched overlay) activates the Learn more link.
+  await card.scrollIntoViewIfNeeded();
+  await card.evaluate((el) => {
+    el.scrollIntoView({ block: "center" });
+    const title = el.querySelector(".name");
+    const r = title.getBoundingClientRect();
+    document.elementFromPoint(r.x + 8, r.y + 8).click();
+  });
+  await expect(page).toHaveURL(/\/commentable-html\/$/);
+});
+
+test("the Learn more button keeps AA contrast in light and dark themes", async ({ page }) => {
+  const contrast = (fg, bg) => {
+    const channels = (color) => {
+      const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      expect(m, "unsupported color format: " + color).not.toBeNull();
+      return m.slice(1, 4).map(Number).map((value) => {
+        const channel = value / 255;
+        return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+      });
+    };
+    const luminance = (color) => {
+      const [r, g, b] = channels(color);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const a = luminance(fg);
+    const b = luminance(bg);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  };
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const colors = await page.locator(".plugin-card .learn-more").first().evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { color: style.color, background: style.backgroundColor };
+    });
+    expect(
+      contrast(colors.color, colors.background),
+      scheme + " Learn more contrast"
+    ).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+test("the plugin page hero logo is horizontally centered under the title", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const logo = await page.locator(".hero-logo").boundingBox();
+  const hero = await page.locator(".hero .wrap").boundingBox();
+  const logoCenter = logo.x + logo.width / 2;
+  const heroCenter = hero.x + hero.width / 2;
+  expect(Math.abs(logoCenter - heroCenter)).toBeLessThanOrEqual(2);
+});
+
+test("the review-loop diagram lives in the Why section, not the loop section", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#why .loop-figure")).toHaveCount(1);
+  await expect(page.locator("#loop .loop-figure")).toHaveCount(0);
+  // The loop section keeps its heading and the three-column self/peer/reviewer steps.
+  await expect(page.locator("#loop .section-title")).toHaveCount(1);
+  expect(await page.locator("#loop .loop-col").count()).toBe(3);
+});
+
+test("the Why section states commentable-html shortens the AI planning loop", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#why")).toContainText("drastically shortens the AI planning and iteration loop");
 });
 
 test("copy button restores its original label after a rapid double click", async ({ page, context }) => {
@@ -415,14 +502,10 @@ test("tutorial example links open the live demo, not a GitHub blob", async ({ pa
   }
 });
 
-test("the demo frame spans the full viewport width while its heading stays in the content column", async ({ page }) => {
+test("the demo frame breaks out of the content column while its heading stays in the content column", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
   const frame = await page.locator("#demo-panel").boundingBox();
-  // The demo frame breaks out of the content column to span the full layout width.
-  expect(frame.x).toBeLessThanOrEqual(2);
-  expect(frame.width).toBeGreaterThanOrEqual(clientWidth - 2);
   // It is clearly wider than the constrained content column (proving the breakout).
   const wrap = await page.locator("#features .wrap").boundingBox();
   expect(frame.width).toBeGreaterThan(wrap.width + 20);
@@ -434,6 +517,16 @@ test("the demo frame spans the full viewport width while its heading stays in th
     const other = await page.locator(id + " .section-title").boundingBox();
     expect(Math.abs(other.x - demoTitle.x)).toBeLessThanOrEqual(2);
   }
+});
+
+test("the full-bleed demo frame keeps a small side buffer inside the viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  const frame = await page.locator("#demo-panel").boundingBox();
+  // A ~20px buffer each side: the left edge is inset and the right edge stays off the viewport edge.
+  expect(frame.x).toBeGreaterThanOrEqual(16);
+  expect(frame.x + frame.width).toBeLessThanOrEqual(clientWidth - 16);
 });
 
 test("the plugin page footer links to contribute, feature request, issues, source, and the author's LinkedIn", async ({ page }) => {

@@ -37,6 +37,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-BUILD-09 | `replace_region` replaces exactly one delimited region and refuses to run when a marker region is missing or duplicated, so a generation step can never silently no-op or double-write. | `scripts/test_build_site_data.py` - `ReplaceRegionTests` |
 | SITE-BUILD-10 | Changelog plugin matching is anchored and case-insensitive so a plugin name matches its own heading but not a mid-text mention or another plugin. | `scripts/test_build_site_data.py` - `MentionsPluginTests` |
 | SITE-BUILD-11 | The changelog shows the two most recent releases inline and folds the next five into a collapsed `<details>`; any releases beyond those seven are not rendered inline but are summarized with a link to the full changelog in source, so the page never grows without bound. | `scripts/test_build_site_data.py` - `ChangelogInlineTests.test_older_releases_capped_and_rest_linked_to_source` |
+| SITE-BUILD-12 | Each plugin card renders its manifest `category` as a badge and its `keywords` as chips; for `commentable-html` this is the "planning and analysis" category badge and the analysis/plan/report keyword chips. | `scripts/test_build_site_data.py` - `RenderPluginsTests.test_real_manifest_commentable_badge_and_chips` |
 
 ## Hub page
 
@@ -59,6 +60,9 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-PLUGIN-05 | The plugin page hero shows the plugin logo image with descriptive alt text. | `tests/site/tests/site.spec.js` - `commentable-html hero shows the plugin logo` |
 | SITE-PLUGIN-06 | The plugin-page nav brand link stays on the plugin page (does not jump to the hub), and a Marketplace link sits immediately after the GitHub link and returns to the hub. | `tests/site/tests/site.spec.js` - `commentable-html nav keeps the user on the page and offers a Marketplace link` |
 | SITE-PLUGIN-07 | The plugin page footer links to the contributing guide, the feature-request form, the issue chooser, the plugin source tree, and the author's LinkedIn profile. | `tests/site/tests/site.spec.js` - `the plugin page footer links to contribute, feature request, issues, source, and the author's LinkedIn` |
+| SITE-PLUGIN-08 | The plugin page hero logo is horizontally centered under the title (it does not left-align in the centered hero). | `tests/site/tests/site.spec.js` - `the plugin page hero logo is horizontally centered under the title` |
+| SITE-WHY-01 | The review-loop diagram lives in the "Why commentable-html" section (moved out of "How the review loop works"), which keeps its heading and the three self/peer/reviewer step columns. | `tests/site/tests/site.spec.js` - `the review-loop diagram lives in the Why section, not the loop section` |
+| SITE-WHY-02 | The "Why" section states that commentable-html drastically shortens the AI planning and iteration loop. | `tests/site/tests/site.spec.js` - `the Why section states commentable-html shortens the AI planning loop` |
 
 ## Demo slider
 
@@ -69,8 +73,9 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-DEMO-03 | The slider is keyboard operable: arrow keys move focus and switch the shown report. | `tests/site/tests/site.spec.js` - `demo tabs are keyboard operable (arrow keys switch the shown report)` |
 | SITE-DEMO-04 | The slider implements a complete ARIA tabs contract: `role="tabpanel"` panel, `aria-controls`, `aria-selected`, a roving `tabindex`, an `aria-labelledby` that tracks the active tab, and Home/End jump to the first/last tab. | `tests/site/tests/site.spec.js` - `demo tabs expose a complete ARIA tabs contract` |
 | SITE-DEMO-05 | Both demo reports load standalone and their commentable-html toolbars mount. | `tests/site/tests/site.spec.js` - `both demo reports load and their toolbars mount` |
-| SITE-DEMO-06 | The demo frame breaks out of the content column to span the full viewport width, while the "Try it live" heading, its description, and the slider stay aligned with the other section headings in the content column. | `tests/site/tests/site.spec.js` - `the demo frame spans the full viewport width while its heading stays in the content column` |
+| SITE-DEMO-06 | The demo frame breaks out of the content column (it is clearly wider than the column), while the "Try it live" heading, its description, and the slider stay aligned with the other section headings in the content column. | `tests/site/tests/site.spec.js` - `the demo frame breaks out of the content column while its heading stays in the content column` |
 | SITE-DEMO-07 | The demo full-screen button carries an accent-tinted (light-red) background so it reads as the primary action in the frame bar. | `tests/site/tests/site.spec.js` - `the full-screen button has a light-red (accent-tinted) background` |
+| SITE-DEMO-08 | The full-bleed demo frame keeps a small side buffer (~20px each side) so it never touches the viewport edges. | `tests/site/tests/site.spec.js` - `the full-bleed demo frame keeps a small side buffer inside the viewport` |
 
 ## Copy buttons
 
@@ -100,7 +105,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-A11Y-01 | Every page exposes a skip-to-content link that targets the `main` region. | `tests/site/tests/site.spec.js` - `every page exposes a skip-to-content link that targets the main region` |
 | SITE-A11Y-02 | Every image on the hub, plugin, and tutorial pages carries non-empty alt text. | `tests/site/tests/site.spec.js` - `every image on every page has non-empty alt text` |
 | SITE-A11Y-03 | Copy success and failure feedback is exposed through a polite, atomic live region so assistive technology announces the outcome. | `tests/site/tests/site.spec.js` - `install command copy button copies the command and shows feedback`, `copy failure gives a platform-neutral manual hint` |
-| SITE-A11Y-04 | A linked plugin card uses its visible title as the single primary link, has a clear keyboard focus ring, and has no stretched overlay or duplicate Learn more link. | `tests/site/tests/site.spec.js` - `plugin cards use one clearly focused title link without a stretched overlay`; `scripts/test_build_site_data.py` - `RenderPluginsTests.test_plugin_page_uses_title_as_single_primary_link` |
+| SITE-A11Y-04 | A plugin card with a page is a single click and tab target: the visible title is a plain span and one warm-amber "Learn more" link stretches over the whole card via a `::after` overlay, so clicking anywhere on the card (including the title) opens the plugin page, there is no duplicate link (one tab stop), and the Source link and copy button stay above the overlay and independently clickable. The whole card shows a focus ring when the Learn more link is focused, and the Learn more button keeps WCAG AA contrast in light and dark. | `tests/site/tests/site.spec.js` - `the whole plugin card is clickable via one stretched Learn more link, Source and copy stay independent`, `the Learn more button keeps AA contrast in light and dark themes`; `scripts/test_build_site_data.py` - `RenderPluginsTests.test_plugin_card_uses_stretched_learn_more_link`, `RenderPluginsTests.test_card_without_page_has_no_learn_more` |
 | SITE-A11Y-05 | The demo full-screen link announces in its accessible name that it opens a new tab. | `tests/site/tests/site.spec.js` - `demo has one safe full-screen button and a two-option slider`; `scripts/test_build_site_data.py` - `DemoFullscreenTests.test_link_accessible_name_announces_new_tab` |
 
 ## Theme

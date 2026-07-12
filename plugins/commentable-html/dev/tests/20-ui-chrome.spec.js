@@ -47,6 +47,27 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await expect(page.locator(".cm-help")).toHaveCount(0);
   });
 
+  test("the Help modal title includes the layer version", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    await page.click("#btnHelpTop");
+    const heading = page.locator(".cm-help .cm-help-head h2");
+    await expect(heading).toBeVisible();
+    await expect(heading).toContainText(/Commentable HTML v\d+\.\d+\.\d+ - Help/);
+  });
+
+  test("every overflow (...) menu item carries a leading icon", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    const menu = page.locator("#toolbarMenu");
+    for (const id of ["btnShowTop", "btnSaveHtmlTop", "btnSavePlainTop", "btnExportMdTop", "btnHelpTop"]) {
+      const item = menu.locator("#" + id);
+      await expect(item.locator("svg"), id).toHaveCount(1);
+      // The icon is decorative; the accessible name still comes from the label text.
+      await expect(item.locator("svg"), id).toHaveAttribute("aria-hidden", "true");
+    }
+  });
+
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel

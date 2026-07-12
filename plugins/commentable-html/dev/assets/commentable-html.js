@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.7.0";
+const CMH_VERSION = "1.8.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -43,6 +43,14 @@ const CMH_ICON_SVG = (
   + '<rect x="6" y="10.5" width="8" height="1.8" rx="0.9" fill="#fff"/>'
   + '</svg>'
 );
+// Public project site the brand mark links to (opens in a new tab). Used by the sidebar
+// meta-row brand icon and the footer brand.
+const CMH_SITE_URL = "https://urikanonov.github.io/ai-marketplace/commentable-html/";
+function cmBrandLink(inner) {
+  return '<a class="cm-brand-link" href="' + CMH_SITE_URL
+    + '" target="_blank" rel="noopener noreferrer"'
+    + ' aria-label="commentable-html project site (opens in a new tab)">' + inner + '</a>';
+}
 // Small monochrome line-icons (stroke = currentColor) for chrome controls. Kept as
 // path data so a single helper renders them at any size without external assets.
 // Icons consumed by _cmIco() for runtime chrome (TOC, scroll, Help search). The three
@@ -1923,6 +1931,40 @@ document.addEventListener("mouseup", (e) => {
     showMenuForRange(got.range);
   }, 0);
 });
+// Touch / coarse-pointer selection path. On phones a selection is made by dragging the
+// native selection handles, which never fires `mouseup`, so the desktop popup path above
+// never runs and touch users only get the native long-press menu. A debounced
+// `selectionchange` raises the SAME "Add comment" popup once the selection settles, and
+// hides it when the selection collapses. Gated to coarse pointers so desktop mouse
+// behavior (the mouseup path) is untouched.
+if (_coarsePointer) {
+  let _touchSelTimer = null;
+  const raiseTouchSelectionMenu = () => {
+    const got = selectionInRoot();
+    if (!got) { hideMenu(); pendingRange = null; pendingQuote = ""; return; }
+    pendingDiffSel = null;
+    pendingRange = got.range.cloneRange();
+    pendingQuote = got.sel.toString();
+    _setMenuMode("text");
+    showMenuForRange(got.range);
+  };
+  document.addEventListener("selectionchange", () => {
+    const sel = window.getSelection();
+    // A collapsed selection dismisses the popup immediately (no debounce) so a tap that
+    // clears the selection hides it at once.
+    if (!sel || sel.isCollapsed) {
+      if (_touchSelTimer) { clearTimeout(_touchSelTimer); _touchSelTimer = null; }
+      hideMenu();
+      pendingRange = null;
+      pendingQuote = "";
+      return;
+    }
+    // Debounce so the popup fires after the user finishes dragging the handles, not on
+    // every intermediate change.
+    if (_touchSelTimer) clearTimeout(_touchSelTimer);
+    _touchSelTimer = setTimeout(raiseTouchSelectionMenu, 400);
+  });
+}
 document.addEventListener("click", (e) => {
   if (menu.hidden) return;
   if (!menu.contains(e.target)) hideMenu();
@@ -3451,12 +3493,8 @@ function _mdFilename() {
 async function exportMarkdown() {
   const md = buildMarkdownDoc();
   const filename = _mdFilename();
-  let copied = false;
-  try { await navigator.clipboard.writeText(md); copied = true; } catch (e) { copied = false; }
   _downloadTextFile(md, filename, "text/markdown");
-  showToast(copied
-    ? `Markdown copied to the clipboard and downloaded as ${filename}.`
-    : `Downloaded ${filename}. (Clipboard copy was blocked by the browser.)`);
+  showToast(`Markdown downloaded as ${filename}.`);
 }
 ["btnExportMd", "btnExportMdTop"].forEach((id) => {
   const b = document.getElementById(id);
@@ -4207,17 +4245,18 @@ function setupModeUi() {
   const ver = document.getElementById("cmVersion");
   if (ver) ver.textContent = "v" + CMH_VERSION;
   const meta = document.querySelector(".cm-sidebar .head-meta");
-  if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", CMH_ICON_SVG);
+  if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", cmBrandLink(CMH_ICON_SVG));
   if (NONPORTABLE_MODE) {
     document.body.classList.add("cm-nonportable");
     // In nonportable (companion) mode the portability action embeds everything into one file.
     ["btnSaveHtml", "btnSaveHtmlTop"].forEach(function (id) {
       const b = document.getElementById(id);
       if (b) {
-        // Preserve the sidebar button's icon + label span; only the plain-text menu
-        // button (no span) has its whole textContent replaced.
+        // Preserve each button's icon + label span; the sidebar button uses the compact
+        // "Portable" label, the overflow-menu item keeps the full "Export as Portable".
         const span = b.querySelector("span");
-        if (span) span.textContent = "Portable"; else b.textContent = "Export as Portable";
+        const label = (id === "btnSaveHtmlTop") ? "Export as Portable" : "Portable";
+        if (span) span.textContent = label; else b.textContent = label;
         b.title = "Download one self-contained, portable HTML with the commentable-html assets AND the current comments embedded, so it no longer depends on the skill folder or companion files.";
       }
     });
@@ -4263,7 +4302,7 @@ function showHelp(restoreEl) {
   };
   box.innerHTML =
     '<div class="cm-help-head">' +
-      '<h2>' + CMH_ICON_SVG + ' Commentable HTML - Help</h2>' +
+      '<h2>' + CMH_ICON_SVG + ' Commentable HTML v' + CMH_VERSION + ' - Help</h2>' +
       '<button type="button" class="cm-help-close" title="Close help" aria-label="Close help">&times;</button>' +
     '</div>' +
     '<div class="cm-help-search">' +
@@ -4339,7 +4378,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
-          '<li><strong>Export to Markdown</strong> copies the document content to the clipboard as Markdown and downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
+          '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
         '</ul>') +
       T('Sending comments to an agent',
@@ -4882,8 +4921,8 @@ function setupFooter() {
   if (!gen) { const lm = Date.parse(document.lastModified); if (!isNaN(lm)) gen = new Date(lm).toISOString(); }
   const genStr = gen ? formatTime(gen) : "unknown";
   f.innerHTML =
-    CMH_ICON_SVG
-    + '<span class="cm-footer-name">Commentable HTML <span class="cm-footer-ver">v' + CMH_VERSION + '</span></span>'
+    cmBrandLink(CMH_ICON_SVG
+      + '<span class="cm-footer-name">Commentable HTML <span class="cm-footer-ver">v' + CMH_VERSION + '</span></span>')
     + '<span class="cm-footer-sep" aria-hidden="true">\u00b7</span>'
     + '<span class="cm-footer-gen">Generated ' + escapeHtml(genStr) + '</span>'
     + '<span class="cm-footer-sep" aria-hidden="true">\u00b7</span>'
