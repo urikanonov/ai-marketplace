@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.14.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.15.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -262,12 +262,23 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.15.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Generated documents now publish a machine-readable <code>commentableHtmlLayer</code> descriptor that records the layer version, output mode, and infra region marker names in document order.</li>
+              <li><code>#commentRoot</code> now carries <code>data-cmh-content-root</code>, giving future tooling a stable hook for content roots.</li>
+              <li>The forward-compatible content/infra layout contract is documented in <code>references/forward-compatible-layout.md</code>.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.14.0] - 2026-07-12</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Top-level prose is no longer width-capped. Ordinary paragraphs (and the lede) now fill the full content column, the same width as tables, figures, code, and callouts, so prose no longer renders narrow next to full-width content in wide reports. The previous 72ch readable-measure cap is removed.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.13.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -276,8 +287,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Export to Markdown now preserves <code>data-cm-widget</code> boards as a widget note plus a GFM table, so the triage board survives Markdown export instead of being skipped as <code>cm-skip</code> chrome.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.12.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -325,41 +334,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>On touch / coarse-pointer devices the &quot;Add Comment&quot; popup now appears when a text selection settles. Selecting text on a phone drags the native handles and never fires <code>mouseup</code>, so the popup previously never showed; a debounced <code>selectionchange</code> now raises the same popup (and hides it when the selection collapses). Desktop mouse behavior is unchanged.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.7.0] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Export on <code>file://</code> no longer drops content authored after the layer script. The export base is now captured from the fully parsed DOM at export time (then re-stripped of runtime artifacts) instead of a snapshot taken before late content (for example a <code>chart_block</code> chart placed after the layer) was parsed.</li>
-              <li><code>Export as Portable/Standalone</code> finds the embedded-comments script regardless of its attribute order, and aborts with a clear error when the companion assets version does not match the running runtime.</li>
-              <li><code>Export to Markdown</code> now serializes <code>&lt;strong&gt;</code>/<code>&lt;em&gt;</code>/<code>&lt;a&gt;</code>/<code>&lt;code&gt;</code>/<code>&lt;img&gt;</code> that are direct children of a list item, and its URL allowlist keeps only image data URLs (a bare <code>data:</code> destination is neutralized while <code>data:image</code> is preserved).</li>
-              <li>Image/canvas comment highlights clear and flash correctly on <code>&lt;canvas&gt;</code> widgets, not just <code>&lt;img&gt;</code>.</li>
-              <li>Duplicate persisted comment ids are de-duplicated on load so a corrupted store cannot render twin cards.</li>
-              <li><code>generate_toc.py</code> and <code>validate.py</code> reset the <code>#commentRoot</code> scope on the root&#x27;s closing tag, so a heading or cross-reference in a later footer or sibling container is no longer collected into the TOC or validated as document content.</li>
-              <li><code>validate.py</code> accepts cache-busted companion references, stripping a <code>?query</code>/<code>#fragment</code> before the <code>.js</code>/<code>.css</code> suffix and the on-disk existence check.</li>
-              <li><code>diff_block.py</code> preserves a file-final-newline-only difference and emits the standard <code>\ No newline at end of file</code> marker instead of silently dropping it.</li>
-              <li><code>new_document.py</code> refuses NonPortable output to stdout unless <code>--assets-href</code> is given, because bare companion names written to a stream are unreachable; its <code>--key-from-source</code> help no longer claims a <code>--label</code> fallback.</li>
-              <li><code>chart_block.py</code> adds its own tools directory to <code>sys.path</code> on import so the sibling <code>validate</code> module is importable and self-validation is never silently skipped.</li>
-              <li><code>--help</code>/<code>-h</code> now exits 0 with usage on every shipped tool (<code>validate.py</code>, <code>kql_highlight.py</code>, <code>kusto_link.py</code>, <code>mark_handled.py</code>, and the rest), instead of treating the flag as a filename.</li>
-              <li><code>new_document.py --key auto</code> derives the comment key from the output/source path identity rather than the label, so two documents that share a title no longer collide and leak comments across each other.</li>
-              <li>The lede/intro block is no longer clamped by the 72ch prose measure, so it renders at the section width.</li>
-              <li>The confirm dialog always traps Tab and pulls escaped focus back to Cancel; Escape closing the toolbar overflow menu or the add-comment menu restores focus and no longer discards an open composer draft; the side-TOC highlights the last section once the page is fully scrolled.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Headings are keyboard-focusable with a visible focus style and Enter/Space activation for the deep-link / add-comment affordance, matching the mouse-only behavior.</li>
-              <li>Generated documents carry a visible themed document title (<code>#commentRoot &gt; h1</code>); <code>new_document.py</code> adds a visible <code>&lt;h1&gt;</code> from <code>--label</code> unless the fragment already has one or <code>--no-title</code> is passed.</li>
-              <li>The trust boundary is documented in <code>SKILL.md</code> and <code>new_document.py --help</code>: authored content is trusted HTML and is not sanitized; callers must sanitize untrusted host HTML before wrapping it.</li>
-              <li>A <code>new_document.py</code> quickstart example in the plugin README; <code>retrofitting.md</code> documents the <code>window.__cmh*</code> / <code>__commentable*</code> introspection globals.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>validate.py</code> requires <code>headingAddBtn</code>, <code>widgetAddBtn</code>, and <code>menuDocComment</code>, and its stale version note now points at the correct removal version.</li>
-              <li><code>upgrade.py</code> matches its replace regions by exact begin/end markers; the composer placeholder documents the <code>Ctrl/Cmd+Enter</code> save shortcut; <code>kusto_link.py</code> and the dev tests use public/generic cluster, path, and database names in place of internal ones.</li>
-              <li><code>build.py</code> now regenerates the example reports&#x27; layer regions and version stamps from the freshly built dist and covers them in <code>--check</code>.</li>
-              <li>Both export modes download <code>&lt;stem&gt;-portable.html</code>; the NonPortable &quot;Export as Portable&quot; no longer emits a <code>&lt;stem&gt;.standalone.html</code> filename.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">17 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">18 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

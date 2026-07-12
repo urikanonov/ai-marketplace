@@ -327,13 +327,20 @@ def build_nonportable(shell, version, mermaid_version):
     if not _CSS_REGION_RE.search(t):
         raise SystemExit("build: could not locate the CSS region in the shell")
     t = _CSS_REGION_RE.sub("", t)
-    head_add = '<link rel="stylesheet" href="' + css_name + '">\n'
+    head_add = ("<!-- ============================================================\n"
+                "     BEGIN: commentable-html - CSS\n"
+                "     ============================================================ -->\n"
+                '<link rel="stylesheet" href="' + css_name + '">\n'
+                "<!-- END: commentable-html - CSS -->\n")
     if "</style>\n</head>" not in t:
         raise SystemExit("build: could not locate </style></head> in the shell")
     t = t.replace("</style>\n</head>", "</style>\n" + head_add + "</head>", 1)
 
     # 2) Replace the inline JS region with external <script src> companions.
-    js_add = ("<!-- commentable-html - layer loaded from companion files (nonportable mode) -->\n"
+    js_add = ("<!-- ============================================================\n"
+              "     BEGIN: commentable-html - JS\n"
+              "     ============================================================ -->\n"
+              "<!-- commentable-html - layer loaded from companion files (nonportable mode) -->\n"
               '<script src="' + assets_name + '"></script>\n'
               '<script src="' + js_name + '"></script>\n'
               "<!-- END: commentable-html - JS -->")
@@ -361,6 +368,7 @@ def build_nonportable(shell, version, mermaid_version):
     t = t.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="NONPORTABLE.html"', 1)
     t = t.replace("<title>Commentable HTML - Demo</title>",
                   "<title>Commentable HTML - NonPortable Demo</title>", 1)
+    t = _stamp_layer_descriptor(t, version, "nonportable")
 
     # 5) Clarify in the header comment that this is the nonportable build (CSS/JS load
     #    from companion files), so the inline "five regions" description below is not
@@ -423,6 +431,49 @@ _EXAMPLE_SWAP_REGIONS = ("CSS", "COMMENT UI", "JS")
 _EXAMPLE_NAME_RE = re.compile(r"^report-.*\.html$")
 _META_VERSION_RE = re.compile(
     r'(<meta name="commentable-html-version" content=")[0-9]+\.[0-9]+\.[0-9]+(")')
+_LAYER_DESCRIPTOR_RE = re.compile(
+    r'<script\b[^>]*\bid\s*=\s*(["\'])commentableHtmlLayer\1[^>]*>[\s\S]*?</script>\s*',
+    re.IGNORECASE)
+_LAYER_DESCRIPTOR_INSERT_RE = re.compile(
+    r'(<meta name="commentable-html-version" content="[0-9]+\.[0-9]+\.[0-9]+" />?\s*)',
+    re.IGNORECASE)
+_CONTENT_BEGIN_TEXT = "BEGIN: commentable-html - CONTENT"
+_CONTENT_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*(["\'])commentRoot\1[^>]*>', re.IGNORECASE)
+
+
+def _layer_descriptor(version, mode):
+    data = {
+        "version": version,
+        "mode": mode,
+        "regions": ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"],
+    }
+    return '<script type="application/json" id="commentableHtmlLayer">' + json.dumps(data, separators=(",", ":")) + "</script>\n"
+
+
+def _stamp_layer_descriptor(text, version, mode):
+    desc = _layer_descriptor(version, mode)
+    head_end = text.lower().find("</head>")
+    if head_end == -1:
+        raise SystemExit("build: could not locate </head> to place the layer descriptor")
+    head, tail = text[:head_end], text[head_end:]
+    if _LAYER_DESCRIPTOR_RE.search(head):
+        return _LAYER_DESCRIPTOR_RE.sub(desc, head, count=1) + tail
+    new, n = _LAYER_DESCRIPTOR_INSERT_RE.subn(lambda m: m.group(1) + desc, head, count=1)
+    if n != 1:
+        raise SystemExit("build: could not locate commentable-html-version <meta> to place the layer descriptor")
+    return new + tail
+
+
+def _stamp_content_root_hook(text):
+    marker = text.find(_CONTENT_BEGIN_TEXT)
+    if marker == -1:
+        return text
+    match = None
+    for m in _CONTENT_ROOT_RE.finditer(text, 0, marker):
+        match = m
+    if match is None or re.search(r"\sdata-cmh-content-root(?:[\s=>]|$)", match.group(0), re.IGNORECASE):
+        return text
+    return text[:match.start() + len("<main")] + " data-cmh-content-root" + text[match.start() + len("<main"):]
 
 
 def regen_example(example_html, portable_html, version, mermaid_version, where="<example>"):
@@ -438,6 +489,8 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
     out, n = _META_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), out, count=1)
     if n != 1:
         raise SystemExit("build: %s has no commentable-html-version <meta> to stamp" % where)
+    out = _stamp_layer_descriptor(out, version, "portable")
+    out = _stamp_content_root_hook(out)
     out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
     return out
 

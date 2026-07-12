@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-07-12
+
+### Added
+
+- Generated documents now publish a machine-readable `commentableHtmlLayer` descriptor that records the
+  layer version, output mode, and infra region marker names in document order.
+- `#commentRoot` now carries `data-cmh-content-root`, giving future tooling a stable hook for content roots.
+- The forward-compatible content/infra layout contract is documented in `references/forward-compatible-layout.md`.
+
 ## [1.14.0] - 2026-07-12
 
 ### Changed

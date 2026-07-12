@@ -45,7 +45,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.14.0" />
+<meta name="commentable-html-version" content="1.15.0" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.15.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -1251,7 +1252,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-07-12">
+<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-07-12">
 <nav class="cm-toc" aria-label="Table of contents">
   <div class="cm-toc-title">Contents</div>
   <ol>
@@ -1359,7 +1360,8 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.14.0";
+const CMH_VERSION = "1.15.0";
+const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -5364,6 +5366,15 @@ function _downloadHtml(text, filename) {
   a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
 }
+function _layerDescriptorJson(mode) {
+  return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
+}
+function _retargetLayerDescriptor(html, mode) {
+  const rx = /(<script\b[^>]*\bid\s*=\s*(["'])commentableHtmlLayer\2[^>]*>)([\s\S]*?)(<\/script>)/i;
+  if (rx.test(html)) return html.replace(rx, "$1" + _layerDescriptorJson(mode) + "$4");
+  return html.replace(/(<meta name="commentable-html-version" content="[^"]+" \/?>\s*)/i,
+    "$1" + '<script type="application/json" id="commentableHtmlLayer">' + _layerDescriptorJson(mode) + "</scr" + "ipt>\n");
+}
 async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
@@ -5392,6 +5403,9 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
+  const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\bid\\s*=\\s*([\"'])"
+    + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
+  t = t.replace(layerDescriptorScript, "");
   t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
@@ -5505,11 +5519,24 @@ function _inlineNonPortableAssets(baseHtml) {
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
+  t = _retargetLayerDescriptor(t, "portable");
   t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
-  t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
-  t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "[ \\t]*\\n?", "ig"), "");
-  t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
-  t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
+  const cssRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - CSS[\s\S]*?<!--\s*=*\s*END: commentable-html - CSS\s*=*\s*-->[ \t]*\n?/i;
+  const jsRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - JS[\s\S]*?<!--\s*=*\s*END: commentable-html - JS\s*=*\s*-->[ \t]*\n?/i;
+  if (cssRegion.test(t)) {
+    t = t.replace(cssRegion, "");
+  } else {
+    t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
+  }
+  if (jsRegion.test(t)) {
+    t = t.replace(jsRegion, "");
+  } else {
+    const companionScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*commentable-html[^>]*\\.js[^>]*>"
+      + "\\s*<\\/scr" + "ipt>[ \\t]*\\n?", "ig");
+    t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
+    t = t.replace(companionScript, "");
+    t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
+  }
 
   // 2) Inline the CSS in place of the removed <link>, and the runtime just before
   //    </body>. Each block carries its own region markers on their own lines.

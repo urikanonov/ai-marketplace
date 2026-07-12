@@ -29,6 +29,7 @@
   required when you port between docs.
 
     <main id="commentRoot"
+          data-cmh-content-root
           data-comment-key="my-doc"      (unique per doc)
           data-doc-label="My Document">     (shown in copy)
       ... your content ...
@@ -49,7 +50,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.14.0" />
+<meta name="commentable-html-version" content="1.15.0" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.15.0","mode":"nonportable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (nonportable)</title>
 
@@ -163,7 +165,11 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 }
 
 </style>
+<!-- ============================================================
+     BEGIN: commentable-html - CSS
+     ============================================================ -->
 <link rel="stylesheet" href="../../../../pkg/skills/commentable-html/dist/commentable-html.css">
+<!-- END: commentable-html - CSS -->
 </head>
 
 <body class="sidebar-open">
@@ -318,6 +324,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 -->
 <div class="app">
 <main id="commentRoot"
+      data-cmh-content-root
       data-comment-key="kitchen-sink-nonportable-v1"
       data-doc-label="Commentable HTML demo"
       data-doc-source="kitchen-sink.html">
@@ -405,6 +412,9 @@ flowchart LR
 </div>
 <!-- End of per-document content -->
 
+<!-- ============================================================
+     BEGIN: commentable-html - JS
+     ============================================================ -->
 <!-- commentable-html - layer loaded from companion files (nonportable mode) -->
 <script src="../../../../pkg/skills/commentable-html/dist/commentable-html.assets.js"></script>
 <script src="../../../../pkg/skills/commentable-html/dist/commentable-html.js"></script>

@@ -185,6 +185,8 @@ This is the single most important invariant of the skill: the agent's edit to `h
 
 The layer ships in two interchangeable forms. Both share the exact same runtime and CSS (built from one source, see "Build pipeline"), and both keep the document-owned state (HANDLED IDS, EMBEDDED COMMENTS) inline. They differ only in whether the shared CSS + JS boilerplate is referenced from companion files or inlined. See [Exports](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where) for the two diagrams showing what is bundled in the file versus fetched from where in each mode.
 
+Generated documents also carry a small machine-readable content/infra contract for future tooling. See [Forward-compatible layout](references/forward-compatible-layout.md) for the `commentableHtmlLayer` descriptor, region marker list, and `data-cmh-content-root` hook.
+
 | | **NonPortable** - `dist/NONPORTABLE.html` + companions | **Portable** - `dist/PORTABLE.html` or **Export as Portable** |
 |---|---|---|
 | Layer CSS/JS | referenced by `<link>` / `<script src>` from the skill's shared `dist/` assets | inlined in the file |

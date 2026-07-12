@@ -38,6 +38,7 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertNotIn("This is a small playground", out)
         # The active root carries our attributes.
         self.assertIn('data-comment-key="my-report-v1"', out)
+        self.assertIn("data-cmh-content-root", out)
         self.assertIn('data-doc-label="My Report"', out)
         self.assertIn('data-doc-source="src.md"', out)
         # The demo content-root key was replaced, not left as a second live root.
@@ -417,7 +418,7 @@ class NonPortableCliTests(unittest.TestCase):
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP", "--out", op])
         self.assertEqual(code, 0, err)  # validates only because the refs resolve to the skill dist/
         html = open(op, encoding="utf-8").read()
-        self.assertNotIn("BEGIN: commentable-html - CSS", html)  # layer CSS is NOT inlined
+        self.assertIn("BEGIN: commentable-html - CSS", html)
         css_url = Path(os.path.join(_paths.DIST, "commentable-html.css")).resolve().as_uri()
         js_url = Path(os.path.join(_paths.DIST, "commentable-html.js")).resolve().as_uri()
         self.assertIn('href="%s"' % css_url, html)
