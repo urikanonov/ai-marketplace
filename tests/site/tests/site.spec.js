@@ -24,6 +24,83 @@ test("hub renders with plugins, install command, and logo", async ({ page }) => 
   await expect(page.locator("#install .cmd pre")).toContainText("marketplace add");
 });
 
+test("a plugin card is clickable across its body, navigating to the plugin page (SITE-HUB-06)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
+  // A stretched title link covers the card body. Click the coordinate over the description
+  // (mouse.click hits whatever is topmost - the stretched link) and expect navigation.
+  const desc = card.locator(".desc");
+  await desc.scrollIntoViewIfNeeded();
+  const box = await desc.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page).toHaveURL(/\/commentable-html\/$/);
+});
+
+test("the card copy button and Learn more stay independently clickable over the card link (SITE-HUB-06)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
+  // The interactive controls are raised above the stretched link so they act on their own
+  // (no navigation, no cursor flicker): the copy button copies rather than navigating.
+  await card.locator(".copy-btn").click();
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test("the hub Learn more button uses the brand accent color, not yellow (SITE-HUB-07)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const learn = page.locator(".plugin-card .learn-more").first();
+  const bg = await learn.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const accentBg = await page.evaluate(() => {
+    const d = document.createElement("div");
+    d.style.backgroundColor = "var(--cp-accent)";
+    document.body.appendChild(d);
+    const c = getComputedStyle(d).backgroundColor;
+    d.remove();
+    return c;
+  });
+  expect(bg).toBe(accentBg);
+  // The old design used amber #ffc107 -> rgb(255, 193, 7); make sure that is gone.
+  expect(bg).not.toBe("rgb(255, 193, 7)");
+});
+
+test("the review-loop diagram labels enlarge on a mobile viewport (SITE-WHY-04)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const sub = page.locator(".loop-fig-sub").first();
+  await page.setViewportSize({ width: 1000, height: 900 });
+  const desktopFs = await sub.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  await page.setViewportSize({ width: 380, height: 800 });
+  const mobileFs = await sub.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(mobileFs).toBeGreaterThan(desktopFs);
+});
+
+test("mobile comparison cards color only the verdicts and show a good/total score (SITE-WHY-05)", async ({ page }) => {
+  await page.setViewportSize({ width: 380, height: 900 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const table = page.locator("table.compare");
+  await expect(table.locator("tr", { hasText: "Plain HTML" }).locator(".cmp-score")).toHaveText("3/5");
+  await expect(table.locator("tr.compare-hero", { hasText: "Commentable HTML" }).locator(".cmp-score")).toHaveText("5/5");
+  const goodBg = await table.locator('td[data-v="good"] .cmp-v').first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  const badBg = await table.locator('td[data-v="bad"] .cmp-v').first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(goodBg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(badBg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(goodBg).not.toBe(badBg);
+  // The hero row no longer has a full-cell fill on mobile - only the verdict pills are colored.
+  const heroCellBg = await table.locator("tr.compare-hero td").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(heroCellBg).toBe("rgba(0, 0, 0, 0)");
+});
+
+test("the portability section shows three modes including Offline with a source graph (SITE-PLUGIN-09)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".mode-card")).toHaveCount(3);
+  await expect(page.locator(".mode-card h3", { hasText: "Offline" })).toHaveCount(1);
+  await expect(page.locator(".mode-card .mode-sources .src").first()).toBeVisible();
+  // Offline inlines the CDN parts (mermaid + charts): its card has an inline chip and no CDN chip.
+  const offline = page.locator(".mode-card", { hasText: "Offline" });
+  await expect(offline.locator(".src-cdn")).toHaveCount(0);
+  await expect(offline.locator(".src-inline")).not.toHaveCount(0);
+  // Non-portable still pulls mermaid + charts from a CDN.
+  await expect(page.locator(".mode-card", { hasText: "Non-portable" }).locator(".src-cdn")).not.toHaveCount(0);
+});
+
 test("every page exposes a skip-to-content link that targets the main region", async ({ page }) => {
   for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
@@ -316,9 +393,9 @@ test("the Why section presents the medium comparison table and the HTML blog ref
   const why = page.locator("#why");
   const table = why.locator("table.compare");
   await expect(table).toBeVisible();
-  // Four media rows, with commentable-html as the highlighted row.
+  // Four media rows, with Commentable HTML as the highlighted row.
   await expect(table.locator("tbody tr")).toHaveCount(4);
-  await expect(table.locator("tr.compare-hero", { hasText: "commentable-html" })).toHaveCount(1);
+  await expect(table.locator("tr.compare-hero", { hasText: "Commentable HTML" })).toHaveCount(1);
   // The section references the external HTML blog post, opening in a new tab.
   const blog = why.locator('a[href*="unreasonable-effectiveness-of-html"]').first();
   await expect(blog).toHaveAttribute("target", "_blank");

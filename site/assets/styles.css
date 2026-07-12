@@ -13,6 +13,8 @@
   --cp-accent-soft: #f7e3ea;
   --cp-accent-fg: #ffffff;
   --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #b45309;
   --cp-link: #0067b8;
   --cp-navbar-bg: rgba(252, 251, 248, 0.82);
   --cp-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
@@ -38,6 +40,8 @@
     --cp-accent-soft: #452532;
     --cp-accent-fg: #261018;
     --cp-success: #7ee2a8;
+    --cp-danger: #f5a3a3;
+    --cp-warning: #f0b866;
     --cp-link: #72b7f2;
     --cp-navbar-bg: rgba(21, 18, 22, 0.88);
     --cp-shadow: 0 1px 2px rgba(0, 0, 0, 0.28), 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -267,18 +271,35 @@ main > section:nth-of-type(even) {
 .plugin-card .keywords { display: flex; flex-wrap: wrap; gap: 6px; }
 .plugin-card .foot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-/* Click targets are the card title link and the Learn more button - NOT a whole-card
-   stretched overlay (that overlay fought the copy button and the install block, so the
-   cursor flickered and parts of the card were not clickable). */
+/* The whole card is a click target to the plugin page again: a stretched pseudo-link over the
+   card body. Interactive controls (install/copy block, foot buttons) are raised ABOVE it so they
+   act on their own without navigating and without the cursor flicker the old full-card overlay had. */
 .plugin-card .name a { color: inherit; text-decoration: none; }
 .plugin-card .name a:hover { color: var(--cp-accent); text-decoration: underline; }
 .plugin-card .name a:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; border-radius: 4px; }
+.plugin-card .name a::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.plugin-card .cmd, .plugin-card .foot { position: relative; z-index: 2; }
 .plugin-card .learn-more {
-  background: #ffc107;
-  color: #1a1a1a;
-  border-color: #e0a800;
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  border-color: var(--cp-accent);
 }
-.plugin-card .learn-more:hover { background: #ffca2c; border-color: #e0a800; color: #1a1a1a; }
+.plugin-card .learn-more:hover { background: var(--cp-accent-hover); border-color: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+
+/* Portability-mode "where each part comes from" graph: one row per part, with a color-coded
+   source chip (skill folder / CDN / inlined / seeded-from-HTML / browser storage). */
+.mode-card { display: flex; flex-direction: column; }
+.mode-card p { flex: 1; }
+.mode-sources { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--cp-border); display: flex; flex-direction: column; gap: 8px; }
+.mode-source { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mode-source dt { color: var(--cp-text-muted); font-size: 0.88rem; font-weight: 600; }
+.mode-source dd { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.src { font-family: var(--cp-mono); font-size: 0.72rem; padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.src-folder { background: var(--cp-surface-soft); color: var(--cp-text-muted); border-color: var(--cp-border); }
+.src-cdn { background: color-mix(in srgb, var(--cp-warning) 18%, transparent); color: var(--cp-warning); }
+.src-inline { background: color-mix(in srgb, var(--cp-success) 18%, transparent); color: var(--cp-success); }
+.src-storage { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.src-seed { background: color-mix(in srgb, var(--cp-link) 15%, transparent); color: var(--cp-link); }
 
 .badge {
   display: inline-block;
@@ -446,6 +467,10 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .compare tbody tr:last-child td { border-bottom: none; }
 .compare .compare-hero td { background: var(--cp-accent-soft); color: var(--cp-text); font-weight: 700; }
 .compare .compare-hero td:first-child { border-left: 3px solid var(--cp-accent); }
+/* Verdict pill + good/total score. Inert on desktop (no visual change); the mobile card
+   treatment below tints each verdict green/red and reveals the score next to the card title. */
+.cmp-v { display: inline; }
+.cmp-score { display: none; }
 /* Narrow screens: the six-column comparison overflows, so stack each medium as a card and
    label every value with its column name (from data-label). Desktop/tablet is unchanged. */
 @media (max-width: 640px) {
@@ -459,6 +484,15 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
   .compare td[data-label]::before { content: attr(data-label); float: left; font-weight: 600; color: var(--cp-text-muted); padding-right: 12px; }
   .compare .compare-hero td:first-child { border-left: none; }
   .compare .compare-hero { border-color: var(--cp-accent); border-left: 3px solid var(--cp-accent); }
+  /* No full-card fill: color only the verdicts (green good, red bad) and show a good/total score. */
+  .compare .compare-hero td { background: none; }
+  .compare td[data-v] .cmp-v { display: inline-block; padding: 2px 11px; border-radius: 999px; font-weight: 700; }
+  .compare td[data-v="good"] .cmp-v { background: color-mix(in srgb, var(--cp-success) 22%, transparent); }
+  .compare td[data-v="bad"] .cmp-v { background: color-mix(in srgb, var(--cp-danger) 20%, transparent); }
+  .cmp-score { display: inline-block; margin-left: 8px; font-size: 0.8rem; font-weight: 700; color: var(--cp-text-muted); background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 999px; padding: 1px 9px; vertical-align: middle; }
+  /* Enlarge the review-loop diagram labels so they stay legible when the SVG scales down. */
+  .loop-fig-title { font-size: 24px; }
+  .loop-fig-sub { font-size: 18px; }
 }
 .why-list { margin: 14px 0 0; padding-left: 20px; }
 .why-list li { margin-bottom: 10px; color: var(--cp-text); }
