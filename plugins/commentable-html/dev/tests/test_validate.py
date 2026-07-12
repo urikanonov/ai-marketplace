@@ -45,6 +45,7 @@ EXPECTED_REQUIRED_IDS = frozenset({
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
+    "btnExportOffline", "btnExportOfflineTop",
     "headingAddBtn", "widgetAddBtn", "menuDocComment",
 })
 
@@ -751,6 +752,12 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_mermaid_missing_loader_warns(self):
         self.assertTrue(self._mermaid_warns(None))
+
+    def test_rendered_mermaid_svg_without_loader_is_clean(self):
+        main = MAIN.replace(
+            "<p>content</p>",
+            '<pre class="mermaid cm-skip" data-processed="true"><svg><g class="node"><text>A</text></g></svg></pre>')
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
     def test_mermaid_gated_loader_warns(self):
         gated = ('<script type="module">if (new URLSearchParams(location.search).get("mermaid") === "1") '

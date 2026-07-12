@@ -57,3 +57,5 @@ The skill does **not** load mermaid. The host page must include a mermaid script
 If mermaid never renders because network access is unavailable, CSP blocks it, or the source is invalid, the layer no-ops and the `pre.mermaid` block remains readable source text. Do not gate the loader behind `?mermaid=1`; the validator warns because diagrams must render on normal open.
 
 CDN mermaid loading is an explicit opt-in. It executes remote code, so shared files depend on network availability to render the diagram. Use it only when the user accepts that tradeoff; otherwise self-host the module or inline it.
+
+For a zero-network handoff after the page has rendered, use **Export Offline**. It copies the rendered SVG into the exported document, removes the mermaid CDN import, and keeps `data-cmh-md-src` for Markdown export. The exported SVG keeps the node structure the comment layer uses, so mermaid comments can still restore their rings without loading mermaid again.

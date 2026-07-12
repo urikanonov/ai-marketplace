@@ -884,9 +884,11 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   max-height: min(60vh, 480px); min-height: 160px; overflow: hidden;
 }
 #commentRoot figure.chart canvas,
+#commentRoot figure.chart img.cmh-chart,
 #commentRoot canvas.cmh-chart {
   display: block; width: 100% !important; max-width: 100% !important;
   height: 100% !important; max-height: 100% !important; box-sizing: border-box;
+  object-fit: contain;
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
