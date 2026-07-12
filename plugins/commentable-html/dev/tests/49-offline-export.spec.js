@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
-  installClipboardCapture, openToolbarMenu, addTextComment, readDownload,
+  installClipboardCapture, openToolbarMenu, addTextComment, readDownload, stageNonPortable,
 } from "./helpers.js";
 
 const CONTENT = `
@@ -164,9 +164,9 @@ function expectForwardCompatibleContract(html, mode) {
 
 function mediaLoadAttributes(html) {
   const refs = [];
-  const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed|track|image|use|input|meta|body|table|td|th)\b[^>]*>/gi;
+  const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed|track|image|use|input|meta|body|table|td|th|form|button)\b[^>]*>/gi;
   for (const tag of html.matchAll(tagRe)) {
-    for (const attr of tag[0].matchAll(/\s(href|xlink:href|src|srcset|poster|data|background|content)\s*=\s*["']([^"']+)["']/gi)) {
+    for (const attr of tag[0].matchAll(/\s(href|xlink:href|src|srcset|poster|data|background|content|action|formaction)\s*=\s*["']([^"']+)["']/gi)) {
       refs.push({ tag: tag[1].toLowerCase(), attr: attr[1].toLowerCase(), value: attr[2] });
     }
   }
@@ -389,6 +389,8 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
     expect(csp).toContain("script-src 'unsafe-inline'");
     expect(csp).toContain("connect-src 'none'");
     expect(csp).toContain("base-uri 'none'");
+    expect(csp).toContain("form-action 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
     const handlerTag = exportedHtml.match(/<img\b[^>]*id="handlerProbe"[^>]*>/i);
     expect(handlerTag && handlerTag[0]).toBeTruthy();
     expect(handlerTag[0]).not.toMatch(/\sonerror\s*=/i);
@@ -419,5 +421,110 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
     await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
     fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("Export Offline neutralizes form posts and preserves safe canvas scripts (CMH-OFFLINE-04, CMH-OFFLINE-05)", async ({ page, browser }) => {
+  const CONTENT_WITH_FORMS_AND_CANVAS = `
+<h1>Offline forms and canvas</h1>
+<p id="form-canvas-note">Network form targets must not survive offline export.</p>
+<form id="remoteForm" action="https://evil.example/post">
+  <button id="remoteButton" formaction="//evil.example/button">Send</button>
+  <input id="remoteInput" formaction="https://evil.example/input" value="Send">
+</form>
+<div class="cm-skip"><canvas id="customCanvas" width="20" height="20" role="img" aria-label="Custom canvas"></canvas></div>
+<script>
+(function () {
+  window.__benignImportCommentKept = true;
+  if (false) import("./local-module.js");
+  // This comment has slashes but no network dynamic import.
+})();
+</script>
+<script>
+(function () {
+  var canvas = document.getElementById("customCanvas");
+  var ctx = canvas && canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#ff0000";
+  ctx.fillRect(0, 0, 20, 20);
+  window.__customCanvasDrew = true;
+})();
+</script>`;
+  const staged = stageContent(CONTENT_WITH_FORMS_AND_CANVAS, { key: "cmh-offline-forms-canvas", source: "offline-forms-canvas.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+    expect(exportedHtml).toContain("window.__benignImportCommentKept = true");
+    expect(exportedHtml).toContain("window.__customCanvasDrew = true");
+    for (const id of ["remoteForm", "remoteButton", "remoteInput"]) {
+      const tag = exportedHtml.match(new RegExp(`<[^>]+id=["']${id}["'][^>]*>`, "i"));
+      expect(tag && tag[0]).toBeTruthy();
+      expect(tag[0]).not.toMatch(/\s(?:action|formaction)\s*=/i);
+    }
+
+    const exportedPath = path.join(outDir, "offline-forms-canvas.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    const state = await page2.evaluate(() => ({
+      importCommentKept: window.__benignImportCommentKept === true,
+      customCanvasDrew: window.__customCanvasDrew === true,
+      pixel: Array.from(document.getElementById("customCanvas").getContext("2d").getImageData(1, 1, 1, 1).data),
+    }));
+    expect(state.importCommentKept).toBe(true);
+    expect(state.customCanvasDrew).toBe(true);
+    expect(state.pixel.slice(0, 3)).toEqual([255, 0, 0]);
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("NonPortable export ignores region marker text in content (CMH-FWDCOMPAT-01)", async ({ page }) => {
+  const staged = stageNonPortable({
+    mutate: (html) => html.replace(
+      /(<main\b[^>]*id="commentRoot"[\s\S]*?<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/,
+      '$1\n<h1>Region marker prose</h1>\n<pre>\nBEGIN: commentable-html - CSS\n</pre>\n$2'
+    ),
+  });
+  try {
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnSaveHtmlTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(exportedHtml).toMatch(/<pre\b[\s\S]*BEGIN: commentable-html - CSS[\s\S]*<\/pre>/);
+    expectForwardCompatibleContract(exportedHtml, "portable");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });

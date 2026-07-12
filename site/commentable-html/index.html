@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.19.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.20.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -281,6 +281,16 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.20.0] - 2026-07-12</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Offline export now blocks form submissions in CSP, removes remote form targets, keeps benign inline scripts with non-network dynamic import comments, and preserves custom canvas renderers that are not chart snapshots.</li>
+              <li>Strict offline validation now requires the restrictive CSP and rejects network form targets, meta refresh redirects, and network CSS <code>url(...)</code> values in style blocks or inline styles.</li>
+              <li>Offline validation now ignores non-fetching remote links such as canonical and alternate metadata while still blocking fetching link relations.</li>
+              <li>Region marker guards in validation, upgrade, build, and runtime export now count only comment-delimited infra markers, so marker text inside prose or code blocks no longer causes duplicate-region failures.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.19.0] - 2026-07-12</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -291,6 +301,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Markdown export now summarizes offline chart snapshots by label instead of embedding base64 chart images.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.18.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -306,8 +318,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The forward-compatible layout reference now clarifies that <code>validate.py --strict</code> validates the current contract only and legacy pre-1.15 documents must be regenerated or upgraded before validation.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.17.0] - 2026-07-12</h3></div>
             <div class="group-label">Fixed</div>
@@ -350,15 +360,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Top-level prose is no longer width-capped. Ordinary paragraphs (and the lede) now fill the full content column, the same width as tables, figures, code, and callouts, so prose no longer renders narrow next to full-width content in wide reports. The previous 72ch readable-measure cap is removed.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.13.0] - 2026-07-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Added two shipped live demo reports: an incident triage board with commentable widget columns and cards, and a visuals matrix covering flowchart, sequence, gantt, state, class, ER, and pie mermaid diagrams, four Chart.js chart kinds, a code-review diff, a KQL block, and an SVG figure.</li>
-              <li>Export to Markdown now preserves <code>data-cm-widget</code> boards as a widget note plus a GFM table, so the triage board survives Markdown export instead of being skipped as <code>cm-skip</code> chrome.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">22 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">23 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

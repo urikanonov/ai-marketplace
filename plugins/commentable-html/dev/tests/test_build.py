@@ -239,9 +239,6 @@ class BuildTests(unittest.TestCase):
             build.regen_example(example, portable, build.read_version(), build.read_mermaid_version(), "<duplicate>")
 
     def test_region_inner_rejects_trailing_authored_text(self):
-        # C2: build's example regen bounds a region only by a COMPLETE marker line, never a
-        # loose substring. A line-leading marker phrase with trailing authored words (or an
-        # inline mention) before the real marker must not be treated as the region start.
         text = ("     BEGIN: commentable-html - CSS as documented in this authored note\n"
                 "poison-before\n"
                 "/* ============================================================\n"
@@ -254,6 +251,18 @@ class BuildTests(unittest.TestCase):
         self.assertIn("body", inner)
         self.assertNotIn("poison-before", inner)
         self.assertNotIn("authored note", inner)
+
+    def test_region_inner_ignores_marker_text_inside_pre_content(self):
+        text = ("<pre>\nBEGIN: commentable-html - JS\n</pre>\n"
+                "<!-- ============================================================\n"
+                "     BEGIN: commentable-html - JS\n"
+                "     ============================================================ -->\n"
+                "body();\n"
+                "<!-- END: commentable-html - JS -->\n")
+        b, e = build._region_inner(text, "JS", "<t>")
+        inner = text[b:e]
+        self.assertIn("body();", inner)
+        self.assertNotIn("<pre>", inner)
 
     def test_manifest_hashes_match_dist_files(self):
         manifest = json.loads(_read(os.path.join(DIST, "manifest.json")))

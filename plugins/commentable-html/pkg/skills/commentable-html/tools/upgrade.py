@@ -36,36 +36,89 @@ LAYER_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 # State/content markers a valid target must contain (so we never "upgrade" a file that
 # is not actually a commentable-html document).
 REQUIRED_MARKERS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "CONTENT", "CSS", "JS"]
+CONTENT_BEGIN_RE = re.compile(r"<!--\s*BEGIN: commentable-html - CONTENT\b", re.IGNORECASE)
 # A real nonportable document carries this exact bootstrap comment. The inline JS body only
 # mentions the marker text inside a regex literal (with `\s*`, not literal spaces), so
 # matching the full comment avoids a false positive on standalone files.
 NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
 
 
-def _marker_re(kind, name):
-    # A region marker occupies its OWN line: the keyword phrase alone, optionally wrapped by
-    # a comment delimiter (<!-- ... --> or /* ... */) and/or a ==== banner rule, with nothing
-    # else on the line. Anchoring to the full line (not a loose substring) means authored
-    # content that merely mentions the phrase - e.g. "BEGIN: commentable-html - CSS notes" or
-    # the plain-export code that reconstructs marker text inside a JS string literal (those
-    # lines start with `+ "`) - can never be mistaken for a real region boundary.
-    return re.compile(
-        r"(?m)^[ \t]*(?:<!--[ \t]*)?(?:/\*[ \t]*)?(?:=+[ \t]*)?(%s: commentable-html - %s)"
-        r"[ \t]*(?:=+[ \t]*)?(?:-->|\*/)?[ \t]*$"
-        % (kind, re.escape(name)))
+class _MarkerMatch:
+    def __init__(self, marker_start, marker_end):
+        self._marker_start = marker_start
+        self._marker_end = marker_end
+
+    def start(self, group=0):
+        return self._marker_start
+
+    def end(self, group=0):
+        return self._marker_end
+
+
+def _advance_comment_state(line, state):
+    i = 0
+    while i < len(line):
+        if state == "html":
+            close = line.find("-->", i)
+            if close < 0:
+                return "html"
+            state = ""
+            i = close + 3
+            continue
+        if state == "css":
+            close = line.find("*/", i)
+            if close < 0:
+                return "css"
+            state = ""
+            i = close + 2
+            continue
+        html_open = line.find("<!--", i)
+        css_open = line.find("/*", i)
+        if html_open >= 0 and (css_open < 0 or html_open < css_open):
+            state = "html"
+            i = html_open + 4
+            continue
+        if css_open >= 0:
+            state = "css"
+            i = css_open + 2
+            continue
+        return ""
+    return state
+
+
+def _region_marker_matches(text, kind, name):
+    marker = "%s: commentable-html - %s" % (kind, name)
+    marker_re = re.escape(marker)
+    bare = re.compile(r"^[ \t]*(?:=+[ \t]*)?(%s)[ \t]*(?:=+[ \t]*)?$" % marker_re)
+    inline = re.compile(r"^[ \t]*(?:<!--[ \t]*|/\*[ \t]*)(?:=+[ \t]*)?(%s)[ \t]*(?:=+[ \t]*)?(?:-->|\*/)[ \t]*$" % marker_re)
+    matches = []
+    state = ""
+    offset = 0
+    for line in (text or "").splitlines(True):
+        body = line[:-1] if line.endswith("\n") else line
+        if body.endswith("\r"):
+            body = body[:-1]
+        m = inline.match(body)
+        if m is None and state in ("html", "css"):
+            m = bare.match(body)
+        if m is not None:
+            matches.append(_MarkerMatch(offset + m.start(1), offset + m.end(1)))
+        state = _advance_comment_state(body, state)
+        offset += len(line)
+    return matches
 
 
 def _region_inner(text, name, where):
     """Return (start, end) byte offsets of a region's inner content (between the BEGIN
     and END marker texts). The line-anchored match ignores marker-like strings."""
-    begins = list(_marker_re("BEGIN", name).finditer(text))
+    begins = _region_marker_matches(text, "BEGIN", name)
     if not begins:
         raise ValueError("%s: '%s' region BEGIN marker not found" % (where, name))
     if len(begins) > 1:
         raise ValueError("%s: duplicate region: %s" % (where, name))
     bm = begins[0]
     b = bm.end(1)
-    ends = [m for m in _marker_re("END", name).finditer(text) if m.start(1) >= b]
+    ends = [m for m in _region_marker_matches(text, "END", name) if m.start(1) >= b]
     if not ends:
         raise ValueError("%s: '%s' region END marker not found after BEGIN" % (where, name))
     if len(ends) > 1:
@@ -81,7 +134,9 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
             "%s looks like a nonportable document (companion assets). Upgrade nonportable files by "
             "replacing the dist/ companions from the new release; the version meta is stamped by the build." % target_name)
     for marker in REQUIRED_MARKERS:
-        if ("BEGIN: commentable-html - " + marker) not in target_html:
+        found = bool(CONTENT_BEGIN_RE.search(target_html)) if marker == "CONTENT" \
+            else bool(_region_marker_matches(target_html, "BEGIN", marker))
+        if not found:
             raise ValueError("%s is not a commentable-html document (missing '%s' region)" % (target_name, marker))
     for name in LAYER_REGIONS:
         _region_inner(template_html, name, template_name)
