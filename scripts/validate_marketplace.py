@@ -4,8 +4,9 @@
 Fails (exit 1) on any structural error so broken plugins cannot be merged. Checks:
 - marketplace.json parses and matches the marketplace JSON Schema.
 - Each manifest entry: unique name, semver version, repo-relative source without '..',
-  the source path exists, and it contains either a plugin.json (whose version must match
-  the manifest entry) or a SKILL.md (whose front matter must have name + description).
+  the source path exists, and it contains either a plugin.json (whose version, name,
+  description, and keywords must match the manifest entry) or a SKILL.md (whose front
+  matter must have name + description).
 - Every plugins/**/plugin.json parses, matches the plugin JSON Schema, and has a semver version.
 - Every plugins/**/SKILL.md has YAML front matter with a non-empty name and description.
 - Development-only folders (dev/, node_modules/, __pycache__/) are ignored. A gitignored one nested in a
@@ -66,6 +67,44 @@ def git_ignores(path: Path) -> bool:
 def _sort_walk_entries(dirnames: list[str], filenames: list[str]) -> None:
     dirnames.sort()
     filenames.sort()
+
+
+def _sorted_keywords(data: dict) -> list[str]:
+    value = data.get("keywords", [])
+    if not isinstance(value, list):
+        return []
+    return sorted({keyword for keyword in value if isinstance(keyword, str)})
+
+
+def entry_plugin_parity_errors(
+    name: str, entry: dict, pj: dict, plugin_json_rel: str = "plugin.json"
+) -> list[str]:
+    result: list[str] = []
+
+    entry_has_keywords = "keywords" in entry
+    pj_has_keywords = "keywords" in pj
+    entry_kw = _sorted_keywords(entry) if entry_has_keywords else []
+    pj_kw = _sorted_keywords(pj) if pj_has_keywords else []
+    if not entry_has_keywords or not pj_has_keywords or entry_kw != pj_kw:
+        manifest_kw = entry_kw if entry_has_keywords else "<missing>"
+        plugin_kw = pj_kw if pj_has_keywords else "<missing>"
+        result.append(f"{name}: manifest keywords {manifest_kw} != {plugin_json_rel} keywords {plugin_kw}")
+
+    entry_has_description = "description" in entry
+    pj_has_description = "description" in pj
+    if (
+        not entry_has_description
+        or not pj_has_description
+        or entry.get("description") != pj.get("description")
+    ):
+        manifest_description = repr(entry.get("description")) if entry_has_description else "<missing>"
+        plugin_description = repr(pj.get("description")) if pj_has_description else "<missing>"
+        result.append(
+            f"{name}: manifest description {manifest_description} != "
+            f"{plugin_json_rel} description {plugin_description}"
+        )
+
+    return result
 
 
 def load_json(path: Path):
@@ -146,9 +185,9 @@ def main() -> int:
                 if d.lower() in RESERVED_DEV_DIRS and git_ignores(base / d):
                     dirnames.remove(d)
             _sort_walk_entries(dirnames, filenames)
-            for entry in list(dirnames) + filenames:
-                if (base / entry).is_symlink():
-                    err(f"{name}: shipped source must not contain a symlink: {rel(base / entry)}")
+            for child in list(dirnames) + filenames:
+                if (base / child).is_symlink():
+                    err(f"{name}: shipped source must not contain a symlink: {rel(base / child)}")
             for d in dirnames:
                 if d.lower() in RESERVED_DEV_DIRS:
                     err(f"{name}: shipped source would distribute a dev-only folder: {rel(base / d)}")
@@ -168,6 +207,8 @@ def main() -> int:
                         f"{name}: {rel(plugin_json)} name {pj.get('name')!r} does not match "
                         f"manifest entry name {name!r}"
                     )
+                for parity_error in entry_plugin_parity_errors(name, entry, pj, rel(plugin_json)):
+                    err(parity_error)
                 for key in ("hooks", "skills"):
                     ref = pj.get(key)
                     if not ref:
