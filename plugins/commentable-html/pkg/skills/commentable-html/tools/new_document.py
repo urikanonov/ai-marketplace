@@ -26,12 +26,12 @@ Export as Portable button; there is no CLI export because a tool cannot read the
 browser localStorage where in-browser comments live. Pass --portable to emit an
 inlined single file directly instead.
 
-For NonPortable output the companion references default to a relative path from --out to
-the skill's dist/ folder; use --assets-href PREFIX to reference them elsewhere, or
---copy-assets to copy the three files next to --out and reference them by bare name (a
-movable self-contained folder). Writing NonPortable to stdout (no --out) is refused
-because bare companion names have no on-disk folder to resolve against; pass --assets-href
-PREFIX, use --out (optionally with --copy-assets), or emit --portable instead.
+For NonPortable output the companion references default to absolute file:// URLs that
+point at this installed skill's dist/ folder. The generated HTML can move anywhere on
+the same machine and still find the shared companions. Use --assets-relative to opt
+back into a relative path from --out to the skill's dist/ folder for a movable folder
+bundle, --assets-href PREFIX to reference companions elsewhere, or --copy-assets to
+copy the three files next to --out and reference them by bare name.
 
 Usage (run from the skill root):
     python tools/new_document.py --content body.html --key auto --label "My Report" --out r.html
@@ -47,6 +47,7 @@ import hashlib
 import html as _html
 import html.parser as _html_parser
 import os
+from pathlib import Path
 import re
 import shutil
 import sys
@@ -333,7 +334,11 @@ def _repoint_companions(html, prefix):
     return html
 
 
-def _companion_prefix(out_path, assets_href, copy_assets):
+def _file_url_prefix(path):
+    return Path(os.path.abspath(path)).resolve().as_uri()
+
+
+def _companion_prefix(out_path, assets_href, copy_assets, assets_relative=False):
     """Resolve (prefix, validate_base) for a NonPortable document's companion
     references.
 
@@ -341,12 +346,13 @@ def _companion_prefix(out_path, assets_href, copy_assets):
                         validate_base None (existence is guaranteed by the copy);
     - --assets-href  -> the given prefix verbatim; validate_base None (a caller-managed
                         path we cannot resolve at generation time);
-    - --out (default)-> a relative path from --out's directory to the skill's dist/,
+    - default        -> an absolute file:// URL to the skill's dist/ folder;
+                        validate_base None (the URL itself is absolute);
+    - --assets-relative
+                     -> a relative path from --out's directory to the skill's dist/,
                         and validate_base = --out's directory so the existence check
                         genuinely confirms the refs resolve to the skill dist/;
-    - stdout default -> bare names ("") and validate_base None; main() refuses the write
-                        afterwards (bare companion names on a stream are unreachable) unless
-                        the doc fails to build/validate first, so those errors surface first.
+                        requires --out because a stream has no stable folder.
     """
     if copy_assets:
         if not out_path:
@@ -356,12 +362,12 @@ def _companion_prefix(out_path, assets_href, copy_assets):
         # Return the prefix verbatim - _join_ref trims a trailing "/" without losing a
         # bare root "/" (rstrip here would turn "/" into "" and drop the prefix).
         return assets_href, None
-    if not out_path:
-        # Bare names are unreachable on a stream, but defer the refusal to main() so a
-        # bad key/marker/validation error surfaces first; here we just pick bare names.
-        return "", None
-    out_dir = os.path.dirname(os.path.abspath(out_path))
     dist = os.path.join(_skill_root(), "dist")
+    if not assets_relative:
+        return _file_url_prefix(dist), None
+    if not out_path:
+        raise ValueError("--assets-relative needs --out FILE (cannot compute a relative companion path for a stream)")
+    out_dir = os.path.dirname(os.path.abspath(out_path))
     try:
         rel = os.path.relpath(dist, out_dir)
     except ValueError:
@@ -460,12 +466,15 @@ def main(argv):
     mode.add_argument("--nonportable", action="store_true",
                       help="produce a NonPortable document (the default): references the companion "
                            "commentable-html.{css,js,assets.js} instead of inlining them; cheap to "
-                           "iterate on, export to Portable to share")
+                           "iterate on, movable on this machine, export to Portable to share")
     mode.add_argument("--portable", action="store_true",
                       help="produce a single self-contained Portable file (inlines the layer)")
     parser.add_argument("--assets-href", default=None,
                         help="NonPortable only: path prefix used to reference the companions "
-                             "(default: a relative path from --out to the skill's dist/)")
+                             "(default: an absolute file:// URL to the skill's dist/)")
+    parser.add_argument("--assets-relative", action="store_true",
+                        help="NonPortable only: reference companions by a relative path from "
+                             "--out to the skill's dist/ (old movable-folder behavior)")
     parser.add_argument("--copy-assets", action="store_true",
                         help="NonPortable only: copy the three companions next to --out and "
                              "reference them by bare name (a movable self-contained folder)")
@@ -500,8 +509,13 @@ def main(argv):
     copy_here = False
     validate_base = None
     if nonportable:
+        selected_asset_modes = sum(1 for x in (args.assets_href is not None, args.copy_assets, args.assets_relative) if x)
+        if selected_asset_modes > 1:
+            sys.stderr.write("new_document: choose only one of --assets-href, --copy-assets, or --assets-relative\n")
+            return 2
         try:
-            prefix, validate_base = _companion_prefix(args.out, args.assets_href, args.copy_assets)
+            prefix, validate_base = _companion_prefix(args.out, args.assets_href, args.copy_assets,
+                                                      assets_relative=args.assets_relative)
         except ValueError as exc:
             sys.stderr.write("new_document: %s\n" % exc)
             return 2
@@ -511,8 +525,8 @@ def main(argv):
             # we do not rewrite them and cannot assume they resolve to the skill dist/,
             # so defer the companion existence check to when the placed file is validated.
             validate_base = None
-    elif args.copy_assets or args.assets_href is not None:
-        sys.stderr.write("new_document: --copy-assets / --assets-href are ignored with --portable "
+    elif args.copy_assets or args.assets_href is not None or args.assets_relative:
+        sys.stderr.write("new_document: --copy-assets / --assets-href / --assets-relative are ignored with --portable "
                          "(a Portable file inlines the layer and references no companions)\n")
 
     try:
@@ -551,12 +565,6 @@ def main(argv):
             return 1
         sys.stderr.write("new_document: wrote %s\n" % args.out)
     else:
-        if nonportable and args.assets_href is None and not args.copy_assets:
-            sys.stderr.write("new_document: nonportable output to stdout would reference the "
-                             "companions by bare name, which is unreachable with no on-disk "
-                             "folder; pass --assets-href PREFIX (or --out FILE, optionally with "
-                             "--copy-assets), or use --portable\n")
-            return 2
         sys.stdout.write(out_html)
     return 0
 

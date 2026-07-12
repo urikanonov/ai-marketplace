@@ -38,7 +38,6 @@ test.describe("anchoring: a selection whose end lands on a cm-skip caret still a
     });
     expect(expected.ok, expected.reason).toBe(true);
 
-    await page.waitForTimeout(10);
     await expect(page.locator("#menuComment")).toBeVisible();
     await page.locator("#menuComment").click();
     const composer = page.locator(".cm-composer").last();

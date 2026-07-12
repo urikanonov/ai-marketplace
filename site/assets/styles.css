@@ -120,7 +120,7 @@ code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
 /* Hero */
 .hero {
   text-align: center;
-  padding: 64px 20px 40px;
+  padding: 32px 20px 20px;
 }
 .hero .eyebrow {
   display: inline-block;
@@ -135,6 +135,12 @@ code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
   margin-bottom: 18px;
 }
 .hero .eyebrow.spaced { margin-top: 14px; }
+/* Identity line (logo + name + version) sits below the CTAs as a single inline pill that
+   links to the plugin's source directory on GitHub. */
+.hero .eyebrow.identity { display: inline-flex; align-items: center; gap: 8px; margin-top: 24px; margin-bottom: 0; text-decoration: none; }
+.hero a.eyebrow.identity:hover { border-color: var(--cp-accent); }
+.hero a.eyebrow.identity:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; }
+.hero .eyebrow.identity .hero-logo { width: 22px; height: 22px; margin: 0; display: inline-block; border-radius: 5px; }
 .hero-logo { width: 56px; height: 56px; display: block; margin: 0 auto 6px; }
 .hero h1 {
   font-size: clamp(2.1rem, 5vw, 3.2rem);
@@ -261,23 +267,18 @@ main > section:nth-of-type(even) {
 .plugin-card .keywords { display: flex; flex-wrap: wrap; gap: 6px; }
 .plugin-card .foot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-/* The whole card is one click and one tab target via a single stretched Learn more link.
-   The card is the positioning context and Learn more stays static, so its overlay covers
-   the card rather than being clipped to the button. */
-.plugin-card .learn-more::after { content: ""; position: absolute; inset: 0; z-index: 0; }
-.plugin-card .cmd,
-.plugin-card .copy-btn,
-.plugin-card .foot .btn:not(.learn-more) { position: relative; z-index: 1; }
+/* Click targets are the card title link and the Learn more button - NOT a whole-card
+   stretched overlay (that overlay fought the copy button and the install block, so the
+   cursor flickered and parts of the card were not clickable). */
+.plugin-card .name a { color: inherit; text-decoration: none; }
+.plugin-card .name a:hover { color: var(--cp-accent); text-decoration: underline; }
+.plugin-card .name a:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; border-radius: 4px; }
 .plugin-card .learn-more {
   background: #ffc107;
   color: #1a1a1a;
   border-color: #e0a800;
 }
 .plugin-card .learn-more:hover { background: #ffca2c; border-color: #e0a800; color: #1a1a1a; }
-.plugin-card:has(.learn-more:focus-visible) {
-  outline: 3px solid var(--cp-accent);
-  outline-offset: 3px;
-}
 
 .badge {
   display: inline-block;
@@ -434,6 +435,34 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .loop-fig-sub { fill: var(--cp-text-muted); }
 .loop-fig-arrow { stroke: var(--cp-accent); fill: none; }
 .loop-fig-head { fill: var(--cp-accent); }
+.why-loop-block { margin-top: 18px; }
+.section-block .loop-figure { margin: 4px auto 0; }
+.why-mediums { margin-top: 18px; }
+.why-sub { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.3px; margin: 0 0 10px; color: var(--cp-text); }
+.compare { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 0.95rem; }
+.compare th, .compare td { text-align: center; padding: 9px 10px; border-bottom: 1px solid var(--cp-border); }
+.compare th:first-child, .compare td:first-child { text-align: left; }
+.compare thead th { color: var(--cp-text-muted); font-weight: 600; font-size: 0.82rem; }
+.compare tbody tr:last-child td { border-bottom: none; }
+.compare .compare-hero td { background: var(--cp-accent-soft); color: var(--cp-text); font-weight: 700; }
+.compare .compare-hero td:first-child { border-left: 3px solid var(--cp-accent); }
+/* Narrow screens: the six-column comparison overflows, so stack each medium as a card and
+   label every value with its column name (from data-label). Desktop/tablet is unchanged. */
+@media (max-width: 640px) {
+  .compare thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .compare, .compare tbody, .compare tr, .compare td { display: block; width: auto; }
+  .compare tr { border: 1px solid var(--cp-border); border-radius: 10px; padding: 6px 14px; margin-bottom: 12px; }
+  .compare tbody tr:last-child { margin-bottom: 0; }
+  .compare td { border-bottom: 1px solid var(--cp-border); text-align: right; padding: 8px 0; }
+  .compare td:last-child { border-bottom: none; }
+  .compare td:first-child { text-align: left; font-weight: 700; font-size: 1.05rem; border-bottom: 2px solid var(--cp-border); }
+  .compare td[data-label]::before { content: attr(data-label); float: left; font-weight: 600; color: var(--cp-text-muted); padding-right: 12px; }
+  .compare .compare-hero td:first-child { border-left: none; }
+  .compare .compare-hero { border-color: var(--cp-accent); border-left: 3px solid var(--cp-accent); }
+}
+.why-list { margin: 14px 0 0; padding-left: 20px; }
+.why-list li { margin-bottom: 10px; color: var(--cp-text); }
+.why-list li:last-child { margin-bottom: 0; }
 
 /* Tutorial page (content generated at build time from TUTORIAL.md) */
 .tutorial { max-width: 860px; margin: 0 auto; }

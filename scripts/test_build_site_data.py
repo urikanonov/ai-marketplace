@@ -100,7 +100,7 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;bad", out)
         self.assertNotIn('href="//evil.example"', out)
 
-    def test_plugin_card_uses_stretched_learn_more_link(self):
+    def test_plugin_card_title_and_learn_more_link_to_page(self):
         manifest = {
             "name": "urikan-ai-marketplace",
             "plugins": [{
@@ -111,14 +111,13 @@ class RenderPluginsTests(unittest.TestCase):
             }],
         }
         out = bsd.render_plugins(manifest)
-        # The title is a plain span, not a link.
-        self.assertIn('<span class="name">commentable-html</span>', out)
-        self.assertNotIn('<a class="name"', out)
-        # The single primary link to the plugin page is the Learn more button in the foot.
+        # The title is an explicit link to the plugin page (no whole-card stretched overlay).
+        self.assertIn('<span class="name"><a href="./commentable-html/">commentable-html</a></span>', out)
+        # The warm-amber Learn more button also links to the page.
         self.assertIn('<a class="btn learn-more" href="./commentable-html/">Learn more</a>', out)
-        # Exactly one link (one tab stop) points at the plugin page: no duplicate.
-        self.assertEqual(out.count('href="./commentable-html/"'), 1)
-        # The Source link is still present and independent of the page link.
+        # Two explicit links (title + Learn more) point at the page; no hidden overlay link.
+        self.assertEqual(out.count('href="./commentable-html/"'), 2)
+        # The Source link is still present and independent of the page links.
         self.assertIn('<a class="btn" href="https://example.com/source">Source</a>', out)
         self.assertNotIn("card-link", out)
 
@@ -494,6 +493,93 @@ class StampWiringTests(unittest.TestCase):
         self.assertEqual(bad, [])
 
 
+class JsonLdTests(unittest.TestCase):
+    def _parse(self, script):
+        self.assertTrue(script.startswith('<script type="application/ld+json">'))
+        self.assertTrue(script.rstrip().endswith("</script>"))
+        inner = script[script.index(">") + 1: script.rindex("</script>")]
+        return json.loads(inner)
+
+    def test_graph_has_website_person_and_plugin_itemlist(self):
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "metadata": {"description": "Desc."},
+            "owner": {"name": "Uri Kanonov"},
+            "plugins": [
+                {"name": "commentable-html", "description": "d1"},
+                {"name": "other", "description": "d2",
+                 "homepage": "https://github.com/urikanonov/ai-marketplace"},
+            ],
+        }
+        graph = self._parse(bsd.render_jsonld(manifest))["@graph"]
+        self.assertEqual([n["@type"] for n in graph], ["WebSite", "Person", "ItemList"])
+        website, person, itemlist = graph
+        self.assertEqual(website["author"]["@id"], person["@id"])
+        self.assertIn(bsd.OWNER_LINKEDIN_URL, person["sameAs"])
+        apps = [li["item"] for li in itemlist["itemListElement"]]
+        self.assertEqual([a["name"] for a in apps], ["commentable-html", "other"])
+        # A plugin with a site page links to it; one without falls back to its homepage.
+        self.assertEqual(apps[0]["url"], bsd.SITE_BASE_URL + "commentable-html/")
+        self.assertEqual(apps[1]["url"], "https://github.com/urikanonov/ai-marketplace")
+        self.assertTrue(all(a["applicationCategory"] == "DeveloperApplication" for a in apps))
+
+    def test_script_break_out_is_neutralized(self):
+        manifest = {"name": "m", "metadata": {"description": "x</script><b>y"},
+                    "owner": {"name": "O"}, "plugins": []}
+        script = bsd.render_jsonld(manifest)
+        self.assertNotIn("</script><b>", script)
+        self.assertIn("\\u003c/script\\u003e", script)
+        self.assertEqual(self._parse(script)["@graph"][0]["description"], "x</script><b>y")
+
+    def test_real_manifest_parses_and_lists_both_plugins(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, ".github", "plugin", "marketplace.json"), encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        itemlist = self._parse(bsd.render_jsonld(manifest))["@graph"][2]
+        names = [li["item"]["name"] for li in itemlist["itemListElement"]]
+        self.assertIn("commentable-html", names)
+        self.assertIn("urikan-ai-marketplace-auto-updater", names)
+
+
+class SitemapTests(unittest.TestCase):
+    def test_lists_hub_plugin_and_tutorial(self):
+        xml = bsd.render_sitemap(bsd.REPO_ROOT)
+        self.assertTrue(xml.startswith('<?xml version="1.0" encoding="UTF-8"?>'))
+        self.assertIn("<urlset", xml)
+        for url in [bsd.SITE_BASE_URL,
+                    bsd.SITE_BASE_URL + "commentable-html/",
+                    bsd.SITE_BASE_URL + "commentable-html/tutorial/"]:
+            self.assertIn("<loc>%s</loc>" % url, xml)
+
+
+class LlmsTests(unittest.TestCase):
+    def test_contains_summary_install_and_plugin_links(self):
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "metadata": {"description": "Marketplace summary."},
+            "plugins": [{"name": "commentable-html", "description": "d1"}],
+        }
+        text = bsd.render_llms(manifest)
+        self.assertTrue(text.startswith("# ai-marketplace"))
+        self.assertIn("> Marketplace summary.", text)
+        self.assertIn("copilot plugin install <name>@urikan-ai-marketplace", text)
+        self.assertIn("[commentable-html](%scommentable-html/): d1" % bsd.SITE_BASE_URL, text)
+        self.assertIn("commentable-html/tutorial/)", text)
+
+
+class WriteOrCheckTests(unittest.TestCase):
+    def test_writes_then_reports_drift_only_on_change(self):
+        import shutil
+        import tempfile
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        path = os.path.join(d, "sitemap.xml")
+        self.assertEqual(bsd.write_or_check(path, "a\nb\n", False), [])
+        self.assertEqual(bsd.write_or_check(path, "a\nb\n", True), [])
+        self.assertEqual(bsd.write_or_check(path, "a\nc\n", True), ["sitemap.xml"])
+        self.assertEqual(bsd.write_or_check(os.path.join(d, "gone.txt"), "x", True), ["gone.txt"])
+
+
 class CheckDriftTests(unittest.TestCase):
     def _clone_repo(self):
         import os as _os
@@ -523,6 +609,27 @@ class CheckDriftTests(unittest.TestCase):
         with open(_os.path.join(root, "site", "assets", "styles.css"), "a", encoding="utf-8") as fh:
             fh.write("\n/* mutate without regenerating */\n")
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+
+class StylesConcatTests(unittest.TestCase):
+    def test_concat_matches_committed_stylesheet(self):
+        import os as _os
+        root = bsd.REPO_ROOT
+        built = bsd.build_styles(root)
+        committed = bsd.read_text(_os.path.join(root, "site", "assets", "styles.css"))
+        self.assertEqual(
+            built, committed,
+            "site/assets/styles.css is stale vs site-src/css/ partials; run build_site_data.py")
+
+    def test_parts_exist_and_base_loads_first(self):
+        import os as _os
+        root = bsd.REPO_ROOT
+        for name in bsd.CSS_PARTS:
+            self.assertTrue(
+                _os.path.exists(_os.path.join(root, "site-src", "css", name)),
+                "missing CSS partial: " + name)
+        # Order is load-bearing: the tokens/base partial must come first.
+        self.assertEqual(bsd.CSS_PARTS[0], "10-base.css")
 
 
 if __name__ == "__main__":

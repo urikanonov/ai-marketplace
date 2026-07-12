@@ -1,0 +1,136 @@
+/* Demo preview */
+.demo-frame {
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  overflow: hidden;
+  background: var(--cp-surface);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 16px 40px rgba(0, 0, 0, 0.11);
+}
+.demo-frame .bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--cp-surface-soft);
+  border-bottom: 1px solid var(--cp-border);
+}
+.demo-frame .bar .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--cp-border-strong); }
+.demo-frame .bar .demo-fs {
+  margin-left: 8px; font-size: 0.78rem; font-weight: 600; line-height: 1;
+  color: var(--cp-accent); text-decoration: none;
+  border: 1px solid var(--cp-accent); border-radius: 999px; padding: 4px 10px;
+  background: var(--cp-accent-soft); transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.demo-frame .bar .demo-fs:hover { color: var(--cp-accent-fg); border-color: var(--cp-accent); background: var(--cp-accent); }
+.demo-frame .bar .title { margin-left: auto; font-size: 0.82rem; color: var(--cp-text-muted); font-family: var(--cp-mono); }
+.demo-frame iframe { width: 100%; height: 420px; border: 0; display: block; background: var(--cp-bg); }
+/* The demo frame breaks out of the content column to span the full viewport width; the
+   section title, description, and tabs stay in the column above it. */
+.demo-frame.full-bleed { border-left: 0; border-right: 0; border-radius: 0; margin-inline: 20px; }
+.demo-actions { margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+/* Changelog */
+.changelog { display: flex; flex-direction: column; gap: 18px; }
+.changelog .release .rel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.changelog .release h3 { font-size: 1.05rem; font-family: var(--cp-mono); }
+.changelog .group-label {
+  font-size: 0.74rem;
+  font-family: var(--cp-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--cp-accent);
+  margin: 10px 0 4px;
+}
+.changelog ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.changelog li { position: relative; padding-left: 18px; color: var(--cp-text-muted); font-size: 0.93rem; }
+.changelog li::before { content: "-"; position: absolute; left: 0; color: var(--cp-accent); }
+.changelog .empty { color: var(--cp-text-soft); }
+.changelog .older-releases { display: flex; flex-direction: column; gap: 18px; }
+.changelog .older-releases > summary {
+  cursor: pointer;
+  width: fit-content;
+  font-family: var(--cp-mono);
+  font-size: 0.85rem;
+  color: var(--cp-accent);
+  list-style: none;
+}
+.changelog .older-releases > summary::-webkit-details-marker { display: none; }
+.changelog .older-releases > summary::before { content: "\25B8  "; }
+.changelog .older-releases[open] > summary::before { content: "\25BE  "; }
+.changelog .older-releases > summary:hover { text-decoration: underline; }
+
+/* Section blocks (visual separation between home-page sections) */
+.section-block {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  padding: 26px 28px;
+  box-shadow: var(--cp-shadow);
+}
+main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
+.prose p { margin-bottom: 12px; color: var(--cp-text); }
+.prose p:last-child { margin-bottom: 0; }
+
+/* Tutorial call-to-action: a full-width clickable banner that links to the guided tutorial */
+.tutorial-cta {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  flex-wrap: wrap; text-decoration: none; color: inherit;
+}
+.tutorial-cta-text h2 { font-size: 1.35rem; margin: 0 0 6px; letter-spacing: -0.4px; }
+.tutorial-cta-text p { margin: 0; color: var(--cp-text-muted); font-size: 0.95rem; }
+.tutorial-cta-btn { flex: none; }
+
+/* Demo switch: segmented control that flips the iframe between reports */
+.demo-switch { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 14px; margin-bottom: 16px; }
+.demo-tab { border: 0; background: transparent; color: var(--cp-text-muted); font: inherit; font-size: 0.9rem; font-weight: 600; padding: 7px 16px; border-radius: 999px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.demo-tab:hover { color: var(--cp-text); }
+.demo-tab.active { background: var(--cp-accent); color: var(--cp-accent-fg); }
+
+/* The embedded report keeps a tall frame so its TOC navigation is visible */
+.demo-frame iframe { height: 560px; }
+
+/* Review-loop columns (self vs peer) */
+.loop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 20px; }
+.loop-title { font-size: 1.15rem; margin-bottom: 14px; color: var(--cp-accent); font-family: var(--cp-mono); }
+.steps-vertical { grid-template-columns: 1fr; gap: 14px; }
+
+/* Review-loop diagram: an inline, light-only twin of
+   plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg.
+   Styling lives here (not inline) so the page keeps a tight CSP with no 'unsafe-inline'. */
+.loop-figure { margin: 0 auto 30px; max-width: 640px; }
+.loop-figure svg { display: block; width: 100%; height: auto; }
+.loop-fig-bg { fill: var(--cp-surface); stroke: var(--cp-border); }
+.loop-fig-node { fill: var(--cp-bg-elevated); stroke: var(--cp-accent); }
+.loop-fig-title { fill: var(--cp-accent); font-family: var(--cp-mono); font-weight: 600; }
+.loop-fig-sub { fill: var(--cp-text-muted); }
+.loop-fig-arrow { stroke: var(--cp-accent); fill: none; }
+.loop-fig-head { fill: var(--cp-accent); }
+.why-loop-block { margin-top: 18px; }
+.section-block .loop-figure { margin: 4px auto 0; }
+.why-mediums { margin-top: 18px; }
+.why-sub { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.3px; margin: 0 0 10px; color: var(--cp-text); }
+.compare { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 0.95rem; }
+.compare th, .compare td { text-align: center; padding: 9px 10px; border-bottom: 1px solid var(--cp-border); }
+.compare th:first-child, .compare td:first-child { text-align: left; }
+.compare thead th { color: var(--cp-text-muted); font-weight: 600; font-size: 0.82rem; }
+.compare tbody tr:last-child td { border-bottom: none; }
+.compare .compare-hero td { background: var(--cp-accent-soft); color: var(--cp-text); font-weight: 700; }
+.compare .compare-hero td:first-child { border-left: 3px solid var(--cp-accent); }
+/* Narrow screens: the six-column comparison overflows, so stack each medium as a card and
+   label every value with its column name (from data-label). Desktop/tablet is unchanged. */
+@media (max-width: 640px) {
+  .compare thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .compare, .compare tbody, .compare tr, .compare td { display: block; width: auto; }
+  .compare tr { border: 1px solid var(--cp-border); border-radius: 10px; padding: 6px 14px; margin-bottom: 12px; }
+  .compare tbody tr:last-child { margin-bottom: 0; }
+  .compare td { border-bottom: 1px solid var(--cp-border); text-align: right; padding: 8px 0; }
+  .compare td:last-child { border-bottom: none; }
+  .compare td:first-child { text-align: left; font-weight: 700; font-size: 1.05rem; border-bottom: 2px solid var(--cp-border); }
+  .compare td[data-label]::before { content: attr(data-label); float: left; font-weight: 600; color: var(--cp-text-muted); padding-right: 12px; }
+  .compare .compare-hero td:first-child { border-left: none; }
+  .compare .compare-hero { border-color: var(--cp-accent); border-left: 3px solid var(--cp-accent); }
+}
+.why-list { margin: 14px 0 0; padding-left: 20px; }
+.why-list li { margin-bottom: 10px; color: var(--cp-text); }
+.why-list li:last-child { margin-bottom: 0; }
+

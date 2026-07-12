@@ -17,6 +17,8 @@ It is light-theme by default; a dark-theme note is at the end.
 
 For a fully self-contained / offline file, vendor or inline Chart.js instead: place `chart.umd.min.js` next to the HTML and load it with a relative synchronous `<script src="./vendor/chart.umd.min.js"></script>`, or inline the library when the deliverable must be one file. Prefer this whenever a shared file must render without network access.
 
+If the chart already rendered in the browser, **Export Offline** can also make the handoff file network-free without shipping Chart.js: it snapshots each chart canvas to a PNG data URI and replaces the canvas in the downloaded copy with an `<img class="cmh-chart">`. Use this for static review artifacts. Use vendored or inline Chart.js when the recipient needs live chart interactivity and tooltips.
+
 ## Why Chart.js and not hand-rolled SVG
 
 - **Tooltips are free and correct.** `interaction:{mode:'index', intersect:false}` gives a

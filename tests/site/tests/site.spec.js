@@ -128,15 +128,18 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
   await expect(page.locator("#demo iframe")).toHaveAttribute("src", /demo\/report-taxi\.html/);
 });
 
-test("demo has one safe full-screen button and a two-option slider", async ({ page }) => {
+test("demo has one safe full-screen button and a four-option slider", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const fs = page.locator("#demo-fullscreen");
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
   await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
-  await expect(page.locator(".demo-tab")).toHaveCount(2);
+  await expect(page.locator(".demo-tab")).toHaveCount(4);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
+  for (const id of ["#demo-tab-taxi", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics"]) {
+    await expect(page.locator(id)).toBeVisible();
+  }
 });
 
 test("demo slider switches the iframe, title, and full-screen target", async ({ page }) => {
@@ -147,6 +150,10 @@ test("demo slider switches the iframe, title, and full-screen target", async ({ 
   await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-community-garden\.html/);
   await expect(page.locator("#demo-title")).toHaveText("Community Garden Plan");
   await expect(page.locator(".demo-tab.active")).toHaveText(/Community Garden/i);
+  await page.locator(".demo-tab", { hasText: "Triage Board" }).click();
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-triage\.html/);
+  await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-triage\.html/);
+  await expect(page.locator("#demo-title")).toHaveText("Triage Board");
 });
 
 test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }) => {
@@ -218,51 +225,23 @@ test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
   await expect(btn).toHaveClass(/copy-failed/);
 });
 
-test("the whole plugin card is clickable via one stretched Learn more link, Source and copy stay independent", async ({ page }) => {
+test("a plugin card exposes explicit title and Learn more links to its page, no whole-card overlay", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const card = page.locator(".plugin-card", { hasText: "commentable-html" });
-  // (a) The card has a Learn more link pointing at the plugin page.
+  // The visible title is an explicit, keyboard-focusable link to the plugin page.
+  const titleLink = card.locator(".name a");
+  await expect(titleLink).toHaveAttribute("href", "./commentable-html/");
+  // The warm-amber Learn more button also links to the page.
   const learn = card.locator("a.learn-more");
   await expect(learn).toHaveAttribute("href", "./commentable-html/");
-  await expect(card.getByText("Learn more", { exact: true })).toHaveCount(1);
-  // (d) Exactly one link (one tab stop) leads to the plugin page: no duplicate.
-  await expect(card.locator('a[href="./commentable-html/"]')).toHaveCount(1);
-  await expect(card.locator("a.name")).toHaveCount(0);
-
-  // (c) The Source link and copy button sit above the overlay (independently clickable),
-  // while the title area does not (the overlay covers it).
-  await card.scrollIntoViewIfNeeded();
-  const hitTest = await card.evaluate((el) => {
-    el.scrollIntoView({ block: "center" });
-    const topAt = (target) => {
-      const r = target.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return hit === target || target.contains(hit);
-    };
-    const source = el.querySelector(".foot a.btn:not(.learn-more)");
-    const copy = el.querySelector(".copy-btn");
-    const title = el.querySelector(".name");
-    const learnMore = el.querySelector(".learn-more");
-    const titleRect = title.getBoundingClientRect();
-    const titleHit = document.elementFromPoint(titleRect.x + 4, titleRect.y + 4);
-    return {
-      sourceIndependent: topAt(source),
-      copyIndependent: topAt(copy),
-      titleCoveredByLearn: learnMore.contains(titleHit) || titleHit === learnMore,
-    };
-  });
-  expect(hitTest.sourceIndependent, "Source link must not be hijacked by the overlay").toBe(true);
-  expect(hitTest.copyIndependent, "copy button must not be hijacked by the overlay").toBe(true);
-  expect(hitTest.titleCoveredByLearn, "clicking the title must trigger the stretched link").toBe(true);
-
-  // (b) Clicking the title area (covered by the stretched overlay) activates the Learn more link.
-  await card.scrollIntoViewIfNeeded();
-  await card.evaluate((el) => {
-    el.scrollIntoView({ block: "center" });
-    const title = el.querySelector(".name");
-    const r = title.getBoundingClientRect();
-    document.elementFromPoint(r.x + 8, r.y + 8).click();
-  });
+  // No whole-card stretched overlay: the description is not wrapped in a card-wide link.
+  const descInLink = await card.locator(".desc").evaluate((el) => !!el.closest("a"));
+  expect(descInLink, "description must not be inside a card-wide link").toBe(false);
+  // The copy button and Source link are present and independent (copy behavior covered separately).
+  await expect(card.locator(".copy-btn")).toBeVisible();
+  await expect(card.locator(".foot a.btn:not(.learn-more)")).toHaveCount(1);
+  // Clicking the title link navigates to the plugin page.
+  await titleLink.click();
   await expect(page).toHaveURL(/\/commentable-html\/$/);
 });
 
@@ -298,14 +277,52 @@ test("the Learn more button keeps AA contrast in light and dark themes", async (
   }
 });
 
-test("the plugin page hero logo is horizontally centered under the title", async ({ page }) => {
+test("the plugin page identity line (logo, name, version) sits below the call-to-action buttons", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const logo = await page.locator(".hero-logo").boundingBox();
-  const hero = await page.locator(".hero .wrap").boundingBox();
-  const logoCenter = logo.x + logo.width / 2;
-  const heroCenter = hero.x + hero.width / 2;
-  expect(Math.abs(logoCenter - heroCenter)).toBeLessThanOrEqual(2);
+  const identity = page.locator(".hero .identity");
+  await expect(identity).toBeVisible();
+  // The identity line carries the logo and the version badge.
+  await expect(identity.locator(".hero-logo")).toHaveCount(1);
+  await expect(identity.locator(".badge.version")).toHaveCount(1);
+  // It sits below the call-to-action buttons.
+  const actions = await page.locator(".hero-actions").boundingBox();
+  const idBox = await identity.boundingBox();
+  expect(idBox.y).toBeGreaterThan(actions.y + actions.height - 1);
+  // The identity line links to the plugin's source directory on GitHub.
+  await expect(identity).toHaveAttribute(
+    "href",
+    "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html");
+});
+
+test("the medium comparison table stacks without horizontal overflow on a narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const table = page.locator("table.compare");
+  await expect(table).toBeVisible();
+  // No horizontal overflow: the table fits within the viewport width.
+  const fits = await table.evaluate((el) => el.scrollWidth <= document.documentElement.clientWidth + 1);
+  expect(fits, "comparison table must not overflow the mobile viewport").toBe(true);
+  // On narrow screens each value cell exposes its column label for the stacked-card layout.
+  const labelShown = await page.locator("table.compare td[data-label]").first().evaluate((el) => {
+    const before = getComputedStyle(el, "::before");
+    return before.content && before.content !== "none" && before.content !== "normal";
+  });
+  expect(labelShown, "stacked cells must show their column label via ::before").toBe(true);
+});
+
+test("the Why section presents the medium comparison table and the HTML blog reference", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const why = page.locator("#why");
+  const table = why.locator("table.compare");
+  await expect(table).toBeVisible();
+  // Four media rows, with commentable-html as the highlighted row.
+  await expect(table.locator("tbody tr")).toHaveCount(4);
+  await expect(table.locator("tr.compare-hero", { hasText: "commentable-html" })).toHaveCount(1);
+  // The section references the external HTML blog post, opening in a new tab.
+  const blog = why.locator('a[href*="unreasonable-effectiveness-of-html"]').first();
+  await expect(blog).toHaveAttribute("target", "_blank");
+  await expect(blog).toHaveAttribute("rel", /noopener/);
 });
 
 test("the review-loop diagram lives in the Why section, not the loop section", async ({ page }) => {
@@ -366,6 +383,7 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const taxi = page.locator("#demo-tab-taxi");
   const garden = page.locator("#demo-tab-garden");
+  const metrics = page.locator("#demo-tab-metrics");
   const panel = page.locator("#demo-panel");
   await expect(panel).toHaveAttribute("role", "tabpanel");
   await expect(taxi).toHaveAttribute("aria-controls", "demo-panel");
@@ -378,11 +396,11 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
   // Home/End jump to the first/last tab and move the roving tabindex + panel label.
   await taxi.focus();
   await page.keyboard.press("End");
-  await expect(garden).toHaveAttribute("aria-selected", "true");
-  await expect(garden).toHaveAttribute("tabindex", "0");
+  await expect(metrics).toHaveAttribute("aria-selected", "true");
+  await expect(metrics).toHaveAttribute("tabindex", "0");
   await expect(taxi).toHaveAttribute("tabindex", "-1");
-  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-garden");
-  await expect(page.locator("#demo-iframe")).toHaveAttribute("title", /Community Garden|report-community-garden/);
+  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-metrics");
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("title", /Visuals Matrix|report-metrics/);
   await page.keyboard.press("Home");
   await expect(taxi).toHaveAttribute("aria-selected", "true");
   await expect(taxi).toBeFocused();
@@ -395,8 +413,8 @@ test("demo mounts inside the iframe on the plugin page (CSP allows it)", async (
   await expect(frame.locator("#btnCopyAll")).toBeAttached({ timeout: 20000 });
 });
 
-test("both demo reports load and their toolbars mount", async ({ page }) => {
-  for (const report of ["report-taxi.html", "report-community-garden.html"]) {
+test("all demo reports load and their toolbars mount", async ({ page }) => {
+  for (const report of ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html"]) {
     await page.goto("/commentable-html/demo/" + report, { waitUntil: "domcontentloaded" });
     await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });
     await expect(page.locator("#btnCopyAll")).toBeAttached({ timeout: 15000 });
@@ -589,4 +607,86 @@ test("no broken internal links or assets", async ({ page, request }) => {
       expect(r.status(), "broken internal URL: " + url.pathname).toBeLessThan(400);
     }
   }
+});
+
+const PROD = "https://urikanonov.github.io/ai-marketplace/";
+
+test("hub head exposes canonical, Open Graph, and Twitter Card tags", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", PROD);
+  await expect(page.locator('meta[property="og:type"]')).toHaveAttribute("content", "website");
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /ai-marketplace/);
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", PROD);
+  await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", PROD + "assets/og-cover.png");
+  await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+});
+
+test("plugin and tutorial pages carry a self-referencing canonical and Open Graph metadata", async ({ page }) => {
+  const cases = [
+    ["/commentable-html/", PROD + "commentable-html/"],
+    ["/commentable-html/tutorial/", PROD + "commentable-html/tutorial/"],
+  ];
+  for (const [p, canonical] of cases) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", canonical);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", canonical);
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /.+/);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+  }
+});
+
+test("the hub embeds valid JSON-LD describing the site and its plugins", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const raw = await page.locator('script[type="application/ld+json"]').first().textContent();
+  const graph = JSON.parse(raw)["@graph"];
+  const types = graph.map((n) => n["@type"]);
+  expect(types).toContain("WebSite");
+  expect(types).toContain("Person");
+  expect(types).toContain("ItemList");
+  const itemList = graph.find((n) => n["@type"] === "ItemList");
+  const names = itemList.itemListElement.map((li) => li.item.name);
+  expect(names).toContain("commentable-html");
+  expect(names.length).toBeGreaterThanOrEqual(2);
+});
+
+test("the plugin page embeds SoftwareApplication and BreadcrumbList JSON-LD", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const raw = await page.locator('script[type="application/ld+json"]').first().textContent();
+  const graph = JSON.parse(raw)["@graph"];
+  const types = graph.map((n) => n["@type"]);
+  expect(types).toContain("SoftwareApplication");
+  expect(types).toContain("BreadcrumbList");
+  const app = graph.find((n) => n["@type"] === "SoftwareApplication");
+  expect(app.name).toBe("commentable-html");
+});
+
+test("sitemap.xml is served and lists the hub, plugin, and tutorial pages", async ({ request }) => {
+  const r = await request.get("/sitemap.xml");
+  expect(r.status()).toBeLessThan(400);
+  const body = await r.text();
+  expect(body).toContain("<urlset");
+  for (const u of [PROD, PROD + "commentable-html/", PROD + "commentable-html/tutorial/"]) {
+    expect(body).toContain("<loc>" + u + "</loc>");
+  }
+});
+
+test("llms.txt is served and links each plugin and the tutorial", async ({ request }) => {
+  const r = await request.get("/llms.txt");
+  expect(r.status()).toBeLessThan(400);
+  const body = await r.text();
+  expect(body).toContain("# ai-marketplace");
+  expect(body).toContain("(" + PROD + "commentable-html/)");
+  expect(body).toContain("commentable-html/tutorial/");
+});
+
+test("the og:image cover asset is served as a PNG", async ({ request }) => {
+  const r = await request.get("/assets/og-cover.png");
+  expect(r.status()).toBeLessThan(400);
+  expect(r.headers()["content-type"]).toContain("image/png");
+});
+
+test("the hub H1 reads as continuous text with correct word spacing", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const text = (await page.locator("h1").first().textContent()).replace(/\s+/g, " ").trim();
+  expect(text).toBe("A marketplace of AI plugins for the Copilot CLI");
 });

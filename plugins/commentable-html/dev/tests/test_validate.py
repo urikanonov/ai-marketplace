@@ -16,7 +16,10 @@ each validator branch there is a test that fails if the branch is deleted.
 
 import contextlib
 import io
+import json
 import os
+from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -44,8 +47,12 @@ EXPECTED_REQUIRED_IDS = frozenset({
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
+    "btnExportOffline", "btnExportOfflineTop",
     "headingAddBtn", "widgetAddBtn", "menuDocComment",
 })
+EXPECTED_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
+CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
+CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 
 
 # --------------------------------------------------------------------------- #
@@ -89,8 +96,10 @@ JS_REGION = (
 )
 
 MAIN = (
-    '<main id="commentRoot" data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+    '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+    + CONTENT_BEGIN + "\n"
     "  <p>content</p>\n"
+    + CONTENT_END + "\n"
     "</main>"
 )
 
@@ -123,11 +132,23 @@ def build(css=None, body=None):
     css = CSS_REGION if css is None else css
     if body is None:
         body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, JS_REGION]
+    body_html = "\n".join(body)
+    if CONTENT_BEGIN not in body_html:
+        m = re.search(r'<main\b[^>]*\bid\s*=\s*(["\'])commentRoot\1[^>]*>', body_html, re.IGNORECASE)
+        if m:
+            close = body_html.find("</main>", m.end())
+            if close != -1:
+                body_html = body_html[:m.end()] + "\n" + CONTENT_BEGIN + body_html[m.end():close] + "\n" + CONTENT_END + "\n" + body_html[close:]
     return (
-        '<!DOCTYPE html>\n<html lang="en">\n<head>\n<style>\n'
+        '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
+        '<script type="application/json" id="commentableHtmlLayer">'
+        + '{"version":"1.0.0","mode":"portable","regions":'
+        + json.dumps(EXPECTED_REGIONS, separators=(",", ":"))
+        + '}</script>\n'
+        '<style>\n'
         + css
         + "\n</style>\n</head>\n<body>\n"
-        + "\n".join(body)
+        + body_html
         + "\n</body>\n</html>\n"
     )
 
@@ -173,7 +194,7 @@ class ValidateUnitTests(unittest.TestCase):
         # A cmh-diff code-review block is authored content; the validator must
         # accept it (no false errors) and it must not disturb region/root checks.
         main_with_diff = (
-            '<main id="commentRoot" data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+            '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
             "  <p>content</p>\n"
             '  <pre class="cmh-diff" data-diff-label="a.py">@@ -1,2 +1,2 @@\n'
             " keep\n-old\n+new\n</pre>\n"
@@ -275,7 +296,18 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_all_single_quoted_ok(self):
         # Every attribute switched to single quotes must still validate cleanly.
-        self.assertOkNoWarn(build().replace('"', "'"))
+        doc = build()
+        m = re.search(r'<script\b[^>]*\bid="commentableHtmlLayer"[^>]*>[\s\S]*?</script>', doc)
+        self.assertIsNotNone(m)
+        token = "\x00DESCRIPTOR\x00"
+        single_attr_descriptor = (
+            '<script type=\'application/json\' id=\'commentableHtmlLayer\'>'
+            + json.dumps({"version": "1.0.0", "mode": "portable", "regions": EXPECTED_REGIONS},
+                         separators=(",", ":"))
+            + "</script>"
+        )
+        doc = doc[:m.start()] + token + doc[m.end():]
+        self.assertOkNoWarn(doc.replace('"', "'").replace(token, single_attr_descriptor))
 
     # -- regions ------------------------------------------------------------ #
     def test_missing_region(self):
@@ -313,6 +345,19 @@ class ValidateUnitTests(unittest.TestCase):
                   .replace("END: commentable-html - CSS", "BEGIN: commentable-html - CSS")
                   .replace("\x00TMP\x00", "END: commentable-html - CSS"))
         self.assertError(doc, "END marker appears before its BEGIN")
+
+    def test_missing_layer_descriptor(self):
+        doc = re.sub(r'<script\b[^>]*\bid="commentableHtmlLayer"[^>]*>[\s\S]*?</script>\n?', "", build(), count=1)
+        self.assertError(doc, "layer descriptor")
+
+    def test_layer_descriptor_region_list_must_match_contract(self):
+        doc = build().replace('"regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]',
+                              '"regions":["CSS","JS"]')
+        self.assertError(doc, "commentableHtmlLayer.regions")
+
+    def test_layer_descriptor_mode_must_match_document_mode(self):
+        doc = build().replace('"mode":"portable"', '"mode":"nonportable"', 1)
+        self.assertError(doc, 'commentableHtmlLayer.mode must be "portable"')
 
     def test_id_in_attribute_value_is_not_a_real_id(self):
         # id="commentRoot" appearing INSIDE another attribute's value must not
@@ -393,17 +438,22 @@ class ValidateUnitTests(unittest.TestCase):
                          "appears 2 times")
 
     def test_missing_data_comment_key(self):
-        main = '<main id="commentRoot" data-doc-label="l" data-doc-source="s"><p>x</p></main>'
+        main = '<main id="commentRoot" data-cmh-content-root data-doc-label="l" data-doc-source="s"><p>x</p></main>'
         self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                          "data-comment-key")
 
+    def test_missing_content_root_hook(self):
+        main = '<main id="commentRoot" data-comment-key="k" data-doc-label="l" data-doc-source="s"><p>x</p></main>'
+        self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                         "data-cmh-content-root")
+
     def test_missing_data_doc_label_warns(self):
-        main = '<main id="commentRoot" data-comment-key="k" data-doc-source="s"><p>x</p></main>'
+        main = '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-source="s"><p>x</p></main>'
         self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                         "data-doc-label")
 
     def test_missing_data_doc_source_warns(self):
-        main = '<main id="commentRoot" data-comment-key="k" data-doc-label="l"><p>x</p></main>'
+        main = '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l"><p>x</p></main>'
         self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                         "data-doc-source")
 
@@ -413,21 +463,21 @@ class ValidateUnitTests(unittest.TestCase):
                          'no element with id="commentRoot"')
 
     # -- retrofit / demo leftovers ------------------------------------------ #
-    _DEMO_MAIN = ('<main id="commentRoot" data-comment-key="commentable-html-demo" '
+    _DEMO_MAIN = ('<main id="commentRoot" data-cmh-content-root data-comment-key="commentable-html-demo" '
                   'data-doc-label="l" data-doc-source="s"><p>x</p></main>')
 
     def test_demo_content_root_survived_is_error(self):
         # Active root still uses the demo data-comment-key while <title> was
         # customized -> the template demo content root survived a retrofit.
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), self._DEMO_MAIN, JS_REGION])
-        doc = doc.replace("<head>\n<style>", "<head>\n<title>My Real Doc</title>\n<style>", 1)
+        doc = doc.replace("<head>\n", "<head>\n<title>My Real Doc</title>\n", 1)
         self.assertError(doc, "demo content root survived")
 
     def test_demo_key_with_demo_title_is_ok(self):
         # Matches dist/PORTABLE.html (demo key + demo <title>): the survivor check is
         # title-gated so the pristine template and its derivatives stay green.
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), self._DEMO_MAIN, JS_REGION])
-        doc = doc.replace("<head>\n<style>", "<head>\n<title>Commentable HTML - Demo</title>\n<style>", 1)
+        doc = doc.replace("<head>\n", "<head>\n<title>Commentable HTML - Demo</title>\n", 1)
         self.assertOkNoWarn(doc)
 
     def test_real_content_root_in_comment_is_error(self):
@@ -435,7 +485,7 @@ class ValidateUnitTests(unittest.TestCase):
         # other than the "my-doc" example) must be caught even though a valid
         # root also exists in the live DOM.
         buried = ('<!--\nleftover from a bad retrofit:\n'
-                  '<main id="commentRoot" data-comment-key="my-real-doc-v1" '
+                  '<main id="commentRoot" data-cmh-content-root data-comment-key="my-real-doc-v1" '
                   'data-doc-label="x">\n  <p>real content</p>\n</main>\n-->')
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), buried + "\n" + MAIN, JS_REGION])
         self.assertError(doc, "inside an HTML comment")
@@ -449,7 +499,7 @@ class ValidateUnitTests(unittest.TestCase):
         # HTML attribute NAMES are case-insensitive, so a commented real root with
         # ID= / DATA-COMMENT-KEY= (uppercase names, correct-case commentRoot value)
         # must still be caught by the retrofit guard.
-        buried = ('<!--\n<main ID="commentRoot" DATA-COMMENT-KEY="my-real-doc-v1" '
+        buried = ('<!--\n<main ID="commentRoot" data-cmh-content-root DATA-COMMENT-KEY="my-real-doc-v1" '
                   'data-doc-label="x"><p>real content</p></main>\n-->')
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), buried + "\n" + MAIN, JS_REGION])
         self.assertError(doc, "inside an HTML comment")
@@ -475,7 +525,7 @@ class ValidateUnitTests(unittest.TestCase):
         # A bad retrofit can leave the real root commented out with UNQUOTED
         # attributes; the guard is case-sensitive on the id but tolerates missing
         # quotes on both id and data-comment-key.
-        buried = ('<!--\nleftover:\n<main id=commentRoot data-comment-key=my-real-doc-v1 '
+        buried = ('<!--\nleftover:\n<main id=commentRoot data-cmh-content-root data-comment-key=my-real-doc-v1 '
                   'data-doc-label=x>\n<p>real content</p>\n</main>\n-->')
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), buried + "\n" + MAIN, JS_REGION])
         self.assertError(doc, "inside an HTML comment")
@@ -484,9 +534,9 @@ class ValidateUnitTests(unittest.TestCase):
         # A "<!-- ... -->" that appears only inside <script>/<style> data is script/
         # style text to the browser, not an HTML comment, so it must NOT trip the
         # commented-root guard.
-        decoy = ('<style>/* <!-- <main id="commentRoot" data-comment-key="bad"> --> */</style>\n'
+        decoy = ('<style>/* <!-- <main id="commentRoot" data-cmh-content-root data-comment-key="bad"> --> */</style>\n'
                  '<script type="application/json">'
-                 '"<!-- <main id=commentRoot data-comment-key=bad> -->"</script>')
+                 '"<!-- <main id=commentRoot data-cmh-content-root data-comment-key=bad> -->"</script>')
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), decoy + "\n" + MAIN, JS_REGION])
         self.assertOkNoWarn(doc)
 
@@ -751,6 +801,12 @@ class ValidateUnitTests(unittest.TestCase):
     def test_mermaid_missing_loader_warns(self):
         self.assertTrue(self._mermaid_warns(None))
 
+    def test_rendered_mermaid_svg_without_loader_is_clean(self):
+        main = MAIN.replace(
+            "<p>content</p>",
+            '<pre class="mermaid cm-skip" data-processed="true"><svg><g class="node"><text>A</text></g></svg></pre>')
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
     def test_mermaid_gated_loader_warns(self):
         gated = ('<script type="module">if (new URLSearchParams(location.search).get("mermaid") === "1") '
                  '{ const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
@@ -782,6 +838,15 @@ class ValidateUnitTests(unittest.TestCase):
 NONPORTABLE_VERSION = "1.0.0"
 
 
+def layer_descriptor(version=NONPORTABLE_VERSION, mode="portable", regions=None):
+    data = {
+        "version": version,
+        "mode": mode,
+        "regions": EXPECTED_REGIONS if regions is None else regions,
+    }
+    return '<script type="application/json" id="commentableHtmlLayer">%s</script>' % json.dumps(data, separators=(",", ":"))
+
+
 def nonportable_bootstrap(banner=True, watchdog=True):
     inner = ""
     if banner:
@@ -795,7 +860,7 @@ def nonportable_bootstrap(banner=True, watchdog=True):
 
 
 def nonportable_scripts(version=NONPORTABLE_VERSION, runtime=True, assets=True):
-    out = []
+    out = ["<!--\nBEGIN: commentable-html - JS\n-->"]
     if assets:
         out.append('<script src="commentable-html.assets.js"></script>')
     if runtime:
@@ -807,9 +872,16 @@ def nonportable_scripts(version=NONPORTABLE_VERSION, runtime=True, assets=True):
 def build_nonportable(version=NONPORTABLE_VERSION, link=True, runtime=True, assets=True, meta=True,
                   banner=True, watchdog=True, link_version=None):
     """A minimal, valid nonportable document (theme vars inline, layer externalized)."""
-    head = ["<style>\n:root { --cp-bg: #fff; --cp-text: #000; }\n</style>"]
+    head = [
+        '<script type="application/json" id="commentableHtmlLayer">%s</script>'
+        % json.dumps({"version": version, "mode": "nonportable", "regions": EXPECTED_REGIONS},
+                     separators=(",", ":")),
+        "<style>\n:root { --cp-bg: #fff; --cp-text: #000; }\n</style>",
+    ]
     if link:
-        head.append('<link rel="stylesheet" href="commentable-html.css">')
+        head.append("<!--\nBEGIN: commentable-html - CSS\n-->\n"
+                    '<link rel="stylesheet" href="commentable-html.css">\n'
+                    "<!-- END: commentable-html - CSS -->")
     if meta:
         head.append('<meta name="commentable-html-version" content="%s">' % version)
     body = [nonportable_bootstrap(banner, watchdog), HANDLED_REGION, EMBEDDED_REGION,
@@ -827,7 +899,7 @@ class SectionReferenceLinkTests(unittest.TestCase):
     HEADS = '<h2 id="a">Alpha</h2><h2 id="b">Beta plan</h2>'
 
     def _main(self, content):
-        return ('<main id="commentRoot" data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+        return ('<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
                 + content + "\n</main>")
 
     def _warns(self, content):
@@ -1034,11 +1106,10 @@ class NonPortableTests(unittest.TestCase):
         html = build_nonportable().replace(HANDLED_REGION, "")
         self.assertNonPortableError(html, "handledCommentIds")
 
-    def test_nonportable_does_not_require_inline_css_js_regions(self):
-        # No inline CSS/JS region markers, yet clean - proving those checks are skipped.
+    def test_nonportable_uses_marker_wrapped_companion_regions(self):
         html = build_nonportable()
-        self.assertNotIn("BEGIN: commentable-html - CSS", html)
-        self.assertNotIn("BEGIN: commentable-html - JS", html)
+        self.assertIn("BEGIN: commentable-html - CSS", html)
+        self.assertIn("BEGIN: commentable-html - JS", html)
 
     def test_absolute_companion_path_warns(self):
         # An absolute path is usable but leaks a local directory - warn, do not error.
@@ -1056,6 +1127,25 @@ class NonPortableTests(unittest.TestCase):
             errors, warnings = validate.validate(p)
         self.assertEqual(errors, [], errors)
         self.assertTrue(any("absolute path" in w for w in warnings), warnings)
+
+    def test_file_url_companion_refs_validate_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            urls = {}
+            for ext in (".css", ".js", ".assets.js"):
+                p = os.path.join(d, "commentable-html%s" % ext)
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write("/* stub */")
+                urls[ext] = Path(p).resolve().as_uri()
+            html = (build_nonportable()
+                    .replace('href="commentable-html.css"', 'href="%s"' % urls[".css"])
+                    .replace('src="commentable-html.js"', 'src="%s"' % urls[".js"])
+                    .replace('src="commentable-html.assets.js"', 'src="%s"' % urls[".assets.js"]))
+            p = os.path.join(d, "doc.html")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, warnings = validate.validate(p)
+        self.assertEqual(errors, [], errors)
+        self.assertFalse(any("remote/CDN URL" in w or "absolute path" in w for w in warnings), warnings)
 
     def test_companion_parent_relative_ref_ok(self):
         # NonPortable may point at the skill dist/ folder via a ../ path; if the target
@@ -1186,7 +1276,7 @@ class ValidateCliTests(unittest.TestCase):
             self.assertIn("OK (0 warning(s))", r.stdout)
 
     def test_warning_only_file_exit_0(self):
-        main = '<main id="commentRoot" data-comment-key="k" data-doc-label="l"><p>x</p></main>'
+        main = '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l"><p>x</p></main>'
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
         with tempfile.TemporaryDirectory() as d:
             p = self._write(d, "warn.html", doc)
@@ -1359,7 +1449,7 @@ class NewCheckTests(unittest.TestCase):
 
     # -- duplicate heading ids --------------------------------------------- #
     def test_duplicate_heading_ids_warn(self):
-        main = ('<main id="commentRoot" data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+        main = ('<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
                 '  <h2 id="dup">A</h2>\n  <p>x</p>\n  <h2 id="dup">B</h2>\n</main>')
         errors, warnings = self._errs_warns(build(body=self._body(main)))
         self.assertEqual(errors, [], errors)
@@ -1384,7 +1474,7 @@ class NewCheckTests(unittest.TestCase):
 
     # -- canvas aria: report ALL offenders in one pass --------------------- #
     def test_multiple_canvases_missing_aria_reported_together(self):
-        main = ('<main id="commentRoot" data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+        main = ('<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
                 '  <div class="cm-skip"><canvas id="c1"></canvas></div>\n'
                 '  <div class="cm-skip"><canvas id="c2"></canvas></div>\n</main>')
         render = '<script>var x = document.getElementById("c1").getContext("2d");</script>'

@@ -335,12 +335,8 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
-   wide content shell, while tables, figures, code, diffs, and callouts keep full width.
-   The lede is a full-width surface box, so its paragraphs opt out of the measure cap
-   (otherwise they render far narrower than the box and its sibling sections). */
-#commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
-#commentRoot .cmh-lede, #commentRoot .cmh-lede > p { max-width: none; }
+/* Top-level prose fills the content column (no readable-measure cap): paragraphs, like
+   tables, figures, code, and callouts, use the full width of the 1480px content shell. */
 /* Section headings are deep-links: a plain click or Enter/Space updates the URL to their
    anchor, and they are keyboard-focusable with a visible focus ring. */
 #commentRoot .cm-anchored { cursor: pointer; }
@@ -592,11 +588,21 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
    inline bootstrap when the external runtime fails to initialize in time. */
 #cmhAssetBanner {
   position: fixed; top: 0; left: 0; right: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
   padding: 10px 16px; font-size: 13px; line-height: 1.4;
   background: var(--cp-danger); color: #fff;
   box-shadow: var(--cp-shadow); text-align: center;
 }
 #cmhAssetBanner code { background: rgba(0,0,0,0.18); padding: 1px 5px; border-radius: 4px; }
+#cmhAssetBanner .cmh-asset-message { flex: 0 1 auto; }
+#cmhAssetBanner .cmh-asset-dismiss {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.55); background: rgba(0,0,0,0.18);
+  color: #fff; font-weight: 700; line-height: 1;
+}
+#cmhAssetBanner .cmh-asset-dismiss:hover, #cmhAssetBanner .cmh-asset-dismiss:focus-visible {
+  background: rgba(0,0,0,0.32); outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px;
+}
 
 /* --- Diff / code-review layer (pre.cmh-diff / div.cmh-diff) --- */
 .cmh-diff-host { margin: 1rem 0; }
@@ -874,9 +880,11 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   max-height: min(60vh, 480px); min-height: 160px; overflow: hidden;
 }
 #commentRoot figure.chart canvas,
+#commentRoot figure.chart img.cmh-chart,
 #commentRoot canvas.cmh-chart {
   display: block; width: 100% !important; max-width: 100% !important;
   height: 100% !important; max-height: 100% !important; box-sizing: border-box;
+  object-fit: contain;
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain

@@ -8,6 +8,25 @@ import {
   openInline, openNonPortable, openToolbarMenu, readDownload, ready, fileUrl, stageNonPortable, SKILL,
 } from "./helpers.js";
 
+function buildVersion() {
+  return JSON.parse(fs.readFileSync(path.join(SKILL, "dist", "manifest.json"), "utf8")).version;
+}
+
+function sameMajorOlderVersion(version) {
+  const [major, minor] = version.split(".").map(Number);
+  return `${major}.${Math.max(0, minor - 1)}.0`;
+}
+
+function sameMajorNewerVersion(version) {
+  const [major, minor] = version.split(".").map(Number);
+  return `${major}.${minor + 1}.0`;
+}
+
+function nextMajorVersion(version) {
+  const [major] = version.split(".").map(Number);
+  return `${major + 1}.0.0`;
+}
+
 test.describe("nonportable mode", () => {
   test("loads from companion files and reports itself as needing them", async ({ page }) => {
     await openNonPortable(page);
@@ -35,9 +54,8 @@ test.describe("nonportable mode", () => {
     const head = (html.match(/<head[\s\S]*?<\/head>/i) || [""])[0];
     expect(head).not.toMatch(/<meta\b[^>]*commentable-html-assets/i);
     // The version stamp is universal and must survive export, carrying the exact build version.
-    const buildVersion = JSON.parse(fs.readFileSync(path.join(SKILL, "dist", "manifest.json"), "utf8")).version;
     const metaMatch = head.match(/<meta\b[^>]*name="commentable-html-version"[^>]*content="([^"]+)"/i);
-    expect(metaMatch && metaMatch[1]).toBe(buildVersion);
+    expect(metaMatch && metaMatch[1]).toBe(buildVersion());
     expect(html).toContain("BEGIN: commentable-html - CSS");
     expect(html).toContain("BEGIN: commentable-html - JS");
 
@@ -72,15 +90,65 @@ test.describe("nonportable mode", () => {
     }
   });
 
-  test("a version-handshake mismatch reveals the banner", async ({ page }) => {
+  test("an older same-major page version does not show the version banner", async ({ page }) => {
+    const older = sameMajorOlderVersion(buildVersion());
     const { html, dir } = stageNonPortable({
-      mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, 'content="9.9.9"'),
+      mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${older}"`),
+    });
+    try {
+      await page.goto(fileUrl(html));
+      await ready(page);
+      await expect(page.locator("#cmhAssetBanner")).toBeHidden();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a different-major page version shows the incompatible banner", async ({ page }) => {
+    const newerMajor = nextMajorVersion(buildVersion());
+    const { html, dir } = stageNonPortable({
+      mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${newerMajor}"`),
     });
     try {
       await page.goto(fileUrl(html));
       await ready(page);
       await expect(page.locator("#cmhAssetBanner")).toBeVisible();
-      await expect(page.locator("#cmhAssetBanner")).toContainText(/mismatch/i);
+      await expect(page.locator("#cmhAssetBanner")).toContainText(/not compatible/i);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a newer same-major page version shows the soft version banner", async ({ page }) => {
+    const newer = sameMajorNewerVersion(buildVersion());
+    const { html, dir } = stageNonPortable({
+      mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${newer}"`),
+    });
+    try {
+      await page.goto(fileUrl(html));
+      await ready(page);
+      await expect(page.locator("#cmhAssetBanner")).toBeVisible();
+      await expect(page.locator("#cmhAssetBanner")).toContainText(/expects a newer commentable-html/i);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("dismissing a version banner hides it across reloads for that version pair", async ({ page }) => {
+    const newer = sameMajorNewerVersion(buildVersion());
+    const { html, dir } = stageNonPortable({
+      mutate: (h) => h.replace(/content="[0-9]+\.[0-9]+\.[0-9]+"/, `content="${newer}"`),
+    });
+    try {
+      await page.goto(fileUrl(html));
+      await ready(page);
+      const banner = page.locator("#cmhAssetBanner");
+      await expect(banner).toBeVisible();
+      await banner.getByRole("button", { name: "Dismiss" }).click();
+      await expect(banner).toBeHidden();
+      await page.reload();
+      await ready(page);
+      await expect(banner).toBeHidden();
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

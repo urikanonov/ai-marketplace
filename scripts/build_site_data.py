@@ -27,7 +27,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PLUGIN_PAGES = {"commentable-html": "./commentable-html/"}
 CHANGELOG_PLUGIN = "commentable-html"
-DEMO_FILES = ["report-taxi.html", "report-community-garden.html"]
+DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html"]
 EXAMPLES_REL = os.path.join(
     "plugins", "commentable-html", "pkg", "skills", "commentable-html", "examples")
 DEMO_REL = os.path.join("site", "commentable-html", "demo")
@@ -49,6 +49,14 @@ TUTORIAL_IMAGES_DST = os.path.join("site", "commentable-html", "tutorial", "tuto
 CHANGELOG_GITHUB_URL = (
     "https://github.com/urikanonov/ai-marketplace/blob/main/plugins/"
     + CHANGELOG_PLUGIN + "/CHANGELOG.md")
+
+# Absolute production URLs, used for canonical/OG links (hand-authored in the page heads) and for
+# the JSON-LD graph, sitemap, and llms.txt generated below. The site is served from this fixed
+# project sub-path on github.io, so these never vary per environment.
+SITE_BASE_URL = "https://urikanonov.github.io/ai-marketplace/"
+SITE_NAME = "ai-marketplace"
+OWNER_GITHUB_URL = "https://github.com/urikanonov"
+OWNER_LINKEDIN_URL = "https://www.linkedin.com/in/uri-kanonov-946761119"
 
 
 def esc(value):
@@ -98,6 +106,23 @@ def _asset_hash(root, name):
     except FileNotFoundError:
         raise SystemExit("cache-busted asset missing: %s" % path)
     return hashlib.sha256(data).hexdigest()[:12]
+
+
+# The served site/assets/styles.css is assembled from ordered source partials under
+# site-src/css/, so concurrent edits land in disjoint files. The concatenation is byte-for-byte
+# the served bundle (same CSP, same cache-bust); the partial order is load-bearing (CSS cascade).
+CSS_PARTS = (
+    "10-base.css",
+    "20-nav-hero.css",
+    "30-components.css",
+    "40-demo-changelog.css",
+    "50-media-footer.css",
+)
+
+
+def build_styles(root):
+    return "".join(
+        read_text(os.path.join(root, "site-src", "css", name)) for name in CSS_PARTS)
 
 
 def stamp_assets(text, root):
@@ -162,6 +187,8 @@ def render_plugins(manifest):
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
         title = '<span class="name">%s</span>' % esc(name)
+        if page:
+            title = '<span class="name"><a href="%s">%s</a></span>' % (esc(page), esc(name))
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
         learn_more = ('<a class="btn learn-more" href="%s">Learn more</a>' % esc(page)) if page else ""
         foot = learn_more + source
@@ -184,6 +211,123 @@ def render_plugins(manifest):
              esc(install), esc(install), foot)
         cards.append(card)
     return "\n".join(cards)
+
+
+def _plugin_app_url(plugin):
+    """The canonical URL for a plugin: its own generated site page when it has one, else its
+    manifest homepage (allowlisted), falling back to the site root."""
+    page = PLUGIN_PAGES.get(plugin.get("name", ""))
+    if page:
+        return SITE_BASE_URL + page.lstrip("./")
+    return safe_url(plugin.get("homepage", "")) or SITE_BASE_URL
+
+
+def _jsonld_script(data):
+    """Serialize a JSON-LD graph and neutralize the three characters that could otherwise break
+    out of the <script> block or the surrounding HTML, so manifest-sourced text can never inject.
+    The escapes are valid JSON string escapes, so the block still parses as JSON-LD."""
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    payload = payload.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return '<script type="application/ld+json">\n%s\n</script>' % payload
+
+
+def render_jsonld(manifest):
+    """The hub's structured-data graph: the WebSite, its author (Person), and an ItemList of the
+    published plugins as SoftwareApplication entries, all built from the manifest so it stays in
+    sync as plugins are added or changed."""
+    description = manifest.get("metadata", {}).get("description", "")
+    owner = manifest.get("owner", {}).get("name", "")
+    items = []
+    for position, plugin in enumerate(manifest.get("plugins", []), start=1):
+        items.append({
+            "@type": "ListItem",
+            "position": position,
+            "item": {
+                "@type": "SoftwareApplication",
+                "name": plugin.get("name", ""),
+                "applicationCategory": "DeveloperApplication",
+                "operatingSystem": "Cross-platform (GitHub Copilot CLI)",
+                "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+                "description": plugin.get("description", ""),
+                "url": _plugin_app_url(plugin),
+            },
+        })
+    data = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "WebSite",
+                "@id": SITE_BASE_URL + "#website",
+                "url": SITE_BASE_URL,
+                "name": SITE_NAME,
+                "description": description,
+                "author": {"@id": SITE_BASE_URL + "#person"},
+            },
+            {
+                "@type": "Person",
+                "@id": SITE_BASE_URL + "#person",
+                "name": owner,
+                "url": OWNER_GITHUB_URL,
+                "sameAs": [OWNER_GITHUB_URL, OWNER_LINKEDIN_URL],
+            },
+            {
+                "@type": "ItemList",
+                "name": "Plugins",
+                "itemListElement": items,
+            },
+        ],
+    }
+    return _jsonld_script(data)
+
+
+def site_page_urls(root):
+    """Absolute URLs of the indexable HTML pages: the hub, each plugin page, and the tutorial when
+    its generated page exists. Used for the sitemap."""
+    urls = [SITE_BASE_URL]
+    for page in PLUGIN_PAGES.values():
+        urls.append(SITE_BASE_URL + page.lstrip("./"))
+    if os.path.exists(os.path.join(root, TUTORIAL_PAGE)):
+        rel = os.path.relpath(TUTORIAL_PAGE, "site").replace(os.sep, "/")
+        urls.append(SITE_BASE_URL + rel[: -len("index.html")])
+    return urls
+
+
+def render_sitemap(root):
+    locs = "\n".join("  <url><loc>%s</loc></url>" % esc(url) for url in site_page_urls(root))
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            "%s\n</urlset>\n") % locs
+
+
+def render_llms(manifest):
+    """An llms.txt (Markdown) front door for LLM crawlers: the marketplace summary, how to install,
+    a list of plugins with links and descriptions, and the tutorial link, all from the manifest."""
+    description = manifest.get("metadata", {}).get("description", "")
+    suffix = manifest.get("name", "")
+    lines = ["# " + SITE_NAME, "", "> " + description, ""]
+    lines.append(
+        "Add the marketplace once with "
+        "`copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace`, then install "
+        "any plugin with `copilot plugin install <name>@%s`." % suffix)
+    lines.extend(["", "## Plugins"])
+    for plugin in manifest.get("plugins", []):
+        lines.append("- [%s](%s): %s" % (
+            plugin.get("name", ""), _plugin_app_url(plugin), plugin.get("description", "")))
+    lines.extend(["", "## Documentation",
+                  "- [commentable-html tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
+    return "\n".join(lines)
+
+
+def write_or_check(path, content, check):
+    """Write `content` (normalized to LF) to `path`, or in check mode return a one-item drift list
+    when the committed file differs. Mirrors the demo/tutorial-image sync so a stale generated file
+    fails `--check`."""
+    data = content.replace("\r\n", "\n").replace("\r", "\n")
+    if check:
+        existing = _read_normalized(path).decode("utf-8") if os.path.exists(path) else None
+        return [os.path.basename(path)] if existing != data else []
+    write_text(path, data)
+    return []
 
 
 def render_demo_fullscreen_link():
@@ -516,6 +660,12 @@ def main(argv):
     with open(manifest_path, "r", encoding="utf-8") as fh:
         manifest = json.load(fh)
 
+    # Assemble the served stylesheet from its source partials before anything stamps its hash.
+    styles_text = build_styles(root)
+    styles_path = os.path.join(root, "site", "assets", "styles.css")
+    if not args.check:
+        write_text(styles_path, styles_text)
+
     plugins_html = render_plugins(manifest)
     changelog_html = render_changelog([])
     for path, filter_plugin in changelog_candidates(root, args.changelog):
@@ -532,6 +682,7 @@ def main(argv):
 
     hub_src = read_text(hub_path)
     hub_out = replace_region_block(hub_src, "plugins", plugins_html)
+    hub_out = replace_region_block(hub_out, "jsonld", render_jsonld(manifest))
     hub_out = stamp_assets(hub_out, root)
 
     plugin_src = read_text(plugin_path)
@@ -558,11 +709,17 @@ def main(argv):
 
     demo_drift = sync_demos(root, args.check)
     tutorial_img_drift = sync_tutorial_images(root, args.check)
+    sitemap_drift = write_or_check(
+        os.path.join(root, "site", "sitemap.xml"), render_sitemap(root), args.check)
+    llms_drift = write_or_check(
+        os.path.join(root, "site", "llms.txt"), render_llms(manifest), args.check)
 
     if args.check:
         problems = []
+        if styles_text != read_text(styles_path):
+            problems.append("site/assets/styles.css is stale vs site-src/css/ partials")
         if hub_out != hub_src:
-            problems.append("site/index.html plugins region is stale")
+            problems.append("site/index.html generated regions (plugins, jsonld) are stale")
         if plugin_out != plugin_src:
             problems.append("site/commentable-html/index.html version/changelog region is stale")
         if tutorial_out is not None and tutorial_out != tutorial_src:
@@ -571,6 +728,10 @@ def main(argv):
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
         if tutorial_img_drift:
             problems.append("tutorial images differ from source: " + ", ".join(tutorial_img_drift))
+        if sitemap_drift:
+            problems.append("site/sitemap.xml is stale")
+        if llms_drift:
+            problems.append("site/llms.txt is stale")
         if problems:
             for problem in problems:
                 sys.stderr.write("drift: %s\n" % problem)
@@ -583,7 +744,7 @@ def main(argv):
     write_text(plugin_path, plugin_out)
     if tutorial_out is not None:
         write_text(tutorial_page_path, tutorial_out)
-    print("site data generated (plugins, version v%s, changelog, demos, tutorial)" % version)
+    print("site data generated (plugins, jsonld, version v%s, changelog, demos, tutorial, sitemap, llms)" % version)
     return 0
 
 

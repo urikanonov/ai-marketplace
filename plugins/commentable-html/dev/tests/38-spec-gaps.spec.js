@@ -6,7 +6,7 @@ import {
 
 const INLINE_HTML = fs.readFileSync(INLINE, "utf8");
 const CONTENT_END = "<!-- END: commentable-html - CONTENT -->";
-const DEMO_ROOT_RE = /<main id="commentRoot"\s+data-comment-key="commentable-html-demo"[\s\S]*?>/;
+const DEMO_ROOT_RE = /<main id="commentRoot"(?=[^>]*data-comment-key="commentable-html-demo")[^>]*>/;
 
 function withContent(snippet) {
   return INLINE_HTML.replace(CONTENT_END, snippet + "\n" + CONTENT_END);

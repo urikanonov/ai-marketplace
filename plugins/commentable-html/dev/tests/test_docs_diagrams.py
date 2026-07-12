@@ -41,5 +41,25 @@ class PortabilityDiagramsTests(unittest.TestCase):
             text)
 
 
+PLUGIN_README = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "README.md"))
+BLOG_URL = "https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html"
+
+
+class MotivationDocsTests(unittest.TestCase):
+    """CMH-DOC-01: the shipped README and SKILL.md carry the medium-comparison motivation
+    and cite the "unreasonable effectiveness of HTML" blog post."""
+
+    def test_readme_has_comparison_table_and_blog_reference(self):
+        text = _read(PLUGIN_README)
+        self.assertIn("Why not just plan in chat, Markdown, or plain HTML?", text)
+        self.assertIn("| **commentable-html** |", text)
+        for medium in ("Chat / terminal", "Markdown file", "Plain HTML"):
+            self.assertIn(medium, text)
+        self.assertIn(BLOG_URL, text)
+
+    def test_skill_cites_the_blog_reference(self):
+        self.assertIn(BLOG_URL, _read(SKILL_MD))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -35,12 +35,17 @@ import sys
 import traceback
 from collections import Counter
 from html.parser import HTMLParser
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 # --------------------------------------------------------------------------- #
 # Layer contract
 # --------------------------------------------------------------------------- #
 
 REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
+LAYER_DESCRIPTOR_ID = "commentableHtmlLayer"
+CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
+CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 
 # Structural ids the layer's JS wires up. Missing ones make the layer throw or
 # silently no-op, so their absence is an error. (handledCommentIds and
@@ -54,6 +59,7 @@ REQUIRED_IDS = [
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
+    "btnExportOffline", "btnExportOfflineTop",
     "headingAddBtn", "widgetAddBtn", "menuDocComment",
 ]
 
@@ -117,7 +123,7 @@ _DATA_KEY_RE = re.compile(r'(?i:data-comment-key)\s*=\s*["\']?([^\s"\'<>]+)')
 # The real region marker is an HTML comment, not bare text in prose.
 JS_END_MARKER_TEXT = "END: commentable-html - JS"
 # JSON <script> ids owned by the commentable layer, not chart data.
-LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments"}
+LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", LAYER_DESCRIPTOR_ID}
 # HTML void elements never get pushed on the stack.
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr"}
@@ -210,7 +216,8 @@ class _DocParser(HTMLParser):
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
-        self.mermaid_blocks = []         # [{"cm_skip": bool}] for pre/div.mermaid
+        self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
+        self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
         self._cur_script = None   # (pos, attrs_dict) while inside a <script>
         self._cur_body = []
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
@@ -270,6 +277,7 @@ class _DocParser(HTMLParser):
                 return  # target is not in scope; do not close it
         if idx is not None:
             del self.stack[idx:]
+            del self._mermaid_stack[idx:]
 
     def _record(self, tag, ad, own_skip):
         if self._in_template():
@@ -281,7 +289,7 @@ class _DocParser(HTMLParser):
                                      "in_canvas": self._in_canvas(),
                                      "in_chart_figure": any(self._figure_chart)})
         if tag in ("pre", "div") and "mermaid" in set((ad.get("class") or "").split()):
-            self.mermaid_blocks.append({"cm_skip": own_skip})
+            self.mermaid_blocks.append({"cm_skip": own_skip, "has_svg": False})
         idv = ad.get("id")
         if idv:
             self.all_ids.append(idv)
@@ -296,7 +304,12 @@ class _DocParser(HTMLParser):
         self._implicit_close(tag)
         ad = self._attrs_dict(attrs)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
+        before_mermaid = len(self.mermaid_blocks)
         self._record(tag, ad, own_skip)
+        if tag == "svg" and self._mermaid_stack:
+            idx = self._mermaid_stack[-1]
+            if idx is not None:
+                self.mermaid_blocks[idx]["has_svg"] = True
         if tag == "script" and not self._in_template():
             self._cur_script = (self._off(), ad)
             self._cur_body = []
@@ -306,6 +319,10 @@ class _DocParser(HTMLParser):
             self._cur_heading = (tag, ad.get("id"), [])
         if tag not in VOID:
             self.stack.append((tag, own_skip))
+            current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
+            if len(self.mermaid_blocks) > before_mermaid:
+                current_mermaid = len(self.mermaid_blocks) - 1
+            self._mermaid_stack.append(current_mermaid)
             if tag == "figure":
                 self._figure_chart.append("chart" in set((ad.get("class") or "").split()))
 
@@ -320,6 +337,10 @@ class _DocParser(HTMLParser):
         self._implicit_close(tag)
         ad = self._attrs_dict(attrs)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
+        if tag == "svg" and self._mermaid_stack:
+            idx = self._mermaid_stack[-1]
+            if idx is not None:
+                self.mermaid_blocks[idx]["has_svg"] = True
         self._record(tag, ad, own_skip)
 
     def handle_data(self, data):
@@ -359,6 +380,7 @@ class _DocParser(HTMLParser):
                 if self._cr_depth is not None and i <= self._cr_depth:
                     self._cr_closed = True
                 del self.stack[i:]
+                del self._mermaid_stack[i:]
                 return
 
     def handle_comment(self, data):
@@ -465,10 +487,10 @@ def _parser_script_body(parser, script_id, lo=None, hi=None):
 # NonPortable mode: the layer's CSS/JS live in companion commentable-html.{css,js,assets.js}
 # files referenced via <link>/<script src> instead of being inlined. Only CSS
 # and JS leave the document; HANDLED IDS, EMBEDDED COMMENTS and COMMENT UI stay
-# inline (document-owned state + controls), so those three regions are still
-# validated exactly as in inline mode.
+# inline (document-owned state + controls). CSS and JS are marker-delimited
+# companion references, so the same region descriptor works in both modes.
 # --------------------------------------------------------------------------- #
-NONPORTABLE_REGIONS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"]
+NONPORTABLE_REGIONS = REGIONS
 
 
 class _TagAttrParser(HTMLParser):
@@ -515,6 +537,14 @@ def _ref_path(ref):
     return re.split(r"[?#]", ref or "", maxsplit=1)[0]
 
 
+def _file_url_to_path(ref):
+    parsed = urlparse(ref or "")
+    if parsed.scheme.lower() != "file":
+        return None
+    raw = ("//" + parsed.netloc + parsed.path) if parsed.netloc and parsed.netloc.lower() != "localhost" else parsed.path
+    return os.path.abspath(url2pathname(raw))
+
+
 def _nonportable_css_refs(html):
     return [_ref_path(a["href"]) for a in _find_tag_attrs(html, "link")
             if "commentable-html" in a.get("href", "").lower()
@@ -533,11 +563,38 @@ def _nonportable_meta_versions(html):
 
 
 def _is_nonportable(html):
-    """NonPortable = the layer's CSS is NOT inlined (no inline CSS region) and the
-    document references external commentable-html companion files."""
-    if _begin_re("CSS").search(html):
-        return False
+    """NonPortable = the document references external commentable-html companion files."""
     return bool(_nonportable_css_refs(html) or _nonportable_js_refs(html))
+
+
+def _check_layer_descriptor(parser, nonportable, active_regions):
+    errors = []
+    scripts = [s for s in parser.scripts if s["attrs"].get("id") == LAYER_DESCRIPTOR_ID]
+    if not scripts:
+        return ['missing <script id="%s" type="application/json"> layer descriptor' % LAYER_DESCRIPTOR_ID]
+    if len(scripts) > 1:
+        errors.append('<script id="%s"> appears %d times (must be unique)' % (LAYER_DESCRIPTOR_ID, len(scripts)))
+    script = scripts[0]
+    if not _is_json_attrs(script["attrs"]):
+        errors.append('the <script id="%s"> block must be type="application/json"' % LAYER_DESCRIPTOR_ID)
+    try:
+        data = json.loads((script["body"] or "").strip())
+    except json.JSONDecodeError as exc:
+        errors.append("%s is not valid JSON: %s" % (LAYER_DESCRIPTOR_ID, exc))
+        return errors
+    if not isinstance(data, dict):
+        errors.append("%s must be a JSON object" % LAYER_DESCRIPTOR_ID)
+        return errors
+    version = data.get("version")
+    if not isinstance(version, str) or not version.strip():
+        errors.append('%s.version must be a non-empty string' % LAYER_DESCRIPTOR_ID)
+    expected_mode = "nonportable" if nonportable else "portable"
+    if data.get("mode") != expected_mode:
+        errors.append('%s.mode must be "%s" for this document' % (LAYER_DESCRIPTOR_ID, expected_mode))
+    if data.get("regions") != active_regions:
+        errors.append("%s.regions must list exactly the active region markers in order: %s"
+                      % (LAYER_DESCRIPTOR_ID, ", ".join(active_regions)))
+    return errors
 
 
 _SECTION_DIR_RE = re.compile(
@@ -598,6 +655,8 @@ def check_mermaid_renders(parser):
     """
     if not parser.mermaid_blocks:
         return []
+    if all(mb.get("has_svg") for mb in parser.mermaid_blocks):
+        return []
     loader = None
     for s in parser.scripts:
         body = s.get("body") or ""
@@ -652,20 +711,24 @@ def _check_nonportable(html, base_dir, id_counts):
 
     # Referenced companion files must resolve to a local file that exists. NonPortable
     # intentionally points at the skill's dist/ folder (a relative subdirectory or a
-    # ../ path), so a subfolder / parent reference is allowed - only remote/CDN URLs
-    # are rejected (they break the self-contained guarantee), absolute paths are warned about
-    # (they leak a local directory and are not portable), and a missing target errors.
+    # ../ path, or an absolute file:// URL), so a subfolder / parent reference is
+    # allowed - only http(s) remote/CDN URLs are rejected (they break the
+    # self-contained guarantee), absolute filesystem paths are warned about (they
+    # leak a local directory and are not portable), and a missing target errors.
     # The remote-URL and absolute-path checks are structural (they inspect the ref
     # string only), so they always run. Only the on-disk existence check needs a
     # base_dir; when base_dir is None the placement is deferred (e.g. generation-time
     # validation of a not-yet-placed document), so existence is not checked - the
     # structure is still validated.
     for ref in css_refs + js_refs:
-        if re.match(r"[a-z]+://", ref, re.I) or ref.startswith("//"):
+        if re.match(r"https?://", ref, re.I):
             errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
             continue
         norm = ref.replace("\\", "/")
-        if norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
+        file_target = _file_url_to_path(ref)
+        if file_target is not None:
+            target = file_target
+        elif norm.startswith("/") or re.match(r"[a-zA-Z]:", ref):
             # Absolute path: usable but leaks a local directory and is not portable.
             warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
             target = os.path.abspath(ref)
@@ -675,7 +738,7 @@ def _check_nonportable(html, base_dir, id_counts):
             target = os.path.abspath(os.path.join(os.path.abspath(base_dir), norm))
         else:
             target = None
-        if base_dir is not None and target is not None and not os.path.exists(target):
+        if target is not None and (base_dir is not None or file_target is not None) and not os.path.exists(target):
             errors.append('nonportable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
 
     return errors, warnings
@@ -709,6 +772,17 @@ def check_layer(html, parser, base_dir=None):
     if len(positions) >= 2 and positions != sorted(positions):
         errors.append("regions are out of order (expected order: %s)" % ", ".join(active_regions))
 
+    errors.extend(_check_layer_descriptor(parser, nonportable, active_regions))
+
+    content_begin_count = html.count(CONTENT_BEGIN)
+    content_end_count = html.count(CONTENT_END)
+    if content_begin_count != 1:
+        errors.append("CONTENT region: expected 1 BEGIN marker, found %d" % content_begin_count)
+    if content_end_count != 1:
+        errors.append("CONTENT region: expected 1 END marker, found %d" % content_end_count)
+    if content_begin_count == 1 and content_end_count == 1 and html.index(CONTENT_BEGIN) >= html.index(CONTENT_END):
+        errors.append("CONTENT region: END marker appears before its BEGIN marker")
+
     # 3) #commentRoot present (real element id, via the parser) with required data-* attributes.
     n_roots = parser.all_ids.count("commentRoot")
     if n_roots == 0:
@@ -717,6 +791,8 @@ def check_layer(html, parser, base_dir=None):
         errors.append(f'id="commentRoot" appears {n_roots} times (must be unique)')
     else:
         attrs = parser.comment_root_attrs or {}
+        if "data-cmh-content-root" not in attrs:
+            errors.append('#commentRoot is missing data-cmh-content-root (stable hook for content/infra tooling)')
         if not attrs.get("data-comment-key", "").strip():
             errors.append('#commentRoot is missing a non-empty data-comment-key (the layer falls back to "commentable-html:" + location.pathname, but set an explicit key so comments do not collide across pages on the same origin)')
         if not attrs.get("data-doc-label", "").strip():
@@ -860,7 +936,7 @@ def check_layer(html, parser, base_dir=None):
             errors.append(f"embeddedComments is not valid JSON: {exc}")
 
     # 6) The JS region must contain exactly one real </script>.
-    if "JS" in begin_idx and "JS" in end_idx:
+    if not nonportable and "JS" in begin_idx and "JS" in end_idx:
         lo, hi = sorted((begin_idx["JS"], end_idx["JS"]))
         js_slice = html[lo:hi]
         n_close = len(re.findall(r"</script\s*>", js_slice, re.IGNORECASE))
@@ -884,7 +960,7 @@ def check_layer(html, parser, base_dir=None):
     # id="handledCommentIds"/"embeddedComments" makes getElementById() (and
     # mark_handled.py) bind to the wrong <script>, silently reading/writing a
     # decoy. Absence is already reported by checks 4/5, so only flag duplicates.
-    for uid in sorted(LAYER_JSON_IDS):
+    for uid in sorted(LAYER_JSON_IDS - {LAYER_DESCRIPTOR_ID}):
         c = id_counts.get(uid, 0)
         if c > 1:
             errors.append(f'<script id="{uid}"> appears {c} times (must be unique)')

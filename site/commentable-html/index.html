@@ -6,8 +6,46 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
+  <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/commentable-html/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ai-marketplace" />
+  <meta property="og:title" content="commentable-html - inline-comment review surface for any HTML" />
+  <meta property="og:description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
+  <meta property="og:url" content="https://urikanonov.github.io/ai-marketplace/commentable-html/" />
+  <meta property="og:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="commentable-html - inline-comment review surface for any HTML" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="commentable-html - inline-comment review surface for any HTML" />
+  <meta name="twitter:description" content="Inline comments on any static HTML report that round-trip back to your agent." />
+  <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=fb55a04bcb80" />
+  <link rel="stylesheet" href="../assets/styles.css?v=c4b0696a8a11" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "commentable-html",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Cross-platform (GitHub Copilot CLI)",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "description": "Make any static HTML report reviewable: readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to an agent.",
+        "url": "https://urikanonov.github.io/ai-marketplace/commentable-html/",
+        "author": { "@type": "Person", "name": "Uri Kanonov", "url": "https://github.com/urikanonov" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "ai-marketplace", "item": "https://urikanonov.github.io/ai-marketplace/" },
+          { "@type": "ListItem", "position": 2, "name": "commentable-html", "item": "https://urikanonov.github.io/ai-marketplace/commentable-html/" }
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -32,8 +70,6 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" />
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.8.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any <span class="accent">HTML</span>,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -41,6 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.15.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -48,10 +85,11 @@
       <div class="wrap">
         <div class="section-block prose">
           <h2 class="section-title">Why commentable-html</h2>
-          <p>AI agents increasingly answer with <strong>HTML</strong>, not markdown: plans, reports, design docs, and code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, data as real charts, long documents as navigable sections. But the moment you want to <em>revise</em> that artifact the loop breaks down: you alt-tab between the render and the chat and describe in prose what to change. The richer the document, the more painful the round-trip.</p>
+          <p>AI agents increasingly answer with <strong>HTML</strong>, not Markdown: plans, reports, design docs, and code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, data as real charts, long documents as navigable sections. (Anthropic makes the same case in <a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html" target="_blank" rel="noopener noreferrer">"The unreasonable effectiveness of HTML"</a>.) But the moment you want to <em>revise</em> that artifact the loop breaks down: you alt-tab between the render and the chat and describe in prose what to change. The richer the document, the more painful the round-trip.</p>
           <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> Select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, then one <em>Copy all</em> hands the agent a structured bundle of every note. It <strong>drastically shortens the AI planning and iteration loop</strong>: you stay in the document and return to the chat only at the end.</p>
         </div>
         <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg; keep the two in sync if the labels or flow change. -->
+        <div class="section-block why-loop-block">
         <figure class="loop-figure">
           <svg viewBox="0 0 640 250" role="img" aria-labelledby="loopFigTitle loopFigDesc">
             <title id="loopFigTitle">Commentable HTML self-review loop</title>
@@ -76,6 +114,29 @@
             <text class="loop-fig-sub" x="320" y="242" text-anchor="middle" font-size="12.5">4. reload and repeat</text>
           </svg>
         </figure>
+        </div>
+
+        <div class="section-block prose why-mediums">
+          <h3 class="why-sub">Chat, Markdown, HTML - or a tight loop?</h3>
+          <p>Your agent can draft a brilliant plan in seconds. The real bottleneck is everything after - reading it, reacting to it, and getting your changes back into the model. Where that review happens decides how fast you actually move.</p>
+          <table class="compare">
+            <thead>
+              <tr><th>Where you plan</th><th>Handles a big plan</th><th>Visual richness</th><th>Interactive</th><th>In-place review</th><th>Review loop</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Chat / terminal</td><td data-label="Handles a big plan">Poor</td><td data-label="Visual richness">None</td><td data-label="Interactive">No</td><td data-label="In-place review">No</td><td data-label="Review loop">Painful</td></tr>
+              <tr><td>Markdown file</td><td data-label="Handles a big plan">OK (needs a viewer)</td><td data-label="Visual richness">Limited</td><td data-label="Interactive">No</td><td data-label="In-place review">No</td><td data-label="Review loop">Manual</td></tr>
+              <tr><td>Plain HTML</td><td data-label="Handles a big plan">Good</td><td data-label="Visual richness">Rich</td><td data-label="Interactive">Yes</td><td data-label="In-place review">No</td><td data-label="Review loop">Out-of-band</td></tr>
+              <tr class="compare-hero"><td>commentable-html</td><td data-label="Handles a big plan">Good</td><td data-label="Visual richness">Rich</td><td data-label="Interactive">Yes</td><td data-label="In-place review">Yes</td><td data-label="Review loop">Tight</td></tr>
+            </tbody>
+          </table>
+          <ul class="why-list">
+            <li><strong>In the chat window.</strong> The plan scrolls past in a terminal or chat app and is gone. Long plans are a chore to navigate and hard to keep or share - great for a sentence, hopeless for a spec.</li>
+            <li><strong>In a Markdown file.</strong> It survives, but raw Markdown is a slog to read and even a viewer stays flat: no real tables, diagrams, or charts. Few teammates read a 300-line <code>.md</code>.</li>
+            <li><strong>In plain HTML.</strong> Dense, structured, and nice to look at. But review still breaks: you read in the browser, then switch to the chat and describe, in words, what to change and where. Out-of-band and slow.</li>
+            <li><strong>With commentable-html.</strong> The same rich HTML - plus review in place. Comment on the exact sentence, table cell, chart, or diagram node; one <em>Copy all</em> hands the agent every note. The loop collapses to a single tight cycle.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -151,6 +212,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="demo-switch" role="tablist" aria-label="Choose a demo report">
           <button class="demo-tab active" type="button" role="tab" id="demo-tab-taxi" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="demo/report-taxi.html" data-file="report-taxi.html" data-label="NYC Taxi Report">NYC Taxi Report</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html" data-label="Community Garden Plan">Community Garden Plan</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-triage" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-triage.html" data-file="report-triage.html" data-label="Triage Board">Triage Board</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-metrics" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-metrics.html" data-file="report-metrics.html" data-label="Visuals Matrix">Visuals Matrix</button>
         </div>
       </div>
       <div class="demo-frame full-bleed" id="demo-panel" role="tabpanel" aria-labelledby="demo-tab-taxi" tabindex="0">
@@ -199,6 +262,60 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.15.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Generated documents now publish a machine-readable <code>commentableHtmlLayer</code> descriptor that records the layer version, output mode, and infra region marker names in document order.</li>
+              <li><code>#commentRoot</code> now carries <code>data-cmh-content-root</code>, giving future tooling a stable hook for content roots.</li>
+              <li>The forward-compatible content/infra layout contract is documented in <code>references/forward-compatible-layout.md</code>.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.14.0] - 2026-07-12</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Top-level prose is no longer width-capped. Ordinary paragraphs (and the lede) now fill the full content column, the same width as tables, figures, code, and callouts, so prose no longer renders narrow next to full-width content in wide reports. The previous 72ch readable-measure cap is removed.</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
+            <div class="rel-head"><h3>[1.13.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Added two shipped live demo reports: an incident triage board with commentable widget columns and cards, and a visuals matrix covering flowchart, sequence, gantt, state, class, ER, and pie mermaid diagrams, four Chart.js chart kinds, a code-review diff, a KQL block, and an SVG figure.</li>
+              <li>Export to Markdown now preserves <code>data-cm-widget</code> boards as a widget note plus a GFM table, so the triage board survives Markdown export instead of being skipped as <code>cm-skip</code> chrome.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.12.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Added <strong>Export Offline</strong>, which builds a Portable export with current comments, snapshots rendered mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content loaders, and produces a strict-valid zero-network HTML handoff.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.9.1] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The shipped plugin <code>README.md</code> and <code>SKILL.md</code> now explain why commentable-html beats planning in chat, a Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic&#x27;s &quot;unreasonable effectiveness of HTML&quot; blog post - so the motivation matches the project website.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.9.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li><code>new_document.py</code> now defaults NonPortable companion references to absolute <code>file://</code> URLs that point at the installed skill <code>dist/</code>, so the generated HTML can move anywhere on the same machine without losing its CSS/JS. Use <code>--assets-relative</code> to restore the old relative-path behavior for a movable folder bundle.</li>
+              <li>The NonPortable asset banner now has an accessible <code>Dismiss</code> button. A dismissed version warning stays hidden across reloads for that document key and page/runtime version pair.</li>
+              <li>The SKILL.md documents the page/runtime compatibility contract: same-major newer runtimes can open older same-major pages without warning, and breaking page/runtime changes require a major version bump.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The NonPortable version handshake is now semver-aware. Same-major older pages no longer show a scary mismatch banner after a safe skill update, newer same-major pages show a soft update notice, and different-major pages show the incompatible-runtime warning.</li>
+              <li><code>validate.py</code> treats only <code>http://</code> and <code>https://</code> companion refs as remote/CDN URLs. Local <code>file://</code> refs and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are local-only.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.8.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -217,98 +334,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>On touch / coarse-pointer devices the &quot;Add Comment&quot; popup now appears when a text selection settles. Selecting text on a phone drags the native handles and never fires <code>mouseup</code>, so the popup previously never showed; a debounced <code>selectionchange</code> now raises the same popup (and hides it when the selection collapses). Desktop mouse behavior is unchanged.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.7.0] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Export on <code>file://</code> no longer drops content authored after the layer script. The export base is now captured from the fully parsed DOM at export time (then re-stripped of runtime artifacts) instead of a snapshot taken before late content (for example a <code>chart_block</code> chart placed after the layer) was parsed.</li>
-              <li><code>Export as Portable/Standalone</code> finds the embedded-comments script regardless of its attribute order, and aborts with a clear error when the companion assets version does not match the running runtime.</li>
-              <li><code>Export to Markdown</code> now serializes <code>&lt;strong&gt;</code>/<code>&lt;em&gt;</code>/<code>&lt;a&gt;</code>/<code>&lt;code&gt;</code>/<code>&lt;img&gt;</code> that are direct children of a list item, and its URL allowlist keeps only image data URLs (a bare <code>data:</code> destination is neutralized while <code>data:image</code> is preserved).</li>
-              <li>Image/canvas comment highlights clear and flash correctly on <code>&lt;canvas&gt;</code> widgets, not just <code>&lt;img&gt;</code>.</li>
-              <li>Duplicate persisted comment ids are de-duplicated on load so a corrupted store cannot render twin cards.</li>
-              <li><code>generate_toc.py</code> and <code>validate.py</code> reset the <code>#commentRoot</code> scope on the root&#x27;s closing tag, so a heading or cross-reference in a later footer or sibling container is no longer collected into the TOC or validated as document content.</li>
-              <li><code>validate.py</code> accepts cache-busted companion references, stripping a <code>?query</code>/<code>#fragment</code> before the <code>.js</code>/<code>.css</code> suffix and the on-disk existence check.</li>
-              <li><code>diff_block.py</code> preserves a file-final-newline-only difference and emits the standard <code>\ No newline at end of file</code> marker instead of silently dropping it.</li>
-              <li><code>new_document.py</code> refuses NonPortable output to stdout unless <code>--assets-href</code> is given, because bare companion names written to a stream are unreachable; its <code>--key-from-source</code> help no longer claims a <code>--label</code> fallback.</li>
-              <li><code>chart_block.py</code> adds its own tools directory to <code>sys.path</code> on import so the sibling <code>validate</code> module is importable and self-validation is never silently skipped.</li>
-              <li><code>--help</code>/<code>-h</code> now exits 0 with usage on every shipped tool (<code>validate.py</code>, <code>kql_highlight.py</code>, <code>kusto_link.py</code>, <code>mark_handled.py</code>, and the rest), instead of treating the flag as a filename.</li>
-              <li><code>new_document.py --key auto</code> derives the comment key from the output/source path identity rather than the label, so two documents that share a title no longer collide and leak comments across each other.</li>
-              <li>The lede/intro block is no longer clamped by the 72ch prose measure, so it renders at the section width.</li>
-              <li>The confirm dialog always traps Tab and pulls escaped focus back to Cancel; Escape closing the toolbar overflow menu or the add-comment menu restores focus and no longer discards an open composer draft; the side-TOC highlights the last section once the page is fully scrolled.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Headings are keyboard-focusable with a visible focus style and Enter/Space activation for the deep-link / add-comment affordance, matching the mouse-only behavior.</li>
-              <li>Generated documents carry a visible themed document title (<code>#commentRoot &gt; h1</code>); <code>new_document.py</code> adds a visible <code>&lt;h1&gt;</code> from <code>--label</code> unless the fragment already has one or <code>--no-title</code> is passed.</li>
-              <li>The trust boundary is documented in <code>SKILL.md</code> and <code>new_document.py --help</code>: authored content is trusted HTML and is not sanitized; callers must sanitize untrusted host HTML before wrapping it.</li>
-              <li>A <code>new_document.py</code> quickstart example in the plugin README; <code>retrofitting.md</code> documents the <code>window.__cmh*</code> / <code>__commentable*</code> introspection globals.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>validate.py</code> requires <code>headingAddBtn</code>, <code>widgetAddBtn</code>, and <code>menuDocComment</code>, and its stale version note now points at the correct removal version.</li>
-              <li><code>upgrade.py</code> matches its replace regions by exact begin/end markers; the composer placeholder documents the <code>Ctrl/Cmd+Enter</code> save shortcut; <code>kusto_link.py</code> and the dev tests use public/generic cluster, path, and database names in place of internal ones.</li>
-              <li><code>build.py</code> now regenerates the example reports&#x27; layer regions and version stamps from the freshly built dist and covers them in <code>--check</code>.</li>
-              <li>Both export modes download <code>&lt;stem&gt;-portable.html</code>; the NonPortable &quot;Export as Portable&quot; no longer emits a <code>&lt;stem&gt;.standalone.html</code> filename.</li>
-            </ul>
-          </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
-          <div class="release">
-            <div class="rel-head"><h3>[1.6.1] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The Help <code>Getting started</code> topic now embeds the review-loop diagram (the agent-to-you-and-back loop) beneath the four steps, themed with the framework&#x27;s light/dark variables so it follows the active theme.</li>
-              <li>A <code>Website and live demo</code> link in the Help About block, pointing at the plugin&#x27;s GitHub Pages page.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Merged the <code>The review workflow</code> and <code>Getting started</code> help topics into a single, default-open <code>Getting started</code> topic, removing the overlap between them.</li>
-              <li>Reworded the <code>Self-contained and privacy</code> help topic: comments are stored in this browser&#x27;s <code>localStorage</code> (private, never uploaded, no account), and the review layer travels inside the file only in Portable mode - a Not portable file references small companion resources. It no longer implies the layer is always bundled into the file.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.6.0] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams (full Playwright suite green against mermaid 11). This rode in on a dev/test-only dependency bump (mermaid 11.16.0, chart.js 4.5.1, adm-zip 0.6.0); none of those dev dependencies ship in the plugin.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.5.1] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Polished the review-loop diagram (<code>docs/images/review-loop.svg</code> and its site twin): the step labels use consistent casing (&quot;1. Generates HTML&quot;, &quot;2. Comment Inline&quot;), and the &quot;reload and repeat&quot; caption became a fourth curved arrow from the AI agent back to you, so the loop reads as a closed cycle.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.5.0] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Commentable widgets and SVG nodes. A generic opt-in contract (<code>data-cm-widget</code>, <code>data-cm-part</code>, optional <code>data-cm-part-label</code>, and <code>data-cm-slot</code>) makes individual parts of an interactive widget or a labeled SVG <code>&lt;g&gt;</code> node commentable, with a hover/keyboard Add Comment affordance and a <code>widget</code> anchor type that restores across reloads and exports.</li>
-              <li>Widget layout-change tracking. When parts sit in <code>data-cm-slot</code> containers, drag/drop moves are detected against the load-time baseline and surfaced as a synthetic sidebar card and a &quot;Widget layout changes&quot; section in the Copy-all bundle; the document is flagged Not portable until it is re-exported.</li>
-              <li>Document-wide comments. Right-clicking empty space adds an unanchored, whole-document comment (<code>document</code> anchor type) that carries no highlight and copies as a document-wide anchor.</li>
-              <li>Export to Markdown. A new sidebar and overflow-menu action copies the document content to the clipboard and downloads a <code>.md</code> file via a deterministic, block-by-block conversion (headings, lists, GFM tables, fenced code / diff / mermaid / kusto, callouts as GitHub alerts, charts and SVG figures as caption notes), with the current comments appended as a section. Untrusted text, attributes, and comment notes are escaped so the exported Markdown cannot inject raw HTML or forge document structure.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The overflow-menu portability badge now shares the sidebar badge&#x27;s coloring and tooltip (via <code>data-doc-type</code>), so both convey the same Portable / Not portable semantics.</li>
-              <li>Authoring guidance: content-conventions now covers shaping content in real layouts, an anti-default-look taste checklist, a readable prose measure (top-level paragraphs are capped while tables, figures, and code keep full width), and mapping a product&#x27;s design tokens onto the <code>--cp-*</code> variables.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.4.0] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Help &amp; About: a &quot;Tips and shortcuts&quot; topic for power users (right-click to comment, re-select the same text to reopen a comment, multiple and draggable composers, sort back to document order, the Expand and Collapse controls, the diff Syntax toggle, and the keyboard shortcuts), plus &quot;Request a feature&quot; and &quot;Contribute&quot; links in the About block alongside the existing source and issue links.</li>
-              <li>A review-loop diagram (<code>docs/images/review-loop.svg</code>) embedded in a new &quot;Review workflow&quot; section of the plugin README, showing the agent-to-you-and-back loop and naming the self, peer, and reviewer variants.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Help &amp; About now orients a first-time reviewer. The review-workflow topic points a recipient who was sent a file straight to leaving a comment (no agent or account needed), the &quot;Getting started&quot; topic is retitled for reviewing a shared file, and the search box suggests &quot;shortcuts&quot;.</li>
-              <li><code>docs/TUTORIAL.md</code> gained a short &quot;you were sent a file to review&quot; quick start and a pointer to the new Tips and shortcuts help topic.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">12 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">18 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

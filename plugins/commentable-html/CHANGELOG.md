@@ -4,6 +4,70 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-07-12
+
+### Added
+
+- Generated documents now publish a machine-readable `commentableHtmlLayer` descriptor that records the
+  layer version, output mode, and infra region marker names in document order.
+- `#commentRoot` now carries `data-cmh-content-root`, giving future tooling a stable hook for content roots.
+- The forward-compatible content/infra layout contract is documented in `references/forward-compatible-layout.md`.
+
+## [1.14.0] - 2026-07-12
+
+### Changed
+
+- Top-level prose is no longer width-capped. Ordinary paragraphs (and the lede) now fill the full
+  content column, the same width as tables, figures, code, and callouts, so prose no longer renders
+  narrow next to full-width content in wide reports. The previous 72ch readable-measure cap is removed.
+
+## [1.13.0] - 2026-07-12
+
+### Added
+
+- Added two shipped live demo reports: an incident triage board with commentable widget columns and cards, and a
+  visuals matrix covering flowchart, sequence, gantt, state, class, ER, and pie mermaid diagrams, four Chart.js
+  chart kinds, a code-review diff, a KQL block, and an SVG figure.
+- Export to Markdown now preserves `data-cm-widget` boards as a widget note plus a GFM table, so the triage board
+  survives Markdown export instead of being skipped as `cm-skip` chrome.
+
+## [1.12.0] - 2026-07-12
+
+### Added
+
+- Added **Export Offline**, which builds a Portable export with current comments, snapshots rendered
+  mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content
+  loaders, and produces a strict-valid zero-network HTML handoff.
+
+## [1.9.1] - 2026-07-12
+
+### Added
+
+- The shipped plugin `README.md` and `SKILL.md` now explain why commentable-html beats planning in chat, a
+  Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic's "unreasonable
+  effectiveness of HTML" blog post - so the motivation matches the project website.
+
+## [1.9.0] - 2026-07-12
+
+### Added
+
+- `new_document.py` now defaults NonPortable companion references to absolute `file://` URLs that point at
+  the installed skill `dist/`, so the generated HTML can move anywhere on the same machine without losing
+  its CSS/JS. Use `--assets-relative` to restore the old relative-path behavior for a movable folder bundle.
+- The NonPortable asset banner now has an accessible `Dismiss` button. A dismissed version warning stays
+  hidden across reloads for that document key and page/runtime version pair.
+- The SKILL.md documents the page/runtime compatibility contract: same-major newer runtimes can open older
+  same-major pages without warning, and breaking page/runtime changes require a major version bump.
+
+### Changed
+
+- The NonPortable version handshake is now semver-aware. Same-major older pages no longer show a scary
+  mismatch banner after a safe skill update, newer same-major pages show a soft update notice, and
+  different-major pages show the incompatible-runtime warning.
+- `validate.py` treats only `http://` and `https://` companion refs as remote/CDN URLs. Local `file://` refs
+  and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are
+  local-only.
+
 ## [1.8.0] - 2026-07-12
 
 ### Added

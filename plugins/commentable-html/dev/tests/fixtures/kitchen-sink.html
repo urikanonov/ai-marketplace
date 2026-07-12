@@ -25,6 +25,7 @@
   required when you port between docs.
 
     <main id="commentRoot"
+          data-cmh-content-root
           data-comment-key="my-doc"      (unique per doc)
           data-doc-label="My Document">     (shown in copy)
       ... your content ...
@@ -45,7 +46,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.8.0" />
+<meta name="commentable-html-version" content="1.15.0" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.15.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (inline)</title>
 
@@ -499,12 +501,8 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
-   wide content shell, while tables, figures, code, diffs, and callouts keep full width.
-   The lede is a full-width surface box, so its paragraphs opt out of the measure cap
-   (otherwise they render far narrower than the box and its sibling sections). */
-#commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
-#commentRoot .cmh-lede, #commentRoot .cmh-lede > p { max-width: none; }
+/* Top-level prose fills the content column (no readable-measure cap): paragraphs, like
+   tables, figures, code, and callouts, use the full width of the 1480px content shell. */
 /* Section headings are deep-links: a plain click or Enter/Space updates the URL to their
    anchor, and they are keyboard-focusable with a visible focus ring. */
 #commentRoot .cm-anchored { cursor: pointer; }
@@ -756,11 +754,21 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
    inline bootstrap when the external runtime fails to initialize in time. */
 #cmhAssetBanner {
   position: fixed; top: 0; left: 0; right: 0; z-index: 400;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
   padding: 10px 16px; font-size: 13px; line-height: 1.4;
   background: var(--cp-danger); color: #fff;
   box-shadow: var(--cp-shadow); text-align: center;
 }
 #cmhAssetBanner code { background: rgba(0,0,0,0.18); padding: 1px 5px; border-radius: 4px; }
+#cmhAssetBanner .cmh-asset-message { flex: 0 1 auto; }
+#cmhAssetBanner .cmh-asset-dismiss {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.55); background: rgba(0,0,0,0.18);
+  color: #fff; font-weight: 700; line-height: 1;
+}
+#cmhAssetBanner .cmh-asset-dismiss:hover, #cmhAssetBanner .cmh-asset-dismiss:focus-visible {
+  background: rgba(0,0,0,0.32); outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px;
+}
 
 /* --- Diff / code-review layer (pre.cmh-diff / div.cmh-diff) --- */
 .cmh-diff-host { margin: 1rem 0; }
@@ -1038,9 +1046,11 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   max-height: min(60vh, 480px); min-height: 160px; overflow: hidden;
 }
 #commentRoot figure.chart canvas,
+#commentRoot figure.chart img.cmh-chart,
 #commentRoot canvas.cmh-chart {
   display: block; width: 100% !important; max-width: 100% !important;
   height: 100% !important; max-height: 100% !important; box-sizing: border-box;
+  object-fit: contain;
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
@@ -1152,6 +1162,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
       <span id="cmhModeBadge" class="cm-mode-badge" title="Portability of this file"></span>
       <button id="btnShowTop" type="button" title="Show the comments panel"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Show</span></button>
       <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Portable</span></button>
+      <button id="btnExportOfflineTop" type="button" title="Download an offline HTML copy with current comments embedded, rendered mermaid saved as inline SVG, and chart canvases saved as PNG images"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Export Offline</span></button>
       <button id="btnSavePlainTop" type="button" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Export to Plain HTML</span></button>
       <button id="btnExportMdTop" type="button" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Export to Markdown</span></button>
       <button id="btnHelpTop" type="button" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.5 9.5a2.5 2.5 0 0 1 4.5 1.4c0 1.6-2 1.9-2 3.1 M12 17h.01"/></svg><span>Help &amp; About</span></button>
@@ -1183,6 +1194,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
     </div>
     <div class="head-actions">
       <button type="button" id="btnSaveHtml" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
+      <button type="button" id="btnExportOffline" aria-label="Export Offline" title="Download an offline HTML copy with current comments embedded, rendered mermaid saved as inline SVG, and chart canvases saved as PNG images"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Offline</span></button>
       <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
       <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
       <button type="button" id="btnClearAll" class="danger" aria-label="Clear Comments" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear</span></button>
@@ -1229,6 +1241,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 -->
 <div class="app">
 <main id="commentRoot"
+      data-cmh-content-root
       data-comment-key="kitchen-sink-inline-v1"
       data-doc-label="Commentable HTML demo"
       data-doc-source="kitchen-sink.html">
@@ -1358,7 +1371,8 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.8.0";
+const CMH_VERSION = "1.15.0";
+const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -1410,6 +1424,24 @@ const NONPORTABLE_MODE = !!CMH_ASSETS
 function declaredAssetVersion() {
   const meta = document.querySelector('meta[name="commentable-html-version"]');
   return meta ? (meta.getAttribute("content") || "").trim() : "";
+}
+function parseSemver(s) {
+  const m = String(s || "").trim().match(/^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?$/);
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
+}
+function compareSemver(a, b) {
+  if (a.major !== b.major) return a.major - b.major;
+  if (a.minor !== b.minor) return a.minor - b.minor;
+  return a.patch - b.patch;
+}
+function runtimeCompatibleWith(pageVer, runtimeVer) {
+  const page = parseSemver(pageVer);
+  const runtime = parseSemver(runtimeVer);
+  if (!page || !runtime) return null;
+  if (page.major !== runtime.major) return { kind: "major", page, runtime };
+  if (compareSemver(runtime, page) < 0) return { kind: "runtime-older", page, runtime };
+  return { kind: "compatible", page, runtime };
 }
 
 const sidebar = document.getElementById("sidebar");
@@ -2797,10 +2829,11 @@ let imageActiveEl = null;
 function indexImages() {
   imageEls.length = 0;
   root.querySelectorAll("img, canvas").forEach((el) => {
+    const isChartMedia = el.closest("figure.chart") || el.classList.contains("cmh-chart");
     if (el.tagName === "IMG") {
-      if (el.closest(".cm-skip")) return; // skip UI-chrome images
+      if (el.closest(".cm-skip") && !isChartMedia) return; // skip UI-chrome images
     } else { // CANVAS: only chart canvases are commentable media (never mermaid/diff surfaces).
-      if (!el.closest("figure.chart") && !el.classList.contains("cmh-chart")) return;
+      if (!isChartMedia) return;
       if (el.closest(".cm-mermaid-host") || el.closest(".cmh-diff-host")) return;
     }
     const i = imageEls.length;
@@ -2824,7 +2857,7 @@ function imageInfo(img) {
   const alt = (img.getAttribute("alt") || img.getAttribute("aria-label") || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   const src = (img.getAttribute("src") || "").replace(/[\r\n\t]+/g, " ").trim();
   const shortSrc = src.length > 120 ? src.slice(0, 117) + "..." : src;
-  const kind = isCanvas ? "chart" : "image";
+  const kind = (isCanvas || img.closest("figure.chart") || img.classList.contains("cmh-chart")) ? "chart" : "image";
   const quote = alt || (isCanvas ? ("chart " + (i + 1)) : ("image: " + (shortSrc || "(no src)")));
   return { imageIndex: i, src, alt, quote, kind };
 }
@@ -4523,6 +4556,7 @@ function _mdSkip(el) {
   // from a stashed source, so they are never skipped even though they are cm-skip.
   if (el.classList && el.classList.contains("mermaid")) return false;
   if (el.classList && el.classList.contains("cmh-diff-host")) return false;
+  if (el.hasAttribute && el.hasAttribute("data-cm-widget")) return false;
   return !!(el.classList && (el.classList.contains("cm-skip") || el.classList.contains("cm-toc")));
 }
 function _mdDedent(text) {
@@ -4727,9 +4761,37 @@ function _mdDiff(el) {
   }
   return _mdFence("diff", raw || "");
 }
+function _mdPartLabel(el) {
+  return _mdEscapePipes(_mdCollapse(_mdText(el.getAttribute("data-cm-part-label") || el.textContent || "")));
+}
+function _mdWidget(el) {
+  const title = _mdCollapse(_mdText(el.getAttribute("aria-label") || el.getAttribute("data-cm-widget") || "Widget"));
+  const slots = Array.prototype.filter.call(el.querySelectorAll("[data-cm-slot]"), (slot) =>
+    slot.closest("[data-cm-widget]") === el);
+  if (slots.length) {
+    const headers = slots.map((slot) =>
+      _mdEscapePipes(_mdCollapse(_mdText(slot.getAttribute("data-cm-slot") || slot.getAttribute("aria-label") || "Slot"))));
+    const columns = slots.map((slot) =>
+      Array.prototype.filter.call(slot.querySelectorAll("[data-cm-part]"), (part) =>
+        part !== slot && part.closest("[data-cm-widget]") === el && part.closest("[data-cm-slot]") === slot)
+        .map(_mdPartLabel));
+    const rows = [];
+    const height = Math.max.apply(null, columns.map((col) => col.length).concat([0]));
+    rows.push("| " + headers.join(" | ") + " |");
+    rows.push("| " + headers.map(() => "---").join(" | ") + " |");
+    for (let r = 0; r < height; r++) {
+      rows.push("| " + columns.map((col) => col[r] || "").join(" | ") + " |");
+    }
+    return "_[Widget: " + title + "]_\n\n" + rows.join("\n");
+  }
+  const parts = Array.prototype.filter.call(el.querySelectorAll("[data-cm-part]"), (part) =>
+    part.closest("[data-cm-widget]") === el).map((part) => "- " + _mdPartLabel(part));
+  return parts.length ? "_[Widget: " + title + "]_\n\n" + parts.join("\n") : "";
+}
 function _mdBlock(el) {
   const t = el.tagName;
   if (el.classList && el.classList.contains("mermaid")) return _mdFence("mermaid", el.getAttribute("data-cmh-md-src") || el.textContent || "");
+  if (el.hasAttribute && el.hasAttribute("data-cm-widget")) return _mdWidget(el);
   if (/^H[1-6]$/.test(t)) return "#".repeat(+t[1]) + " " + _mdCollapse(_mdInlineText(el));
   if (t === "P") return _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
   if (t === "UL" || t === "OL") return _mdList(el, "");
@@ -5295,6 +5357,15 @@ function _suggestedFilename() {
   const clean = stem.replace(/-comments$/i, "").replace(/-portable$/i, "");
   return clean + "-portable" + ext;
 }
+function _suggestedOfflineFilename() {
+  const path = location.pathname;
+  let name = path.substring(path.lastIndexOf("/") + 1);
+  try { name = decodeURIComponent(name); } catch (e) { /* keep raw */ }
+  if (!name || !/\.html?$/i.test(name)) name = "commentable.html";
+  const m = name.match(/^(.*?)(\.html?)$/i);
+  const clean = m[1].replace(/-comments$/i, "").replace(/-portable$/i, "").replace(/-offline$/i, "");
+  return clean + "-offline" + m[2];
+}
 function _downloadHtml(text, filename) {
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -5305,6 +5376,15 @@ function _downloadHtml(text, filename) {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function _layerDescriptorJson(mode) {
+  return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
+}
+function _retargetLayerDescriptor(html, mode) {
+  const rx = /(<script\b[^>]*\bid\s*=\s*(["'])commentableHtmlLayer\2[^>]*>)([\s\S]*?)(<\/script>)/i;
+  if (rx.test(html)) return html.replace(rx, "$1" + _layerDescriptorJson(mode) + "$4");
+  return html.replace(/(<meta name="commentable-html-version" content="[^"]+" \/?>\s*)/i,
+    "$1" + '<script type="application/json" id="commentableHtmlLayer">' + _layerDescriptorJson(mode) + "</scr" + "ipt>\n");
 }
 async function saveHtml() {
   let baseHtml;
@@ -5334,6 +5414,9 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
+  const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\bid\\s*=\\s*([\"'])"
+    + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
+  t = t.replace(layerDescriptorScript, "");
   t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
   // Remove the HTML-comment regions. The END anchor requires its own "<!-- ... END ... -->"
   // comment: embedded comment notes escape every "<" as \u003c, so a note can never forge
@@ -5347,11 +5430,12 @@ function _buildPlainHtml(baseHtml) {
   // _getBaseHtml() returns a DOM snapshot taken while THIS script runs - the
   // parser has not reached the trailing "END ... JS" comment yet, so anchor on
   // the script's own closing tag instead (eat a trailing END marker if present).
-  t = t.replace(/<!--\s*=+\s*BEGIN: commentable-html - JS[\s\S]*?<\/script>\s*(?:<!--\s*=*\s*END: commentable-html - JS\s*-->)?/, "");
+  t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
+    + _cmhScriptClosePattern() + "\\s*(?:<!--\\s*=*\\s*END: commentable-html - JS\\s*-->)?"), "");
   // NonPortable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
   t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[^\n]*-->\s*/i, "");
-  t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>\s*/ig, "");
+  t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "\\s*", "ig"), "");
   t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->\s*/i, "");
   t = t.replace(/(<body[^>]*class=")([^"]*)(")/, function (m, a, cls, c) {
     return a + cls.replace(/\bsidebar-open\b/, "").replace(/\s+/g, " ").trim() + c;
@@ -5403,6 +5487,11 @@ if (_btnSavePlainTop) _btnSavePlainTop.addEventListener("click", saveAsPlain);
 // from window.__COMMENTABLE_ASSETS__, which loaded as a classic <script src> and
 // therefore works even when the document is opened by double-click (file://).
 function _escClose(s) { return String(s).replace(/<\/(script|style)>/gi, "<\\/$1>"); }
+function _cmhScriptClosePattern() { return String.fromCharCode(60) + "\\/" + "script>"; }
+function _cmhScriptTagPattern(attrs, tail, flags) {
+  return new RegExp("[ \\t]*" + String.fromCharCode(60) + "script\\b" + attrs + ">\\s*"
+    + _cmhScriptClosePattern() + (tail || ""), flags);
+}
 // Insert `insertion` immediately before the LAST occurrence of </tag>. The real
 // closing tag of a well-formed document is the last one; earlier matches can sit
 // inside the pre-<html> documentation comment (whose prose literally mentions
@@ -5441,11 +5530,24 @@ function _inlineNonPortableAssets(baseHtml) {
   //    file:// DOM snapshot whose whitespace around trailing markers is collapsed,
   //    so we re-emit the CSS/JS regions from scratch with their own newlines
   //    rather than trusting the snapshot's line breaks.
+  t = _retargetLayerDescriptor(t, "portable");
   t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->[ \t]*/i, "");
-  t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
-  t = t.replace(/[ \t]*<script\b[^>]*commentable-html[^>]*\.js[^>]*>\s*<\/script>[ \t]*\n?/ig, "");
-  t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
-  t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
+  const cssRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - CSS[\s\S]*?<!--\s*=*\s*END: commentable-html - CSS\s*=*\s*-->[ \t]*\n?/i;
+  const jsRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - JS[\s\S]*?<!--\s*=*\s*END: commentable-html - JS\s*=*\s*-->[ \t]*\n?/i;
+  if (cssRegion.test(t)) {
+    t = t.replace(cssRegion, "");
+  } else {
+    t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
+  }
+  if (jsRegion.test(t)) {
+    t = t.replace(jsRegion, "");
+  } else {
+    const companionScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*commentable-html[^>]*\\.js[^>]*>"
+      + "\\s*<\\/scr" + "ipt>[ \\t]*\\n?", "ig");
+    t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
+    t = t.replace(companionScript, "");
+    t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
+  }
 
   // 2) Inline the CSS in place of the removed <link>, and the runtime just before
   //    </body>. Each block carries its own region markers on their own lines.
@@ -5493,12 +5595,254 @@ async function saveStandalone() {
   showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
 }
 
+/* ---------- Export Offline (portable + rendered rich-content snapshots) ---------- */
+function _offlineDocFromHtml(html) {
+  return new DOMParser().parseFromString(String(html || ""), "text/html");
+}
+function _serializeOfflineDoc(doc) {
+  return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+}
+function _offlineTemplateNode(doc, html) {
+  const tpl = doc.createElement("template");
+  tpl.innerHTML = String(html || "").trim();
+  return tpl.content.firstElementChild;
+}
+function _offlineIsNetworkUrl(v) {
+  return /^(?:https?:)?\/\//i.test(String(v || "").trim());
+}
+function _offlineCssNoNetwork(css) {
+  return String(css || "")
+    .replace(/@import\s+(?:url\()?["']?(?:https?:)?\/\/[^;"')]+["']?\)?\s*;/gi, "")
+    .replace(/url\(\s*(["']?)(?:https?:)?\/\/[^)"']+\1\s*\)/gi, 'url("data:,")');
+}
+function _stripOfflineNetworkLoads(doc) {
+  doc.querySelectorAll("script[src]").forEach(function (s) {
+    if (_offlineIsNetworkUrl(s.getAttribute("src"))) s.remove();
+  });
+  doc.querySelectorAll("script").forEach(function (s) {
+    const body = s.textContent || "";
+    if (/import\s*\(\s*["'](?:https?:)?\/\//i.test(body) ||
+        /\bfrom\s+["'](?:https?:)?\/\//i.test(body)) {
+      s.remove();
+    }
+  });
+  doc.querySelectorAll("link[href]").forEach(function (link) {
+    if (!_offlineIsNetworkUrl(link.getAttribute("href"))) return;
+    const rel = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/);
+    const loads = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "manifest"];
+    if (rel.some(function (r) { return loads.includes(r); })) link.remove();
+  });
+  doc.querySelectorAll("style").forEach(function (style) {
+    style.textContent = _offlineCssNoNetwork(style.textContent || "");
+  });
+  doc.querySelectorAll("[style]").forEach(function (el) {
+    const next = _offlineCssNoNetwork(el.getAttribute("style") || "");
+    if (next) el.setAttribute("style", next);
+    else el.removeAttribute("style");
+  });
+}
+function _stripOfflineRichRenderers(doc) {
+  doc.querySelectorAll("script[src]").forEach(function (s) {
+    const src = s.getAttribute("src") || "";
+    if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
+        /\/chart\.js@/i.test(src)) {
+      s.remove();
+    }
+  });
+  doc.querySelectorAll("script").forEach(function (s) {
+    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
+    if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
+    const body = s.textContent || "";
+    if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
+      s.remove();
+      return;
+    }
+    if (/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) || /\.getContext\s*\(/.test(body)) {
+      s.remove();
+    }
+  });
+}
+function _offlineMermaidSnapshots() {
+  return Array.from(root.querySelectorAll("pre.mermaid, div.mermaid")).map(function (host) {
+    if (!host.querySelector("svg")) {
+      throw new Error("Offline export needs mermaid diagrams to finish rendering first.");
+    }
+    const clone = host.cloneNode(true);
+    clone.classList.add("cm-skip");
+    clone.setAttribute("data-processed", "true");
+    const src = host.getAttribute("data-cmh-md-src");
+    if (src && !clone.hasAttribute("data-cmh-md-src")) clone.setAttribute("data-cmh-md-src", src);
+    return clone.outerHTML;
+  });
+}
+function _replaceOfflineMermaid(doc, snapshots) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  const targets = Array.from(docRoot.querySelectorAll("pre.mermaid, div.mermaid"));
+  if (targets.length !== snapshots.length) {
+    throw new Error("Offline export could not match every mermaid diagram in the source HTML.");
+  }
+  targets.forEach(function (target, i) {
+    const next = _offlineTemplateNode(doc, snapshots[i]);
+    if (!next) throw new Error("Offline export could not serialize a rendered mermaid diagram.");
+    target.replaceWith(next);
+  });
+}
+function _offlineChartSnapshots() {
+  return Array.from(root.querySelectorAll("figure.chart canvas, canvas.cmh-chart")).map(function (canvas) {
+    let src = "";
+    try { src = canvas.toDataURL("image/png"); }
+    catch (e) { throw new Error("Offline export could not snapshot a chart canvas. It may contain cross-origin pixels."); }
+    if (!/^data:image\/png;base64,/i.test(src)) {
+      throw new Error("Offline export could not snapshot a chart canvas as PNG.");
+    }
+    const rect = canvas.getBoundingClientRect();
+    const rawClass = (canvas.getAttribute("class") || "").split(/\s+/)
+      .filter(function (c) { return c && !/^cm-img-/.test(c); });
+    if (!rawClass.includes("cmh-chart")) rawClass.push("cmh-chart");
+    return {
+      id: canvas.getAttribute("id") || "",
+      src,
+      alt: (canvas.getAttribute("aria-label") || canvas.getAttribute("alt") || "Chart snapshot").trim() || "Chart snapshot",
+      width: canvas.getAttribute("width") || String(canvas.width || Math.max(1, Math.round(rect.width))),
+      height: canvas.getAttribute("height") || String(canvas.height || Math.max(1, Math.round(rect.height))),
+      className: rawClass.join(" "),
+    };
+  });
+}
+function _replaceOfflineCharts(doc, snapshots) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  const targets = Array.from(docRoot.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
+  if (targets.length !== snapshots.length) {
+    throw new Error("Offline export could not match every chart canvas in the source HTML.");
+  }
+  targets.forEach(function (canvas, i) {
+    const s = snapshots[i];
+    const img = doc.createElement("img");
+    if (s.id) img.setAttribute("id", s.id);
+    img.setAttribute("class", s.className);
+    img.setAttribute("src", s.src);
+    img.setAttribute("alt", s.alt);
+    img.setAttribute("role", "img");
+    img.setAttribute("aria-label", s.alt);
+    img.setAttribute("width", s.width);
+    img.setAttribute("height", s.height);
+    img.setAttribute("data-cm-offline-chart", "true");
+    canvas.replaceWith(img);
+  });
+}
+function _insertOfflineChartGuard(doc) {
+  const head = doc.head || doc.querySelector("head");
+  if (!head) return;
+  const s = doc.createElement("script");
+  s.textContent = "window.Chart = undefined;";
+  head.appendChild(s);
+}
+function _buildOfflineHtml(portableHtml) {
+  const mermaid = _offlineMermaidSnapshots();
+  const charts = _offlineChartSnapshots();
+  const doc = _offlineDocFromHtml(portableHtml);
+  _replaceOfflineMermaid(doc, mermaid);
+  _replaceOfflineCharts(doc, charts);
+  _stripOfflineRichRenderers(doc);
+  _stripOfflineNetworkLoads(doc);
+  if (charts.length) _insertOfflineChartGuard(doc);
+  return _serializeOfflineDoc(doc).replace(/\n{3,}/g, "\n\n");
+}
+async function saveOffline() {
+  let baseHtml;
+  try { baseHtml = await _getBaseHtml(); }
+  catch (e) { showToast("Could not load base HTML."); return; }
+  let portable;
+  try {
+    portable = NONPORTABLE_MODE
+      ? _buildStandaloneHtml(baseHtml, _canonicalCommentsForExport())
+      : _buildSavedHtml(baseHtml, _canonicalCommentsForExport());
+  } catch (e) { showToast(e.message); return; }
+  let text;
+  try { text = _buildOfflineHtml(portable); }
+  catch (e) { showToast(e.message); return; }
+  const filename = _suggestedOfflineFilename();
+  _downloadHtml(text, filename);
+  showToast("Downloaded " + filename + " - offline HTML with rendered mermaid and chart snapshots.");
+}
+["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
+  const b = document.getElementById(id);
+  if (b) b.addEventListener("click", saveOffline);
+});
+
 /* ---------- Mode badge + asset-version handshake ---------- */
-function revealAssetBanner(msg) {
+function assetBannerDismissKey(pageVer, runtimeVer) {
+  return "commentable-html::assetBannerDismissed::" + COMMENT_KEY + "::" + String(pageVer || "")
+    + "::" + String(runtimeVer || "");
+}
+function assetBannerDismissed(key) {
+  if (!key) return false;
+  try { return localStorage.getItem(key) === "1"; } catch (e) { return false; }
+}
+function ensureAssetBannerChrome(b) {
+  let msgEl = b.querySelector(".cmh-asset-message");
+  let btn = b.querySelector(".cmh-asset-dismiss");
+  if (!msgEl) {
+    const current = b.innerHTML;
+    b.innerHTML = '<span class="cmh-asset-message"></span>'
+      + '<button type="button" class="cmh-asset-dismiss cm-skip" aria-label="Dismiss">X</button>';
+    msgEl = b.querySelector(".cmh-asset-message");
+    btn = b.querySelector(".cmh-asset-dismiss");
+    if (msgEl) msgEl.innerHTML = current;
+  }
+  if (btn && !btn.dataset.cmhBound) {
+    btn.dataset.cmhBound = "1";
+    btn.addEventListener("click", function () {
+      const key = b.dataset.cmhDismissKey || "";
+      if (key) {
+        try { localStorage.setItem(key, "1"); } catch (e) { /* ignore */ }
+      }
+      b.hidden = true;
+    });
+  }
+  return msgEl;
+}
+function revealAssetBanner(msg, pageVer, runtimeVer) {
   const b = document.getElementById("cmhAssetBanner");
   if (!b) return;
-  if (msg) b.innerHTML = msg;
+  const key = (pageVer || runtimeVer) ? assetBannerDismissKey(pageVer, runtimeVer) : "";
+  if (assetBannerDismissed(key)) {
+    b.hidden = true;
+    return;
+  }
+  const msgEl = ensureAssetBannerChrome(b);
+  if (msg && msgEl) msgEl.innerHTML = msg;
+  b.dataset.cmhDismissKey = key;
   b.hidden = false;
+}
+function versionBannerMessage(label, pageVer, runtimeVer) {
+  const compat = runtimeCompatibleWith(pageVer, runtimeVer);
+  const pageHtml = '<code>' + escapeHtml(pageVer) + '</code>';
+  const runtimeHtml = '<code>' + escapeHtml(runtimeVer) + '</code>';
+  if (compat && compat.kind === "compatible") return null;
+  if (compat && compat.kind === "major") {
+    return "Commentable-html version mismatch: " + label + " was generated for commentable-html "
+      + '<code>' + compat.page.major + ".x</code> but the loaded runtime is " + runtimeHtml
+      + "; they are not compatible. Regenerate the document or restore a matching runtime.";
+  }
+  if (compat && compat.kind === "runtime-older") {
+    return "Commentable-html version notice: " + label + " expects a newer commentable-html "
+      + pageHtml + " than the loaded runtime " + runtimeHtml
+      + "; update the companion files or refresh with cache disabled.";
+  }
+  if (String(pageVer || "") !== String(runtimeVer || "")) {
+    return "Commentable-html version mismatch: " + label + " expects assets "
+      + pageHtml + " but the loaded runtime is " + runtimeHtml
+      + ". Refresh with cache disabled, or update the companion files.";
+  }
+  return null;
+}
+function maybeRevealVersionBanner(label, pageVer, runtimeVer) {
+  if (!pageVer || !runtimeVer) return false;
+  const msg = versionBannerMessage(label, pageVer, runtimeVer);
+  if (!msg) return false;
+  revealAssetBanner(msg, pageVer, runtimeVer);
+  return true;
 }
 let _embeddedSigCache = null;
 // Map of embedded comment id -> a content signature (updatedAt, else createdAt) so the
@@ -5589,17 +5933,14 @@ function setupModeUi() {
   }
   updateDocTypeUi();
   // Version handshake: the document declares the asset version it was generated
-  // against; if the loaded runtime differs (stale cache / mismatched companion),
-  // warn loudly rather than fail silently. Version strings are HTML-escaped since
+  // against. Same-major newer runtimes are compatible; older or breaking-major
+  // runtimes warn rather than fail silently. Version strings are HTML-escaped since
   // they originate from an author-controlled <meta> / companion file.
   const declared = declaredAssetVersion();
-  if (declared && declared !== CMH_VERSION) {
-    revealAssetBanner('Commentable-html version mismatch: this page expects assets '
-      + '<code>' + escapeHtml(declared) + '</code> but the loaded runtime is <code>' + escapeHtml(CMH_VERSION)
-      + '</code>. Refresh with cache disabled, or update the companion files.');
-  } else if (CMH_ASSETS && CMH_ASSETS.version && CMH_ASSETS.version !== CMH_VERSION) {
-    revealAssetBanner('Commentable-html version mismatch: assets file is '
-      + '<code>' + escapeHtml(CMH_ASSETS.version) + '</code> but the runtime is <code>' + escapeHtml(CMH_VERSION) + '</code>.');
+  if (maybeRevealVersionBanner("this page", declared, CMH_VERSION)) {
+    return;
+  } else if (CMH_ASSETS && maybeRevealVersionBanner("the assets file", CMH_ASSETS.version, CMH_VERSION)) {
+    return;
   } else {
     // No mismatch: make sure a banner the bootstrap watchdog may have raced to
     // show (slow-but-successful load) is hidden now that the runtime is up.
@@ -5699,14 +6040,15 @@ function showHelp(restoreEl) {
           '<li><strong>Portable</strong> - self-contained: assets are embedded and every comment is embedded in the file, so a recipient sees exactly what you see.</li>' +
           '<li><strong>Not portable</strong> - the file references external companion resources, or has comments that are not embedded yet, or has embedded comments you deleted this session that are still in the file until you re-export. Hover the bubble for the exact reason.</li>' +
         '</ul>' +
-        '<p>Use <em>Export as Portable</em> to produce a portable copy.</p>') +
+          '<p>Use <em>Export as Portable</em> to produce a portable copy. Use <em>Export Offline</em> when rendered mermaid diagrams and charts must also work with no network.</p>') +
       T('Exporting and sharing',
         '<ul>' +
           '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
+          '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the portable file, then saves rendered mermaid diagrams as inline SVG and chart canvases as PNG images, with remote loaders removed.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
           '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
-        '</ul>') +
+          '</ul>') +
       T('Sending comments to an agent',
         '<ul>' +
           '<li><strong>Copy all</strong> emits an ordered Markdown bundle with each comment\'s location, quoted text, and note, ending in a machine-readable <code>HANDLED_IDS_JSON</code> line.</li>' +
@@ -5745,7 +6087,7 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('Self-contained and privacy',
         '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
-        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas.</p>') +
+        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> after those features render to snapshot them into a zero-network file.</p>') +
       '<div class="cm-help-about"><h3>About</h3>' +
         '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by Uri Kanonov.</p>' +
         '<ul>' +

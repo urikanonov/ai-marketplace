@@ -22,13 +22,22 @@ async function open(page) {
   return html;
 }
 
+async function waitForWidgetMutationFrame(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== "function") {
+      resolve();
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+}
+
 async function moveCard(page, part, targetSlotId) {
   await page.evaluate(({ part, targetSlotId }) => {
     const card = document.querySelector('[data-cm-part="' + part + '"]');
     document.getElementById(targetSlotId).appendChild(card);
   }, { part, targetSlotId });
-  // Let the widget MutationObserver's rAF re-render.
-  await page.waitForTimeout(60);
+  await waitForWidgetMutationFrame(page);
 }
 
 test("no state card and Portable when nothing moved", async ({ page }) => {
@@ -101,7 +110,7 @@ async function move(page, part, widget, targetId) {
     const card = document.querySelector('[data-cm-widget="' + widget + '"] [data-cm-part="' + part + '"]');
     document.getElementById(targetId).appendChild(card);
   }, { part, widget, targetId });
-  await page.waitForTimeout(70);
+  await waitForWidgetMutationFrame(page);
 }
 
 test("moving a part out of any slot reports a move to (no slot)", async ({ page }) => {
@@ -116,7 +125,7 @@ test("moving a part out of any slot reports a move to (no slot)", async ({ page 
 test("removing a part after load reports it as removed", async ({ page }) => {
   await open2(page);
   await page.evaluate(() => document.querySelector('[data-cm-widget="triage"] [data-cm-part="b"]').remove());
-  await page.waitForTimeout(70);
+  await waitForWidgetMutationFrame(page);
   await expect(page.locator(".cm-card-state")).toContainText("(removed)");
 });
 
@@ -127,7 +136,7 @@ test("adding a part after load is not reported as a change", async ({ page }) =>
     d.className = "card"; d.setAttribute("data-cm-part", "z"); d.setAttribute("data-cm-part-label", "New");
     d.textContent = "New"; document.getElementById("s-later").appendChild(d);
   });
-  await page.waitForTimeout(70);
+  await waitForWidgetMutationFrame(page);
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
 });
 
@@ -146,7 +155,6 @@ test("the sidebar auto-opens once on the first layout change, not again after cl
   await page.click("#btnCloseSidebar");
   await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
   await move(page, "b", "triage", "s-now"); // another change, but not a 0->>0 transition
-  await page.waitForTimeout(70);
   await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
 });
 

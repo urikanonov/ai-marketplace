@@ -496,9 +496,9 @@ body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-si
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Readable prose measure: cap top-level paragraphs so long lines stay legible inside the
-   wide content shell, while tables, figures, code, diffs, and callouts keep full width. */
-#commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: 72ch; }
+/* Prose fills the full width of its container in this document (the reader asked for full-width
+   prose); tables, figures, code, diffs, and callouts already keep full width. */
+#commentRoot > p, #commentRoot > header > p, #commentRoot > section > p { max-width: none; }
 /* Section headings are deep-links: a plain click updates the URL to their anchor. */
 #commentRoot .cm-anchored { cursor: pointer; }
 #commentRoot .cm-anchored:hover { text-decoration-line: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
@@ -877,7 +877,9 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   #commentRoot table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
-#commentRoot .cmh-lede { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 0.75rem 1.25rem 1rem; margin: 0 0 1.25rem; color: var(--cp-text); font-size: 1.04em; line-height: 1.6; }
+/* Full-bleed lede: the box spans the full screen width (breaking out of the centered shell),
+   while its text stays aligned with the content column via the viewport-based padding. */
+#commentRoot .cmh-lede { background: var(--cp-surface); border: 1px solid var(--cp-border); border-left: none; border-right: none; border-radius: 0; padding: 1rem max(1.5rem, calc(50vw - 720px)); margin: 0 calc(50% - 50vw) 1.5rem; color: var(--cp-text); font-size: 1.04em; line-height: 1.6; }
 #commentRoot .cmh-lede > :first-child { margin-top: 0; }
 #commentRoot .cmh-lede > :last-child { margin-bottom: 0; }
 
@@ -1094,7 +1096,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
      review cycle - the other regions stay byte-identical.
 -->
 <script type="application/json" id="handledCommentIds">
-[]
+["cmrh8xcoas51a","cmrh8xn97logu","cmrh8xuwiv4nf","cmrh90j69vasr"]
 </script>
 <!-- END: commentable-html - HANDLED IDS -->
 
@@ -1214,7 +1216,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 <main id="commentRoot" data-comment-key="cmh-5410a3acf579" data-doc-label="Distribution-Readiness Audit Playbook" data-doc-source="docs/distribution-readiness-audit-playbook.html" data-generated="2026-07-11T23:30:00+03:00">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
-<h1 id="doc-title">Distribution-Readiness Audit Playbook</h1>
+<h1 id="doc-title">Audit Playbook</h1>
 
 <nav class="cm-toc" aria-label="Contents">
   <ol>
@@ -1263,7 +1265,7 @@ you want to adjust, and send the notes back to the agent to refine the process.<
       <tr><td>3</td><td>Spec and test coverage</td><td>Every behavior has a spec row and a named test; find gaps and untested paths.</td></tr>
       <tr><td>4</td><td>Cross-artifact consistency</td><td>Code vs docs vs tests vs site vs examples; no drift between them.</td></tr>
       <tr><td>5</td><td>Token efficiency</td><td>Entry-point and reference size that customers pay for on every load.</td></tr>
-      <tr><td>6</td><td>Prose quality</td><td>Docs, README, site copy, error and help messages; clarity and house style.</td></tr>
+      <tr><td>6</td><td>Prose quality</td><td>Docs, README, site copy, error and help messages; clarity, house style, and brevity.</td></tr>
       <tr><td>7</td><td>Site experience</td><td>Layout, responsiveness, theme, links, and first impression.</td></tr>
       <tr><td>8</td><td>Security hardening</td><td>Supply chain and CI, plus the runtime (untrusted input, clipboard, storage, remote assets).</td></tr>
       <tr><td>9</td><td>Usability and features</td><td>Onboarding, ergonomics, error handling, and gaps a customer would expect.</td></tr>

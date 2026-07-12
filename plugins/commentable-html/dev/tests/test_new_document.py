@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -37,6 +38,7 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertNotIn("This is a small playground", out)
         # The active root carries our attributes.
         self.assertIn('data-comment-key="my-report-v1"', out)
+        self.assertIn("data-cmh-content-root", out)
         self.assertIn('data-doc-label="My Report"', out)
         self.assertIn('data-doc-source="src.md"', out)
         # The demo content-root key was replaced, not left as a second live root.
@@ -416,7 +418,20 @@ class NonPortableCliTests(unittest.TestCase):
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP", "--out", op])
         self.assertEqual(code, 0, err)  # validates only because the refs resolve to the skill dist/
         html = open(op, encoding="utf-8").read()
-        self.assertNotIn("BEGIN: commentable-html - CSS", html)  # layer CSS is NOT inlined
+        self.assertIn("BEGIN: commentable-html - CSS", html)
+        css_url = Path(os.path.join(_paths.DIST, "commentable-html.css")).resolve().as_uri()
+        js_url = Path(os.path.join(_paths.DIST, "commentable-html.js")).resolve().as_uri()
+        self.assertIn('href="%s"' % css_url, html)
+        self.assertIn('src="%s"' % js_url, html)
+
+    def test_assets_relative_restores_relative_dist_refs(self):
+        d = self._tmpdir()
+        op = os.path.join(d, "r.html")
+        code, _o, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "NP",
+             "--assets-relative", "--out", op])
+        self.assertEqual(code, 0, err)
+        html = open(op, encoding="utf-8").read()
         self.assertRegex(html, r'<link\b[^>]*href="[^"]*/dist/commentable-html\.css"')
 
     def test_portable_flag_inlines_layer(self):
@@ -459,12 +474,18 @@ class NonPortableCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("--copy-assets needs --out", err)
 
-    def test_nonportable_stdout_is_refused(self):
+    def test_nonportable_stdout_uses_absolute_file_urls(self):
         code, out, err = self._run(
             ["new_document.py", "--content", "-", "--key", "auto", "--label", "S", "--source", "s.html"])
+        self.assertEqual(code, 0, err)
+        self.assertIn("file://", out)
+
+    def test_assets_relative_without_out_exits_2(self):
+        code, _out, err = self._run(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "S",
+             "--source", "s.html", "--assets-relative"])
         self.assertEqual(code, 2)
-        self.assertIn("stdout would reference the companions by bare", err)
-        self.assertEqual(out, "")
+        self.assertIn("--assets-relative needs --out", err)
 
     def test_nonportable_stdout_ok_with_assets_href(self):
         code, out, err = self._run(
