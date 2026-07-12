@@ -2,9 +2,9 @@
 
 Maintainer documentation for the ai-marketplace repository.
 
-## Distribution-readiness audit playbook
+## General audit playbook
 
-[`distribution-readiness-audit-playbook.html`](./distribution-readiness-audit-playbook.html) is a reusable,
+[`general-audit-playbook.html`](./general-audit-playbook.html) is a reusable,
 commentable-HTML playbook for auditing this repository for customer-distribution readiness. It describes the
 repeatable process - a model-diverse discovery panel, judge consolidation rounds, disjoint-file workstreams,
 the spec-and-test discipline, and the verification rounds before shipping - rather than any one set of
