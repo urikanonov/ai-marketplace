@@ -203,6 +203,21 @@ class BuildTests(unittest.TestCase):
             self.assertIn("mermaid@%s/dist/" % mv, out[p])
             self.assertNotIn("mermaid@9.9.9/dist/", out[p])
 
+    def test_region_inner_rejects_duplicate_begin_marker(self):
+        text = ("/* ============================================================\n"
+                "   BEGIN: commentable-html - CSS\n"
+                "   ============================================================ */\n"
+                "body { color: red; }\n"
+                "/* ============================================================\n"
+                "   BEGIN: commentable-html - CSS\n"
+                "   ============================================================ */\n"
+                "body { color: blue; }\n"
+                "/* ============================================================\n"
+                "   END: commentable-html - CSS\n"
+                "   ============================================================ */\n")
+        with self.assertRaisesRegex(SystemExit, "duplicate region: CSS"):
+            build._region_inner(text, "CSS", "<duplicate>")
+
     def test_region_inner_rejects_trailing_authored_text(self):
         # C2: build's example regen bounds a region only by a COMPLETE marker line, never a
         # loose substring. A line-leading marker phrase with trailing authored words (or an

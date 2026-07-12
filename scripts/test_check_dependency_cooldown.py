@@ -4,6 +4,7 @@
 import importlib.util
 import os
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 
 _MODULE_PATH = os.path.join(os.path.dirname(__file__), "check_dependency_cooldown.py")
@@ -126,6 +127,44 @@ class TestLockfileDiff(unittest.TestCase):
         }
 
         self.assertEqual(cdc.changed_dependency_versions(head, None), {dep("leaf", "3.0.0")})
+
+
+class TestRegistryFetchFailOpen(unittest.TestCase):
+    def test_null_time_map_fails_open_without_crashing(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"time": null}'
+
+        changed = {dep("null-time", "1.0.0")}
+        with mock.patch.object(cdc.urllib.request, "urlopen", return_value=Response()), \
+                mock.patch.object(cdc, "REQUEST_RETRIES", 1):
+            publish_times, warnings = cdc.fetch_publish_times(changed)
+
+        self.assertEqual(publish_times, {})
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("could not verify null-time@1.0.0", warnings[0])
+
+    def test_registry_warnings_are_sorted_for_deterministic_output(self):
+        changed = {dep("beta", "1.0.0"), dep("alpha", "1.0.0")}
+
+        def fail(dep_version):
+            return dep_version, None, ValueError(dep_version.name)
+
+        with mock.patch.object(cdc, "fetch_publish_time", side_effect=fail), \
+                mock.patch.object(cdc.concurrent.futures, "as_completed",
+                                  side_effect=lambda futures: list(reversed(futures))):
+            publish_times, warnings = cdc.fetch_publish_times(changed)
+
+        self.assertEqual(publish_times, {})
+        self.assertEqual(warnings, sorted(warnings))
+        self.assertIn("alpha@1.0.0", warnings[0])
+        self.assertIn("beta@1.0.0", warnings[1])
 
 
 if __name__ == "__main__":

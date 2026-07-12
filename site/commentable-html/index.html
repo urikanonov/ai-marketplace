@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.16.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.17.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -281,6 +281,19 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.17.0] - 2026-07-12</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Offline export now preserves embedded comment data scripts even when comment text mentions remote imports, strips bare remote module imports, neutralizes remote media attributes, and keeps descriptor decoys from stealing the real offline mode update.</li>
+              <li>Widget drag-and-drop now treats drops onto nested slots inside the dragged part as no-ops, always clears drag state, preserves click-to-comment behavior below the drag threshold, avoids reporting origin-slot no-ops as moves, and saves moved widget layouts into Portable exports.</li>
+              <li>Example regeneration now rejects duplicate region BEGIN markers instead of silently slicing through authored content.</li>
+              <li>The dependency cooldown gate now fails open when npm registry packuments have a null or malformed <code>time</code> map.</li>
+              <li>The dependency cooldown gate and related test helpers now emit stable sorted failure output.</li>
+              <li>The mobile rich-content test now proves genuinely wide chart or mermaid blocks can scroll horizontally instead of relying on tautological scroll metrics.</li>
+              <li>Plain export and layer retargeting now ignore <code>data-id=&quot;commentableHtmlLayer&quot;</code> decoys when locating the real descriptor.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.16.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -293,6 +306,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Shipped prose now refers to the user-facing skill as Commentable HTML while preserving the <code>commentable-html</code> identifier in commands, paths, and code.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.15.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -302,8 +317,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The forward-compatible content/infra layout contract is documented in <code>references/forward-compatible-layout.md</code>.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.14.0] - 2026-07-12</h3></div>
             <div class="group-label">Changed</div>
@@ -333,21 +346,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The shipped plugin <code>README.md</code> and <code>SKILL.md</code> now explain why commentable-html beats planning in chat, a Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic&#x27;s &quot;unreasonable effectiveness of HTML&quot; blog post - so the motivation matches the project website.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.9.0] - 2026-07-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li><code>new_document.py</code> now defaults NonPortable companion references to absolute <code>file://</code> URLs that point at the installed skill <code>dist/</code>, so the generated HTML can move anywhere on the same machine without losing its CSS/JS. Use <code>--assets-relative</code> to restore the old relative-path behavior for a movable folder bundle.</li>
-              <li>The NonPortable asset banner now has an accessible <code>Dismiss</code> button. A dismissed version warning stays hidden across reloads for that document key and page/runtime version pair.</li>
-              <li>The SKILL.md documents the page/runtime compatibility contract: same-major newer runtimes can open older same-major pages without warning, and breaking page/runtime changes require a major version bump.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The NonPortable version handshake is now semver-aware. Same-major older pages no longer show a scary mismatch banner after a safe skill update, newer same-major pages show a soft update notice, and different-major pages show the incompatible-runtime warning.</li>
-              <li><code>validate.py</code> treats only <code>http://</code> and <code>https://</code> companion refs as remote/CDN URLs. Local <code>file://</code> refs and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are local-only.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">19 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">20 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -413,9 +413,12 @@ def _region_inner(text, name, where):
     and END marker lines). For JS the END is the LAST marker line, because the JS body
     contains marker-like strings (the plain-export code) that a first match would fool.
     Mirrors tools/upgrade.py so example regeneration and end-user upgrades agree."""
-    bm = _marker_re("BEGIN", name).search(text)
-    if not bm:
+    begins = list(_marker_re("BEGIN", name).finditer(text))
+    if not begins:
         raise SystemExit("build: %s: '%s' region BEGIN marker not found" % (where, name))
+    if len(begins) > 1:
+        raise SystemExit("duplicate region: %s" % name)
+    bm = begins[0]
     b = bm.end(1)
     ends = [m for m in _marker_re("END", name).finditer(text) if m.start(1) >= b]
     if not ends:
@@ -432,7 +435,7 @@ _EXAMPLE_NAME_RE = re.compile(r"^report-.*\.html$")
 _META_VERSION_RE = re.compile(
     r'(<meta name="commentable-html-version" content=")[0-9]+\.[0-9]+\.[0-9]+(")')
 _LAYER_DESCRIPTOR_RE = re.compile(
-    r'<script\b[^>]*\bid\s*=\s*(["\'])commentableHtmlLayer\1[^>]*>[\s\S]*?</script>\s*',
+    r'<script\b[^>]*\sid\s*=\s*(["\'])commentableHtmlLayer\1[^>]*>[\s\S]*?</script>\s*',
     re.IGNORECASE)
 _LAYER_DESCRIPTOR_INSERT_RE = re.compile(
     r'(<meta name="commentable-html-version" content="[0-9]+\.[0-9]+\.[0-9]+" />?\s*)',

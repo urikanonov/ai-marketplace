@@ -83,6 +83,30 @@ test.describe("theme, copy payload, nonportable plain, drift", () => {
     expect(out).not.toContain('id="embeddedComments"');
   });
 
+
+
+  test("Export plain ignores a data-id commentableHtmlLayer decoy script", async ({ page }) => {
+    const decoy = '<script type="application/json" data-id="commentableHtmlLayer">{"host":"keep"}</script>';
+    const { html, dir } = stageInline({
+      source: KITCHEN_SINK,
+      mutate: (raw) => raw.replace('<script type="application/json" id="commentableHtmlLayer">', decoy + '\n<script type="application/json" id="commentableHtmlLayer">'),
+    });
+    try {
+      await page.goto(fileUrl(html));
+      await ready(page);
+      await openToolbarMenu(page);
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        page.click("#btnSavePlainTop"),
+      ]);
+      const out = await readDownload(download);
+      expect(out).toMatch(/<script\b(?=[^>]*\sdata-id\s*=\s*["']commentableHtmlLayer["'])(?=[^>]*\stype\s*=\s*["']application\/json["'])[^>]*>\s*\{"host":"keep"\}\s*<\/script>/i);
+      expect(out).not.toMatch(/<script\b[^>]*\sid\s*=\s*["']commentableHtmlLayer["']/i);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("committed sample fixtures are not stale (generate.mjs --check)", () => {
     execFileSync("node", ["tests/fixtures/generate.mjs", "--check"], { cwd: DEV });
   });

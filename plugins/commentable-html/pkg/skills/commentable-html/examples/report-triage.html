@@ -45,8 +45,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.16.0" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.16.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<meta name="commentable-html-version" content="1.17.0" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.17.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -1374,7 +1374,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.16.0";
+const CMH_VERSION = "1.17.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3130,15 +3130,19 @@ function _onWidgetPointerMove(e) {
 }
 function _onWidgetPointerUp(e) {
   if (!_widgetDrag || e.pointerId !== _widgetDrag.pointerId) return;
-  if (_widgetDrag.active) {
-    e.preventDefault();
-    const target = _widgetDrag.dropSlot;
-    if (target && target !== _widgetDrag.fromSlot) {
-      target.appendChild(_widgetDrag.part);
-      _onWidgetMutation();
+  const drag = _widgetDrag;
+  try {
+    if (drag.active) {
+      e.preventDefault();
+      const target = drag.dropSlot;
+      if (target && target !== drag.fromSlot && !drag.part.contains(target)) {
+        target.appendChild(drag.part);
+        _onWidgetMutation();
+      }
     }
+  } finally {
+    _clearWidgetDrag();
   }
-  _clearWidgetDrag();
 }
 function _onWidgetPointerCancel(e) {
   if (_widgetDrag && e.pointerId === _widgetDrag.pointerId) _clearWidgetDrag();
@@ -5418,6 +5422,40 @@ function _snapshotWithTail() {
   if (idx < 0) return SNAPSHOT_HTML + tail;
   return SNAPSHOT_HTML.slice(0, idx) + tail + SNAPSHOT_HTML.slice(idx);
 }
+function _applyWidgetLayoutToHtml(html) {
+  if (typeof widgetStateChanges !== "function" || !widgetStateChanges().length) return html;
+  const moves = [];
+  const seen = new Set();
+  root.querySelectorAll("[data-cm-widget] [data-cm-part]").forEach(function (p) {
+    const id = partId(p);
+    if (!id) return;
+    const widget = widgetName(p);
+    const key = partKey(widget, id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    moves.push({ widget, part: id, slot: partSlot(p) });
+  });
+  if (!moves.length) return html;
+  const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+  const widgets = Array.from(doc.querySelectorAll("[data-cm-widget]"));
+  const docWidgetName = function (w) { return w.getAttribute("data-cm-widget") || "widget"; };
+  const owningWidget = function (el) { return el.closest && el.closest("[data-cm-widget]"); };
+  const findWidget = function (name) { return widgets.find(function (w) { return docWidgetName(w) === name; }) || null; };
+  const firstInWidget = function (widget, selector, attr, value) {
+    return Array.from(widget.querySelectorAll(selector)).find(function (el) {
+      return owningWidget(el) === widget && (el.getAttribute(attr) || "") === value;
+    }) || null;
+  };
+  moves.forEach(function (move) {
+    if (move.slot == null) return;
+    const widget = findWidget(move.widget);
+    if (!widget) return;
+    const part = firstInWidget(widget, "[data-cm-part]", "data-cm-part", move.part);
+    const slot = firstInWidget(widget, "[data-cm-slot]", "data-cm-slot", move.slot);
+    if (part && slot && !part.contains(slot)) slot.appendChild(part);
+  });
+  return (/^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "") + doc.documentElement.outerHTML;
+}
 function _buildSavedHtml(baseHtml, commentArr) {
   // Escape "<" as \u003c so a comment note containing a closing script tag (or an
   // HTML comment opener) cannot break out of the <script id="embeddedComments">
@@ -5479,7 +5517,7 @@ function _layerDescriptorJson(mode) {
   return JSON.stringify({ version: CMH_VERSION, mode, regions: CMH_REGION_NAMES });
 }
 function _retargetLayerDescriptor(html, mode) {
-  const rx = /(<script\b[^>]*\bid\s*=\s*(["'])commentableHtmlLayer\2[^>]*>)([\s\S]*?)(<\/script>)/i;
+  const rx = /(<script\b[^>]*\sid\s*=\s*(["'])commentableHtmlLayer\2[^>]*>)([\s\S]*?)(<\/script>)/i;
   if (rx.test(html)) return html.replace(rx, "$1" + _layerDescriptorJson(mode) + "$4");
   return html.replace(/(<meta name="commentable-html-version" content="[^"]+" \/?>\s*)/i,
     "$1" + '<script type="application/json" id="commentableHtmlLayer">' + _layerDescriptorJson(mode) + "</scr" + "ipt>\n");
@@ -5488,6 +5526,7 @@ async function saveHtml() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
+  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   let text;
   try { text = _buildSavedHtml(baseHtml, _canonicalCommentsForExport()); }
   catch (e) { showToast(e.message); return; }
@@ -5512,7 +5551,7 @@ async function saveHtml() {
 // legitimate host markup (code samples, host data-cid attributes, script literals).
 function _buildPlainHtml(baseHtml) {
   let t = baseHtml;
-  const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\bid\\s*=\\s*([\"'])"
+  const layerDescriptorScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*\\sid\\s*=\\s*([\"'])"
     + "commentableHtmlLayer\\1[^>]*>[\\s\\S]*?<\\/scr" + "ipt>\\s*", "i");
   t = t.replace(layerDescriptorScript, "");
   t = t.replace(/<!--\s*BEGIN: commentable-html - NONPORTABLE BOOTSTRAP[\s\S]*?END: commentable-html - NONPORTABLE BOOTSTRAP\s*-->\s*/i, "");
@@ -5684,6 +5723,7 @@ async function saveStandalone() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
+  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   let text;
   try { text = _buildStandaloneHtml(baseHtml, _canonicalCommentsForExport()); }
   catch (e) { showToast(e.message); return; }
@@ -5708,6 +5748,20 @@ function _offlineTemplateNode(doc, html) {
 function _offlineIsNetworkUrl(v) {
   return /^(?:https?:)?\/\//i.test(String(v || "").trim());
 }
+function _offlineIsSameOriginUrl(v) {
+  const raw = String(v || "").trim();
+  const absolute = raw.indexOf("//") === 0 ? location.protocol + raw : raw;
+  if (!/^https?:\/\//i.test(absolute) || !/^https?:/i.test(location.protocol)) return false;
+  try { return new URL(absolute, location.href).origin === location.origin; } catch (e) { return false; }
+}
+function _offlineIsExternalNetworkUrl(v) {
+  return _offlineIsNetworkUrl(v) && !_offlineIsSameOriginUrl(v);
+}
+function _offlineSrcsetHasExternalNetwork(v) {
+  return String(v || "").split(",").some(function (part) {
+    return _offlineIsExternalNetworkUrl(part.trim().split(/\s+/)[0]);
+  });
+}
 function _offlineCssNoNetwork(css) {
   return String(css || "")
     .replace(/@import\s+(?:url\()?["']?(?:https?:)?\/\/[^;"')]+["']?\)?\s*;/gi, "")
@@ -5718,9 +5772,14 @@ function _stripOfflineNetworkLoads(doc) {
     if (_offlineIsNetworkUrl(s.getAttribute("src"))) s.remove();
   });
   doc.querySelectorAll("script").forEach(function (s) {
+    const id = s.getAttribute("id") || "";
+    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer)$/.test(id)) return;
+    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
+    if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
     if (/import\s*\(\s*["'](?:https?:)?\/\//i.test(body) ||
-        /\bfrom\s+["'](?:https?:)?\/\//i.test(body)) {
+        /\bfrom\s+["'](?:https?:)?\/\//i.test(body) ||
+        /\bimport\s+["'](?:https?:)?\/\//i.test(body)) {
       s.remove();
     }
   });
@@ -5730,6 +5789,21 @@ function _stripOfflineNetworkLoads(doc) {
     const loads = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "manifest"];
     if (rel.some(function (r) { return loads.includes(r); })) link.remove();
   });
+  const clearAttr = function (el, attr) {
+    if (!el.hasAttribute(attr)) return;
+    const value = el.getAttribute(attr) || "";
+    const external = attr === "srcset" ? _offlineSrcsetHasExternalNetwork(value) : _offlineIsExternalNetworkUrl(value);
+    if (!external) return;
+    if (el.tagName === "IMG" && attr === "src") el.setAttribute("src", "data:image/gif;base64,R0lGODlhAQABAAAAACw=");
+    else el.removeAttribute(attr);
+  };
+  doc.querySelectorAll("img").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
+  doc.querySelectorAll("iframe").forEach(function (el) { clearAttr(el, "src"); });
+  doc.querySelectorAll("video").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "poster"); });
+  doc.querySelectorAll("audio").forEach(function (el) { clearAttr(el, "src"); });
+  doc.querySelectorAll("source").forEach(function (el) { clearAttr(el, "src"); clearAttr(el, "srcset"); });
+  doc.querySelectorAll("object").forEach(function (el) { clearAttr(el, "data"); });
+  doc.querySelectorAll("embed").forEach(function (el) { clearAttr(el, "src"); });
   doc.querySelectorAll("style").forEach(function (style) {
     style.textContent = _offlineCssNoNetwork(style.textContent || "");
   });
@@ -5850,6 +5924,7 @@ async function saveOffline() {
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
+  baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   let portable;
   try {
     portable = NONPORTABLE_MODE
