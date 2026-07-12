@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-07-12
+
+### Changed
+
+- Top-level prose is no longer width-capped. Ordinary paragraphs (and the lede) now fill the full
+  content column, the same width as tables, figures, code, and callouts, so prose no longer renders
+  narrow next to full-width content in wide reports. The previous 72ch readable-measure cap is removed.
+
 ## [1.13.0] - 2026-07-12
 
 ### Added

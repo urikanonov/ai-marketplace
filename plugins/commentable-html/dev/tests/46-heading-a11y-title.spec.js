@@ -63,9 +63,9 @@ test.describe("heading keyboard affordance, lede width, document title", () => {
     }
   });
 
-  // CMH-LEDE-01 (P1): the 72ch prose measure must not cap the lede, which is a full-width
-  // surface box; its paragraph opts out so it is not narrower than sibling sections.
-  test("the lede paragraph is not capped by the 72ch prose measure", async ({ page }) => {
+  // CMH-CONTENT-14 (P1): top-level prose is not width-capped - both the lede and ordinary
+  // section paragraphs fill the content column (no readable-measure cap).
+  test("top-level prose paragraphs are not width-capped (lede and sections both full width)", async ({ page }) => {
     const staged = stageContent(
       '<header class="cmh-lede"><p id="lede-p">lede paragraph</p></header>'
       + '<section><p id="section-p">section paragraph</p></section>',
@@ -76,7 +76,7 @@ test.describe("heading keyboard affordance, lede width, document title", () => {
       const ledeMax = await page.locator("#lede-p").evaluate((el) => getComputedStyle(el).maxWidth);
       const sectionMax = await page.locator("#section-p").evaluate((el) => getComputedStyle(el).maxWidth);
       expect(ledeMax).toBe("none");
-      expect(sectionMax).not.toBe("none");
+      expect(sectionMax).toBe("none");
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });
     }

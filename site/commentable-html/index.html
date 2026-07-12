@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.13.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.14.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -262,6 +262,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.14.0] - 2026-07-12</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Top-level prose is no longer width-capped. Ordinary paragraphs (and the lede) now fill the full content column, the same width as tables, figures, code, and callouts, so prose no longer renders narrow next to full-width content in wide reports. The previous 72ch readable-measure cap is removed.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.13.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -269,6 +276,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Export to Markdown now preserves <code>data-cm-widget</code> boards as a widget note plus a GFM table, so the triage board survives Markdown export instead of being skipped as <code>cm-skip</code> chrome.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.12.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -276,8 +285,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Added <strong>Export Offline</strong>, which builds a Portable export with current comments, snapshots rendered mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content loaders, and produces a strict-valid zero-network HTML handoff.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.9.1] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -352,20 +359,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Both export modes download <code>&lt;stem&gt;-portable.html</code>; the NonPortable &quot;Export as Portable&quot; no longer emits a <code>&lt;stem&gt;.standalone.html</code> filename.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.6.1] - 2026-07-11</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The Help <code>Getting started</code> topic now embeds the review-loop diagram (the agent-to-you-and-back loop) beneath the four steps, themed with the framework&#x27;s light/dark variables so it follows the active theme.</li>
-              <li>A <code>Website and live demo</code> link in the Help About block, pointing at the plugin&#x27;s GitHub Pages page.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Merged the <code>The review workflow</code> and <code>Getting started</code> help topics into a single, default-open <code>Getting started</code> topic, removing the overlap between them.</li>
-              <li>Reworded the <code>Self-contained and privacy</code> help topic: comments are stored in this browser&#x27;s <code>localStorage</code> (private, never uploaded, no account), and the review layer travels inside the file only in Portable mode - a Not portable file references small companion resources. It no longer implies the layer is always bundled into the file.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">16 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">17 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
