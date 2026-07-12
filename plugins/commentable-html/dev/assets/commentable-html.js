@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.9.1";
+const CMH_VERSION = "1.12.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -1489,10 +1489,11 @@ let imageActiveEl = null;
 function indexImages() {
   imageEls.length = 0;
   root.querySelectorAll("img, canvas").forEach((el) => {
+    const isChartMedia = el.closest("figure.chart") || el.classList.contains("cmh-chart");
     if (el.tagName === "IMG") {
-      if (el.closest(".cm-skip")) return; // skip UI-chrome images
+      if (el.closest(".cm-skip") && !isChartMedia) return; // skip UI-chrome images
     } else { // CANVAS: only chart canvases are commentable media (never mermaid/diff surfaces).
-      if (!el.closest("figure.chart") && !el.classList.contains("cmh-chart")) return;
+      if (!isChartMedia) return;
       if (el.closest(".cm-mermaid-host") || el.closest(".cmh-diff-host")) return;
     }
     const i = imageEls.length;
@@ -1516,7 +1517,7 @@ function imageInfo(img) {
   const alt = (img.getAttribute("alt") || img.getAttribute("aria-label") || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   const src = (img.getAttribute("src") || "").replace(/[\r\n\t]+/g, " ").trim();
   const shortSrc = src.length > 120 ? src.slice(0, 117) + "..." : src;
-  const kind = isCanvas ? "chart" : "image";
+  const kind = (isCanvas || img.closest("figure.chart") || img.classList.contains("cmh-chart")) ? "chart" : "image";
   const quote = alt || (isCanvas ? ("chart " + (i + 1)) : ("image: " + (shortSrc || "(no src)")));
   return { imageIndex: i, src, alt, quote, kind };
 }
@@ -3987,6 +3988,15 @@ function _suggestedFilename() {
   const clean = stem.replace(/-comments$/i, "").replace(/-portable$/i, "");
   return clean + "-portable" + ext;
 }
+function _suggestedOfflineFilename() {
+  const path = location.pathname;
+  let name = path.substring(path.lastIndexOf("/") + 1);
+  try { name = decodeURIComponent(name); } catch (e) { /* keep raw */ }
+  if (!name || !/\.html?$/i.test(name)) name = "commentable.html";
+  const m = name.match(/^(.*?)(\.html?)$/i);
+  const clean = m[1].replace(/-comments$/i, "").replace(/-portable$/i, "").replace(/-offline$/i, "");
+  return clean + "-offline" + m[2];
+}
 function _downloadHtml(text, filename) {
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -4184,6 +4194,181 @@ async function saveStandalone() {
   _downloadHtml(text, filename);
   showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
 }
+
+/* ---------- Export Offline (portable + rendered rich-content snapshots) ---------- */
+function _offlineDocFromHtml(html) {
+  return new DOMParser().parseFromString(String(html || ""), "text/html");
+}
+function _serializeOfflineDoc(doc) {
+  return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+}
+function _offlineTemplateNode(doc, html) {
+  const tpl = doc.createElement("template");
+  tpl.innerHTML = String(html || "").trim();
+  return tpl.content.firstElementChild;
+}
+function _offlineIsNetworkUrl(v) {
+  return /^(?:https?:)?\/\//i.test(String(v || "").trim());
+}
+function _offlineCssNoNetwork(css) {
+  return String(css || "")
+    .replace(/@import\s+(?:url\()?["']?(?:https?:)?\/\/[^;"')]+["']?\)?\s*;/gi, "")
+    .replace(/url\(\s*(["']?)(?:https?:)?\/\/[^)"']+\1\s*\)/gi, 'url("data:,")');
+}
+function _stripOfflineNetworkLoads(doc) {
+  doc.querySelectorAll("script[src]").forEach(function (s) {
+    if (_offlineIsNetworkUrl(s.getAttribute("src"))) s.remove();
+  });
+  doc.querySelectorAll("script").forEach(function (s) {
+    const body = s.textContent || "";
+    if (/import\s*\(\s*["'](?:https?:)?\/\//i.test(body) ||
+        /\bfrom\s+["'](?:https?:)?\/\//i.test(body)) {
+      s.remove();
+    }
+  });
+  doc.querySelectorAll("link[href]").forEach(function (link) {
+    if (!_offlineIsNetworkUrl(link.getAttribute("href"))) return;
+    const rel = (link.getAttribute("rel") || "").toLowerCase().split(/\s+/);
+    const loads = ["stylesheet", "preload", "modulepreload", "preconnect", "dns-prefetch", "icon", "apple-touch-icon", "manifest"];
+    if (rel.some(function (r) { return loads.includes(r); })) link.remove();
+  });
+  doc.querySelectorAll("style").forEach(function (style) {
+    style.textContent = _offlineCssNoNetwork(style.textContent || "");
+  });
+  doc.querySelectorAll("[style]").forEach(function (el) {
+    const next = _offlineCssNoNetwork(el.getAttribute("style") || "");
+    if (next) el.setAttribute("style", next);
+    else el.removeAttribute("style");
+  });
+}
+function _stripOfflineRichRenderers(doc) {
+  doc.querySelectorAll("script[src]").forEach(function (s) {
+    const src = s.getAttribute("src") || "";
+    if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
+        /\/chart\.js@/i.test(src)) {
+      s.remove();
+    }
+  });
+  doc.querySelectorAll("script").forEach(function (s) {
+    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
+    if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
+    const body = s.textContent || "";
+    if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
+      s.remove();
+      return;
+    }
+    if (/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) || /\.getContext\s*\(/.test(body)) {
+      s.remove();
+    }
+  });
+}
+function _offlineMermaidSnapshots() {
+  return Array.from(root.querySelectorAll("pre.mermaid, div.mermaid")).map(function (host) {
+    if (!host.querySelector("svg")) {
+      throw new Error("Offline export needs mermaid diagrams to finish rendering first.");
+    }
+    const clone = host.cloneNode(true);
+    clone.classList.add("cm-skip");
+    clone.setAttribute("data-processed", "true");
+    const src = host.getAttribute("data-cmh-md-src");
+    if (src && !clone.hasAttribute("data-cmh-md-src")) clone.setAttribute("data-cmh-md-src", src);
+    return clone.outerHTML;
+  });
+}
+function _replaceOfflineMermaid(doc, snapshots) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  const targets = Array.from(docRoot.querySelectorAll("pre.mermaid, div.mermaid"));
+  if (targets.length !== snapshots.length) {
+    throw new Error("Offline export could not match every mermaid diagram in the source HTML.");
+  }
+  targets.forEach(function (target, i) {
+    const next = _offlineTemplateNode(doc, snapshots[i]);
+    if (!next) throw new Error("Offline export could not serialize a rendered mermaid diagram.");
+    target.replaceWith(next);
+  });
+}
+function _offlineChartSnapshots() {
+  return Array.from(root.querySelectorAll("figure.chart canvas, canvas.cmh-chart")).map(function (canvas) {
+    let src = "";
+    try { src = canvas.toDataURL("image/png"); }
+    catch (e) { throw new Error("Offline export could not snapshot a chart canvas. It may contain cross-origin pixels."); }
+    if (!/^data:image\/png;base64,/i.test(src)) {
+      throw new Error("Offline export could not snapshot a chart canvas as PNG.");
+    }
+    const rect = canvas.getBoundingClientRect();
+    const rawClass = (canvas.getAttribute("class") || "").split(/\s+/)
+      .filter(function (c) { return c && !/^cm-img-/.test(c); });
+    if (!rawClass.includes("cmh-chart")) rawClass.push("cmh-chart");
+    return {
+      id: canvas.getAttribute("id") || "",
+      src,
+      alt: (canvas.getAttribute("aria-label") || canvas.getAttribute("alt") || "Chart snapshot").trim() || "Chart snapshot",
+      width: canvas.getAttribute("width") || String(canvas.width || Math.max(1, Math.round(rect.width))),
+      height: canvas.getAttribute("height") || String(canvas.height || Math.max(1, Math.round(rect.height))),
+      className: rawClass.join(" "),
+    };
+  });
+}
+function _replaceOfflineCharts(doc, snapshots) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  const targets = Array.from(docRoot.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
+  if (targets.length !== snapshots.length) {
+    throw new Error("Offline export could not match every chart canvas in the source HTML.");
+  }
+  targets.forEach(function (canvas, i) {
+    const s = snapshots[i];
+    const img = doc.createElement("img");
+    if (s.id) img.setAttribute("id", s.id);
+    img.setAttribute("class", s.className);
+    img.setAttribute("src", s.src);
+    img.setAttribute("alt", s.alt);
+    img.setAttribute("role", "img");
+    img.setAttribute("aria-label", s.alt);
+    img.setAttribute("width", s.width);
+    img.setAttribute("height", s.height);
+    img.setAttribute("data-cm-offline-chart", "true");
+    canvas.replaceWith(img);
+  });
+}
+function _insertOfflineChartGuard(doc) {
+  const head = doc.head || doc.querySelector("head");
+  if (!head) return;
+  const s = doc.createElement("script");
+  s.textContent = "window.Chart = undefined;";
+  head.appendChild(s);
+}
+function _buildOfflineHtml(portableHtml) {
+  const mermaid = _offlineMermaidSnapshots();
+  const charts = _offlineChartSnapshots();
+  const doc = _offlineDocFromHtml(portableHtml);
+  _replaceOfflineMermaid(doc, mermaid);
+  _replaceOfflineCharts(doc, charts);
+  _stripOfflineRichRenderers(doc);
+  _stripOfflineNetworkLoads(doc);
+  if (charts.length) _insertOfflineChartGuard(doc);
+  return _serializeOfflineDoc(doc).replace(/\n{3,}/g, "\n\n");
+}
+async function saveOffline() {
+  let baseHtml;
+  try { baseHtml = await _getBaseHtml(); }
+  catch (e) { showToast("Could not load base HTML."); return; }
+  let portable;
+  try {
+    portable = NONPORTABLE_MODE
+      ? _buildStandaloneHtml(baseHtml, _canonicalCommentsForExport())
+      : _buildSavedHtml(baseHtml, _canonicalCommentsForExport());
+  } catch (e) { showToast(e.message); return; }
+  let text;
+  try { text = _buildOfflineHtml(portable); }
+  catch (e) { showToast(e.message); return; }
+  const filename = _suggestedOfflineFilename();
+  _downloadHtml(text, filename);
+  showToast("Downloaded " + filename + " - offline HTML with rendered mermaid and chart snapshots.");
+}
+["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
+  const b = document.getElementById(id);
+  if (b) b.addEventListener("click", saveOffline);
+});
 
 /* ---------- Mode badge + asset-version handshake ---------- */
 function assetBannerDismissKey(pageVer, runtimeVer) {
@@ -4455,14 +4640,15 @@ function showHelp(restoreEl) {
           '<li><strong>Portable</strong> - self-contained: assets are embedded and every comment is embedded in the file, so a recipient sees exactly what you see.</li>' +
           '<li><strong>Not portable</strong> - the file references external companion resources, or has comments that are not embedded yet, or has embedded comments you deleted this session that are still in the file until you re-export. Hover the bubble for the exact reason.</li>' +
         '</ul>' +
-        '<p>Use <em>Export as Portable</em> to produce a portable copy.</p>') +
+          '<p>Use <em>Export as Portable</em> to produce a portable copy. Use <em>Export Offline</em> when rendered mermaid diagrams and charts must also work with no network.</p>') +
       T('Exporting and sharing',
         '<ul>' +
           '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
+          '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the portable file, then saves rendered mermaid diagrams as inline SVG and chart canvases as PNG images, with remote loaders removed.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
           '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
-        '</ul>') +
+          '</ul>') +
       T('Sending comments to an agent',
         '<ul>' +
           '<li><strong>Copy all</strong> emits an ordered Markdown bundle with each comment\'s location, quoted text, and note, ending in a machine-readable <code>HANDLED_IDS_JSON</code> line.</li>' +
@@ -4501,7 +4687,7 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('Self-contained and privacy',
         '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
-        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas.</p>') +
+        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> after those features render to snapshot them into a zero-network file.</p>') +
       '<div class="cm-help-about"><h3>About</h3>' +
         '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by Uri Kanonov.</p>' +
         '<ul>' +

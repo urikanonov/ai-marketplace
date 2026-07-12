@@ -56,6 +56,7 @@ REQUIRED_IDS = [
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
+    "btnExportOffline", "btnExportOfflineTop",
     "headingAddBtn", "widgetAddBtn", "menuDocComment",
 ]
 
@@ -212,7 +213,8 @@ class _DocParser(HTMLParser):
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
-        self.mermaid_blocks = []         # [{"cm_skip": bool}] for pre/div.mermaid
+        self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
+        self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
         self._cur_script = None   # (pos, attrs_dict) while inside a <script>
         self._cur_body = []
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
@@ -272,6 +274,7 @@ class _DocParser(HTMLParser):
                 return  # target is not in scope; do not close it
         if idx is not None:
             del self.stack[idx:]
+            del self._mermaid_stack[idx:]
 
     def _record(self, tag, ad, own_skip):
         if self._in_template():
@@ -283,7 +286,7 @@ class _DocParser(HTMLParser):
                                      "in_canvas": self._in_canvas(),
                                      "in_chart_figure": any(self._figure_chart)})
         if tag in ("pre", "div") and "mermaid" in set((ad.get("class") or "").split()):
-            self.mermaid_blocks.append({"cm_skip": own_skip})
+            self.mermaid_blocks.append({"cm_skip": own_skip, "has_svg": False})
         idv = ad.get("id")
         if idv:
             self.all_ids.append(idv)
@@ -298,7 +301,12 @@ class _DocParser(HTMLParser):
         self._implicit_close(tag)
         ad = self._attrs_dict(attrs)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
+        before_mermaid = len(self.mermaid_blocks)
         self._record(tag, ad, own_skip)
+        if tag == "svg" and self._mermaid_stack:
+            idx = self._mermaid_stack[-1]
+            if idx is not None:
+                self.mermaid_blocks[idx]["has_svg"] = True
         if tag == "script" and not self._in_template():
             self._cur_script = (self._off(), ad)
             self._cur_body = []
@@ -308,6 +316,10 @@ class _DocParser(HTMLParser):
             self._cur_heading = (tag, ad.get("id"), [])
         if tag not in VOID:
             self.stack.append((tag, own_skip))
+            current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
+            if len(self.mermaid_blocks) > before_mermaid:
+                current_mermaid = len(self.mermaid_blocks) - 1
+            self._mermaid_stack.append(current_mermaid)
             if tag == "figure":
                 self._figure_chart.append("chart" in set((ad.get("class") or "").split()))
 
@@ -322,6 +334,10 @@ class _DocParser(HTMLParser):
         self._implicit_close(tag)
         ad = self._attrs_dict(attrs)
         own_skip = "cm-skip" in set((ad.get("class") or "").split())
+        if tag == "svg" and self._mermaid_stack:
+            idx = self._mermaid_stack[-1]
+            if idx is not None:
+                self.mermaid_blocks[idx]["has_svg"] = True
         self._record(tag, ad, own_skip)
 
     def handle_data(self, data):
@@ -361,6 +377,7 @@ class _DocParser(HTMLParser):
                 if self._cr_depth is not None and i <= self._cr_depth:
                     self._cr_closed = True
                 del self.stack[i:]
+                del self._mermaid_stack[i:]
                 return
 
     def handle_comment(self, data):
@@ -607,6 +624,8 @@ def check_mermaid_renders(parser):
     silently stay as source text, which reads as "mermaid is broken".
     """
     if not parser.mermaid_blocks:
+        return []
+    if all(mb.get("has_svg") for mb in parser.mermaid_blocks):
         return []
     loader = None
     for s in parser.scripts:

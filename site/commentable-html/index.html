@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.9.1<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.12.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -260,12 +260,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.12.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Added <strong>Export Offline</strong>, which builds a Portable export with current comments, snapshots rendered mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content loaders, and produces a strict-valid zero-network HTML handoff.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.9.1] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The shipped plugin <code>README.md</code> and <code>SKILL.md</code> now explain why commentable-html beats planning in chat, a Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic&#x27;s &quot;unreasonable effectiveness of HTML&quot; blog post - so the motivation matches the project website.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.9.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -280,8 +289,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>validate.py</code> treats only <code>http://</code> and <code>https://</code> companion refs as remote/CDN URLs. Local <code>file://</code> refs and absolute filesystem paths are accepted, while plain absolute filesystem paths still warn that they are local-only.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.8.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -355,14 +362,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Adopted mermaid 11: the shipped page templates (<code>dist/PORTABLE.html</code>, <code>dist/NONPORTABLE.html</code>) and the example reports now load <code>mermaid@11.16.0</code> from the CDN, and the commenting layer is verified to render, anchor, and comment on mermaid 11 diagrams (full Playwright suite green against mermaid 11). This rode in on a dev/test-only dependency bump (mermaid 11.16.0, chart.js 4.5.1, adm-zip 0.6.0); none of those dev dependencies ship in the plugin.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.5.1] - 2026-07-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Polished the review-loop diagram (<code>docs/images/review-loop.svg</code> and its site twin): the step labels use consistent casing (&quot;1. Generates HTML&quot;, &quot;2. Comment Inline&quot;), and the &quot;reload and repeat&quot; caption became a fourth curved arrow from the AI agent back to you, so the loop reads as a closed cycle.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">14 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">15 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

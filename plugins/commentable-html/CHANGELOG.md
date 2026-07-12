@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-07-12
+
+### Added
+
+- Added **Export Offline**, which builds a Portable export with current comments, snapshots rendered
+  mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content
+  loaders, and produces a strict-valid zero-network HTML handoff.
+
 ## [1.9.1] - 2026-07-12
 
 ### Added

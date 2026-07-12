@@ -7,10 +7,12 @@
 
 **Portable** is one self-contained file with the CSS, runtime, and comments inlined. Use it for peer review, sharing, or long-term persistence. Create it with **Export as Portable**; from a nonportable source, the export inlines the companion assets and current comments into the downloaded file.
 
+**Offline** is a Portable file plus rendered rich-content snapshots. Use **Export Offline** after mermaid diagrams and charts have rendered in the browser. It embeds the current comments, saves rendered mermaid diagrams as inline SVG, saves chart canvases as PNG data images, and removes remote loaders so the result opens with no network.
+
 
 ## What is bundled in the file vs fetched from where
 
-Both modes keep the plan **content** and the **comments** (HANDLED IDS + EMBEDDED COMMENTS) inline in the HTML. They differ only in where the layer CSS/JS come from, and both fetch optional mermaid / Chart.js from a CDN unless you vendor or inline those libraries for full offline fidelity.
+Portable and NonPortable keep the plan **content** and the **comments** (HANDLED IDS + EMBEDDED COMMENTS) inline in the HTML. They differ only in where the layer CSS/JS come from, and both fetch optional mermaid / Chart.js from a CDN unless you vendor or inline those libraries for full offline fidelity. Offline starts from the Portable output, then snapshots rendered mermaid and charts so those CDN libraries are not needed by the exported file.
 
 Portable - everything needed for the review layer travels inside the one file:
 
@@ -47,6 +49,20 @@ flowchart LR
   File -. "optional, only if the report renders diagrams/charts;<br/>vendor or inline for full offline" .-> cdn
 ```
 
+Offline - the review layer, comments, and rendered rich content travel in one file:
+
+```mermaid
+flowchart LR
+  subgraph File["Offline HTML file (zero-network)"]
+    content["Plan content (inline)"]
+    comments["Comments: HANDLED IDS + EMBEDDED COMMENTS (inline)"]
+    css["Layer CSS (inlined)"]
+    js["Layer JS + asset registry (inlined)"]
+    mmd["Rendered mermaid SVG snapshots"]
+    charts["Chart PNG data images"]
+  end
+```
+
 
 ## Export as Portable
 
@@ -81,6 +97,25 @@ This means:
 The `<script id="embeddedComments">` block is the **only** part of the file that **Export as Portable** ever rewrites (aside from inlining the layer in nonportable mode, below). It does not regenerate any other markup, does not re-run mermaid, does not change `handledCommentIds`, and does not modify the five pasteable regions.
 
 In **nonportable** mode, **Export as Portable** additionally inlines the CSS and runtime so the downloaded file is ONE portable, self-contained document (see below) - so the same button always yields a combined file whether the source was inline or nonportable.
+
+
+## Export Offline
+
+> UI label: **Export Offline** (overflow menu and sidebar header).
+
+The overflow menu and sidebar expose an **Export Offline** button for handoff situations where the recipient may have no network. It is an addition to **Export as Portable**; the existing Portable, Plain HTML, and Markdown exports are unchanged.
+
+Clicking it:
+
+1. Builds the same Portable HTML that **Export as Portable** would build, including current embedded comments and, in NonPortable mode, the inlined review-layer CSS/JS.
+2. Replaces each rendered mermaid block in the exported copy with the current inline SVG from the page and marks the block processed. The original mermaid source is kept in `data-cmh-md-src` so Markdown export still has source text, and mermaid node/comment anchors remain structural.
+3. Replaces each chart canvas with a PNG data-URI `<img class="cmh-chart">` snapshot. The image keeps the chart's accessible label and remains commentable as chart media.
+4. Removes automatic remote loaders such as the mermaid CDN module import, Chart.js CDN `<script src>`, external stylesheet/font preloads, and remote CSS `url(...)` references.
+5. Downloads the file with a `<stem>-offline.html` suffix.
+
+Mermaid diagrams must already be rendered when you click the button. If a mermaid block is still source text, the export aborts with a toast rather than producing a file that would fail offline. A chart snapshot can fail only when the canvas is tainted by cross-origin pixels; in that case the export also aborts and leaves the open document unchanged.
+
+The exported file still has the five commentable-html regions, embedded comments, and version metadata. It is intended to pass `tools/validate.py --strict` and reopen with all external network blocked.
 
 
 ## Combined file from a nonportable document
