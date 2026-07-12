@@ -4,6 +4,38 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-12
+
+### Added
+
+- Two mermaid diagrams in `references/exports.md` (linked from the SKILL.md Output modes section)
+  showing what is bundled in the file versus fetched from where: Portable inlines the layer CSS/JS,
+  NonPortable loads the `commentable-html.{css,js,assets.js}` companions from the skill `dist/`, and both
+  keep the plan content and comments inline while fetching optional mermaid/Chart.js from a CDN.
+- The `analysis`, `plan`, and `report` keywords, and the "drastically shortens the AI planning and
+  iteration loop" framing in the SKILL.md intro and the plugin READMEs. The marketplace category is now
+  `planning and analysis`.
+- The brand mark now links to the project site
+  (`https://urikanonov.github.io/ai-marketplace/commentable-html/`) in a new tab, in the footer (icon plus
+  versioned name) and on the sidebar meta-row brand icon. The link is chrome, so it never leaks into a Plain
+  HTML export.
+- The Help modal title now includes the running layer version (`Commentable HTML v<version> - Help`).
+- Each overflow (`...`) menu item (Show, Export as Portable, Export to Plain HTML, Export to Markdown,
+  Help & About) now carries a leading decorative icon matching the chrome icon style.
+
+### Changed
+
+- `Export to Markdown` is now download-only: it downloads the `.md` file and no longer writes the clipboard.
+  The toast, Help topic, button tooltips, SKILL.md, and `references/exports.md` were updated to drop the
+  clipboard claim.
+
+### Fixed
+
+- On touch / coarse-pointer devices the "Add Comment" popup now appears when a text selection settles.
+  Selecting text on a phone drags the native handles and never fires `mouseup`, so the popup previously
+  never showed; a debounced `selectionchange` now raises the same popup (and hides it when the selection
+  collapses). Desktop mouse behavior is unchanged.
+
 ## [1.7.0] - 2026-07-11
 
 ### Fixed

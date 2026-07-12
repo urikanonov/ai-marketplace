@@ -4,6 +4,8 @@ Run by the validate CI job via `python -m unittest discover -s scripts -p "test_
 so the site generator's escaping, URL allowlist, and changelog parsing are covered by a
 required status check.
 """
+import json
+import os
 import re
 import unittest
 
@@ -98,7 +100,7 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;bad", out)
         self.assertNotIn('href="//evil.example"', out)
 
-    def test_plugin_page_uses_title_as_single_primary_link(self):
+    def test_plugin_card_uses_stretched_learn_more_link(self):
         manifest = {
             "name": "urikan-ai-marketplace",
             "plugins": [{
@@ -109,10 +111,37 @@ class RenderPluginsTests(unittest.TestCase):
             }],
         }
         out = bsd.render_plugins(manifest)
-        self.assertIn('<a class="name" href="./commentable-html/">commentable-html</a>', out)
+        # The title is a plain span, not a link.
+        self.assertIn('<span class="name">commentable-html</span>', out)
+        self.assertNotIn('<a class="name"', out)
+        # The single primary link to the plugin page is the Learn more button in the foot.
+        self.assertIn('<a class="btn learn-more" href="./commentable-html/">Learn more</a>', out)
+        # Exactly one link (one tab stop) points at the plugin page: no duplicate.
         self.assertEqual(out.count('href="./commentable-html/"'), 1)
+        # The Source link is still present and independent of the page link.
+        self.assertIn('<a class="btn" href="https://example.com/source">Source</a>', out)
         self.assertNotIn("card-link", out)
-        self.assertNotIn("Learn more", out)
+
+    def test_card_without_page_has_no_learn_more(self):
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "plugins": [{"name": "no-page", "version": "1.0.0", "description": "x"}],
+        }
+        out = bsd.render_plugins(manifest)
+        self.assertNotIn("learn-more", out)
+        self.assertIn('<span class="name">no-page</span>', out)
+
+    def test_real_manifest_commentable_badge_and_chips(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, ".github", "plugin", "marketplace.json"),
+                  encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        out = bsd.render_plugins(manifest)
+        # The commentable-html card badge renders the "planning and analysis" category.
+        self.assertIn('<span class="badge">planning and analysis</span>', out)
+        # The keyword chips include analysis, plan, and report.
+        for chip in ("analysis", "plan", "report"):
+            self.assertIn('<span class="chip">%s</span>' % chip, out)
 
 
 class DemoFullscreenTests(unittest.TestCase):

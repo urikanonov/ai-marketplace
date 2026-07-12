@@ -8,6 +8,46 @@
 **Portable** is one self-contained file with the CSS, runtime, and comments inlined. Use it for peer review, sharing, or long-term persistence. Create it with **Export as Portable**; from a nonportable source, the export inlines the companion assets and current comments into the downloaded file.
 
 
+## What is bundled in the file vs fetched from where
+
+Both modes keep the plan **content** and the **comments** (HANDLED IDS + EMBEDDED COMMENTS) inline in the HTML. They differ only in where the layer CSS/JS come from, and both fetch optional mermaid / Chart.js from a CDN unless you vendor or inline those libraries for full offline fidelity.
+
+Portable - everything needed for the review layer travels inside the one file:
+
+```mermaid
+flowchart LR
+  subgraph File["Portable HTML file (self-contained)"]
+    content["Plan content (inline)"]
+    comments["Comments: HANDLED IDS + EMBEDDED COMMENTS (inline)"]
+    css["Layer CSS (inlined)"]
+    js["Layer JS + asset registry (inlined)"]
+  end
+  cdn["mermaid / Chart.js (CDN)"]
+  File -. "optional, only if the report renders diagrams/charts;<br/>vendor or inline for full offline" .-> cdn
+```
+
+NonPortable - the layer CSS/JS are loaded at runtime from the skill's `dist/` companion files:
+
+```mermaid
+flowchart LR
+  subgraph File["NonPortable HTML file"]
+    content["Plan content (inline)"]
+    comments["Comments: HANDLED IDS + EMBEDDED COMMENTS (inline)"]
+    refs["link / script src references"]
+  end
+  subgraph Dist["skill dist/ companion files"]
+    css["commentable-html.css"]
+    js["commentable-html.js"]
+    assets["commentable-html.assets.js"]
+  end
+  cdn["mermaid / Chart.js (CDN)"]
+  refs -->|loaded at runtime| css
+  refs -->|loaded at runtime| js
+  refs -->|loaded at runtime| assets
+  File -. "optional, only if the report renders diagrams/charts;<br/>vendor or inline for full offline" .-> cdn
+```
+
+
 ## Export as Portable
 
 > UI label: **Export as Portable** (in the toolbar **...** overflow menu and the sidebar header). Earlier builds labeled it "Save comments" / "Save in HTML"; the behavior is the same, and in nonportable mode it now always produces a combined single file (see below).
@@ -73,7 +113,7 @@ Implementation detail worth knowing when modifying this feature:
 
 > UI label: **Export to Markdown** (overflow **...** menu and sidebar header).
 
-Downloads the document content as a Markdown (`.md`) file and copies the same Markdown to the clipboard. It is a deterministic, structural conversion: the layer walks the `#commentRoot` DOM (never the rendered layout) and maps each block kind to one fixed Markdown construct, so the same document always produces byte-identical output.
+Downloads the document content as a Markdown (`.md`) file. It is a deterministic, structural conversion: the layer walks the `#commentRoot` DOM (never the rendered layout) and maps each block kind to one fixed Markdown construct, so the same document always produces byte-identical output.
 
 | Block | Markdown |
 | --- | --- |

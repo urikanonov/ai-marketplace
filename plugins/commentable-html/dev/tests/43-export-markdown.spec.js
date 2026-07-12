@@ -1,9 +1,9 @@
-// Export to Markdown: a deterministic content -> Markdown conversion, delivered via
-// clipboard + a .md download, reachable from the sidebar and the overflow menu.
+// Export to Markdown: a deterministic content -> Markdown conversion, delivered as a
+// .md download, reachable from the sidebar and the overflow menu.
 import { test, expect } from "@playwright/test";
 import {
   fileUrl, ready, installClipboardCapture, stageContent,
-  openKitchenSink, openToolbarMenu, addTextComment, lastCopied,
+  openKitchenSink, openToolbarMenu, addTextComment,
   routeMermaidLocal, startStaticServer,
 } from "./helpers.js";
 
@@ -79,7 +79,7 @@ test("live comments are appended as a Review comments section", async ({ page })
   expect(md).toContain("please clarify");
 });
 
-test("Export to Markdown copies to the clipboard and downloads a .md file", async ({ page }) => {
+test("Export to Markdown downloads a .md file and does NOT write the clipboard", async ({ page }) => {
   await openKitchenSink(page);
   // Use the overflow-menu entry: the sidebar auto-closes with zero comments, so its
   // buttons sit off-screen; the floating toolbar menu is the reliable path here.
@@ -89,8 +89,11 @@ test("Export to Markdown copies to the clipboard and downloads a .md file", asyn
     page.click("#btnExportMdTop"),
   ]);
   expect(download.suggestedFilename()).toMatch(/\.md$/);
-  const copied = await lastCopied(page);
-  expect(copied).toContain("# Kitchen-sink sample");
+  // The Markdown export is download-only: it must not push anything to the clipboard.
+  const copied = await page.evaluate(() => (window.__copied || []).slice());
+  expect(copied).toEqual([]);
+  const md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toContain("# Kitchen-sink sample");
 });
 
 test("Export to Markdown is available in the sidebar and the overflow menu", async ({ page }) => {

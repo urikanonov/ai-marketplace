@@ -45,7 +45,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.7.0" />
+<meta name="commentable-html-version" content="1.8.0" />
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -379,6 +379,9 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
 .cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
+.cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }
+.cm-brand-link:hover { text-decoration: underline; }
+.cm-brand-link:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
 .cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .cm-help-btn {
@@ -755,6 +758,7 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
 .cm-toolbar-menu .cm-mode-badge { align-self: flex-start; margin: 0.1rem 0.2rem 0.35rem; }
 .cm-toolbar-menu button {
   width: 100%; justify-content: flex-start; text-align: left;
+  display: flex; align-items: center; gap: 0.5rem;
   padding: 0.45rem 0.6rem; border-radius: 8px; font-size: 0.85rem;
 }
 .cm-toolbar-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
@@ -1157,11 +1161,11 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
     </button>
     <div id="toolbarMenu" class="cm-toolbar-menu" hidden>
       <span id="cmhModeBadge" class="cm-mode-badge" title="Portability of this file"></span>
-      <button id="btnShowTop" type="button" title="Show the comments panel">Show</button>
-      <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it">Export as Portable</button>
-      <button id="btnSavePlainTop" type="button" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)">Export to Plain HTML</button>
-      <button id="btnExportMdTop" type="button" title="Copy the document content as Markdown to the clipboard and download a .md file (a deterministic block-by-block conversion; comments are appended as a section)">Export to Markdown</button>
-      <button id="btnHelpTop" type="button" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog">Help &amp; About</button>
+      <button id="btnShowTop" type="button" title="Show the comments panel"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Show</span></button>
+      <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Portable</span></button>
+      <button id="btnSavePlainTop" type="button" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Export to Plain HTML</span></button>
+      <button id="btnExportMdTop" type="button" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Export to Markdown</span></button>
+      <button id="btnHelpTop" type="button" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.5 9.5a2.5 2.5 0 0 1 4.5 1.4c0 1.6-2 1.9-2 3.1 M12 17h.01"/></svg><span>Help &amp; About</span></button>
     </div>
   </div>
 </div>
@@ -1191,7 +1195,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
     <div class="head-actions">
       <button type="button" id="btnSaveHtml" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
       <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
-      <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Copy the document content as Markdown to the clipboard and download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
+      <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
       <button type="button" id="btnClearAll" class="danger" aria-label="Clear Comments" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear</span></button>
     </div>
   </header>
@@ -1550,7 +1554,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.7.0";
+const CMH_VERSION = "1.8.0";
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
 const CMH_ICON_SVG = (
@@ -1561,6 +1565,14 @@ const CMH_ICON_SVG = (
   + '<rect x="6" y="10.5" width="8" height="1.8" rx="0.9" fill="#fff"/>'
   + '</svg>'
 );
+// Public project site the brand mark links to (opens in a new tab). Used by the sidebar
+// meta-row brand icon and the footer brand.
+const CMH_SITE_URL = "https://urikanonov.github.io/ai-marketplace/commentable-html/";
+function cmBrandLink(inner) {
+  return '<a class="cm-brand-link" href="' + CMH_SITE_URL
+    + '" target="_blank" rel="noopener noreferrer"'
+    + ' aria-label="commentable-html project site (opens in a new tab)">' + inner + '</a>';
+}
 // Small monochrome line-icons (stroke = currentColor) for chrome controls. Kept as
 // path data so a single helper renders them at any size without external assets.
 // Icons consumed by _cmIco() for runtime chrome (TOC, scroll, Help search). The three
@@ -3441,6 +3453,40 @@ document.addEventListener("mouseup", (e) => {
     showMenuForRange(got.range);
   }, 0);
 });
+// Touch / coarse-pointer selection path. On phones a selection is made by dragging the
+// native selection handles, which never fires `mouseup`, so the desktop popup path above
+// never runs and touch users only get the native long-press menu. A debounced
+// `selectionchange` raises the SAME "Add comment" popup once the selection settles, and
+// hides it when the selection collapses. Gated to coarse pointers so desktop mouse
+// behavior (the mouseup path) is untouched.
+if (_coarsePointer) {
+  let _touchSelTimer = null;
+  const raiseTouchSelectionMenu = () => {
+    const got = selectionInRoot();
+    if (!got) { hideMenu(); pendingRange = null; pendingQuote = ""; return; }
+    pendingDiffSel = null;
+    pendingRange = got.range.cloneRange();
+    pendingQuote = got.sel.toString();
+    _setMenuMode("text");
+    showMenuForRange(got.range);
+  };
+  document.addEventListener("selectionchange", () => {
+    const sel = window.getSelection();
+    // A collapsed selection dismisses the popup immediately (no debounce) so a tap that
+    // clears the selection hides it at once.
+    if (!sel || sel.isCollapsed) {
+      if (_touchSelTimer) { clearTimeout(_touchSelTimer); _touchSelTimer = null; }
+      hideMenu();
+      pendingRange = null;
+      pendingQuote = "";
+      return;
+    }
+    // Debounce so the popup fires after the user finishes dragging the handles, not on
+    // every intermediate change.
+    if (_touchSelTimer) clearTimeout(_touchSelTimer);
+    _touchSelTimer = setTimeout(raiseTouchSelectionMenu, 400);
+  });
+}
 document.addEventListener("click", (e) => {
   if (menu.hidden) return;
   if (!menu.contains(e.target)) hideMenu();
@@ -4969,12 +5015,8 @@ function _mdFilename() {
 async function exportMarkdown() {
   const md = buildMarkdownDoc();
   const filename = _mdFilename();
-  let copied = false;
-  try { await navigator.clipboard.writeText(md); copied = true; } catch (e) { copied = false; }
   _downloadTextFile(md, filename, "text/markdown");
-  showToast(copied
-    ? `Markdown copied to the clipboard and downloaded as ${filename}.`
-    : `Downloaded ${filename}. (Clipboard copy was blocked by the browser.)`);
+  showToast(`Markdown downloaded as ${filename}.`);
 }
 ["btnExportMd", "btnExportMdTop"].forEach((id) => {
   const b = document.getElementById(id);
@@ -5725,17 +5767,18 @@ function setupModeUi() {
   const ver = document.getElementById("cmVersion");
   if (ver) ver.textContent = "v" + CMH_VERSION;
   const meta = document.querySelector(".cm-sidebar .head-meta");
-  if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", CMH_ICON_SVG);
+  if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", cmBrandLink(CMH_ICON_SVG));
   if (NONPORTABLE_MODE) {
     document.body.classList.add("cm-nonportable");
     // In nonportable (companion) mode the portability action embeds everything into one file.
     ["btnSaveHtml", "btnSaveHtmlTop"].forEach(function (id) {
       const b = document.getElementById(id);
       if (b) {
-        // Preserve the sidebar button's icon + label span; only the plain-text menu
-        // button (no span) has its whole textContent replaced.
+        // Preserve each button's icon + label span; the sidebar button uses the compact
+        // "Portable" label, the overflow-menu item keeps the full "Export as Portable".
         const span = b.querySelector("span");
-        if (span) span.textContent = "Portable"; else b.textContent = "Export as Portable";
+        const label = (id === "btnSaveHtmlTop") ? "Export as Portable" : "Portable";
+        if (span) span.textContent = label; else b.textContent = label;
         b.title = "Download one self-contained, portable HTML with the commentable-html assets AND the current comments embedded, so it no longer depends on the skill folder or companion files.";
       }
     });
@@ -5781,7 +5824,7 @@ function showHelp(restoreEl) {
   };
   box.innerHTML =
     '<div class="cm-help-head">' +
-      '<h2>' + CMH_ICON_SVG + ' Commentable HTML - Help</h2>' +
+      '<h2>' + CMH_ICON_SVG + ' Commentable HTML v' + CMH_VERSION + ' - Help</h2>' +
       '<button type="button" class="cm-help-close" title="Close help" aria-label="Close help">&times;</button>' +
     '</div>' +
     '<div class="cm-help-search">' +
@@ -5857,7 +5900,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
-          '<li><strong>Export to Markdown</strong> copies the document content to the clipboard as Markdown and downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
+          '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
         '</ul>') +
       T('Sending comments to an agent',
@@ -6400,8 +6443,8 @@ function setupFooter() {
   if (!gen) { const lm = Date.parse(document.lastModified); if (!isNaN(lm)) gen = new Date(lm).toISOString(); }
   const genStr = gen ? formatTime(gen) : "unknown";
   f.innerHTML =
-    CMH_ICON_SVG
-    + '<span class="cm-footer-name">Commentable HTML <span class="cm-footer-ver">v' + CMH_VERSION + '</span></span>'
+    cmBrandLink(CMH_ICON_SVG
+      + '<span class="cm-footer-name">Commentable HTML <span class="cm-footer-ver">v' + CMH_VERSION + '</span></span>')
     + '<span class="cm-footer-sep" aria-hidden="true">\u00b7</span>'
     + '<span class="cm-footer-gen">Generated ' + escapeHtml(genStr) + '</span>'
     + '<span class="cm-footer-sep" aria-hidden="true">\u00b7</span>'

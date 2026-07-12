@@ -135,7 +135,7 @@ code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
   margin-bottom: 18px;
 }
 .hero .eyebrow.spaced { margin-top: 14px; }
-.hero-logo { width: 56px; height: 56px; display: block; margin-bottom: 6px; }
+.hero-logo { width: 56px; height: 56px; display: block; margin: 0 auto 6px; }
 .hero h1 {
   font-size: clamp(2.1rem, 5vw, 3.2rem);
   line-height: 1.1;
@@ -254,17 +254,30 @@ main > section:nth-of-type(even) {
 .card:hover { transform: translateY(-2px); border-color: var(--cp-border-strong); }
 
 /* Plugin cards */
-.plugin-card { display: flex; flex-direction: column; gap: 12px; }
+.plugin-card { display: flex; flex-direction: column; gap: 12px; position: relative; }
 .plugin-card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .plugin-card .name { color: var(--cp-text); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.3px; }
-.plugin-card a.name:focus-visible {
-  outline: 3px solid var(--cp-accent);
-  outline-offset: 3px;
-  border-radius: 3px;
-}
 .plugin-card .desc { color: var(--cp-text-muted); font-size: 0.95rem; flex: 1; }
 .plugin-card .keywords { display: flex; flex-wrap: wrap; gap: 6px; }
 .plugin-card .foot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* The whole card is one click and one tab target via a single stretched Learn more link.
+   The card is the positioning context and Learn more stays static, so its overlay covers
+   the card rather than being clipped to the button. */
+.plugin-card .learn-more::after { content: ""; position: absolute; inset: 0; z-index: 0; }
+.plugin-card .cmd,
+.plugin-card .copy-btn,
+.plugin-card .foot .btn:not(.learn-more) { position: relative; z-index: 1; }
+.plugin-card .learn-more {
+  background: #ffc107;
+  color: #1a1a1a;
+  border-color: #e0a800;
+}
+.plugin-card .learn-more:hover { background: #ffca2c; border-color: #e0a800; color: #1a1a1a; }
+.plugin-card:has(.learn-more:focus-visible) {
+  outline: 3px solid var(--cp-accent);
+  outline-offset: 3px;
+}
 
 .badge {
   display: inline-block;
@@ -342,7 +355,7 @@ main > section:nth-of-type(even) {
 .demo-frame iframe { width: 100%; height: 420px; border: 0; display: block; background: var(--cp-bg); }
 /* The demo frame breaks out of the content column to span the full viewport width; the
    section title, description, and tabs stay in the column above it. */
-.demo-frame.full-bleed { border-left: 0; border-right: 0; border-radius: 0; }
+.demo-frame.full-bleed { border-left: 0; border-right: 0; border-radius: 0; margin-inline: 20px; }
 .demo-actions { margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Changelog */

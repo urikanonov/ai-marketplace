@@ -7,9 +7,11 @@ test.describe("attribution footer + Show affordance", () => {
     const footer = page.locator("#cmFooter");
     await expect(footer).toBeVisible();
     await expect(footer).toContainText(/Commentable HTML v\d+\.\d+\.\d+/);
-    // Source/issue/author are NOT in the footer anymore.
+    // Source/issue/author are NOT in the footer; the only footer link is the brand mark.
     await expect(footer).not.toContainText("Authored by");
-    await expect(footer.locator("a")).toHaveCount(0);
+    await expect(footer.locator("a")).toHaveCount(1);
+    await expect(footer.locator("a.cm-brand-link")).toHaveCount(1);
+    await expect(footer.locator('a[href*="github.com"]')).toHaveCount(0);
     // The footer Help & about button opens the Help modal, which carries the attribution.
     await footer.locator(".cm-footer-help").click();
     const help = page.locator(".cm-help");
@@ -40,6 +42,37 @@ test.describe("attribution footer + Show affordance", () => {
     });
     expect(favicon).toBeTruthy();
     expect(favicon).toContain("image/svg+xml");
+  });
+
+  test("the footer brand and the sidebar meta brand icon link to the project site in a new tab", async ({ page }) => {
+    await openInline(page);
+    const SITE = "https://urikanonov.github.io/ai-marketplace/commentable-html/";
+    const footerBrand = page.locator("#cmFooter a.cm-brand-link");
+    await expect(footerBrand).toHaveCount(1);
+    await expect(footerBrand).toHaveAttribute("href", SITE);
+    await expect(footerBrand).toHaveAttribute("target", "_blank");
+    await expect(footerBrand).toHaveAttribute("rel", /noopener/);
+    await expect(footerBrand).toHaveAttribute("rel", /noreferrer/);
+    await expect(footerBrand).toHaveAttribute("aria-label", "commentable-html project site (opens in a new tab)");
+    // The footer brand wraps both the icon and the versioned name.
+    await expect(footerBrand.locator(".cm-brand-icon")).toHaveCount(1);
+    await expect(footerBrand).toContainText(/Commentable HTML v\d+\.\d+\.\d+/);
+    // The sidebar meta-row brand icon is the same link.
+    const sideBrand = page.locator(".cm-sidebar .head-meta a.cm-brand-link");
+    await expect(sideBrand).toHaveCount(1);
+    await expect(sideBrand).toHaveAttribute("href", SITE);
+    await expect(sideBrand).toHaveAttribute("target", "_blank");
+    await expect(sideBrand).toHaveAttribute("rel", /noopener/);
+    await expect(sideBrand.locator(".cm-brand-icon")).toHaveCount(1);
+  });
+
+  test("the brand site link does not leak into a Plain HTML export", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSavePlainTop")]);
+    const out = await readDownload(dl);
+    expect(out).not.toContain("urikanonov.github.io/ai-marketplace/commentable-html");
+    expect(out).not.toContain('aria-label="commentable-html project site (opens in a new tab)"');
   });
 
   test("the footer does not leak into a Plain HTML export", async ({ page }) => {

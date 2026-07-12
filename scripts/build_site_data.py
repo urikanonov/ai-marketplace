@@ -161,9 +161,10 @@ def render_plugins(manifest):
         install = "copilot plugin install %s@%s" % (name, suffix)
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
-        title = ('<a class="name" href="%s">%s</a>' % (esc(page), esc(name))
-                 if page else '<span class="name">%s</span>' % esc(name))
+        title = '<span class="name">%s</span>' % esc(name)
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
+        learn_more = ('<a class="btn learn-more" href="%s">Learn more</a>' % esc(page)) if page else ""
+        foot = learn_more + source
         card = (
             '<article class="card plugin-card">\n'
             '  <div class="head">\n'
@@ -180,7 +181,7 @@ def render_plugins(manifest):
             '  <div class="foot">%s</div>\n'
             '</article>'
         ) % (title, esc(version), category_badge, esc(description), chips,
-             esc(install), esc(install), source)
+             esc(install), esc(install), foot)
         cards.append(card)
     return "\n".join(cards)
 
