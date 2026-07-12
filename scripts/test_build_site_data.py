@@ -100,7 +100,7 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;bad", out)
         self.assertNotIn('href="//evil.example"', out)
 
-    def test_plugin_card_uses_stretched_learn_more_link(self):
+    def test_plugin_card_title_and_learn_more_link_to_page(self):
         manifest = {
             "name": "urikan-ai-marketplace",
             "plugins": [{
@@ -111,14 +111,13 @@ class RenderPluginsTests(unittest.TestCase):
             }],
         }
         out = bsd.render_plugins(manifest)
-        # The title is a plain span, not a link.
-        self.assertIn('<span class="name">commentable-html</span>', out)
-        self.assertNotIn('<a class="name"', out)
-        # The single primary link to the plugin page is the Learn more button in the foot.
+        # The title is an explicit link to the plugin page (no whole-card stretched overlay).
+        self.assertIn('<span class="name"><a href="./commentable-html/">commentable-html</a></span>', out)
+        # The warm-amber Learn more button also links to the page.
         self.assertIn('<a class="btn learn-more" href="./commentable-html/">Learn more</a>', out)
-        # Exactly one link (one tab stop) points at the plugin page: no duplicate.
-        self.assertEqual(out.count('href="./commentable-html/"'), 1)
-        # The Source link is still present and independent of the page link.
+        # Two explicit links (title + Learn more) point at the page; no hidden overlay link.
+        self.assertEqual(out.count('href="./commentable-html/"'), 2)
+        # The Source link is still present and independent of the page links.
         self.assertIn('<a class="btn" href="https://example.com/source">Source</a>', out)
         self.assertNotIn("card-link", out)
 

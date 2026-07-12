@@ -7,7 +7,7 @@
   <title>commentable-html - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=fb55a04bcb80" />
+  <link rel="stylesheet" href="../assets/styles.css?v=80f83b4c0aed" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -32,8 +32,6 @@
     <header class="hero">
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
-        <img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" />
-        <span class="eyebrow spaced">commentable-html <span class="badge version"><!-- BEGIN:version -->v1.8.0<!-- END:version --></span></span>
         <h1><span class="accent">Comment</span> on any <span class="accent">HTML</span>,<br />hand it back to your agent</h1>
         <p class="lead">Turn any standalone HTML into a commentable review surface. Select any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave an inline comment, then copy a bundle straight back to the AI that made it.</p>
         <div class="hero-actions">
@@ -41,6 +39,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
+        <span class="eyebrow spaced identity"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> commentable-html <span class="badge version"><!-- BEGIN:version -->v1.8.0<!-- END:version --></span></span>
       </div>
     </header>
 
@@ -48,10 +47,11 @@
       <div class="wrap">
         <div class="section-block prose">
           <h2 class="section-title">Why commentable-html</h2>
-          <p>AI agents increasingly answer with <strong>HTML</strong>, not markdown: plans, reports, design docs, and code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, data as real charts, long documents as navigable sections. But the moment you want to <em>revise</em> that artifact the loop breaks down: you alt-tab between the render and the chat and describe in prose what to change. The richer the document, the more painful the round-trip.</p>
+          <p>AI agents increasingly answer with <strong>HTML</strong>, not Markdown: plans, reports, design docs, and code reviews. HTML is a spatial, richer medium - diffs and call-graphs as boxes and arrows, data as real charts, long documents as navigable sections. (Anthropic makes the same case in <a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html" target="_blank" rel="noopener noreferrer">"The unreasonable effectiveness of HTML"</a>.) But the moment you want to <em>revise</em> that artifact the loop breaks down: you alt-tab between the render and the chat and describe in prose what to change. The richer the document, the more painful the round-trip.</p>
           <p><strong>commentable-html closes that loop - it is a code review for your plan.</strong> Select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, then one <em>Copy all</em> hands the agent a structured bundle of every note. It <strong>drastically shortens the AI planning and iteration loop</strong>: you stay in the document and return to the chat only at the end.</p>
         </div>
         <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg; keep the two in sync if the labels or flow change. -->
+        <div class="section-block why-loop-block">
         <figure class="loop-figure">
           <svg viewBox="0 0 640 250" role="img" aria-labelledby="loopFigTitle loopFigDesc">
             <title id="loopFigTitle">Commentable HTML self-review loop</title>
@@ -76,6 +76,29 @@
             <text class="loop-fig-sub" x="320" y="242" text-anchor="middle" font-size="12.5">4. reload and repeat</text>
           </svg>
         </figure>
+        </div>
+
+        <div class="section-block prose why-mediums">
+          <h3 class="why-sub">Chat, Markdown, HTML - or a tight loop?</h3>
+          <p>Your agent can draft a brilliant plan in seconds. The real bottleneck is everything after - reading it, reacting to it, and getting your changes back into the model. Where that review happens decides how fast you actually move.</p>
+          <table class="compare">
+            <thead>
+              <tr><th>Where you plan</th><th>Handles a big plan</th><th>Visual richness</th><th>Interactive</th><th>In-place review</th><th>Review loop</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Chat / terminal</td><td>Poor</td><td>None</td><td>No</td><td>No</td><td>Painful</td></tr>
+              <tr><td>Markdown file</td><td>OK (needs a viewer)</td><td>Limited</td><td>No</td><td>No</td><td>Manual</td></tr>
+              <tr><td>Plain HTML</td><td>Good</td><td>Rich</td><td>Yes</td><td>No</td><td>Out-of-band</td></tr>
+              <tr class="compare-hero"><td>commentable-html</td><td>Good</td><td>Rich</td><td>Yes</td><td>Yes</td><td>Tight</td></tr>
+            </tbody>
+          </table>
+          <ul class="why-list">
+            <li><strong>In the chat window.</strong> The plan scrolls past in a terminal or chat app and is gone. Long plans are a chore to navigate and hard to keep or share - great for a sentence, hopeless for a spec.</li>
+            <li><strong>In a Markdown file.</strong> It survives, but raw Markdown is a slog to read and even a viewer stays flat: no real tables, diagrams, or charts. Few teammates read a 300-line <code>.md</code>.</li>
+            <li><strong>In plain HTML.</strong> Dense, structured, and nice to look at. But review still breaks: you read in the browser, then switch to the chat and describe, in words, what to change and where. Out-of-band and slow.</li>
+            <li><strong>With commentable-html.</strong> The same rich HTML - plus review in place. Comment on the exact sentence, table cell, chart, or diagram node; one <em>Copy all</em> hands the agent every note. The loop collapses to a single tight cycle.</li>
+          </ul>
+        </div>
       </div>
     </section>
 
