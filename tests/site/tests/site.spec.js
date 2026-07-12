@@ -282,6 +282,26 @@ test("the plugin page identity line (logo, name, version) sits below the call-to
   const actions = await page.locator(".hero-actions").boundingBox();
   const idBox = await identity.boundingBox();
   expect(idBox.y).toBeGreaterThan(actions.y + actions.height - 1);
+  // The identity line links to the plugin's source directory on GitHub.
+  await expect(identity).toHaveAttribute(
+    "href",
+    "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html");
+});
+
+test("the medium comparison table stacks without horizontal overflow on a narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const table = page.locator("table.compare");
+  await expect(table).toBeVisible();
+  // No horizontal overflow: the table fits within the viewport width.
+  const fits = await table.evaluate((el) => el.scrollWidth <= document.documentElement.clientWidth + 1);
+  expect(fits, "comparison table must not overflow the mobile viewport").toBe(true);
+  // On narrow screens each value cell exposes its column label for the stacked-card layout.
+  const labelShown = await page.locator("table.compare td[data-label]").first().evaluate((el) => {
+    const before = getComputedStyle(el, "::before");
+    return before.content && before.content !== "none" && before.content !== "normal";
+  });
+  expect(labelShown, "stacked cells must show their column label via ::before").toBe(true);
 });
 
 test("the Why section presents the medium comparison table and the HTML blog reference", async ({ page }) => {
