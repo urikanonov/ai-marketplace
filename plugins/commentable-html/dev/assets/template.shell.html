@@ -225,7 +225,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>
     </button>
     <div id="toolbarMenu" class="cm-toolbar-menu" hidden>
-      <span id="cmhModeBadge" class="cm-mode-badge" title="Portability of this file"></span>
+      <span id="cmhModeBadge" class="cm-mode-badge" aria-live="polite" title="Portability of this file"></span>
       <button id="btnShowTop" type="button" title="Show the comments panel"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><span>Show</span></button>
       <button id="btnSaveHtmlTop" type="button" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export as Portable</span></button>
       <button id="btnExportOfflineTop" type="button" title="Download an offline HTML copy with current comments embedded, rendered mermaid saved as inline SVG, and chart canvases saved as PNG images"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Export Offline</span></button>
@@ -239,7 +239,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 <aside class="cm-sidebar cm-skip" id="sidebar" aria-label="Comments">
   <header>
     <div class="head-meta">
-      <span class="cm-type-badge" id="cmTypeBadge" title="Whether this file is portable. Portable means self-contained and safe to share (assets embedded and every comment embedded). Not portable means it references external skill/companion resources and/or has comments not embedded yet - hover shows which."></span>
+      <span class="cm-type-badge" id="cmTypeBadge" aria-live="polite" title="Whether this file is portable. Portable means self-contained and safe to share (assets embedded and every comment embedded). Not portable means it references external skill/companion resources and/or has comments not embedded yet - hover shows which."></span>
       <span class="cm-version" id="cmVersion" title="commentable-html version that generated this file"></span>
       <span class="cm-head-actions">
         <button type="button" id="btnHelp" class="cm-help-btn" title="Open help and about: what every button does and how the review workflow works" aria-haspopup="dialog">Help &amp; About</button>

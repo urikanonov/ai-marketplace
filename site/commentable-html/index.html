@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.17.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.18.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -281,6 +281,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.18.0] - 2026-07-12</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Documented widget drag opt-in, the Offline badge state, Export Offline, and when to use NonPortable, Portable, or Offline outputs.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Exporting after widget moves now refreshes plain-text comment offsets against the exported widget layout, so comments near moved cards reopen on the intended text.</li>
+              <li>Floating chart, mermaid, diff, widget, and text-comment bubbles now respect horizontally clipped rich-content containers instead of drifting outside scrolled charts, tables, diagrams, or raw diffs.</li>
+              <li>Document-type badges now announce Portable, Offline, and Not portable state changes through a polite live region and expose the reason through <code>aria-label</code>.</li>
+              <li>The dependency cooldown gate now diffs lockfiles by package name and version, uses lockfile entry names for aliases, discovers package-lock files dynamically, deduplicates registry lookups by package name, applies a global deadline, and warns when changed non-registry dependencies are not cooldown-checked.</li>
+              <li>The forward-compatible layout reference now clarifies that <code>validate.py --strict</code> validates the current contract only and legacy pre-1.15 documents must be regenerated or upgraded before validation.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.17.0] - 2026-07-12</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -293,6 +308,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Plain export and layer retargeting now ignore <code>data-id=&quot;commentableHtmlLayer&quot;</code> decoys when locating the real descriptor.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.16.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -306,8 +323,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Shipped prose now refers to the user-facing skill as Commentable HTML while preserving the <code>commentable-html</code> identifier in commands, paths, and code.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.15.0] - 2026-07-12</h3></div>
             <div class="group-label">Added</div>
@@ -339,14 +354,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Added <strong>Export Offline</strong>, which builds a Portable export with current comments, snapshots rendered mermaid diagrams as inline SVG, snapshots chart canvases as PNG data images, removes remote rich-content loaders, and produces a strict-valid zero-network HTML handoff.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.9.1] - 2026-07-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The shipped plugin <code>README.md</code> and <code>SKILL.md</code> now explain why commentable-html beats planning in chat, a Markdown file, or plain HTML - a medium-comparison table plus a reference to Anthropic&#x27;s &quot;unreasonable effectiveness of HTML&quot; blog post - so the motivation matches the project website.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">20 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">21 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

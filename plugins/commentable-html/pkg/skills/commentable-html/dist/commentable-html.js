@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.17.0";
+const CMH_VERSION = "1.18.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -508,6 +508,38 @@ function _rectInViewport(r) {
     r.bottom > 4 && r.top < window.innerHeight - 4 &&
     r.right > 4 && r.left < window.innerWidth - 4;
 }
+function _clipContainerFor(node) {
+  const el = node && (node.nodeType === 1 ? node : node.parentElement);
+  return el && el.closest ? el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw") : null;
+}
+function _intersectRects(a, b) {
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.right, b.right);
+  const top = Math.max(a.top, b.top);
+  const bottom = Math.min(a.bottom, b.bottom);
+  if (right <= left || bottom <= top) return null;
+  return { left, right, top, bottom, width: right - left, height: bottom - top };
+}
+function _clipAwareRect(node, rect) {
+  let visible = _intersectRects(rect, {
+    left: 4, right: window.innerWidth - 4, top: 4, bottom: window.innerHeight - 4,
+  });
+  if (!visible) return null;
+  const clip = _clipContainerFor(node);
+  if (clip) visible = _intersectRects(visible, clip.getBoundingClientRect());
+  return visible;
+}
+function _floatingBounds(node) {
+  const clip = _clipContainerFor(node);
+  const viewport = { left: 8, right: window.innerWidth - 8, top: 8, bottom: window.innerHeight - 8 };
+  if (!clip) return viewport;
+  const clipped = _intersectRects(viewport, clip.getBoundingClientRect());
+  return clipped || viewport;
+}
+function _clamp(v, min, max) {
+  if (max < min) return min;
+  return Math.max(min, Math.min(v, max));
+}
 function cmRectContains(outer, inner) {
   return inner.left >= outer.left - 1 && inner.right <= outer.right + 1 &&
          inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
@@ -634,15 +666,17 @@ function captureMermaidContext(host) {
 }
 function positionMermaidAdd(node) {
   const rect = node.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return false;
+  const visible = _clipAwareRect(node, rect);
+  if (!visible) return false;
   const btnW = mermaidAddBtn.offsetWidth || 120;
   const btnH = mermaidAddBtn.offsetHeight || 28;
-  const left = rect.right - btnW;
-  let top  = rect.top - btnH - 4;
-  if (top < 8) top = rect.bottom + 4;
-  mermaidAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - btnW - 8)) + "px";
-  mermaidAddBtn.style.top  = Math.max(8, Math.min(top,  window.innerHeight - btnH - 8)) + "px";
-  return _rectInViewport(rect);
+  const bounds = _floatingBounds(node);
+  const left = visible.right - btnW;
+  let top  = visible.top - btnH - 4;
+  if (top < bounds.top) top = visible.bottom + 4;
+  mermaidAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
+  mermaidAddBtn.style.top  = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
+  return true;
 }
 function showMermaidAddFor(node, host) {
   const rect = node.getBoundingClientRect();
@@ -655,7 +689,7 @@ function showMermaidAddFor(node, host) {
   if (mermaidAddHideTimer) { clearTimeout(mermaidAddHideTimer); mermaidAddHideTimer = null; }
   mermaidAddBtn.hidden = false;
   mermaidAddBtn.textContent = "Add Comment";
-  positionMermaidAdd(node);
+  if (!positionMermaidAdd(node)) { mermaidAddBtn.hidden = true; pendingMermaid = null; return; }
   _activeAdd = { el: node, btn: mermaidAddBtn, position: () => positionMermaidAdd(node), clear: () => { pendingMermaid = null; } };
 }
 function mermaidDiagramLabel(host) {
@@ -1328,15 +1362,17 @@ function diffSelectionInfo(block) {
 }
 function positionDiffAdd(el) {
   const rect = el.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return false;
+  const visible = _clipAwareRect(el, rect);
+  if (!visible) return false;
   const btnW = diffAddBtn.offsetWidth || 96;
   const btnH = diffAddBtn.offsetHeight || 26;
-  const left = rect.right - btnW;
-  let top = rect.top - btnH - 2;
-  if (top < 8) top = rect.bottom + 2;
-  diffAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - btnW - 8)) + "px";
-  diffAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - btnH - 8)) + "px";
-  return _rectInViewport(rect);
+  const bounds = _floatingBounds(el);
+  const left = visible.right - btnW;
+  let top = visible.top - btnH - 2;
+  if (top < bounds.top) top = visible.bottom + 2;
+  diffAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
+  diffAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
+  return true;
 }
 function showDiffAddFor(el, info) {
   const rect = el.getBoundingClientRect();
@@ -1344,7 +1380,7 @@ function showDiffAddFor(el, info) {
   pendingDiff = info;
   if (diffAddHideTimer) { clearTimeout(diffAddHideTimer); diffAddHideTimer = null; }
   diffAddBtn.hidden = false;
-  positionDiffAdd(el);
+  if (!positionDiffAdd(el)) { diffAddBtn.hidden = true; pendingDiff = null; return; }
   _activeAdd = { el, btn: diffAddBtn, position: () => positionDiffAdd(el), clear: () => { pendingDiff = null; } };
 }
 function scheduleHideDiffAdd() {
@@ -1565,14 +1601,16 @@ function flashImage(id) {
 }
 function positionImageAdd(img) {
   const rect = img.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return false;
+  const visible = _clipAwareRect(img, rect);
+  if (!visible) return false;
   const btnW = imageAddBtn.offsetWidth || 96;
   const btnH = imageAddBtn.offsetHeight || 26;
-  const left = rect.right - btnW - 6;
-  const top = rect.top + 6;
-  imageAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - btnW - 8)) + "px";
-  imageAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - btnH - 8)) + "px";
-  return _rectInViewport(rect);
+  const bounds = _floatingBounds(img);
+  const left = visible.right - btnW - 6;
+  const top = visible.top + 6;
+  imageAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
+  imageAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
+  return true;
 }
 function showImageAddFor(img) {
   const rect = img.getBoundingClientRect();
@@ -1581,7 +1619,7 @@ function showImageAddFor(img) {
   imageAddBtn.title = pendingImage.kind === "chart" ? "Comment on this chart" : "Comment on this image";
   if (imageAddHideTimer) { clearTimeout(imageAddHideTimer); imageAddHideTimer = null; }
   imageAddBtn.hidden = false;
-  positionImageAdd(img);
+  if (!positionImageAdd(img)) { imageAddBtn.hidden = true; imageActiveEl = null; pendingImage = null; return; }
   _activeAdd = { el: img, btn: imageAddBtn, position: () => positionImageAdd(img), clear: () => { pendingImage = null; } };
 }
 function scheduleHideImageAdd() {
@@ -1773,6 +1811,7 @@ function _activateWidgetDrag(e) {
   _widgetDrag.part.classList.add("cm-widget-drag-source");
   document.body.classList.add("cm-widget-dragging");
   if (widgetAddBtn) { widgetAddBtn.hidden = true; pendingWidget = null; }
+  // Draggable cards suppress text selection by design: the whole card is a drag or comment target.
   try { window.getSelection().removeAllRanges(); } catch (err) { /* selection may be unavailable */ }
   try { _widgetDrag.part.setPointerCapture(_widgetDrag.pointerId); } catch (err) { /* capture can fail after cancellation */ }
   _setWidgetDropSlot(_widgetSlotAtPoint(e.clientX, e.clientY, _widgetDrag.widget));
@@ -1841,12 +1880,14 @@ function flashWidget(id) {
 }
 function positionWidgetAdd(el) {
   const rect = el.getBoundingClientRect();
-  if (rect.width <= 0 && rect.height <= 0) return false;
+  const visible = _clipAwareRect(el, rect);
+  if (!visible) return false;
   const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
-  const left = rect.right - bw - 6, top = rect.top + 6;
-  widgetAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
-  widgetAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
-  return _rectInViewport(rect);
+  const bounds = _floatingBounds(el);
+  const left = visible.right - bw - 6, top = visible.top + 6;
+  widgetAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
+  widgetAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
+  return true;
 }
 function showWidgetAddFor(el) {
   if (!widgetAddBtn) return;
@@ -1856,7 +1897,7 @@ function showWidgetAddFor(el) {
   widgetAddBtn.title = 'Comment on "' + (pendingWidget.quote || "this element") + '"';
   if (widgetAddHideTimer) { clearTimeout(widgetAddHideTimer); widgetAddHideTimer = null; }
   widgetAddBtn.hidden = false;
-  positionWidgetAdd(el);
+  if (!positionWidgetAdd(el)) { widgetAddBtn.hidden = true; pendingWidget = null; return; }
   _activeAdd = { el, btn: widgetAddBtn, position: () => positionWidgetAdd(el), clear: () => { pendingWidget = null; } };
 }
 function scheduleHideWidgetAdd() {
@@ -2825,17 +2866,17 @@ const hlBubble = document.getElementById("hlBubble");
 let hlBubbleCid = null, hlBubbleMark = null, hlBubbleHideTimer = null;
 function positionHlBubble(mark) {
   const rect = mark.getClientRects()[0] || mark.getBoundingClientRect();
-  if ((rect.width === 0 && rect.height === 0) ||
-      rect.bottom < 0 || rect.top > window.innerHeight ||
-      rect.right < 0 || rect.left > window.innerWidth) {
+  const visible = _clipAwareRect(mark, rect);
+  if (!visible) {
     hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null; return;
   }
   const bw = hlBubble.offsetWidth || 22, bh = hlBubble.offsetHeight || 22;
-  let left = rect.right - bw / 2;
-  let top  = rect.top - bh + 4;
-  if (top < 4) top = rect.bottom - 4;
-  left = Math.max(4, Math.min(left, window.innerWidth  - bw - 4));
-  top  = Math.max(4, Math.min(top,  window.innerHeight - bh - 4));
+  const bounds = _floatingBounds(mark);
+  let left = visible.right - bw / 2;
+  let top  = visible.top - bh + 4;
+  if (top < bounds.top) top = visible.bottom - 4;
+  left = _clamp(left, bounds.left, bounds.right - bw);
+  top  = _clamp(top, bounds.top, bounds.bottom - bh);
   hlBubble.style.left = left + "px";
   hlBubble.style.top  = top  + "px";
 }
@@ -3870,9 +3911,13 @@ function recomputeTextOffsets(persist) {
 // is sorted, live comment offsets are in sorted order, but exports serialize the original
 // (pre-sort) snapshot; without this a comment on a sorted table cell would mis-anchor for
 // a recipient who has no sort state. Restores original order, recomputes, snapshots, then
-// re-applies the sorted view - leaving the live state untouched.
+// re-applies the sorted view - leaving the live state untouched. Widget moves are not
+// reverted here because Portable and Offline exports save the moved widget DOM.
 function _canonicalCommentsForExport() {
-  if (!_tableSortState || Object.keys(_tableSortState).length === 0) return comments;
+  if (!_tableSortState || Object.keys(_tableSortState).length === 0) {
+    recomputeTextOffsets(false);
+    return comments.map(function (c) { return Object.assign({}, c); });
+  }
   const savedState = JSON.parse(JSON.stringify(_tableSortState));
   _sortableTables().forEach(function (t) { _unsortRows(_tableBody(t)); });
   recomputeTextOffsets(false);
@@ -4743,12 +4788,12 @@ function updateDocTypeUi() {
     if (!el) return;
     el.textContent = st.type;
     el.setAttribute("data-doc-type", st.type);
+    el.setAttribute("aria-label", st.reason);
     // If the tooltip layer already adopted this control (title moved to data-cmh-tip),
     // update the managed attributes in place so the new reason shows without a native-title
     // flash; otherwise set title and let the tooltip layer adopt it on first hover.
     if (el.hasAttribute("data-cmh-tip")) {
       el.setAttribute("data-cmh-tip", st.reason);
-      if (el.getAttribute("aria-label")) el.setAttribute("aria-label", st.reason);
       el.removeAttribute("title");
     } else {
       el.title = st.reason;
