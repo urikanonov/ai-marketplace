@@ -524,5 +524,26 @@ class CheckDriftTests(unittest.TestCase):
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
 
+class StylesConcatTests(unittest.TestCase):
+    def test_concat_matches_committed_stylesheet(self):
+        import os as _os
+        root = bsd.REPO_ROOT
+        built = bsd.build_styles(root)
+        committed = bsd.read_text(_os.path.join(root, "site", "assets", "styles.css"))
+        self.assertEqual(
+            built, committed,
+            "site/assets/styles.css is stale vs site-src/css/ partials; run build_site_data.py")
+
+    def test_parts_exist_and_base_loads_first(self):
+        import os as _os
+        root = bsd.REPO_ROOT
+        for name in bsd.CSS_PARTS:
+            self.assertTrue(
+                _os.path.exists(_os.path.join(root, "site-src", "css", name)),
+                "missing CSS partial: " + name)
+        # Order is load-bearing: the tokens/base partial must come first.
+        self.assertEqual(bsd.CSS_PARTS[0], "10-base.css")
+
+
 if __name__ == "__main__":
     unittest.main()

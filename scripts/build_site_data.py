@@ -100,6 +100,23 @@ def _asset_hash(root, name):
     return hashlib.sha256(data).hexdigest()[:12]
 
 
+# The served site/assets/styles.css is assembled from ordered source partials under
+# site-src/css/, so concurrent edits land in disjoint files. The concatenation is byte-for-byte
+# the served bundle (same CSP, same cache-bust); the partial order is load-bearing (CSS cascade).
+CSS_PARTS = (
+    "10-base.css",
+    "20-nav-hero.css",
+    "30-components.css",
+    "40-demo-changelog.css",
+    "50-media-footer.css",
+)
+
+
+def build_styles(root):
+    return "".join(
+        read_text(os.path.join(root, "site-src", "css", name)) for name in CSS_PARTS)
+
+
 def stamp_assets(text, root):
     """Append a ?v=<content-hash> query to every reference to a cache-busted asset, replacing any
     existing query or fragment on it. The stamp is idempotent and always matches the committed
@@ -518,6 +535,12 @@ def main(argv):
     with open(manifest_path, "r", encoding="utf-8") as fh:
         manifest = json.load(fh)
 
+    # Assemble the served stylesheet from its source partials before anything stamps its hash.
+    styles_text = build_styles(root)
+    styles_path = os.path.join(root, "site", "assets", "styles.css")
+    if not args.check:
+        write_text(styles_path, styles_text)
+
     plugins_html = render_plugins(manifest)
     changelog_html = render_changelog([])
     for path, filter_plugin in changelog_candidates(root, args.changelog):
@@ -563,6 +586,8 @@ def main(argv):
 
     if args.check:
         problems = []
+        if styles_text != read_text(styles_path):
+            problems.append("site/assets/styles.css is stale vs site-src/css/ partials")
         if hub_out != hub_src:
             problems.append("site/index.html plugins region is stale")
         if plugin_out != plugin_src:
