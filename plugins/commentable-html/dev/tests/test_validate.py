@@ -371,6 +371,13 @@ class ValidateUnitTests(unittest.TestCase):
         )
         self.assertError(doc, 'commentableHtmlLayer.mode must be "offline" when offline chart snapshots are present')
 
+    def test_layer_descriptor_id_decoy_div_is_flagged(self):
+        doc = build().replace(
+            '<script type="application/json" id="commentableHtmlLayer">',
+            '<div id="commentableHtmlLayer"></div>\n<script type="application/json" id="commentableHtmlLayer">',
+            1)
+        self.assertError(doc, 'id="commentableHtmlLayer" appears 2 times')
+
     def test_id_in_attribute_value_is_not_a_real_id(self):
         # id="commentRoot" appearing INSIDE another attribute's value must not
         # satisfy the commentRoot requirement (parser reads real id attributes only).
@@ -531,6 +538,11 @@ class ValidateUnitTests(unittest.TestCase):
                    '        data-doc-label="My Document">\n'
                    '    ... your content ...\n  </main>\n-->')
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), example + "\n" + MAIN, JS_REGION])
+        self.assertOkNoWarn(doc)
+
+    def test_commented_data_id_comment_root_is_not_a_hidden_root(self):
+        buried = '<!--\n<div data-id="commentRoot" data-comment-key="my-real-doc-v1"></div>\n-->'
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), buried + "\n" + MAIN, JS_REGION])
         self.assertOkNoWarn(doc)
 
     def test_unquoted_commented_root_is_error(self):
@@ -1213,6 +1225,18 @@ class NonPortableTests(unittest.TestCase):
             'href="https://cdn.example.com/commentable-html.css"')
         self.assertNonPortableError(html, "remote/CDN URL")
 
+    def test_protocol_relative_companion_url_errors(self):
+        html = build_nonportable().replace(
+            'href="commentable-html.css"',
+            'href="//cdn.example.com/commentable-html.css"')
+        self.assertNonPortableError(html, "remote/CDN URL")
+
+    def test_non_file_scheme_companion_ref_errors(self):
+        html = build_nonportable().replace(
+            'src="commentable-html.js"',
+            'src="vscode://extension/commentable-html.js"')
+        self.assertNonPortableError(html, "non-file URL scheme")
+
     def test_nonportable_demo_key_survivor_is_flagged(self):
         # The real nonportable template (nonportable demo key + nonportable demo title) is clean,
         # but changing only the title while keeping the demo key is a survived retrofit.
@@ -1456,6 +1480,42 @@ class NewCheckTests(unittest.TestCase):
         script = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>'
         errors, _ = self._errs_warns(build(body=self._body(MAIN, script)))
         self.assertFalse(any("self-contained guarantee" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_chartjs_cdn_script(self):
+        script = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>'
+        doc = build(body=self._body(MAIN, script)).replace('"mode":"portable"', '"mode":"offline"', 1)
+        errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("offline mode" in e and "Chart.js" in e for e in errors), errors)
+
+    def test_offline_mode_rejects_network_resources_and_css_imports(self):
+        css = CSS_REGION.replace(
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; }",
+            '@import "https://cdn.example.com/theme.css";\n'
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; }")
+        main = MAIN.replace(
+            "<p>content</p>",
+            '<img src="https://example.com/x.png" alt="x">\n'
+            '<iframe src="https://example.com/f.html"></iframe>\n'
+            '<video poster="https://example.com/poster.png"><track src="https://example.com/c.vtt"></video>')
+        extras = [
+            '<link rel="stylesheet" href="https://example.com/app.css">',
+            '<script src="https://example.com/app.js"></script>',
+        ]
+        doc = build(css=css, body=self._body(main, *extras)).replace('"mode":"portable"', '"mode":"offline"', 1)
+        errors, _ = self._errs_warns(doc)
+        for needle in ("<img", "<iframe", "<video", "<track", "<link", "<script", "@import"):
+            self.assertTrue(any("offline mode" in e and needle in e for e in errors),
+                            "expected offline error for %s, got %r" % (needle, errors))
+
+    def test_offline_mode_accepts_inlined_data_resources(self):
+        main = MAIN.replace(
+            "<p>content</p>",
+            '<img src="data:image/png;base64,AAAA" alt="x">\n'
+            '<video poster="data:image/png;base64,AAAA"></video>')
+        doc = build(body=self._body(main)).replace('"mode":"portable"', '"mode":"offline"', 1)
+        errors, warnings = self._errs_warns(doc)
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
 
     def test_external_stylesheet_link_warns(self):
         link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=X">'

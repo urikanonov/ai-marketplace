@@ -4,12 +4,28 @@ import path from "path";
 import os from "os";
 import {
   openInline, addTextComment, openToolbarMenu, readDownload, fileUrl, ready,
+  stageContent, stageNonPortable,
 } from "./helpers.js";
 
 // Once a comment exists the panel is open (the floating toolbar is hidden), so
 // these tests drive the panel-header buttons. Export plain adds no comment, so it
 // uses the toolbar overflow menu.
 test.describe("Save comments / Export plain", () => {
+  async function markLiveCommentHandled(page, note) {
+    await addTextComment(page, "#commentRoot section p", note);
+    const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
+    await page.evaluate((id) => {
+      document.getElementById("handledCommentIds").textContent = JSON.stringify([id]);
+    }, cid);
+    return cid;
+  }
+
+  function embeddedComments(html) {
+    const m = html.match(/id="embeddedComments">([\s\S]*?)<\/script>/);
+    expect(m).toBeTruthy();
+    return JSON.parse(m[1].trim() || "[]");
+  }
+
   test("a comment note with a closing-script tag is escaped and round-trips decoded", async ({ page, browser }) => {
     await openInline(page);
     const evil = "evil </" + "script><img src=x onerror=alert(1)>";
@@ -54,6 +70,54 @@ test.describe("Save comments / Export plain", () => {
     const m = html.match(/id="embeddedComments">([\s\S]*?)<\/script>/);
     expect(m).toBeTruthy();
     expect(JSON.parse(m[1].trim())[0].note).toBe("embed this note");
+  });
+
+  test("Save, Portable, and Offline exports exclude comments already listed as handled", async ({ page }) => {
+    const inline = stageContent("<section><p>Handled comments must stay gone.</p></section>", {
+      key: "cmh-handled-export-inline",
+      source: "handled-inline.html",
+    });
+    const nonportable = stageNonPortable({
+      mutate: (html) => html.replace('data-comment-key="commentable-html-nonportable-demo"',
+        'data-comment-key="cmh-handled-export-nonportable"'),
+    });
+    try {
+      await page.goto(fileUrl(inline.html));
+      await ready(page);
+      const inlineCid = await markLiveCommentHandled(page, "handled inline note");
+      const [saveDownload] = await Promise.all([
+        page.waitForEvent("download"),
+        page.locator("#btnSaveHtml").click(),
+      ]);
+      const savedHtml = await readDownload(saveDownload);
+      expect(embeddedComments(savedHtml)).toEqual([]);
+      expect(savedHtml).not.toContain(inlineCid);
+      expect(savedHtml).not.toContain("handled inline note");
+
+      const [offlineDownload] = await Promise.all([
+        page.waitForEvent("download"),
+        page.locator("#btnExportOffline").click(),
+      ]);
+      const offlineHtml = await readDownload(offlineDownload);
+      expect(embeddedComments(offlineHtml)).toEqual([]);
+      expect(offlineHtml).not.toContain(inlineCid);
+      expect(offlineHtml).not.toContain("handled inline note");
+
+      await page.goto(fileUrl(nonportable.html));
+      await ready(page);
+      const portableCid = await markLiveCommentHandled(page, "handled nonportable note");
+      const [portableDownload] = await Promise.all([
+        page.waitForEvent("download"),
+        page.locator("#btnSaveHtml").click(),
+      ]);
+      const portableHtml = await readDownload(portableDownload);
+      expect(embeddedComments(portableHtml)).toEqual([]);
+      expect(portableHtml).not.toContain(portableCid);
+      expect(portableHtml).not.toContain("handled nonportable note");
+    } finally {
+      fs.rmSync(inline.dir, { recursive: true, force: true });
+      fs.rmSync(nonportable.dir, { recursive: true, force: true });
+    }
   });
 
   test("embedded comments travel: a shared copy shows them in a fresh browser (no localStorage)", async ({ page, browser }) => {
