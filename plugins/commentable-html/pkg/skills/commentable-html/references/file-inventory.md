@@ -21,8 +21,12 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `docs/images/review-loop.svg` | Review-loop diagram embedded in the plugin README. |
 | `examples/prompt-community-garden.md` | Prompt for the community garden example. |
 | `examples/prompt-taxi.md` | Prompt for the NYC taxi example. |
+| `examples/prompt-triage.md` | Prompt for the incident triage board example. |
+| `examples/prompt-metrics.md` | Prompt for the commentable visuals matrix example. |
 | `examples/report-community-garden.html` | Portable community garden example report. |
 | `examples/report-taxi.html` | Portable NYC taxi example report. |
+| `examples/report-triage.html` | Portable incident triage board example report. |
+| `examples/report-metrics.html` | Portable commentable visuals matrix example report. |
 
 ## Runtime tools
 

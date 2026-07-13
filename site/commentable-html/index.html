@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.26.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.27.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -310,12 +310,23 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.27.0] - 2026-07-13</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Every shipped example report now has a companion example-prompt file. Added <code>examples/prompt-triage.md</code> and <code>examples/prompt-metrics.md</code> (matching the existing <code>prompt-community-garden.md</code> and <code>prompt-taxi.md</code> format) so all four examples document the one-paragraph prompt that generates them.</li>
+              <li>Full interaction coverage for the incident triage board and commentable visuals matrix examples: a new <code>dev/tests/53-more-examples.spec.js</code> exercises both reports over http with prose commenting, widget/part commenting, UI-control clicks, and a seeded randomized monkey pass, asserting no uncaught page errors and comment persistence across reload. Each of the four shipped examples is now covered by validation, monkey, commenting, and clicking.</li>
+              <li>New spec guards: <code>CMH-DEMO-02</code> (every report has a companion prompt with the standard headings and a non-empty blockquote) and <code>CMH-DEMO-03</code> (each example is exercised by the interaction/monkey suite), plus an example-scoped assertion under <code>CMH-BUILD-05</code> that no shipped example carries the removed &quot;TEMPLATE / DEMO&quot; header phrases.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.26.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The &quot;Run in Azure Data Explorer&quot; deep link is now mandatory on a framed KQL figure. <code>tools/validate.py</code> rejects a <code>figure.cmh-kql</code> that has no <code>cmh-kql-run</code> link as a hard error (non-zero exit in the default, non-strict mode) instead of a warning, so a framed KQL block can never ship without the reader&#x27;s one-click path into Azure Data Explorer. Build the link with <code>tools/kusto_link.py</code>. A purely illustrative query with no real cluster/database should use a plain <code>&lt;pre&gt;</code> code block, which remains exempt from the rule.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.25.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -323,8 +334,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Generated documents no longer carry the leading &quot;Commentable HTML - TEMPLATE / DEMO&quot; documentation comment. That guidance duplicated the skill references and mislabeled real reports as a template or demo, so every shipped report and generated document is now leaner and cleaner without it.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.24.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -368,17 +377,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Trimmed <code>SKILL.md</code> by moving runtime UI, interaction, NonPortable, network, and manual retrofit details into existing references while keeping generation-time routing, caveats, and commands inline.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.20.0] - 2026-07-12</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Offline export now blocks form submissions in CSP, removes remote form targets, keeps benign inline scripts with non-network dynamic import comments, and preserves custom canvas renderers that are not chart snapshots.</li>
-              <li>Strict offline validation now requires the restrictive CSP and rejects network form targets, meta refresh redirects, and network CSS <code>url(...)</code> values in style blocks or inline styles.</li>
-              <li>Offline validation now ignores non-fetching remote links such as canonical and alternate metadata while still blocking fetching link relations.</li>
-              <li>Region marker guards in validation, upgrade, build, and runtime export now count only comment-delimited infra markers, so marker text inside prose or code blocks no longer causes duplicate-region failures.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">29 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">30 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -81,4 +81,4 @@ Contributors: see the [contributing guide](https://github.com/urikanonov/ai-mark
 | `skills/commentable-html/tools/` | Runtime Python tools used while generating, validating, upgrading, and processing reports. |
 | `skills/commentable-html/references/` | Detailed reference docs for anchors, layout, charts, validation, exports, and helper tools. |
 | `skills/commentable-html/docs/` | Tutorial and diagrams: `docs/TUTORIAL.md`, `tutorial-images/`, and `docs/images/` (the review-loop diagram embedded in this README). |
-| `skills/commentable-html/examples/` | Worked prompts and reports, including `prompt-community-garden.md`, `prompt-taxi.md`, `report-community-garden.html`, and `report-taxi.html`. |
+| `skills/commentable-html/examples/` | Worked prompts and reports, including `prompt-community-garden.md`, `prompt-taxi.md`, `prompt-triage.md`, `prompt-metrics.md`, `report-community-garden.html`, `report-taxi.html`, `report-triage.html`, and `report-metrics.html`. |
