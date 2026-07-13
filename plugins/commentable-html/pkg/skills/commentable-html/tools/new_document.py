@@ -12,9 +12,8 @@ the dist template and surgically swaps only those two per-document parts:
     `<main id="commentRoot">` that IMMEDIATELY precedes CONTENT-BEGIN.
 
 The content root is anchored off the unique CONTENT markers, never off the first
-`<main id="commentRoot">` in the file - the template's top-of-file documentation
-comment contains a second, decoy `<main id="commentRoot">` (the "my-doc"
-example) that must stay untouched.
+`<main id="commentRoot">` in the file, so an earlier decoy root left in an HTML
+comment (an authoring example) is ignored and only the real, last root is edited.
 
 Output mode. New documents are NonPortable by DEFAULT: the ~89KB of layer CSS/JS is
 referenced from the companion commentable-html.{css,js,assets.js} files instead of
@@ -61,9 +60,9 @@ BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between
 END_MARKER = "<!-- END: commentable-html - CONTENT -->"
 
 # Keys that must never become a live content root: the two demo roots the
-# template ships and the "my-doc" example in the top documentation comment.
-# validate.py fails a document whose active root keeps a demo key, so refusing
-# them up front keeps this tool from ever producing a document validate rejects.
+# template ships and the "my-doc" documentation-example key. validate.py fails a
+# document whose active root keeps a demo key, so refusing them up front keeps
+# this tool from ever producing a document validate rejects.
 REFUSED_KEYS = frozenset({
     "commentable-html-demo",
     "commentable-html-nonportable-demo",

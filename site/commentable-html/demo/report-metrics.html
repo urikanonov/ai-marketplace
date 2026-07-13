@@ -1,53 +1,11 @@
 <!DOCTYPE html>
-<!--
-  ============================================================
-  Commentable HTML - TEMPLATE / DEMO  (commentable-html)
-  ============================================================
-  This file is a fully working demo of the commentable-html skill.
-  Open it in a browser to confirm the behavior, then copy the
-  five marker-delimited regions below into your own HTML.
-
-  Regions (each one is wrapped in BEGIN/END markers so you can
-  delete and re-paste cleanly on every upgrade):
-
-    1. CSS              - inside <style> in <head>
-    2. HANDLED IDS      - JSON <script> early in <body>; only
-                          this block changes per comment batch
-    3. EMBEDDED COMMENTS - JSON <script> right after HANDLED IDS;
-                          optional in-file snapshot of the comments
-    4. COMMENT UI       - toolbar / sidebar / modal / menu /
-                          toast, anywhere in <body>
-    5. JS               - before </body>, after the content root
-                          is in the DOM
-
-  Per-document configuration lives on ONE element - the content
-  root - as data-* attributes. No edits to CSS/HTML/JS regions
-  required when you port between docs.
-
-    <main id="commentRoot"
-          data-comment-key="my-doc"      (unique per doc)
-          data-doc-label="My Document">     (shown in copy)
-      ... your content ...
-    </main>
-
-  If those data-* attributes are missing, the JS falls back to:
-    data-comment-key  = "commentable-html:" + location.pathname
-    data-doc-label    = document.title || location.pathname
-  and if there is no #commentRoot element, the JS treats
-  <body> as the root.
-
-  Upgrade workflow: delete each "BEGIN ... END" region in the
-  consumer file, paste the same regions from this template,
-  done. Per-document config and HANDLED IDS survive because
-  they are outside the upgraded regions.
--->
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.24.0" />
+<meta name="commentable-html-version" content="1.25.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.24.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.25.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -1467,7 +1425,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.24.0";
+const CMH_VERSION = "1.25.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

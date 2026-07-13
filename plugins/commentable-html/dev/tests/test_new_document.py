@@ -52,10 +52,18 @@ class MakeDocumentTests(unittest.TestCase):
         self.assertEqual(errors, [], "expected no validation errors, got: %r" % errors)
 
     def test_doc_comment_example_root_is_not_the_one_edited(self):
-        # The template's top documentation comment holds a decoy
-        # `<main id="commentRoot" data-comment-key="my-doc">`. It must survive
-        # untouched, and OUR key must land on the real (last) root instead.
-        out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report")
+        # A commented-out decoy `<main id="commentRoot" data-comment-key="my-doc">`
+        # placed BEFORE the real content root (an authoring example left in a comment)
+        # must survive untouched, and OUR key must land on the real (last) root instead.
+        base = _template()
+        _b, _e, main_start, _t = new_document._find_active_root(base)
+        decoy = (
+            "<!-- example only, not the live root:\n"
+            '  <main id="commentRoot" data-comment-key="my-doc"\n'
+            '        data-doc-label="My Document"> ... </main>\n-->\n'
+        )
+        seeded = base[:main_start] + decoy + base[main_start:]
+        out = new_document.make_document(seeded, CONTENT, "my-report-v1", "My Report")
         self.assertIn('data-comment-key="my-doc"', out)     # decoy untouched
         # The LAST content root before the CONTENT marker carries our key.
         begin = out.index(new_document.BEGIN_MARKER)
@@ -188,6 +196,34 @@ class MakeDocumentTests(unittest.TestCase):
     def test_self_validate_degrades_when_validator_missing(self):
         with mock.patch.dict(sys.modules, {"validate": None}):
             self.assertIsNone(new_document._self_validate("<html></html>"))
+
+
+class NoTemplateDemoHeaderTests(unittest.TestCase):
+    """CMH-BUILD-05: neither the shipped dist templates nor a freshly generated
+    document carries the old leading 'TEMPLATE / DEMO' documentation header comment."""
+
+    _HEADER_PHRASES = (
+        "TEMPLATE / DEMO",
+        "marker-delimited regions",
+        "Regions (each",
+        "Upgrade workflow",
+        "Per-document configuration lives",
+    )
+
+    def _assert_no_header(self, html, where):
+        for phrase in self._HEADER_PHRASES:
+            self.assertNotIn(
+                phrase, html,
+                "%s still carries the removed template header phrase %r" % (where, phrase))
+
+    def test_shipped_dist_templates_carry_no_header(self):
+        for name in ("PORTABLE.html", "NONPORTABLE.html"):
+            with open(os.path.join(ROOT, "dist", name), encoding="utf-8") as fh:
+                self._assert_no_header(fh.read(), "dist/" + name)
+
+    def test_generated_document_carries_no_header(self):
+        out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report")
+        self._assert_no_header(out, "a freshly generated document")
 
 
 class MainCliTests(unittest.TestCase):
