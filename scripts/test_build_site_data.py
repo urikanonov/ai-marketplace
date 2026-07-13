@@ -609,6 +609,8 @@ class CheckDriftTests(unittest.TestCase):
                                      capture_output=True, check=True).stdout.decode("utf-8").split("\0")
         except FileNotFoundError:
             self.skipTest("git not available on PATH")
+        except subprocess.CalledProcessError as exc:
+            self.skipTest("git ls-files failed (%s); cannot clone the repo for this test" % exc)
         for rel in tracked:
             if not rel:
                 continue
@@ -771,6 +773,23 @@ class CheckDriftTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bsd.main(["build_site_data.py", "--check", "--root", root])
 
+    def test_missing_manifest_errors_clearly(self):
+        # A missing marketplace manifest must raise a clear SystemExit, not a raw FileNotFoundError.
+        import os as _os
+        root = self._clone_repo()
+        _os.remove(_os.path.join(root, ".github", "plugin", "marketplace.json"))
+        with self.assertRaises(SystemExit):
+            bsd.main(["build_site_data.py", "--check", "--root", root])
+
+    def test_missing_required_site_js_asset_errors_clearly(self):
+        # site.js is a committed (non-generated) cache-busted asset: if it is deleted, the build must
+        # fail loudly with a clear SystemExit rather than silently stamping or a raw traceback.
+        import os as _os
+        root = self._clone_repo()
+        _os.remove(_os.path.join(root, "site", "assets", "site.js"))
+        with self.assertRaises(SystemExit):
+            bsd.main(["build_site_data.py", "--check", "--root", root])
+
     def test_removing_tutorial_source_drops_its_sitemap_entry(self):
         # Parallel to the llms.txt gating: removing the tutorial source and rebuilding must drop the
         # tutorial <loc> from sitemap.xml (the SITE-BUILD-14 sitemap-gating claim).
@@ -897,6 +916,17 @@ class PageBannerAndGuardTests(unittest.TestCase):
         target = os.path.join(root, "deep", "nested", "page.html")
         bsd.write_text(target, "hello\n")
         self.assertEqual(bsd.read_text(target), "hello\n")
+
+    def test_write_text_errors_clearly_when_a_parent_is_a_file(self):
+        # A malformed tree where a parent path is a regular file must raise a clear SystemExit
+        # (path conflict) instead of a raw NotADirectoryError/FileExistsError traceback.
+        root = self._mktemp()
+        blocker = os.path.join(root, "blocker")
+        with open(blocker, "w", encoding="utf-8") as fh:
+            fh.write("i am a file, not a directory")
+        target = os.path.join(blocker, "child", "page.html")
+        with self.assertRaises(SystemExit):
+            bsd.write_text(target, "hello\n")
 
     def test_build_page_rejects_an_unknown_region_kind(self):
         # build_page only knows "block" (and historically "attr") region kinds; an unknown kind must

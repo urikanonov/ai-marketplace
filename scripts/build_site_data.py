@@ -96,7 +96,11 @@ def read_text(path):
 def write_text(path, text):
     directory = os.path.dirname(path)
     if directory:
-        os.makedirs(directory, exist_ok=True)
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError as exc:
+            raise SystemExit("cannot create output directory %s (%s); a file may exist where a "
+                             "directory is expected" % (directory, exc))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
 
@@ -124,7 +128,8 @@ def _asset_hash(root, name):
         with open(path, "rb") as fh:
             data = fh.read()
     except FileNotFoundError:
-        raise SystemExit("cache-busted asset missing: %s" % path)
+        raise SystemExit("required cache-busted asset missing: %s (it is a committed source, not "
+                         "generated; restore it)" % path)
     return hashlib.sha256(data).hexdigest()[:12]
 
 
@@ -760,6 +765,9 @@ def main(argv):
     root = args.root
     manifest_path = args.manifest or os.path.join(root, ".github", "plugin", "marketplace.json")
 
+    if not os.path.exists(manifest_path):
+        raise SystemExit("manifest missing: %s (expected the marketplace manifest; pass --manifest "
+                         "or restore it)" % manifest_path)
     with open(manifest_path, "r", encoding="utf-8") as fh:
         manifest = json.load(fh)
 
