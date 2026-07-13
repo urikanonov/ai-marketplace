@@ -34,13 +34,15 @@ bundle, --assets-href PREFIX to reference companions elsewhere, or --copy-assets
 copy the three files next to --out and reference them by bare name.
 
 Usage (run from the skill root):
-    python tools/new_document.py --content body.html --key auto --label "My Report" --out r.html
-    python tools/new_document.py --content body.html --key auto --label "My Report" --portable --out r.html
+    python tools/new_document.py --content body.html --key auto --label "My Report" --kind report --out r.html
+    python tools/new_document.py --content body.html --key auto --label "My Report" --kind report --portable --out r.html
     echo '<section><h2 id="a">Hi</h2></section>' | \
-        python tools/new_document.py --content - --key auto --label "My Report" --portable --out out.html
+        python tools/new_document.py --content - --key auto --label "My Report" --kind report --portable --out out.html
 
-The result is self-validated with validate.py before it is written; validation
-errors print to stderr and exit 1. Output goes to stdout unless --out is given.
+--kind declares the document type (report, plan, slides, board, or generic). report and
+plan require a top-level <h1> title (one is auto-added from --label when the fragment has
+none); slides and board do not. The result is self-validated with validate.py before it is
+written; validation errors print to stderr and exit 1. Output goes to stdout unless --out is given.
 """
 import argparse
 import hashlib
@@ -79,6 +81,14 @@ _MAIN_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*["\']?commentRoot["\']?(?=[
 # name / optional value (double-quoted, single-quoted, or bare) for tag attrs.
 _ATTR_RE = re.compile(r'([^\s=/<>]+)(?:\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+))?')
 _TITLE_RE = re.compile(r'(<title[^>]*>).*?(</title>)', re.IGNORECASE | re.DOTALL)
+_KIND_META_RE = re.compile(
+    r'(<meta\s+name="commentable-html-kind"\s+content=")[^"]*(")', re.IGNORECASE)
+
+# Document kinds this tool can stamp. validate._DOC_KINDS is the source of truth;
+# test_new_document asserts these stay in sync so they cannot silently diverge.
+DOC_KINDS = ("report", "plan", "slides", "board", "generic")
+# Kinds for which no document <h1> is auto-added: a slide deck or a board has no title.
+_NO_AUTO_TITLE_KINDS = frozenset({"slides", "board"})
 # HTML void elements never open a nesting level, so they must not shift the top-level depth
 # used to decide whether the fragment already carries its own document title.
 _VOID_ELEMENTS = frozenset((
@@ -244,12 +254,13 @@ def active_root_attrs(html):
 
 
 def make_document(template_html, content, key, label, source=None, generated=None,
-                  allow_reserved_key=False):
+                  allow_reserved_key=False, kind=None):
     """Return a standalone commentable-html document built from `template_html`.
 
     Replaces the fragment between the CONTENT markers with `content` and sets the
-    preceding content root's data-* attributes. Raises ValueError on a refused
-    key or when the CONTENT markers / content root cannot be located. Pass
+    preceding content root's data-* attributes. When `kind` is given it also stamps the
+    <meta name="commentable-html-kind"> so the document declares its kind. Raises ValueError
+    on a refused key or when the CONTENT markers / content root cannot be located. Pass
     `allow_reserved_key=True` only when re-stamping a document that legitimately
     already carries a reserved key (a caller re-stamping an existing document),
     never for a brand-new document.
@@ -280,7 +291,23 @@ def make_document(template_html, content, key, label, source=None, generated=Non
     )
     # Best-effort: keep the browser tab / fallback label in sync with the doc label.
     out = _TITLE_RE.sub(lambda mo: mo.group(1) + _html.escape(label) + mo.group(2), out, count=1)
+    if kind is not None:
+        out = _set_kind_meta(out, kind)
     return out
+
+
+def _set_kind_meta(html, kind):
+    """Set the <meta name="commentable-html-kind"> content to `kind`. If the template has
+    no such meta (a custom template), insert one into <head> so every generated document
+    declares its kind."""
+    new_html, n = _KIND_META_RE.subn(lambda m: m.group(1) + kind + m.group(2), html, count=1)
+    if n:
+        return new_html
+    tag = '<meta name="commentable-html-kind" content="%s" />' % kind
+    m = re.search(r"<head[^>]*>", html, re.IGNORECASE)
+    if m:
+        return html[:m.end()] + "\n" + tag + html[m.end():]
+    return html
 
 
 def _self_validate(html_out, base_dir=None):
@@ -459,6 +486,9 @@ def main(argv):
                         help="explicit logical id used to derive --key auto; requires a stable "
                              "identity and does not fall back to --label")
     parser.add_argument("--label", required=True, help="data-doc-label (also used as the <title>)")
+    parser.add_argument("--kind", required=True, choices=DOC_KINDS,
+                        help="document kind (%s); report and plan require an <h1> title, "
+                             "slides and board do not" % ", ".join(DOC_KINDS))
     parser.add_argument("--source", default=None, help="optional data-doc-source")
     parser.add_argument("--generated", default=None,
                         help="optional data-generated ISO-8601 timestamp for deterministic metadata")
@@ -502,7 +532,7 @@ def main(argv):
     except OSError as exc:
         sys.stderr.write("new_document: cannot read content: %s\n" % exc)
         return 1
-    if not args.no_title:
+    if not args.no_title and args.kind not in _NO_AUTO_TITLE_KINDS:
         content = ensure_doc_title(content, args.label)
 
     prefix = ""
@@ -532,7 +562,8 @@ def main(argv):
     try:
         key = resolve_key(args.key, args.label, key_from_source=args.key_from_source,
                           source=args.source, out=args.out)
-        out_html = make_document(template_html, content, key, args.label, args.source, generated=args.generated)
+        out_html = make_document(template_html, content, key, args.label, args.source,
+                                 generated=args.generated, kind=args.kind)
     except ValueError as exc:
         sys.stderr.write("new_document: %s\n" % exc)
         return 2

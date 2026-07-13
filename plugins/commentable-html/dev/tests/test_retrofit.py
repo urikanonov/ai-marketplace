@@ -61,6 +61,8 @@ class RetrofitCliTests(unittest.TestCase):
         return path
 
     def _run(self, argv):
+        if "--kind" not in argv:
+            argv = argv[:1] + ["--kind", "generic"] + argv[1:]
         out = io.StringIO()
         err = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -95,6 +97,22 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn("<section><h2 id=\"intro\">Intro</h2><p>Hello review.</p></section>", html)
         self.assertIn('id="commentableHtmlLayer"', html)
         self._strict_clean(out)
+
+    def test_kind_is_stamped_and_required(self):
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        out = os.path.join(d, "out.html")
+        # The retrofitted document declares the requested kind (self-validates as a board,
+        # which does not require a title, so the host content needs no <h1>).
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Host Board", "--kind", "board", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        self.assertIn('<meta name="commentable-html-kind" content="board"', _read_text(out))
+        # Omitting --kind is a usage error.
+        with self.assertRaises(SystemExit) as cm:
+            with contextlib.redirect_stderr(io.StringIO()):
+                retrofit.main(["retrofit.py", src, "--label", "X", "--out", out])
+        self.assertEqual(cm.exception.code, 2)
 
     def test_root_selector_stamps_existing_element(self):
         d = self._tmpdir()
