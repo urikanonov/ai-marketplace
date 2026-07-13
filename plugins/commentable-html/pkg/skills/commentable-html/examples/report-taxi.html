@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.29.0" />
+<meta name="commentable-html-version" content="1.30.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.29.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.30.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -1547,7 +1547,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.29.0";
+const CMH_VERSION = "1.30.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3588,11 +3588,12 @@ document.addEventListener("contextmenu", (e) => {
   showMenu(e.clientX, e.clientY);
 });
 document.addEventListener("mouseup", (e) => {
-  // A right-button release belongs to the contextmenu flow (which opens the doc-comment or
-  // text menu). Running the selection cleanup below on it would queue a hideMenu() that
-  // clobbers the just-opened menu, so the menu flickers open then vanishes. Left/middle
-  // button releases still drive the text-selection popup.
-  if (e.button === 2) return;
+  // A right-button release, or a macOS Ctrl-click (a primary-button release with the Control
+  // key held, which the platform turns into a contextmenu gesture), belongs to the contextmenu
+  // flow that opens the doc-comment or text menu. Running the selection cleanup below on it
+  // would queue a hideMenu() that clobbers the just-opened menu, so the menu flickers open then
+  // vanishes. Plain left/middle button releases still drive the text-selection popup.
+  if (e.button === 2 || e.ctrlKey) return;
   if (e.target.closest(".cm-skip")) return;
   setTimeout(() => {
     const got = selectionInRoot();
@@ -5604,17 +5605,28 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
 // active sidebar resize, active widget drag). They must never be baked into a saved or
 // exported file: a persisted "sidebar-open" makes the export render full width with an
 // empty right gutter (the body.sidebar-open .app layout rule) for a sidebar that is not
-// shown. Strip them from ONLY the <body> open tag's class attribute so non-transient
-// classes are preserved; the live layer re-derives the sidebar state on load.
+// shown. Strip them from ONLY the FIRST <body> open tag's class attribute (double-,
+// single-, or unquoted) matching whole tokens, so a <body class="..."> literal elsewhere
+// (inlined script/content) is left alone, a superstring like x-sidebar-open is preserved,
+// and non-transient classes survive; the live layer re-derives the sidebar state on load.
+const _TRANSIENT_BODY_CLASSES = { "sidebar-open": 1, "cm-sidebar-resizing": 1, "cm-widget-dragging": 1 };
 function _stripTransientBodyClasses(html) {
-  return String(html == null ? "" : html)
-    .replace(/(<body\b[^>]*\bclass=")([^"]*)(")/i, function (m, a, cls, c) {
-      return a + cls
-        .replace(/\b(?:sidebar-open|cm-sidebar-resizing|cm-widget-dragging)\b/g, "")
-        .replace(/\s+/g, " ").trim() + c;
-    })
-    .replace(/<body\s+class="">/i, "<body>");
+  return String(html == null ? "" : html).replace(/<body\b[^>]*>/i, function (tag) {
+    return tag.replace(
+      /(\sclass\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i,
+      function (m, pre, dq, sq, uq) {
+        const raw = dq != null ? dq : (sq != null ? sq : uq);
+        const kept = raw.split(/\s+/).filter(function (t) {
+          return t && !Object.prototype.hasOwnProperty.call(_TRANSIENT_BODY_CLASSES, t);
+        });
+        if (kept.length === 0) return "";  // drop an emptied class attribute (and its lead space)
+        const quote = sq != null ? "'" : '"';
+        return pre + quote + kept.join(" ") + quote;
+      });
+  });
 }
+// Exposed for deterministic tests (body-class normalization is pure and worth unit-testing).
+window.__cmhStripTransientBody = function (h) { return _stripTransientBodyClasses(h); };
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).

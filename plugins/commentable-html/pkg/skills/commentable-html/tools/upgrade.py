@@ -24,6 +24,7 @@ import os
 import re
 import sys
 import tempfile
+from html.parser import HTMLParser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_ROOT = os.path.dirname(HERE)
@@ -44,8 +45,40 @@ NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
 
 # Older documents predate the mandatory document-kind meta. On upgrade we add a default
 # (generic) kind so the result declares one and passes validation; the author can change
-# it to report/plan/slides/board afterwards.
-_KIND_META_RE = re.compile(r'<meta\s+name="commentable-html-kind"', re.IGNORECASE)
+# it to report/plan/slides/board afterwards. Detection is order-independent (a reordered
+# <meta content=... name=...> still counts), so an existing kind is never duplicated.
+_KIND_META_NAME = "commentable-html-kind"
+
+
+class _KindMetaFinder(HTMLParser):
+    """Detect a <meta name="commentable-html-kind"> regardless of attribute order."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.found = False
+
+    def _check(self, tag, attrs):
+        if tag.lower() != "meta":
+            return
+        for k, v in attrs:
+            if (k or "").lower() == "name" and (v or "").strip().lower() == _KIND_META_NAME:
+                self.found = True
+
+    def handle_starttag(self, tag, attrs):
+        self._check(tag, attrs)
+
+    def handle_startendtag(self, tag, attrs):
+        self._check(tag, attrs)
+
+
+def _has_kind_meta(html):
+    p = _KindMetaFinder()
+    try:
+        p.feed(html)
+        p.close()
+    except Exception:
+        pass
+    return p.found
 
 
 def _insert_kind_meta(html, kind):
@@ -169,7 +202,8 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
             out = out[:db] + new_inner + out[de:]
             changed.append(name)
     # Migrate a pre-kind document: add the mandatory document-kind meta if it is missing.
-    if not _KIND_META_RE.search(out):
+    # Detection is order-independent so a reordered existing meta is never duplicated.
+    if not _has_kind_meta(out):
         out, added = _insert_kind_meta(out, "generic")
         if added:
             changed.append("kind meta")

@@ -48,6 +48,25 @@ test("a real right-click (mousedown, mouseup, then contextmenu) keeps the doc-co
   await expect(page.locator("#menuDocComment")).toBeVisible();
 });
 
+test("a macOS Ctrl-click (mouseup button:0 ctrlKey, then contextmenu) keeps the doc-comment menu open (CMH-DOCCMT regression)", async ({ page }) => {
+  await open(page);
+  // On macOS a Ctrl-click is the context-menu gesture: it fires a PRIMARY-button
+  // mousedown/mouseup with ctrlKey held, then a contextmenu event. The mouseup path must
+  // treat that as a context-menu gesture (not a plain left release) so it does not clear the
+  // document-comment menu the contextmenu handler just opened. Suppressing cleanup only for
+  // button===2 misses this and the menu flickers open then vanishes.
+  await page.evaluate(() => {
+    const root = document.getElementById("commentRoot");
+    const opts = { bubbles: true, cancelable: true, clientX: 40, clientY: 200, button: 0, ctrlKey: true };
+    root.dispatchEvent(new MouseEvent("mousedown", opts));
+    root.dispatchEvent(new MouseEvent("mouseup", opts));
+    root.dispatchEvent(new MouseEvent("contextmenu", opts));
+  });
+  await page.waitForTimeout(40);
+  await expect(page.locator("#contextMenu")).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeVisible();
+});
+
 test("right-click on a link leaves the native menu (no context menu shown)", async ({ page }) => {
   await open(page);
   await rightClick(page, "#lnk");

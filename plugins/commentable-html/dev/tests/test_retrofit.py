@@ -114,6 +114,46 @@ class RetrofitCliTests(unittest.TestCase):
                 retrofit.main(["retrofit.py", src, "--label", "X", "--out", out])
         self.assertEqual(cm.exception.code, 2)
 
+    def test_existing_kind_meta_is_replaced_not_duplicated(self):
+        # #81 hardening: a host that already declares a commentable-html-kind meta must not end
+        # up with TWO kind metas after a retrofit. The existing meta is REPLACED with the
+        # requested kind, so exactly one remains and it is the requested one. A report needs a
+        # top-level <h1>, which the host provides, so the result self-validates clean.
+        d = self._tmpdir()
+        host = HOST_HTML.replace(
+            "<title>Host Report</title>",
+            '<title>Host Report</title>\n<meta name="commentable-html-kind" content="generic" />')
+        host = host.replace("<section>", '<h1 id="doc-title">Host Report</h1>\n<section>')
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Host Report", "--kind", "report", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertEqual(html.count("commentable-html-kind"), 1,
+                         "retrofit duplicated the kind meta: %d present" % html.count("commentable-html-kind"))
+        self.assertIn('<meta name="commentable-html-kind" content="report"', html)
+        self.assertNotIn('content="generic"', html)
+        self._strict_clean(out)
+
+    def test_reordered_existing_kind_meta_is_replaced(self):
+        # The existing kind meta is detected order-independently (content before name), so a
+        # non-canonical attribute order still triggers a replace, not a duplicate append.
+        d = self._tmpdir()
+        host = HOST_HTML.replace(
+            "<title>Host Report</title>",
+            '<title>Host Report</title>\n<meta content="board" name="commentable-html-kind">')
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Host Board", "--kind", "board", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertEqual(html.count("commentable-html-kind"), 1,
+                         "retrofit duplicated the kind meta: %d present" % html.count("commentable-html-kind"))
+        self.assertIn('content="board"', html)
+        self._strict_clean(out)
+
     def test_root_selector_stamps_existing_element(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML.replace("<section", '<div id="content"><section').replace("</section>", "</section></div>"))

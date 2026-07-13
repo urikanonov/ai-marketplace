@@ -73,7 +73,6 @@ FORBIDDEN_IDS = [
 SAFE_ID_RE = re.compile(r"^c[a-z0-9]{6,63}$")
 _PRE_TAG_RE = re.compile(r"<pre\b([^>]*)>(.*?)</pre>", re.DOTALL | re.IGNORECASE)
 _CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE)
-_BODY_OPEN_RE = re.compile(r"<body\b[^>]*>", re.IGNORECASE)
 # Transient runtime UI-state classes the layer toggles on document.body (sidebar open, active
 # sidebar resize, active widget drag). They must never be baked into a shipped <body>: a persisted
 # "sidebar-open" makes the document render full width with an empty sidebar gutter (the
@@ -307,6 +306,7 @@ class _DocParser(HTMLParser):
         self.all_ids = []        # every element id value, in document order
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
+        self.body_attrs = None           # attrs dict of the REAL <body> start tag (first one)
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
         self._cur_script = None   # (pos, attrs_dict) while inside a <script>
@@ -315,8 +315,9 @@ class _DocParser(HTMLParser):
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
         self._cr_depth = None        # stack depth at which #commentRoot was entered
         self._cr_closed = False      # True once #commentRoot (or an ancestor) has closed
-        self.headings = []           # [{"id": str|None, "text": str}] for headings in #commentRoot
-        self._cur_heading = None     # (tag, id, [parts]) while capturing a heading's text
+        self.headings = []           # [{"id": str|None, "text": str, "top_level": bool}] in #commentRoot
+        self._cur_heading = None     # (tag, id, [parts], top_level) while capturing a heading's text
+        self.has_top_level_lede = False  # a direct child of #commentRoot carries class cmh-lede
         self._figure_chart = []      # stack of bool: is each open <figure> a chart figure
         self.has_offline_chart = False
 
@@ -375,6 +376,8 @@ class _DocParser(HTMLParser):
     def _record(self, tag, ad, own_skip):
         if self._in_template():
             return  # inert template content
+        if tag == "body" and self.body_attrs is None:
+            self.body_attrs = ad
         if tag == "meta":
             nm = (ad.get("name") or "").strip().lower()
             if nm and nm not in self.metas:
@@ -399,6 +402,12 @@ class _DocParser(HTMLParser):
                 if self.comment_root_attrs is None:
                     self.comment_root_attrs = ad
                     self._cr_depth = len(self.stack)  # commentRoot is pushed at this index
+        # A top-level (direct-child) element of #commentRoot carrying cmh-lede is the document's
+        # own title header (new_document.ensure_doc_title emits <header class="cmh-lede"><h1>).
+        if (self._cr_depth is not None and not self._cr_closed
+                and len(self.stack) == self._cr_depth + 1
+                and "cmh-lede" in set((ad.get("class") or "").split())):
+            self.has_top_level_lede = True
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -420,7 +429,8 @@ class _DocParser(HTMLParser):
         if (tag in _HEADING_TAGS and self._cur_heading is None and self._cr_depth is not None
                 and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
-            self._cur_heading = (tag, ad.get("id"), [])
+            top_level = (len(self.stack) == self._cr_depth + 1)
+            self._cur_heading = (tag, ad.get("id"), [], top_level)
         if tag not in VOID:
             self.stack.append((tag, own_skip))
             current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
@@ -480,7 +490,8 @@ class _DocParser(HTMLParser):
             text = re.sub(r"\s+", " ", "".join(self._cur_heading[2])).strip()
             if text:
                 self.headings.append({"tag": self._cur_heading[0],
-                                      "id": self._cur_heading[1], "text": text})
+                                      "id": self._cur_heading[1], "text": text,
+                                      "top_level": self._cur_heading[3]})
             self._cur_heading = None
         for i in range(len(self.stack) - 1, -1, -1):
             if self.stack[i][0] == tag:
@@ -638,6 +649,24 @@ def _find_tag_attrs(html, tag):
     return p.found
 
 
+_ADX_RUN_HOST = "dataexplorer.azure.com"
+
+
+def _is_adx_run_href(href):
+    """True only for an https URL whose host is exactly the ADX web UX host.
+
+    The href is already HTML-entity-decoded by the parser, so an encoded scheme
+    (&#106;avascript:) is caught. Parsing the URL (not a substring match) means a
+    javascript:/data: scheme or a look-alike host (dataexplorer.azure.com.evil.example)
+    cannot pass."""
+    try:
+        u = urlparse((href or "").strip())
+        host = (u.hostname or "").lower()
+    except ValueError:
+        return False
+    return u.scheme == "https" and host == _ADX_RUN_HOST
+
+
 def _link_loads(attrs):
     rels = set((attrs.get("rel") or "").lower().split())
     return bool(rels & FETCHING_LINK_RELS)
@@ -790,11 +819,12 @@ def check_document_kind(parser):
         return ['unknown document kind "%s" in <meta name="%s"> - use one of: %s'
                 % (kind, _KIND_META_NAME, ", ".join(_DOC_KINDS))]
     if kind in _KINDS_REQUIRING_H1:
-        has_h1 = any(h.get("tag") == "h1" and (h.get("text") or "").strip()
-                     for h in parser.headings)
-        if not has_h1:
+        has_top_level_h1 = any(h.get("tag") == "h1" and (h.get("text") or "").strip()
+                               and h.get("top_level") for h in parser.headings)
+        if not (has_top_level_h1 or parser.has_top_level_lede):
             return ['kind "%s" requires a top-level <h1> title inside #commentRoot, but the '
-                    "document has none - add an <h1>, or set the kind to "
+                    "document has none - add a top-level <h1> (or a top-level "
+                    '<header class="cmh-lede"> title), or set the kind to '
                     '"slides", "board", or "generic" if no title is wanted' % kind]
     return []
 
@@ -1229,18 +1259,30 @@ def check_layer(html, parser, base_dir=None):
             warnings.append('a "cmh-kql-run" link uses target="_blank" without rel="noopener" '
                             "(reverse-tabnabbing risk); add rel=\"noopener noreferrer\"")
 
-    # 11d) A framed KQL figure (figure.cmh-kql) with no "Run in Azure Data Explorer" link (class
-    #      cmh-kql-run) leaves the reader unable to open the query in ADX. The run link is
-    #      MANDATORY on a framed figure, so a missing one is a hard ERROR (not a warning).
-    #      Bare, unframed KQL in a plain <pre> is intentionally exempt: an illustrative query
-    #      with no real cluster/database belongs in a <pre> code block, not a framed figure.
+    # 11d) A framed KQL figure (figure.cmh-kql) must carry a working "Run in Azure Data Explorer"
+    #      link (a real <a class="cmh-kql-run"> element) so the reader can open the query in ADX.
+    #      A missing run link is a hard ERROR; so is a PRESENT run link whose href is not an
+    #      https URL on host dataexplorer.azure.com (a javascript:/data:/non-ADX href must never
+    #      pass). The run link is detected by an actual <a> element carrying the cmh-kql-run class
+    #      token (parsed, entity-decoded) - NOT a raw substring - so query text that merely
+    #      mentions "cmh-kql-run" does not satisfy the requirement. Bare, unframed KQL in a plain
+    #      <pre> is intentionally exempt (an illustrative query belongs in a <pre> code block).
     for fm in re.finditer(r"<figure\b([^>]*)>(.*?)</figure>", html, re.IGNORECASE | re.DOTALL):
         if not _attrs_have_class(fm.group(1), "cmh-kql"):
             continue
-        if "cmh-kql-run" not in fm.group(2):
+        run_links = [a for a in _find_tag_attrs(fm.group(2), "a")
+                     if "cmh-kql-run" in (a.get("class") or "").split()]
+        if not run_links:
             errors.append('a figure.cmh-kql has no "Run in Azure Data Explorer" link (class cmh-kql-run); '
                           "build one with tools/kusto_link.py so readers can open the query in ADX "
                           "(or use a plain <pre> code block if the query is purely illustrative)")
+            continue
+        for a in run_links:
+            if not _is_adx_run_href(a.get("href", "")):
+                errors.append('a figure.cmh-kql "Run in Azure Data Explorer" link (class cmh-kql-run) '
+                              "does not point at an https://dataexplorer.azure.com/ URL (href="
+                              "%r) - build it with tools/kusto_link.py so the query opens safely in ADX"
+                              % ((a.get("href", "") or "")[:80]))
 
     # 11e) Self-contained guarantee: the finished document must not pull resources over the
     #      network (the core promise is a single self-contained file). <a href> links
@@ -1359,11 +1401,13 @@ def check_layer(html, parser, base_dir=None):
     #      tag. A persisted "sidebar-open" makes the document render full width with an empty
     #      sidebar gutter (the body.sidebar-open .app layout rule) for a sidebar that is not
     #      shown; the runtime re-derives the sidebar state on load, so the class is redundant.
-    #      Inspect ONLY the <body> open tag so a legitimate CSS/JS reference is not flagged.
-    _body_open = _BODY_OPEN_RE.search(html)
-    if _body_open:
+    #      Inspect the REAL parsed <body> element (not the first raw "<body ...>" token) so a
+    #      decoy "<body ...>" literal inside a head <script>/comment cannot hide a dirty real
+    #      body or false-flag a benign mention.
+    if parser.body_attrs is not None:
+        _body_classes = set((parser.body_attrs.get("class") or "").split())
         for _cls in _TRANSIENT_BODY_CLASSES:
-            if _attrs_have_class(_body_open.group(0), _cls):
+            if _cls in _body_classes:
                 errors.append('<body> carries the transient runtime UI-state class "%s" - it must '
                               "never be baked into a shipped document (the layer re-derives it on "
                               "load); remove it from the <body> open tag" % _cls)

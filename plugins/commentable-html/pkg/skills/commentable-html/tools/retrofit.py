@@ -30,6 +30,7 @@ OPTIONAL_END_TAGS = frozenset((
 ))
 
 LAYER_IDS = {"commentableHtmlLayer", "handledCommentIds", "embeddedComments"}
+_KIND_META_NAME = "commentable-html-kind"
 CSS_COLLISION_RE = re.compile(r"--cp-[A-Za-z0-9_-]*|(?:[.#])cm-[A-Za-z0-9_-]+|color-scheme\s*:", re.I)
 Z_INDEX_RE = re.compile(r"z-index\s*:\s*(-?\d+)", re.I)
 SELECTOR_RE = re.compile(r"^(?:#[A-Za-z_][\w:.-]*|\.[A-Za-z_][\w:.-]*|[A-Za-z][\w:-]*)$")
@@ -252,11 +253,28 @@ def _template(portable):
         return fh.read()
 
 
-def _layer_parts(portable, kind):
+def _kind_meta_tag(kind):
+    return '<meta name="commentable-html-kind" content="%s" />' % kind
+
+
+def _find_kind_meta(parser):
+    """Return the existing commentable-html-kind <meta> Element, order-independent, or None.
+
+    Detection reads the parsed attribute map (not attribute order or a raw regex), so a host
+    that already declares a kind meta - even with content before name - is found and REPLACED
+    rather than duplicated by a second appended meta."""
+    for elem in parser.elements:
+        if elem.tag == "meta" and (elem.attr_map.get("name") or "").strip().lower() == _KIND_META_NAME:
+            return elem
+    return None
+
+
+def _layer_parts(portable, kind, include_kind=True):
     template = _template(portable)
     head = ""
     head += _one_line(template, r'<meta\s+name="commentable-html-version"[^>]*>', "version meta")
-    head += '<meta name="commentable-html-kind" content="%s" />\n' % kind
+    if include_kind:
+        head += _kind_meta_tag(kind) + "\n"
     head += _one_line(template, r'<script\s+type="application/json"\s+id="commentableHtmlLayer"[^>]*>.*?</script>',
                       "layer descriptor")
     if portable:
@@ -491,7 +509,9 @@ def build_retrofit(html, args, out_path):
     source = _source_attr(args)
     head = parser.heads[0]
     body = parser.bodies[0]
-    head_insert, body_top, body_bottom = _layer_parts(args.portable, args.kind)
+    existing_kind_meta = _find_kind_meta(parser)
+    head_insert, body_top, body_bottom = _layer_parts(
+        args.portable, args.kind, include_kind=existing_kind_meta is None)
     title_insert = _insert_title_if_missing(html, head, args.label)
 
     edits = [
@@ -526,6 +546,12 @@ def build_retrofit(html, args, out_path):
             (root.start_end, root.start_end, "\n" + new_document.BEGIN_MARKER + "\n"),
             (root.end_start, root.end_start, "\n" + new_document.END_MARKER + "\n"),
         ])
+
+    # A host that already declares a kind meta gets that meta REPLACED with the requested kind
+    # (the layer head insert omits its own kind meta in this case), so the result never carries
+    # two kind metas with a conflicting effective kind.
+    if existing_kind_meta is not None:
+        edits.append((existing_kind_meta.start, existing_kind_meta.start_end, _kind_meta_tag(args.kind)))
 
     result = _edits_apply(html, edits)
     if not args.portable:

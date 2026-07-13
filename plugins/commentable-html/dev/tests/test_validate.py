@@ -114,6 +114,30 @@ MAIN_H1 = (
     "</main>"
 )
 
+# A report/plan whose only <h1> is buried inside a <section> - a NESTED heading, not the
+# document's own top-level title. new_document (and #81) require a top-level title, so this
+# must fail the report/plan h1 rule.
+MAIN_NESTED_H1 = (
+    '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+    + CONTENT_BEGIN + "\n"
+    "  <section><h1>Buried Title</h1></section>\n"
+    "  <p>content</p>\n"
+    + CONTENT_END + "\n"
+    "</main>"
+)
+
+# new_document's auto-title wraps the <h1> in a top-level <header class="cmh-lede">. That
+# lede header is a direct child of #commentRoot and is the document's title, so it must
+# satisfy the report/plan h1 rule (this pins compatibility with new_document.ensure_doc_title).
+MAIN_LEDE_H1 = (
+    '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+    + CONTENT_BEGIN + "\n"
+    '  <header class="cmh-lede">\n    <h1>Lede Title</h1>\n  </header>\n'
+    "  <p>content</p>\n"
+    + CONTENT_END + "\n"
+    "</main>"
+)
+
 _MERMAID_LOADER = (
     '<script type="module">const m = (await import('
     '"https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
@@ -242,6 +266,27 @@ class ValidateUnitTests(unittest.TestCase):
         self.assertFalse(any("sidebar-open" in e for e in errors),
                          "the guard false-positived on a non-<body> sidebar-open reference: %r" % errors)
 
+    def test_sidebar_open_decoy_before_real_body_is_clean(self):
+        # CMH-VAL-10: the guard must inspect the REAL parsed <body>, not the first raw
+        # "<body ...>" token in the file. A fake "<body class=sidebar-open>" literal inside a
+        # head <script> BEFORE the clean real <body> must NOT be flagged (no dirty real body).
+        decoy = "<script>var t = '<body class=\"sidebar-open\">';</script>\n"
+        doc = build().replace("</head>", decoy + "</head>", 1)
+        self.assertNotEqual(doc, build(), "fixture setup: could not inject a head-script <body> decoy")
+        errors, _ = _validate_text(doc)
+        self.assertFalse(any("sidebar-open" in e for e in errors),
+                         "the guard false-positived on a decoy <body> before the real body: %r" % errors)
+
+    def test_sidebar_open_real_body_after_decoy_errors(self):
+        # CMH-VAL-10: a benign "<body ...>" decoy that appears first must not let a genuinely
+        # dirty real <body> slip through. The real body carries sidebar-open, so it must error
+        # even though an earlier decoy token has no transient class.
+        decoy = "<script>var t = '<body class=\"host-shell\">';</script>\n"
+        doc = build().replace("</head>", decoy + "</head>", 1)
+        doc = doc.replace("<body>\n", '<body class="sidebar-open">\n', 1)
+        self.assertIn('<body class="sidebar-open">', doc, "fixture setup: real body not made dirty")
+        self.assertError(doc, "sidebar-open")
+
     # -- document kind (CMH-KIND) ------------------------------------------- #
     def _report_body(self):
         return [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN_H1, JS_REGION]
@@ -263,6 +308,20 @@ class ValidateUnitTests(unittest.TestCase):
 
     def test_report_with_h1_is_clean(self):
         self.assertOkNoWarn(build(kind="report", body=self._report_body()))
+
+    def test_report_with_nested_only_h1_errors(self):
+        # CMH-KIND-01: a report/plan h1 must be the document's top-level title. An <h1> buried
+        # inside a <section> is not a top-level title and must NOT satisfy the rule (new_document
+        # requires a top-level title; the old rule accepted any nested h1 anywhere in #commentRoot).
+        body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN_NESTED_H1, JS_REGION]
+        self.assertError(build(kind="report", body=body), "requires a top-level <h1>")
+
+    def test_report_with_lede_wrapped_h1_is_clean(self):
+        # CMH-KIND-01: new_document.ensure_doc_title wraps the h1 in a top-level
+        # <header class="cmh-lede">. That lede header is the document's title, so a report
+        # whose top-level title is a lede-wrapped h1 must validate clean (matches new_document).
+        body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN_LEDE_H1, JS_REGION]
+        self.assertOkNoWarn(build(kind="report", body=body))
 
     def test_plan_with_h1_is_clean(self):
         self.assertOkNoWarn(build(kind="plan", body=self._report_body()))
@@ -373,6 +432,50 @@ class ValidateUnitTests(unittest.TestCase):
                '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
+    def _kql_figure(self, run_link_html):
+        return ('<figure class="cmh-kql"><figcaption class="cm-skip">'
+                '<button class="cmh-kql-title" type="button">cluster</button>'
+                + run_link_html +
+                '</figcaption><pre><code class="language-kusto">T | take 1</code></pre></figure>')
+
+    def _kql_doc(self, fig):
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
+        return build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+
+    def test_kql_figure_javascript_run_link_errors(self):
+        # CMH-KQL-07 hardening: a PRESENT cmh-kql-run link with a non-https / non-ADX href on a
+        # framed figure is a hard ERROR, not a warning - a javascript: URL must never pass.
+        fig = self._kql_figure('<a class="cmh-kql-run" href="javascript:alert(1)">Run</a>')
+        self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+
+    def test_kql_figure_data_run_link_errors(self):
+        fig = self._kql_figure('<a class="cmh-kql-run" href="data:text/html,x">Run</a>')
+        self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+
+    def test_kql_figure_http_non_adx_run_link_errors(self):
+        fig = self._kql_figure('<a class="cmh-kql-run" href="http://dataexplorer.azure.com/x">Run</a>')
+        self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+
+    def test_kql_figure_lookalike_host_run_link_errors(self):
+        # A look-alike host must not pass a substring test: parse the URL and require the host be
+        # exactly dataexplorer.azure.com.
+        fig = self._kql_figure('<a class="cmh-kql-run" href="https://dataexplorer.azure.com.evil.example/x">Run</a>')
+        self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+
+    def test_kql_figure_entity_encoded_javascript_run_link_errors(self):
+        # The href is HTML-entity-decoded before parsing, so an encoded javascript: scheme is caught.
+        fig = self._kql_figure('<a class="cmh-kql-run" href="&#106;avascript:alert(1)">Run</a>')
+        self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+
+    def test_kql_figure_run_link_only_in_query_text_errors_missing(self):
+        # CMH-KQL-07: the run link must be a real <a class="cmh-kql-run"> element, not a raw
+        # substring. A figure whose QUERY TEXT merely mentions "cmh-kql-run" (with no real link)
+        # must be reported as MISSING the run link.
+        fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
+               '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
+               '<pre><code class="language-kusto">T | where note == "cmh-kql-run"</code></pre></figure>')
+        self.assertError(self._kql_doc(fig), 'figure.cmh-kql has no "Run in Azure Data Explorer" link')
 
     def test_real_template_is_clean(self):
         self.assertTrue(os.path.exists(TEMPLATE), "dist/PORTABLE.html not found next to the tests")

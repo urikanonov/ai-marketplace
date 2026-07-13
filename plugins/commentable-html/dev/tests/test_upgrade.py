@@ -53,6 +53,23 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertIn("kind meta", changed)
         self.assertIn(marker, out)
 
+    def test_reordered_kind_meta_is_not_duplicated_on_upgrade(self):
+        # #81 hardening: an existing kind meta whose attributes are in a non-canonical order
+        # (content before name) must still be detected, so upgrade does NOT append a second
+        # (generic) kind meta. Two kind metas would leave the document with the wrong
+        # effective kind (the inserted generic one wins as it lands higher in <head>).
+        tpl = _tpl()
+        canonical = '<meta name="commentable-html-kind" content="generic" />'
+        self.assertIn(canonical, tpl)
+        reordered = '<meta content="report" name="commentable-html-kind" />'
+        legacy = tpl.replace(canonical, reordered, 1)
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertNotIn("kind meta", changed)
+        self.assertEqual(out.count("commentable-html-kind"), 1,
+                         "upgrade duplicated the kind meta: %d present" % out.count("commentable-html-kind"))
+        self.assertIn(reordered, out)
+        self.assertNotIn(canonical, out)
+
     def test_stale_css_region_is_restored_only(self):
         tpl = _tpl()
         target = _mutate_region_inner(tpl, "CSS", "\n/* STALE-SENTINEL */\n")
