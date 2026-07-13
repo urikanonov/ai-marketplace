@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.27.0";
+const CMH_VERSION = "1.28.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4085,17 +4085,34 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
 // try to overwrite the original file in-place (the File System Access
 // flow had confusing semantics around "which file does the next save go
 // to" once the user picks a different name).
+// Transient runtime UI-state classes the layer toggles on document.body (sidebar open,
+// active sidebar resize, active widget drag). They must never be baked into a saved or
+// exported file: a persisted "sidebar-open" makes the export render full width with an
+// empty right gutter (the body.sidebar-open .app layout rule) for a sidebar that is not
+// shown. Strip them from ONLY the <body> open tag's class attribute so non-transient
+// classes are preserved; the live layer re-derives the sidebar state on load.
+function _stripTransientBodyClasses(html) {
+  return String(html == null ? "" : html)
+    .replace(/(<body\b[^>]*\bclass=")([^"]*)(")/i, function (m, a, cls, c) {
+      return a + cls
+        .replace(/\b(?:sidebar-open|cm-sidebar-resizing|cm-widget-dragging)\b/g, "")
+        .replace(/\s+/g, " ").trim() + c;
+    })
+    .replace(/<body\s+class="">/i, "<body>");
+}
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
+  // Either base may carry transient body state (a stale/open-sidebar source), so
+  // normalize it here once for every export path (Save, Portable, Offline, Plain).
   try {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
       const t = await r.text();
-      if (t && t.includes('id="embeddedComments"')) return t;
+      if (t && t.includes('id="embeddedComments"')) return _stripTransientBodyClasses(t);
     }
   } catch (e) { /* fall through to snapshot */ }
-  return _snapshotWithTail();
+  return _stripTransientBodyClasses(_snapshotWithTail());
 }
 function _isInjectedChrome(n) {
   if (n.nodeType !== 1) return false;
@@ -4293,10 +4310,7 @@ function _buildPlainHtml(baseHtml) {
   t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[^\n]*-->\s*/i, "");
   t = t.replace(_cmhScriptTagPattern("[^>]*commentable-html[^>]*\\.js[^>]*", "\\s*", "ig"), "");
   t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->\s*/i, "");
-  t = t.replace(/(<body[^>]*class=")([^"]*)(")/, function (m, a, cls, c) {
-    return a + cls.replace(/\bsidebar-open\b/, "").replace(/\s+/g, " ").trim() + c;
-  });
-  t = t.replace(/<body\s+class="">/, "<body>");
+  t = _stripTransientBodyClasses(t);
   // Data-safety net: the comment-data scripts must be gone. If a malformed or hand-edited
   // marker made a region strip miss, fail loudly instead of downloading a plain file that
   // still leaks the comments.
