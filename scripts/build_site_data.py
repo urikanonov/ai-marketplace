@@ -38,6 +38,16 @@ TUTORIAL_IMAGES_SRC = os.path.join(
 TUTORIAL_PAGE = os.path.join("site", "commentable-html", "tutorial", "index.html")
 TUTORIAL_IMAGES_DST = os.path.join("site", "commentable-html", "tutorial", "tutorial-images")
 
+# Site pages: the hand-edited SOURCE templates live under site-src/pages/ and the committed pages
+# under site/ are PURE build artifacts assembled by build_page(). Keeping the source separate from
+# the artifact (mirroring the site-src/css/ partials) is what lets --check cover the ENTIRE page,
+# so a hand-edit or a stale copy committed by a concurrent PR fails CI instead of silently landing.
+HUB_SRC = os.path.join("site-src", "pages", "index.html")
+HUB_OUT = os.path.join("site", "index.html")
+PLUGIN_SRC = os.path.join("site-src", "pages", "commentable-html", "index.html")
+PLUGIN_OUT = os.path.join("site", "commentable-html", "index.html")
+TUTORIAL_PAGE_SRC = os.path.join("site-src", "pages", "commentable-html", "tutorial", "index.html")
+
 # The commentable-html skill root. The tutorial references example files with
 # skill-root-relative display paths; locally (in the shipped skill) those links resolve to
 # the local asset, while on the generated site they are rewritten to point at the live demo
@@ -80,10 +90,23 @@ def safe_url(url):
 
 def read_text(path):
     with open(path, "r", encoding="utf-8", newline="") as fh:
-        return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+        return fh.read().replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")
+
+
+def _safe_makedirs(directory):
+    """Create a directory tree, turning a directory-vs-file path conflict into a clear SystemExit
+    instead of a raw NotADirectoryError/FileExistsError traceback."""
+    if not directory:
+        return
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except OSError as exc:
+        raise SystemExit("cannot create output directory %s (%s); a file may exist where a "
+                         "directory is expected" % (directory, exc))
 
 
 def write_text(path, text):
+    _safe_makedirs(os.path.dirname(path))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
 
@@ -99,12 +122,20 @@ _ASSET_REF_RE = re.compile(
 
 
 def _asset_hash(root, name):
+    # styles.css is itself a build artifact (assembled from site-src/css/ partials), so hash the
+    # freshly-built stylesheet rather than the on-disk copy: the page's ?v= stamp then reflects the
+    # SOURCE partials directly (a pure artifact), it is normalization-independent, and a missing or
+    # stale site/assets/styles.css cannot crash --check or embed a stale hash. Other assets (site.js)
+    # are hand-maintained files, so their bytes on disk are the source of truth.
+    if name == "styles.css":
+        return hashlib.sha256(build_styles(root).encode("utf-8")).hexdigest()[:12]
     path = os.path.join(root, "site", "assets", name)
     try:
         with open(path, "rb") as fh:
             data = fh.read()
-    except FileNotFoundError:
-        raise SystemExit("cache-busted asset missing: %s" % path)
+    except OSError as exc:
+        raise SystemExit("cannot read required cache-busted asset %s (%s); it is a committed "
+                         "source, not generated - restore it" % (path, exc))
     return hashlib.sha256(data).hexdigest()[:12]
 
 
@@ -121,8 +152,80 @@ CSS_PARTS = (
 
 
 def build_styles(root):
-    return "".join(
-        read_text(os.path.join(root, "site-src", "css", name)) for name in CSS_PARTS)
+    parts = []
+    for name in CSS_PARTS:
+        path = os.path.join(root, "site-src", "css", name)
+        if not os.path.isfile(path):
+            raise SystemExit("CSS partial missing: %s (restore it or update CSS_PARTS)" % path)
+        parts.append(read_text(path))
+    return css_banner() + "".join(parts)
+
+
+# Generated site artifacts carry a "DO NOT EDIT" banner that names their source, so a human who
+# opens the built file under site/ is told to edit the source and rebuild instead. `--check` then
+# guarantees the committed artifact still equals a fresh build, so a hand-edit (or a stale copy
+# committed by a concurrent PR) fails CI instead of silently shipping.
+GENERATED_BANNER_PREFIX = "GENERATED FILE - DO NOT EDIT."
+_RUN_HINT = "run: python scripts/build_site_data.py"
+
+
+def css_banner():
+    return ("/* %s Built from site-src/css/*.css by scripts/build_site_data.py; %s */\n"
+            % (GENERATED_BANNER_PREFIX, _RUN_HINT))
+
+
+def page_banner(source_rel):
+    return ("<!-- %s Built from %s by scripts/build_site_data.py; %s -->"
+            % (GENERATED_BANNER_PREFIX, source_rel.replace(os.sep, "/"), _RUN_HINT))
+
+
+_PAGE_BANNER_RE = re.compile(
+    r"^[ \t]*<!-- %s[^\n]*?-->[ \t]*\r?\n?" % re.escape(GENERATED_BANNER_PREFIX))
+_DOCTYPE_RE = re.compile(r"(?i)^(\s*<!doctype[^>]*>)([ \t]*\r?\n?)")
+
+
+def apply_page_banner(html, source_rel):
+    """Insert the DO NOT EDIT banner right after the doctype (replacing any prior banner in that
+    exact slot), so the built page self-identifies as an artifact and points at its source. The
+    strip is anchored to the position right after the doctype, so a body comment that happens to
+    start with the banner prefix is never removed; the doctype match tolerates any doctype variant."""
+    banner = page_banner(source_rel)
+    m = _DOCTYPE_RE.match(html)
+    if m:
+        rest = _PAGE_BANNER_RE.sub("", html[m.end():], count=1)
+        return m.group(1) + (m.group(2) or "\n") + banner + "\n" + rest
+    return banner + "\n" + _PAGE_BANNER_RE.sub("", html, count=1)
+
+
+def build_page(root, source_rel, region_fillers):
+    """Assemble one site page ARTIFACT from its site-src/pages SOURCE: fill each marker region,
+    cache-bust asset references, and inject the DO NOT EDIT banner. The source is independent of
+    the built artifact under site/, so `--check` (comparing this result to the committed artifact)
+    covers the whole page - not just the marker regions - which is what closes the site clobber gap."""
+    out = read_text(os.path.join(root, source_rel))
+    if not _DOCTYPE_RE.match(out):
+        raise SystemExit("page source %s must begin with a <!doctype ...> declaration"
+                         % source_rel.replace(os.sep, "/"))
+    # Count only line-leading doctype declarations (how a real duplicate from a bad merge appears),
+    # so a literal "<!doctype" embedded in prose, a script string, or a comment never false-trips.
+    if len(re.findall(r"(?im)^[ \t]*<!doctype\b", out)) != 1:
+        raise SystemExit("page source %s must contain exactly one <!doctype ...> declaration "
+                         "(a second one is usually a merge artifact)" % source_rel.replace(os.sep, "/"))
+    for kind, name, value in region_fillers:
+        if kind == "inline":
+            out = replace_region_inline(out, name, value)
+        elif kind == "block":
+            out = replace_region_block(out, name, value)
+        else:
+            raise SystemExit("build_page: unknown region filler kind %r (use 'inline' or 'block')" % kind)
+    out = stamp_assets(out, root)
+    return apply_page_banner(out, source_rel)
+
+
+def _read_artifact(path):
+    """Return the committed artifact text, or None when it is missing (or is not a regular file) so
+    an absent built page counts as drift under --check."""
+    return read_text(path) if os.path.isfile(path) else None
 
 
 def stamp_assets(text, root):
@@ -280,13 +383,19 @@ def render_jsonld(manifest):
     return _jsonld_script(data)
 
 
+def _tutorial_source_exists(root):
+    """The tutorial is the one OPTIONAL page: its sitemap and llms.txt links are gated on this so the
+    two call sites can never silently diverge (both must key off the SOURCE, not the built artifact)."""
+    return os.path.isfile(os.path.join(root, TUTORIAL_PAGE_SRC))
+
+
 def site_page_urls(root):
     """Absolute URLs of the indexable HTML pages: the hub, each plugin page, and the tutorial when
-    its generated page exists. Used for the sitemap."""
+    its source page exists. Used for the sitemap."""
     urls = [SITE_BASE_URL]
     for page in PLUGIN_PAGES.values():
         urls.append(SITE_BASE_URL + page.lstrip("./"))
-    if os.path.exists(os.path.join(root, TUTORIAL_PAGE)):
+    if _tutorial_source_exists(root):
         rel = os.path.relpath(TUTORIAL_PAGE, "site").replace(os.sep, "/")
         urls.append(SITE_BASE_URL + rel[: -len("index.html")])
     return urls
@@ -299,9 +408,10 @@ def render_sitemap(root):
             "%s\n</urlset>\n") % locs
 
 
-def render_llms(manifest):
+def render_llms(root, manifest):
     """An llms.txt (Markdown) front door for LLM crawlers: the marketplace summary, how to install,
-    a list of plugins with links and descriptions, and the tutorial link, all from the manifest."""
+    a list of plugins with links and descriptions, and the tutorial link (only when the tutorial
+    source exists), all from the manifest."""
     description = manifest.get("metadata", {}).get("description", "")
     suffix = manifest.get("name", "")
     lines = ["# " + SITE_NAME, "", "> " + description, ""]
@@ -313,8 +423,9 @@ def render_llms(manifest):
     for plugin in manifest.get("plugins", []):
         lines.append("- [%s](%s): %s" % (
             plugin.get("name", ""), _plugin_app_url(plugin), plugin.get("description", "")))
-    lines.extend(["", "## Documentation",
-                  "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
+    if _tutorial_source_exists(root):
+        lines.extend(["", "## Documentation",
+                      "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
     return "\n".join(lines)
 
 
@@ -463,7 +574,11 @@ def _orphans(dst_dir, allowed_names, check):
         if check:
             drift.append(name + " (orphaned)")
         else:
-            os.remove(os.path.join(dst_dir, name))
+            try:
+                os.remove(os.path.join(dst_dir, name))
+            except OSError as exc:
+                sys.stderr.write("warning: could not remove orphaned file %s (%s); "
+                                 "delete it manually\n" % (os.path.join(dst_dir, name), exc))
     return drift
 
 
@@ -481,7 +596,7 @@ def sync_demos(root, check):
             if not os.path.exists(dst) or _read_normalized(dst) != src_bytes:
                 drift.append(name)
         else:
-            os.makedirs(dst_dir, exist_ok=True)
+            _safe_makedirs(dst_dir)
             with open(dst, "wb") as fh:
                 fh.write(src_bytes)
     drift.extend(_orphans(dst_dir, DEMO_FILES, check))
@@ -638,7 +753,7 @@ def sync_tutorial_images(root, check):
             if existing != data:
                 drift.append(name)
         else:
-            os.makedirs(dst_dir, exist_ok=True)
+            _safe_makedirs(dst_dir)
             with open(dst, "wb") as fh:
                 fh.write(data)
     drift.extend(_orphans(dst_dir, src_names, check))
@@ -657,8 +772,14 @@ def main(argv):
     root = args.root
     manifest_path = args.manifest or os.path.join(root, ".github", "plugin", "marketplace.json")
 
+    if not os.path.isfile(manifest_path):
+        raise SystemExit("manifest missing: %s (expected the marketplace manifest; pass --manifest "
+                         "or restore it)" % manifest_path)
     with open(manifest_path, "r", encoding="utf-8") as fh:
-        manifest = json.load(fh)
+        try:
+            manifest = json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise SystemExit("invalid JSON in manifest %s: %s" % (manifest_path, exc))
 
     # Assemble the served stylesheet from its source partials before anything stamps its hash.
     styles_text = build_styles(root)
@@ -677,53 +798,67 @@ def main(argv):
             break
     version = plugin_version(manifest, CHANGELOG_PLUGIN)
 
-    hub_path = os.path.join(root, "site", "index.html")
-    plugin_path = os.path.join(root, "site", "commentable-html", "index.html")
+    for src_rel in (HUB_SRC, PLUGIN_SRC):
+        if not os.path.isfile(os.path.join(root, src_rel)):
+            raise SystemExit("page source missing: %s (a built page under site/ has no source to "
+                             "rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
 
-    hub_src = read_text(hub_path)
-    hub_out = replace_region_block(hub_src, "plugins", plugins_html)
-    hub_out = replace_region_block(hub_out, "jsonld", render_jsonld(manifest))
-    hub_out = stamp_assets(hub_out, root)
+    hub_out = build_page(root, HUB_SRC, [
+        ("block", "plugins", plugins_html),
+        ("block", "jsonld", render_jsonld(manifest)),
+    ])
+    plugin_out = build_page(root, PLUGIN_SRC, [
+        ("inline", "version", "v" + esc(version)),
+        ("block", "changelog", changelog_html),
+        ("inline", "demo-fullscreen", render_demo_fullscreen_link()),
+    ])
+    hub_out_path = os.path.join(root, HUB_OUT)
+    plugin_out_path = os.path.join(root, PLUGIN_OUT)
 
-    plugin_src = read_text(plugin_path)
-    plugin_out = replace_region_inline(plugin_src, "version", "v" + esc(version))
-    plugin_out = replace_region_block(plugin_out, "changelog", changelog_html)
-    plugin_out = replace_region_inline(
-        plugin_out, "demo-fullscreen", render_demo_fullscreen_link())
-    plugin_out = stamp_assets(plugin_out, root)
-
-    tutorial_page_path = os.path.join(root, TUTORIAL_PAGE)
-    tutorial_src_path = os.path.join(root, TUTORIAL_SRC)
-    tutorial_src = None
+    tutorial_src_page = os.path.join(root, TUTORIAL_PAGE_SRC)
+    tutorial_out_path = os.path.join(root, TUTORIAL_PAGE)
+    tutorial_md_path = os.path.join(root, TUTORIAL_SRC)
     tutorial_out = None
-    if os.path.exists(tutorial_page_path):
-        if not os.path.exists(tutorial_src_path):
+    # A built tutorial page whose source was removed is an ORPHAN: --check must flag it and a
+    # normal build must delete it, so a stranded artifact can never silently linger.
+    tutorial_orphaned = (not os.path.isfile(tutorial_src_page)
+                         and os.path.isfile(tutorial_out_path))
+    if os.path.isfile(tutorial_src_page):
+        if not os.path.isfile(tutorial_md_path):
             raise SystemExit(
-                "tutorial source missing: %s (restore it, or remove the tutorial page it generates)"
-                % tutorial_src_path)
-        tutorial_src = read_text(tutorial_page_path)
-        tutorial_out = replace_region_block(
-            tutorial_src, "tutorial",
-            render_markdown(site_tutorial_markdown(read_text(tutorial_src_path))))
-        tutorial_out = stamp_assets(tutorial_out, root)
+                "tutorial markdown missing: %s (restore it, or remove the tutorial source page it feeds)"
+                % tutorial_md_path)
+        tutorial_out = build_page(root, TUTORIAL_PAGE_SRC, [
+            ("block", "tutorial",
+             render_markdown(site_tutorial_markdown(read_text(tutorial_md_path)))),
+        ])
 
     demo_drift = sync_demos(root, args.check)
     tutorial_img_drift = sync_tutorial_images(root, args.check)
     sitemap_drift = write_or_check(
         os.path.join(root, "site", "sitemap.xml"), render_sitemap(root), args.check)
     llms_drift = write_or_check(
-        os.path.join(root, "site", "llms.txt"), render_llms(manifest), args.check)
+        os.path.join(root, "site", "llms.txt"), render_llms(root, manifest), args.check)
 
     if args.check:
         problems = []
-        if styles_text != read_text(styles_path):
+        if styles_text != _read_artifact(styles_path):
             problems.append("site/assets/styles.css is stale vs site-src/css/ partials")
-        if hub_out != hub_src:
-            problems.append("site/index.html generated regions (plugins, jsonld) are stale")
-        if plugin_out != plugin_src:
-            problems.append("site/commentable-html/index.html version/changelog region is stale")
-        if tutorial_out is not None and tutorial_out != tutorial_src:
-            problems.append("site/commentable-html/tutorial/index.html is stale vs TUTORIAL.md")
+        if hub_out != _read_artifact(hub_out_path):
+            problems.append("site/index.html is stale vs its site-src/pages/index.html source "
+                            "(do not hand-edit the built page; edit the source and rebuild)")
+        if plugin_out != _read_artifact(plugin_out_path):
+            problems.append("site/commentable-html/index.html is stale vs its "
+                            "site-src/pages/commentable-html/index.html source "
+                            "(do not hand-edit the built page; edit the source and rebuild)")
+        if tutorial_out is not None and tutorial_out != _read_artifact(tutorial_out_path):
+            problems.append("site/commentable-html/tutorial/index.html is stale vs its "
+                            "site-src/pages/commentable-html/tutorial/index.html source and "
+                            "TUTORIAL.md (do not hand-edit the built page; edit the source and rebuild)")
+        if tutorial_orphaned:
+            problems.append("site/commentable-html/tutorial/index.html is orphaned: its "
+                            "site-src/pages source was removed but the built page lingers; "
+                            "run build_site_data.py to remove it")
         if demo_drift:
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
         if tutorial_img_drift:
@@ -740,10 +875,18 @@ def main(argv):
         print("site data up to date")
         return 0
 
-    write_text(hub_path, hub_out)
-    write_text(plugin_path, plugin_out)
+    write_text(hub_out_path, hub_out)
+    write_text(plugin_out_path, plugin_out)
     if tutorial_out is not None:
-        write_text(tutorial_page_path, tutorial_out)
+        write_text(tutorial_out_path, tutorial_out)
+    elif tutorial_orphaned:
+        try:
+            os.remove(tutorial_out_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            sys.stderr.write("warning: could not remove orphaned tutorial page %s (%s); "
+                             "delete it manually\n" % (tutorial_out_path, exc))
     print("site data generated (plugins, jsonld, version v%s, changelog, demos, tutorial, sitemap, llms)" % version)
     return 0
 
