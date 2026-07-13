@@ -33,7 +33,10 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOWS_DIR = os.path.join(ROOT, ".github", "workflows")
-ACTIONLINT_CONFIG = os.path.join(ROOT, ".github", "actionlint.yaml")
+ACTIONLINT_CONFIGS = (
+    os.path.join(ROOT, ".github", "actionlint.yaml"),
+    os.path.join(ROOT, ".github", "actionlint.yml"),
+)
 
 
 def _triggers(doc):
@@ -53,6 +56,29 @@ def _triggers(doc):
     return set()
 
 
+def _strip_full_line_comments(text):
+    """Drop YAML full-line comments (a line whose first non-space char is '#') so a mention of
+    `uses: actions/checkout` or `secrets.X` inside a comment is not scanned as real config."""
+    return "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+
+
+# Ways a privileged (pull_request_target) workflow could run PR-authored code. `uses: actions/checkout`
+# (optionally quoted) is the common one; `gh pr checkout` is the other high-precision signal. We do
+# NOT flag a bare `github.event.pull_request.head.sha` reference: reading the head SHA to POST a commit
+# status (as require-owner-approval.yml does) is safe metadata use, not running PR code. Transitive PR
+# checkout inside a reusable `workflow_call` callee is a known limitation - review reachable callees.
+_CHECKOUT_RE = re.compile(r"""uses:\s*["']?actions/checkout""")
+_PR_CODE_RES = (
+    (re.compile(r"gh\s+pr\s+checkout"), "gh pr checkout"),
+)
+# Secret references a pull_request (PR-code) workflow must not carry: dotted, bracket, or `inherit`.
+_SECRETS_RES = (
+    (re.compile(r"\bsecrets\."), "secrets.*"),
+    (re.compile(r"\bsecrets\s*\["), "secrets['...']"),
+    (re.compile(r"\bsecrets\s*:\s*inherit"), "secrets: inherit"),
+)
+
+
 def check_workflow(path):
     """Return a list of violation strings for one workflow file."""
     try:
@@ -63,52 +89,63 @@ def check_workflow(path):
         rel = path
     violations = []
     with open(path, "r", encoding="utf-8") as fh:
-        text = fh.read()
+        raw = fh.read()
     try:
-        doc = yaml.safe_load(text) or {}
+        doc = yaml.safe_load(raw) or {}
     except yaml.YAMLError as exc:
         return [rel + ": could not parse YAML (" + str(exc) + ")"]
     triggers = _triggers(doc)
+    text = _strip_full_line_comments(raw)
 
-    # RULE A: a pull_request_target workflow must not check out PR code.
-    if "pull_request_target" in triggers and re.search(r"uses:\s*actions/checkout", text):
-        violations.append(
-            rel + ": RULE A - a pull_request_target workflow must not use actions/checkout "
-            "(it would run PR-authored code with a privileged token). Move PR-code steps to a "
-            "separate pull_request job.")
+    # RULE A: a pull_request_target workflow must not check out or otherwise materialize PR code.
+    if "pull_request_target" in triggers:
+        if _CHECKOUT_RE.search(text):
+            violations.append(
+                rel + ": RULE A - a pull_request_target workflow must not use actions/checkout "
+                "(it would run PR-authored code with a privileged token). Move PR-code steps to a "
+                "separate pull_request job.")
+        for rx, label in _PR_CODE_RES:
+            if rx.search(text):
+                violations.append(
+                    rel + ": RULE A - a pull_request_target workflow must not materialize PR code via "
+                    + label + " (it would run PR-authored code with a privileged token).")
 
-    # RULE B: a workflow that runs PR code (pull_request) must not reference secrets.
-    if "pull_request" in triggers and re.search(r"\bsecrets\.", text):
-        violations.append(
-            rel + ": RULE B - a pull_request workflow must not reference secrets.* (it executes "
-            "PR-authored code). Put privileged, secret-using steps in a separate push or "
-            "pull_request_target workflow.")
+    # RULE B: a workflow that runs PR code (pull_request) must not reference secrets in any form.
+    if "pull_request" in triggers:
+        for rx, label in _SECRETS_RES:
+            if rx.search(text):
+                violations.append(
+                    rel + ": RULE B - a pull_request workflow must not reference " + label
+                    + " (it executes PR-authored code). Put privileged, secret-using steps in a "
+                    "separate push or pull_request_target workflow.")
 
     return violations
 
 
 def check_actionlint_config():
-    """Return a list of violations for a non-empty actionlint ignore list."""
-    if not os.path.exists(ACTIONLINT_CONFIG):
-        return []
-    with open(ACTIONLINT_CONFIG, "r", encoding="utf-8") as fh:
-        try:
-            doc = yaml.safe_load(fh) or {}
-        except yaml.YAMLError as exc:
-            return [".github/actionlint.yaml: could not parse YAML (" + str(exc) + ")"]
-    ignores = []
-    top = doc.get("ignore")
-    if isinstance(top, list):
-        ignores.extend(top)
-    paths = doc.get("paths")
-    if isinstance(paths, dict):
-        for spec in paths.values():
-            if isinstance(spec, dict) and isinstance(spec.get("ignore"), list):
-                ignores.extend(spec["ignore"])
-    if ignores:
-        return [".github/actionlint.yaml: RULE C - the actionlint ignore list must be empty. "
-                "A suppression silences the tool that catches invalid workflows; fix the "
-                "workflow instead of ignoring the warning. Current ignores: " + repr(ignores)]
+    """Return a list of violations for a non-empty actionlint ignore list (either config filename)."""
+    for config in ACTIONLINT_CONFIGS:
+        if not os.path.exists(config):
+            continue
+        rel = os.path.relpath(config, ROOT)
+        with open(config, "r", encoding="utf-8") as fh:
+            try:
+                doc = yaml.safe_load(fh) or {}
+            except yaml.YAMLError as exc:
+                return [rel + ": could not parse YAML (" + str(exc) + ")"]
+        ignores = []
+        top = doc.get("ignore")
+        if isinstance(top, list):
+            ignores.extend(top)
+        paths = doc.get("paths")
+        if isinstance(paths, dict):
+            for spec in paths.values():
+                if isinstance(spec, dict) and isinstance(spec.get("ignore"), list):
+                    ignores.extend(spec["ignore"])
+        if ignores:
+            return [rel + ": RULE C - the actionlint ignore list must be empty. "
+                    "A suppression silences the tool that catches invalid workflows; fix the "
+                    "workflow instead of ignoring the warning. Current ignores: " + repr(ignores)]
     return []
 
 

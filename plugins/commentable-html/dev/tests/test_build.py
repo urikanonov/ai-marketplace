@@ -96,6 +96,18 @@ class BuildTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertIn("fixtures --check", r.stdout)
 
+    def test_check_fixtures_fails_when_generator_is_missing(self):
+        # A missing generate.mjs when fixtures are explicitly checked is a repo problem, not a
+        # soft skip - otherwise deleting the generator would make the fixture gate vacuous.
+        orig = build.FIXTURES_GEN
+        build.FIXTURES_GEN = os.path.join(tempfile.gettempdir(), "no-such-generate-mjs-xyz.mjs")
+        try:
+            ok, msg = build._check_fixtures()
+        finally:
+            build.FIXTURES_GEN = orig
+        self.assertFalse(ok, msg)
+        self.assertIn("missing", msg)
+
     def test_generated_files_match_disk(self):
         for path, text in self.outputs.items():
             self.assertTrue(os.path.exists(path), "missing generated file: %s" % path)

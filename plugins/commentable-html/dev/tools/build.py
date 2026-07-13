@@ -572,6 +572,19 @@ def build_examples(portable_html, version, mermaid_version, out_dir):
     return result
 
 
+def _orphan_examples(out_dir):
+    """Shipped examples/report-*.html that have NO dev/examples-src source. build_examples only
+    assembles examples that have a source, so an orphan shipped example would otherwise be a pure
+    artifact validated against nothing (the exact self-sourced hole this split closed). --check
+    reports it so it cannot drift undetected; the fix is to add its source or delete it."""
+    examples_dir = os.path.join(out_dir, "examples")
+    if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
+        return []
+    sources = set(os.listdir(EXAMPLES_SRC))
+    return [name for name in sorted(os.listdir(examples_dir))
+            if _EXAMPLE_NAME_RE.match(name) and name not in sources]
+
+
 def build_all(assets_dir=None, out_dir=None):
     out_dir = HERE if out_dir is None else out_dir
     dist_dir = os.path.join(out_dir, "dist")
@@ -621,11 +634,12 @@ def _report(outputs, version, out_dir=None):
 
 
 def _check_fixtures():
-    """Run the Playwright fixtures' own `generate.mjs --check` so the dist gate also
-    catches stale fixtures. Returns (ok, message). If node is unavailable the check is
-    skipped (ok=True) with a clear note - CI (plugin-tests) is the authoritative gate."""
+    """Run the Playwright fixtures' own `generate.mjs --check` so the dist gate also catches stale
+    fixtures. Returns (ok, message). A missing generator is a repo problem and fails (the caller
+    explicitly asked to check fixtures); only a genuinely absent node runtime is a soft skip, since
+    CI (plugin-tests) is the authoritative gate there."""
     if not os.path.exists(FIXTURES_GEN):
-        return True, "fixtures --check skipped (generate.mjs not found)"
+        return False, "fixtures --check FAILED: generate.mjs is missing (" + FIXTURES_GEN + ")"
     node = shutil.which("node")
     if not node:
         return True, "fixtures --check skipped (node not found; CI plugin-tests still runs it)"
@@ -666,6 +680,9 @@ def main(argv):
                 drift.append(rel + " (out of date)")
         for name in stale:
             drift.append(os.path.join("dist", name) + " (stale - not produced by the current build; delete it)")
+        for name in _orphan_examples(out_dir):
+            drift.append(os.path.join("examples", name)
+                         + " (orphaned - no dev/examples-src source; add its source or delete it)")
         for path in legacy:
             drift.append(os.path.relpath(path, out_dir) + " (legacy generated file - delete it)")
         if drift:
