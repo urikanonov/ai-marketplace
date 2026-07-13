@@ -26,7 +26,8 @@
 .demo-frame iframe { width: 100%; height: 420px; border: 0; display: block; background: var(--cp-bg); }
 /* The demo frame breaks out of the content column to span the full viewport width; the
    section title, description, and tabs stay in the column above it. */
-.demo-frame.full-bleed { border-left: 0; border-right: 0; border-radius: 0; margin-inline: 20px; }
+.demo-frame.full-bleed { border-left: 0; border-right: 0; border-radius: 0; margin-inline: 50px; }
+@media (max-width: 720px) { .demo-frame.full-bleed { margin-inline: 16px; } }
 .demo-actions { margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* Changelog */
@@ -99,6 +100,10 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
    Styling lives here (not inline) so the page keeps a tight CSP with no 'unsafe-inline'. */
 .loop-figure { margin: 0 auto 30px; max-width: 640px; }
 .loop-figure svg { display: block; width: 100%; height: auto; }
+/* Two renderings of the same self-review loop: a wide horizontal diagram for desktop/tablet and
+   a tall vertical one for narrow phones (where the horizontal arrows are too short and the labels
+   crowd the boxes). Only one is shown at a time; display:none removes the other from the a11y tree. */
+.loop-figure .loop-fig-v { display: none; max-width: 340px; margin-inline: auto; }
 .loop-fig-bg { fill: var(--cp-surface); stroke: var(--cp-border); }
 .loop-fig-node { fill: var(--cp-bg-elevated); stroke: var(--cp-accent); }
 .loop-fig-title { fill: var(--cp-accent); font-family: var(--cp-mono); font-weight: 600; }
@@ -139,9 +144,10 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
   .compare td[data-v="good"] .cmp-v { background: color-mix(in srgb, var(--cp-success) 22%, transparent); }
   .compare td[data-v="bad"] .cmp-v { background: color-mix(in srgb, var(--cp-danger) 20%, transparent); }
   .cmp-score { display: inline-block; margin-left: 8px; font-size: 0.8rem; font-weight: 700; color: var(--cp-text-muted); background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 999px; padding: 1px 9px; vertical-align: middle; }
-  /* Enlarge the review-loop diagram labels so they stay legible when the SVG scales down. */
-  .loop-fig-title { font-size: 24px; }
-  .loop-fig-sub { font-size: 18px; }
+  /* On narrow phones, swap the wide horizontal loop diagram for the tall vertical one so its
+     labels stay clear of the boxes instead of overlapping them. */
+  .loop-figure .loop-fig-h { display: none; }
+  .loop-figure .loop-fig-v { display: block; }
 }
 .why-list { margin: 14px 0 0; padding-left: 20px; }
 .why-list li { margin-bottom: 10px; color: var(--cp-text); }

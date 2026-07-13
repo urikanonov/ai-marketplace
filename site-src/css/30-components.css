@@ -94,12 +94,15 @@ main > section:nth-of-type(even) {
 .card:hover { transform: translateY(-2px); border-color: var(--cp-border-strong); }
 
 /* Plugin cards */
-.plugin-card { display: flex; flex-direction: column; gap: 12px; position: relative; }
+.plugin-card { display: flex; flex-direction: column; gap: 12px; position: relative; cursor: pointer; }
 .plugin-card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .plugin-card .name { color: var(--cp-text); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.3px; }
 .plugin-card .desc { color: var(--cp-text-muted); font-size: 0.95rem; flex: 1; }
 .plugin-card .keywords { display: flex; flex-wrap: wrap; gap: 6px; }
 .plugin-card .foot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+/* The install/copy block does not navigate, so keep it a text surface, not the card's pointer. */
+.plugin-card .cmd { cursor: auto; }
+.plugin-card .cmd pre { cursor: text; }
 
 .plugin-card .name a { color: inherit; text-decoration: none; }
 .plugin-card .name a:hover { color: var(--cp-accent); text-decoration: underline; }
@@ -116,6 +119,9 @@ main > section:nth-of-type(even) {
 .mode-card { display: flex; flex-direction: column; }
 .mode-card p { flex: 1; }
 .mode-sources { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--cp-border); display: flex; flex-direction: column; gap: 8px; }
+/* Footnote under the portability cards: explains that the CDN chip is a network dependency. */
+.modes-note { margin-top: 20px; color: var(--cp-text-muted); font-size: 0.9rem; line-height: 1.6; }
+.modes-note .src { vertical-align: middle; margin-right: 2px; }
 .mode-source { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .mode-source dt { color: var(--cp-text-muted); font-size: 0.88rem; font-weight: 600; }
 .mode-source dd { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }

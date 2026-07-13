@@ -2,6 +2,15 @@
 
 Maintainer documentation for the ai-marketplace repository.
 
+## Testing guidelines
+
+[`testing-guidelines.md`](./testing-guidelines.md) is the single source of truth for how tests are
+written in this repository: where each suite lives, the test-driven and genuinely-red-first workflow,
+the hermetic Playwright conventions, the generator and drift-check gates, and the pitfalls past refactors
+already paid for. Read it before writing or changing any test. The
+[`.github/instructions/testing.instructions.md`](../.github/instructions/testing.instructions.md)
+instructions file points agents at it automatically when they touch test files.
+
 ## General audit playbook
 
 [`general-audit-playbook.html`](./general-audit-playbook.html) is a reusable,

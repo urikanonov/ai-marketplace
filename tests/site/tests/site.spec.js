@@ -123,6 +123,16 @@ test("the card copy button and Learn more stay independently clickable over the 
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("the plugin card body shows a pointer cursor so it reads as clickable (SITE-HUB-06)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
+  // The whole card navigates, so its body carries the hand/pointer cursor to signal it.
+  expect(await card.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
+  expect(await card.locator(".desc").evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
+  // The install command block stays a text surface (it does not navigate), not a pointer.
+  expect(await card.locator(".cmd").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("pointer");
+});
+
 test("the hub Learn more button uses the brand accent color, not yellow (SITE-HUB-07)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const learn = page.locator(".plugin-card .learn-more").first();
@@ -140,14 +150,23 @@ test("the hub Learn more button uses the brand accent color, not yellow (SITE-HU
   expect(bg).not.toBe("rgb(255, 193, 7)");
 });
 
-test("the review-loop diagram labels enlarge on a mobile viewport (SITE-WHY-04)", async ({ page }) => {
+test("the review-loop diagram swaps to a vertical, uncramped layout on a mobile viewport (SITE-WHY-04)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const sub = page.locator(".loop-fig-sub").first();
+  const horizontal = page.locator("#why .loop-fig-h");
+  const vertical = page.locator("#why .loop-fig-v");
+  await expect(horizontal).toHaveCount(1);
+  await expect(vertical).toHaveCount(1);
+  // Desktop shows the wide horizontal diagram; the tall variant is hidden.
   await page.setViewportSize({ width: 1000, height: 900 });
-  const desktopFs = await sub.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
-  await page.setViewportSize({ width: 380, height: 800 });
-  const mobileFs = await sub.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
-  expect(mobileFs).toBeGreaterThan(desktopFs);
+  await expect(horizontal).toBeVisible();
+  await expect(vertical).toBeHidden();
+  // Mobile swaps to the tall vertical diagram so the labels are not cramped against the
+  // boxes; the horizontal variant is hidden. The rendered figure is taller than it is wide.
+  await page.setViewportSize({ width: 380, height: 900 });
+  await expect(vertical).toBeVisible();
+  await expect(horizontal).toBeHidden();
+  const box = await vertical.boundingBox();
+  expect(box.height).toBeGreaterThan(box.width);
 });
 
 test("mobile comparison cards color only the verdicts and show a good/total score (SITE-WHY-05)", async ({ page }) => {
@@ -177,6 +196,26 @@ test("the portability section shows three modes including Offline with a source 
   await expect(offline.locator(".src-inline")).not.toHaveCount(0);
   // Non-portable still pulls mermaid + charts from a CDN.
   await expect(page.locator(".mode-card", { hasText: "Non-portable" }).locator(".src-cdn")).not.toHaveCount(0);
+});
+
+test("the portability section explains the CDN chip needs a network connection and Offline removes it (SITE-PLUGIN-10)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const modes = page.locator("#modes");
+  // The CDN chip means mermaid/charts load over the network, so a Non-portable or Portable report
+  // that uses them needs an internet connection to render them; Offline inlines them instead.
+  const note = modes.locator(".modes-note");
+  await expect(note).toContainText(/internet connection/i);
+  await expect(note).toContainText(/mermaid/i);
+  await expect(note).toContainText(/chart/i);
+  await expect(note).toContainText(/Portable/);
+  await expect(note).toContainText(/Offline/);
+});
+
+test("the What you get section covers exporting an Offline, zero-network copy (SITE-PLUGIN-11)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const features = page.locator("#features");
+  await expect(features).toContainText(/Offline/);
+  await expect(features).toContainText(/no network|zero network|without a network/i);
 });
 
 test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {
@@ -508,6 +547,16 @@ test("the Why section states commentable-html shortens the AI planning loop", as
   await expect(page.locator("#why")).toContainText("drastically shortens the AI planning and iteration loop");
 });
 
+test("the Why section frames HTML as the de-facto standard for AI planning and reporting (SITE-WHY-07)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const why = page.locator("#why");
+  await expect(why).toContainText(/de-facto standard/i);
+  await expect(why).toContainText(/plan/i);
+  await expect(why).toContainText(/report/i);
+  // The old framing overstated it as agents "increasingly answer with HTML"; it should be gone.
+  await expect(why).not.toContainText("increasingly answer with");
+});
+
 test("copy button restores its original label after a rapid double click", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -690,7 +739,7 @@ test("tutorial example links open the live demo, not a GitHub blob", async ({ pa
 });
 
 test("the demo frame breaks out of the content column while its heading stays in the content column", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 1680, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const frame = await page.locator("#demo-panel").boundingBox();
   // It is clearly wider than the constrained content column (proving the breakout).
@@ -706,14 +755,18 @@ test("the demo frame breaks out of the content column while its heading stays in
   }
 });
 
-test("the full-bleed demo frame keeps a small side buffer inside the viewport", async ({ page }) => {
+test("the full-bleed demo frame keeps a comfortable side buffer inside the viewport (SITE-DEMO-08)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
   const frame = await page.locator("#demo-panel").boundingBox();
-  // A ~20px buffer each side: the left edge is inset and the right edge stays off the viewport edge.
-  expect(frame.x).toBeGreaterThanOrEqual(16);
-  expect(frame.x + frame.width).toBeLessThanOrEqual(clientWidth - 16);
+  // A ~50px buffer each side (up from ~20px) so the demo no longer runs too wide: the left edge
+  // is inset ~50px and the right edge stays that far off the viewport edge.
+  expect(frame.x).toBeGreaterThanOrEqual(44);
+  expect(frame.x).toBeLessThanOrEqual(56);
+  const rightBuffer = clientWidth - (frame.x + frame.width);
+  expect(rightBuffer).toBeGreaterThanOrEqual(44);
+  expect(rightBuffer).toBeLessThanOrEqual(56);
 });
 
 test("the plugin page footer links to contribute, feature request, issues, source, and the author's LinkedIn", async ({ page }) => {

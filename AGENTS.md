@@ -9,6 +9,24 @@ A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users 
 `copilot plugin install <name>@urikan-ai-marketplace`. The marketplace name (used after `@`) is
 `urikan-ai-marketplace`, defined in the manifest below.
 
+## Non-negotiables (read this first)
+
+These three rules are the ones most often forgotten. They are a MUST on every change, no exceptions:
+
+1. **Start every workstream in a fresh worktree off the latest `main`.** Before you touch anything,
+   `git fetch origin` and `git worktree add -b <branch> .worktrees/<name> origin/main`. This applies to
+   EVERY new piece of work (a fix, a feature, a doc edit, a test-only change) - not only when work runs in
+   parallel. Never develop on a stale branch or edit the primary working tree in place. See
+   "Parallel work: use git worktrees under the repo root" for the full mechanics.
+2. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
+   covering automated test in the SAME pull request, and for bug fixes the test is written FIRST, run, and
+   confirmed RED before the fix makes it green. A change whose test never failed on the old code is not
+   test-driven and is not done. See "Spec-and-test discipline" for how tests map to spec rows.
+3. **Follow the testing guidelines.** Read [docs/testing-guidelines.md](docs/testing-guidelines.md) before
+   writing or changing any test. It captures the conventions and past pitfalls (hermetic tests, pinning the
+   new behavior so a test is genuinely red first, rebuilding generated output before asserting, feature-id
+   discipline) so they are not relearned the hard way.
+
 ## Layout
 
 ```
@@ -128,11 +146,13 @@ spec row whose test does not exist or does not pass will not merge.
 
 ## Parallel work: use git worktrees under the repo root
 
-When more than one change is in flight at once (multiple agents, or a human working alongside an
-agent), do NOT edit the primary working tree from two places at once - concurrent edits to shared,
-generated files (the site under `site/`, a plugin's `pkg/dist/`, `examples/`) collide and produce
-merge churn. Instead give each independent workstream its own git worktree, checked out UNDER the
-repo root in `.worktrees/<name>` (which is gitignored, so the nested checkout is never committed):
+EVERY new workstream starts in its own fresh git worktree branched from the latest `origin/main` - this
+is a MUST for all work (a fix, a feature, a doc or test-only edit), not only when changes run in parallel
+(see "Non-negotiables" above). Even for a single change, do NOT develop on a stale branch and do NOT edit
+the primary working tree in place: concurrent edits to shared, generated files (the site under `site/`, a
+plugin's `pkg/dist/`, `examples/`) collide and produce merge churn, and a branch cut from a stale base
+invites avoidable rebases. Give each workstream its own git worktree, checked out UNDER the repo root in
+`.worktrees/<name>` (which is gitignored, so the nested checkout is never committed):
 
 ```bash
 git fetch origin                                             # pull the latest main first
