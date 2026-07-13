@@ -77,6 +77,30 @@
     }
   }
 
+  function initHeaderAnchors() {
+    var sections = document.querySelectorAll("section[id]");
+    sections.forEach(function (section) {
+      var id = section.getAttribute("id");
+      var title = section.querySelector(".section-title");
+      if (!id || !title || title.querySelector(".header-anchor")) {
+        return;
+      }
+      var link = document.createElement("a");
+      link.className = "header-anchor";
+      link.setAttribute("href", "#" + id);
+      link.setAttribute("aria-label", "Link to this section");
+      link.textContent = "#";
+      title.appendChild(link);
+      link.addEventListener("click", function () {
+        // Native navigation sets the fragment; also copy the full section URL for sharing.
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          var url = location.origin + location.pathname + "#" + id;
+          navigator.clipboard.writeText(url).catch(function () {});
+        }
+      });
+    });
+  }
+
   function initPluginCards() {
     var cards = document.querySelectorAll(".plugin-card");
     cards.forEach(function (card) {
@@ -250,6 +274,7 @@
   ready(function () {
     initCopyButtons();
     initYear();
+    initHeaderAnchors();
     initPluginCards();
     initDemoSwitch();
     initLightbox();

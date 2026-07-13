@@ -975,3 +975,28 @@ test("plugin card text can be selected without navigation and plain body clicks 
   await page.mouse.click(box.x + 20, box.y + box.height / 2);
   await expect(page).toHaveURL(/\/commentable-html\/$/);
 });
+
+test("every section header is a linkable anchor that updates the URL fragment (SITE-NAV-01)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "networkidle" });
+  const sections = page.locator("section[id]");
+  const count = await sections.count();
+  expect(count).toBeGreaterThan(3);
+  let checked = 0;
+  for (let i = 0; i < count; i++) {
+    const section = sections.nth(i);
+    const id = await section.getAttribute("id");
+    const title = section.locator(".section-title").first();
+    // A section without a .section-title heading (for example a CTA banner) is exempt.
+    if ((await title.count()) === 0) {
+      continue;
+    }
+    const anchor = title.locator("a.header-anchor");
+    await expect(anchor).toHaveCount(1);
+    await expect(anchor).toHaveAttribute("href", "#" + id);
+    checked++;
+  }
+  expect(checked).toBeGreaterThan(3);
+  // Clicking a header anchor moves the URL fragment to that section.
+  await page.locator("section#install .section-title a.header-anchor").click();
+  await expect(page).toHaveURL(/#install$/);
+});
