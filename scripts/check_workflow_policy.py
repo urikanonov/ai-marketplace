@@ -55,7 +55,12 @@ def _triggers(doc):
 
 def check_workflow(path):
     """Return a list of violation strings for one workflow file."""
-    rel = os.path.relpath(path, ROOT)
+    try:
+        rel = os.path.relpath(path, ROOT)
+    except ValueError:
+        # On Windows, relpath raises when path and ROOT are on different drives (e.g. a temp
+        # file on C: while the repo is on D:). Fall back to the raw path for the message.
+        rel = path
     violations = []
     with open(path, "r", encoding="utf-8") as fh:
         text = fh.read()
