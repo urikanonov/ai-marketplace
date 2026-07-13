@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-07-13
+
+### Fixed
+
+- Export as Portable no longer corrupts a comment whose body contains `$&`, `$1`, `` $` ``, `$'`, or
+  `$$`: the saved-HTML builder now uses a function replacer so `String.replace` cannot expand those
+  `$`-patterns from the comment text.
+- Export as Plain now recognizes region markers with any number of `=` fill characters (matching the
+  validator's grammar) when stripping the comment-UI, embedded-comments, and script regions, and the
+  post-export leak guard now matches `id="handledCommentIds"` / `id="embeddedComments"` regardless of
+  quote style, so a Plain export cannot silently ship comment data.
+- The strict validator now rejects a report whose top-level lede exists but is empty: a document must
+  carry a non-empty top-level `<h1>` title, not just the lede wrapper class.
+
+### Added
+
+- The plugin site page now showcases the commentable-decks capability in the "What you get" section.
+
+### Changed
+
+- The deck authoring guide runs the deck validator with `--strict`, and the tutorial's Show/Hide
+  wording matches the actual toolbar behavior.
+
 ## [1.32.0] - 2026-07-13
 
 ### Added

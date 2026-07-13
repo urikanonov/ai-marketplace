@@ -154,6 +154,38 @@ class CurrentVersionForTests(unittest.TestCase):
         self.assertIn("marketplace entry", source)
 
 
+class IterPluginChangelogsTests(unittest.TestCase):
+    def _root(self):
+        import tempfile
+        from pathlib import Path
+        return Path(tempfile.mkdtemp())
+
+    def test_pkg_layout_changelog_is_discovered(self):
+        # A plugin whose CHANGELOG lives INSIDE the manifest source (pkg/CHANGELOG.md, the
+        # auto-updater layout) must still be covered by the gate; it was previously skipped, so
+        # the required changelog-sync check silently did not enforce that plugin.
+        root = self._root()
+        pkg = root / "plugins" / "updater" / "pkg"
+        pkg.mkdir(parents=True)
+        (pkg / "plugin.json").write_text('{"version": "1.0.3"}', encoding="utf-8")
+        (pkg / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [1.0.3] - 2026-07-12\n\n- x\n", encoding="utf-8")
+        manifest = {"plugins": [{"name": "updater", "source": "./plugins/updater/pkg", "version": "1.0.3"}]}
+        names = [pc.name for pc in ccs.iter_plugin_changelogs(root, manifest)]
+        self.assertIn("updater", names)
+
+    def test_sibling_layout_changelog_is_discovered(self):
+        # The commentable-html layout keeps the CHANGELOG as a sibling of the pkg/ source.
+        root = self._root()
+        (root / "plugins" / "p" / "pkg").mkdir(parents=True)
+        (root / "plugins" / "p" / "pkg" / "plugin.json").write_text('{"version": "2.0.0"}', encoding="utf-8")
+        (root / "plugins" / "p" / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [2.0.0] - 2026-07-12\n\n- y\n", encoding="utf-8")
+        manifest = {"plugins": [{"name": "p", "source": "./plugins/p/pkg", "version": "2.0.0"}]}
+        names = [pc.name for pc in ccs.iter_plugin_changelogs(root, manifest)]
+        self.assertIn("p", names)
+
+
 class ResolveBaseRefTests(unittest.TestCase):
     def test_uses_merge_base_when_it_differs_from_head(self):
         with unittest.mock.patch.object(ccs, "_rev_parse", side_effect=lambda r, ref: "head" if ref == "HEAD" else None), \

@@ -318,6 +318,7 @@ class _DocParser(HTMLParser):
         self.headings = []           # [{"id": str|None, "text": str, "top_level": bool}] in #commentRoot
         self._cur_heading = None     # (tag, id, [parts], top_level) while capturing a heading's text
         self.has_top_level_lede = False  # a direct child of #commentRoot carries class cmh-lede
+        self._lede_depth = None      # stack depth of the current top-level cmh-lede (for title h1)
         self._figure_chart = []      # stack of bool: is each open <figure> a chart figure
         self.has_offline_chart = False
 
@@ -408,6 +409,7 @@ class _DocParser(HTMLParser):
                 and len(self.stack) == self._cr_depth + 1
                 and "cmh-lede" in set((ad.get("class") or "").split())):
             self.has_top_level_lede = True
+            self._lede_depth = len(self.stack)
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -430,7 +432,8 @@ class _DocParser(HTMLParser):
                 and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
             top_level = (len(self.stack) == self._cr_depth + 1)
-            self._cur_heading = (tag, ad.get("id"), [], top_level)
+            in_lede = self._lede_depth is not None and len(self.stack) > self._lede_depth
+            self._cur_heading = (tag, ad.get("id"), [], top_level, in_lede)
         if tag not in VOID:
             self.stack.append((tag, own_skip))
             current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
@@ -491,7 +494,8 @@ class _DocParser(HTMLParser):
             if text:
                 self.headings.append({"tag": self._cur_heading[0],
                                       "id": self._cur_heading[1], "text": text,
-                                      "top_level": self._cur_heading[3]})
+                                      "top_level": self._cur_heading[3],
+                                      "in_lede": self._cur_heading[4]})
             self._cur_heading = None
         for i in range(len(self.stack) - 1, -1, -1):
             if self.stack[i][0] == tag:
@@ -503,6 +507,8 @@ class _DocParser(HTMLParser):
                 # good, so headings/prose in a later sibling container are not collected.
                 if self._cr_depth is not None and i <= self._cr_depth:
                     self._cr_closed = True
+                if self._lede_depth is not None and i <= self._lede_depth:
+                    self._lede_depth = None
                 del self.stack[i:]
                 del self._mermaid_stack[i:]
                 return
@@ -819,9 +825,11 @@ def check_document_kind(parser):
         return ['unknown document kind "%s" in <meta name="%s"> - use one of: %s'
                 % (kind, _KIND_META_NAME, ", ".join(_DOC_KINDS))]
     if kind in _KINDS_REQUIRING_H1:
+        # A visible top-level <h1> satisfies the title: either a direct child of #commentRoot,
+        # or one wrapped in a top-level <header class="cmh-lede"> (an empty cmh-lede does NOT).
         has_top_level_h1 = any(h.get("tag") == "h1" and (h.get("text") or "").strip()
-                               and h.get("top_level") for h in parser.headings)
-        if not (has_top_level_h1 or parser.has_top_level_lede):
+                               and (h.get("top_level") or h.get("in_lede")) for h in parser.headings)
+        if not has_top_level_h1:
             return ['kind "%s" requires a top-level <h1> title inside #commentRoot, but the '
                     "document has none - add a top-level <h1> (or a top-level "
                     '<header class="cmh-lede"> title), or set the kind to '

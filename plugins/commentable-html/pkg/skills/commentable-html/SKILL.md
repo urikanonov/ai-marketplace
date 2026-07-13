@@ -214,7 +214,7 @@ commentable HTML.
    TC, ...) -> drop and let the system CJK face resolve. If a design truly needs a specific face, obtain the
    `.woff2` locally and embed it as a `@font-face` whose `src` is a `data:font/woff2;base64,...` URI (the
    `data:` scheme is allowed), then re-run `deck_validate.py`.
-4. **Validate.** Run `python deck/deck_validate.py <out>`; fix every error before handoff (it enforces the
+4. **Validate.** Run `python deck/deck_validate.py --strict <out>`; fix every error before handoff (it enforces the
    fixed-stage structure, no remote fonts, and no dangerous active content on top of the base validator).
 5. **Comment and iterate.** The user opens the deck, presents it normally, and comments inline. When they
    paste a Copy-all bundle back, edit the DECK **in place** (never re-run `deck_scaffold.py` without

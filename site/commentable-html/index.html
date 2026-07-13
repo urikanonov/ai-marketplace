@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Inline comments on any static HTML report that round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=fceafc683a93" />
+  <link rel="stylesheet" href="../assets/styles.css?v=5a6236642108" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.32.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.33.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -194,6 +194,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           <div class="card feature"><h3>Export as Portable or Offline</h3><p>Export as Portable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
           <div class="card feature"><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
           <div class="card feature"><h3>Deterministic tools</h3><p>Ships stdlib-only Python tools and a strict validator so generated documents are correct by construction, not by luck.</p></div>
+          <div class="card feature"><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p></div>
         </div>
       </div>
     </section>
@@ -311,6 +312,23 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.33.0] - 2026-07-13</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Export as Portable no longer corrupts a comment whose body contains <code>$&amp;</code>, <code>$1</code>, `<code> $</code> `<code>, </code>$&#x27;<code>, or </code>$$<code>: the saved-HTML builder now uses a function replacer so </code>String.replace<code> cannot expand those </code>$`-patterns from the comment text.</li>
+              <li>Export as Plain now recognizes region markers with any number of <code>=</code> fill characters (matching the validator&#x27;s grammar) when stripping the comment-UI, embedded-comments, and script regions, and the post-export leak guard now matches <code>id=&quot;handledCommentIds&quot;</code> / <code>id=&quot;embeddedComments&quot;</code> regardless of quote style, so a Plain export cannot silently ship comment data.</li>
+              <li>The strict validator now rejects a report whose top-level lede exists but is empty: a document must carry a non-empty top-level <code>&lt;h1&gt;</code> title, not just the lede wrapper class.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The plugin site page now showcases the commentable-decks capability in the &quot;What you get&quot; section.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The deck authoring guide runs the deck validator with <code>--strict</code>, and the tutorial&#x27;s Show/Hide wording matches the actual toolbar behavior.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.32.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -325,6 +343,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The mermaid CDN import is now gated on the presence of a <code>pre.mermaid</code> / <code>div.mermaid</code> element, so a diagram-free document (including a deck) makes no external network request at all. A document that contains a diagram still loads and renders mermaid.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.31.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -332,8 +352,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>In the sidebar&#x27;s narrow layout the export buttons now pack two per row (Portable | Offline, then Markdown | Plain HTML) instead of one full-width button per row, so the actions take less vertical space and are quicker to scan. The Clear button keeps its own full-width row so the destructive action stays visually apart.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.30.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -378,14 +396,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>New spec guards: <code>CMH-DEMO-02</code> (every report has a companion prompt with the standard headings and a non-empty blockquote) and <code>CMH-DEMO-03</code> (each example is exercised by the interaction/monkey suite), plus an example-scoped assertion under <code>CMH-BUILD-05</code> that no shipped example carries the removed &quot;TEMPLATE / DEMO&quot; header phrases.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.26.0] - 2026-07-13</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The &quot;Run in Azure Data Explorer&quot; deep link is now mandatory on a framed KQL figure. <code>tools/validate.py</code> rejects a <code>figure.cmh-kql</code> that has no <code>cmh-kql-run</code> link as a hard error (non-zero exit in the default, non-strict mode) instead of a warning, so a framed KQL block can never ship without the reader&#x27;s one-click path into Azure Data Explorer. Build the link with <code>tools/kusto_link.py</code>. A purely illustrative query with no real cluster/database should use a plain <code>&lt;pre&gt;</code> code block, which remains exempt from the rule.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">35 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">36 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

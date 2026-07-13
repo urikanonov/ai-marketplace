@@ -31,6 +31,16 @@ class IsForbiddenTest(unittest.TestCase):
             "config/PROD.KEY",
             "ID_RSA",
             "backup.PFX",
+            ".envrc",
+            "release.env",
+            ".netrc",
+            ".npmrc",
+            "auth/credentials.json",
+            "credentials.prod.json",
+            "service-account.json",
+            "gcp/service-account.ci.json",
+            "keys/apns.p8",
+            "wallet.kdb",
         ]:
             self.assertTrue(cff.is_forbidden(path), path)
 
