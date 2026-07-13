@@ -241,13 +241,15 @@ logo, the favicon - are HAND-MAINTAINED SOURCES (the generator only content-hash
 it; it never rewrites it). Edit those directly and resolve conflicts on them as source files; do NOT try to
 "rebuild" them.
 
-The residual self-sourced surface (where the generator reads hand-edited content back from the SAME file, so
-`--check` still cannot see a stale copy) is now small: chiefly the CONTENT between the `CONTENT` markers of
-each `examples/report-*.html` (build.py preserves it from the example itself). `pkg/**/dist/**` bundles,
-generated fixtures, the `site/**` pages, and `styles.css` are all pure artifacts with an independent source
-and a `--check`, so a stale copy of them fails CI (the hand-maintained `site/assets/` static files above are
-the exception - they are sources, not artifacts) - but still treat any file that more than one in-flight PR
-touches as CONTENDED and REBUILD rather than hand-merge.
+The self-sourced surface is now closed for the example reports too: each `examples/report-*.html` is a
+pure build artifact assembled from an INDEPENDENT content source at `dev/examples-src/report-*.html`, so
+`--check` compares the shipped file to a fresh assembly and catches a stale or hand-edited copy of its
+CONTENT (edit demo content in `dev/examples-src/`, never in the shipped `pkg/**/examples/` file).
+`pkg/**/dist/**` bundles, generated fixtures, the `site/**` pages, `styles.css`, and the example reports are
+therefore all pure artifacts with an independent source and a `--check`, so a stale copy of them fails CI
+(the hand-maintained `site/assets/` static files above are the exception - they are sources, not artifacts) -
+but still treat any file that more than one in-flight PR touches as CONTENDED and REBUILD rather than
+hand-merge.
 
 
 Before you merge:

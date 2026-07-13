@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.33.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.34.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -312,6 +312,17 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.34.0] - 2026-07-13</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The shipped example reports (<code>examples/report-*.html</code>) are now pure build artifacts assembled from an independent content source in <code>dev/examples-src/</code>. <code>build.py --check</code> compares each shipped example to a fresh assembly, so a hand-edit or a stale/clobbered example - of its content as well as its layer - now fails the build instead of comparing equal to itself. Edit demo content in <code>dev/examples-src/</code>, not in the shipped file.</li>
+            </ul>
+            <div class="group-label">Accessibility</div>
+            <ul>
+              <li>The comments-panel toggle and the overflow-menu trigger now declare the element they control with <code>aria-controls</code> (<code>#sidebar</code> and <code>#toolbarMenu</code>), so assistive technology can associate each toggle with its target.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.33.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -328,6 +339,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The deck authoring guide runs the deck validator with <code>--strict</code>, and the tutorial&#x27;s Show/Hide wording matches the actual toolbar behavior.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.32.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
@@ -343,8 +356,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The mermaid CDN import is now gated on the presence of a <code>pre.mermaid</code> / <code>div.mermaid</code> element, so a diagram-free document (including a deck) makes no external network request at all. A document that contains a diagram still loads and renders mermaid.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.31.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -387,16 +398,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Exports no longer bake transient runtime body-state classes into the saved file. Every export path (Save, Export as Portable, Export Offline, and Export to Plain HTML) now strips <code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, and <code>cm-widget-dragging</code> from the exported <code>&lt;body&gt;</code> open tag, so a stale or open-sidebar source can no longer persist that state and propagate it across re-exports. A stuck <code>sidebar-open</code> made the document render full width with an empty right gutter (the <code>body.sidebar-open .app</code> layout rule) for a sidebar that is not shown. Non-transient body classes are preserved, and the live layer re-derives the sidebar state on load. The normalization is centralized in <code>_getBaseHtml()</code> (covering the on-disk and <code>file://</code> snapshot bases) and shared with the Plain export via a new <code>_stripTransientBodyClasses()</code> helper. New spec <code>CMH-EXP-09</code> and <code>dev/tests/54-export-body-normalize.spec.js</code> cover all four export paths.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.27.0] - 2026-07-13</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Every shipped example report now has a companion example-prompt file. Added <code>examples/prompt-triage.md</code> and <code>examples/prompt-metrics.md</code> (matching the existing <code>prompt-community-garden.md</code> and <code>prompt-taxi.md</code> format) so all four examples document the one-paragraph prompt that generates them.</li>
-              <li>Full interaction coverage for the incident triage board and commentable visuals matrix examples: a new <code>dev/tests/53-more-examples.spec.js</code> exercises both reports over http with prose commenting, widget/part commenting, UI-control clicks, and a seeded randomized monkey pass, asserting no uncaught page errors and comment persistence across reload. Each of the four shipped examples is now covered by validation, monkey, commenting, and clicking.</li>
-              <li>New spec guards: <code>CMH-DEMO-02</code> (every report has a companion prompt with the standard headings and a non-empty blockquote) and <code>CMH-DEMO-03</code> (each example is exercised by the interaction/monkey suite), plus an example-scoped assertion under <code>CMH-BUILD-05</code> that no shipped example carries the removed &quot;TEMPLATE / DEMO&quot; header phrases.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">36 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">37 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

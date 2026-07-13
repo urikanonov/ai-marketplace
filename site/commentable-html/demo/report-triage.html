@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.33.0" />
+<meta name="commentable-html-version" content="1.34.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.33.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.34.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -1256,9 +1256,9 @@ body.cmh-deck-present #menuComment {
 <div class="cm-toolbar cm-skip" role="toolbar" aria-label="Comments toolbar">
   <button id="btnCopyAllTop" type="button" class="cm-primary" title="Copy all comments to the clipboard for pasting back to the agent">Copy all</button>
   <span class="pill-count" id="toolbarCount" title="Open comments">0</span>
-  <button id="btnToggleSidebar" type="button" title="Show or hide the comments panel" aria-expanded="true">Hide</button>
+  <button id="btnToggleSidebar" type="button" title="Show or hide the comments panel" aria-controls="sidebar" aria-expanded="true">Hide</button>
   <div class="cm-toolbar-more">
-    <button id="btnToolbarMenu" type="button" class="cm-icon-btn" title="More actions" aria-haspopup="true" aria-expanded="false" aria-label="More actions">
+    <button id="btnToolbarMenu" type="button" class="cm-icon-btn" title="More actions" aria-haspopup="true" aria-controls="toolbarMenu" aria-expanded="false" aria-label="More actions">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>
     </button>
     <div id="toolbarMenu" class="cm-toolbar-menu" hidden>
@@ -1455,7 +1455,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.33.0";
+const CMH_VERSION = "1.34.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

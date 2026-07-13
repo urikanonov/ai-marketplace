@@ -154,6 +154,34 @@ class ExampleTests(unittest.TestCase):
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn("report-taxi.html", r.stdout + r.stderr)
 
+    def test_build_check_catches_example_content_drift(self):
+        # GH-CLOBBER-EXAMPLES: the shipped example is a pure artifact of its independent source in
+        # dev/examples-src/, so a hand-edit (or a stale/clobbered copy) of the example's own CONTENT
+        # - not just its layer - is now caught by --check. Before the source split, build.py read the
+        # content back from the example itself, so a content edit compared equal to itself and passed.
+        with tempfile.TemporaryDirectory() as d:
+            assets = os.path.join(d, "assets")
+            out_dir = os.path.join(d, "skill")
+            shutil.copytree(_paths.ASSETS, assets)
+            shutil.copytree(_paths.DIST, os.path.join(out_dir, "dist"))
+            shutil.copytree(_paths.EXAMPLES, os.path.join(out_dir, "examples"))
+            base = [sys.executable, BUILD_PY, "--assets-dir", assets, "--out-dir", out_dir]
+            self.assertEqual(subprocess.run(base + ["--check"], capture_output=True, text=True).returncode, 0,
+                             "freshly copied tree should be in sync")
+            taxi = os.path.join(out_dir, "examples", "report-taxi.html")
+            html = _read(taxi)
+            # Poison the CONTENT region (inside #commentRoot), which build.py preserves from the
+            # source and never rewrites - so drift here is only catchable because the source is
+            # independent of the shipped file.
+            poisoned = re.sub(r'(<main\b[^>]*\bid="commentRoot"[^>]*>)',
+                              r'\1<p>POISON-CONTENT-DRIFT</p>', html, count=1)
+            self.assertNotEqual(poisoned, html, "could not poison the example content region")
+            with open(taxi, "w", encoding="utf-8", newline="") as fh:
+                fh.write(poisoned)
+            r = subprocess.run(base + ["--check"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("report-taxi.html", r.stdout + r.stderr)
+
 
 class ExamplePromptTests(unittest.TestCase):
     """CMH-DEMO-02: every shipped example report has a companion example-prompt file

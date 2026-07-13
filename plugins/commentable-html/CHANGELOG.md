@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-07-13
+
+### Changed
+
+- The shipped example reports (`examples/report-*.html`) are now pure build artifacts assembled
+  from an independent content source in `dev/examples-src/`. `build.py --check` compares each
+  shipped example to a fresh assembly, so a hand-edit or a stale/clobbered example - of its content
+  as well as its layer - now fails the build instead of comparing equal to itself. Edit demo content
+  in `dev/examples-src/`, not in the shipped file.
+
+### Accessibility
+
+- The comments-panel toggle and the overflow-menu trigger now declare the element they control with
+  `aria-controls` (`#sidebar` and `#toolbarMenu`), so assistive technology can associate each toggle
+  with its target.
+
 ## [1.33.0] - 2026-07-13
 
 ### Fixed

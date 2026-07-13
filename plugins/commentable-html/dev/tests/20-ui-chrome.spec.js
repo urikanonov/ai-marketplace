@@ -5,6 +5,20 @@ import { openInline, openNonPortable, openToolbarMenu, addTextComment, ready, fi
 import fs from "fs";
 
 test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
+  test("the sidebar/menu toggles declare the element they control via aria-controls (CMH-A11Y-06)", async ({ page }) => {
+    await openInline(page);
+    // The overflow-menu trigger points at the menu it opens.
+    const menuBtn = page.locator("#btnToolbarMenu");
+    await expect(menuBtn).toHaveAttribute("aria-controls", "toolbarMenu");
+    await expect(menuBtn).toHaveAttribute("aria-haspopup", "true");
+    await expect(page.locator("#toolbarMenu")).toHaveCount(1);
+    // The sidebar show/hide toggle points at the comments panel it controls.
+    const sidebarBtn = page.locator("#btnToggleSidebar");
+    await expect(sidebarBtn).toHaveAttribute("aria-controls", "sidebar");
+    await expect(sidebarBtn).toHaveAttribute("aria-expanded", /^(true|false)$/);
+    await expect(page.locator("#sidebar")).toHaveCount(1);
+  });
+
   test("the sidebar shows the layer version", async ({ page }) => {
     await openInline(page);
     await expect(page.locator("#cmVersion")).toHaveText(/^v\d+\.\d+\.\d+$/);

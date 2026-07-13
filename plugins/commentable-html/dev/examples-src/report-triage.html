@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.34.0" />
-<meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.34.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<meta name="commentable-html-version" content="1.33.0" />
+<meta name="commentable-html-kind" content="board" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.33.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
-<title>Commentable Visuals Matrix</title>
+<title>Incident Triage Board</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
 <script>
@@ -1195,14 +1195,16 @@ body.cmh-deck-present #menuComment {
 </style>
 
 <style>
-#commentRoot .visual-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: stretch; }
-#commentRoot .visual-grid > pre.mermaid, #commentRoot .visual-grid > figure { margin: 0; }
-#commentRoot .visual-chip-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }
-#commentRoot .visual-chip-list span { border: 1px solid var(--cp-border); border-radius: 999px; background: var(--cp-surface-soft); color: var(--cp-text-muted); padding: 0.2rem 0.55rem; font-size: 0.82rem; }
-#commentRoot .metric-svg { width: 100%; max-width: 620px; height: auto; display: block; }
-#commentRoot .metric-svg .node-box { fill: var(--cp-surface-soft); stroke: var(--cp-border); stroke-width: 2; }
-#commentRoot .metric-svg .node-line { stroke: var(--cp-accent); stroke-width: 3; fill: none; }
-#commentRoot .metric-svg text { fill: var(--cp-text); font: 13px system-ui, sans-serif; }
+#commentRoot .triage-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+#commentRoot .triage-stat { border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface-soft); padding: 0.85rem; }
+#commentRoot .triage-stat strong { display: block; font-size: 1.45rem; color: var(--cp-text); }
+#commentRoot .triage-board-demo { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0; align-items: start; }
+#commentRoot .triage-column { border: 1px solid var(--cp-border); border-radius: 14px; background: var(--cp-surface); padding: 0.85rem; min-width: 0; }
+#commentRoot .triage-column h3 { margin: 0 0 0.65rem; font-size: 1rem; }
+#commentRoot .triage-card { border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface-soft); padding: 0.8rem; margin: 0.65rem 0; box-shadow: 0 8px 20px var(--cp-shadow); }
+#commentRoot .triage-card strong { display: block; margin-bottom: 0.35rem; }
+#commentRoot .triage-meta { color: var(--cp-text-muted); font-size: 0.86rem; }
+@media (max-width: 820px) { #commentRoot .triage-board-demo { grid-template-columns: 1fr; } }
 </style>
 </head>
 
@@ -1254,9 +1256,9 @@ body.cmh-deck-present #menuComment {
 <div class="cm-toolbar cm-skip" role="toolbar" aria-label="Comments toolbar">
   <button id="btnCopyAllTop" type="button" class="cm-primary" title="Copy all comments to the clipboard for pasting back to the agent">Copy all</button>
   <span class="pill-count" id="toolbarCount" title="Open comments">0</span>
-  <button id="btnToggleSidebar" type="button" title="Show or hide the comments panel" aria-controls="sidebar" aria-expanded="true">Hide</button>
+  <button id="btnToggleSidebar" type="button" title="Show or hide the comments panel" aria-expanded="true">Hide</button>
   <div class="cm-toolbar-more">
-    <button id="btnToolbarMenu" type="button" class="cm-icon-btn" title="More actions" aria-haspopup="true" aria-controls="toolbarMenu" aria-expanded="false" aria-label="More actions">
+    <button id="btnToolbarMenu" type="button" class="cm-icon-btn" title="More actions" aria-haspopup="true" aria-expanded="false" aria-label="More actions">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2" fill="currentColor"/></svg>
     </button>
     <div id="toolbarMenu" class="cm-toolbar-menu" hidden>
@@ -1341,149 +1343,64 @@ body.cmh-deck-present #menuComment {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="commentable-visuals-matrix-report" data-doc-label="Commentable Visuals Matrix" data-doc-source="report-metrics.html" data-generated="2026-07-12">
+<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-07-12">
 <nav class="cm-toc" aria-label="Table of contents">
   <div class="cm-toc-title">Contents</div>
   <ol>
-    <li><a href="#visual-index">Inventory</a></li>
-    <li><a href="#mermaid-gallery">Mermaid gallery</a></li>
-    <li><a href="#chart-gallery">Chart gallery</a></li>
-    <li><a href="#svg-widget">SVG parts</a></li>
-    <li><a href="#review-blocks">Diff and KQL</a></li>
+    <li><a href="#triage-snapshot">Snapshot</a></li>
+    <li><a href="#triage-board">Commentable board</a></li>
+    <li><a href="#triage-chart">Queue counts</a></li>
   </ol>
 </nav>
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
-<h1>Commentable Visuals Matrix</h1>
-<p class="cmh-lede">A dense gallery for testing diagram, chart, diff, KQL, SVG, table, and callout review anchors.</p>
-<div class="visual-chip-list"><span>Mermaid x7</span><span>Chart.js x4</span><span>Diff</span><span>KQL</span><span>SVG parts</span></div>
-<section aria-labelledby="visual-index">
-  <h2 id="visual-index">Inventory</h2>
+<h1>Incident Triage Board</h1>
+<p class="cmh-lede">A compact review surface for queue order, ownership, and the next repair move.</p>
+<section aria-labelledby="triage-snapshot">
+  <h2 id="triage-snapshot">Snapshot</h2>
+  <div class="triage-summary-grid">
+    <div class="triage-stat"><strong>18</strong><span>open incidents</span></div>
+    <div class="triage-stat"><strong>3</strong><span>customer-impacting</span></div>
+    <div class="triage-stat"><strong>42 min</strong><span>median age</span></div>
+  </div>
   <table>
-    <thead><tr><th>Kind</th><th>Count</th><th>Comment target</th></tr></thead>
+    <thead><tr><th>Queue</th><th>Owner</th><th>Oldest</th><th>Exit check</th></tr></thead>
     <tbody>
-      <tr><td>Mermaid</td><td>7</td><td>Diagram nodes and whole diagrams</td></tr>
-      <tr><td>Chart.js</td><td>4</td><td>Canvas plus caption</td></tr>
-      <tr><td>Code review diff</td><td>1</td><td>Changed lines</td></tr>
-      <tr><td>KQL</td><td>1</td><td>Query text</td></tr>
+      <tr><td>New</td><td>Live site</td><td>36 min</td><td>First responder assigned</td></tr>
+      <tr><td>Investigating</td><td>Platform</td><td>2 h</td><td>Repro and trace attached</td></tr>
+      <tr><td>Fixed</td><td>Release</td><td>4 h</td><td>Patch verified in canary</td></tr>
     </tbody>
   </table>
 </section>
-<section aria-labelledby="mermaid-gallery">
-  <h2 id="mermaid-gallery">Mermaid gallery</h2>
-  <div class="visual-grid">
-    <pre class="mermaid cm-skip">flowchart LR
-  Signal[Signal] --> Gate{Known issue?}
-  Gate -->|yes| Runbook[Runbook]
-  Gate -->|no| Triage[Triage]</pre>
-    <pre class="mermaid cm-skip">sequenceDiagram
-  participant Monitor
-  participant Router
-  participant Owner
-  Monitor->>Router: alert payload
-  Router->>Owner: assign incident
-  Owner-->>Router: mitigation posted</pre>
-    <pre class="mermaid cm-skip">gantt
-  title Repair plan
-  dateFormat  YYYY-MM-DD
-  section Stabilize
-  Patch queue       :a1, 2026-07-12, 1d
-  Verify canary     :a2, after a1, 1d
-  section Close
-  Update runbook    :a3, after a2, 1d</pre>
-    <pre class="mermaid cm-skip">stateDiagram-v2
-  [*] --> Intake
-  Intake --> Investigating
-  Investigating --> Mitigating
-  Mitigating --> Resolved
-  Resolved --> [*]</pre>
-    <pre class="mermaid cm-skip">classDiagram
-  class SignalRouter {
-    +route(signal)
-    +dedupe(alert)
-  }
-  class IncidentQueue {
-    +promote(card)
-  }
-  SignalRouter --> IncidentQueue</pre>
-    <pre class="mermaid cm-skip">erDiagram
-  INCIDENT ||--o{ SIGNAL : has
-  INCIDENT }o--|| OWNER : assigned_to
-  SIGNAL }o--|| SERVICE : emitted_by</pre>
-    <pre class="mermaid cm-skip">pie title Alert mix
-  "Latency" : 38
-  "Errors" : 24
-  "Saturation" : 18
-  "Deploy" : 9</pre>
+<section aria-labelledby="triage-board">
+  <h2 id="triage-board">Commentable board</h2>
+  <div class="triage-board-demo cm-skip" data-cm-widget="incident-triage-board" data-cm-draggable aria-label="Incident triage board">
+    <div class="triage-column" data-cm-slot="New" data-cm-part="column-new" data-cm-part-label="New column">
+      <h3>New</h3>
+      <article class="triage-card" data-cm-part="api-saturation" data-cm-part-label="API saturation"><strong>API saturation</strong><div class="triage-meta">Sev 2 - owner: gateway - impact: 8 regions</div></article>
+      <article class="triage-card" data-cm-part="checkout-timeouts" data-cm-part-label="Checkout timeouts"><strong>Checkout timeouts</strong><div class="triage-meta">Sev 1 - owner: commerce - impact: paid users</div></article>
+      <article class="triage-card" data-cm-part="schema-drift" data-cm-part-label="Schema drift alert"><strong>Schema drift alert</strong><div class="triage-meta">Sev 3 - owner: data - impact: reports delayed</div></article>
+    </div>
+    <div class="triage-column" data-cm-slot="Investigating" data-cm-part="column-investigating" data-cm-part-label="Investigating column">
+      <h3>Investigating</h3>
+      <article class="triage-card" data-cm-part="auth-retries" data-cm-part-label="Auth retries"><strong>Auth retries</strong><div class="triage-meta">Sev 2 - owner: identity - trace: retry storm</div></article>
+      <article class="triage-card" data-cm-part="worker-lag" data-cm-part-label="Worker lag"><strong>Worker lag</strong><div class="triage-meta">Sev 3 - owner: jobs - trace: queue depth</div></article>
+    </div>
+    <div class="triage-column" data-cm-slot="Fixed" data-cm-part="column-fixed" data-cm-part-label="Fixed column">
+      <h3>Fixed</h3>
+      <article class="triage-card" data-cm-part="cache-patch" data-cm-part-label="Cache patch"><strong>Cache patch</strong><div class="triage-meta">Sev 2 - owner: platform - verified in canary</div></article>
+      <article class="triage-card" data-cm-part="log-sampling" data-cm-part-label="Log sampling restored"><strong>Log sampling restored</strong><div class="triage-meta">Sev 3 - owner: observability - rolled out</div></article>
+    </div>
   </div>
 </section>
-<section aria-labelledby="chart-gallery">
-  <h2 id="chart-gallery">Chart gallery</h2>
-  <div class="visual-grid">
-    <!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsBarChart-caption">
+<section aria-labelledby="triage-chart">
+  <h2 id="triage-chart">Queue counts</h2>
+  <!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="triageQueueChart-caption">
   <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsBarChart" role="img" aria-label="Chart: Incidents by service. Bar chart: incidents by service."></canvas>
+    <canvas id="triageQueueChart" role="img" aria-label="Chart: Incident queue health. Open incidents by queue and severity."></canvas>
   </div>
-  <figcaption id="metricsBarChart-caption">Bar chart: incidents by service.</figcaption>
-</figure>
-<!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsLineChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsLineChart" role="img" aria-label="Chart: Error rate trend. Line chart: error rate over six hours."></canvas>
-  </div>
-  <figcaption id="metricsLineChart-caption">Line chart: error rate over six hours.</figcaption>
-</figure>
-<!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsPieChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsPieChart" role="img" aria-label="Chart: Alert source mix. Pie chart: alert source mix."></canvas>
-  </div>
-  <figcaption id="metricsPieChart-caption">Pie chart: alert source mix.</figcaption>
-</figure>
-<!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsDoughnutChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsDoughnutChart" role="img" aria-label="Chart: Severity mix. Doughnut chart: severity mix."></canvas>
-  </div>
-  <figcaption id="metricsDoughnutChart-caption">Doughnut chart: severity mix.</figcaption>
-</figure>
-  </div>
-</section>
-<section aria-labelledby="svg-widget">
-  <h2 id="svg-widget">SVG parts</h2>
-  <figure aria-labelledby="signal-svg-caption">
-    <svg class="metric-svg cm-skip" data-cm-widget="metric-signal-svg" aria-label="Metric signal path" viewBox="0 0 620 160" role="img">
-      <g data-cm-part="ingest" data-cm-part-label="Ingest node"><rect class="node-box" x="20" y="45" width="130" height="64" rx="12"></rect><text x="52" y="82">Ingest</text></g>
-      <path class="node-line" d="M150 77 H250"></path>
-      <g data-cm-part="score" data-cm-part-label="Score node"><rect class="node-box" x="250" y="45" width="130" height="64" rx="12"></rect><text x="290" y="82">Score</text></g>
-      <path class="node-line" d="M380 77 H480"></path>
-      <g data-cm-part="route" data-cm-part-label="Route node"><rect class="node-box" x="480" y="45" width="120" height="64" rx="12"></rect><text x="520" y="82">Route</text></g>
-    </svg>
-    <figcaption id="signal-svg-caption">SVG: metric signal path.</figcaption>
-  </figure>
-</section>
-<section aria-labelledby="review-blocks">
-  <h2 id="review-blocks">Diff and KQL</h2>
-  <div class="cmh-callout cmh-callout-warning"><strong>Review focus.</strong> Confirm that promotion to Sev 1 requires both rate and regional spread.</div>
-  <pre class="cmh-diff" data-diff-label="rules/metric_router.py" data-diff-lang="python">--- a/rules/metric_router.py
-+++ b/rules/metric_router.py
-@@ -4,7 +4,8 @@ def route(signal):
--    if signal.error_rate &gt; 2.0:
--        return "sev2"
-+    if signal.error_rate &gt; 2.0 and signal.region_count &gt;= 3:
-+        return "sev1"
-+    if signal.error_rate &gt; 1.2:
-+        return "sev2"
-     return "watch"
-</pre>
-  <figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F02OsQ6CQBBEe75iY3UkNDQ25kyMlTX%2BwHE3yiZwl%2BwtEIwfL6gF5WTmzUwPpZljSHOjTpQsuWcyx648FbfoOSBqLt40dxDQVeAU4c4D6LzH1kQeh8EJv0CXHqLZ%2BjRGNWVFDab6p%2FhhVgFhXchaOmzOoaR2oZaj2bVXVHdfUib2WNuTBMgW3F9w2Vf%2FNQrI%2FgPJBdkNzAAAAA%3D%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
-<pre><code class="language-kusto"><span class="cmh-kql-kw">let</span> windowStart <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">ago</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">6h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">;</span>
-Incidents
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> CreatedTime <span class="cmh-kql-op">&gt;</span> windowStart
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Alerts<span class="cmh-kql-op">=</span><span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Sev1<span class="cmh-kql-op">=</span><span class="cmh-kql-fn">countif</span><span class="cmh-kql-op">(</span>Severity <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"Sev1"</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> <span class="cmh-kql-fn">bin</span><span class="cmh-kql-op">(</span>CreatedTime<span class="cmh-kql-op">,</span> <span class="cmh-kql-num">1h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Service
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> CreatedTime <span class="cmh-kql-kw">asc</span><span class="cmh-kql-op">,</span> Alerts <span class="cmh-kql-kw">desc</span></code></pre>
+  <figcaption id="triageQueueChart-caption">Open incidents by queue and severity.</figcaption>
 </figure>
 </section>
 
@@ -1538,7 +1455,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.34.0";
+const CMH_VERSION = "1.33.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7474,170 +7391,38 @@ window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
 <!-- END: commentable-html - JS -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
-<script id="metricsBarChart-data" type="application/json">
+<script id="triageQueueChart-data" type="application/json">
 {
   "type": "bar",
   "data": {
     "labels": [
-      "API",
-      "Auth",
-      "Jobs",
-      "Web"
+      "New",
+      "Investigating",
+      "Fixed"
     ],
     "datasets": [
       {
-        "label": "Incidents",
+        "label": "Sev 1",
         "data": [
-          8,
-          5,
-          6,
-          3
+          2,
+          1,
+          0
         ]
-      }
-    ]
-  },
-  "options": {
-    "plugins": {
-      "legend": {
-        "display": false
-      }
-    },
-    "scales": {
-      "y": {
-        "beginAtZero": true
-      }
-    }
-  }
-}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("metricsBarChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("metricsBarChart-data").textContent);
-  config.options = config.options || {};
-  config.options.responsive = true;
-  config.options.maintainAspectRatio = false;
-  new Chart(el, config);
-})();
-</script>
-
-<script id="metricsLineChart-data" type="application/json">
-{
-  "type": "line",
-  "data": {
-    "labels": [
-      "10:00",
-      "11:00",
-      "12:00",
-      "13:00",
-      "14:00",
-      "15:00"
-    ],
-    "datasets": [
+      },
       {
-        "label": "Error rate",
+        "label": "Sev 2",
         "data": [
-          1.2,
-          1.6,
-          2.8,
-          2.1,
-          1.5,
-          0.9
-        ],
-        "tension": 0.25
-      }
-    ]
-  },
-  "options": {
-    "interaction": {
-      "mode": "index",
-      "intersect": false
-    },
-    "plugins": {
-      "legend": {
-        "position": "bottom"
-      }
-    },
-    "scales": {
-      "y": {
-        "beginAtZero": true
-      }
-    }
-  }
-}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("metricsLineChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("metricsLineChart-data").textContent);
-  config.options = config.options || {};
-  config.options.responsive = true;
-  config.options.maintainAspectRatio = false;
-  new Chart(el, config);
-})();
-</script>
-
-<script id="metricsPieChart-data" type="application/json">
-{
-  "type": "pie",
-  "data": {
-    "labels": [
-      "Synthetic",
-      "Customer",
-      "SLO",
-      "Deploy"
-    ],
-    "datasets": [
-      {
-        "label": "Alerts",
-        "data": [
-          32,
-          24,
-          18,
-          9
-        ]
-      }
-    ]
-  },
-  "options": {
-    "plugins": {
-      "legend": {
-        "position": "bottom"
-      }
-    }
-  }
-}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("metricsPieChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("metricsPieChart-data").textContent);
-  config.options = config.options || {};
-  config.options.responsive = true;
-  config.options.maintainAspectRatio = false;
-  new Chart(el, config);
-})();
-</script>
-
-<script id="metricsDoughnutChart-data" type="application/json">
-{
-  "type": "doughnut",
-  "data": {
-    "labels": [
-      "Sev 1",
-      "Sev 2",
-      "Sev 3"
-    ],
-    "datasets": [
-      {
-        "label": "Incidents",
-        "data": [
+          4,
           3,
-          11,
-          19
+          2
+        ]
+      },
+      {
+        "label": "Sev 3",
+        "data": [
+          6,
+          4,
+          5
         ]
       }
     ]
@@ -7647,15 +7432,24 @@ window.__commentableHtmlVersion = CMH_VERSION;
       "legend": {
         "position": "bottom"
       }
+    },
+    "scales": {
+      "x": {
+        "stacked": true
+      },
+      "y": {
+        "stacked": true,
+        "beginAtZero": true
+      }
     }
   }
 }
 </script>
 <script>
 (function () {
-  var el = document.getElementById("metricsDoughnutChart");
+  var el = document.getElementById("triageQueueChart");
   if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("metricsDoughnutChart-data").textContent);
+  var config = JSON.parse(document.getElementById("triageQueueChart-data").textContent);
   config.options = config.options || {};
   config.options.responsive = true;
   config.options.maintainAspectRatio = false;
