@@ -31,6 +31,7 @@ Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-h
 - `validate.py` - structural invariant checker for generated files. Use `--strict` before handoff.
 - `mark_handled.py` - appends handled comment ids from explicit ids or a copied bundle.
 - `new_document.py` - builds a fresh commentable document from a content fragment (NonPortable by default; `--portable` for a single self-contained file).
+- `retrofit.py` - injects the layer into an existing unlayered HTML file, validates before writing, and leaves the target unchanged on failure.
 - `upgrade.py` - upgrades CSS, COMMENT UI, and JS regions from the current `dist/PORTABLE.html`.
 - `finalize.py` - runs safe assembly steps, then validates.
 - `diff_block.py` - emits escaped `pre.cmh-diff` review blocks.
@@ -54,6 +55,7 @@ Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-h
 - `references/document-layout.md` - Themes, TOC, sections, cards, and tables.
 - `references/exports.md` - Portable, Plain HTML, Markdown, and NonPortable export semantics.
 - `references/file-inventory.md` - This file.
+- `references/forward-compatible-layout.md` - Region layout and descriptor contract for current and future tools.
 - `references/images-commentable.md` - Image and chart canvas comments.
 - `references/interaction-model.md` - Add-comment gestures and sidebar lifecycle.
 - `references/kusto-query-blocks.md` - KQL blocks and deep links.

@@ -3,19 +3,69 @@
 
 ## Add the layer to an existing HTML
 
-The five `BEGIN/END: commentable-html - <REGION>` blocks in `dist/PORTABLE.html` are designed to be copied verbatim into another document - no JS or CSS edits required. The layer is built to overlay an arbitrary existing page: every style is namespaced under a `cm-` class (plus `mark.cm-hl` and a scoped `.cm-skip[hidden]` rule), and the only globals it introduces are the `:root` / `html[data-theme="dark"]` blocks that define the `--cp-*` variables.
+Use `tools/retrofit.py` as the primary path for unlayered standalone HTML:
 
-1. **Open `dist/PORTABLE.html`** and locate the five region pairs. Each region is a single contiguous block bracketed by HTML or CSS comments stamped `commentable-html`.
-2. **Paste CSS region** at the end of any `<style>` block in `<head>` (or create one). It is self-contained: it ships the `--cp-*` variables it needs inside its own `:root` / `html[data-theme="dark"]` blocks, so you do not have to import a theme.
+```bash
+python tools/retrofit.py existing.html --label "My Report" --key auto --source existing.html --out existing-commentable.html
+python tools/retrofit.py existing.html --label "My Report" --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
+python tools/retrofit.py existing.html --label "My Report" --portable --out shareable.html
+```
+
+The tool parses the real HTML token stream with Python's standard `html.parser`; it does not regex-match `<head>` or
+`<body>` in comments or strings. It fails closed when `<head>` or `<body>` is missing, duplicated, malformed, or
+ambiguous.
+
+By default it wraps the existing `<body>` children in:
+
+```html
+<main id="commentRoot" data-cmh-content-root data-comment-key="..." data-doc-label="..." data-doc-source="...">
+ ...
+</main>
+```
+
+Use `--root-selector "#id"` when the host already has an outer content wrapper and wrapping `body > *` would break its
+CSS. The selector grammar is intentionally limited to a single `#id`; the matched element is stamped as
+`id="commentRoot"` and receives `data-cmh-content-root`, `data-comment-key`, `data-doc-label`, and `data-doc-source`.
+
+`--key auto` derives a unique non-demo key from the label and output path. The tool refuses template/demo keys and
+ignores a commented example `#commentRoot`, so it never binds to the template's documentation sample. It also refuses
+an already-layered file and tells you to use `tools/upgrade.py` instead.
+
+Use `--skip-selectors "sel,sel"` for host floating panels, modals, toolbars, navs, or sticky headers that should not
+receive comments. Each selector may be `#id`, `.class`, or a tag name. Matching elements receive `class="cm-skip"`;
+normal code blocks should stay commentable.
+
+For NonPortable output the companion asset options match `new_document.py`: default absolute `file://` references to
+the skill `dist/`, `--assets-relative`, `--copy-assets`, or `--assets-href PREFIX`. `--portable` inlines the layer into
+one file.
+
+Before writing, `retrofit.py` validates the candidate with the same `validate.py` checks. It writes through a temp file
+and atomic replace, so a validation failure never clobbers the target. It also warns, without failing, when host CSS
+appears to define `--cp-*`, `cm-*`, `color-scheme`, or `z-index` values at or above the layer's UI band.
+
+There are no top-of-script constants to set, no `getElementById` calls to add, and no per-document JS edits.
+
+## Manual paste fallback
+
+Use manual paste only when Python is unavailable or the host HTML is too malformed for the tool and you choose to fix it
+by hand. The five `BEGIN/END: commentable-html - <REGION>` blocks in `dist/PORTABLE.html` are designed to be copied
+verbatim into another document:
+
+1. **Open `dist/PORTABLE.html`** and locate the five region pairs. Each region is one contiguous block bracketed by
+   HTML or CSS comments stamped `commentable-html`.
+2. **Paste CSS region** at the end of any `<style>` block in `<head>` or create one. It includes the `--cp-*` variables
+   it needs.
 3. **Paste HANDLED IDS region** as the first child of `<body>`.
-4. **Paste EMBEDDED COMMENTS region** immediately after the HANDLED IDS region. Leave its payload as `[]`; **Export as Portable** is what writes into it.
-5. **Paste COMMENT UI region** immediately after the EMBEDDED COMMENTS region.
-6. **Paste JS region** at the very end of `<body>`, after every other script that renders content. The IIFE wrapper ensures none of the script's local variables (`root`, `comments`, `COMMENT_KEY`, ...) leak into the host page's global scope.
-7. **Mark the content root.** Prefer adding `id="commentRoot"` plus the `data-*` attributes to the host's existing outermost content container rather than introducing a new `<main>` that could change the host's margins or layout. If there is no single wrapper, add `<main id="commentRoot" data-comment-key="..." data-doc-label="..." data-doc-source="...">` around the body content. Pick a unique `data-comment-key` per document. **If you are scripting the swap of the demo content**, remember `dist/PORTABLE.html` has an *example* `<main id="commentRoot">` inside its top-of-file documentation comment (placeholder key `my-doc`); target the **last** `<main id="commentRoot">` (the real one, inside `<body>`), not the first, or your content ends up commented out and the demo renders. See the pitfall note in Step 3.
-8. **Add `class="cm-skip"`** to any of your own pre-existing floating panels, modals, toolbars, navs, or sticky headers that should not receive comments. Mermaid blocks should keep `cm-skip` too (the mermaid layer attaches via the `mermaid` class, not via the selection layer).
-9. **Adjust the layout** so the open sidebar does not crush your main content (see [Layout recipes](document-layout.md#layout-recipes)).
-
-That is the whole retrofit. There are no top-of-script constants to set, no `getElementById` calls to add, no per-document JS edits.
+4. **Paste EMBEDDED COMMENTS region** immediately after HANDLED IDS. Leave its payload as `[]`; **Export as Portable**
+   writes into it.
+5. **Paste COMMENT UI region** immediately after EMBEDDED COMMENTS.
+6. **Paste JS region** at the end of `<body>`, after scripts that render content.
+7. **Mark the content root.** Prefer stamping the host's existing outermost content container. If there is no wrapper,
+   wrap the reviewable content in `<main id="commentRoot" data-cmh-content-root data-comment-key="..."
+   data-doc-label="..." data-doc-source="...">`.
+8. **Avoid the duplicate-root footgun.** `dist/PORTABLE.html` contains a commented example `#commentRoot` with key
+   `my-doc`; the real root is inside `<body>`. Target the body/last active root and give it a unique non-demo key.
+9. **Add `cm-skip`** only to host chrome that must be excluded from selection, and run `tools/validate.py --strict`.
 
 ### Avoiding CSS collisions when retrofitting
 
