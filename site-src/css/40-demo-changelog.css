@@ -110,6 +110,9 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .loop-fig-sub { fill: var(--cp-text-muted); }
 .loop-fig-arrow { stroke: var(--cp-accent); fill: none; }
 .loop-fig-head { fill: var(--cp-accent); }
+.loop-fig-badge { fill: var(--cp-accent); }
+.loop-fig-badge-num { fill: var(--cp-bg-elevated); font-family: var(--cp-mono); font-weight: 700; }
+.loop-fig-repeat { font-style: italic; }
 .why-loop-block { margin-top: 18px; }
 .section-block .loop-figure { margin: 4px auto 0; }
 .why-mediums { margin-top: 18px; }
