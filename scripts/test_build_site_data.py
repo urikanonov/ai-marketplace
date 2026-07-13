@@ -597,29 +597,55 @@ class WriteOrCheckTests(unittest.TestCase):
 
 
 class CheckDriftTests(unittest.TestCase):
-    def _clone_repo(self):
+    # Building the clone is the dominant cost of this suite (~17 tests each copied every tracked
+    # file, including the large vendored dev/ subtree that build_site_data.py never reads). Build a
+    # filtered template ONCE per class (one git call, dev/ and dist/ excluded) and copytree from that
+    # warm local template per test - same inputs build_site_data needs, a fraction of the bytes.
+    _template = None
+    _template_ok = False
+
+    @classmethod
+    def setUpClass(cls):
         import os as _os
         import shutil
         import subprocess
         import tempfile
-        root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
         try:
             tracked = subprocess.run(["git", "-C", bsd.REPO_ROOT, "ls-files", "-z"],
                                      capture_output=True, check=True).stdout.decode("utf-8").split("\0")
-        except FileNotFoundError:
-            self.skipTest("git not available on PATH")
-        except subprocess.CalledProcessError as exc:
-            self.skipTest("git ls-files failed (%s); cannot clone the repo for this test" % exc)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            cls._template_ok = False
+            return
+        cls._template = tempfile.mkdtemp(prefix="cmh-site-template-")
         for rel in tracked:
             if not rel:
+                continue
+            # build_site_data.py reads site-src/, the plugins' pkg changelogs/docs/examples, and the
+            # marketplace manifest - never plugins/*/dev/** or the generated dist/ bundles.
+            if "/dev/" in rel or rel.endswith("/dev") or "/dist/" in rel:
                 continue
             src = _os.path.join(bsd.REPO_ROOT, rel.replace("/", _os.sep))
             if not _os.path.isfile(src):
                 continue
-            dst = _os.path.join(root, rel.replace("/", _os.sep))
+            dst = _os.path.join(cls._template, rel.replace("/", _os.sep))
             _os.makedirs(_os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src, dst)
+        cls._template_ok = True
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        if cls._template:
+            shutil.rmtree(cls._template, ignore_errors=True)
+
+    def _clone_repo(self):
+        import shutil
+        import tempfile
+        if not self._template_ok:
+            self.skipTest("git not available on PATH; cannot clone the repo for this test")
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        shutil.copytree(self._template, root, dirs_exist_ok=True)
         return root
 
     def test_check_flags_a_stale_asset_stamp(self):
