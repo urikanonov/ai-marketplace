@@ -624,6 +624,40 @@ class CheckDriftTests(unittest.TestCase):
             fh.write("\n/* mutate without regenerating */\n")
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
+    def test_check_flags_a_hand_edited_built_page(self):
+        # The clobber guard, end to end through the real CLI: a hand-edit to a built page's STATIC
+        # content (not a marker region) must fail --check, because the page is rebuilt from its
+        # independent site-src/pages source. This is the CI gate SITE-BUILD-14 promises.
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        page = _os.path.join(root, "site", "commentable-html", "index.html")
+        html = bsd.read_text(page)
+        self.assertIn("Why Commentable HTML", html)
+        with open(page, "w", encoding="utf-8", newline="") as fh:
+            fh.write(html.replace("Why Commentable HTML", "HAND EDITED", 1))
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+    def test_check_flags_an_orphaned_page_whose_source_was_removed(self):
+        # If a page's site-src source is removed but its built artifact lingers, --check must flag it
+        # so the "pure artifact" invariant never silently ignores a stranded page.
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
+        self.assertTrue(_os.path.exists(_os.path.join(root, bsd.TUTORIAL_PAGE)))
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+    def test_write_removes_an_orphaned_page_whose_source_was_removed(self):
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertFalse(_os.path.exists(_os.path.join(root, bsd.TUTORIAL_PAGE)))
+
 
 class StylesConcatTests(unittest.TestCase):
     def test_concat_matches_committed_stylesheet(self):
@@ -673,6 +707,23 @@ class PageBannerAndGuardTests(unittest.TestCase):
         twice = bsd.apply_page_banner(once, "site-src/pages/index.html")
         self.assertEqual(once, twice)
         self.assertEqual(twice.count("GENERATED FILE - DO NOT EDIT."), 1)
+
+    def test_apply_page_banner_leaves_a_body_comment_with_the_banner_prefix(self):
+        # Only the banner in the slot right after the doctype is replaced; a comment elsewhere in
+        # the page body that happens to start with the banner prefix must NOT be stripped.
+        body_comment = "<!-- GENERATED FILE - DO NOT EDIT. real body content -->"
+        html = "<!DOCTYPE html>\n<html><body>\n%s\n</body></html>\n" % body_comment
+        out = bsd.apply_page_banner(html, "site-src/pages/index.html")
+        self.assertIn(body_comment, out)
+        self.assertEqual(out.count("GENERATED FILE - DO NOT EDIT."), 2)  # slot banner + body comment
+        self.assertEqual(out, bsd.apply_page_banner(out, "site-src/pages/index.html"))  # idempotent
+
+    def test_apply_page_banner_tolerates_a_doctype_with_attributes(self):
+        html = '<!DOCTYPE html SYSTEM "about:legacy-compat">\n<html></html>\n'
+        out = bsd.apply_page_banner(html, "site-src/pages/index.html")
+        # The banner goes AFTER the doctype (never before it, which would trip quirks mode).
+        self.assertRegex(
+            out, r'^<!DOCTYPE html SYSTEM "about:legacy-compat">\n<!-- GENERATED FILE - DO NOT EDIT\.')
 
     def _write_source(self, root):
         src_rel = os.path.join("site-src", "pages", "x.html")

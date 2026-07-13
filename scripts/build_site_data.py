@@ -155,19 +155,21 @@ def page_banner(source_rel):
 
 
 _PAGE_BANNER_RE = re.compile(
-    r"^[ \t]*<!-- %s.*?-->[ \t]*\r?\n?" % re.escape(GENERATED_BANNER_PREFIX), re.MULTILINE)
-_DOCTYPE_RE = re.compile(r"(?i)^\s*<!doctype html>[^\n]*\n?")
+    r"^[ \t]*<!-- %s[^\n]*?-->[ \t]*\r?\n?" % re.escape(GENERATED_BANNER_PREFIX))
+_DOCTYPE_RE = re.compile(r"(?i)^(\s*<!doctype[^>]*>)([ \t]*\r?\n?)")
 
 
 def apply_page_banner(html, source_rel):
-    """Insert the DO NOT EDIT banner right after the doctype (replacing any prior banner), so the
-    built page self-identifies as an artifact and points at its source."""
-    html = _PAGE_BANNER_RE.sub("", html, count=1)
-    banner = page_banner(source_rel) + "\n"
+    """Insert the DO NOT EDIT banner right after the doctype (replacing any prior banner in that
+    exact slot), so the built page self-identifies as an artifact and points at its source. The
+    strip is anchored to the position right after the doctype, so a body comment that happens to
+    start with the banner prefix is never removed; the doctype match tolerates any doctype variant."""
+    banner = page_banner(source_rel)
     m = _DOCTYPE_RE.match(html)
     if m:
-        return html[:m.end()] + banner + html[m.end():]
-    return banner + html
+        rest = _PAGE_BANNER_RE.sub("", html[m.end():], count=1)
+        return m.group(1) + (m.group(2) or "\n") + banner + "\n" + rest
+    return banner + "\n" + _PAGE_BANNER_RE.sub("", html, count=1)
 
 
 def build_page(root, source_rel, region_fillers):
@@ -179,8 +181,10 @@ def build_page(root, source_rel, region_fillers):
     for kind, name, value in region_fillers:
         if kind == "inline":
             out = replace_region_inline(out, name, value)
-        else:
+        elif kind == "block":
             out = replace_region_block(out, name, value)
+        else:
+            raise SystemExit("build_page: unknown region filler kind %r (use 'inline' or 'block')" % kind)
     out = stamp_assets(out, root)
     return apply_page_banner(out, source_rel)
 
@@ -743,6 +747,11 @@ def main(argv):
             break
     version = plugin_version(manifest, CHANGELOG_PLUGIN)
 
+    for src_rel in (HUB_SRC, PLUGIN_SRC):
+        if not os.path.exists(os.path.join(root, src_rel)):
+            raise SystemExit("page source missing: %s (a built page under site/ has no source to "
+                             "rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
+
     hub_out = build_page(root, HUB_SRC, [
         ("block", "plugins", plugins_html),
         ("block", "jsonld", render_jsonld(manifest)),
@@ -759,6 +768,10 @@ def main(argv):
     tutorial_out_path = os.path.join(root, TUTORIAL_PAGE)
     tutorial_md_path = os.path.join(root, TUTORIAL_SRC)
     tutorial_out = None
+    # A built tutorial page whose source was removed is an ORPHAN: --check must flag it and a
+    # normal build must delete it, so a stranded artifact can never silently linger.
+    tutorial_orphaned = (not os.path.exists(tutorial_src_page)
+                         and os.path.exists(tutorial_out_path))
     if os.path.exists(tutorial_src_page):
         if not os.path.exists(tutorial_md_path):
             raise SystemExit(
@@ -790,6 +803,9 @@ def main(argv):
         if tutorial_out is not None and tutorial_out != _read_artifact(tutorial_out_path):
             problems.append("site/commentable-html/tutorial/index.html is stale vs its source "
                             "and TUTORIAL.md")
+        if tutorial_orphaned:
+            problems.append("site/commentable-html/tutorial/index.html is orphaned: its "
+                            "site-src/pages source was removed but the built page lingers; delete it")
         if demo_drift:
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
         if tutorial_img_drift:
@@ -810,6 +826,8 @@ def main(argv):
     write_text(plugin_out_path, plugin_out)
     if tutorial_out is not None:
         write_text(tutorial_out_path, tutorial_out)
+    elif tutorial_orphaned:
+        os.remove(tutorial_out_path)
     print("site data generated (plugins, jsonld, version v%s, changelog, demos, tutorial, sitemap, llms)" % version)
     return 0
 
