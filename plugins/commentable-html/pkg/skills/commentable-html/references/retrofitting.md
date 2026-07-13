@@ -1,6 +1,14 @@
 # Retrofitting
 
 
+## Contents
+
+- [Add the layer to an existing HTML](#add-the-layer-to-an-existing-html)
+- [Manual paste fallback](#manual-paste-fallback)
+  - [Avoiding CSS collisions when retrofitting](#avoiding-css-collisions-when-retrofitting)
+- [Upgrade an existing instance to a new dist/PORTABLE.html](#upgrade-an-existing-instance-to-a-new-distportablehtml)
+- [Introspection globals (for tests and tooling)](#introspection-globals-for-tests-and-tooling)
+
 ## Add the layer to an existing HTML
 
 Use `tools/retrofit.py` as the primary path for unlayered standalone HTML:

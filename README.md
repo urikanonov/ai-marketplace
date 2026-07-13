@@ -10,7 +10,7 @@ Every plugin here is designed to make AI-assisted development workflows faster a
 
 | Plugin | Description | Install |
 |--------|-------------|---------|
-| `commentable-html` | Turn any standalone HTML into a commentable review surface: reviewers select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent. Drastically shortens the AI planning and iteration loop by reviewing the artifact in place | `copilot plugin install commentable-html@urikan-ai-marketplace` |
+| `commentable-html` | Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface: reviewers select any paragraph, table cell, code block, KQL query, chart, image, or Mermaid diagram, leave inline comments, and export the whole thread back to the agent. Drastically shortens the AI planning and iteration loop by reviewing the artifact in place | `copilot plugin install commentable-html@urikan-ai-marketplace` |
 | `urikan-ai-marketplace-auto-updater` | Automatically updates all installed plugins from this marketplace on session start (opt-in) | `copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace` |
 
 ## Getting Started

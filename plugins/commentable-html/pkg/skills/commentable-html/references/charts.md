@@ -11,6 +11,19 @@ This reference is the recipe for embedding Chart.js charts inside a Commentable 
 document so that tooltips work and the chart coexists cleanly with the commenting layer.
 It is light-theme by default; a dark-theme note is at the end.
 
+## Contents
+
+- [Dependency and portability](#dependency-and-portability)
+- [Why Chart.js and not hand-rolled SVG](#why-chartjs-and-not-hand-rolled-svg)
+- [Four rules for coexisting with the commenting layer](#four-rules-for-coexisting-with-the-commenting-layer)
+- [Minimal copy-paste recipe (light theme)](#minimal-copy-paste-recipe-light-theme)
+- [The tooltip options that matter](#the-tooltip-options-that-matter)
+- [Chart-type recipes (from the sample report)](#chart-type-recipes-from-the-sample-report)
+- [Data hygiene](#data-hygiene)
+- [Verifying the tooltip actually works](#verifying-the-tooltip-actually-works)
+- [Dark theme](#dark-theme)
+- [Pitfalls checklist](#pitfalls-checklist)
+
 ## Dependency and portability
 
 `chart_block.py` emits a bounded canvas wrapper and a guarded Chart.js CDN loader by default: it pins the full version, adds SRI plus `crossorigin="anonymous"`, keeps the loader synchronous, and guards init with `if (typeof Chart === "undefined") return;` so blocked loading leaves a blank canvas instead of throwing. Chart.js built-in tooltips need no extra library.
@@ -65,7 +78,7 @@ If the chart already rendered in the browser, **Export Offline** can also make t
  before the closing `</body>` tag by hand. Place the chart scripts **after the
  `END: commentable-html - JS` marker** (still before the final `</body>`): **Export to Plain HTML**
  strips only the commentable regions up to that marker, so chart scripts placed after it
- (host-owned content) survive the plain export and the chart still renders. **Export with embedded comments** only
+ (host-owned content) survive the plain export and the chart still renders. **Export as Portable** only
  rewrites `<script id="embeddedComments">`, so charts are never touched by it either.
 
 3. **Load Chart.js in `<head>` (or before the init script) with a plain SYNCHRONOUS tag.** Do not
@@ -310,7 +323,7 @@ new Chart(el, { type: "bar", data: {...}, options: {...}, plugins: [valueLabelPl
  the canvas as text, not HTML, so those are not an XSS surface; the raw JSON embedding is. If you
  build a custom `external` HTML tooltip, sanitize its content yourself.
 - **The data travels with the file.** The JSON payload is plaintext inside the HTML, and the
- commentable **Export with embedded comments** button lets the file (data included) be shared. Treat chart data like
+ commentable **Export as Portable** button lets the file (data included) be shared. Treat chart data like
  any other content in the report: redact, aggregate, or anonymize sensitive/internal metrics before
  sharing, and use synthetic data in public examples.
 

@@ -1,6 +1,20 @@
 # Exports
 
 
+## Contents
+
+- [Choosing a portability mode](#choosing-a-portability-mode)
+- [Producing a NonPortable document](#producing-a-nonportable-document)
+- [Guardrails that make NonPortable safe](#guardrails-that-make-nonportable-safe)
+- [Versioning and compatibility](#versioning-and-compatibility)
+- [What is bundled in the file vs fetched from where](#what-is-bundled-in-the-file-vs-fetched-from-where)
+- [Network requirements and CDN caveats](#network-requirements-and-cdn-caveats)
+- [Export as Portable](#export-as-portable)
+- [Export Offline](#export-offline)
+- [Combined file from a nonportable document](#combined-file-from-a-nonportable-document)
+- [Export to Plain HTML](#export-to-plain-html)
+- [Export to Markdown](#export-to-markdown)
+
 ## Choosing a portability mode
 
 **NonPortable** is the default authoring mode for fast personal iteration with the agent. The live HTML references shared companion assets (`commentable-html.css`, `commentable-html.js`, and `commentable-html.assets.js`), so each regeneration is much cheaper in tokens while the file can reach those assets.
@@ -109,7 +123,7 @@ and removes remote loaders.
 
 ## Export as Portable
 
-> UI label: **Export as Portable** (in the toolbar **...** overflow menu and the sidebar header). Earlier builds labeled it "Save comments" / "Save in HTML"; the behavior is the same, and in nonportable mode it now always produces a combined single file (see below).
+> UI label: **Export as Portable** (in the toolbar **...** overflow menu and the sidebar header). In nonportable mode it always produces a combined single file (see below).
 
 The fifth region, **EMBEDDED COMMENTS**, is an optional in-file snapshot of the comments array so a single HTML file can travel with its own review state:
 
@@ -127,7 +141,7 @@ Clicking it:
 2. Replaces the contents of the `<script id="embeddedComments">` block with the current `comments` array (pretty-printed JSON, two-space indent, for git-friendly diffs).
 3. Triggers a blob download via `<a download>` renamed to `<stem>-portable.html` (or `commentable-portable.html` if the URL had no `.html` segment). Existing `-comments` or `-portable` suffixes are stripped first, so `foo-comments.html` becomes `foo-portable.html` and repeated exports stay `foo-portable.html`. The browser saves it to the user's downloads folder; the user can keep the copy or replace the original.
 
-We deliberately do NOT try to overwrite the original file in place. An earlier version of this feature used the File System Access API (`window.showSaveFilePicker` + cached `FileSystemFileHandle` in IndexedDB) to attempt silent overwrites, but the semantics were confusing - the cached handle pointed at whatever file the user first picked, which is not necessarily the URL the page was loaded from. Always-download is unambiguous: every click produces a fresh self-contained file, and the user controls what to do with it.
+We deliberately do NOT try to overwrite the original file in place. The File System Access API (`window.showSaveFilePicker` + a cached `FileSystemFileHandle` in IndexedDB) can attempt silent overwrites, but its semantics are confusing - the cached handle points at whatever file the user first picked, which is not necessarily the URL the page was loaded from. Always-download is unambiguous: every click produces a fresh self-contained file, and the user controls what to do with it.
 
 On load, embedded comments are not displayed directly; they are merged into `localStorage` first. For each id that appears in both stores, the entry with the later `updatedAt` (fallback `createdAt`) wins. Ids that only appear in one store pass through unchanged. After merge the layer writes the resulting set back to localStorage so subsequent reloads converge on a single source of truth.
 
@@ -168,14 +182,14 @@ There is no separate "Export standalone" button: **Export as Portable** does thi
 
 ## Export to Plain HTML
 
-> UI label: **Export to Plain HTML** (overflow menu and sidebar). Earlier builds labeled it "Export plain" / "Save as plain".
+> UI label: **Export to Plain HTML** (overflow menu and sidebar).
 
 The overflow menu and sidebar also expose an **Export to Plain HTML** button. It downloads a standalone copy of the document with the commenting *ability* removed but its appearance intact, so the artifact can be shared or published without the review UI while looking exactly like the original. The downloaded file uses the original name with a `.plain.html` suffix (e.g. `report.html` -> `report.plain.html`). It handles both modes: in inline mode it keeps the whole inline CSS region and strips the comment regions + JS; in nonportable mode it keeps the companion `<link>` (so the content stays styled) and drops only the `<script src>` runtime companion.
 
 What it strips and what it keeps:
 
 - **Removes** the four HTML-comment regions (HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS) in full - no toolbar, sidebar, composer, menus, scripts, or stored ids.
-- **Keeps every stylesheet.** The inline CSS region (or the nonportable companion `<link>`) is preserved in full, so the document's own content styling - tables, sections, code, diff, KQL, images - is identical to the original. The now-unused `.cm-*` UI rules are inert because their elements are gone. (Earlier builds reduced the CSS region to only the `--cp-*` theme variables, which stripped the shipped content styling and left the plain file looking unstyled - that is fixed: "plain" removes the commenting ability, not the styling.)
+- **Keeps every stylesheet.** The inline CSS region (or the nonportable companion `<link>`) is preserved in full, so the document's own content styling - tables, sections, code, diff, KQL, images - is identical to the original. The unused `.cm-*` UI rules are inert because their elements are gone. ("Plain" removes the commenting ability, not the styling, so the content keeps its full shipped styling.)
 - **Keeps everything else untouched** - the host content, the host's own `<style>` rules, and host scripts such as the mermaid loader and theme detection. Mermaid diagrams still render in the plain copy.
 - Strips the `sidebar-open` body class. It does **not** sanitize highlight marks, rings, or `data-cid` out of the content, and does not need to: the source it copies (the on-disk file or the load-time snapshot taken on the first line of the layer's IIFE) predates every runtime change, so those artifacts were never in it. Attempting document-wide regex cleanup would risk corrupting legitimate host markup (code samples, host `data-cid` attributes, script literals), so it is deliberately avoided.
 - The region strip anchors each region's END on its own `<!-- ... END ... -->` comment. Because embedded comment notes escape every `<` as `\u003c`, a note can never forge a `<!--`, so note text like `END: commentable-html - EMBEDDED COMMENTS -->` cannot terminate the region early and leak the comments that follow it. As a final data-safety net, the export aborts (with a toast, no download) if a `handledCommentIds` / `embeddedComments` script somehow survives.

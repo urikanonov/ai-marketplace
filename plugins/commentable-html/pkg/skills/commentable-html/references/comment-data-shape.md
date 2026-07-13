@@ -1,6 +1,15 @@
 # Comment data shape
 
 
+## Contents
+
+- [Per-comment data shape](#per-comment-data-shape)
+  - [Text comments (default)](#text-comments-default)
+  - [Mermaid-node comments (`anchorType: "mermaid"`)](#mermaid-node-comments-anchortype-mermaid)
+  - [Diff-line comments (`anchorType: "diff"`)](#diff-line-comments-anchortype-diff)
+  - [Widget/part comments (`anchorType: "widget"`)](#widgetpart-comments-anchortype-widget)
+  - [Document-wide comments (`anchorType: "document"`)](#document-wide-comments-anchortype-document)
+
 ## Per-comment data shape
 
 Each comment captures concrete pinpoint info, not just the user's note - enough for the agent to find the exact spot in the source files without re-opening the document.
