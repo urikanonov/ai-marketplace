@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.30.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.31.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -311,6 +311,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.31.0] - 2026-07-13</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>In the sidebar&#x27;s narrow layout the export buttons now pack two per row (Portable | Offline, then Markdown | Plain HTML) instead of one full-width button per row, so the actions take less vertical space and are quicker to scan. The Clear button keeps its own full-width row so the destructive action stays visually apart.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.30.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -327,6 +334,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>references/validation.md</code> error list now documents the mandatory/unknown <code>commentable-html-kind</code> meta (with the report/plan top-level <code>&lt;h1&gt;</code> sub-rule) and the transient body-state class guard, matching the authoritative error list <code>SKILL.md</code> points to.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.29.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -338,8 +347,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>tools/validate.py</code> now errors when a document&#x27;s <code>&lt;body&gt;</code> open tag carries a transient runtime UI-state class (<code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, or <code>cm-widget-dragging</code>), so a persisted transient state can never ship. The check inspects only the <code>&lt;body&gt;</code> open tag, so a legitimate CSS/JS reference to <code>sidebar-open</code> is not flagged. New specs <code>CMH-BUILD-06</code> (no shipped document bakes the class) and <code>CMH-VAL-10</code> (the validator guard), covered by <code>dev/tests/test_build.py</code>, <code>dev/tests/test_new_document.py</code>, <code>dev/tests/test_examples.py</code>, and <code>dev/tests/test_validate.py</code>.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.28.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -370,16 +377,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Generated documents no longer carry the leading &quot;Commentable HTML - TEMPLATE / DEMO&quot; documentation comment. That guidance duplicated the skill references and mislabeled real reports as a template or demo, so every shipped report and generated document is now leaner and cleaner without it.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.24.0] - 2026-07-13</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Aligned the skill with Anthropic&#x27;s Agent Skills authoring guidelines (documentation only, no runtime or tool behavior change). Rewrote the <code>SKILL.md</code> front-matter description into a what-plus-when discovery string with an explicit <code>Use when ...</code> trigger clause scoped to HTML artifacts, linked <code>references/forward-compatible-layout.md</code> directly from <code>SKILL.md</code> so every reference is one level deep, added a <code>## Contents</code> table of contents to each reference longer than 100 lines (charts, exports, document-layout, comment-data-shape, retrofitting), documented the Markdown-to-HTML reviewer path, removed legacy UI-label and past-version wording from the Charts and Exports references, and removed a time-relative phrase from the Interaction-model reference. The repository <code>README.md</code> plugin row was aligned with the new description.</li>
-              <li>Added spec-covered guards for the above (<code>CMH-DOC-05</code> reference tables of contents, <code>CMH-DOC-06</code> front-matter description, <code>CMH-DOC-07</code> direct reference links, <code>CMH-DOC-08</code> SKILL/marketplace description consistency), each validated by a covering test in <code>dev/tests/test_docs_diagrams.py</code>.</li>
-              <li>Deferred: trimming the <code>SKILL.md</code> body toward Anthropic&#x27;s ~5k-token soft cap is intentionally left to a focused follow-up, because the body carries pinned generation contracts (<code>CMH-DOC-02</code>/<code>CMH-DOC-03</code>) that a de-duplication pass should not churn in the same change.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">33 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">34 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
