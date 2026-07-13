@@ -66,6 +66,15 @@ DIST = os.path.join(HERE, "dist")
 # dist/ can leave them stale. build.py --check --check-fixtures runs the fixtures'
 # own generate.mjs --check so the single dist gate also owns fixture freshness.
 FIXTURES_GEN = os.path.join(HERE, "tests", "fixtures", "generate.mjs")
+# Independent CONTENT source for the shipped examples. Each dev/examples-src/report-*.html is the
+# source of truth for a demo report's own content (and handled/embedded-comment data); build.py
+# assembles the shipped pkg examples/report-*.html from it by swapping in the current layer and
+# re-stamping the version. Because the shipped example is a pure artifact of this source (not of
+# itself), --check compares it to a fresh assembly and CATCHES a hand-edit or a stale/clobbered
+# committed example - closing the self-sourced hole that the site pages had before #91. The layer
+# regions inside a source file are ignored (build.py overwrites them), kept only so the source is
+# itself a valid, openable commentable-html document.
+EXAMPLES_SRC = os.path.join(HERE, "examples-src")
 
 
 # --------------------------------------------------------------------------- #
@@ -545,17 +554,21 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
 
 
 def build_examples(portable_html, version, mermaid_version, out_dir):
-    """Regenerate every examples/report-*.html found under out_dir. Returns {path: text}.
-    An absent examples/ directory (e.g. a temp-dir build) yields no entries."""
+    """Regenerate every shipped examples/report-*.html under out_dir from its INDEPENDENT content
+    source in dev/examples-src/ (not from the shipped file itself). Returns {out_path: text}. An
+    absent out_dir/examples directory (e.g. a temp-dir build) or an absent source dir yields no
+    entries. Assembling from an independent source is what lets --check catch a stale or hand-edited
+    shipped example instead of comparing it to itself."""
     examples_dir = os.path.join(out_dir, "examples")
     result = {}
-    if not os.path.isdir(examples_dir):
+    if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
         return result
-    for name in sorted(os.listdir(examples_dir)):
+    for name in sorted(os.listdir(EXAMPLES_SRC)):
         if not _EXAMPLE_NAME_RE.match(name):
             continue
-        path = os.path.join(examples_dir, name)
-        result[path] = regen_example(read(path), portable_html, version, mermaid_version, name)
+        src_path = os.path.join(EXAMPLES_SRC, name)
+        out_path = os.path.join(examples_dir, name)
+        result[out_path] = regen_example(read(src_path), portable_html, version, mermaid_version, name)
     return result
 
 
