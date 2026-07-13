@@ -218,6 +218,30 @@ class ValidateUnitTests(unittest.TestCase):
     def test_minimal_document_is_clean(self):
         self.assertOkNoWarn(build())
 
+    # -- transient body-state class guard (CMH-VAL-10) ---------------------- #
+    def test_sidebar_open_body_class_errors(self):
+        # CMH-VAL-10: sidebar-open is a transient runtime UI-state class the layer toggles on
+        # document.body; a shipped <body> must never bake it in (it renders the doc full width
+        # with an empty sidebar gutter via the body.sidebar-open .app rule before the runtime
+        # re-derives the state on load). A clean <body> passes; a baked one is a hard error.
+        self.assertOkNoWarn(build())
+        doc = build().replace("<body>\n", '<body class="sidebar-open">\n', 1)
+        self.assertNotEqual(doc, build(), "fixture setup: could not bake sidebar-open into <body>")
+        self.assertError(doc, "sidebar-open")
+
+    def test_sidebar_open_only_in_css_or_js_is_clean(self):
+        # The guard must inspect only the <body> open tag, not the whole document: the runtime
+        # CSS/JS legitimately reference sidebar-open (the .app layout rule, openSidebar()), so a
+        # document whose <body> is clean but whose script mentions sidebar-open must still pass.
+        doc = build().replace(
+            "<body>\n",
+            '<body>\n<script>function openSidebar(){document.body.classList.add("sidebar-open");}</script>\n',
+            1)
+        self.assertNotEqual(doc, build(), "fixture setup: could not add a sidebar-open script reference")
+        errors, _ = _validate_text(doc)
+        self.assertFalse(any("sidebar-open" in e for e in errors),
+                         "the guard false-positived on a non-<body> sidebar-open reference: %r" % errors)
+
     # -- document kind (CMH-KIND) ------------------------------------------- #
     def _report_body(self):
         return [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN_H1, JS_REGION]

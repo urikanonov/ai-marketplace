@@ -29,10 +29,14 @@ function assertBodyNormalized(html) {
 
 // Bake the transient classes into the on-disk <body> to simulate a stale/open-sidebar
 // source. Over http this is what _getBaseHtml() fetches; over file:// it is what the
-// load-time snapshot captures. Both must be normalized on export.
+// load-time snapshot captures. Both must be normalized on export. The shipped template
+// now ships a plain <body> (the transient state is never baked in), so replace whatever
+// the <body> open tag is with the transient-laden one.
 function bakeTransientBody(html) {
-  const out = html.replace('<body class="sidebar-open">', BODY_WITH_TRANSIENT);
-  if (out === html) throw new Error("fixture setup: could not bake transient body classes");
+  const out = html.replace(/<body\b[^>]*>/i, BODY_WITH_TRANSIENT);
+  if (out === html || !out.includes("cmh-keep-me")) {
+    throw new Error("fixture setup: could not bake transient body classes");
+  }
   return out;
 }
 

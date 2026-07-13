@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-07-13
+
+### Fixed
+
+- The template and shipped example reports no longer bake the transient runtime `sidebar-open` body class into `<body>`. `sidebar-open` is a UI-state class the layer toggles on `document.body` as the panel opens and closes; hardcoding it in `assets/template.shell.html` meant every generated document, both `dist/` templates, and all four `examples/report-*.html` shipped with `<body class="sidebar-open">`, which rendered a fresh document full width with an empty reserved right gutter (the `body.sidebar-open .app` layout rule) even when the sidebar panel is not shown. The template and examples now ship a plain `<body>`, and the runtime derives the sidebar state on load (open when the document has restored comments, closed otherwise). Where 1.28.0 stripped the class on export, this removes it at the source.
+
+### Added
+
+- `tools/validate.py` now errors when a document's `<body>` open tag carries a transient runtime UI-state class (`sidebar-open`, `cm-sidebar-resizing`, or `cm-widget-dragging`), so a persisted transient state can never ship. The check inspects only the `<body>` open tag, so a legitimate CSS/JS reference to `sidebar-open` is not flagged. New specs `CMH-BUILD-06` (no shipped document bakes the class) and `CMH-VAL-10` (the validator guard), covered by `dev/tests/test_build.py`, `dev/tests/test_new_document.py`, `dev/tests/test_examples.py`, and `dev/tests/test_validate.py`.
+
 ## [1.28.0] - 2026-07-13
 
 ### Fixed

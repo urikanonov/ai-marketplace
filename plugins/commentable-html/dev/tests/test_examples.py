@@ -202,5 +202,19 @@ class ExampleNoTemplateHeaderTests(unittest.TestCase):
                     % (os.path.basename(path), phrase))
 
 
+class ExampleNoSidebarOpenBodyTests(unittest.TestCase):
+    """CMH-BUILD-06 (examples): the shipped example reports must not bake the transient
+    runtime sidebar-open body-state class into the <body> open tag."""
+
+    def test_examples_do_not_bake_sidebar_open_body_class(self):
+        for path in EXAMPLES:
+            html = _read(path)
+            m = re.search(r"<body\b[^>]*>", html, re.IGNORECASE)
+            self.assertIsNotNone(m, "no <body> open tag in " + os.path.basename(path))
+            self.assertNotIn("sidebar-open", m.group(0),
+                             "%s bakes the transient sidebar-open class into <body>"
+                             % os.path.basename(path))
+
+
 if __name__ == "__main__":
     unittest.main()
