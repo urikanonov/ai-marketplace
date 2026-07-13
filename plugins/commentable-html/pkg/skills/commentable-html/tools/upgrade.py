@@ -42,6 +42,24 @@ CONTENT_BEGIN_RE = re.compile(r"<!--\s*BEGIN: commentable-html - CONTENT\b", re.
 # matching the full comment avoids a false positive on standalone files.
 NONPORTABLE_MARKER = "<!-- BEGIN: commentable-html - NONPORTABLE BOOTSTRAP -->"
 
+# Older documents predate the mandatory document-kind meta. On upgrade we add a default
+# (generic) kind so the result declares one and passes validation; the author can change
+# it to report/plan/slides/board afterwards.
+_KIND_META_RE = re.compile(r'<meta\s+name="commentable-html-kind"', re.IGNORECASE)
+
+
+def _insert_kind_meta(html, kind):
+    """Insert a <meta name="commentable-html-kind"> into <head>, preferring the spot right
+    after the version meta. Returns (new_html, inserted?)."""
+    tag = '<meta name="commentable-html-kind" content="%s" />\n' % kind
+    m = re.search(r'<meta\s+name="commentable-html-version"[^>]*>[ \t]*\n?', html, re.IGNORECASE)
+    if m:
+        return html[:m.end()] + tag + html[m.end():], True
+    m = re.search(r"<head[^>]*>", html, re.IGNORECASE)
+    if m:
+        return html[:m.end()] + "\n" + tag + html[m.end():], True
+    return html, False
+
 
 class _MarkerMatch:
     def __init__(self, marker_start, marker_end):
@@ -150,6 +168,11 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         if out[db:de] != new_inner:
             out = out[:db] + new_inner + out[de:]
             changed.append(name)
+    # Migrate a pre-kind document: add the mandatory document-kind meta if it is missing.
+    if not _KIND_META_RE.search(out):
+        out, added = _insert_kind_meta(out, "generic")
+        if added:
+            changed.append("kind meta")
     return out, changed
 
 

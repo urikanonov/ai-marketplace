@@ -41,6 +41,18 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertEqual(changed, [])
         self.assertEqual(out, tpl)
 
+    def test_missing_kind_meta_is_added_on_upgrade(self):
+        # A pre-kind document (predates the mandatory document-kind meta) is migrated:
+        # upgrade adds a default generic kind so it declares one and passes validation.
+        tpl = _tpl()
+        marker = '<meta name="commentable-html-kind" content="generic" />'
+        self.assertIn(marker, tpl)
+        legacy = tpl.replace(marker, "", 1)
+        self.assertNotIn("commentable-html-kind", legacy)
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("kind meta", changed)
+        self.assertIn(marker, out)
+
     def test_stale_css_region_is_restored_only(self):
         tpl = _tpl()
         target = _mutate_region_inner(tpl, "CSS", "\n/* STALE-SENTINEL */\n")

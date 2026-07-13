@@ -197,6 +197,8 @@ class MainCliTests(unittest.TestCase):
         return d
 
     def _call_main(self, argv, stdin=""):
+        if "--kind" not in argv:
+            argv = argv[:1] + ["--kind", "generic"] + argv[1:]
         out = io.StringIO()
         err = io.StringIO()
         with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
@@ -366,7 +368,7 @@ class MainCliTests(unittest.TestCase):
     def test_cli_subprocess_stdout(self):
         r = subprocess.run(
             [sys.executable, NEW_DOC_PY, "--content", "-", "--key", "sub-v1", "--label", "Sub",
-             "--portable"],
+             "--kind", "generic", "--portable"],
             input=CONTENT, capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('data-comment-key="sub-v1"', r.stdout)
@@ -404,6 +406,8 @@ class NonPortableCliTests(unittest.TestCase):
         return d
 
     def _run(self, argv, stdin=CONTENT):
+        if "--kind" not in argv:
+            argv = argv[:1] + ["--kind", "generic"] + argv[1:]
         out = io.StringIO()
         err = io.StringIO()
         with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
@@ -563,7 +567,7 @@ class DocTitleTests(unittest.TestCase):
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = new_document.main(
                 ["new_document.py", "--content", "-", "--key", "title-v1",
-                 "--label", "Titled Doc", "--portable"])
+                 "--label", "Titled Doc", "--kind", "generic", "--portable"])
         self.assertEqual(code, 0, err.getvalue())
         body = out.getvalue()
         self.assertIn("<h1>Titled Doc</h1>", body)
@@ -575,7 +579,7 @@ class DocTitleTests(unittest.TestCase):
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = new_document.main(
                 ["new_document.py", "--content", "-", "--key", "notitle-v1",
-                 "--label", "No Title Doc", "--portable", "--no-title"])
+                 "--label", "No Title Doc", "--kind", "generic", "--portable", "--no-title"])
         self.assertEqual(code, 0, err.getvalue())
         self.assertNotIn("<h1>No Title Doc</h1>", out.getvalue())
 
@@ -600,6 +604,62 @@ class DocTitleTests(unittest.TestCase):
         flat = " ".join(r.stdout.split())
         self.assertNotIn("defaults to --label", flat)
         self.assertIn("does not fall back to --label", flat)
+
+
+class KindTests(unittest.TestCase):
+    """The document kind (CMH-KIND): new_document requires --kind, stamps the meta, and
+    only auto-adds a title for kinds that carry one."""
+
+    def _call(self, argv, stdin=""):
+        out = io.StringIO()
+        err = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = new_document.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_doc_kinds_match_validate(self):
+        sys.path.insert(0, TOOLS)
+        import validate  # noqa: E402
+        self.assertEqual(tuple(new_document.DOC_KINDS), tuple(validate._DOC_KINDS))
+
+    def test_kind_is_required(self):
+        err = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO("<p>x</p>")), \
+                contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+            new_document.main(["new_document.py", "--content", "-", "--key", "k-v1",
+                               "--label", "L", "--portable"])
+        self.assertEqual(cm.exception.code, 2)
+        self.assertIn("kind", err.getvalue())
+
+    def test_kind_stamps_meta(self):
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "L",
+             "--kind", "slides", "--portable"],
+            stdin="<section>slide</section>")
+        self.assertEqual(code, 0, err)
+        self.assertIn('<meta name="commentable-html-kind" content="slides"', out)
+
+    def test_slides_kind_does_not_add_title(self):
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Deck",
+             "--kind", "slides", "--portable"],
+            stdin="<section>slide</section>")
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("<h1>Deck</h1>", out)
+
+    def test_report_kind_adds_title_and_validates(self):
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
+             "--kind", "report", "--portable"],
+            stdin="<p>body</p>")
+        self.assertEqual(code, 0, err)
+        self.assertIn("<h1>Rep</h1>", out)
+        self.assertIn('content="report"', out)
+
+    def test_make_document_stamps_kind(self):
+        out = new_document.make_document(_template(), CONTENT, "mk-v1", "L", kind="board")
+        self.assertIn('<meta name="commentable-html-kind" content="board"', out)
 
 
 if __name__ == "__main__":

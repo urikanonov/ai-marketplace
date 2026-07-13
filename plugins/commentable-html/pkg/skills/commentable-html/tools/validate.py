@@ -128,6 +128,15 @@ LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", LAYER_DESCRIPTOR_ID}
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr"}
 _HEADING_TAGS = frozenset(("h1", "h2", "h3", "h4", "h5", "h6"))
+
+# Document kind. Every commentable-html document declares its kind in a
+# <meta name="commentable-html-kind" content="..."> so per-type rules can apply and
+# the document is self-describing. Title-bearing kinds (a report or a plan) must carry
+# a top-level <h1> in #commentRoot; a slide deck, a board, or a generic document does
+# not. The set is intentionally small and closed so an unknown kind is a clear error.
+_KIND_META_NAME = "commentable-html-kind"
+_DOC_KINDS = ("report", "plan", "slides", "board", "generic")
+_KINDS_REQUIRING_H1 = ("report", "plan")
 # A start tag that implicitly closes an open <p> (a pragmatic HTML5 subset).
 P_CLOSERS = {
     "address", "article", "aside", "blockquote", "details", "div", "dl",
@@ -290,6 +299,7 @@ class _DocParser(HTMLParser):
         self.has_comment_root = False
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
+        self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
@@ -359,6 +369,10 @@ class _DocParser(HTMLParser):
     def _record(self, tag, ad, own_skip):
         if self._in_template():
             return  # inert template content
+        if tag == "meta":
+            nm = (ad.get("name") or "").strip().lower()
+            if nm and nm not in self.metas:
+                self.metas[nm] = ad.get("content") or ""
         if tag == "canvas":
             self.canvases.append({"skip": self._skip_ancestor() or own_skip, "attrs": ad})
         elif tag == "figcaption":
@@ -459,7 +473,8 @@ class _DocParser(HTMLParser):
         if self._cur_heading is not None and tag == self._cur_heading[0]:
             text = re.sub(r"\s+", " ", "".join(self._cur_heading[2])).strip()
             if text:
-                self.headings.append({"id": self._cur_heading[1], "text": text})
+                self.headings.append({"tag": self._cur_heading[0],
+                                      "id": self._cur_heading[1], "text": text})
             self._cur_heading = None
         for i in range(len(self.stack) - 1, -1, -1):
             if self.stack[i][0] == tag:
@@ -750,6 +765,32 @@ _SECTION_DIR_RE = re.compile(
     r'|\b(?:above|below|previous|next|following|preceding|earlier|later|prior)\s+'
     r'(?:section|appendix|sub-?section|chapter)s?\b',
     re.IGNORECASE)
+
+
+def check_document_kind(parser):
+    """Require a declared document kind and enforce its per-type rules.
+
+    Every commentable-html document carries a <meta name="commentable-html-kind"
+    content="..."> declaring one of _DOC_KINDS. The kind is mandatory (so the document
+    is self-describing and per-type rules can apply) and title-bearing kinds (report,
+    plan) must have a top-level <h1> in #commentRoot; a slide deck, a board, or a generic
+    document is exempt. Returns a list of error strings.
+    """
+    kind = (parser.metas.get(_KIND_META_NAME) or "").strip().lower()
+    if not kind:
+        return ['missing <meta name="%s" content="..."> - declare the document kind '
+                "(one of: %s)" % (_KIND_META_NAME, ", ".join(_DOC_KINDS))]
+    if kind not in _DOC_KINDS:
+        return ['unknown document kind "%s" in <meta name="%s"> - use one of: %s'
+                % (kind, _KIND_META_NAME, ", ".join(_DOC_KINDS))]
+    if kind in _KINDS_REQUIRING_H1:
+        has_h1 = any(h.get("tag") == "h1" and (h.get("text") or "").strip()
+                     for h in parser.headings)
+        if not has_h1:
+            return ['kind "%s" requires a top-level <h1> title inside #commentRoot, but the '
+                    "document has none - add an <h1>, or set the kind to "
+                    '"slides", "board", or "generic" if no title is wanted' % kind]
+    return []
 
 
 def check_section_reference_links(parser):
@@ -1141,6 +1182,10 @@ def check_layer(html, parser, base_dir=None):
     # 11a) Section cross-references in prose should be in-page anchor links (deterministic
     #      detection; only UNLINKED references reach commentroot_prose).
     warnings.extend(check_section_reference_links(parser))
+
+    # 11a1) Document kind: the doc must declare a known kind, and title-bearing kinds
+    #       (report/plan) must carry a top-level <h1> in #commentRoot.
+    errors.extend(check_document_kind(parser))
 
     # 11a2) Mermaid diagrams must actually render on open (loader present, triggers a
     #       render, and is not hidden behind a query-param gate).

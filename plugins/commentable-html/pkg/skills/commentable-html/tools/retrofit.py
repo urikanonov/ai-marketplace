@@ -252,10 +252,11 @@ def _template(portable):
         return fh.read()
 
 
-def _layer_parts(portable):
+def _layer_parts(portable, kind):
     template = _template(portable)
     head = ""
     head += _one_line(template, r'<meta\s+name="commentable-html-version"[^>]*>', "version meta")
+    head += '<meta name="commentable-html-kind" content="%s" />\n' % kind
     head += _one_line(template, r'<script\s+type="application/json"\s+id="commentableHtmlLayer"[^>]*>.*?</script>',
                       "layer descriptor")
     if portable:
@@ -490,7 +491,7 @@ def build_retrofit(html, args, out_path):
     source = _source_attr(args)
     head = parser.heads[0]
     body = parser.bodies[0]
-    head_insert, body_top, body_bottom = _layer_parts(args.portable)
+    head_insert, body_top, body_bottom = _layer_parts(args.portable, args.kind)
     title_insert = _insert_title_if_missing(html, head, args.label)
 
     edits = [
@@ -553,6 +554,9 @@ def main(argv):
     )
     parser.add_argument("file", help="existing HTML file to retrofit")
     parser.add_argument("--label", required=True, help="data-doc-label for the review bundle")
+    parser.add_argument("--kind", required=True, choices=new_document.DOC_KINDS,
+                        help="document kind (%s); report and plan require an <h1> title"
+                             % ", ".join(new_document.DOC_KINDS))
     parser.add_argument("--key", default="auto", help='data-comment-key, or "auto" for a stable generated key')
     parser.add_argument("--source", default=None, help="data-doc-source; defaults to the input path")
     parser.add_argument("--out", default=None, help="output path; defaults to overwriting the input after validation")

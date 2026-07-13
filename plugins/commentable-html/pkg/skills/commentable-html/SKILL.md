@@ -48,26 +48,28 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 
 | Input | Tool | Key behavior |
 | --- | --- | --- |
-| New document from a content fragment | `tools/new_document.py` | Builds the full shell, sets `data-comment-key`, `data-doc-label`, optional `data-doc-source`, adds `data-cmh-content-root`, and validates before writing. |
+| New document from a content fragment | `tools/new_document.py` | Builds the full shell, sets `data-comment-key`, `data-doc-label`, optional `data-doc-source`, the `commentable-html-kind` meta from `--kind`, adds `data-cmh-content-root`, and validates before writing. |
 | Unlayered existing standalone HTML | `tools/retrofit.py` | Injects the layer into that HTML, wraps body children or stamps `--root-selector "#id"`, sets the same data attributes and descriptor, and validates before writing. |
 | Already-layered commentable HTML | `tools/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attrs. |
 
-`--key auto` derives a stable non-demo key; an explicit `--key` must be unique per document on the same origin. `--label` becomes `data-doc-label` for the Copy header. `--source` becomes `data-doc-source` so the agent knows what source file to edit.
+`--key auto` derives a stable non-demo key; an explicit `--key` must be unique per document on the same origin. `--label` becomes `data-doc-label` for the Copy header. `--source` becomes `data-doc-source` so the agent knows what source file to edit. `--kind` (required) declares the document type in a `<meta name="commentable-html-kind">`: `report` and `plan` must have a top-level `<h1>` title (auto-added from `--label` when the fragment has none), while `slides`, `board`, and `generic` do not. The validator enforces this, so a title-bearing document can never ship without a title.
 
 ```
 # New NonPortable document (default): companions referenced from the skill dist/ by file:// URLs
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --out my-report.html
+python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --out my-report.html
 # Relative refs for a movable folder on this machine:
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --assets-relative --out my-report.html
+python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --assets-relative --out my-report.html
 # Copy companions next to the file for a movable folder:
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --copy-assets --out my-report.html
+python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --copy-assets --out my-report.html
 # Single self-contained Portable file:
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --portable --out my-report.html
+python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --portable --out my-report.html
+# A slide deck (no document title or table of contents required):
+python tools/new_document.py --content slides.html --key auto --label "My Deck" --kind slides --portable --out my-deck.html
 # Retrofit an existing unlayered host HTML:
-python tools/retrofit.py existing.html --label "My Report" --key auto --source existing.html --out existing-commentable.html
+python tools/retrofit.py existing.html --label "My Report" --kind report --key auto --source existing.html --out existing-commentable.html
 # Retrofit without wrapping body children when the host already has a content wrapper:
-python tools/retrofit.py existing.html --label "My Report" --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
-# Upgrade an existing layered file:
+python tools/retrofit.py existing.html --label "My Report" --kind report --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
+# Upgrade an existing layered file (adds a default generic kind if the document predates kinds):
 python tools/upgrade.py existing-commentable.html
 ```
 
@@ -184,6 +186,16 @@ The content anchor is:
 ```
 
 For existing HTML, prefer `tools/retrofit.py`; it inserts the five regions, descriptor, content markers, and data attributes without manual paste mistakes. The manual paste recipe is now a fallback in [Retrofitting](references/retrofitting.md).
+
+### Document kind (required)
+
+Every document declares its kind in `<head>`:
+
+```html
+<meta name="commentable-html-kind" content="report" />
+```
+
+`content` is one of `report`, `plan`, `slides`, `board`, or `generic`, and it is mandatory (the validator errors without it). `report` and `plan` must carry a top-level `<h1>` title inside `#commentRoot`; `slides`, `board`, and `generic` do not. Set it with the tools' `--kind` flag rather than hand-writing the meta - `new_document.py` and `retrofit.py` require `--kind`, and `upgrade.py` adds a default `generic` kind to a document that predates kinds.
 
 ## Per-document configuration (data attributes)
 

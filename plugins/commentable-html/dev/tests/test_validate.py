@@ -103,6 +103,17 @@ MAIN = (
     "</main>"
 )
 
+# Same as MAIN but the content opens with a top-level <h1>, so it satisfies the
+# title requirement of the report/plan document kinds.
+MAIN_H1 = (
+    '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+    + CONTENT_BEGIN + "\n"
+    "  <h1>Title</h1>\n"
+    "  <p>content</p>\n"
+    + CONTENT_END + "\n"
+    "</main>"
+)
+
 _MERMAID_LOADER = (
     '<script type="module">const m = (await import('
     '"https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
@@ -128,7 +139,7 @@ def comment_ui(extra=""):
     )
 
 
-def build(css=None, body=None):
+def build(css=None, body=None, kind="generic"):
     css = CSS_REGION if css is None else css
     if body is None:
         body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, JS_REGION]
@@ -139,9 +150,11 @@ def build(css=None, body=None):
             close = body_html.find("</main>", m.end())
             if close != -1:
                 body_html = body_html[:m.end()] + "\n" + CONTENT_BEGIN + body_html[m.end():close] + "\n" + CONTENT_END + "\n" + body_html[close:]
+    kind_meta = ('<meta name="commentable-html-kind" content="%s" />\n' % kind) if kind is not None else ""
     return (
         '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
-        '<script type="application/json" id="commentableHtmlLayer">'
+        + kind_meta
+        + '<script type="application/json" id="commentableHtmlLayer">'
         + '{"version":"1.0.0","mode":"portable","regions":'
         + json.dumps(EXPECTED_REGIONS, separators=(",", ":"))
         + '}</script>\n'
@@ -204,6 +217,45 @@ class ValidateUnitTests(unittest.TestCase):
     # -- positive controls -------------------------------------------------- #
     def test_minimal_document_is_clean(self):
         self.assertOkNoWarn(build())
+
+    # -- document kind (CMH-KIND) ------------------------------------------- #
+    def _report_body(self):
+        return [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN_H1, JS_REGION]
+
+    def test_missing_kind_meta_errors(self):
+        # A document with no commentable-html-kind meta must be rejected: the kind is
+        # mandatory so per-type rules can apply and the doc is self-describing.
+        self.assertError(build(kind=None), "declare the document kind")
+
+    def test_unknown_kind_errors(self):
+        self.assertError(build(kind="newsletter"), "unknown document kind")
+
+    def test_report_without_h1_errors(self):
+        # report/plan are title-bearing kinds: the exact gap that shipped a title-less deck.
+        self.assertError(build(kind="report"), "requires a top-level <h1>")
+
+    def test_plan_without_h1_errors(self):
+        self.assertError(build(kind="plan"), "requires a top-level <h1>")
+
+    def test_report_with_h1_is_clean(self):
+        self.assertOkNoWarn(build(kind="report", body=self._report_body()))
+
+    def test_plan_with_h1_is_clean(self):
+        self.assertOkNoWarn(build(kind="plan", body=self._report_body()))
+
+    def test_slides_without_h1_is_clean(self):
+        # A slide deck legitimately has no document <h1> or table of contents.
+        self.assertOkNoWarn(build(kind="slides"))
+
+    def test_board_without_h1_is_clean(self):
+        self.assertOkNoWarn(build(kind="board"))
+
+    def test_generic_without_h1_is_clean(self):
+        self.assertOkNoWarn(build(kind="generic"))
+
+    def test_kind_is_case_insensitive(self):
+        self.assertOkNoWarn(build(kind="Report", body=self._report_body()))
+
 
     def test_diff_block_is_tolerated(self):
         # A cmh-diff code-review block is authored content; the validator must
@@ -944,6 +996,7 @@ def build_nonportable(version=NONPORTABLE_VERSION, link=True, runtime=True, asse
                     "<!-- END: commentable-html - CSS -->")
     if meta:
         head.append('<meta name="commentable-html-version" content="%s">' % version)
+    head.append('<meta name="commentable-html-kind" content="generic">')
     body = [nonportable_bootstrap(banner, watchdog), HANDLED_REGION, EMBEDDED_REGION,
             comment_ui(), MAIN, nonportable_scripts(version, runtime, assets)]
     return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n'
