@@ -56,6 +56,15 @@ def _triggers(doc):
     return set()
 
 
+def _rel(path):
+    """Repo-relative path for messages, tolerant of a temp file on a different Windows drive
+    than the repo (os.path.relpath raises ValueError across drives)."""
+    try:
+        return os.path.relpath(path, ROOT)
+    except ValueError:
+        return path
+
+
 def _strip_full_line_comments(text):
     """Drop YAML full-line comments (a line whose first non-space char is '#') so a mention of
     `uses: actions/checkout` or `secrets.X` inside a comment is not scanned as real config."""
@@ -81,12 +90,7 @@ _SECRETS_RES = (
 
 def check_workflow(path):
     """Return a list of violation strings for one workflow file."""
-    try:
-        rel = os.path.relpath(path, ROOT)
-    except ValueError:
-        # On Windows, relpath raises when path and ROOT are on different drives (e.g. a temp
-        # file on C: while the repo is on D:). Fall back to the raw path for the message.
-        rel = path
+    rel = _rel(path)
     violations = []
     with open(path, "r", encoding="utf-8") as fh:
         raw = fh.read()
@@ -127,7 +131,7 @@ def check_actionlint_config():
     for config in ACTIONLINT_CONFIGS:
         if not os.path.exists(config):
             continue
-        rel = os.path.relpath(config, ROOT)
+        rel = _rel(config)
         with open(config, "r", encoding="utf-8") as fh:
             try:
                 doc = yaml.safe_load(fh) or {}
