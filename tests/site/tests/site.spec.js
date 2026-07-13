@@ -998,7 +998,67 @@ test("every section header is a linkable anchor that updates the URL fragment (S
     checked++;
   }
   expect(checked).toBeGreaterThan(3);
+  // The anchor resolves to an absolute URL ending in the section fragment.
+  const resolved = await page
+    .locator("section#install .section-title a.header-anchor")
+    .evaluate((a) => a.href);
+  expect(resolved).toMatch(/^https?:\/\/.+#install$/);
   // Clicking a header anchor moves the URL fragment to that section.
   await page.locator("section#install .section-title a.header-anchor").click();
   await expect(page).toHaveURL(/#install$/);
+});
+
+test("section header anchor copies a shareable URL that keeps the query string (SITE-NAV-01)", async ({ page }) => {
+  // The clipboard URL is built from the anchor's own href, so it stays a valid
+  // absolute URL for any protocol/base (file:// included) and preserves the query.
+  await page.goto("/commentable-html/?share=1", { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    window.__copied = [];
+    const capture = (text) => {
+      window.__copied.push(String(text));
+      return Promise.resolve();
+    };
+    if (navigator.clipboard) {
+      try {
+        Object.defineProperty(navigator.clipboard, "writeText", { value: capture, configurable: true });
+      } catch (e) {
+        navigator.clipboard.writeText = capture;
+      }
+    } else {
+      navigator.clipboard = { writeText: capture };
+    }
+  });
+  const anchor = page.locator("section#install .section-title a.header-anchor");
+  const resolved = await anchor.evaluate((a) => a.href);
+  await anchor.click();
+  const copied = await page.evaluate(() => window.__copied.slice());
+  expect(copied.length).toBe(1);
+  expect(copied[0]).toBe(resolved);
+  expect(copied[0]).toContain("share=1");
+  expect(copied[0]).toMatch(/#install$/);
+});
+
+test("initHeaderAnchors leaves a section whose title already holds a link untouched (SITE-NAV-01)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "networkidle" });
+  // Inject a section whose heading already contains an interactive element.
+  await page.evaluate(() => {
+    const section = document.createElement("section");
+    section.id = "hermetic-existing-anchor";
+    const heading = document.createElement("h2");
+    heading.className = "section-title";
+    const inner = document.createElement("a");
+    inner.setAttribute("href", "/y");
+    inner.textContent = "T";
+    heading.appendChild(inner);
+    section.appendChild(heading);
+    document.body.appendChild(section);
+  });
+  // Re-run the progressive-enhancement script so initHeaderAnchors sees the new section.
+  await page.addScriptTag({ url: "/assets/site.js" });
+  const injected = page.locator("section#hermetic-existing-anchor");
+  // The pre-existing link must not be wrapped (which would nest an <a> inside an <a>).
+  await expect(injected.locator(".section-title a.header-anchor")).toHaveCount(0);
+  await expect(injected.locator("a a")).toHaveCount(0);
+  // The original link stays a direct child of the heading, intact.
+  await expect(injected.locator(".section-title > a[href='/y']")).toHaveCount(1);
 });
