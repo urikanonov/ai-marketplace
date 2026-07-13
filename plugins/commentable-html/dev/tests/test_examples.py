@@ -154,7 +154,25 @@ class ExampleTests(unittest.TestCase):
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn("report-taxi.html", r.stdout + r.stderr)
 
-    def test_build_check_catches_example_content_drift(self):
+    def test_build_check_flags_an_orphaned_example_with_no_source(self):
+        # A shipped example with NO dev/examples-src source is a pure artifact validated against
+        # nothing; --check must flag it as orphaned instead of silently ignoring it (build_examples
+        # only assembles examples that have a source).
+        with tempfile.TemporaryDirectory() as d:
+            assets = os.path.join(d, "assets")
+            out_dir = os.path.join(d, "skill")
+            shutil.copytree(_paths.ASSETS, assets)
+            shutil.copytree(_paths.DIST, os.path.join(out_dir, "dist"))
+            shutil.copytree(_paths.EXAMPLES, os.path.join(out_dir, "examples"))
+            base = [sys.executable, BUILD_PY, "--assets-dir", assets, "--out-dir", out_dir]
+            self.assertEqual(subprocess.run(base + ["--check"], capture_output=True, text=True).returncode, 0,
+                             "freshly copied tree should be in sync")
+            # A shipped example that has no counterpart under dev/examples-src/.
+            orphan = os.path.join(out_dir, "examples", "report-orphan.html")
+            shutil.copyfile(os.path.join(out_dir, "examples", "report-taxi.html"), orphan)
+            r = subprocess.run(base + ["--check"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("report-orphan.html", r.stdout + r.stderr)
         # GH-CLOBBER-EXAMPLES: the shipped example is a pure artifact of its independent source in
         # dev/examples-src/, so a hand-edit (or a stale/clobbered copy) of the example's own CONTENT
         # - not just its layer - is now caught by --check. Before the source split, build.py read the

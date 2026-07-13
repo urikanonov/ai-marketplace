@@ -30,11 +30,16 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN || github.token }}
+          HAS_ADMIN_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN != '' }}
         run: |
           set +e
           python scripts/check_required_checks.py
           rc=$?
           if [ "$rc" = "2" ]; then
+            if [ "$HAS_ADMIN_TOKEN" = "true" ]; then
+              echo "::error::A BRANCH_PROTECTION_TOKEN is configured but branch protection could not be read (token expired or under-scoped). Drift monitoring is broken - fix the token."
+              exit 1
+            fi
             echo "::notice::Could not read live branch protection (no admin token). Set a repository secret BRANCH_PROTECTION_TOKEN with admin read to enable drift detection."
             exit 0
           fi
