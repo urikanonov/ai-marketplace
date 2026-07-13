@@ -1,6 +1,6 @@
 ---
 name: commentable-html
-description: Turn any standalone HTML into a commentable review surface with inline comments, iterated locally and exported to a single portable file for sharing.
+description: Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface. Reviewers select any paragraph, table cell, code block, KQL query, chart, image, Mermaid diagram, or heading, leave inline comments, and export the whole thread back to the agent as a machine-readable bundle. Use when the user asks to add inline comments, leave review feedback, or add a code-review UI on an HTML report, plan, dashboard, or design doc, or wants to retrofit an existing HTML file or a Markdown doc into one portable, self-contained review file.
 ---
 
 # Commentable HTML
@@ -24,7 +24,7 @@ Why not just plan in chat, Markdown, or plain HTML?
 
 - **Self review loop:** generate the artifact, open it, comment inline, click **Copy all**, paste the bundle to the agent, let the agent update the HTML and mark handled ids, then reload so handled comments disappear.
 - **Peer review loop:** self-review first, click **Export as Portable**, share the downloaded HTML, receive the peer's Portable HTML with embedded comments, then feed those comments back to the agent.
-- **Reviewer loop:** when someone sends Markdown or HTML, convert or retrofit it, review inline, then send back a Portable file with embedded comments.
+- **Reviewer loop:** when someone sends Markdown, first render it to HTML and pass that to `tools/new_document.py --content`; when they send existing HTML, retrofit it with `tools/retrofit.py`. Review inline, then send back a Portable file with embedded comments.
 
 The runtime supports text selection, right-click fallback, multiple open composers, composer drag handles, a highlight bubble for link-wrapped highlights, `localStorage` persistence, embedded comments, and handled-id pruning. See [Interaction model](references/interaction-model.md) for the full walkthrough and edge cases.
 
@@ -185,7 +185,7 @@ The content anchor is:
 </main>
 ```
 
-For existing HTML, prefer `tools/retrofit.py`; it inserts the five regions, descriptor, content markers, and data attributes without manual paste mistakes. The manual paste recipe is now a fallback in [Retrofitting](references/retrofitting.md).
+For existing HTML, prefer `tools/retrofit.py`; it inserts the five regions, descriptor, content markers, and data attributes without manual paste mistakes. The manual paste recipe is a fallback in [Retrofitting](references/retrofitting.md). The five regions carry a versioned `commentableHtmlLayer` descriptor so tooling can replace the layer without touching content; see [Forward-compatible layout](references/forward-compatible-layout.md) for the descriptor contract and version compatibility.
 
 ### Document kind (required)
 

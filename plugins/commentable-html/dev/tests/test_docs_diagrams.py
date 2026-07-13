@@ -174,5 +174,220 @@ class ReferenceReachabilityDocsTests(unittest.TestCase):
         self.assertEqual([], missing)
 
 
+LONG_REFERENCE_LINE_THRESHOLD = 100
+PLUGIN_JSON = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "plugin.json"))
+
+
+def _lines_outside_fences(text):
+    """Yield lines that are NOT inside a fenced code block (``` or ~~~)."""
+    fenced = False
+    for line in text.splitlines():
+        if re.match(r"^\s*(```|~~~)", line):
+            fenced = not fenced
+            continue
+        if not fenced:
+            yield line
+
+
+def _heading_to_slug(heading):
+    """Mirror scripts/validate_markdown.py:heading_to_slug so TOC anchors match the validator.
+
+    Kept as a local copy on purpose: the plugin-tests Python job installs no extra deps and
+    does not put scripts/ on the path. A change to the validator's slug rule that broke a TOC
+    anchor would still be caught by the markdown validator's own broken-anchor check.
+    """
+    slug = re.sub(r"<[^>]+>", "", heading)
+    slug = re.sub(r"[`*_~\[\]()]", "", slug)
+    slug = slug.strip().lower()
+    slug = re.sub(r"[^\w\s-]", "", slug)
+    slug = re.sub(r"\s", "-", slug)
+    return slug.strip("-")
+
+
+def _section_headings(text):
+    """Level 2-3 headings outside fenced code blocks, as (level, title) pairs."""
+    out = []
+    for line in _lines_outside_fences(text):
+        m = re.match(r"^(#{2,3})\s+(.+?)\s*$", line)
+        if m:
+            out.append((len(m.group(1)), m.group(2)))
+    return out
+
+
+def _contents_block(text):
+    """The lines under a '## Contents' heading up to the next level-2 heading (fence-aware)."""
+    block = []
+    inside = False
+    for line in _lines_outside_fences(text):
+        if re.match(r"^##\s+Contents\s*$", line):
+            inside = True
+            continue
+        if inside and re.match(r"^##(?!#)\s+", line):
+            break
+        if inside:
+            block.append(line)
+    return "\n".join(block)
+
+
+def _frontmatter_description_raw(text):
+    """Return the raw description value from the SKILL.md YAML front matter (single-line scalar)."""
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.S)
+    front = m.group(1) if m else ""
+    dm = re.search(r"^description:[ \t]*(.*)$", front, re.M)
+    return dm.group(1).strip() if dm else ""
+
+
+def _unquote(value):
+    """Strip a single pair of matching surrounding quotes so the length matches the real string."""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+
+class ReferenceTocDocsTests(unittest.TestCase):
+    """CMH-DOC-05: every reference longer than 100 lines opens with a '## Contents' table of
+    contents whose anchor links cover all of that file's own section headings and each link
+    resolves to a real heading, so a partial read still sees the file's full scope."""
+
+    def test_long_references_have_a_validated_contents_toc(self):
+        found_long = False
+        for name in sorted(os.listdir(REFERENCES)):
+            if not name.endswith(".md"):
+                continue
+            text = _read(os.path.join(REFERENCES, name))
+            if len(text.splitlines()) <= LONG_REFERENCE_LINE_THRESHOLD:
+                continue
+            found_long = True
+            with self.subTest(reference=name):
+                headings = _section_headings(text)
+                self.assertTrue(headings, f"{name}: no level 2-3 headings found")
+                # The TOC must be the FIRST level-2 section, so a partial read sees it.
+                first_l2 = next((title for lvl, title in headings if lvl == 2), None)
+                self.assertEqual(
+                    "Contents", first_l2,
+                    f"{name}: '## Contents' must be the first level-2 section (found {first_l2!r})")
+                # Exactly one Contents heading, so a second one cannot slip past the filter below.
+                contents_headings = [t for _, t in headings if _heading_to_slug(t) == "contents"]
+                self.assertEqual(
+                    1, len(contents_headings),
+                    f"{name}: expected exactly one Contents heading, found {len(contents_headings)}")
+                heading_slugs = [
+                    _heading_to_slug(title) for _, title in headings
+                    if _heading_to_slug(title) != "contents"
+                ]
+                # GitHub disambiguates duplicate slugs with -1/-2 suffixes; the TOC test does
+                # not model that, so fail fast if a file ever introduces a duplicate slug.
+                self.assertEqual(
+                    len(heading_slugs), len(set(heading_slugs)),
+                    f"{name}: duplicate heading slugs would need -N anchor suffixes: "
+                    f"{sorted(s for s in heading_slugs if heading_slugs.count(s) > 1)}")
+                toc_targets = re.findall(r"\]\(#([\w-]+)\)", _contents_block(text))
+                self.assertTrue(
+                    toc_targets, f"{name}: the '## Contents' section has no anchor links")
+                for slug in heading_slugs:
+                    self.assertIn(
+                        slug, toc_targets,
+                        f"{name}: section '#{slug}' is missing from the Contents TOC")
+                for target in toc_targets:
+                    self.assertIn(
+                        target, heading_slugs,
+                        f"{name}: Contents TOC link '#{target}' resolves to no heading")
+        self.assertTrue(found_long, "expected at least one reference over 100 lines")
+
+
+class FrontmatterDescriptionDocsTests(unittest.TestCase):
+    """CMH-DOC-06: the SKILL.md front-matter description is the discovery string the agent
+    reads, so it states both WHAT the skill does and WHEN to use it, is a plain single-line
+    scalar within the marketplace validator's 800-char cap, uses no XML tags, and avoids the
+    reserved skill-name words."""
+
+    def test_frontmatter_description_states_what_and_when(self):
+        skill = _read(SKILL_MD)
+        fm = re.match(r"^---\s*\n(.*?)\n---\s*\n", skill, re.S)
+        front = fm.group(1) if fm else ""
+        # The description must be a single physical line: reject a YAML continuation (an
+        # indented follow-on line after `description:`) so the checks below measure it all.
+        self.assertIsNone(
+            re.search(r"(?m)^description:[^\n]*\n[ \t]+\S", front),
+            "front-matter description must be a single line (no YAML continuation)")
+        raw = _frontmatter_description_raw(skill)
+        self.assertTrue(raw, "SKILL.md front matter has no description")
+        # Reject YAML flow collections and block scalars so the assertions below measure the
+        # real string, not a "{...}" mapping or a ">"/"|" placeholder.
+        self.assertNotIn(
+            raw[:1], ("{", "[", ">", "|"),
+            "front-matter description must be a plain single-line scalar")
+        desc = _unquote(raw)
+        low = desc.lower()
+        # Match the marketplace validator's contract exactly: it fails only when len > 800.
+        self.assertLessEqual(
+            len(desc), 800,
+            "front-matter description must be 800 chars or fewer (marketplace validator cap)")
+        self.assertIsNone(
+            re.search(r"<[A-Za-z/][^>]*>", desc),
+            "front-matter description must not contain XML tags")
+        self.assertNotIn("anthropic", low, "description must not use the reserved word 'anthropic'")
+        self.assertNotIn("claude", low, "description must not use the reserved word 'claude'")
+        self.assertIn("use when", low, "description must state WHEN to use the skill ('Use when ...')")
+        self.assertIn("html", low, "description must name the HTML artifact it operates on")
+        self.assertTrue(
+            "comment" in low or "review" in low,
+            "description must name the comment/review capability")
+
+
+class DirectReferenceLinkDocsTests(unittest.TestCase):
+    """CMH-DOC-07: every shipped reference is linked DIRECTLY from SKILL.md as a real Markdown
+    link (one level deep), so progressive disclosure never hides a reference behind another
+    reference file or behind a bare prose/code mention."""
+
+    def test_every_reference_is_linked_directly_from_skill(self):
+        body = "\n".join(_lines_outside_fences(_read(SKILL_MD)))
+        # Ignore inline-code spans and HTML comments so a `references/x.md` literal or a
+        # commented-out link is not mistaken for a real, rendered link.
+        body = re.sub(r"`[^`]*`", "", body)
+        body = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+        missing = []
+        for name in sorted(os.listdir(REFERENCES)):
+            if not name.endswith(".md"):
+                continue
+            # A real, non-image Markdown link: [text](references/name[#anchor]). The negative
+            # lookbehind on '!' rejects an image link; a bare mention has no [text](...) form.
+            link = (r"(?<!!)\[[^\]]*\]\(\s*references/" + re.escape(name)
+                    + r"(?:#[^)]*)?\s*\)")
+            if not re.search(link, body):
+                missing.append("references/" + name)
+        self.assertEqual(
+            [], missing,
+            f"references not linked directly from SKILL.md as a Markdown link (one level "
+            f"deep): {missing}")
+
+
+class DescriptionConsistencyDocsTests(unittest.TestCase):
+    """CMH-DOC-08: the SKILL.md discovery description and the plugin.json marketplace
+    description are intentionally different surfaces (agent trigger vs human blurb), but they
+    must share a small core vocabulary (whole words) so they cannot silently drift into
+    telling different stories."""
+
+    def test_skill_and_plugin_descriptions_share_core_vocabulary(self):
+        import json
+
+        skill_desc = _unquote(_frontmatter_description_raw(_read(SKILL_MD))).lower()
+        with open(PLUGIN_JSON, encoding="utf-8") as fh:
+            plugin_desc = json.load(fh).get("description", "").lower()
+        shared = {
+            "html": r"\bhtml\b",
+            "comment": r"\bcomments?\b|\bcommentable\b",
+            "review": r"\breview(?:s|er|ers|able|ing)?\b",
+            "portable": r"\bportable\b",
+        }
+        for label, desc in (("SKILL.md", skill_desc), ("plugin.json", plugin_desc)):
+            with self.subTest(surface=label):
+                self.assertTrue(desc, f"{label} has no description")
+                for word, pattern in shared.items():
+                    self.assertRegex(
+                        desc, pattern,
+                        f"{label} description must mention '{word}' (shared vocabulary)")
+
+
 if __name__ == "__main__":
     unittest.main()
