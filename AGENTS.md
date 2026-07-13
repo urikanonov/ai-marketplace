@@ -204,9 +204,11 @@ topic, and sequence the rest. The rules that let this repo run many PRs at once 
   here is exactly how a concurrent PR's edits get silently reverted.
 - After ANY commentable-html version bump, also regenerate the Playwright fixtures: from
   `plugins/commentable-html/dev` run `node tests/fixtures/generate.mjs`. The fixtures embed the
-  runtime version, are gated by the required `plugin-tests` job (`fixtures --check`), but are NOT
-  covered by `build.py --check` or the pre-push hook, so a bump that regenerates `dist/` and `site/`
-  can still fail CI on stale fixtures.
+  runtime version. They are gated by the required `plugin-tests` job (`fixtures --check`), by the
+  required `dist-in-sync` job (`build.py --check --check-fixtures`), and by the pre-push hook (which
+  runs `generate.mjs --check` when node is present). Running `build.py --check --check-fixtures`
+  locally (or the pre-push hook) catches a stale fixture before CI does; if node is unavailable the
+  fixtures check is skipped and the `plugin-tests` job remains the authoritative gate.
 
 ## Concurrent-merge clobbers: confirm your change actually survived
 
@@ -315,7 +317,15 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
 ```bash
 python scripts/validate_marketplace.py        # deps: jsonschema, pyyaml
 python scripts/validate_markdown.py            # Markdown hygiene; standard library only
+python scripts/rebuild_all.py --check          # every generated artifact (dist, fixtures, site) is in sync
 ```
+
+After a version bump or a rebase, run `python scripts/rebuild_all.py` (no `--check`) to regenerate
+the commentable-html dist, the Playwright fixtures, and the site in the correct order with one
+command, so no generator is missed (the cause of past "regenerate to fix the gate" churn). Version
+lanes still apply: assign distinct `dev/VERSION` values to concurrent PRs up front and merge in
+version order (see "Maximizing concurrency"); if a newer merge takes your version, re-bump and rerun
+`rebuild_all.py`.
 
 Enable the git hooks once per clone so they run automatically (skip a single commit with
 `git commit --no-verify`, or a single push with `git push --no-verify`):
@@ -382,15 +392,24 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   comment thread on the PR before pushing so the conversation stays clean and reviewers can see
   what is still open at a glance.
 - Required status checks on `main` (all must be green to merge): `validate` (schema, script unit
-  tests, Markdown, changelog sync, and the secret-bearing-file guard), `version-bump` (a
-  shipped-source change requires a version bump), `dist-in-sync` (the commentable-html layer's
-  committed `dist/` matches its `dev/` source), `actionlint` (every workflow file lints clean),
-  `site` (the `pages` workflow regenerates the site and its Playwright suite passes; it runs on
-  every PR), `plugin-tests` (the plugin Playwright gate), `require-owner-approval` (an external
-  PR carries the maintainer's approving review), and `All conversations resolved` (every review
-  thread must be resolved - the job log lists open threads by file, line, author, and body snippet).
-  Every check that can catch a break is required, so nothing merges that would break the build or
-  the site.
+  tests, Markdown, changelog sync, the secret-bearing-file guard, and the CI trust-boundary policy
+  gate), `version-bump` (a shipped-source change requires a version bump), `dist-in-sync` (the
+  commentable-html layer's committed `dist/` and its Playwright fixtures match its `dev/` source),
+  `actionlint` (every workflow file lints clean), `site` (the `pages` workflow regenerates the site
+  and its Playwright suite passes; it runs on every PR), `plugin-tests` (the plugin Playwright gate),
+  `secret-scan` (the gitleaks content scan), `pwsh-tests (ubuntu-latest)` and
+  `pwsh-tests (windows-latest)` (the auto-updater PowerShell hook tests - the highest-privilege
+  shipped code), `cross-platform (ubuntu-latest)` / `cross-platform (windows-latest)` /
+  `cross-platform (macos-latest)` (the validators run on every OS), `require-owner-approval` (an
+  external PR carries the maintainer's approving review), and `All conversations resolved` (every
+  review thread must be resolved - the job log lists open threads by file, line, author, and body
+  snippet). Every check that can catch a break is required, so nothing merges that would break the
+  build or the site. The full required set is committed as the source of truth in
+  `.github/required-checks.json`; `scripts/check_required_checks.py` compares it to live branch
+  protection (run it locally with admin `gh` access, or let the scheduled `required-checks-drift`
+  workflow run it once a `BRANCH_PROTECTION_TOKEN` secret is configured), so the required set is
+  code-reviewed rather than silently drifted. When you add or remove a required check, edit BOTH
+  `.github/required-checks.json` and branch protection together.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 - Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature

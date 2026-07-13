@@ -52,6 +52,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 
 # Flat-layout defaults: assets sit next to the generated outputs under the skill root.
@@ -60,6 +62,10 @@ import sys
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(HERE, "assets")
 DIST = os.path.join(HERE, "dist")
+# The Playwright fixtures embed the runtime version, so a version bump that regenerates
+# dist/ can leave them stale. build.py --check --check-fixtures runs the fixtures'
+# own generate.mjs --check so the single dist gate also owns fixture freshness.
+FIXTURES_GEN = os.path.join(HERE, "tests", "fixtures", "generate.mjs")
 
 
 # --------------------------------------------------------------------------- #
@@ -601,10 +607,29 @@ def _report(outputs, version, out_dir=None):
           % (saved, pct))
 
 
+def _check_fixtures():
+    """Run the Playwright fixtures' own `generate.mjs --check` so the dist gate also
+    catches stale fixtures. Returns (ok, message). If node is unavailable the check is
+    skipped (ok=True) with a clear note - CI (plugin-tests) is the authoritative gate."""
+    if not os.path.exists(FIXTURES_GEN):
+        return True, "fixtures --check skipped (generate.mjs not found)"
+    node = shutil.which("node")
+    if not node:
+        return True, "fixtures --check skipped (node not found; CI plugin-tests still runs it)"
+    proc = subprocess.run([node, FIXTURES_GEN, "--check"], capture_output=True, text=True)
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        return False, out.strip() or "fixtures --check FAILED; run `node tests/fixtures/generate.mjs`"
+    return True, "fixtures --check OK"
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog="build.py", description="Build the commentable-html distributable set.")
     parser.add_argument("--check", action="store_true",
                         help="verify the generated files in --out-dir match a fresh build (no writes)")
+    parser.add_argument("--check-fixtures", action="store_true",
+                        help="with --check, also verify the Playwright fixtures are in sync "
+                             "(runs generate.mjs --check; skipped when node is absent)")
     parser.add_argument("--assets-dir", default=None,
                         help="directory holding the canonical sources (default: <skill>/assets)")
     parser.add_argument("--out-dir", default=None,
@@ -635,6 +660,13 @@ def main(argv):
             for d in drift:
                 sys.stderr.write("  - " + d + "\n")
             return 1
+        if ns.check_fixtures:
+            ok, msg = _check_fixtures()
+            if not ok:
+                sys.stderr.write("build --check FAILED (fixtures out of date):\n")
+                sys.stderr.write("  " + msg.replace("\n", "\n  ") + "\n")
+                return 1
+            print("  " + msg)
         print("build --check OK (%d generated files in sync, version %s)" % (len(outputs), version))
         return 0
     for name in stale:

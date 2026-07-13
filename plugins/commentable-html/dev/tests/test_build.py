@@ -83,6 +83,19 @@ class BuildTests(unittest.TestCase):
                 capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    def test_check_fixtures_passes_and_is_reported(self):
+        # --check-fixtures runs the fixtures' own generate.mjs --check against the committed
+        # fixtures (which are in sync). It passes whether node is present (real check) or absent
+        # (graceful skip) - either way it must not fail a clean tree, and it reports its status.
+        with tempfile.TemporaryDirectory() as d:
+            assets, out_dir = self._write_checked_tree(d)
+            r = subprocess.run(
+                [sys.executable, BUILD_PY, "--check", "--check-fixtures",
+                 "--assets-dir", assets, "--out-dir", out_dir],
+                capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("fixtures --check", r.stdout)
+
     def test_generated_files_match_disk(self):
         for path, text in self.outputs.items():
             self.assertTrue(os.path.exists(path), "missing generated file: %s" % path)
