@@ -85,6 +85,10 @@
       if (!id || !title || title.querySelector(".header-anchor")) {
         return;
       }
+      // Skip a heading that already holds an interactive element: wrapping it would nest an <a> in an <a>.
+      if (title.querySelector("a, button")) {
+        return;
+      }
       var link = document.createElement("a");
       link.className = "header-anchor";
       link.setAttribute("href", "#" + id);
@@ -95,9 +99,10 @@
       title.appendChild(link);
       link.addEventListener("click", function () {
         // Native navigation sets the fragment; also copy the full section URL for sharing.
+        // Use the anchor's resolved href so the URL is valid for any protocol/base (file:// included)
+        // and keeps the current query string.
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          var url = location.origin + location.pathname + "#" + id;
-          navigator.clipboard.writeText(url).catch(function () {});
+          navigator.clipboard.writeText(link.href).catch(function () {});
         }
       });
     });
