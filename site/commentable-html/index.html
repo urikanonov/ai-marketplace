@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.24.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.25.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -310,6 +310,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.25.0] - 2026-07-13</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Generated documents no longer carry the leading &quot;Commentable HTML - TEMPLATE / DEMO&quot; documentation comment. That guidance duplicated the skill references and mislabeled real reports as a template or demo, so every shipped report and generated document is now leaner and cleaner without it.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.24.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -318,6 +325,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deferred: trimming the <code>SKILL.md</code> body toward Anthropic&#x27;s ~5k-token soft cap is intentionally left to a focused follow-up, because the body carries pinned generation contracts (<code>CMH-DOC-02</code>/<code>CMH-DOC-03</code>) that a de-duplication pass should not churn in the same change.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.23.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -329,8 +338,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The sidebar Copy all button is larger and bolder so the most-used action is easier to find and click.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.22.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
@@ -375,22 +382,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Markdown export now summarizes offline chart snapshots by label instead of embedding base64 chart images.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.18.0] - 2026-07-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Documented widget drag opt-in, the Offline badge state, Export Offline, and when to use NonPortable, Portable, or Offline outputs.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Exporting after widget moves now refreshes plain-text comment offsets against the exported widget layout, so comments near moved cards reopen on the intended text.</li>
-              <li>Floating chart, mermaid, diff, widget, and text-comment bubbles now respect horizontally clipped rich-content containers instead of drifting outside scrolled charts, tables, diagrams, or raw diffs.</li>
-              <li>Document-type badges now announce Portable, Offline, and Not portable state changes through a polite live region and expose the reason through <code>aria-label</code>.</li>
-              <li>The dependency cooldown gate now diffs lockfiles by package name and version, uses lockfile entry names for aliases, discovers package-lock files dynamically, deduplicates registry lookups by package name, applies a global deadline, and warns when changed non-registry dependencies are not cooldown-checked.</li>
-              <li>The forward-compatible layout reference now clarifies that <code>validate.py --strict</code> validates the current contract only and legacy pre-1.15 documents must be regenerated or upgraded before validation.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">27 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">28 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

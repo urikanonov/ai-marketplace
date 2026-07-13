@@ -1,47 +1,4 @@
 <!DOCTYPE html>
-<!--
-  ============================================================
-  Commentable HTML - TEMPLATE / DEMO  (commentable-html)
-  ============================================================
-  This file is a fully working demo of the commentable-html skill.
-  Open it in a browser to confirm the behavior, then copy the
-  five marker-delimited regions below into your own HTML.
-
-  Regions (each one is wrapped in BEGIN/END markers so you can
-  delete and re-paste cleanly on every upgrade):
-
-    1. CSS              - inside <style> in <head>
-    2. HANDLED IDS      - JSON <script> early in <body>; only
-                          this block changes per comment batch
-    3. EMBEDDED COMMENTS - JSON <script> right after HANDLED IDS;
-                          optional in-file snapshot of the comments
-    4. COMMENT UI       - toolbar / sidebar / modal / menu /
-                          toast, anywhere in <body>
-    5. JS               - before </body>, after the content root
-                          is in the DOM
-
-  Per-document configuration lives on ONE element - the content
-  root - as data-* attributes. No edits to CSS/HTML/JS regions
-  required when you port between docs.
-
-    <main id="commentRoot"
-          data-cmh-content-root
-          data-comment-key="my-doc"      (unique per doc)
-          data-doc-label="My Document">     (shown in copy)
-      ... your content ...
-    </main>
-
-  If those data-* attributes are missing, the JS falls back to:
-    data-comment-key  = "commentable-html:" + location.pathname
-    data-doc-label    = document.title || location.pathname
-  and if there is no #commentRoot element, the JS treats
-  <body> as the root.
-
-  Upgrade workflow: delete each "BEGIN ... END" region in the
-  consumer file, paste the same regions from this template,
-  done. Per-document config and HANDLED IDS survive because
-  they are outside the upgraded regions.
--->
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8" />

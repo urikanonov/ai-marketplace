@@ -349,8 +349,7 @@ def build_nonportable(shell, version, mermaid_version):
     t = _JS_REGION_RE.sub(lambda _m: js_add, t)
 
     # 3) Inject the missing-asset banner + bootstrap right after the real body
-    #    tag. Anchor after </head> so the "<body>" mentioned in the top-of-file
-    #    documentation comment is never matched.
+    #    tag. Anchor the search after </head> so only the real <body> tag is matched.
     head_end = t.index("</head>")
     bm = re.search(r"<body[^>]*>", t[head_end:])
     if not bm:
@@ -369,22 +368,6 @@ def build_nonportable(shell, version, mermaid_version):
     t = t.replace("<title>Commentable HTML - Demo</title>",
                   "<title>Commentable HTML - NonPortable Demo</title>", 1)
     t = _stamp_layer_descriptor(t, version, "nonportable")
-
-    # 5) Clarify in the header comment that this is the nonportable build (CSS/JS load
-    #    from companion files), so the inline "five regions" description below is not
-    #    misleading to someone starting from NONPORTABLE.html.
-    t = t.replace(
-        "This file is a fully working demo of the commentable-html skill.\n"
-        "  Open it in a browser to confirm the behavior, then copy the\n"
-        "  five marker-delimited regions below into your own HTML.",
-        "This file is the NONPORTABLE build of the commentable-html demo: the CSS and JS\n"
-        "  load from companion files (see the <link> / <script src> references), NOT\n"
-        "  from inline regions. Open it in a browser (with the companion files\n"
-        "  alongside) to confirm the behavior. The numbered region list below\n"
-        "  describes the inline dist/PORTABLE.html; in nonportable mode you copy only the\n"
-        "  in-body regions (HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI) and keep the\n"
-        "  companion <link> / <script> references.",
-        1)
 
     t = re.sub(r"\n{3,}", "\n\n", t)
     t = re.sub(r"\n{3,}", "\n\n", t)

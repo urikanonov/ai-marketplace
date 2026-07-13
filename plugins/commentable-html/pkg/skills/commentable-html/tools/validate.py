@@ -87,15 +87,14 @@ def _attrs_have_class(attrs, class_name):
 # Retrofit / demo-leftover contract
 # --------------------------------------------------------------------------- #
 # dist/PORTABLE.html ships a working DEMO: its content root carries these placeholder
-# values, and its top-of-file documentation comment contains ONE example
-# "<main id=commentRoot data-comment-key=my-doc>". A finished consumer
-# document must (a) give its content root a unique data-comment-key - not the
-# demo one - and (b) never leave real content commented out. The two checks
-# below are written so the pristine dist/PORTABLE.html (demo key + demo <title>, and
-# only the "my-doc" example commented) still passes with zero findings, while
-# a botched retrofit (a script that replaced the WRONG "<main id=commentRoot>"
-# and buried the consumer's real content in the top comment, leaving the demo as
-# the live root) is caught.
+# values. A finished consumer document must (a) give its content root a unique
+# data-comment-key - not the demo one - and (b) never leave real content commented
+# out. The two checks below are written so the pristine dist/PORTABLE.html (demo key
+# + demo <title>) still passes with zero findings, while a botched retrofit (a script
+# that replaced the WRONG "<main id=commentRoot>" and buried the consumer's real
+# content in a comment, leaving the demo as the live root) is caught. A single
+# commented "<main id=commentRoot data-comment-key=my-doc>" documentation example is
+# still tolerated, so authoring guidance may carry one without tripping the guard.
 DEMO_TITLE = "Commentable HTML - Demo"
 DEMO_COMMENT_KEY = "commentable-html-demo"
 DEMO_NONPORTABLE_TITLE = "Commentable HTML - NonPortable Demo"
@@ -1008,13 +1007,13 @@ def check_layer(html, parser, base_dir=None):
 
     # 3b) No REAL content root may be hidden inside an HTML comment. Guards the
     #     retrofit failure where a script replaced the WRONG "<main id=commentRoot>"
-    #     - the template ships one as a documentation EXAMPLE inside the top-of-file
-    #     comment - so the consumer's real content ends up commented out and the
-    #     browser renders the leftover demo. The only sanctioned commented root is
-    #     that example (data-comment-key="my-doc"); any other commented content
-    #     root (a different key, or none) means content was commented by mistake.
-    #     Scan with <script>/<style> bodies blanked so comment-like text inside them
-    #     (which the browser treats as script/style data, not a comment) is ignored.
+    #     so the consumer's real content ends up commented out and the browser renders
+    #     the leftover demo. The only sanctioned commented root is the
+    #     data-comment-key="my-doc" documentation example (the placeholder authoring
+    #     guidance uses); any other commented content root (a different key, or none)
+    #     means content was commented by mistake. Scan with <script>/<style> bodies
+    #     blanked so comment-like text inside them (which the browser treats as
+    #     script/style data, not a comment) is ignored.
     _comment_scan_src = _SCRIPT_STYLE_RE.sub(" ", html)
     for _cm in _HTML_COMMENT_RE.finditer(_comment_scan_src):
         _block = _cm.group(0)
