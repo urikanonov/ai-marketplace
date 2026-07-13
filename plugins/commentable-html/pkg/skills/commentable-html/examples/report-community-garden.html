@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.30.0" />
+<meta name="commentable-html-version" content="1.31.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.30.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.31.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>Planning a Community Garden</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -249,7 +249,11 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
 .cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
 .cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
-.cm-sidebar.is-narrow .head-actions button { flex-basis: 100%; justify-content: flex-start; }
+/* In narrow layout the export buttons pack two per row (Portable | Offline, then Markdown | Plain
+   HTML) instead of one full-width button per row; Clear keeps its own full-width row so the
+   destructive action stays visually apart. */
+.cm-sidebar.is-narrow .head-actions button { flex: 1 1 calc(50% - 0.2rem); min-width: 0; justify-content: center; }
+.cm-sidebar.is-narrow .head-actions button.danger { flex-basis: 100%; }
 .cm-ui-ico { flex: none; vertical-align: middle; }
 
 /* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with
@@ -1187,8 +1191,8 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
     <div class="head-actions">
       <button type="button" id="btnSaveHtml" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
       <button type="button" id="btnExportOffline" aria-label="Export Offline" title="Download an offline HTML copy with current comments embedded, rendered mermaid saved as inline SVG, and chart canvases saved as PNG images"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Offline</span></button>
-      <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
       <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
+      <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
       <button type="button" id="btnClearAll" class="danger" aria-label="Clear Comments" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear</span></button>
     </div>
   </header>
@@ -1602,7 +1606,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.30.0";
+const CMH_VERSION = "1.31.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

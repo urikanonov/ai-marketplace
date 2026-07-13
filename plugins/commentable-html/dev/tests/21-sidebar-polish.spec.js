@@ -154,6 +154,52 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     expect(metrics.actionRows).toBeGreaterThan(1);
   });
 
+  test("the sidebar export buttons are two-per-row in narrow layout (CMH-SIDE-08)", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    await page.locator("#sidebarResizeHandle").focus();
+    await page.keyboard.press("Home");
+
+    const layout = await page.evaluate(() => {
+      const sidebar = document.getElementById("sidebar");
+      const actions = sidebar.querySelector(".head-actions");
+      const rect = (id) => document.getElementById(id).getBoundingClientRect();
+      const r = {
+        portable: rect("btnSaveHtml"),
+        offline: rect("btnExportOffline"),
+        markdown: rect("btnExportMd"),
+        plain: rect("btnSavePlain"),
+        clear: rect("btnClearAll"),
+      };
+      const round = (f) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(f(v))]));
+      return {
+        narrow: sidebar.classList.contains("is-narrow"),
+        containerWidth: actions.getBoundingClientRect().width,
+        top: round((v) => v.top),
+        left: round((v) => v.left),
+        width: Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v.width])),
+      };
+    });
+
+    expect(layout.narrow).toBe(true);
+    // Row 1: Portable and Offline share a row, Portable on the left.
+    expect(layout.top.portable).toBe(layout.top.offline);
+    expect(layout.left.portable).toBeLessThan(layout.left.offline);
+    // Row 2: Markdown and Plain HTML share the next row down, Markdown on the left.
+    expect(layout.top.markdown).toBe(layout.top.plain);
+    expect(layout.left.markdown).toBeLessThan(layout.left.plain);
+    expect(layout.top.markdown).toBeGreaterThan(layout.top.portable);
+    // Clear sits on its own row below, spanning the full width (a destructive action kept apart).
+    expect(layout.top.clear).toBeGreaterThan(layout.top.markdown);
+    expect(layout.width.clear).toBeGreaterThan(layout.containerWidth * 0.9);
+    // Each export button is about half a row, so two fit side by side.
+    for (const key of ["portable", "offline", "markdown", "plain"]) {
+      expect(layout.width[key]).toBeLessThan(layout.containerWidth * 0.75);
+    }
+    expect(layout.width.portable + layout.width.offline).toBeLessThanOrEqual(layout.containerWidth + 2);
+  });
+
   test("the sidebar shows Generated-on and Last-comment info rows", async ({ page }) => {
     await openKitchenSink(page);
     await expect(page.locator("#cmGenerated")).toContainText("Generated on:");

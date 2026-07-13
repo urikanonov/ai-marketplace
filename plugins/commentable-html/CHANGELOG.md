@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-07-13
+
+### Changed
+
+- In the sidebar's narrow layout the export buttons now pack two per row (Portable | Offline, then Markdown | Plain HTML) instead of one full-width button per row, so the actions take less vertical space and are quicker to scan. The Clear button keeps its own full-width row so the destructive action stays visually apart.
+
 ## [1.30.0] - 2026-07-13
 
 ### Fixed
