@@ -133,6 +133,15 @@ test("the plugin card body shows a pointer cursor so it reads as clickable (SITE
   expect(await card.locator(".cmd").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("pointer");
 });
 
+test("a linkless plugin card (no plugin page) shows no pointer cursor (SITE-HUB-06)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The auto-updater has no generated plugin page, so its card title has no link and the
+  // whole card does not navigate; it must not advertise a misleading pointer cursor.
+  const card = page.locator(".plugin-card", { hasText: "urikan-ai-marketplace-auto-updater" }).first();
+  expect(await card.locator(".name a").count()).toBe(0);
+  expect(await card.evaluate((el) => getComputedStyle(el).cursor)).not.toBe("pointer");
+});
+
 test("the hub Learn more button uses the brand accent color, not yellow (SITE-HUB-07)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const learn = page.locator(".plugin-card .learn-more").first();
@@ -223,6 +232,13 @@ test("the What you get section covers exporting an Offline, zero-network copy (S
   const features = page.locator("#features");
   await expect(features).toContainText(/Offline/);
   await expect(features).toContainText(/no network|zero network|without a network/i);
+});
+
+test("the What you get section showcases the commentable-decks capability (SITE-PLUGIN-12)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const features = page.locator("#features");
+  await expect(features).toContainText(/deck/i);
+  await expect(features).toContainText(/slide|present mode|presentation/i);
 });
 
 test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {

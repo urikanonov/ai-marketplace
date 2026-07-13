@@ -36,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.32.0";
+const CMH_VERSION = "1.33.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4246,7 +4246,10 @@ function _buildSavedHtml(baseHtml, commentArr) {
   if (!rx.test(baseHtml)) {
     throw new Error('Could not find <scr' + 'ipt id="embeddedComments"> in the source HTML. Make sure the EMBEDDED COMMENTS region is present.');
   }
-  return baseHtml.replace(rx, repl);
+  // Use a REPLACER FUNCTION, not a string: `repl` is built from user comment text, and a
+  // string replacement would expand `$&`, `$1`, `$\``, `$'`, and `$$` (a note containing e.g.
+  // `$&` or a shell `$'` would corrupt the embedded-comments JSON and break reload).
+  return baseHtml.replace(rx, () => repl);
 }
 function _suggestedFilename() {
   const path = location.pathname;
@@ -4330,14 +4333,14 @@ function _buildPlainHtml(baseHtml) {
   // a "<!--". That prevents note text like "END: commentable-html - EMBEDDED COMMENTS -->"
   // from terminating the region early and leaking the comments that follow it.
   ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"].forEach(function (name) {
-    t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - " + name +
+    t = t.replace(new RegExp("<!--\\s*=*\\s*BEGIN: commentable-html - " + name +
       "[\\s\\S]*?<!--\\s*=*\\s*END: commentable-html - " + name + "\\s*=*\\s*-->"), "");
   });
   // The JS region sits last. Opened from file://, fetch() is blocked so
   // _getBaseHtml() returns a DOM snapshot taken while THIS script runs - the
   // parser has not reached the trailing "END ... JS" comment yet, so anchor on
   // the script's own closing tag instead (eat a trailing END marker if present).
-  t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
+  t = t.replace(new RegExp("<!--\\s*=*\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
     + _cmhScriptClosePattern() + "\\s*(?:<!--\\s*=*\\s*END: commentable-html - JS\\s*-->)?"), "");
   // NonPortable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
@@ -4348,7 +4351,7 @@ function _buildPlainHtml(baseHtml) {
   // Data-safety net: the comment-data scripts must be gone. If a malformed or hand-edited
   // marker made a region strip miss, fail loudly instead of downloading a plain file that
   // still leaks the comments.
-  if (/id="(?:handledCommentIds|embeddedComments)"/.test(t)) {
+  if (/id\s*=\s*["'](?:handledCommentIds|embeddedComments)["']/.test(t)) {
     throw new Error("Plain export aborted: the comment regions could not be fully removed (malformed markers?).");
   }
   return t.replace(/\n{3,}/g, "\n\n");

@@ -93,8 +93,15 @@ def iter_plugin_changelogs(root, manifest):
         plugin_root = plugin_root_from_source(source)
         if plugin_root is None:
             continue
-        changelog = root / plugin_root / "CHANGELOG.md"
-        if not changelog.exists():
+        # A plugin may keep its CHANGELOG INSIDE the manifest source (e.g. pkg/CHANGELOG.md, the
+        # auto-updater layout) or as a SIBLING of the source (plugins/<p>/CHANGELOG.md, the
+        # commentable-html layout). Prefer the source-relative file, then fall back to the sibling,
+        # mirroring how current_version_for resolves plugin.json - otherwise a pkg-embedded
+        # CHANGELOG is silently skipped and the gate never enforces that plugin.
+        src = _norm_source(source)
+        candidates = ([root / src / "CHANGELOG.md"] if src else []) + [root / plugin_root / "CHANGELOG.md"]
+        changelog = next((c for c in candidates if c.exists()), None)
+        if changelog is None:
             continue
         version, version_source = current_version_for(root, source, entry)
         yield PluginChangelog(str(entry.get("name", "<unknown>")), plugin_root, changelog, version, version_source)

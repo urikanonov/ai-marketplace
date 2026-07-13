@@ -282,7 +282,10 @@ main > section:nth-of-type(even) {
 .card:hover { transform: translateY(-2px); border-color: var(--cp-border-strong); }
 
 /* Plugin cards */
-.plugin-card { display: flex; flex-direction: column; gap: 12px; position: relative; cursor: pointer; }
+.plugin-card { display: flex; flex-direction: column; gap: 12px; position: relative; }
+/* Only a card with a page link is clickable (the .name a::after stretches over the whole card);
+   a linkless card (e.g. a plugin with no dedicated page) must not show a misleading pointer. */
+.plugin-card:has(.name a[href]) { cursor: pointer; }
 .plugin-card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .plugin-card .name { color: var(--cp-text); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.3px; }
 .plugin-card .desc { color: var(--cp-text-muted); font-size: 0.95rem; flex: 1; }

@@ -138,6 +138,16 @@ MAIN_LEDE_H1 = (
     "</main>"
 )
 
+# An EMPTY lede header (no h1) must NOT satisfy the title rule (F5: the class alone used to pass).
+MAIN_EMPTY_LEDE = (
+    '<main id="commentRoot" data-cmh-content-root data-comment-key="k" data-doc-label="l" data-doc-source="s">\n'
+    + CONTENT_BEGIN + "\n"
+    '  <header class="cmh-lede"></header>\n'
+    "  <p>content</p>\n"
+    + CONTENT_END + "\n"
+    "</main>"
+)
+
 _MERMAID_LOADER = (
     '<script type="module">const m = (await import('
     '"https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")).default; '
@@ -322,6 +332,12 @@ class ValidateUnitTests(unittest.TestCase):
         # whose top-level title is a lede-wrapped h1 must validate clean (matches new_document).
         body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN_LEDE_H1, JS_REGION]
         self.assertOkNoWarn(build(kind="report", body=body))
+
+    def test_report_with_empty_lede_errors(self):
+        # CMH-KIND-01 (F5): an EMPTY <header class="cmh-lede"></header> must NOT satisfy the
+        # report/plan title rule - the class alone used to pass, letting a title-less report ship.
+        body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN_EMPTY_LEDE, JS_REGION]
+        self.assertError(build(kind="report", body=body), "requires a top-level <h1>")
 
     def test_plan_with_h1_is_clean(self):
         self.assertOkNoWarn(build(kind="plan", body=self._report_body()))

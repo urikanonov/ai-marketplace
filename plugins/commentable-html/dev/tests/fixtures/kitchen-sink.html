@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.32.0" />
+<meta name="commentable-html-version" content="1.33.0" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.32.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.33.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (inline)</title>
 
@@ -1469,7 +1469,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.32.0";
+const CMH_VERSION = "1.33.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5679,7 +5679,10 @@ function _buildSavedHtml(baseHtml, commentArr) {
   if (!rx.test(baseHtml)) {
     throw new Error('Could not find <scr' + 'ipt id="embeddedComments"> in the source HTML. Make sure the EMBEDDED COMMENTS region is present.');
   }
-  return baseHtml.replace(rx, repl);
+  // Use a REPLACER FUNCTION, not a string: `repl` is built from user comment text, and a
+  // string replacement would expand `$&`, `$1`, `$\``, `$'`, and `$$` (a note containing e.g.
+  // `$&` or a shell `$'` would corrupt the embedded-comments JSON and break reload).
+  return baseHtml.replace(rx, () => repl);
 }
 function _suggestedFilename() {
   const path = location.pathname;
@@ -5763,14 +5766,14 @@ function _buildPlainHtml(baseHtml) {
   // a "<!--". That prevents note text like "END: commentable-html - EMBEDDED COMMENTS -->"
   // from terminating the region early and leaking the comments that follow it.
   ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"].forEach(function (name) {
-    t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - " + name +
+    t = t.replace(new RegExp("<!--\\s*=*\\s*BEGIN: commentable-html - " + name +
       "[\\s\\S]*?<!--\\s*=*\\s*END: commentable-html - " + name + "\\s*=*\\s*-->"), "");
   });
   // The JS region sits last. Opened from file://, fetch() is blocked so
   // _getBaseHtml() returns a DOM snapshot taken while THIS script runs - the
   // parser has not reached the trailing "END ... JS" comment yet, so anchor on
   // the script's own closing tag instead (eat a trailing END marker if present).
-  t = t.replace(new RegExp("<!--\\s*=+\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
+  t = t.replace(new RegExp("<!--\\s*=*\\s*BEGIN: commentable-html - JS[\\s\\S]*?"
     + _cmhScriptClosePattern() + "\\s*(?:<!--\\s*=*\\s*END: commentable-html - JS\\s*-->)?"), "");
   // NonPortable mode loads the runtime from a companion <script src> file; drop only the
   // JS companion (the CSS companion <link> stays so the content keeps its styling).
@@ -5781,7 +5784,7 @@ function _buildPlainHtml(baseHtml) {
   // Data-safety net: the comment-data scripts must be gone. If a malformed or hand-edited
   // marker made a region strip miss, fail loudly instead of downloading a plain file that
   // still leaks the comments.
-  if (/id="(?:handledCommentIds|embeddedComments)"/.test(t)) {
+  if (/id\s*=\s*["'](?:handledCommentIds|embeddedComments)["']/.test(t)) {
     throw new Error("Plain export aborted: the comment regions could not be fully removed (malformed markers?).");
   }
   return t.replace(/\n{3,}/g, "\n\n");
