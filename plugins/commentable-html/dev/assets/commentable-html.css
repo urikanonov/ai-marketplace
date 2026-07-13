@@ -145,6 +145,15 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar .head-actions button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 .cm-sidebar .head-top button.primary:hover,
 .cm-sidebar .head-actions button.primary:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+/* The Copy all action is the most-used control: make it visibly larger and bolder than the
+   other header buttons so it is easy to find and click. */
+.cm-sidebar .head-top #btnCopyAll {
+  padding: 0.5rem 1.15rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-radius: 0.6rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
 /* Sort-by-time arrows sit at the far right of the header row (Copy all stays next to the count). */
 .cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: 0.15rem; }
 .cm-sidebar .head-top .cm-sort-btn { padding: 0.2rem 0.42rem; font-size: 0.7rem; line-height: 1; color: var(--cp-text-soft); }

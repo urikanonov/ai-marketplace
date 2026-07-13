@@ -45,9 +45,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.22.0" />
+<meta name="commentable-html-version" content="1.23.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.22.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.23.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -322,6 +322,15 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar .head-actions button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 .cm-sidebar .head-top button.primary:hover,
 .cm-sidebar .head-actions button.primary:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+/* The Copy all action is the most-used control: make it visibly larger and bolder than the
+   other header buttons so it is easy to find and click. */
+.cm-sidebar .head-top #btnCopyAll {
+  padding: 0.5rem 1.15rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-radius: 0.6rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
 /* Sort-by-time arrows sit at the far right of the header row (Copy all stays next to the count). */
 .cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: 0.15rem; }
 .cm-sidebar .head-top .cm-sort-btn { padding: 0.2rem 0.42rem; font-size: 0.7rem; line-height: 1; color: var(--cp-text-soft); }
@@ -1580,7 +1589,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.22.0";
+const CMH_VERSION = "1.23.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3621,6 +3630,11 @@ document.addEventListener("contextmenu", (e) => {
   showMenu(e.clientX, e.clientY);
 });
 document.addEventListener("mouseup", (e) => {
+  // A right-button release belongs to the contextmenu flow (which opens the doc-comment or
+  // text menu). Running the selection cleanup below on it would queue a hideMenu() that
+  // clobbers the just-opened menu, so the menu flickers open then vanishes. Left/middle
+  // button releases still drive the text-selection popup.
+  if (e.button === 2) return;
   if (e.target.closest(".cm-skip")) return;
   setTimeout(() => {
     const got = selectionInRoot();

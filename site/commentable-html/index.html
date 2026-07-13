@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.22.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.23.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -303,6 +303,17 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.23.0] - 2026-07-13</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A real desktop right-click on empty document space no longer flashes the document-comment menu open and then hides it: the right-button <code>mouseup</code> no longer runs the text-selection cleanup that queued a <code>hideMenu()</code> clobbering the just-opened menu.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The sidebar Copy all button is larger and bolder so the most-used action is easier to find and click.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.22.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -314,6 +325,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>upgrade.py</code> now adds a default <code>generic</code> kind meta to a document that predates kinds, so upgrading an older document produces one that still validates.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.21.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
@@ -325,8 +338,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Trimmed <code>SKILL.md</code> by moving runtime UI, interaction, NonPortable, network, and manual retrofit details into existing references while keeping generation-time routing, caveats, and commands inline.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.20.0] - 2026-07-12</h3></div>
             <div class="group-label">Fixed</div>
@@ -376,20 +387,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Plain export and layer retargeting now ignore <code>data-id=&quot;commentableHtmlLayer&quot;</code> decoys when locating the real descriptor.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.16.0] - 2026-07-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Offline exports now declare descriptor mode <code>offline</code>, reopen with an Offline badge, preserve that mode when edited, and validate offline chart snapshots as first-class portable artifacts.</li>
-              <li>Triage board cards can opt in to mouse drag-and-drop with <code>data-cm-draggable</code>, and moved cards are copied as widget layout changes.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Mermaid diagrams and chart figures now stay inside narrow mobile viewports by scrolling wide rich content inside their own blocks.</li>
-              <li>Shipped prose now refers to the user-facing skill as Commentable HTML while preserving the <code>commentable-html</code> identifier in commands, paths, and code.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">25 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">26 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

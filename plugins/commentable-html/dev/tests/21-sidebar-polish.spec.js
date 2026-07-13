@@ -17,6 +17,22 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     expect(meta).not.toMatch(/\bAM\b|\bPM\b/i);
   });
 
+  test("the Copy all button is a prominent primary action, larger and bolder than the small controls (CMH-SIDE-07)", async ({ page }) => {
+    await openKitchenSink(page);
+    await openSidebarPanel(page);
+    const copy = page.locator("#btnCopyAll");
+    await expect(copy).toBeVisible();
+    const font = await copy.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    const weight = await copy.evaluate((el) => Number(getComputedStyle(el).fontWeight));
+    // Bigger, bolder text so the most-used action is easy to find and click (was ~0.78rem, normal weight).
+    expect(font).toBeGreaterThanOrEqual(14);
+    expect(weight).toBeGreaterThanOrEqual(700);
+    // A larger click target than the small sort arrows beside it.
+    const copyBox = await copy.boundingBox();
+    const sortBox = await page.locator("#btnSortAsc").boundingBox();
+    expect(copyBox.height).toBeGreaterThan(sortBox.height);
+  });
+
   test("comment timestamps use an unambiguous month name (not a numeric M/D)", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "date check");
