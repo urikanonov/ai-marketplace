@@ -32,7 +32,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.22.0";
+const CMH_VERSION = "1.23.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2073,6 +2073,11 @@ document.addEventListener("contextmenu", (e) => {
   showMenu(e.clientX, e.clientY);
 });
 document.addEventListener("mouseup", (e) => {
+  // A right-button release belongs to the contextmenu flow (which opens the doc-comment or
+  // text menu). Running the selection cleanup below on it would queue a hideMenu() that
+  // clobbers the just-opened menu, so the menu flickers open then vanishes. Left/middle
+  // button releases still drive the text-selection popup.
+  if (e.button === 2) return;
   if (e.target.closest(".cm-skip")) return;
   setTimeout(() => {
     const got = selectionInRoot();

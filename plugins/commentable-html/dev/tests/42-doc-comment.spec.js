@@ -29,6 +29,25 @@ test("right-click empty space shows the document-comment menu item", async ({ pa
   await expect(page.locator("#menuComment")).toBeHidden();
 });
 
+test("a real right-click (mousedown, mouseup, then contextmenu) keeps the doc-comment menu open (CMH-DOCCMT regression)", async ({ page }) => {
+  await open(page);
+  // A real desktop right-click fires mousedown -> mouseup -> contextmenu. The mouseup path
+  // must not clear the document-comment menu that the contextmenu handler just opened.
+  // The synthetic-only test above dispatches contextmenu alone, so it never fires the
+  // mouseup and cannot catch this race (the menu flickered open then vanished).
+  await page.evaluate(() => {
+    const root = document.getElementById("commentRoot");
+    const opts = { bubbles: true, cancelable: true, clientX: 40, clientY: 200, button: 2 };
+    root.dispatchEvent(new MouseEvent("mousedown", opts));
+    root.dispatchEvent(new MouseEvent("mouseup", opts));
+    root.dispatchEvent(new MouseEvent("contextmenu", opts));
+  });
+  // Let the mouseup's queued setTimeout(0) run: the menu must still be visible.
+  await page.waitForTimeout(40);
+  await expect(page.locator("#contextMenu")).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeVisible();
+});
+
 test("right-click on a link leaves the native menu (no context menu shown)", async ({ page }) => {
   await open(page);
   await rightClick(page, "#lnk");
