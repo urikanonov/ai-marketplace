@@ -27,6 +27,18 @@ def _read(path):
         return fh.read()
 
 
+def _report_paths():
+    ex_dir = _paths.EXAMPLES
+    return sorted(
+        os.path.join(ex_dir, name) for name in os.listdir(ex_dir)
+        if name.startswith("report-") and name.endswith(".html"))
+
+
+def _companion_prompt(report_path):
+    stem = os.path.basename(report_path)[len("report-"):-len(".html")]
+    return os.path.join(_paths.EXAMPLES, "prompt-" + stem + ".md")
+
+
 def _active_root_attr(html, attr):
     matches = list(re.finditer(r'<main\b[^>]*\bid="commentRoot"[^>]*\b' + re.escape(attr) + r'="([^"]*)"', html))
     if not matches:
@@ -141,6 +153,53 @@ class ExampleTests(unittest.TestCase):
             r = subprocess.run(base + ["--check"], capture_output=True, text=True)
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn("report-taxi.html", r.stdout + r.stderr)
+
+
+class ExamplePromptTests(unittest.TestCase):
+    """CMH-DEMO-02: every shipped example report has a companion example-prompt file
+    (prompt-<name>.md) with the standard headings and a non-empty blockquote prompt."""
+
+    _REQUIRED_HEADINGS = ("# Example prompt", "## Prompt", "## What you get")
+
+    def test_every_report_has_a_companion_prompt_file(self):
+        reports = _report_paths()
+        self.assertTrue(reports, "no example reports found to check")
+        for report in reports:
+            prompt = _companion_prompt(report)
+            base = os.path.basename(prompt)
+            self.assertTrue(
+                os.path.isfile(prompt),
+                "example report %s has no companion %s" % (os.path.basename(report), base))
+            text = _read(prompt)
+            for heading in self._REQUIRED_HEADINGS:
+                self.assertRegex(
+                    text, r"(?m)^" + re.escape(heading) + r"\b",
+                    "%s is missing the heading %r" % (base, heading))
+            quotes = [ln.lstrip(">").strip() for ln in text.splitlines() if ln.lstrip().startswith(">")]
+            self.assertTrue(any(q for q in quotes), base + " has no non-empty blockquote prompt")
+
+
+class ExampleNoTemplateHeaderTests(unittest.TestCase):
+    """CMH-BUILD-05 (examples): the shipped example reports carry none of the removed
+    'TEMPLATE / DEMO' documentation-header phrases, so no example is mislabeled as a
+    bare template or demo shell."""
+
+    _HEADER_PHRASES = (
+        "TEMPLATE / DEMO",
+        "marker-delimited regions",
+        "Regions (each",
+        "Upgrade workflow",
+        "Per-document configuration lives",
+    )
+
+    def test_examples_carry_no_template_header(self):
+        for path in EXAMPLES:
+            html = _read(path)
+            for phrase in self._HEADER_PHRASES:
+                self.assertNotIn(
+                    phrase, html,
+                    "%s still carries the removed template header phrase %r"
+                    % (os.path.basename(path), phrase))
 
 
 if __name__ == "__main__":
