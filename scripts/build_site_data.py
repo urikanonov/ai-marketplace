@@ -94,6 +94,9 @@ def read_text(path):
 
 
 def write_text(path, text):
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
 
@@ -109,6 +112,13 @@ _ASSET_REF_RE = re.compile(
 
 
 def _asset_hash(root, name):
+    # styles.css is itself a build artifact (assembled from site-src/css/ partials), so hash the
+    # freshly-built stylesheet rather than the on-disk copy: the page's ?v= stamp then reflects the
+    # SOURCE partials directly (a pure artifact), it is normalization-independent, and a missing or
+    # stale site/assets/styles.css cannot crash --check or embed a stale hash. Other assets (site.js)
+    # are hand-maintained files, so their bytes on disk are the source of truth.
+    if name == "styles.css":
+        return hashlib.sha256(build_styles(root).encode("utf-8")).hexdigest()[:12]
     path = os.path.join(root, "site", "assets", name)
     try:
         with open(path, "rb") as fh:
@@ -178,6 +188,7 @@ def build_page(root, source_rel, region_fillers):
     the built artifact under site/, so `--check` (comparing this result to the committed artifact)
     covers the whole page - not just the marker regions - which is what closes the site clobber gap."""
     out = read_text(os.path.join(root, source_rel))
+    out = out.lstrip("\ufeff")  # tolerate a UTF-8 BOM so the doctype check sees the declaration.
     if not _DOCTYPE_RE.match(out):
         raise SystemExit("page source %s must begin with a <!doctype ...> declaration"
                          % source_rel.replace(os.sep, "/"))
@@ -353,13 +364,19 @@ def render_jsonld(manifest):
     return _jsonld_script(data)
 
 
+def _tutorial_source_exists(root):
+    """The tutorial is the one OPTIONAL page: its sitemap and llms.txt links are gated on this so the
+    two call sites can never silently diverge (both must key off the SOURCE, not the built artifact)."""
+    return os.path.exists(os.path.join(root, TUTORIAL_PAGE_SRC))
+
+
 def site_page_urls(root):
     """Absolute URLs of the indexable HTML pages: the hub, each plugin page, and the tutorial when
     its source page exists. Used for the sitemap."""
     urls = [SITE_BASE_URL]
     for page in PLUGIN_PAGES.values():
         urls.append(SITE_BASE_URL + page.lstrip("./"))
-    if os.path.exists(os.path.join(root, TUTORIAL_PAGE_SRC)):
+    if _tutorial_source_exists(root):
         rel = os.path.relpath(TUTORIAL_PAGE, "site").replace(os.sep, "/")
         urls.append(SITE_BASE_URL + rel[: -len("index.html")])
     return urls
@@ -387,7 +404,7 @@ def render_llms(root, manifest):
     for plugin in manifest.get("plugins", []):
         lines.append("- [%s](%s): %s" % (
             plugin.get("name", ""), _plugin_app_url(plugin), plugin.get("description", "")))
-    if os.path.exists(os.path.join(root, TUTORIAL_PAGE_SRC)):
+    if _tutorial_source_exists(root):
         lines.extend(["", "## Documentation",
                       "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
     return "\n".join(lines)
@@ -538,7 +555,11 @@ def _orphans(dst_dir, allowed_names, check):
         if check:
             drift.append(name + " (orphaned)")
         else:
-            os.remove(os.path.join(dst_dir, name))
+            try:
+                os.remove(os.path.join(dst_dir, name))
+            except OSError as exc:
+                sys.stderr.write("warning: could not remove orphaned file %s (%s); "
+                                 "delete it manually\n" % (os.path.join(dst_dir, name), exc))
     return drift
 
 
@@ -806,8 +827,9 @@ def main(argv):
                             "site-src/pages/commentable-html/index.html source "
                             "(do not hand-edit the built page; edit the source and rebuild)")
         if tutorial_out is not None and tutorial_out != _read_artifact(tutorial_out_path):
-            problems.append("site/commentable-html/tutorial/index.html is stale vs its source "
-                            "and TUTORIAL.md")
+            problems.append("site/commentable-html/tutorial/index.html is stale vs its "
+                            "site-src/pages/commentable-html/tutorial/index.html source and "
+                            "TUTORIAL.md (do not hand-edit the built page; edit the source and rebuild)")
         if tutorial_orphaned:
             problems.append("site/commentable-html/tutorial/index.html is orphaned: its "
                             "site-src/pages source was removed but the built page lingers; "
@@ -831,7 +853,6 @@ def main(argv):
     write_text(hub_out_path, hub_out)
     write_text(plugin_out_path, plugin_out)
     if tutorial_out is not None:
-        os.makedirs(os.path.dirname(tutorial_out_path), exist_ok=True)
         write_text(tutorial_out_path, tutorial_out)
     elif tutorial_orphaned:
         try:

@@ -700,6 +700,38 @@ class CheckDriftTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bsd.main(["build_site_data.py", "--check", "--root", root])
 
+    def test_check_flags_a_missing_built_hub_page(self):
+        # The required hub artifact missing (source intact) must be drift, exercising the hub/plugin
+        # comparison branch directly (the tutorial-missing test covers only the optional page).
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        _os.remove(_os.path.join(root, bsd.HUB_OUT))
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+    def test_check_flags_a_missing_built_stylesheet_without_crashing(self):
+        # A missing site/assets/styles.css must be reported as drift, not crash the build: the page
+        # ?v= stamp is derived from the source partials, so build_page never reads the absent file.
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        _os.remove(_os.path.join(root, "site", "assets", "styles.css"))
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+    def test_removing_tutorial_source_drops_its_sitemap_entry(self):
+        # Parallel to the llms.txt gating: removing the tutorial source and rebuilding must drop the
+        # tutorial <loc> from sitemap.xml (the SITE-BUILD-14 sitemap-gating claim).
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        sitemap = _os.path.join(root, "site", "sitemap.xml")
+        self.assertIn("commentable-html/tutorial/", bsd.read_text(sitemap))
+        _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertNotIn("commentable-html/tutorial/", bsd.read_text(sitemap))
+
 
 class StylesConcatTests(unittest.TestCase):
     def test_concat_matches_committed_stylesheet(self):
@@ -720,6 +752,14 @@ class StylesConcatTests(unittest.TestCase):
                 "missing CSS partial: " + name)
         # Order is load-bearing: the tokens/base partial must come first.
         self.assertEqual(bsd.CSS_PARTS[0], "10-base.css")
+
+    def test_styles_asset_hash_is_derived_from_the_source_partials(self):
+        # The styles.css cache-bust stamp is a pure function of the source partials (not the on-disk
+        # artifact), so it stays correct even when site/assets/styles.css is stale or missing.
+        import hashlib as _hashlib
+        root = bsd.REPO_ROOT
+        expected = _hashlib.sha256(bsd.build_styles(root).encode("utf-8")).hexdigest()[:12]
+        self.assertEqual(bsd._asset_hash(root, "styles.css"), expected)
 
 
 class PageBannerAndGuardTests(unittest.TestCase):
@@ -824,6 +864,18 @@ class PageBannerAndGuardTests(unittest.TestCase):
             fh.write("<html><body><h1>No doctype</h1></body></html>\n")
         with self.assertRaises(SystemExit):
             bsd.build_page(root, src_rel, [])
+
+    def test_build_page_tolerates_a_utf8_bom_and_emits_none(self):
+        # A source saved with a UTF-8 BOM still builds (the BOM is stripped before the doctype check),
+        # and the built artifact never carries the BOM into the shipped page.
+        root = self._mktemp()
+        os.makedirs(os.path.join(root, "site-src", "pages"))
+        src_rel = os.path.join("site-src", "pages", "bom.html")
+        with open(os.path.join(root, src_rel), "w", encoding="utf-8-sig", newline="") as fh:
+            fh.write("<!DOCTYPE html>\n<html><body><h1>BOM</h1></body></html>\n")
+        art = bsd.build_page(root, src_rel, [])
+        self.assertFalse(art.startswith("\ufeff"))
+        self.assertRegex(art, r"^<!DOCTYPE html>\n<!-- %s" % bsd.GENERATED_BANNER_PREFIX)
 
     def test_committed_page_sources_are_banner_free(self):
         # The editable sources under site-src/pages must NOT carry the generated banner; the banner

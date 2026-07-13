@@ -42,9 +42,10 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   and `data:` in a `beforeEach`, so a flaky GitHub API, the star-widget CDN, or the mermaid CDN can
   never fail the deploy gate. Validate the built static output only; do not reach the network.
 - **Test the built output, then rebuild before asserting.** The suite serves `site/`, which is
-  generated. After editing a CSS source partial under `site-src/css/`, the plugin content, or the
-  generator, run `python scripts/build_site_data.py` so `site/` reflects the change before the browser
-  sees it. Asserting against a stale `site/` gives a false red or false green.
+  generated. After editing a CSS source partial under `site-src/css/`, a page source under
+  `site-src/pages/`, the plugin content, or the generator, run `python scripts/build_site_data.py` so
+  `site/` reflects the change before the browser sees it. Asserting against a stale `site/` gives a
+  false red or false green.
 - **Set an explicit viewport for layout assertions, and pick one where the premise holds.** A layout
   test can be invalidated by a spacing change at a specific width. Example: a "breaks out of the content
   column" test only means something at a viewport wider than the content column; after side margins grew,
