@@ -12,6 +12,7 @@ import _paths
 EXPORTS_MD = os.path.join(_paths.PKG, "references", "exports.md")
 SKILL_MD = os.path.join(_paths.PKG, "SKILL.md")
 TUTORIAL_MD = os.path.join(_paths.PKG, "docs", "TUTORIAL.md")
+REFERENCES = os.path.join(_paths.PKG, "references")
 
 
 def _read(path):
@@ -87,6 +88,57 @@ class NewFeatureDocsTests(unittest.TestCase):
             "after Mermaid diagrams and charts have rendered",
         ):
             self.assertIn(snippet, text)
+
+
+class SkillTrimDocsTests(unittest.TestCase):
+    """CMH-DOC-03: SKILL.md stays lean while routing moved detail to real references."""
+
+    def test_skill_is_lean_and_keeps_generation_critical_contracts(self):
+        text = _read(SKILL_MD)
+        self.assertLess(os.path.getsize(SKILL_MD), 36 * 1024)
+        for snippet in (
+            "TOOL ROUTING contract",
+            "tools/new_document.py",
+            "tools/retrofit.py",
+            "tools/upgrade.py",
+            "tools/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict",
+            "python tools/validate.py --strict <file.html>",
+            "python tools/mark_handled.py <file.html> --from-bundle -",
+            "Trust boundary (MUST)",
+            "Portable != offline",
+        ):
+            self.assertIn(snippet, text)
+
+    def test_moved_detail_lives_in_references_that_skill_links(self):
+        skill = _read(SKILL_MD)
+        checks = {
+            "document-layout.md": (
+                "runtime toolbar",
+                "Clear Comments",
+                "Per-document configuration example",
+            ),
+            "interaction-model.md": (
+                "staggers by 28px",
+                "composer popover",
+                "Handled comments stay handled",
+            ),
+            "exports.md": (
+                "Producing a NonPortable document",
+                "Guardrails that make NonPortable safe",
+                "Network requirements and CDN caveats",
+            ),
+            "retrofitting.md": (
+                "tools/retrofit.py",
+                "Manual paste fallback",
+                "--root-selector",
+            ),
+        }
+        for name, snippets in checks.items():
+            with self.subTest(reference=name):
+                self.assertIn("references/" + name, skill)
+                text = _read(os.path.join(REFERENCES, name))
+                for snippet in snippets:
+                    self.assertIn(snippet, text)
 
 
 if __name__ == "__main__":

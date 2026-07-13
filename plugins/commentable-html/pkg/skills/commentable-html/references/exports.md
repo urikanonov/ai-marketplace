@@ -10,6 +10,39 @@
 **Offline** is a Portable file plus rendered rich-content snapshots. Use **Export Offline** after mermaid diagrams and charts have rendered in the browser. It embeds the current comments, saves rendered mermaid diagrams as inline SVG, saves chart canvases as PNG data images, and removes remote loaders so the result opens with no network.
 
 
+## Producing a NonPortable document
+
+Use `tools/new_document.py` without `--portable`. It starts from `dist/NONPORTABLE.html`, keeps HANDLED IDS,
+EMBEDDED COMMENTS, COMMENT UI, and content inline, and rewrites the companion references for the CSS, runtime JS, and
+asset registry. By default those references are absolute `file://` URLs to the installed skill `dist/` directory, so a
+loose HTML file can move anywhere on the same machine. Use `--assets-relative` for a folder whose relative path to the
+skill stays valid, `--copy-assets` to copy companions next to the output, or `--assets-href PREFIX` when the caller
+manages hosting.
+
+If you must hand-produce one, start from `dist/NONPORTABLE.html`, keep the version meta stamp in sync with the
+referenced companions, set a unique `data-comment-key`, and validate with `tools/validate.py --strict`.
+
+
+## Guardrails that make NonPortable safe
+
+- **Version stamp and handshake.** Every generated document carries `<meta name="commentable-html-version"
+  content="<V>">` and the runtime footer shows `Commentable HTML v<V>`. In NonPortable mode the runtime compares that
+  page stamp with the loaded companion runtime. A same-major newer runtime can open older same-major pages without a
+  warning, an older same-major runtime shows a soft update notice, and a different major is incompatible.
+- **Missing-asset banner.** The NONPORTABLE BOOTSTRAP block shows a visible red banner when companion files do not
+  initialize within the watchdog window.
+- **Export as Portable embeds the loaded assets.** In NonPortable mode **Export as Portable** reads the CSS and JS
+  strings from `window.__COMMENTABLE_ASSETS__`, inlines them with current comments, strips the companion refs, and
+  downloads one Portable file. This works from `file://` because the asset registry is already loaded as a script.
+
+
+## Versioning and compatibility
+
+The page/runtime contract is backward-compatible within a major version. Any `1.x` page works with the same or a newer
+`1.x` runtime. A page that needs features from a newer same-major runtime gets a soft update notice. Breaking changes
+to the page/runtime contract require a major version bump.
+
+
 ## What is bundled in the file vs fetched from where
 
 Portable and NonPortable keep the plan **content** and the **comments** (HANDLED IDS + EMBEDDED COMMENTS) inline in the HTML. They differ only in where the layer CSS/JS come from, and both fetch optional mermaid / Chart.js from a CDN unless you vendor or inline those libraries for full offline fidelity. Offline starts from the Portable output, then snapshots rendered mermaid and charts so those CDN libraries are not needed by the exported file.
@@ -62,6 +95,16 @@ flowchart LR
     charts["Chart PNG data images"]
   end
 ```
+
+
+## Network requirements and CDN caveats
+
+The review layer itself is local: NonPortable references local companion files, while Portable and Offline inline the
+layer CSS, UI, state, and runtime into the HTML. Optional rich content can still depend on the network. Mermaid diagrams
+and Chart.js charts load from a CDN by default unless the author vendors, self-hosts, or inlines those libraries. A
+Portable file that still has CDN loaders is shareable as a review surface, but not guaranteed to render diagrams and
+charts with zero network. Offline export is the zero-network path because it snapshots rendered mermaid and chart output
+and removes remote loaders.
 
 
 ## Export as Portable

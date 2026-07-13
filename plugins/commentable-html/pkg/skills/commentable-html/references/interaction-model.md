@@ -10,6 +10,43 @@ Commentable HTML keeps review in the artifact. The reviewer comments in place, c
 
 **Peer review loop:** run the self review loop first, click **Export as Portable**, share the downloaded file with a peer, receive the peer's Portable HTML with embedded comments, and feed those comments back to the agent.
 
+**Reviewer loop:** when someone sends Markdown or HTML, convert or retrofit it, review inline, and send back a
+Portable HTML file with comments embedded.
+
+## End-to-end interaction walkthrough
+
+1. The user selects text in the document.
+2. An **Add Comment** popup appears below the selection; right-click on a selection opens the same popup as a fallback.
+3. A composer popover appears. The top drag handle uses a grip icon plus "drag to move" so the composer can be moved
+   away from covered text.
+4. Multiple composers can stay open. Selecting another range and choosing **Add Comment** creates another composer
+   without closing the first. If a new composer would overlap an existing one, it staggers by 28px, and the focused
+   composer rises to the front.
+5. Saving wraps the selection in a highlighted span and adds a sidebar card.
+6. Clicking a highlight opens its card. When a highlight wraps a link or another clickable element, hovering the
+   highlight shows the `#hlBubble`; clicking the bubble opens the comment without triggering the underlying link.
+7. Comments persist in `localStorage` under the document key and can be embedded into the HTML through
+   **Export as Portable**.
+8. **Copy all** emits a Markdown bundle plus `HANDLED_IDS_JSON: [...]`.
+9. The agent acts on the comments and appends processed ids to `<script id="handledCommentIds">`; on reload those ids
+   are pruned from `localStorage`, highlights disappear, and only unresolved comments remain.
+
+The HTML file is the durable source of truth for handled ids. `localStorage` is a browser cache. When
+`<script id="embeddedComments">` is non-empty, the runtime merges that in-file snapshot into `localStorage` by id; the
+entry with the later `updatedAt`, falling back to `createdAt`, wins.
+
+## Handled comments stay handled
+
+Once a comment id is in `<script id="handledCommentIds">`, it must never resurface. The runtime enforces this at every
+read path:
+
+- On load, `pruneHandled()` filters handled ids out of the in-memory comment list and writes the survivors back to
+  `localStorage`.
+- **Copy all** filters through `withoutHandled(comments)` before building the bundle, so handled comments are absent
+  from Markdown, `HANDLED_IDS_JSON`, and the copied count.
+
+The agent's edit to `handledCommentIds` is the final word on what is gone.
+
 ## Leaving comments (interaction model)
 
 Every add-comment affordance uses the same **"Add Comment"** control (one accent-pill button with a hover effect, shown as a popup on a text selection and as a floating button on an image / diff line / mermaid node), and the layer avoids duplicate comments on the same anchor:
@@ -21,4 +58,3 @@ Every add-comment affordance uses the same **"Add Comment"** control (one accent
 - **Images and charts:** hover or focus an image or a chart canvas and click **Add Comment**; whole-image/whole-chart anchor, multiple comments allowed.
 
 Every comment lands in the sidebar and round-trips through **Copy all**, **Export as Portable**, and the `handledCommentIds` prune contract identically, regardless of anchor type.
-
