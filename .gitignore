@@ -33,8 +33,15 @@ node_modules/
 __pycache__/
 *.pyc
 .venv/
+.coverage
+.coverage.*
+htmlcov/
 
 # Plugin dev/test generated artifacts (never shipped)
 test-results/
 playwright-report/
 .playwright-cli/
+# AI-driven audit harness scratch output (dev/tools/audit.mjs)
+audit_out/
+audit-*/
+plugins/tmp/

@@ -23,6 +23,10 @@ const root = document.getElementById("commentRoot") || document.body;
 const COMMENT_KEY = root.dataset.commentKey || ("commentable-html:" + location.pathname);
 const DOC_LABEL   = root.dataset.docLabel   || document.title || location.pathname;
 const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
+// Deck profile: a commentable-native slide deck (see references/deck-contract.md). When
+// active, the layer replaces the flow-document chrome (heading anchors, collapsible
+// sections, side TOC, footer, scroll progress) with slide navigation and commenting.
+const IS_DECK = !!(root.getAttribute && root.getAttribute("data-cmh-mode") === "deck");
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // Comment ids are generated as "c" + base36 timestamp + 4 base36 chars and are
 // later interpolated into HTML attributes (data-cid="...") and CSS selectors.
@@ -32,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.31.0";
+const CMH_VERSION = "1.32.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2049,6 +2053,9 @@ function _setMenuMode(mode) {
 }
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
+  // Deck present mode is a clean full-screen presentation with no commenting UI: keep the
+  // native context menu and do not raise the text/document comment menu.
+  if (document.body.classList.contains("cmh-deck-present")) return;
   if (_coarsePointer) return;
   const got = selectionInRoot();
   if (got) {
@@ -2080,6 +2087,8 @@ document.addEventListener("mouseup", (e) => {
   // vanishes. Plain left/middle button releases still drive the text-selection popup.
   if (e.button === 2 || e.ctrlKey) return;
   if (e.target.closest(".cm-skip")) return;
+  // Deck present mode: no text-selection comment popup (the comment UI is hidden).
+  if (document.body.classList.contains("cmh-deck-present")) return;
   setTimeout(() => {
     const got = selectionInRoot();
     if (!got) {
@@ -2106,6 +2115,7 @@ document.addEventListener("mouseup", (e) => {
 if (_coarsePointer) {
   let _touchSelTimer = null;
   const raiseTouchSelectionMenu = () => {
+    if (document.body.classList.contains("cmh-deck-present")) { hideMenu(); return; }
     const got = selectionInRoot();
     if (!got) { hideMenu(); pendingRange = null; pendingQuote = ""; return; }
     pendingDiffSel = null;
@@ -2678,9 +2688,13 @@ function renderComments() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
   if (!comments.length && !stateChanges.length) {
+    const deckHint = IS_DECK
+      ? "<p><strong>On this deck:</strong> in comment mode, select text on the current slide and choose <em>Add Comment</em>, or right-click empty slide space for a whole-slide comment. Move between slides with Prev / Next or the arrow keys.</p>"
+      : "";
     listEl.innerHTML = `
       <div class="cm-empty">
         <p><strong>No comments yet.</strong></p>
+        ${deckHint}
         <p>Select any text in the document, then right-click and choose <em>Add Comment</em>. Mermaid nodes, diff lines, images, and widget parts: hover (or keyboard-focus) and click <em>Add Comment</em>. Right-click empty space for a document-wide comment. Comments stay here until the agent processes them. Click <kbd>Copy all</kbd> to send the bundle to the clipboard; the agent then marks them handled in this HTML file, and they are pruned automatically on the next reload.</p>
       </div>`;
     return;
@@ -2801,7 +2815,14 @@ function scrollToAnchor(c) {
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
   else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
-  else if (c.anchorType === "document") { window.scrollTo({ top: 0, behavior: "smooth" }); flashActive(c.id); return; }
+  else if (c.anchorType === "document") {
+    // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
+    // document start) so a document-wide comment card does not strand the presenter.
+    if (window.__cmhDeck) window.__cmhDeck.showSlide(0);
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+    flashActive(c.id);
+    return;
+  }
   else el = root.querySelector(`mark.cm-hl[data-cid="${c.id}"]`);
   if (el) { expandCollapsedAncestors(el); el.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(c.id); }
 }
@@ -4087,14 +4108,15 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
 // flow had confusing semantics around "which file does the next save go
 // to" once the user picks a different name).
 // Transient runtime UI-state classes the layer toggles on document.body (sidebar open,
-// active sidebar resize, active widget drag). They must never be baked into a saved or
-// exported file: a persisted "sidebar-open" makes the export render full width with an
-// empty right gutter (the body.sidebar-open .app layout rule) for a sidebar that is not
-// shown. Strip them from ONLY the FIRST <body> open tag's class attribute (double-,
+// active sidebar resize, active widget drag, and deck present mode). They must never be baked
+// into a saved or exported file: a persisted "sidebar-open" makes the export render full width
+// with an empty right gutter (the body.sidebar-open .app layout rule) for a sidebar that is not
+// shown, and "cmh-deck-present" is a deck runtime state re-derived on load. Strip them from
+// ONLY the FIRST <body> open tag's class attribute (double-,
 // single-, or unquoted) matching whole tokens, so a <body class="..."> literal elsewhere
 // (inlined script/content) is left alone, a superstring like x-sidebar-open is preserved,
 // and non-transient classes survive; the live layer re-derives the sidebar state on load.
-const _TRANSIENT_BODY_CLASSES = { "sidebar-open": 1, "cm-sidebar-resizing": 1, "cm-widget-dragging": 1 };
+const _TRANSIENT_BODY_CLASSES = { "sidebar-open": 1, "cm-sidebar-resizing": 1, "cm-widget-dragging": 1, "cmh-deck-present": 1 };
 function _stripTransientBodyClasses(html) {
   return String(html == null ? "" : html).replace(/<body\b[^>]*>/i, function (tag) {
     return tag.replace(
@@ -5767,11 +5789,165 @@ setupCodeCopy();
 setupSortableTables();
 setupModeUi();
 setupSidebarResize();
-setupHeadingAnchors();
-setupCollapsibleSections();
-setupSideToc();
-setupFooter();
-setupScrollProgress();
+function setupDeck() {
+  if (window.__cmhDeck) return;  // idempotent: never install the deck chrome twice
+  const stage = root.querySelector(".deck-stage");
+  const viewport = root.querySelector(".deck-viewport") || stage && stage.parentNode;
+  const slides = stage ? Array.prototype.slice.call(stage.querySelectorAll(".slide")) : [];
+  if (!stage || !slides.length) return;
+
+  let current = slides.findIndex((s) => s.classList.contains("active"));
+  if (current < 0) current = 0;
+  let commentMode = false;
+  let counter = null, prevBtn = null, nextBtn = null;
+  // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
+  // the present-mode default applied below.
+  root.classList.remove("cmh-deck-comment-mode");
+
+  function fitStage() {
+    const host = viewport || document.documentElement;
+    const vw = host.clientWidth || window.innerWidth;
+    const vh = host.clientHeight || window.innerHeight;
+    const scale = Math.min(vw / 1920, vh / 1080);
+    const x = (vw - 1920 * scale) / 2;
+    const y = (vh - 1080 * scale) / 2;
+    stage.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
+  }
+
+  function show(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= slides.length) return false;
+    const changed = index !== current;
+    slides.forEach((s, i) => {
+      s.classList.toggle("active", i === index);
+      s.classList.toggle("visible", i === index);
+    });
+    current = index;
+    if (counter) {
+      counter.textContent = (index + 1) + " / " + slides.length;
+      // Screen readers announce the live region's text; a bare "2 / 4" reads as "2 slash 4",
+      // so expose a spoken form via the label.
+      counter.setAttribute("aria-label", "Slide " + (index + 1) + " of " + slides.length);
+    }
+    if (prevBtn) prevBtn.disabled = index === 0;
+    if (nextBtn) nextBtn.disabled = index === slides.length - 1;
+    // Fire only on a real move (a changed active slide), never for the initial render or a
+    // re-selection of the already-active slide.
+    if (changed) {
+      document.dispatchEvent(new CustomEvent("cmh:slidechange", {
+        detail: { slideId: slides[index].getAttribute("data-slide-id"), index },
+      }));
+    }
+    return true;
+  }
+  function showById(id) {
+    if (!id) return false;
+    const i = slides.findIndex((s) => s.getAttribute("data-slide-id") === id);
+    return i >= 0 ? show(i) : false;
+  }
+
+  window.__cmhDeck = {
+    showSlide: show,
+    showSlideById: showById,
+    activeSlideId: () => slides[current] && slides[current].getAttribute("data-slide-id"),
+    slideCount: () => slides.length,
+  };
+
+  show(current);
+  fitStage();
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(fitStage).observe(viewport || document.documentElement);
+  } else {
+    window.addEventListener("resize", fitStage);
+  }
+  // Default to a clean full-screen presentation: hide the comment sidebar/toolbar until the
+  // user enters comment mode (see the cmh-deck-present CSS).
+  document.body.classList.add("cmh-deck-present");
+
+  function isEditableTarget(t) {
+    if (!t) return false;
+    if (t.isContentEditable) return true;
+    const tag = t.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return !!(t.closest && t.closest(".cm-skip"));
+  }
+  document.addEventListener("keydown", (e) => {
+    if (commentMode || e.defaultPrevented || isEditableTarget(e.target)) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+      if (show(current + 1)) e.preventDefault();
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+      if (show(current - 1)) e.preventDefault();
+    } else if (e.key === "Home") {
+      if (show(0)) e.preventDefault();
+    } else if (e.key === "End") {
+      if (show(slides.length - 1)) e.preventDefault();
+    }
+  });
+
+  // Deck-aware jump: activating a comment card navigates to its owning slide before the
+  // layer's own scrollIntoView (which cannot reveal a hidden slide) runs.
+  document.addEventListener("click", (e) => {
+    const card = e.target.closest && e.target.closest(".cm-card[data-cid]");
+    if (!card) return;
+    const cid = card.getAttribute("data-cid");
+    if (!cid) return;
+    const q = (window.CSS && CSS.escape) ? CSS.escape(cid) : cid;
+    const anchor = root.querySelector(
+      'mark.cm-hl[data-cid="' + q + '"], [data-cids~="' + q + '"], [data-cid="' + q + '"]');
+    const slide = anchor && anchor.closest(".slide");
+    if (slide) showById(slide.getAttribute("data-slide-id"));
+  }, true);
+
+  function setCommentMode(on) {
+    commentMode = on;
+    root.classList.toggle("cmh-deck-comment-mode", on);
+    document.body.classList.toggle("cmh-deck-present", !on);
+    try { if (on) openSidebar(); else closeSidebar(); } catch (e) { /* sidebar helpers are optional */ }
+    toggle.setAttribute("aria-pressed", String(on));
+    toggle.classList.toggle("cmh-deck-mode-on", on);
+    // Comment mode narrows the stage (the sidebar takes width); refit after layout settles.
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(fitStage); else fitStage();
+  }
+  const toggle = document.createElement("button");
+  toggle.className = "cm-skip cmh-deck-mode-toggle";
+  toggle.type = "button";
+  // Stable accessible name; state is conveyed by aria-pressed + the on-colour, per the ARIA
+  // toggle-button pattern (a name that flips to "Present" would read "Present, pressed").
+  toggle.textContent = "Comment mode";
+  toggle.setAttribute("aria-pressed", "false");
+  toggle.addEventListener("click", () => { setCommentMode(!commentMode); toggle.blur(); });
+  document.body.prepend(toggle);
+
+  const nav = document.createElement("div");
+  nav.className = "cm-skip cmh-deck-nav";
+  const prev = document.createElement("button");
+  prev.type = "button"; prev.textContent = "Prev"; prev.setAttribute("aria-label", "Prev slide");
+  prev.addEventListener("click", () => { show(current - 1); prev.blur(); });
+  prevBtn = prev;
+  counter = document.createElement("span");
+  counter.className = "cmh-deck-count";
+  counter.setAttribute("aria-live", "polite");
+  counter.textContent = (current + 1) + " / " + slides.length;
+  counter.setAttribute("aria-label", "Slide " + (current + 1) + " of " + slides.length);
+  const next = document.createElement("button");
+  next.type = "button"; next.textContent = "Next"; next.setAttribute("aria-label", "Next slide");
+  next.addEventListener("click", () => { show(current + 1); next.blur(); });
+  nextBtn = next;
+  prev.disabled = current === 0;
+  next.disabled = current === slides.length - 1;
+  nav.appendChild(prev); nav.appendChild(counter); nav.appendChild(next);
+  // Focus order: the toggle sits at the top of the DOM (top-right visually), the nav bar at the
+  // end (bottom visually), so keyboard focus flows toggle -> slide content -> navigation.
+  document.body.appendChild(nav);
+}
+if (IS_DECK) {
+  setupDeck();
+} else {
+  setupHeadingAnchors();
+  setupCollapsibleSections();
+  setupSideToc();
+  setupFooter();
+  setupScrollProgress();
+}
 setupTooltips();
 // Capture the layer chrome injected above while the host content that follows the layer
 // <script> is still unparsed, so an export tail can exclude it (see _snapshotWithTail).

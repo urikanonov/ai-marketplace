@@ -1,6 +1,6 @@
 // Commentable widgets and SVG nodes (generic data-cm-widget / data-cm-part opt-in).
 import { test, expect } from "@playwright/test";
-import { fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, storedComments } from "./helpers.js";
+import { fileUrl, ready, installClipboardCapture, stageContent, stageDeck, copiedBundle, storedComments } from "./helpers.js";
 
 const WIDGET_CONTENT = `
   <h1>Widget test</h1>
@@ -207,4 +207,32 @@ test("a part node replaced in the same slot is re-wired for commenting", async (
   await expect(part).toHaveClass(/cm-part-commentable/);
   await part.hover();
   await expect(page.locator("#widgetAddBtn")).toBeVisible();
+});
+
+
+// CMH-MMDLOAD-02: the mermaid CDN import is gated on the presence of a diagram, so a
+// diagram-free document (including a deck) makes no external request.
+test("CMH-MMDLOAD-02: a diagram-free document makes no mermaid CDN request; a diagram loads it", async ({ page }) => {
+  const reqs = [];
+  page.on("request", (r) => { if (/cdn\.jsdelivr\.net\/npm\/mermaid@/.test(r.url())) reqs.push(r.url()); });
+
+  const plain = stageContent("<section><h2 id='a'>No diagrams</h2><p>plain text only.</p></section>", { key: "no-mmd-doc" });
+  await page.goto(fileUrl(plain.html));
+  await ready(page);
+  await page.waitForTimeout(300);
+  expect(reqs).toEqual([]);
+
+  // a diagram-free DECK likewise makes no mermaid request (the gate keys off diagram presence,
+  // not document kind), so the deck's zero-egress promise holds.
+  const deck = stageDeck('<section class="slide active" data-slide-id="slide-00000001"><h2>D</h2><p>no diagrams here</p></section>', { key: "no-mmd-deck" });
+  await page.goto(fileUrl(deck.html));
+  await ready(page);
+  await page.waitForTimeout(300);
+  expect(reqs).toEqual([]);
+
+  const withDiagram = stageContent("<section><h2 id='b'>Has a diagram</h2><pre class=\"mermaid\">graph TD; A--&gt;B;</pre></section>", { key: "has-mmd-doc" });
+  await page.goto(fileUrl(withDiagram.html));
+  await ready(page);
+  await page.waitForFunction(() => performance.getEntriesByType("resource").some((e) => /mermaid@/.test(e.name)), null, { timeout: 4000 }).catch(() => {});
+  expect(reqs.length).toBeGreaterThan(0);
 });

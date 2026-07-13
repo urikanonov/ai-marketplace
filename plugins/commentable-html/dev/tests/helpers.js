@@ -256,6 +256,29 @@ export function stageContent(contentHtml, { key = "cmh-test-doc", source = "test
   return { dir, html: p };
 }
 
+// Build a commentable-native DECK document (data-cmh-mode="deck") from dist/PORTABLE.html:
+// inject a fixed-stage .deck-viewport/.deck-stage with the given slide sections and mark the
+// content root as a deck, so a test can exercise the deck runtime profile.
+export function stageDeck(slidesHtml, { key = "cmh-deck-test" } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_deck_"));
+  let html = fs.readFileSync(INLINE, "utf8");
+  const style =
+    "<style>.deck-viewport{position:fixed;inset:0;overflow:hidden;}"
+    + ".deck-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;}"
+    + ".slide{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;visibility:hidden;opacity:0;pointer-events:none;}"
+    + ".slide.active,.slide.visible{visibility:visible;opacity:1;pointer-events:auto;}"
+    + "@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;}}</style>";
+  const content = style + '<div class="deck-viewport"><div class="deck-stage">' + slidesHtml + "</div></div>";
+  const CONTENT_RE = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
+  if (!CONTENT_RE.test(html)) throw new Error("no CONTENT region in PORTABLE.html");
+  html = html.replace(CONTENT_RE, (_m, a, b) => a + "\n" + content + "\n" + b);
+  html = html.replace('data-comment-key="commentable-html-demo"',
+    'data-comment-key="' + key + '" data-cmh-mode="deck"');
+  const p = path.join(dir, "deck.html");
+  fs.writeFileSync(p, html);
+  return { dir, html: p };
+}
+
 // A tiny static server. Needed for the mermaid path only: mermaid loads via an ES
 // module dynamic import from a CDN, which browsers block over file://, so the
 // diagram only renders when the page is served over http.
