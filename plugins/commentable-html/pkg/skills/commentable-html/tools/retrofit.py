@@ -36,12 +36,13 @@ class RetrofitError(ValueError):
 
 
 class Element:
-    def __init__(self, tag, attrs, start, start_end):
+    def __init__(self, tag, attrs, start, start_end, self_closing=False):
         self.tag = tag
         self.attrs = attrs
         self.attr_map = _attrs_map(attrs)
         self.start = start
         self.start_end = start_end
+        self.self_closing = self_closing
         self.end_start = None
         self.end_end = None
 
@@ -94,7 +95,7 @@ class _StructureParser(HTMLParser):
         tag = tag.lower()
         start = self._off()
         end = self._tag_end(start)
-        elem = Element(tag, attrs, start, end)
+        elem = Element(tag, attrs, start, end, self_closing=True)
         elem.end_start = start
         elem.end_end = end
         self.elements.append(elem)
@@ -117,12 +118,14 @@ class _StructureParser(HTMLParser):
         if idx is None:
             self.errors.append("unexpected </%s>" % tag)
             return
-        if idx != len(self.stack) - 1:
-            self.errors.append("malformed HTML near </%s>" % tag)
-            return
-        elem = self.stack.pop()
+        closing = self.stack[idx:]
+        self.stack = self.stack[:idx]
+        elem = closing[0]
         elem.end_start = start
         elem.end_end = end
+        for implicit in closing[1:]:
+            implicit.end_start = start
+            implicit.end_end = start
 
 
 def _line_starts(text):
@@ -280,20 +283,24 @@ def _resolve_key(args, out_path):
     )
 
 
-def _root_tag(key, label, source):
+def _root_tag(key, label, source, tag="main"):
     attrs = 'id="commentRoot" data-cmh-content-root data-comment-key="%s" data-doc-label="%s" data-doc-source="%s"' % (
         _html.escape(key, quote=True),
         _html.escape(label, quote=True),
         _html.escape(source, quote=True),
     )
-    return "<main %s>" % attrs
+    return "<%s %s>" % (tag, attrs)
 
 
 def _edits_apply(text, edits):
-    edits = sorted(edits, key=lambda item: (item[0], item[1]), reverse=True)
+    edits = [
+        (index, start, end, repl)
+        for index, (start, end, repl) in enumerate(edits)
+    ]
+    edits = sorted(edits, key=lambda item: (item[1], item[2], item[0]), reverse=True)
     last_start = len(text) + 1
     out = text
-    for start, end, repl in edits:
+    for _index, start, end, repl in edits:
         if end > last_start:
             raise RetrofitError("internal edit overlap while retrofitting")
         out = out[:start] + repl + out[end:]
@@ -353,6 +360,8 @@ def _replace_start_tag(text, elem, mutator):
 
 
 def _stamp_root_tag(text, elem, key, label, source):
+    if elem.self_closing and elem.tag not in VOID:
+        raise RetrofitError("--root-selector points at a self-closing non-void element; use an explicit closing tag")
     if elem.tag in VOID or elem.end_start is None:
         raise RetrofitError("--root-selector must point at a non-void element with a closing tag")
 
@@ -433,6 +442,10 @@ def _body_contains(body, elem):
     return body.start_end <= elem.start and elem.start_end <= body.end_start
 
 
+def _body_has_main(parser, body):
+    return any(elem.tag == "main" and _body_contains(body, elem) for elem in parser.elements)
+
+
 def _insert_title_if_missing(text, head, label):
     head_text = text[head.start_end:head.end_start]
     if re.search(r"<title\b", head_text, re.I):
@@ -476,9 +489,10 @@ def build_retrofit(html, args, out_path):
         if existing_roots:
             raise RetrofitError('active id="commentRoot" already exists; use --root-selector "#commentRoot" for an unlayered host root, or use upgrade.py for an already-layered file')
         body_inner = html[body.start_end:body.end_start]
-        root_open = _root_tag(key, args.label, source)
+        root_tag = "div" if _body_has_main(parser, body) else "main"
+        root_open = _root_tag(key, args.label, source, tag=root_tag)
         wrapped = ("\n" + root_open + "\n" + new_document.BEGIN_MARKER + "\n"
-                   + body_inner.strip("\n") + "\n" + new_document.END_MARKER + "\n</main>\n")
+                   + body_inner.strip("\n") + "\n" + new_document.END_MARKER + "\n</%s>\n" % root_tag)
         edits = [
             (head.end_start, head.end_start, "\n" + title_insert + head_insert),
             (body.start_end, body.end_start, "\n" + body_top + wrapped + body_bottom + "\n"),

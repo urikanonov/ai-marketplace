@@ -148,7 +148,7 @@ The runtime toolbar, sidebar, footer, Help modal, timestamps, document-type bubb
 
 ### Compact authoring rules
 
-Use `cmh-callout` plus `cmh-callout-info`, `cmh-callout-success`, `cmh-callout-warning`, or `cmh-callout-danger` for boxed asides, and `cmh-lede` for the lead block. Never hardcode report colors; use the `--cp-*` theme variables so text stays readable in dark and light themes. Author collapsible sections as `<section>` elements with a direct heading. Widgets that support drag must opt in with `data-cm-draggable`; Only direct `data-cm-part` children of a slot are movable.
+Use `cmh-callout` plus `cmh-callout-info`, `cmh-callout-success`, `cmh-callout-warning`, or `cmh-callout-danger` for boxed asides, and `cmh-lede` for the lead block. Never hardcode report colors; use the `--cp-*` theme variables so text stays readable in dark and light themes. Author collapsible sections as `<section>` elements with a direct heading.
 
 ## Editing the skill (maintainer)
 

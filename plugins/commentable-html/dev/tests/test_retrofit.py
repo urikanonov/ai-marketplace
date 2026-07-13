@@ -99,6 +99,80 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn("BEGIN: commentable-html - CONTENT", html)
         self._strict_clean(out)
 
+    def test_root_selector_stamps_empty_element(self):
+        d = self._tmpdir()
+        html = HOST_HTML.replace("<section><h2 id=\"intro\">Intro</h2><p>Hello review.</p></section>", '<div id="content"></div>')
+        src = self._write(d, "host.html", html)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host Report", "--root-selector", "#content", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('<div id="commentRoot"', html)
+        self.assertLess(html.index("BEGIN: commentable-html - CONTENT"), html.index("END: commentable-html - CONTENT"))
+        self._strict_clean(out)
+
+    def test_valid_html5_implicit_closed_tags_retrofit(self):
+        d = self._tmpdir()
+        html = """<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Implicit</title></head>
+<body>
+<section><h2 id="items">Items</h2><p>Text<p>More<ul><li>One<li>Two</ul></section>
+</body>
+</html>
+"""
+        src = self._write(d, "implicit.html", html)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Implicit", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        self._strict_clean(out)
+
+    def test_default_wrap_uses_div_when_body_already_has_main(self):
+        d = self._tmpdir()
+        html = HOST_HTML.replace("<section>", "<main><section>").replace("</section>", "</section></main>")
+        src = self._write(d, "host.html", html)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('<div id="commentRoot"', html)
+        self.assertIn("<main><section>", html)
+        self.assertRegex(html, r'<div id="commentRoot"[^>]*>\s*<!-- BEGIN: commentable-html - CONTENT')
+        self._strict_clean(out)
+
+    def test_root_selector_refuses_self_closing_non_void_element(self):
+        d = self._tmpdir()
+        html = HOST_HTML.replace("<section><h2 id=\"intro\">Intro</h2><p>Hello review.</p></section>", '<div id="content"/>')
+        src = self._write(d, "host.html", html)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host", "--root-selector", "#content", "--out", out])
+        self.assertEqual(code, 2)
+        self.assertIn("self-closing non-void", stderr)
+        self.assertFalse(os.path.exists(out))
+
+    def test_comment_and_script_tag_text_do_not_create_fake_containers(self):
+        d = self._tmpdir()
+        html = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fake tags</title>
+<script>const fake = "<head><body></body></head>";</script>
+</head>
+<body>
+<!-- <head></head><body></body> -->
+<section><h2 id="intro">Intro</h2><p>Hello review.</p></section>
+</body>
+</html>
+"""
+        src = self._write(d, "host.html", html)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        self._strict_clean(out)
+
     def test_portable_inlines_layer_and_strict_validates(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)

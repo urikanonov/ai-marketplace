@@ -17,9 +17,15 @@ Timestamps use an unambiguous 24-hour local format with a month name, such as `J
 Copy bundles. `Generated on` reads `data-generated` from `#commentRoot` when present and otherwise falls back to file
 modified time. Comment cards show reader-facing anchor info only; internal pinpoint detail stays in the Copy bundle.
 
+The sidebar sort arrows switch comments between oldest-first and newest-first order. Clicking the active arrow again
+returns to document order, and the selected order persists for the document.
+
 The document-type bubble reports **Portable**, **Offline**, or **Not portable**. Its tooltip explains whether the file
 is self-contained, offline-ready, referencing companion assets, carrying live comments that are not embedded, or
 holding embedded comments that were deleted this session and need re-export.
+
+When a user deletes an embedded comment, the runtime records a tombstone so the deletion is durable across reloads.
+The file remains **Not portable** until **Export as Portable** writes a fresh copy without that embedded comment.
 
 The Help button opens a modal with collapsible topics, a focused live-search box, an empty state, focus trapping,
 Escape / backdrop / X close behavior, and focus restoration. Topics cover leaving a comment, managing comments, the

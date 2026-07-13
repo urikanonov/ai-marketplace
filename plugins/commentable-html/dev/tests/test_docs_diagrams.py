@@ -116,6 +116,10 @@ class SkillTrimDocsTests(unittest.TestCase):
                 "runtime toolbar",
                 "Clear Comments",
                 "Per-document configuration example",
+                "oldest-first and newest-first",
+                "Clicking the active arrow again",
+                "records a tombstone",
+                "remains **Not portable** until **Export as Portable**",
             ),
             "interaction-model.md": (
                 "staggers by 28px",
