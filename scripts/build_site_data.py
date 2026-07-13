@@ -178,6 +178,9 @@ def build_page(root, source_rel, region_fillers):
     the built artifact under site/, so `--check` (comparing this result to the committed artifact)
     covers the whole page - not just the marker regions - which is what closes the site clobber gap."""
     out = read_text(os.path.join(root, source_rel))
+    if not _DOCTYPE_RE.match(out):
+        raise SystemExit("page source %s must begin with a <!doctype ...> declaration"
+                         % source_rel.replace(os.sep, "/"))
     for kind, name, value in region_fillers:
         if kind == "inline":
             out = replace_region_inline(out, name, value)
@@ -369,9 +372,10 @@ def render_sitemap(root):
             "%s\n</urlset>\n") % locs
 
 
-def render_llms(manifest):
+def render_llms(root, manifest):
     """An llms.txt (Markdown) front door for LLM crawlers: the marketplace summary, how to install,
-    a list of plugins with links and descriptions, and the tutorial link, all from the manifest."""
+    a list of plugins with links and descriptions, and the tutorial link (only when the tutorial
+    source exists), all from the manifest."""
     description = manifest.get("metadata", {}).get("description", "")
     suffix = manifest.get("name", "")
     lines = ["# " + SITE_NAME, "", "> " + description, ""]
@@ -383,8 +387,9 @@ def render_llms(manifest):
     for plugin in manifest.get("plugins", []):
         lines.append("- [%s](%s): %s" % (
             plugin.get("name", ""), _plugin_app_url(plugin), plugin.get("description", "")))
-    lines.extend(["", "## Documentation",
-                  "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
+    if os.path.exists(os.path.join(root, TUTORIAL_PAGE_SRC)):
+        lines.extend(["", "## Documentation",
+                      "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
     return "\n".join(lines)
 
 
@@ -787,11 +792,11 @@ def main(argv):
     sitemap_drift = write_or_check(
         os.path.join(root, "site", "sitemap.xml"), render_sitemap(root), args.check)
     llms_drift = write_or_check(
-        os.path.join(root, "site", "llms.txt"), render_llms(manifest), args.check)
+        os.path.join(root, "site", "llms.txt"), render_llms(root, manifest), args.check)
 
     if args.check:
         problems = []
-        if styles_text != read_text(styles_path):
+        if styles_text != _read_artifact(styles_path):
             problems.append("site/assets/styles.css is stale vs site-src/css/ partials")
         if hub_out != _read_artifact(hub_out_path):
             problems.append("site/index.html is stale vs its site-src/pages/index.html source "
@@ -805,7 +810,8 @@ def main(argv):
                             "and TUTORIAL.md")
         if tutorial_orphaned:
             problems.append("site/commentable-html/tutorial/index.html is orphaned: its "
-                            "site-src/pages source was removed but the built page lingers; delete it")
+                            "site-src/pages source was removed but the built page lingers; "
+                            "run build_site_data.py to remove it")
         if demo_drift:
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
         if tutorial_img_drift:
@@ -825,9 +831,16 @@ def main(argv):
     write_text(hub_out_path, hub_out)
     write_text(plugin_out_path, plugin_out)
     if tutorial_out is not None:
+        os.makedirs(os.path.dirname(tutorial_out_path), exist_ok=True)
         write_text(tutorial_out_path, tutorial_out)
     elif tutorial_orphaned:
-        os.remove(tutorial_out_path)
+        try:
+            os.remove(tutorial_out_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            sys.stderr.write("warning: could not remove orphaned tutorial page %s (%s); "
+                             "delete it manually\n" % (tutorial_out_path, exc))
     print("site data generated (plugins, jsonld, version v%s, changelog, demos, tutorial, sitemap, llms)" % version)
     return 0
 

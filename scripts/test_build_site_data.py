@@ -573,7 +573,9 @@ class LlmsTests(unittest.TestCase):
             "metadata": {"description": "Marketplace summary."},
             "plugins": [{"name": "commentable-html", "description": "d1"}],
         }
-        text = bsd.render_llms(manifest)
+        # REPO_ROOT has the tutorial source, so the Documentation link is emitted (gating verified
+        # separately in CheckDriftTests.test_removing_tutorial_source_drops_its_llms_link).
+        text = bsd.render_llms(bsd.REPO_ROOT, manifest)
         self.assertTrue(text.startswith("# ai-marketplace"))
         self.assertIn("> Marketplace summary.", text)
         self.assertIn("copilot plugin install <name>@urikan-ai-marketplace", text)
@@ -602,8 +604,11 @@ class CheckDriftTests(unittest.TestCase):
         import tempfile
         root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
-        tracked = subprocess.run(["git", "-C", bsd.REPO_ROOT, "ls-files", "-z"],
-                                 capture_output=True, check=True).stdout.decode("utf-8").split("\0")
+        try:
+            tracked = subprocess.run(["git", "-C", bsd.REPO_ROOT, "ls-files", "-z"],
+                                     capture_output=True, check=True).stdout.decode("utf-8").split("\0")
+        except FileNotFoundError:
+            self.skipTest("git not available on PATH")
         for rel in tracked:
             if not rel:
                 continue
@@ -641,13 +646,29 @@ class CheckDriftTests(unittest.TestCase):
 
     def test_check_flags_an_orphaned_page_whose_source_was_removed(self):
         # If a page's site-src source is removed but its built artifact lingers, --check must flag it
-        # so the "pure artifact" invariant never silently ignores a stranded page.
+        # so the "pure artifact" invariant never silently ignores a stranded page. Capture stderr so
+        # the assertion isolates the orphan guard (a --check would also fail from sitemap/llms drift).
+        import contextlib
+        import io
         import os as _os
         root = self._clone_repo()
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
         _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
         self.assertTrue(_os.path.exists(_os.path.join(root, bsd.TUTORIAL_PAGE)))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = bsd.main(["build_site_data.py", "--check", "--root", root])
+        self.assertEqual(rc, 1)
+        self.assertIn("orphaned", err.getvalue())
+
+    def test_check_flags_a_missing_built_page_when_its_source_exists(self):
+        # First-build / forgot-to-commit case: the source exists but the built artifact does not.
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE))
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
     def test_write_removes_an_orphaned_page_whose_source_was_removed(self):
@@ -657,6 +678,27 @@ class CheckDriftTests(unittest.TestCase):
         _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
         self.assertFalse(_os.path.exists(_os.path.join(root, bsd.TUTORIAL_PAGE)))
+
+    def test_removing_tutorial_source_drops_its_llms_link(self):
+        # The llms.txt tutorial link is gated on the tutorial source, so removing the source and
+        # rebuilding leaves no llms.txt link pointing at the deleted tutorial page.
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        llms = _os.path.join(root, "site", "llms.txt")
+        self.assertIn("commentable-html/tutorial/", bsd.read_text(llms))
+        _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertNotIn("commentable-html/tutorial/", bsd.read_text(llms))
+
+    def test_missing_required_page_source_errors_clearly(self):
+        # A hub/plugin page is required: removing its source must raise a clear SystemExit rather
+        # than a bare FileNotFoundError traceback (they are not optional like the tutorial).
+        import os as _os
+        root = self._clone_repo()
+        _os.remove(_os.path.join(root, bsd.HUB_SRC))
+        with self.assertRaises(SystemExit):
+            bsd.main(["build_site_data.py", "--check", "--root", root])
 
 
 class StylesConcatTests(unittest.TestCase):
@@ -706,16 +748,16 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # Re-applying replaces the prior banner instead of stacking a second one.
         twice = bsd.apply_page_banner(once, "site-src/pages/index.html")
         self.assertEqual(once, twice)
-        self.assertEqual(twice.count("GENERATED FILE - DO NOT EDIT."), 1)
+        self.assertEqual(twice.count(bsd.GENERATED_BANNER_PREFIX), 1)
 
     def test_apply_page_banner_leaves_a_body_comment_with_the_banner_prefix(self):
         # Only the banner in the slot right after the doctype is replaced; a comment elsewhere in
         # the page body that happens to start with the banner prefix must NOT be stripped.
-        body_comment = "<!-- GENERATED FILE - DO NOT EDIT. real body content -->"
+        body_comment = "<!-- %s real body content -->" % bsd.GENERATED_BANNER_PREFIX
         html = "<!DOCTYPE html>\n<html><body>\n%s\n</body></html>\n" % body_comment
         out = bsd.apply_page_banner(html, "site-src/pages/index.html")
         self.assertIn(body_comment, out)
-        self.assertEqual(out.count("GENERATED FILE - DO NOT EDIT."), 2)  # slot banner + body comment
+        self.assertEqual(out.count(bsd.GENERATED_BANNER_PREFIX), 2)  # slot banner + body comment
         self.assertEqual(out, bsd.apply_page_banner(out, "site-src/pages/index.html"))  # idempotent
 
     def test_apply_page_banner_tolerates_a_doctype_with_attributes(self):
@@ -763,6 +805,40 @@ class PageBannerAndGuardTests(unittest.TestCase):
 
     def test_missing_artifact_counts_as_drift(self):
         self.assertIsNone(bsd._read_artifact(os.path.join(self._mktemp(), "nope.html")))
+
+    def test_build_page_rejects_an_unknown_region_kind(self):
+        # build_page only knows "block" (and historically "attr") region kinds; an unknown kind must
+        # fail loudly rather than silently leave the marker unfilled in the shipped artifact.
+        root = self._mktemp()
+        src_rel = self._write_source(root)
+        with self.assertRaises(SystemExit):
+            bsd.build_page(root, src_rel, [("bogus", "plugins", "GRID")])
+
+    def test_build_page_rejects_a_source_without_a_doctype(self):
+        # Every shipped page must start with a doctype so the banner has a slot; a source missing it
+        # must raise rather than emit a page the banner cannot be applied to.
+        root = self._mktemp()
+        os.makedirs(os.path.join(root, "site-src", "pages"))
+        src_rel = os.path.join("site-src", "pages", "y.html")
+        with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
+            fh.write("<html><body><h1>No doctype</h1></body></html>\n")
+        with self.assertRaises(SystemExit):
+            bsd.build_page(root, src_rel, [])
+
+    def test_committed_page_sources_are_banner_free(self):
+        # The editable sources under site-src/pages must NOT carry the generated banner; the banner
+        # is injected only into the built artifact. If a source picked one up, a rebuild would be a
+        # no-op on the banner line and hand-edits could hide there.
+        for rel in (bsd.HUB_SRC, bsd.PLUGIN_SRC, bsd.TUTORIAL_PAGE_SRC):
+            src = os.path.join(bsd.REPO_ROOT, rel)
+            if not os.path.exists(src):
+                continue
+            self.assertNotIn(bsd.GENERATED_BANNER_PREFIX, bsd.read_text(src),
+                             "%s must not contain the generated banner" % rel)
+
+    def test_committed_stylesheet_carries_the_banner(self):
+        css = os.path.join(bsd.REPO_ROOT, "site", "assets", "styles.css")
+        self.assertIn("DO NOT EDIT", bsd.read_text(css))
 
 
 if __name__ == "__main__":
