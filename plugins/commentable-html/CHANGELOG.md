@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] - 2026-07-13
+
+### Fixed
+
+- Exports no longer bake transient runtime body-state classes into the saved file. Every export path (Save, Export as Portable, Export Offline, and Export to Plain HTML) now strips `sidebar-open`, `cm-sidebar-resizing`, and `cm-widget-dragging` from the exported `<body>` open tag, so a stale or open-sidebar source can no longer persist that state and propagate it across re-exports. A stuck `sidebar-open` made the document render full width with an empty right gutter (the `body.sidebar-open .app` layout rule) for a sidebar that is not shown. Non-transient body classes are preserved, and the live layer re-derives the sidebar state on load. The normalization is centralized in `_getBaseHtml()` (covering the on-disk and `file://` snapshot bases) and shared with the Plain export via a new `_stripTransientBodyClasses()` helper. New spec `CMH-EXP-09` and `dev/tests/54-export-body-normalize.spec.js` cover all four export paths.
+
 ## [1.27.0] - 2026-07-13
 
 ### Added

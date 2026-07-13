@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.27.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.28.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -310,6 +310,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.28.0] - 2026-07-13</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Exports no longer bake transient runtime body-state classes into the saved file. Every export path (Save, Export as Portable, Export Offline, and Export to Plain HTML) now strips <code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, and <code>cm-widget-dragging</code> from the exported <code>&lt;body&gt;</code> open tag, so a stale or open-sidebar source can no longer persist that state and propagate it across re-exports. A stuck <code>sidebar-open</code> made the document render full width with an empty right gutter (the <code>body.sidebar-open .app</code> layout rule) for a sidebar that is not shown. Non-transient body classes are preserved, and the live layer re-derives the sidebar state on load. The normalization is centralized in <code>_getBaseHtml()</code> (covering the on-disk and <code>file://</code> snapshot bases) and shared with the Plain export via a new <code>_stripTransientBodyClasses()</code> helper. New spec <code>CMH-EXP-09</code> and <code>dev/tests/54-export-body-normalize.spec.js</code> cover all four export paths.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.27.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -318,6 +325,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>New spec guards: <code>CMH-DEMO-02</code> (every report has a companion prompt with the standard headings and a non-empty blockquote) and <code>CMH-DEMO-03</code> (each example is exercised by the interaction/monkey suite), plus an example-scoped assertion under <code>CMH-BUILD-05</code> that no shipped example carries the removed &quot;TEMPLATE / DEMO&quot; header phrases.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.26.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -325,8 +334,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The &quot;Run in Azure Data Explorer&quot; deep link is now mandatory on a framed KQL figure. <code>tools/validate.py</code> rejects a <code>figure.cmh-kql</code> that has no <code>cmh-kql-run</code> link as a hard error (non-zero exit in the default, non-strict mode) instead of a warning, so a framed KQL block can never ship without the reader&#x27;s one-click path into Azure Data Explorer. Build the link with <code>tools/kusto_link.py</code>. A purely illustrative query with no real cluster/database should use a plain <code>&lt;pre&gt;</code> code block, which remains exempt from the rule.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.25.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -366,18 +373,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>upgrade.py</code> now adds a default <code>generic</code> kind meta to a document that predates kinds, so upgrading an older document produces one that still validates.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.21.0] - 2026-07-13</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Added <code>tools/retrofit.py</code> to deterministically inject the commentable layer into existing unlayered HTML with validation-before-write, root selection, Portable output, companion-asset options, and host chrome skip selectors.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Trimmed <code>SKILL.md</code> by moving runtime UI, interaction, NonPortable, network, and manual retrofit details into existing references while keeping generation-time routing, caveats, and commands inline.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">30 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">31 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
