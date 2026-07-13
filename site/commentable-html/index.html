@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.25.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.26.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -310,12 +310,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.26.0] - 2026-07-13</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The &quot;Run in Azure Data Explorer&quot; deep link is now mandatory on a framed KQL figure. <code>tools/validate.py</code> rejects a <code>figure.cmh-kql</code> that has no <code>cmh-kql-run</code> link as a hard error (non-zero exit in the default, non-strict mode) instead of a warning, so a framed KQL block can never ship without the reader&#x27;s one-click path into Azure Data Explorer. Build the link with <code>tools/kusto_link.py</code>. A purely illustrative query with no real cluster/database should use a plain <code>&lt;pre&gt;</code> code block, which remains exempt from the rule.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.25.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Generated documents no longer carry the leading &quot;Commentable HTML - TEMPLATE / DEMO&quot; documentation comment. That guidance duplicated the skill references and mislabeled real reports as a template or demo, so every shipped report and generated document is now leaner and cleaner without it.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.24.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -325,8 +334,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deferred: trimming the <code>SKILL.md</code> body toward Anthropic&#x27;s ~5k-token soft cap is intentionally left to a focused follow-up, because the body carries pinned generation contracts (<code>CMH-DOC-02</code>/<code>CMH-DOC-03</code>) that a de-duplication pass should not churn in the same change.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.23.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -371,18 +378,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Region marker guards in validation, upgrade, build, and runtime export now count only comment-delimited infra markers, so marker text inside prose or code blocks no longer causes duplicate-region failures.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.19.0] - 2026-07-12</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Offline export now adds a zero-network CSP, removes event-handler attributes, strips same-origin absolute media and additional preload/media/SVG/CSS/refresh egress vectors, and validates offline documents with no Chart.js CDN exemption.</li>
-              <li>Region replacement tools and runtime export slicers now reject duplicate BEGIN or END markers instead of risking content loss.</li>
-              <li>Validator hardening now rejects protocol-relative and non-file companion refs, descriptor id decoys, and commented <code>data-id=&quot;commentRoot&quot;</code> false positives.</li>
-              <li>Save, Portable, and Offline exports now filter handled comments so resolved feedback cannot reappear in exported embedded comment JSON.</li>
-              <li>Markdown export now summarizes offline chart snapshots by label instead of embedding base64 chart images.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">28 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">29 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -217,7 +217,7 @@ Code selections are commentable by default and keep language, indentation, and f
 
 ## Kusto query blocks (Run in Azure Data Explorer deep link)
 
-KQL blocks should pair a commentable `<pre><code class="language-kusto">` with a safe Run in Azure Data Explorer deep link. The caption title is the click-to-copy cluster affordance, so do not add a separate cluster chip. See [Kusto query blocks](references/kusto-query-blocks.md) for link generation, data-safety rules, and markup.
+KQL blocks should pair a commentable `<pre><code class="language-kusto">` with a safe Run in Azure Data Explorer deep link. A framed KQL figure (`figure.cmh-kql`) **must** include a Run in Azure Data Explorer link built with `tools/kusto_link.py` - `validate.py` rejects a framed KQL figure without one as a hard error. If a query is purely illustrative and has no real cluster/database to run against, use a plain `<pre>` code block instead of a framed figure so it is exempt. The caption title is the click-to-copy cluster affordance, so do not add a separate cluster chip. See [Kusto query blocks](references/kusto-query-blocks.md) for link generation, data-safety rules, and markup.
 
 ## Mermaid diagrams
 
