@@ -781,6 +781,17 @@ class CheckDriftTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bsd.main(["build_site_data.py", "--check", "--root", root])
 
+    def test_malformed_manifest_errors_clearly(self):
+        # A hand-broken manifest (invalid JSON) must raise a clear SystemExit naming the file, not a
+        # raw json.JSONDecodeError traceback.
+        import os as _os
+        root = self._clone_repo()
+        mpath = _os.path.join(root, ".github", "plugin", "marketplace.json")
+        with open(mpath, "w", encoding="utf-8") as fh:
+            fh.write("{ not valid json, }")
+        with self.assertRaises(SystemExit):
+            bsd.main(["build_site_data.py", "--check", "--root", root])
+
     def test_missing_required_site_js_asset_errors_clearly(self):
         # site.js is a committed (non-generated) cache-busted asset: if it is deleted, the build must
         # fail loudly with a clear SystemExit rather than silently stamping or a raw traceback.
@@ -957,6 +968,32 @@ class PageBannerAndGuardTests(unittest.TestCase):
             fh.write("<!DOCTYPE html>\n<html><body>\n<!DOCTYPE html>\n</body></html>\n")
         with self.assertRaises(SystemExit):
             bsd.build_page(root, src_rel, [])
+
+    def test_build_page_allows_a_literal_doctype_inside_content(self):
+        # The duplicate-doctype guard counts only LINE-LEADING declarations, so a literal "<!doctype"
+        # embedded in a script string or in prose (a real HTML-tooling page could carry one) does not
+        # false-trip the guard.
+        root = self._mktemp()
+        os.makedirs(os.path.join(root, "site-src", "pages"))
+        src_rel = os.path.join("site-src", "pages", "lit.html")
+        with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
+            fh.write('<!DOCTYPE html>\n<html><body>\n'
+                     '<script>var s = "<!doctype html>";</script>\n'
+                     '<p>Type <!doctype html> to start a page.</p>\n'
+                     '</body></html>\n')
+        art = bsd.build_page(root, src_rel, [])
+        self.assertIn('var s = "<!doctype html>";', art)  # the literal survived; no SystemExit
+
+    def test_build_styles_errors_on_a_missing_partial(self):
+        # A missing CSS partial must raise a clear SystemExit rather than a raw FileNotFoundError.
+        root = self._mktemp()
+        css_dir = os.path.join(root, "site-src", "css")
+        os.makedirs(css_dir)
+        for name in bsd.CSS_PARTS[:-1]:  # write all but the last, so one partial is missing.
+            with open(os.path.join(css_dir, name), "w", encoding="utf-8", newline="") as fh:
+                fh.write("/* %s */\n" % name)
+        with self.assertRaises(SystemExit):
+            bsd.build_styles(root)
 
     def test_build_styles_strips_a_bom_from_a_css_partial(self):
         # A BOM saved into any CSS partial must not land inside the concatenated bundle (it would sit

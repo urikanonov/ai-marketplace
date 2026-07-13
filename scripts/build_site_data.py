@@ -90,17 +90,23 @@ def safe_url(url):
 
 def read_text(path):
     with open(path, "r", encoding="utf-8", newline="") as fh:
-        return fh.read().replace("\r\n", "\n").replace("\r", "\n")
+        return fh.read().replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")
+
+
+def _safe_makedirs(directory):
+    """Create a directory tree, turning a directory-vs-file path conflict into a clear SystemExit
+    instead of a raw NotADirectoryError/FileExistsError traceback."""
+    if not directory:
+        return
+    try:
+        os.makedirs(directory, exist_ok=True)
+    except OSError as exc:
+        raise SystemExit("cannot create output directory %s (%s); a file may exist where a "
+                         "directory is expected" % (directory, exc))
 
 
 def write_text(path, text):
-    directory = os.path.dirname(path)
-    if directory:
-        try:
-            os.makedirs(directory, exist_ok=True)
-        except OSError as exc:
-            raise SystemExit("cannot create output directory %s (%s); a file may exist where a "
-                             "directory is expected" % (directory, exc))
+    _safe_makedirs(os.path.dirname(path))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
 
@@ -127,9 +133,9 @@ def _asset_hash(root, name):
     try:
         with open(path, "rb") as fh:
             data = fh.read()
-    except FileNotFoundError:
-        raise SystemExit("required cache-busted asset missing: %s (it is a committed source, not "
-                         "generated; restore it)" % path)
+    except OSError as exc:
+        raise SystemExit("cannot read required cache-busted asset %s (%s); it is a committed "
+                         "source, not generated - restore it" % (path, exc))
     return hashlib.sha256(data).hexdigest()[:12]
 
 
@@ -149,9 +155,9 @@ def build_styles(root):
     parts = []
     for name in CSS_PARTS:
         path = os.path.join(root, "site-src", "css", name)
-        if not os.path.exists(path):
+        if not os.path.isfile(path):
             raise SystemExit("CSS partial missing: %s (restore it or update CSS_PARTS)" % path)
-        parts.append(read_text(path).lstrip("\ufeff"))  # a BOM in a partial must not land mid-bundle.
+        parts.append(read_text(path))
     return css_banner() + "".join(parts)
 
 
@@ -197,11 +203,12 @@ def build_page(root, source_rel, region_fillers):
     the built artifact under site/, so `--check` (comparing this result to the committed artifact)
     covers the whole page - not just the marker regions - which is what closes the site clobber gap."""
     out = read_text(os.path.join(root, source_rel))
-    out = out.lstrip("\ufeff")  # tolerate a UTF-8 BOM so the doctype check sees the declaration.
     if not _DOCTYPE_RE.match(out):
         raise SystemExit("page source %s must begin with a <!doctype ...> declaration"
                          % source_rel.replace(os.sep, "/"))
-    if len(re.findall(r"(?i)<!doctype\b", out)) != 1:
+    # Count only line-leading doctype declarations (how a real duplicate from a bad merge appears),
+    # so a literal "<!doctype" embedded in prose, a script string, or a comment never false-trips.
+    if len(re.findall(r"(?im)^[ \t]*<!doctype\b", out)) != 1:
         raise SystemExit("page source %s must contain exactly one <!doctype ...> declaration "
                          "(a second one is usually a merge artifact)" % source_rel.replace(os.sep, "/"))
     for kind, name, value in region_fillers:
@@ -216,9 +223,9 @@ def build_page(root, source_rel, region_fillers):
 
 
 def _read_artifact(path):
-    """Return the committed artifact text, or None when it is missing so an absent built page
-    counts as drift under --check."""
-    return read_text(path) if os.path.exists(path) else None
+    """Return the committed artifact text, or None when it is missing (or is not a regular file) so
+    an absent built page counts as drift under --check."""
+    return read_text(path) if os.path.isfile(path) else None
 
 
 def stamp_assets(text, root):
@@ -379,7 +386,7 @@ def render_jsonld(manifest):
 def _tutorial_source_exists(root):
     """The tutorial is the one OPTIONAL page: its sitemap and llms.txt links are gated on this so the
     two call sites can never silently diverge (both must key off the SOURCE, not the built artifact)."""
-    return os.path.exists(os.path.join(root, TUTORIAL_PAGE_SRC))
+    return os.path.isfile(os.path.join(root, TUTORIAL_PAGE_SRC))
 
 
 def site_page_urls(root):
@@ -589,7 +596,7 @@ def sync_demos(root, check):
             if not os.path.exists(dst) or _read_normalized(dst) != src_bytes:
                 drift.append(name)
         else:
-            os.makedirs(dst_dir, exist_ok=True)
+            _safe_makedirs(dst_dir)
             with open(dst, "wb") as fh:
                 fh.write(src_bytes)
     drift.extend(_orphans(dst_dir, DEMO_FILES, check))
@@ -746,7 +753,7 @@ def sync_tutorial_images(root, check):
             if existing != data:
                 drift.append(name)
         else:
-            os.makedirs(dst_dir, exist_ok=True)
+            _safe_makedirs(dst_dir)
             with open(dst, "wb") as fh:
                 fh.write(data)
     drift.extend(_orphans(dst_dir, src_names, check))
@@ -765,11 +772,14 @@ def main(argv):
     root = args.root
     manifest_path = args.manifest or os.path.join(root, ".github", "plugin", "marketplace.json")
 
-    if not os.path.exists(manifest_path):
+    if not os.path.isfile(manifest_path):
         raise SystemExit("manifest missing: %s (expected the marketplace manifest; pass --manifest "
                          "or restore it)" % manifest_path)
     with open(manifest_path, "r", encoding="utf-8") as fh:
-        manifest = json.load(fh)
+        try:
+            manifest = json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise SystemExit("invalid JSON in manifest %s: %s" % (manifest_path, exc))
 
     # Assemble the served stylesheet from its source partials before anything stamps its hash.
     styles_text = build_styles(root)
@@ -789,7 +799,7 @@ def main(argv):
     version = plugin_version(manifest, CHANGELOG_PLUGIN)
 
     for src_rel in (HUB_SRC, PLUGIN_SRC):
-        if not os.path.exists(os.path.join(root, src_rel)):
+        if not os.path.isfile(os.path.join(root, src_rel)):
             raise SystemExit("page source missing: %s (a built page under site/ has no source to "
                              "rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
 
@@ -811,10 +821,10 @@ def main(argv):
     tutorial_out = None
     # A built tutorial page whose source was removed is an ORPHAN: --check must flag it and a
     # normal build must delete it, so a stranded artifact can never silently linger.
-    tutorial_orphaned = (not os.path.exists(tutorial_src_page)
-                         and os.path.exists(tutorial_out_path))
-    if os.path.exists(tutorial_src_page):
-        if not os.path.exists(tutorial_md_path):
+    tutorial_orphaned = (not os.path.isfile(tutorial_src_page)
+                         and os.path.isfile(tutorial_out_path))
+    if os.path.isfile(tutorial_src_page):
+        if not os.path.isfile(tutorial_md_path):
             raise SystemExit(
                 "tutorial markdown missing: %s (restore it, or remove the tutorial source page it feeds)"
                 % tutorial_md_path)

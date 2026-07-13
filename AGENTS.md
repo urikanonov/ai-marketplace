@@ -233,14 +233,20 @@ source back into `site/` (that would re-open the self-sourced hole).
 pages, `site/assets/styles.css`, and every `pkg/**/dist/**` bundle - is rebuilt from a named source and
 gated by a `--check` (`site` for the site, `dist-in-sync` / `build.py --check` for the layer). Edit the
 named source and rebuild; a hand-edit to the artifact fails CI. That banner-plus-`--check` pairing is what
-turns the clobber classes below from SILENT into DETECTED.
+turns the clobber classes below from SILENT into DETECTED. Note the carve-out: not everything under
+`site/**` is generated. The static assets under `site/assets/` that carry NO banner - `site.js`, the SVG
+logo, the favicon - are HAND-MAINTAINED SOURCES (the generator only content-hashes `site.js` to cache-bust
+it; it never rewrites it). Edit those directly and resolve conflicts on them as source files; do NOT try to
+"rebuild" them.
 
 The residual self-sourced surface (where the generator reads hand-edited content back from the SAME file, so
 `--check` still cannot see a stale copy) is now small: chiefly the CONTENT between the `CONTENT` markers of
 each `examples/report-*.html` (build.py preserves it from the example itself). `pkg/**/dist/**` bundles,
-generated fixtures, `site/**`, and `styles.css` are all pure artifacts with an independent source and a
-`--check`, so a stale copy of them fails CI - but still treat any file that more than one in-flight PR
+generated fixtures, the `site/**` pages, and `styles.css` are all pure artifacts with an independent source
+and a `--check`, so a stale copy of them fails CI (the hand-maintained `site/assets/` static files above are
+the exception - they are sources, not artifacts) - but still treat any file that more than one in-flight PR
 touches as CONTENDED and REBUILD rather than hand-merge.
+
 
 Before you merge:
 
@@ -281,18 +287,22 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
    templates and CSS partials, tests, `SPEC.md`, `SKILL.md`): take YOUR version. During a REBASE the sides
    are inverted, so yours is `--theirs`: `git checkout --theirs -- <file>` (`--ours` is `origin/main`). For a
    genuine content conflict inside such a file, merge the two edits by hand.
-4. **Do NOT hand-merge GENERATED artifacts** (`pkg/**/dist/**`, `site/**`, `manifest.json`, the asset
-   registry, generated fixtures, `examples/report-*.html`, `plugin.json`, and the `marketplace.json` version
-   field): take MAIN's clean copy FIRST so the file carries no conflict markers - during a rebase that is
-   `--ours`: `git checkout --ours -- <files>` - then REBUILD so your change is re-stamped on top of what
-   landed in `main`:
+4. **Do NOT hand-merge GENERATED artifacts** (`pkg/**/dist/**`, the generated `site/**` pages plus
+   `site/assets/styles.css`, `manifest.json`, the asset registry, generated fixtures,
+   `examples/report-*.html`, `plugin.json`, and the `marketplace.json` version field): take MAIN's clean copy
+   FIRST so the file carries no conflict markers - during a rebase that is `--ours`:
+   `git checkout --ours -- <files>` - then REBUILD so your change is re-stamped on top of what landed in
+   `main`:
    ```bash
    python plugins/<plugin>/dev/tools/build.py --assets-dir assets --out-dir plugins/<plugin>/pkg/skills/<plugin>
    node plugins/<plugin>/dev/tests/fixtures/generate.mjs   # commentable-html fixtures embed the version
    python scripts/build_site_data.py                        # site pages, demos, sitemap, llms
    ```
    `git add` the rebuilt files. Never pick `--theirs` (your stale artifact) or `--ours` alone (main's
-   artifact without your change) for a generated file - the only correct resolution is to REBUILD.
+   artifact without your change) for a generated file - the only correct resolution is to REBUILD. EXCEPTION:
+   the hand-maintained `site/assets/` static sources (`site.js`, the SVG logo, the favicon) are NOT generated
+   - a rebuild will not reproduce another branch's edits to them, so resolve them like the source files in
+   step 3 (take/merge the edited version), not by rebuilding.
 5. `git add` all resolved and regenerated files, then `git rebase --continue`.
 6. Repeat for each subsequent commit in the rebase that re-conflicts the dist files (each commit
    that touched the source gets a fresh set of generated hashes; always rebuild instead of taking
