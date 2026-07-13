@@ -1,0 +1,20 @@
+{
+  "branch": "main",
+  "note": "Source of truth for the required status checks on main. scripts/check_required_checks.py compares this list to live branch protection so the required set is code-reviewed, not silently drifted (see the git-history finding GH-CI-CHECK-DRIFT). When you add or remove a required check, edit BOTH this file and the live branch protection together.",
+  "required_status_checks": [
+    "All conversations resolved",
+    "actionlint",
+    "cross-platform (macos-latest)",
+    "cross-platform (ubuntu-latest)",
+    "cross-platform (windows-latest)",
+    "dist-in-sync",
+    "plugin-tests",
+    "pwsh-tests (ubuntu-latest)",
+    "pwsh-tests (windows-latest)",
+    "require-owner-approval",
+    "secret-scan",
+    "site",
+    "validate",
+    "version-bump"
+  ]
+}

@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Tests for scripts/rebuild_all.py (the generate-everything orchestrator)."""
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import rebuild_all  # noqa: E402
+
+
+class OrchestrationTests(unittest.TestCase):
+    def setUp(self):
+        self._orig_run = rebuild_all._run
+        self.calls = []
+
+        def fake_run(label, cmd):
+            self.calls.append((label, cmd))
+            return 0
+        rebuild_all._run = fake_run
+
+    def tearDown(self):
+        rebuild_all._run = self._orig_run
+
+    def test_check_runs_build_and_site_in_order_with_check_flag(self):
+        rc = rebuild_all.main(["rebuild_all.py", "--check"])
+        self.assertEqual(rc, 0)
+        labels = [c[0] for c in self.calls]
+        # build.py runs first, site last; every invoked step carries --check.
+        self.assertTrue(labels[0].startswith("commentable-html layer dist"))
+        self.assertTrue(labels[-1].startswith("GitHub Pages site"))
+        for _, cmd in self.calls:
+            self.assertIn("--check", cmd)
+
+    def test_build_mode_passes_no_check_flag(self):
+        rebuild_all.main(["rebuild_all.py"])
+        for _, cmd in self.calls:
+            self.assertNotIn("--check", cmd)
+
+    def test_nonzero_step_makes_the_run_fail(self):
+        def failing_run(label, cmd):
+            self.calls.append((label, cmd))
+            return 1 if "site" in label.lower() else 0
+        rebuild_all._run = failing_run
+        self.assertEqual(rebuild_all.main(["rebuild_all.py", "--check"]), 1)
+
+    def test_fixtures_step_is_skipped_when_node_is_absent(self):
+        orig_which = rebuild_all.shutil.which
+        rebuild_all.shutil.which = lambda name: None
+        try:
+            rebuild_all.main(["rebuild_all.py", "--check"])
+        finally:
+            rebuild_all.shutil.which = orig_which
+        labels = [c[0] for c in self.calls]
+        self.assertFalse(any("fixtures" in lbl.lower() for lbl in labels))
+
+
+if __name__ == "__main__":
+    unittest.main()
