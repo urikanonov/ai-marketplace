@@ -331,13 +331,15 @@ class ValidateUnitTests(unittest.TestCase):
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + block)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
-    def test_kql_figure_without_run_link_warns(self):
+    def test_kql_figure_without_run_link_errors(self):
+        # A framed KQL figure MUST carry a Run in Azure Data Explorer link; a missing one
+        # is a hard validation ERROR (not a warning) so the reader can always open the query.
         fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
                '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
                '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
-        self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
-                        'figure.cmh-kql has no "Run in Azure Data Explorer" link')
+        self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                         'figure.cmh-kql has no "Run in Azure Data Explorer" link')
 
     def test_kql_figure_with_run_link_is_clean(self):
         fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
@@ -1417,6 +1419,20 @@ class ValidateCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = self._write(d, "bad.html", "not a commentable document")
             self.assertEqual(self._run(p).returncode, 1)
+
+    def test_kql_figure_missing_run_link_exit_1(self):
+        # A framed figure.cmh-kql without a run link is a hard error, so the CLI must
+        # exit non-zero in the DEFAULT (non-strict) mode, not merely print a warning.
+        fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
+               '<button class="cmh-kql-title" type="button">cluster</button></figcaption>'
+               '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
+        doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+        with tempfile.TemporaryDirectory() as d:
+            p = self._write(d, "kqlnorun.html", doc)
+            r = self._run(p)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("Run in Azure Data Explorer", r.stdout)
 
     def test_non_utf8_does_not_crash(self):
         with tempfile.TemporaryDirectory() as d:

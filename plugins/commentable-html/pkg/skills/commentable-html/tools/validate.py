@@ -1223,14 +1223,17 @@ def check_layer(html, parser, base_dir=None):
                             "(reverse-tabnabbing risk); add rel=\"noopener noreferrer\"")
 
     # 11d) A framed KQL figure (figure.cmh-kql) with no "Run in Azure Data Explorer" link (class
-    #      cmh-kql-run) is a usability gap: the reader cannot open the query in ADX.
-    #      Warn per such figure so authors add a link built with tools/kusto_link.py.
+    #      cmh-kql-run) leaves the reader unable to open the query in ADX. The run link is
+    #      MANDATORY on a framed figure, so a missing one is a hard ERROR (not a warning).
+    #      Bare, unframed KQL in a plain <pre> is intentionally exempt: an illustrative query
+    #      with no real cluster/database belongs in a <pre> code block, not a framed figure.
     for fm in re.finditer(r"<figure\b([^>]*)>(.*?)</figure>", html, re.IGNORECASE | re.DOTALL):
         if not _attrs_have_class(fm.group(1), "cmh-kql"):
             continue
         if "cmh-kql-run" not in fm.group(2):
-            warnings.append('a figure.cmh-kql has no "Run in Azure Data Explorer" link (class cmh-kql-run); '
-                            "build one with tools/kusto_link.py so readers can open the query in ADX")
+            errors.append('a figure.cmh-kql has no "Run in Azure Data Explorer" link (class cmh-kql-run); '
+                          "build one with tools/kusto_link.py so readers can open the query in ADX "
+                          "(or use a plain <pre> code block if the query is purely illustrative)")
 
     # 11e) Self-contained guarantee: the finished document must not pull resources over the
     #      network (the core promise is a single self-contained file). <a href> links

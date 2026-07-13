@@ -3,7 +3,9 @@
 
 ## Kusto query blocks (Run in Azure Data Explorer deep link)
 
-Whenever a report embeds a Kusto (KQL) query, render the query as a normal commentable code block **and place a "Run in Azure Data Explorer" deep link right next to it**. The report is static and self-contained, so the link is the reader's one-click path from "here is the query" to opening it, pre-loaded and ready to run, in the Azure Data Explorer web UX. This is a required convention: every embedded KQL query gets a run link.
+Whenever a report embeds a Kusto (KQL) query, render the query as a normal commentable code block **and place a "Run in Azure Data Explorer" deep link right next to it**. The report is static and self-contained, so the link is the reader's one-click path from "here is the query" to opening it, pre-loaded and ready to run, in the Azure Data Explorer web UX. This is a required convention: a framed KQL figure (`figure.cmh-kql`) **MUST** carry a run link built with `tools/kusto_link.py`. `validate.py` enforces this - a framed KQL figure with no `cmh-kql-run` link is a hard validation **error** (not a warning), so the document does not pass validation until the link is added.
+
+**Escape hatch for illustrative queries.** The rule applies only to framed `figure.cmh-kql` cards. If a query is purely illustrative - a syntax example with no real cluster/database to run against - render it as a plain `<pre><code class="language-kusto">...</code></pre>` code block instead of a framed figure. A bare `<pre>` is not a `figure.cmh-kql`, so it is exempt from the run-link rule (still HTML-escape the query text). Reserve the framed figure for queries that target a reachable cluster/database.
 
 > **Data safety:** the query text round-trips inside the URL (gzip + base64 is compression, **not** encryption - it is trivially reversible). Anyone with the link recovers the full query, and following it sends that text to a live Microsoft site and into browser history. **Never embed secrets, tokens, connection strings, or customer PII as literals** in a query that gets a run link - parameterize or redact them first, or omit the run link for that query.
 
@@ -49,7 +51,7 @@ python tools/kql_highlight.py --code-only "<query>" # just the <pre><code>
 - **Syntax highlighting** is applied at author time (baked-in spans), not by a runtime script, so it never has to coexist with the comment layer. Token classes: `cmh-kql-kw` (keyword), `cmh-kql-fn` (function), `cmh-kql-str` (string), `cmh-kql-num` (number), `cmh-kql-com` (comment), `cmh-kql-op` (operator / pipe).
 - The **caption and the run link are `cm-skip` chrome** (the `<figcaption>` carries `cm-skip`), so the "Run in Azure Data Explorer" affordance is not itself selectable or commentable.
 - The **caption title is the cluster-copy affordance**. It carries `data-cmh-copy` with the cluster name and copies it on click. Do not add a separate cluster chip.
-- Always set `target="_blank" rel="noopener noreferrer"` on the link. `validate.py` warns if a `cmh-kql-run` link is not an `https://dataexplorer.azure.com/` origin or is missing `rel="noopener"`.
+- Always set `target="_blank" rel="noopener noreferrer"` on the link. `validate.py` warns if a `cmh-kql-run` link is not an `https://dataexplorer.azure.com/` origin or is missing `rel="noopener"`, and it **errors** if a framed `figure.cmh-kql` has no `cmh-kql-run` link at all (the run link is mandatory on a framed figure; use a plain `<pre>` for an illustrative query with no real cluster).
 - The link is a plain external `href`: it needs no runtime JS and degrades gracefully when connectivity is unavailable (it simply cannot be followed), so it does not affect the review layer itself.
 
 ### Styling

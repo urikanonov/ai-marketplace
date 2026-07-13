@@ -20,6 +20,7 @@ It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when e
 - Every structural UI id the JS wires up is present (`sidebar`, `commentList`, `contextMenu`, `mermaidAddBtn`, `hlBubble`, `toast`, the toolbar/sidebar buttons, `menuComment`).
 - The `--cp-*` theme variables are defined.
 - A `<pre class="cmh-diff">` diff block contains a raw HTML tag (unescaped diff text is an HTML-injection hazard - escape `<`/`>`/`&`).
+- A framed KQL figure (`figure.cmh-kql`) has no `cmh-kql-run` ("Run in Azure Data Explorer") link. The run link is mandatory on a framed figure so the reader can open the query in ADX; build it with `tools/kusto_link.py`. A purely illustrative query with no real cluster/database should use a plain `<pre>` code block (which is exempt) instead of a framed figure.
 
 **Warnings (advisory):**
 
