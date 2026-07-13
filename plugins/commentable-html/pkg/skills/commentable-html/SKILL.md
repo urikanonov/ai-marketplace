@@ -49,6 +49,7 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 | Input | Tool | Key behavior |
 | --- | --- | --- |
 | New document from a content fragment | `tools/new_document.py` | Builds the full shell, sets `data-comment-key`, `data-doc-label`, optional `data-doc-source`, the `commentable-html-kind` meta from `--kind`, adds `data-cmh-content-root`, and validates before writing. |
+| New animated slide **deck** | `deck/deck_scaffold.py` | Builds a fixed-stage 1920x1080 deck runtime (`data-cmh-mode="deck"`, `.deck-viewport > .deck-stage`, stable per-slide ids), self-validates against the deck contract, and is create-only. See "Deck capability (frontend-slides)" below - this is the ONLY tool that produces a real deck. |
 | Unlayered existing standalone HTML | `tools/retrofit.py` | Injects the layer into that HTML, wraps body children or stamps `--root-selector "#id"`, sets the same data attributes and descriptor, and validates before writing. |
 | Already-layered commentable HTML | `tools/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attrs. |
 
@@ -63,8 +64,9 @@ python tools/new_document.py --content fragment.html --key auto --label "My Repo
 python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --copy-assets --out my-report.html
 # Single self-contained Portable file:
 python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --portable --out my-report.html
-# A slide deck (no document title or table of contents required):
-python tools/new_document.py --content slides.html --key auto --label "My Deck" --kind slides --portable --out my-deck.html
+# A titleless flat "slides"-kind document (NOT the animated deck runtime; for a real
+# fixed-stage, navigable deck see "Deck capability (frontend-slides)" below and use deck/deck_scaffold.py):
+python tools/new_document.py --content slides.html --key auto --label "My Notes" --kind slides --portable --out my-notes.html
 # Retrofit an existing unlayered host HTML:
 python tools/retrofit.py existing.html --label "My Report" --kind report --key auto --source existing.html --out existing-commentable.html
 # Retrofit without wrapping body children when the host already has a content wrapper:
@@ -166,6 +168,68 @@ Do not use this skill for:
 
 - Short HTML emails or one-shot views the user will not iterate on.
 - HTML that will be rendered inside a sandbox that disables `localStorage` or clipboard APIs.
+
+## Deck capability (frontend-slides)
+
+This skill can build a real slide **deck** (an animation-rich, fixed 16:9 HTML presentation) that is
+also a commentable-html document, so the user can create a deck, comment on the live deck, and iterate -
+all in one plugin. The deck engine is a curated, hardened, vendored copy of the MIT-licensed
+`frontend-slides` skill (Zara Zhang) under `vendor/frontend-slides/`; the author-time tools live under
+`deck/`. See [deck contract](references/deck-contract.md) for the runtime interface.
+
+**Detect and confirm (CMH-DECK-01).** When the request is really a presentation ("slide deck",
+"presentation", "pitch deck", "slides for a talk", "convert this ppt"), do NOT silently produce a flat
+document. Confirm with the user that they want a real deck; if they decline, fall back to a normal flat
+commentable HTML.
+
+**Flow.**
+
+1. **PPTX (optional).** To convert a `.pptx`, prefer the Anthropic `pptx` skill when it is installed
+   (more powerful) and fall back to the vendored local `extract-pptx.py`. Either way, pass the extracted
+   content through `deck/pptx_to_fragment.py` (via `--input`/stdin, or `--pptx` for the local fallback) so
+   every extracted string is HTML-escaped before it enters the deck. Speaker notes are not supported.
+2. **Scaffold.** Run `python deck/deck_scaffold.py --content slides.html --label "..." --source <out> --out
+   <out>` (or `--slides N` for placeholders). It emits a create-only, commentable-native fixed-stage deck:
+   `data-cmh-mode="deck"`, a `.deck-viewport > .deck-stage` at 1920x1080, one `<section class="slide"
+   data-slide-id=...>` per slide with the first `.active`, `viewport-base.css` inlined, a `commentable-html-kind`
+   of `slides`, a system-font stack (no remote fonts), and no inline editor. It self-validates before writing.
+3. **Fill.** Author the slide content (design, layout, copy) inside the existing `.slide` sections. Read
+   `vendor/frontend-slides/html-template.md`, `viewport-base.css`, `animation-patterns.md`,
+   `STYLE_PRESETS.md`, and the `bold-template-pack/` styles for the design system. Keep the deck body free
+   of remote references and any external / SVG `<script>` (the upstream navigation/host script). A
+   same-document inline `<script>` for chart init is fine.
+
+   **Font override (important).** The vendored `html-template.md`, `STYLE_PRESETS.md`, and every
+   `bold-template-pack/*/design.md` show `<link href="https://fonts.googleapis.com/...">` /
+   `https://api.fontshare.com/...` and prescribe specific web fonts. Those are UPSTREAM examples - do NOT
+   copy the remote `<link>`/`@import`/`@font-face url(https://...)` into a commentable deck: `deck_validate.py`
+   rejects any remote font, `@import`, or `url(//...)` in the deck body, and a remote `<link>` in the head
+   trips the base validator too. Keep the style's palette, layout, spacing rhythm, and component grammar, but
+   MAP each `font-family` to a system stack that passes with no downloads: serif/editorial ->
+   `"Iowan Old Style","Palatino Linotype","Georgia",serif`; slab/display/script (Shrikhand, Bebas Neue,
+   Alfa Slab One, Fredoka One, ...) -> `"Impact","Rockwell","Arial Black",sans-serif` with heavier
+   `letter-spacing`; geometric/body sans (Space Grotesk, Manrope, Inter, DM Sans, Barlow, ...) ->
+   `system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`; mono (JetBrains Mono, IBM Plex Mono, ...) ->
+   `"Cascadia Code","Consolas","Fira Code",ui-monospace,monospace`; CJK (Noto Serif/Sans SC, LXGW WenKai
+   TC, ...) -> drop and let the system CJK face resolve. If a design truly needs a specific face, obtain the
+   `.woff2` locally and embed it as a `@font-face` whose `src` is a `data:font/woff2;base64,...` URI (the
+   `data:` scheme is allowed), then re-run `deck_validate.py`.
+4. **Validate.** Run `python deck/deck_validate.py <out>`; fix every error before handoff (it enforces the
+   fixed-stage structure, no remote fonts, and no dangerous active content on top of the base validator).
+5. **Comment and iterate.** The user opens the deck, presents it normally, and comments inline. When they
+   paste a Copy-all bundle back, edit the DECK **in place** (never re-run `deck_scaffold.py` without
+   `--force`; it is create-only precisely so a re-scaffold cannot renumber slide ids or reset comment
+   state), re-validate, and mark the handled ids with `tools/mark_handled.py`.
+
+**Diagrams and offline (corporate-safe sharing).** Mermaid and Chart are supported. While iterating, keep
+the deck NonPortable (the layer may load mermaid/Chart from a CDN on the local machine). When the deck is
+done and needs to travel or be network-silent for a corporate audience, use **Export Offline**, which
+snapshots mermaid to SVG and charts to PNG and strips remote loaders; fonts use a system stack or are
+`data:`-embedded, so no font egress remains.
+
+**Resyncing the vendored engine** is a maintainer task documented in
+`dev/frontend-slides-upstream-sync.md`; the vendored subtree is kept pristine by the required CI check
+`dev/tools/check_vendor.py`.
 
 ## Required HTML structure
 
@@ -346,6 +410,8 @@ Use these files and folders when producing, validating, or maintaining commentab
  - `generate_toc.py <file> [--in-place]` - build a `nav.cm-toc` from the document headings.
  - `fix_skip.py <file> [--check]` - add `cm-skip` to bare `pre.mermaid` blocks.
  - `inline_images.py <file>` - inline local images as data URIs for a portable file.
+- **`deck/*`** - author-time deck tools: `deck_scaffold.py` (build a fixed-stage deck), `pptx_to_fragment.py` (escape extracted PowerPoint into a deck fragment), `deck_validate.py` (enforce the deck contract). See "Deck capability (frontend-slides)" and [deck contract](references/deck-contract.md).
+- **`vendor/frontend-slides/*`** - the vendored, hardened deck engine (MIT, (c) 2025 Zara Zhang); styles and CSS the deck inlines. Not edited directly; resynced via the dev-side playbook.
 - **`docs/*`** - the shipped tutorial (`docs/TUTORIAL.md`) and its screenshots (`docs/tutorial-images/`).
 - **`references/`** - detailed reference material moved out of this lean `SKILL.md`.
 

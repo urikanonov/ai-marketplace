@@ -28,16 +28,20 @@
      block degrades to readable source text. For a fully self-contained artifact, vendor a
      local copy of mermaid and import it by relative path (see SKILL.md). -->
 <script type="module">
-  try {
-    const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@{{MERMAID_VERSION}}/dist/mermaid.esm.min.mjs")).default;
-    const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-    m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
-    } else {
-      m.run().catch(() => {});
-    }
-  } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  // Only reach out to the mermaid CDN when the document actually contains a diagram, so a
+  // diagram-free document (including a deck) makes no network request at all.
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    try {
+      const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@{{MERMAID_VERSION}}/dist/mermaid.esm.min.mjs")).default;
+      const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
+      } else {
+        m.run().catch(() => {});
+      }
+    } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  }
 </script>
 
 <style>

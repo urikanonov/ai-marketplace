@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-07-13
+
+### Added
+
+- Commentable decks: a built-in deck capability powered by a curated, pristine subset of the frontend-slides skill (MIT, (c) 2025 Zara Zhang) vendored under `vendor/frontend-slides/`. The Vercel deploy script and the PDF-export script are excluded, and a required CI gate (`dev/tools/check_vendor.py` plus a SHA-256 `MANIFEST.sha256`) fails on any unknown, changed, removed, or reintroduced file. See `vendor/frontend-slides/UPSTREAM.md` and `dev/frontend-slides-upstream-sync.md`.
+- Author-time deck tools under `deck/`: `deck_scaffold.py` builds a create-only, commentable-native fixed-stage deck with legible presentation defaults (light slide text and presentation-scale typography on the dark stage, overridable by a design pass) - each slide carries a stable `data-slide-id`, the inline editor and localStorage autosave are stripped, and fonts are self-hosted - and fails closed on the deck contract before writing; `pptx_to_fragment.py` HTML-escapes extracted slide text, schema-validates the input, vets every image path as local-relative, and fails closed without `python-pptx` (speaker notes are not supported); `deck_validate.py` enforces the deck contract fail-closed using an HTML parser (robust to solidus, entity-encoded, unquoted, and SVG bypasses), rejecting remote fonts/media/CSS, active content, and `javascript:`/`../` URLs while allowing external hyperlinks. The runtime interface both sides build against is documented in `references/deck-contract.md`.
+- A "Deck capability (frontend-slides)" flow in `SKILL.md`: detect a presentation request and confirm, optionally convert a `.pptx` (preferring the Anthropic `pptx` skill when installed, else the local extractor), scaffold, fill, validate, then comment on the live deck and iterate in place. Mermaid and Chart are supported; Export Offline produces the network-silent shareable artifact.
+- A runtime deck profile in the commentable-html layer, activated only by `data-cmh-mode="deck"` on the real content root: it exposes a `window.__cmhDeck` controller, scales the fixed 1920x1080 stage (refit via a `ResizeObserver`), and replaces the flow-document chrome (heading anchors, collapsible carets, side TOC, footer, scroll progress) with a full-screen presentation - a **present mode** that hides the comment sidebar/toolbar plus a slide-oriented control bar (Prev, a live `N / total` slide counter, Next, with WCAG-2.5.3 aria-labels and boundary-disabled buttons) and keyboard / id navigation (guarded against out-of-range and editable-target keypresses). A **comment mode** toggle reveals the sidebar, insets and force-reveals the stage, and gates the navigation keys; a comment card jumps to (activates) its owning slide with highlights restoring on hidden slides. Non-deck documents are unaffected.
+- Dev tooling: `dev/tools/audit.mjs`, an AI-driven UX audit harness that tours any commentable HTML across viewports and colour schemes and emits screenshots plus machine observations for one or many agents to review (see `dev/AUDIT.md`). Not shipped.
+
+### Changed
+
+- The mermaid CDN import is now gated on the presence of a `pre.mermaid` / `div.mermaid` element, so a diagram-free document (including a deck) makes no external network request at all. A document that contains a diagram still loads and renders mermaid.
+
 ## [1.31.0] - 2026-07-13
 
 ### Changed

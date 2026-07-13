@@ -123,7 +123,7 @@ PROMO_RE = re.compile(
 EXCLUDE_DIRS = {
     ".git", ".worktrees", "node_modules", "bin", "obj", "dist", "build",
     "TestResults", "test-results", "playwright-report", "__pycache__",
-    ".venv", "venv", ".vscode",
+    ".venv", "venv", ".vscode", "vendor",
 }
 
 
