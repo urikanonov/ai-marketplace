@@ -195,6 +195,28 @@ class TestLockfileDiff(unittest.TestCase):
 
         self.assertEqual(list(cdc.discover_lockfiles(repo)), tracked)
 
+    def test_discover_lockfiles_returns_sorted_output(self):
+        # Determinism (round-3 fix): discover_lockfiles wraps the glob scan in sorted() so the
+        # cooldown gate reports lockfiles in a stable order regardless of filesystem listing
+        # order. Reverting the sorted() lets set/glob ordering leak through and turns this red.
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            names = ["m", "b", "z", "a", "n", "c"]
+            for name in names:
+                d = os.path.join(root, "plugins", name, "dev")
+                os.makedirs(d)
+                open(os.path.join(d, "package-lock.json"), "wb").close()
+            os.makedirs(os.path.join(root, "tests", "site"))
+            open(os.path.join(root, "tests", "site", "package-lock.json"), "wb").close()
+
+            result = cdc.discover_lockfiles(root)
+            expected = tuple(sorted(
+                ["plugins/%s/dev/package-lock.json" % n for n in names]
+                + ["tests/site/package-lock.json"]
+            ))
+            self.assertEqual(result, expected)
+            self.assertEqual(list(result), sorted(result))
+
     def test_same_commit_returns_empty_tuple_when_warnings_requested(self):
         with mock.patch.object(cdc, "ref_exists", return_value=True), \
                 mock.patch.object(cdc, "rev_parse", return_value="abc"):

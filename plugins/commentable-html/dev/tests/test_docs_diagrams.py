@@ -90,6 +90,15 @@ class NewFeatureDocsTests(unittest.TestCase):
             "after Mermaid diagrams and charts have rendered",
         ):
             self.assertIn(snippet, text)
+        # The doc-type badge documents its three exact states with their color cues; assert the
+        # precise wording so a regression that drops a state or renames it turns this test red.
+        for badge_phrase in (
+            "reads **Portable** (green)",
+            "reads **Offline** when",
+            "reads **Not portable** (orange)",
+            "reopens with the **Offline** badge",
+        ):
+            self.assertIn(badge_phrase, text)
 
 
 class SkillTrimDocsTests(unittest.TestCase):
