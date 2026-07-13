@@ -77,7 +77,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.29.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.30.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -310,6 +310,23 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.30.0] - 2026-07-13</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Hardening pass from a multi-model audit of the day&#x27;s merged changes. Six latent robustness and correctness defects are fixed, each covered by a test that reproduces the defect before the fix. No shipped example, template, or fixture changed behavior; they all still validate clean.</li>
+              <li><code>tools/validate.py</code> KQL run-link rule (<code>CMH-KQL-07</code>) now treats a framed <code>figure.cmh-kql</code> whose <code>cmh-kql-run</code> link points anywhere other than <code>https://dataexplorer.azure.com/</code> as a hard error instead of a warning. The href is HTML-entity decoded and URL-parsed (not substring-matched), so a <code>javascript:</code>, <code>data:</code>, non-ADX, or look-alike-host link fails validation. The &quot;has a run link&quot; check now looks for a real <code>&lt;a&gt;</code> element carrying the <code>cmh-kql-run</code> class token, so a figure whose query text merely mentions <code>cmh-kql-run</code> no longer passes as if it had a link. A bare <code>&lt;pre&gt;</code> KQL block stays exempt.</li>
+              <li><code>tools/validate.py</code> transient-body-class guard (<code>CMH-VAL-10</code>) now inspects the REAL parsed <code>&lt;body&gt;</code> element instead of the first raw <code>&lt;body ...&gt;</code> token in the file, so a decoy <code>&lt;body class=&quot;sidebar-open&quot;&gt;</code> inside a <code>&lt;head&gt;</code> script or comment can no longer hide a dirty real body or trigger a false positive.</li>
+              <li><code>tools/validate.py</code> report/plan title rule (<code>CMH-KIND-01</code>) now requires a TOP-LEVEL <code>&lt;h1&gt;</code> (a direct child of <code>#commentRoot</code>, or a lede-wrapped <code>&lt;header class=&quot;cmh-lede&quot;&gt;&lt;h1&gt;</code>), matching <code>new_document.py</code>. An <code>&lt;h1&gt;</code> nested only inside a deeper <code>&lt;section&gt;</code> no longer satisfies the rule.</li>
+              <li><code>assets/commentable-html.js</code> document-comment context menu (<code>CMH-DOCCMT-02</code>) no longer vanishes on a macOS-style Ctrl-click: the <code>mouseup</code> cleanup is suppressed for any context-menu gesture (<code>button === 2 || ctrlKey</code>), not right-click alone.</li>
+              <li><code>assets/commentable-html.js</code> export body-class normalizer (<code>CMH-EXP-09</code>) now operates only on the first <code>&lt;body&gt;</code> open tag, handles double-quoted, single-quoted, and unquoted class values, matches whole class tokens (a superstring like <code>x-sidebar-open</code> is preserved), and removes an emptied class attribute, so it can no longer mutate a <code>&lt;body class=...&gt;</code> literal that appears later in page content or a script.</li>
+              <li><code>tools/upgrade.py</code> and <code>tools/retrofit.py</code> kind-meta handling (<code>CMH-KIND-02</code>, <code>CMH-KIND-03</code>) now detect an existing <code>commentable-html-kind</code> meta by parsing head metadata order-independently (including a non-canonical <code>content</code>/<code>name</code> attribute order). <code>upgrade.py</code> no longer appends a duplicate meta to a document that already declares a kind, and <code>retrofit.py --kind</code> replaces an existing kind meta in place instead of appending a second one.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li><code>references/validation.md</code> error list now documents the mandatory/unknown <code>commentable-html-kind</code> meta (with the report/plan top-level <code>&lt;h1&gt;</code> sub-rule) and the transient body-state class guard, matching the authoritative error list <code>SKILL.md</code> points to.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.29.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -320,6 +337,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>tools/validate.py</code> now errors when a document&#x27;s <code>&lt;body&gt;</code> open tag carries a transient runtime UI-state class (<code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, or <code>cm-widget-dragging</code>), so a persisted transient state can never ship. The check inspects only the <code>&lt;body&gt;</code> open tag, so a legitimate CSS/JS reference to <code>sidebar-open</code> is not flagged. New specs <code>CMH-BUILD-06</code> (no shipped document bakes the class) and <code>CMH-VAL-10</code> (the validator guard), covered by <code>dev/tests/test_build.py</code>, <code>dev/tests/test_new_document.py</code>, <code>dev/tests/test_examples.py</code>, and <code>dev/tests/test_validate.py</code>.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.28.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -327,8 +346,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Exports no longer bake transient runtime body-state classes into the saved file. Every export path (Save, Export as Portable, Export Offline, and Export to Plain HTML) now strips <code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, and <code>cm-widget-dragging</code> from the exported <code>&lt;body&gt;</code> open tag, so a stale or open-sidebar source can no longer persist that state and propagate it across re-exports. A stuck <code>sidebar-open</code> made the document render full width with an empty right gutter (the <code>body.sidebar-open .app</code> layout rule) for a sidebar that is not shown. Non-transient body classes are preserved, and the live layer re-derives the sidebar state on load. The normalization is centralized in <code>_getBaseHtml()</code> (covering the on-disk and <code>file://</code> snapshot bases) and shared with the Plain export via a new <code>_stripTransientBodyClasses()</code> helper. New spec <code>CMH-EXP-09</code> and <code>dev/tests/54-export-body-normalize.spec.js</code> cover all four export paths.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.27.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
@@ -361,18 +378,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deferred: trimming the <code>SKILL.md</code> body toward Anthropic&#x27;s ~5k-token soft cap is intentionally left to a focused follow-up, because the body carries pinned generation contracts (<code>CMH-DOC-02</code>/<code>CMH-DOC-03</code>) that a de-duplication pass should not churn in the same change.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.23.0] - 2026-07-13</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A real desktop right-click on empty document space no longer flashes the document-comment menu open and then hides it: the right-button <code>mouseup</code> no longer runs the text-selection cleanup that queued a <code>hideMenu()</code> clobbering the just-opened menu.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The sidebar Copy all button is larger and bolder so the most-used action is easier to find and click.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">32 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">33 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

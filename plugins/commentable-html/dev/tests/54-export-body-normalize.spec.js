@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
 import {
-  ready, fileUrl, stageContent, stageNonPortable, startStaticServer, readDownload, openToolbarMenu,
+  ready, fileUrl, openInline, stageContent, stageNonPortable, startStaticServer, readDownload, openToolbarMenu,
 } from "./helpers.js";
 
 // CMH-EXP-09: transient runtime body-state classes (toggled on document.body by the
@@ -121,5 +121,42 @@ test.describe("Export strips transient body state (CMH-EXP-09)", () => {
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });
     }
+  });
+});
+
+// Unit tests for the pure body-class normalizer (exposed as window.__cmhStripTransientBody).
+// These pin the robustness fixes: only the FIRST <body> open tag is touched, all three quote
+// styles are handled, whole tokens are matched (no \b over-strip), and an emptied class attr
+// is removed.
+test.describe("Body-class normalizer unit (CMH-EXP-09)", () => {
+  async function strip(page, html) {
+    return page.evaluate((h) => window.__cmhStripTransientBody(h), html);
+  }
+
+  test("single-quoted transient class is stripped to the kept classes (CMH-EXP-09)", async ({ page }) => {
+    await openInline(page);
+    expect(await strip(page, "<body class='sidebar-open keep'>")).toBe("<body class='keep'>");
+  });
+
+  test("a <body class> literal after the real body (in a script) is not mutated (CMH-EXP-09)", async ({ page }) => {
+    await openInline(page);
+    const input = '<body>\n<script>var x=\'<body class="sidebar-open other">\';</script>';
+    expect(await strip(page, input)).toBe(input);
+  });
+
+  test("a superstring host class like x-sidebar-open is preserved (CMH-EXP-09)", async ({ page }) => {
+    await openInline(page);
+    expect(await strip(page, '<body class="x-sidebar-open keep">')).toBe('<body class="x-sidebar-open keep">');
+  });
+
+  test("the existing double-quoted case still strips only the transient token (CMH-EXP-09)", async ({ page }) => {
+    await openInline(page);
+    expect(await strip(page, '<body class="sidebar-open app">')).toBe('<body class="app">');
+  });
+
+  test("an emptied class attribute is removed and unquoted values are handled (CMH-EXP-09)", async ({ page }) => {
+    await openInline(page);
+    expect(await strip(page, '<body class="sidebar-open">')).toBe("<body>");
+    expect(await strip(page, "<body class=sidebar-open>")).toBe("<body>");
   });
 });

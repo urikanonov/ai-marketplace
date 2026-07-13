@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-07-13
+
+### Fixed
+
+- Hardening pass from a multi-model audit of the day's merged changes. Six latent robustness and correctness defects are fixed, each covered by a test that reproduces the defect before the fix. No shipped example, template, or fixture changed behavior; they all still validate clean.
+- `tools/validate.py` KQL run-link rule (`CMH-KQL-07`) now treats a framed `figure.cmh-kql` whose `cmh-kql-run` link points anywhere other than `https://dataexplorer.azure.com/` as a hard error instead of a warning. The href is HTML-entity decoded and URL-parsed (not substring-matched), so a `javascript:`, `data:`, non-ADX, or look-alike-host link fails validation. The "has a run link" check now looks for a real `<a>` element carrying the `cmh-kql-run` class token, so a figure whose query text merely mentions `cmh-kql-run` no longer passes as if it had a link. A bare `<pre>` KQL block stays exempt.
+- `tools/validate.py` transient-body-class guard (`CMH-VAL-10`) now inspects the REAL parsed `<body>` element instead of the first raw `<body ...>` token in the file, so a decoy `<body class="sidebar-open">` inside a `<head>` script or comment can no longer hide a dirty real body or trigger a false positive.
+- `tools/validate.py` report/plan title rule (`CMH-KIND-01`) now requires a TOP-LEVEL `<h1>` (a direct child of `#commentRoot`, or a lede-wrapped `<header class="cmh-lede"><h1>`), matching `new_document.py`. An `<h1>` nested only inside a deeper `<section>` no longer satisfies the rule.
+- `assets/commentable-html.js` document-comment context menu (`CMH-DOCCMT-02`) no longer vanishes on a macOS-style Ctrl-click: the `mouseup` cleanup is suppressed for any context-menu gesture (`button === 2 || ctrlKey`), not right-click alone.
+- `assets/commentable-html.js` export body-class normalizer (`CMH-EXP-09`) now operates only on the first `<body>` open tag, handles double-quoted, single-quoted, and unquoted class values, matches whole class tokens (a superstring like `x-sidebar-open` is preserved), and removes an emptied class attribute, so it can no longer mutate a `<body class=...>` literal that appears later in page content or a script.
+- `tools/upgrade.py` and `tools/retrofit.py` kind-meta handling (`CMH-KIND-02`, `CMH-KIND-03`) now detect an existing `commentable-html-kind` meta by parsing head metadata order-independently (including a non-canonical `content`/`name` attribute order). `upgrade.py` no longer appends a duplicate meta to a document that already declares a kind, and `retrofit.py --kind` replaces an existing kind meta in place instead of appending a second one.
+
+### Changed
+
+- `references/validation.md` error list now documents the mandatory/unknown `commentable-html-kind` meta (with the report/plan top-level `<h1>` sub-rule) and the transient body-state class guard, matching the authoritative error list `SKILL.md` points to.
+
 ## [1.29.0] - 2026-07-13
 
 ### Fixed
