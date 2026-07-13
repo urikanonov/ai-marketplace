@@ -24,6 +24,10 @@ VOID = frozenset((
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr",
 ))
+OPTIONAL_END_TAGS = frozenset((
+    "caption", "colgroup", "dd", "dt", "li", "optgroup", "option", "p",
+    "rp", "rt", "tbody", "td", "tfoot", "th", "thead", "tr",
+))
 
 LAYER_IDS = {"commentableHtmlLayer", "handledCommentIds", "embeddedComments"}
 CSS_COLLISION_RE = re.compile(r"--cp-[A-Za-z0-9_-]*|(?:[.#])cm-[A-Za-z0-9_-]+|color-scheme\s*:", re.I)
@@ -117,6 +121,10 @@ class _StructureParser(HTMLParser):
                 break
         if idx is None:
             self.errors.append("unexpected </%s>" % tag)
+            return
+        implicit = self.stack[idx + 1:]
+        if any(elem.tag not in OPTIONAL_END_TAGS for elem in implicit):
+            self.errors.append("malformed HTML near </%s>" % tag)
             return
         closing = self.stack[idx:]
         self.stack = self.stack[:idx]
@@ -219,11 +227,17 @@ def _one_line(template, pattern, label):
 
 
 def _nonportable_theme_style(template):
-    style_start = template.find("<style>")
+    css_begins = upgrade._region_marker_matches(template, "BEGIN", "CSS")
+    if len(css_begins) != 1:
+        raise RetrofitError("nonportable template CSS region is missing or duplicated")
+    css_begin = css_begins[0]
+    style_start = template.rfind("<style>", 0, css_begin.start())
     if style_start < 0:
         raise RetrofitError("nonportable template is missing its theme style")
-    style_open_end = template.find(">", style_start) + 1
-    css_begin = upgrade._region_marker_matches(template, "BEGIN", "CSS")[0]
+    style_open_end = template.find(">", style_start)
+    if style_open_end < 0:
+        raise RetrofitError("nonportable template has an unterminated theme style tag")
+    style_open_end += 1
     css_line_start = template.rfind("\n", 0, css_begin.start()) + 1
     raw = template[style_open_end:css_line_start]
     demo = raw.find("/* Demo page chrome.")
@@ -364,6 +378,8 @@ def _stamp_root_tag(text, elem, key, label, source):
         raise RetrofitError("--root-selector points at a self-closing non-void element; use an explicit closing tag")
     if elem.tag in VOID or elem.end_start is None:
         raise RetrofitError("--root-selector must point at a non-void element with a closing tag")
+    if elem.end_start == elem.end_end:
+        raise RetrofitError("--root-selector points at an implicitly closed element; use an explicit closing tag")
 
     def mutate(attrs):
         _set_attr(attrs, "id", "commentRoot")

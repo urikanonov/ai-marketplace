@@ -3,6 +3,7 @@
 import contextlib
 import io
 import os
+import re
 import sys
 import unittest
 import uuid
@@ -71,6 +72,11 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertEqual(errors, [], "validation errors: %r" % errors)
         self.assertEqual(warnings, [], "validation warnings: %r" % warnings)
 
+    def _theme_vars_block(self, html):
+        match = re.search(r'<style data-cmh-theme-vars>\s*(.*?)\s*</style>', html, re.S)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
     def test_wraps_body_children_and_strict_validates(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
@@ -83,6 +89,9 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn("data-cmh-content-root", html)
         self.assertIn('data-doc-label="Host Report"', html)
         self.assertIn('data-doc-source="%s"' % src.replace("\\", "\\\\"), html.replace("\\", "\\\\"))
+        self.assertRegex(html, r'data-comment-key="[^"]+"')
+        self.assertIn('id="handledCommentIds"', html)
+        self.assertIn('id="embeddedComments"', html)
         self.assertIn("<section><h2 id=\"intro\">Intro</h2><p>Hello review.</p></section>", html)
         self.assertIn('id="commentableHtmlLayer"', html)
         self._strict_clean(out)
@@ -97,6 +106,8 @@ class RetrofitCliTests(unittest.TestCase):
         html = _read_text(out)
         self.assertIn('<div id="commentRoot"', html)
         self.assertIn("BEGIN: commentable-html - CONTENT", html)
+        self.assertLess(html.index("BEGIN: commentable-html - CONTENT"), html.index("END: commentable-html - CONTENT"))
+        self.assertLess(html.index("END: commentable-html - CONTENT"), html.index("BEGIN: commentable-html - JS"))
         self._strict_clean(out)
 
     def test_root_selector_stamps_empty_element(self):
@@ -128,6 +139,21 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertEqual(code, 0, stderr)
         self._strict_clean(out)
 
+    def test_rejects_non_optional_implicit_closure_malformed_html(self):
+        d = self._tmpdir()
+        cases = {
+            "span.html": "<!doctype html><html><head><title>x</title></head><body><div><span>x</div></body></html>",
+            "div-body.html": "<!doctype html><html><head><title>x</title></head><body><div>x</body></html>",
+        }
+        for name, html in cases.items():
+            with self.subTest(name=name):
+                src = self._write(d, name, html)
+                out = os.path.join(d, "out-" + name)
+                code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Bad", "--out", out])
+                self.assertEqual(code, 2)
+                self.assertIn("malformed HTML", stderr)
+                self.assertFalse(os.path.exists(out))
+
     def test_default_wrap_uses_div_when_body_already_has_main(self):
         d = self._tmpdir()
         html = HOST_HTML.replace("<section>", "<main><section>").replace("</section>", "</section></main>")
@@ -152,6 +178,22 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn("self-closing non-void", stderr)
         self.assertFalse(os.path.exists(out))
 
+    def test_root_selector_refuses_implicitly_closed_root(self):
+        d = self._tmpdir()
+        html = """<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Implicit root</title></head>
+<body><section><p id="content">Loose paragraph</section></body>
+</html>
+"""
+        src = self._write(d, "host.html", html)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host", "--root-selector", "#content", "--out", out])
+        self.assertEqual(code, 2)
+        self.assertIn("explicit closing tag", stderr)
+        self.assertFalse(os.path.exists(out))
+
     def test_comment_and_script_tag_text_do_not_create_fake_containers(self):
         d = self._tmpdir()
         html = """<!doctype html>
@@ -172,6 +214,24 @@ class RetrofitCliTests(unittest.TestCase):
         code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host", "--out", out])
         self.assertEqual(code, 0, stderr)
         self._strict_clean(out)
+
+    def test_theme_vars_block_contains_only_theme_css(self):
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        cases = {
+            "nonportable.html": [],
+            "portable.html": ["--portable"],
+        }
+        for name, extra_args in cases.items():
+            with self.subTest(name=name):
+                out = os.path.join(d, name)
+                code, _stdout, stderr = self._run([
+                    "retrofit.py", src, "--label", "Host", "--out", out] + extra_args)
+                self.assertEqual(code, 0, stderr)
+                theme = self._theme_vars_block(_read_text(out))
+                self.assertIn("--cp-", theme)
+                for leaked in ("<meta", "HANDLED IDS", "<!DOCTYPE"):
+                    self.assertNotIn(leaked, theme)
 
     def test_portable_inlines_layer_and_strict_validates(self):
         d = self._tmpdir()

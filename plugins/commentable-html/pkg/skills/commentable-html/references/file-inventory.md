@@ -55,6 +55,7 @@ Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-h
 - `references/document-layout.md` - Themes, TOC, sections, cards, and tables.
 - `references/exports.md` - Portable, Plain HTML, Markdown, and NonPortable export semantics.
 - `references/file-inventory.md` - This file.
+- `references/forward-compatible-layout.md` - Region layout and descriptor contract for current and future tools.
 - `references/images-commentable.md` - Image and chart canvas comments.
 - `references/interaction-model.md` - Add-comment gestures and sidebar lifecycle.
 - `references/kusto-query-blocks.md` - KQL blocks and deep links.

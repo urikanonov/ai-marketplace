@@ -148,7 +148,7 @@ The runtime toolbar, sidebar, footer, Help modal, timestamps, document-type bubb
 
 ### Compact authoring rules
 
-Use `cmh-callout` plus `cmh-callout-info`, `cmh-callout-success`, `cmh-callout-warning`, or `cmh-callout-danger` for boxed asides, and `cmh-lede` for the lead block. Never hardcode report colors; use the `--cp-*` theme variables so text stays readable in dark and light themes. Author collapsible sections as `<section>` elements with a direct heading.
+Use `cmh-callout` plus `cmh-callout-info`, `cmh-callout-success`, `cmh-callout-warning`, or `cmh-callout-danger` for boxed asides, and `cmh-lede` for the lead block. Never hardcode report colors; use the `--cp-*` theme variables so text stays readable in dark and light themes. Use a private class prefix for custom components; never reuse the reserved `cmh-*` class names. Author collapsible sections as `<section>` elements with a direct heading.
 
 ## Editing the skill (maintainer)
 

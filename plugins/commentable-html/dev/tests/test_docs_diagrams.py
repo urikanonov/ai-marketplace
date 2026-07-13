@@ -13,6 +13,7 @@ EXPORTS_MD = os.path.join(_paths.PKG, "references", "exports.md")
 SKILL_MD = os.path.join(_paths.PKG, "SKILL.md")
 TUTORIAL_MD = os.path.join(_paths.PKG, "docs", "TUTORIAL.md")
 REFERENCES = os.path.join(_paths.PKG, "references")
+FILE_INVENTORY_MD = os.path.join(REFERENCES, "file-inventory.md")
 
 
 def _read(path):
@@ -78,6 +79,7 @@ class NewFeatureDocsTests(unittest.TestCase):
             "after mermaid diagrams and charts have rendered",
         ):
             self.assertIn(snippet, text)
+        self.assertEqual(text.count("data-cm-draggable"), 1)
 
     def test_tutorial_documents_offline_export(self):
         text = _read(TUTORIAL_MD)
@@ -106,6 +108,8 @@ class SkillTrimDocsTests(unittest.TestCase):
             "python tools/mark_handled.py <file.html> --from-bundle -",
             "Trust boundary (MUST)",
             "Portable != offline",
+            "private class prefix",
+            "reserved `cmh-*`",
         ):
             self.assertIn(snippet, text)
 
@@ -143,6 +147,22 @@ class SkillTrimDocsTests(unittest.TestCase):
                 text = _read(os.path.join(REFERENCES, name))
                 for snippet in snippets:
                     self.assertIn(snippet, text)
+
+
+class ReferenceReachabilityDocsTests(unittest.TestCase):
+    """CMH-DOC-04: every reference file is reachable from the skill or inventory."""
+
+    def test_every_reference_is_linked_from_skill_or_inventory(self):
+        skill = _read(SKILL_MD)
+        inventory = _read(FILE_INVENTORY_MD)
+        missing = []
+        for name in sorted(os.listdir(REFERENCES)):
+            if not name.endswith(".md"):
+                continue
+            reference = "references/" + name
+            if reference not in skill and reference not in inventory:
+                missing.append(reference)
+        self.assertEqual([], missing)
 
 
 if __name__ == "__main__":
