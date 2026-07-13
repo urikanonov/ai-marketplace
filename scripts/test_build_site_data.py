@@ -720,6 +720,57 @@ class CheckDriftTests(unittest.TestCase):
         _os.remove(_os.path.join(root, "site", "assets", "styles.css"))
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
+    def test_styles_asset_hash_ignores_a_stale_on_disk_stylesheet(self):
+        # The styles.css cache-bust stamp must come from the SOURCE partials, not the on-disk
+        # artifact. With a STALE styles.css on disk, _asset_hash must still return the source-derived
+        # hash. This discriminates: a regression back to disk-reading would return the stale hash and
+        # fail here (a tautology hashing build_styles on both sides could not catch that).
+        import hashlib as _hashlib
+        import os as _os
+        root = self._clone_repo()
+        stale = _os.path.join(root, "site", "assets", "styles.css")
+        with open(stale, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("/* STALE - not the real bundle */\n")
+        source_derived = _hashlib.sha256(bsd.build_styles(root).encode("utf-8")).hexdigest()[:12]
+        with open(stale, "rb") as fh:
+            stale_disk = _hashlib.sha256(fh.read()).hexdigest()[:12]
+        self.assertNotEqual(source_derived, stale_disk)  # the two differ, so the test can discriminate
+        self.assertEqual(bsd._asset_hash(root, "styles.css"), source_derived)
+
+    def test_build_writes_nested_artifacts_on_a_fresh_checkout_without_site_tree(self):
+        # write_text creates parent dirs, so a build with the nested generated page dir removed
+        # recreates the plugin and tutorial pages (and their directories) instead of crashing with
+        # FileNotFoundError. site/assets (committed, non-generated, e.g. site.js) is left intact.
+        import os as _os
+        import shutil
+        root = self._clone_repo()
+        shutil.rmtree(_os.path.join(root, "site", "commentable-html"))
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertTrue(_os.path.isfile(_os.path.join(root, bsd.PLUGIN_OUT)))
+        self.assertTrue(_os.path.isfile(_os.path.join(root, bsd.TUTORIAL_PAGE)))
+
+    def test_check_flags_a_hand_edited_built_hub_page(self):
+        # The hub page goes through the same build_page/_read_artifact path as the plugin page; prove
+        # the whole-page guard at the CLI level for the hub too (SITE-BUILD-14 covers "any built page").
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        page = _os.path.join(root, bsd.HUB_OUT)
+        html = bsd.read_text(page)
+        with open(page, "w", encoding="utf-8", newline="") as fh:
+            fh.write(html.replace("</body>", "<p>HAND EDITED</p></body>", 1))
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+    def test_missing_required_plugin_page_source_errors_clearly(self):
+        # Parallel to the hub-source test: removing the plugin page source must also raise SystemExit,
+        # so a future refactor cannot break the required-source loop for one page only.
+        import os as _os
+        root = self._clone_repo()
+        _os.remove(_os.path.join(root, bsd.PLUGIN_SRC))
+        with self.assertRaises(SystemExit):
+            bsd.main(["build_site_data.py", "--check", "--root", root])
+
     def test_removing_tutorial_source_drops_its_sitemap_entry(self):
         # Parallel to the llms.txt gating: removing the tutorial source and rebuilding must drop the
         # tutorial <loc> from sitemap.xml (the SITE-BUILD-14 sitemap-gating claim).
@@ -753,21 +804,15 @@ class StylesConcatTests(unittest.TestCase):
         # Order is load-bearing: the tokens/base partial must come first.
         self.assertEqual(bsd.CSS_PARTS[0], "10-base.css")
 
-    def test_styles_asset_hash_is_derived_from_the_source_partials(self):
-        # The styles.css cache-bust stamp is a pure function of the source partials (not the on-disk
-        # artifact), so it stays correct even when site/assets/styles.css is stale or missing.
-        import hashlib as _hashlib
-        root = bsd.REPO_ROOT
-        expected = _hashlib.sha256(bsd.build_styles(root).encode("utf-8")).hexdigest()[:12]
-        self.assertEqual(bsd._asset_hash(root, "styles.css"), expected)
-
 
 class PageBannerAndGuardTests(unittest.TestCase):
     """Site pages are pure artifacts built from site-src/pages/ sources and carry a DO NOT EDIT
     banner; a hand-edit to a built page is caught by comparing it to a fresh build (SITE-BUILD-14)."""
 
     def _mktemp(self):
+        import shutil
         d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
         return d
 
     def test_page_banner_names_source_and_says_do_not_edit(self):
@@ -846,6 +891,13 @@ class PageBannerAndGuardTests(unittest.TestCase):
     def test_missing_artifact_counts_as_drift(self):
         self.assertIsNone(bsd._read_artifact(os.path.join(self._mktemp(), "nope.html")))
 
+    def test_write_text_creates_missing_parent_dirs(self):
+        # Isolated proof of the makedirs behavior: writing into a not-yet-existing nested path works.
+        root = self._mktemp()
+        target = os.path.join(root, "deep", "nested", "page.html")
+        bsd.write_text(target, "hello\n")
+        self.assertEqual(bsd.read_text(target), "hello\n")
+
     def test_build_page_rejects_an_unknown_region_kind(self):
         # build_page only knows "block" (and historically "attr") region kinds; an unknown kind must
         # fail loudly rather than silently leave the marker unfilled in the shipped artifact.
@@ -865,7 +917,29 @@ class PageBannerAndGuardTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bsd.build_page(root, src_rel, [])
 
-    def test_build_page_tolerates_a_utf8_bom_and_emits_none(self):
+    def test_build_page_rejects_a_source_with_two_doctypes(self):
+        # A duplicated <!doctype> is the classic malformed-merge artifact: it would build and match
+        # its committed copy (passing --check) while shipping invalid HTML, so reject it at build.
+        root = self._mktemp()
+        os.makedirs(os.path.join(root, "site-src", "pages"))
+        src_rel = os.path.join("site-src", "pages", "dup.html")
+        with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
+            fh.write("<!DOCTYPE html>\n<html><body>\n<!DOCTYPE html>\n</body></html>\n")
+        with self.assertRaises(SystemExit):
+            bsd.build_page(root, src_rel, [])
+
+    def test_build_styles_strips_a_bom_from_a_css_partial(self):
+        # A BOM saved into any CSS partial must not land inside the concatenated bundle (it would sit
+        # mid-file and can break CSS parsing); build_styles strips it like build_page does for pages.
+        root = self._mktemp()
+        css_dir = os.path.join(root, "site-src", "css")
+        os.makedirs(css_dir)
+        for i, name in enumerate(bsd.CSS_PARTS):
+            enc = "utf-8-sig" if i == 1 else "utf-8"  # a BOM on a non-first partial is the worst case.
+            with open(os.path.join(css_dir, name), "w", encoding=enc, newline="") as fh:
+                fh.write("/* %s */\n" % name)
+        built = bsd.build_styles(root)
+        self.assertNotIn("\ufeff", built)
         # A source saved with a UTF-8 BOM still builds (the BOM is stripped before the doctype check),
         # and the built artifact never carries the BOM into the shipped page.
         root = self._mktemp()

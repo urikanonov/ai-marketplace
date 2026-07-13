@@ -141,9 +141,13 @@ CSS_PARTS = (
 
 
 def build_styles(root):
-    css = "".join(
-        read_text(os.path.join(root, "site-src", "css", name)) for name in CSS_PARTS)
-    return css_banner() + css
+    parts = []
+    for name in CSS_PARTS:
+        path = os.path.join(root, "site-src", "css", name)
+        if not os.path.exists(path):
+            raise SystemExit("CSS partial missing: %s (restore it or update CSS_PARTS)" % path)
+        parts.append(read_text(path).lstrip("\ufeff"))  # a BOM in a partial must not land mid-bundle.
+    return css_banner() + "".join(parts)
 
 
 # Generated site artifacts carry a "DO NOT EDIT" banner that names their source, so a human who
@@ -192,6 +196,9 @@ def build_page(root, source_rel, region_fillers):
     if not _DOCTYPE_RE.match(out):
         raise SystemExit("page source %s must begin with a <!doctype ...> declaration"
                          % source_rel.replace(os.sep, "/"))
+    if len(re.findall(r"(?i)<!doctype\b", out)) != 1:
+        raise SystemExit("page source %s must contain exactly one <!doctype ...> declaration "
+                         "(a second one is usually a merge artifact)" % source_rel.replace(os.sep, "/"))
     for kind, name, value in region_fillers:
         if kind == "inline":
             out = replace_region_inline(out, name, value)
