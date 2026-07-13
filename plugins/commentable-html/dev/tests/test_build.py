@@ -46,6 +46,11 @@ def _read(path):
         return fh.read().replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _body_open_tag(html):
+    m = re.search(r"<body\b[^>]*>", html, re.IGNORECASE)
+    return m.group(0) if m else None
+
+
 class BuildTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -308,6 +313,27 @@ class BuildTests(unittest.TestCase):
             errors, warnings = validate.validate(os.path.join(ROOT, rel))
             self.assertEqual(errors, [], "%s errors: %r" % (rel, errors))
             self.assertEqual(warnings, [], "%s warnings: %r" % (rel, warnings))
+
+    # -- transient body-state is never baked into a shipped template ------- #
+    def test_dist_templates_do_not_bake_sidebar_open_body_class(self):
+        # CMH-BUILD-06: sidebar-open is a transient runtime UI-state class the layer toggles on
+        # document.body; baking it into a shipped <body> makes the document render full width with
+        # an empty sidebar gutter (the body.sidebar-open .app rule) before the runtime re-derives
+        # state on load.
+        for name in ("PORTABLE.html", "NONPORTABLE.html"):
+            body = _body_open_tag(_read(os.path.join(DIST, name)))
+            self.assertIsNotNone(body, "no <body> open tag in dist/%s" % name)
+            self.assertNotIn("sidebar-open", body,
+                             "dist/%s bakes the transient sidebar-open class into <body>" % name)
+
+    def test_template_shell_does_not_bake_sidebar_open_body_class(self):
+        # CMH-BUILD-06: the canonical shell is the single source; if it carries sidebar-open on
+        # <body> every generated artifact inherits it.
+        _css, _js, shell, _version = build.load_sources()
+        body = _body_open_tag(shell)
+        self.assertIsNotNone(body, "no <body> open tag in template.shell.html")
+        self.assertNotIn("sidebar-open", body,
+                         "template.shell.html bakes the transient sidebar-open class into <body>")
 
     # -- diff / code-review layer ships in the generated artifacts --------- #
     def test_diff_layer_present_in_artifacts(self):

@@ -51,6 +51,15 @@ class MakeDocumentTests(unittest.TestCase):
         errors = new_document._self_validate(out)
         self.assertEqual(errors, [], "expected no validation errors, got: %r" % errors)
 
+    def test_generated_document_does_not_bake_sidebar_open_body_class(self):
+        # CMH-BUILD-06: a freshly generated document must not ship the transient runtime
+        # sidebar-open body-state class; the runtime re-derives the sidebar state on load.
+        out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report", "src.md")
+        m = re.search(r"<body\b[^>]*>", out, re.IGNORECASE)
+        self.assertIsNotNone(m, "no <body> open tag in the generated document")
+        self.assertNotIn("sidebar-open", m.group(0),
+                         "the generated document bakes the transient sidebar-open class into <body>")
+
     def test_doc_comment_example_root_is_not_the_one_edited(self):
         # A commented-out decoy `<main id="commentRoot" data-comment-key="my-doc">`
         # placed BEFORE the real content root (an authoring example left in a comment)

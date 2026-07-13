@@ -73,6 +73,13 @@ FORBIDDEN_IDS = [
 SAFE_ID_RE = re.compile(r"^c[a-z0-9]{6,63}$")
 _PRE_TAG_RE = re.compile(r"<pre\b([^>]*)>(.*?)</pre>", re.DOTALL | re.IGNORECASE)
 _CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE)
+_BODY_OPEN_RE = re.compile(r"<body\b[^>]*>", re.IGNORECASE)
+# Transient runtime UI-state classes the layer toggles on document.body (sidebar open, active
+# sidebar resize, active widget drag). They must never be baked into a shipped <body>: a persisted
+# "sidebar-open" makes the document render full width with an empty sidebar gutter (the
+# body.sidebar-open .app layout rule) for a sidebar that is not shown. The runtime re-derives the
+# sidebar state on load, so these classes are redundant in a static file.
+_TRANSIENT_BODY_CLASSES = ("sidebar-open", "cm-sidebar-resizing", "cm-widget-dragging")
 
 
 def _attrs_have_class(attrs, class_name):
@@ -1347,6 +1354,19 @@ def check_layer(html, parser, base_dir=None):
         warnings.append("duplicate heading id(s) detected: %s - in-page anchors and the generated TOC "
                         "bind to the first occurrence; give each heading a unique id"
                         % ", ".join(_dup_hids[:5]))
+
+    # 11g) Transient runtime UI-state classes must never be baked into the shipped <body> open
+    #      tag. A persisted "sidebar-open" makes the document render full width with an empty
+    #      sidebar gutter (the body.sidebar-open .app layout rule) for a sidebar that is not
+    #      shown; the runtime re-derives the sidebar state on load, so the class is redundant.
+    #      Inspect ONLY the <body> open tag so a legitimate CSS/JS reference is not flagged.
+    _body_open = _BODY_OPEN_RE.search(html)
+    if _body_open:
+        for _cls in _TRANSIENT_BODY_CLASSES:
+            if _attrs_have_class(_body_open.group(0), _cls):
+                errors.append('<body> carries the transient runtime UI-state class "%s" - it must '
+                              "never be baked into a shipped document (the layer re-derives it on "
+                              "load); remove it from the <body> open tag" % _cls)
 
     # 12) NonPortable-mode-only invariants (companion refs, version handshake, banner,
     #     referenced files exist).
