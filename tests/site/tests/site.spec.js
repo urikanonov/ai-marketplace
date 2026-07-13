@@ -167,6 +167,13 @@ test("the review-loop diagram swaps to a vertical, uncramped layout on a mobile 
   await expect(horizontal).toBeHidden();
   const box = await vertical.boundingBox();
   expect(box.height).toBeGreaterThan(box.width);
+  // The vertical variant numbers each transfer with a badge anchored to its directional arrow
+  // (agent-to-you down, you-to-agent up) so the flow direction is not lost on mobile (SITE-WHY-04).
+  await expect(vertical.locator(".loop-fig-badge")).toHaveCount(3);
+  await expect(vertical).toContainText("Generates HTML");
+  await expect(vertical).toContainText("Copy all back");
+  await expect(vertical).toContainText("Comment inline");
+  await expect(vertical).toContainText("reload and repeat");
 });
 
 test("mobile comparison cards color only the verdicts and show a good/total score (SITE-WHY-05)", async ({ page }) => {
