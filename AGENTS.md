@@ -39,7 +39,8 @@ These three rules are the ones most often forgotten. They are a MUST on every ch
 plugins/
   <plugin>/pkg/               # shipped source: plugin.json + skills/ (+ hooks/ or .mcp.json)
   <plugin>/dev/               # development-only, NEVER distributed (tests, build tooling, sources, SPEC.md)
-site/                         # generated static GitHub Pages site (hub, plugin pages, tutorial)
+site-src/                     # site SOURCE: page templates (pages/) and CSS partials (css/); edit these
+site/                         # GENERATED static GitHub Pages site (pure artifacts; DO NOT hand-edit)
 tests/site/                   # site Playwright suite + SPEC.md (the site's feature spec; not shipped)
 scripts/build_site_data.py          # regenerates site/ from sources; --check gates drift in CI
 scripts/validate_marketplace.py     # the validator CI runs; also run it locally
@@ -217,10 +218,29 @@ later when #28 regenerated that page from a snapshot that predated #34, even tho
 AFTER #34. The plugin runtime, docs, and `CHANGELOG.md` survived; only the hand-edited site page was lost,
 and nothing failed - CI stayed green because the clobbered file was still valid.
 
-Highest-risk files (hand-editable AND regenerated or rewritten by tooling or big feature branches):
-everything under `site/` (especially the static sections of `site/commentable-html/index.html` and
-`site/index.html`), `pkg/**/dist/**`, generated fixtures, and any asset a build stamps. Treat any file that
-more than one in-flight PR touches as CONTENDED.
+**The site pages are now structurally protected (do not reintroduce the hole).** The hub, plugin, and
+tutorial pages under `site/**` are PURE build artifacts: their hand-edited source lives under
+`site-src/pages/` and `build_site_data.py` assembles the committed page from it, stamping a
+`GENERATED FILE - DO NOT EDIT` banner that names the source. Because the source is independent of the
+artifact, the required `site` job's `--check` (which runs on the PR merged into `main`) compares the WHOLE
+built page - not just its marker regions - to the committed file. So a hand-edit to a built site page, or a
+stale copy of it committed by a concurrent PR, now FAILS `--check` instead of silently landing (this is the
+#34 class, structurally closed for the site). Edit the source under `site-src/pages/` or `site-src/css/`,
+then run `python scripts/build_site_data.py`; never hand-edit a file under `site/`, and never move the page
+source back into `site/` (that would re-open the self-sourced hole).
+
+**Never hand-edit a generated artifact.** Any file that carries a `DO NOT EDIT` banner - the `site/**`
+pages, `site/assets/styles.css`, and every `pkg/**/dist/**` bundle - is rebuilt from a named source and
+gated by a `--check` (`site` for the site, `dist-in-sync` / `build.py --check` for the layer). Edit the
+named source and rebuild; a hand-edit to the artifact fails CI. That banner-plus-`--check` pairing is what
+turns the clobber classes below from SILENT into DETECTED.
+
+The residual self-sourced surface (where the generator reads hand-edited content back from the SAME file, so
+`--check` still cannot see a stale copy) is now small: chiefly the CONTENT between the `CONTENT` markers of
+each `examples/report-*.html` (build.py preserves it from the example itself). `pkg/**/dist/**` bundles,
+generated fixtures, `site/**`, and `styles.css` are all pure artifacts with an independent source and a
+`--check`, so a stale copy of them fails CI - but still treat any file that more than one in-flight PR
+touches as CONTENDED and REBUILD rather than hand-merge.
 
 Before you merge:
 
@@ -257,17 +277,22 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
 1. **Bump `dev/VERSION`**: write the next semver (e.g. `1.4.0` -> `1.5.0`) and mark it resolved.
 2. **Resolve `CHANGELOG.md`**: keep main's released `[x.y.z]` section intact; rename your section
    to the new version number and place it above the previously-released heading.
-3. **Resolve source files** (non-generated): take your changes; for content conflicts, merge them.
-4. **Do NOT hand-merge generated dist files** (`dist/`, `site/`, `manifest.json`, asset registry):
-   - Run the plugin's build script to regenerate them with the correct version and hashes:
-     ```bash
-     python plugins/<plugin>/dev/tools/build.py --assets-dir assets \
-       --out-dir plugins/<plugin>/pkg/skills/<plugin>
-     ```
-   - Then regenerate the site:
-     ```bash
-     python scripts/build_site_data.py
-     ```
+3. **Resolve HAND-EDITED source files you own** (runtime `assets/*.js` and `.css`, `site-src/**` page
+   templates and CSS partials, tests, `SPEC.md`, `SKILL.md`): take YOUR version. During a REBASE the sides
+   are inverted, so yours is `--theirs`: `git checkout --theirs -- <file>` (`--ours` is `origin/main`). For a
+   genuine content conflict inside such a file, merge the two edits by hand.
+4. **Do NOT hand-merge GENERATED artifacts** (`pkg/**/dist/**`, `site/**`, `manifest.json`, the asset
+   registry, generated fixtures, `examples/report-*.html`, `plugin.json`, and the `marketplace.json` version
+   field): take MAIN's clean copy FIRST so the file carries no conflict markers - during a rebase that is
+   `--ours`: `git checkout --ours -- <files>` - then REBUILD so your change is re-stamped on top of what
+   landed in `main`:
+   ```bash
+   python plugins/<plugin>/dev/tools/build.py --assets-dir assets --out-dir plugins/<plugin>/pkg/skills/<plugin>
+   node plugins/<plugin>/dev/tests/fixtures/generate.mjs   # commentable-html fixtures embed the version
+   python scripts/build_site_data.py                        # site pages, demos, sitemap, llms
+   ```
+   `git add` the rebuilt files. Never pick `--theirs` (your stale artifact) or `--ours` alone (main's
+   artifact without your change) for a generated file - the only correct resolution is to REBUILD.
 5. `git add` all resolved and regenerated files, then `git rebase --continue`.
 6. Repeat for each subsequent commit in the rebase that re-conflicts the dist files (each commit
    that touched the source gets a fresh set of generated hashes; always rebuild instead of taking
@@ -471,10 +496,12 @@ request description), not in `.plans/`.
   `CHANGELOG.md`, and run the validator and the plugin's test suite.
 - Add a skill to an existing collection plugin: create `plugins/<plugin>/skills/<skill>/SKILL.md`, register it
   in `marketplace.json`, bump versions per the rules, update the plugin's `CHANGELOG.md`, run the validator.
-- Add or change a site behavior: implement it under `site/` or in `scripts/build_site_data.py`, add a
-  feature-id row to `tests/site/SPEC.md` naming a covering test, add that test under
-  `tests/site/tests/` (browser) or `scripts/test_build_site_data.py` (generator), then regenerate
-  with `python scripts/build_site_data.py` and confirm `--check` is clean.
+- Add or change a site behavior: edit the SOURCE under `site-src/pages/` (hub, plugin, tutorial page
+  templates) or `site-src/css/` (or the generator `scripts/build_site_data.py`) - never hand-edit the built
+  pages under `site/`, which carry a `DO NOT EDIT` banner. Add a feature-id row to `tests/site/SPEC.md`
+  naming a covering test, add that test under `tests/site/tests/` (browser) or
+  `scripts/test_build_site_data.py` (generator), then regenerate with `python scripts/build_site_data.py`
+  and confirm `--check` is clean.
 - Fix the auto-updater: edit `hooks/marketplace-update.ps1`, keep it non-blocking and 5.1-safe, bump the plugin
   version in both its `plugin.json` and the manifest entry, update the plugin's `CHANGELOG.md`, run the validator.
 - Add browser tests to a plugin: add `plugins/<plugin>/dev/package.json` (with `@playwright/test`),

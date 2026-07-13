@@ -38,6 +38,16 @@ TUTORIAL_IMAGES_SRC = os.path.join(
 TUTORIAL_PAGE = os.path.join("site", "commentable-html", "tutorial", "index.html")
 TUTORIAL_IMAGES_DST = os.path.join("site", "commentable-html", "tutorial", "tutorial-images")
 
+# Site pages: the hand-edited SOURCE templates live under site-src/pages/ and the committed pages
+# under site/ are PURE build artifacts assembled by build_page(). Keeping the source separate from
+# the artifact (mirroring the site-src/css/ partials) is what lets --check cover the ENTIRE page,
+# so a hand-edit or a stale copy committed by a concurrent PR fails CI instead of silently landing.
+HUB_SRC = os.path.join("site-src", "pages", "index.html")
+HUB_OUT = os.path.join("site", "index.html")
+PLUGIN_SRC = os.path.join("site-src", "pages", "commentable-html", "index.html")
+PLUGIN_OUT = os.path.join("site", "commentable-html", "index.html")
+TUTORIAL_PAGE_SRC = os.path.join("site-src", "pages", "commentable-html", "tutorial", "index.html")
+
 # The commentable-html skill root. The tutorial references example files with
 # skill-root-relative display paths; locally (in the shipped skill) those links resolve to
 # the local asset, while on the generated site they are rewritten to point at the live demo
@@ -121,8 +131,64 @@ CSS_PARTS = (
 
 
 def build_styles(root):
-    return "".join(
+    css = "".join(
         read_text(os.path.join(root, "site-src", "css", name)) for name in CSS_PARTS)
+    return css_banner() + css
+
+
+# Generated site artifacts carry a "DO NOT EDIT" banner that names their source, so a human who
+# opens the built file under site/ is told to edit the source and rebuild instead. `--check` then
+# guarantees the committed artifact still equals a fresh build, so a hand-edit (or a stale copy
+# committed by a concurrent PR) fails CI instead of silently shipping.
+GENERATED_BANNER_PREFIX = "GENERATED FILE - DO NOT EDIT."
+_RUN_HINT = "run: python scripts/build_site_data.py"
+
+
+def css_banner():
+    return ("/* %s Built from site-src/css/*.css by scripts/build_site_data.py; %s */\n"
+            % (GENERATED_BANNER_PREFIX, _RUN_HINT))
+
+
+def page_banner(source_rel):
+    return ("<!-- %s Built from %s by scripts/build_site_data.py; %s -->"
+            % (GENERATED_BANNER_PREFIX, source_rel.replace(os.sep, "/"), _RUN_HINT))
+
+
+_PAGE_BANNER_RE = re.compile(
+    r"^[ \t]*<!-- %s.*?-->[ \t]*\r?\n?" % re.escape(GENERATED_BANNER_PREFIX), re.MULTILINE)
+_DOCTYPE_RE = re.compile(r"(?i)^\s*<!doctype html>[^\n]*\n?")
+
+
+def apply_page_banner(html, source_rel):
+    """Insert the DO NOT EDIT banner right after the doctype (replacing any prior banner), so the
+    built page self-identifies as an artifact and points at its source."""
+    html = _PAGE_BANNER_RE.sub("", html, count=1)
+    banner = page_banner(source_rel) + "\n"
+    m = _DOCTYPE_RE.match(html)
+    if m:
+        return html[:m.end()] + banner + html[m.end():]
+    return banner + html
+
+
+def build_page(root, source_rel, region_fillers):
+    """Assemble one site page ARTIFACT from its site-src/pages SOURCE: fill each marker region,
+    cache-bust asset references, and inject the DO NOT EDIT banner. The source is independent of
+    the built artifact under site/, so `--check` (comparing this result to the committed artifact)
+    covers the whole page - not just the marker regions - which is what closes the site clobber gap."""
+    out = read_text(os.path.join(root, source_rel))
+    for kind, name, value in region_fillers:
+        if kind == "inline":
+            out = replace_region_inline(out, name, value)
+        else:
+            out = replace_region_block(out, name, value)
+    out = stamp_assets(out, root)
+    return apply_page_banner(out, source_rel)
+
+
+def _read_artifact(path):
+    """Return the committed artifact text, or None when it is missing so an absent built page
+    counts as drift under --check."""
+    return read_text(path) if os.path.exists(path) else None
 
 
 def stamp_assets(text, root):
@@ -282,11 +348,11 @@ def render_jsonld(manifest):
 
 def site_page_urls(root):
     """Absolute URLs of the indexable HTML pages: the hub, each plugin page, and the tutorial when
-    its generated page exists. Used for the sitemap."""
+    its source page exists. Used for the sitemap."""
     urls = [SITE_BASE_URL]
     for page in PLUGIN_PAGES.values():
         urls.append(SITE_BASE_URL + page.lstrip("./"))
-    if os.path.exists(os.path.join(root, TUTORIAL_PAGE)):
+    if os.path.exists(os.path.join(root, TUTORIAL_PAGE_SRC)):
         rel = os.path.relpath(TUTORIAL_PAGE, "site").replace(os.sep, "/")
         urls.append(SITE_BASE_URL + rel[: -len("index.html")])
     return urls
@@ -677,35 +743,31 @@ def main(argv):
             break
     version = plugin_version(manifest, CHANGELOG_PLUGIN)
 
-    hub_path = os.path.join(root, "site", "index.html")
-    plugin_path = os.path.join(root, "site", "commentable-html", "index.html")
+    hub_out = build_page(root, HUB_SRC, [
+        ("block", "plugins", plugins_html),
+        ("block", "jsonld", render_jsonld(manifest)),
+    ])
+    plugin_out = build_page(root, PLUGIN_SRC, [
+        ("inline", "version", "v" + esc(version)),
+        ("block", "changelog", changelog_html),
+        ("inline", "demo-fullscreen", render_demo_fullscreen_link()),
+    ])
+    hub_out_path = os.path.join(root, HUB_OUT)
+    plugin_out_path = os.path.join(root, PLUGIN_OUT)
 
-    hub_src = read_text(hub_path)
-    hub_out = replace_region_block(hub_src, "plugins", plugins_html)
-    hub_out = replace_region_block(hub_out, "jsonld", render_jsonld(manifest))
-    hub_out = stamp_assets(hub_out, root)
-
-    plugin_src = read_text(plugin_path)
-    plugin_out = replace_region_inline(plugin_src, "version", "v" + esc(version))
-    plugin_out = replace_region_block(plugin_out, "changelog", changelog_html)
-    plugin_out = replace_region_inline(
-        plugin_out, "demo-fullscreen", render_demo_fullscreen_link())
-    plugin_out = stamp_assets(plugin_out, root)
-
-    tutorial_page_path = os.path.join(root, TUTORIAL_PAGE)
-    tutorial_src_path = os.path.join(root, TUTORIAL_SRC)
-    tutorial_src = None
+    tutorial_src_page = os.path.join(root, TUTORIAL_PAGE_SRC)
+    tutorial_out_path = os.path.join(root, TUTORIAL_PAGE)
+    tutorial_md_path = os.path.join(root, TUTORIAL_SRC)
     tutorial_out = None
-    if os.path.exists(tutorial_page_path):
-        if not os.path.exists(tutorial_src_path):
+    if os.path.exists(tutorial_src_page):
+        if not os.path.exists(tutorial_md_path):
             raise SystemExit(
-                "tutorial source missing: %s (restore it, or remove the tutorial page it generates)"
-                % tutorial_src_path)
-        tutorial_src = read_text(tutorial_page_path)
-        tutorial_out = replace_region_block(
-            tutorial_src, "tutorial",
-            render_markdown(site_tutorial_markdown(read_text(tutorial_src_path))))
-        tutorial_out = stamp_assets(tutorial_out, root)
+                "tutorial markdown missing: %s (restore it, or remove the tutorial source page it feeds)"
+                % tutorial_md_path)
+        tutorial_out = build_page(root, TUTORIAL_PAGE_SRC, [
+            ("block", "tutorial",
+             render_markdown(site_tutorial_markdown(read_text(tutorial_md_path)))),
+        ])
 
     demo_drift = sync_demos(root, args.check)
     tutorial_img_drift = sync_tutorial_images(root, args.check)
@@ -718,12 +780,16 @@ def main(argv):
         problems = []
         if styles_text != read_text(styles_path):
             problems.append("site/assets/styles.css is stale vs site-src/css/ partials")
-        if hub_out != hub_src:
-            problems.append("site/index.html generated regions (plugins, jsonld) are stale")
-        if plugin_out != plugin_src:
-            problems.append("site/commentable-html/index.html version/changelog region is stale")
-        if tutorial_out is not None and tutorial_out != tutorial_src:
-            problems.append("site/commentable-html/tutorial/index.html is stale vs TUTORIAL.md")
+        if hub_out != _read_artifact(hub_out_path):
+            problems.append("site/index.html is stale vs its site-src/pages/index.html source "
+                            "(do not hand-edit the built page; edit the source and rebuild)")
+        if plugin_out != _read_artifact(plugin_out_path):
+            problems.append("site/commentable-html/index.html is stale vs its "
+                            "site-src/pages/commentable-html/index.html source "
+                            "(do not hand-edit the built page; edit the source and rebuild)")
+        if tutorial_out is not None and tutorial_out != _read_artifact(tutorial_out_path):
+            problems.append("site/commentable-html/tutorial/index.html is stale vs its source "
+                            "and TUTORIAL.md")
         if demo_drift:
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
         if tutorial_img_drift:
@@ -740,10 +806,10 @@ def main(argv):
         print("site data up to date")
         return 0
 
-    write_text(hub_path, hub_out)
-    write_text(plugin_path, plugin_out)
+    write_text(hub_out_path, hub_out)
+    write_text(plugin_out_path, plugin_out)
     if tutorial_out is not None:
-        write_text(tutorial_page_path, tutorial_out)
+        write_text(tutorial_out_path, tutorial_out)
     print("site data generated (plugins, jsonld, version v%s, changelog, demos, tutorial, sitemap, llms)" % version)
     return 0
 

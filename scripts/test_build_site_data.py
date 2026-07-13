@@ -646,5 +646,73 @@ class StylesConcatTests(unittest.TestCase):
         self.assertEqual(bsd.CSS_PARTS[0], "10-base.css")
 
 
+class PageBannerAndGuardTests(unittest.TestCase):
+    """Site pages are pure artifacts built from site-src/pages/ sources and carry a DO NOT EDIT
+    banner; a hand-edit to a built page is caught by comparing it to a fresh build (SITE-BUILD-14)."""
+
+    def _mktemp(self):
+        d = tempfile.mkdtemp()
+        return d
+
+    def test_page_banner_names_source_and_says_do_not_edit(self):
+        b = bsd.page_banner(os.path.join("site-src", "pages", "index.html"))
+        self.assertIn("DO NOT EDIT", b)
+        self.assertIn("site-src/pages/index.html", b)  # forward slashes even on Windows
+        self.assertIn("build_site_data.py", b)
+
+    def test_css_banner_says_do_not_edit(self):
+        b = bsd.css_banner()
+        self.assertIn("DO NOT EDIT", b)
+        self.assertTrue(b.lstrip().startswith("/*"))
+
+    def test_apply_page_banner_inserts_after_doctype_and_is_idempotent(self):
+        html = "<!DOCTYPE html>\n<html><head></head><body></body></html>\n"
+        once = bsd.apply_page_banner(html, "site-src/pages/index.html")
+        self.assertRegex(once, r"^<!DOCTYPE html>\n<!-- GENERATED FILE - DO NOT EDIT\.")
+        # Re-applying replaces the prior banner instead of stacking a second one.
+        twice = bsd.apply_page_banner(once, "site-src/pages/index.html")
+        self.assertEqual(once, twice)
+        self.assertEqual(twice.count("GENERATED FILE - DO NOT EDIT."), 1)
+
+    def _write_source(self, root):
+        src_rel = os.path.join("site-src", "pages", "x.html")
+        os.makedirs(os.path.join(root, "site-src", "pages"))
+        with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
+            fh.write("<!DOCTYPE html>\n<html><body>\n<h1>Real title</h1>\n"
+                     "<!-- BEGIN:plugins -->OLD<!-- END:plugins -->\n</body></html>\n")
+        return src_rel
+
+    def test_build_page_fills_region_and_banners(self):
+        root = self._mktemp()
+        src_rel = self._write_source(root)
+        art = bsd.build_page(root, src_rel, [("block", "plugins", "GRID")])
+        self.assertIn("DO NOT EDIT", art)
+        self.assertIn("<h1>Real title</h1>", art)
+        self.assertIn("GRID", art)
+        self.assertNotIn("OLD", art)
+
+    def test_check_catches_a_hand_edit_to_the_built_page(self):
+        # A hand-edit to the built page's STATIC content (not a marker region) differs from a fresh
+        # build of its independent source. This is the guard that closes the site clobber gap: the
+        # static content used to be self-sourced and invisible to --check.
+        root = self._mktemp()
+        src_rel = self._write_source(root)
+        out_path = os.path.join(root, "site", "x.html")
+        os.makedirs(os.path.join(root, "site"))
+        fillers = [("block", "plugins", "GRID")]
+        art = bsd.build_page(root, src_rel, fillers)
+        with open(out_path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(art)
+        # In sync: a fresh build equals the committed artifact.
+        self.assertEqual(bsd.build_page(root, src_rel, fillers), bsd._read_artifact(out_path))
+        # Hand-edit the built page -> it no longer equals a fresh build (drift is detected).
+        with open(out_path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(art.replace("Real title", "HACKED"))
+        self.assertNotEqual(bsd.build_page(root, src_rel, fillers), bsd._read_artifact(out_path))
+
+    def test_missing_artifact_counts_as_drift(self):
+        self.assertIsNone(bsd._read_artifact(os.path.join(self._mktemp(), "nope.html")))
+
+
 if __name__ == "__main__":
     unittest.main()
