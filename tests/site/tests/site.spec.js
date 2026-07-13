@@ -993,6 +993,8 @@ test("every section header is a linkable anchor that updates the URL fragment (S
     const anchor = title.locator("a.header-anchor");
     await expect(anchor).toHaveCount(1);
     await expect(anchor).toHaveAttribute("href", "#" + id);
+    // The whole heading text is the clickable link (no separate marker glyph).
+    expect((await anchor.textContent()).trim()).toBe((await title.textContent()).trim());
     checked++;
   }
   expect(checked).toBeGreaterThan(3);

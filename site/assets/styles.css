@@ -205,20 +205,16 @@ main > section:nth-of-type(even) {
 }
 .section-sub { color: var(--cp-text-muted); margin-bottom: 26px; }
 
-/* Linkable section-header anchors (appended to each .section-title by site.js: SITE-NAV-01). */
+/* The whole section heading is a link to its own section (wired by site.js: SITE-NAV-01). */
 .header-anchor {
-  margin-left: 0.35em;
-  font-weight: 400;
-  color: var(--cp-text-muted);
+  color: inherit;
   text-decoration: none;
-  opacity: 0.3;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
 }
-.section-title:hover .header-anchor,
-.header-anchor:hover,
-.header-anchor:focus-visible {
-  opacity: 1;
+.header-anchor:hover {
   color: var(--cp-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .header-anchor:focus-visible {
   outline: 2px solid var(--cp-accent);

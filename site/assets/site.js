@@ -88,8 +88,10 @@
       var link = document.createElement("a");
       link.className = "header-anchor";
       link.setAttribute("href", "#" + id);
-      link.setAttribute("aria-label", "Link to this section");
-      link.textContent = "#";
+      // Wrap the heading's own text so the whole header is clickable.
+      while (title.firstChild) {
+        link.appendChild(title.firstChild);
+      }
       title.appendChild(link);
       link.addEventListener("click", function () {
         // Native navigation sets the fragment; also copy the full section URL for sharing.
