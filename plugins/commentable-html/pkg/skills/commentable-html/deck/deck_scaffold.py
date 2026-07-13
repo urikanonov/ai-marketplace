@@ -48,12 +48,29 @@ SLIDE_ID_ATTR_RE = re.compile(r'data-slide-id\s*=\s*"([^"]*)"', re.I)
 MAIN_ROOT_RE = re.compile(r'<main\b[^>]*\bid="commentRoot"[^>]*>', re.I)
 
 # A system-font stack keeps a scaffolded deck free of remote font requests; a design pass can
-# override these vars with self-hosted @font-face fonts.
+# override these vars with self-hosted @font-face fonts. The slide surface is a dark presentation
+# background, so the slide content is given an explicit light colour (--slide-fg) with enough
+# specificity to beat the layer's #commentRoot text/heading colours - otherwise a freshly
+# scaffolded deck renders dark-on-dark and is illegible under the document's default light theme.
 ROOT_VARS = (
-    ":root{--stage-bg:#0b0b0f;--slide-bg:#0b0b0f;"
+    ":root{--stage-bg:#0b0b0f;--slide-bg:#0b0b0f;--slide-fg:#f4f4f5;"
     "--font-body:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
     "--font-display:var(--font-body);}"
     "\n.deck-stage{font-family:var(--font-body);}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide,"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(h1,h2,h3,h4,h5,h6,p,li,td,th,blockquote,code,strong,em,span)"
+    "{color:var(--slide-fg,#f4f4f5);}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(th,td){border-color:rgba(255,255,255,0.22);}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide a{color:#93c5fd;}"
+    # Presentation-scale typography and padding for the 1920x1080 stage (default doc sizes are
+    # tiny once the stage is scaled to the viewport). A design pass overrides these per slide.
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide{padding:72px 88px;font-size:28px;line-height:1.5;}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(h1){font-size:76px;line-height:1.1;margin:0 0 .4em;}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(h2){font-size:52px;line-height:1.15;margin:0 0 .5em;}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(h3){font-size:38px;line-height:1.2;margin:0 0 .5em;}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(p,li){font-size:28px;margin:.3em 0;}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(li){margin:.5em 0;}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(td,th){font-size:26px;padding:12px 18px;}"
 )
 
 

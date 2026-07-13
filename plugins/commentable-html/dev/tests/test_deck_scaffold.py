@@ -183,6 +183,16 @@ class DeckScaffoldTests(unittest.TestCase):
         html = self._make("--slides", "2")
         self.assertIn('content="slides"', html)
 
+    def test_scaffold_has_legible_presentation_defaults(self):
+        html = self._make("--slides", "2")
+        body = html.split("BEGIN: commentable-html - CONTENT", 1)[1].split(
+            "END: commentable-html - CONTENT", 1)[0]
+        # slide content gets an explicit light colour on the dark stage (legible in any theme)
+        self.assertIn("--slide-fg", body)
+        self.assertIn('data-cmh-mode="deck"] .slide', body)
+        # and presentation-scale typography (a large heading size), so it does not render tiny
+        self.assertRegex(body, r"font-size:\s*7[0-9]px")
+
     def test_scaffold_fails_closed_on_remote_media(self):
         # R1: deck_scaffold runs the deck contract (deck_checks), not just base validate.py, so a
         # slide carrying remote media fails closed and NOTHING is written to disk.
