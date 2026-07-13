@@ -7,7 +7,9 @@ required status check.
 import json
 import os
 import re
+import tempfile
 import unittest
+from unittest import mock
 
 import build_site_data as bsd
 
@@ -257,6 +259,18 @@ class SyncOrphanTests(unittest.TestCase):
         bsd._orphans(dst, ["keep.png"], check=False)
         self.assertFalse(_os.path.exists(_os.path.join(dst, "orphan.png")))
         self.assertTrue(_os.path.exists(_os.path.join(dst, "keep.png")))
+
+    def test_orphans_reported_in_sorted_order(self):
+        # Determinism: the orphan sweep must report drift in a stable, sorted order regardless
+        # of the order os.listdir happens to return, so `--check` output and CI logs never flip
+        # across platforms. Reverting the sorted() around the directory scan turns this red.
+        names = ["c.html", "a.html", "b.html"]
+        with tempfile.TemporaryDirectory() as d:
+            for name in names:
+                open(os.path.join(d, name), "wb").close()
+            with mock.patch.object(bsd.os, "listdir", return_value=list(names)):
+                drift = bsd._orphans(d, [], check=True)
+        self.assertEqual(drift, ["a.html (orphaned)", "b.html (orphaned)", "c.html (orphaned)"])
 
 
 class MdInlineTests(unittest.TestCase):

@@ -374,6 +374,23 @@ class ValidateUnitTests(unittest.TestCase):
                               '"regions":["CSS","JS"]')
         self.assertError(doc, "commentableHtmlLayer.regions")
 
+    def test_unknown_region_marker_is_rejected(self):
+        # Forward-compat: `validate.py --strict` validates the CURRENT contract only, so a
+        # document that introduces a region the current layer does not define (a
+        # comment-delimited BEGIN/END marker pair plus the matching descriptor entry) is
+        # rejected. An unknown or future region name can never masquerade as valid.
+        unknown_region = ("<!-- BEGIN: commentable-html - UNKNOWN -->\n"
+                          "<!-- END: commentable-html - UNKNOWN -->")
+        body = [HANDLED_REGION, EMBEDDED_REGION, comment_ui(), MAIN, JS_REGION, unknown_region]
+        doc = build(body=body).replace(
+            '"regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]',
+            '"regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS","UNKNOWN"]',
+            1)
+        self.assertError(doc, "commentableHtmlLayer.regions must list exactly the active region markers")
+        # Control: the same document without the unknown region validates cleanly, proving the
+        # error above is attributable to the unknown region and not to incidental structure.
+        self.assertOkNoWarn(build())
+
     def test_layer_descriptor_mode_must_match_document_mode(self):
         doc = build().replace('"mode":"portable"', '"mode":"nonportable"', 1)
         self.assertError(doc, 'commentableHtmlLayer.mode must be "portable" or "offline"')

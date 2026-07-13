@@ -356,8 +356,12 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
 <svg width="20" height="20" aria-label="remote svg refs">
   <image href="https://evil.example/vector.png" width="20" height="20"></image>
   <use href="https://evil.example/sprite.svg#icon"></use>
+  <image xlink:href="https://evil.example/vector-xlink.png" width="20" height="20"></image>
+  <use xlink:href="https://evil.example/sprite-xlink.svg#icon"></use>
 </svg>
 <video poster="https://evil.example/poster.png"><track src="https://evil.example/captions.vtt"></video>
+<video src="https://evil.example/video.mp4"><source src="https://evil.example/video-source.mp4" srcset="https://evil.example/video-2x.png 2x"></video>
+<audio src="https://evil.example/audio.mp3"><source src="https://evil.example/audio-source.ogg"></audio>
 <input type="image" alt="submit" src="https://evil.example/input.png">
 <div background="https://evil.example/background.png">legacy background</div>
 <script>const u = "https://evil.example/dynamic-import.js"; import(u);</script>`;

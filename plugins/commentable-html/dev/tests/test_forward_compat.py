@@ -103,6 +103,17 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
         self.assertIn("`validate.py --strict` validates the current contract only", text)
         self.assertIn("pre-1.15", text)
 
+    def test_reference_descriptor_uses_runtime_placeholder(self):
+        # The descriptor example in the reference must use a placeholder for the layer
+        # version, not a hardcoded semver that silently goes stale as the runtime is bumped.
+        text = _read(os.path.join(_paths.PKG, "references", "forward-compatible-layout.md"))
+        html_blocks = re.findall(r"```html\n(.*?)\n```", text, re.DOTALL)
+        descriptor_blocks = [b for b in html_blocks if "commentableHtmlLayer" in b]
+        self.assertEqual(len(descriptor_blocks), 1, "expected exactly one descriptor example block")
+        block = descriptor_blocks[0]
+        self.assertIn("<current-runtime-version>", block)
+        self.assertNotRegex(block, r"\d+\.\d+\.\d+")
+
 
 if __name__ == "__main__":
     unittest.main()
