@@ -517,6 +517,23 @@ test("a diff line is keyboard-commentable (focus + Enter)", async ({ page }) => 
   await expect(page.locator(".cmh-dl-hl").first()).toBeVisible();
 });
 
+test("the diff add button stays centered on the hovered row (CMH-DIFF-11)", async ({ page }) => {
+  await openInline(page);
+  const line = page.locator(".cmh-dl-add").first();
+  await line.scrollIntoViewIfNeeded();
+  await line.hover();
+  await expect(page.locator("#diffAddBtn")).toBeVisible();
+  const pos = await page.evaluate(() => {
+    const lineEl = document.querySelector(".cmh-dl-add");
+    const btn = document.getElementById("diffAddBtn");
+    const lr = lineEl.getBoundingClientRect();
+    const br = btn.getBoundingClientRect();
+    return { lineTop: lr.top, lineBottom: lr.bottom, btnCenterY: br.top + br.height / 2 };
+  });
+  expect(pos.btnCenterY).toBeGreaterThanOrEqual(pos.lineTop - 2);
+  expect(pos.btnCenterY).toBeLessThanOrEqual(pos.lineBottom + 2);
+});
+
 test("two diff blocks keep their comments separate (diffIndex disambiguation)", async ({ page }) => {
   const two =
     '<pre class="cmh-diff" data-diff-label="a.txt">@@ -1 +1 @@\n-one\n+ONE</pre>\n' +

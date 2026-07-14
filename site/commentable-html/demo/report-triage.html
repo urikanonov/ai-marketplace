@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.36.0" />
+<meta name="commentable-html-version" content="1.37.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.36.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.37.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -918,6 +918,33 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
    the content width like the framed chart/KQL figures do. */
 #commentRoot figure { margin: 1.25rem 0; }
 
+/* Per-line code numbers are generated in an absolute cm-skip gutter, so they stay
+   visible but never enter text selection, copy payloads, or offset anchoring. */
+#commentRoot .cmh-code-wrap pre.cmh-code-lined,
+#commentRoot .cmh-code-wrap pre code.cmh-code-lined {
+  position: relative;
+  counter-reset: cmh-code-line;
+  padding-left: 3.4em;
+}
+#commentRoot .cmh-code-wrap pre code.cmh-code-lined { display: block; }
+#commentRoot .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter {
+  position: absolute; left: 0; top: 0;
+  width: 2.6em; text-align: right; pointer-events: none;
+  line-height: inherit;
+}
+#commentRoot .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  counter-increment: cmh-code-line;
+}
+#commentRoot .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line::before {
+  content: counter(cmh-code-line);
+  display: block;
+  color: var(--cp-text-soft);
+  opacity: 0.82;
+  font-variant-numeric: tabular-nums;
+}
 /* ---------------------------------------------------------------------------
    Image comment layer - per-image structural anchoring (mirrors the mermaid
    node layer). A commentable <img> gets a subtle hover ring; the floating
@@ -1091,9 +1118,16 @@ html[data-theme="dark"] #commentRoot .cmh-code-fn  { color: #79c0ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-str { color: #7ee787; }
 html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 
+/* KQL line counters share the generic code-line wrappers but use KQL-tuned tones. */
+#commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
+  color: var(--cp-text-muted); opacity: 0.9;
+}
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
+  color: #9da7b3;
+}
+
 
 .cm-skip[hidden], .cm-skip [hidden] { display: none !important; }
-
 /* A shared, themed focus ring for every interactive control the layer ships, so
    keyboard focus is clearly visible in both light and dark (the UA default
    outline has poor contrast on the dark surfaces). */
@@ -1482,7 +1516,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.36.0";
+const CMH_VERSION = "1.37.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2818,10 +2852,10 @@ function positionDiffAdd(el) {
   const btnH = diffAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
   const left = visible.right - btnW;
-  let top = visible.top - btnH - 2;
-  if (top < bounds.top) top = visible.bottom + 2;
+  const lineCenter = rect.top + ((rect.bottom - rect.top) / 2);
+  const top = lineCenter - (btnH / 2);
   diffAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
-  diffAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
+  diffAddBtn.style.top = top + "px";
   return true;
 }
 function showDiffAddFor(el, info) {
@@ -2925,6 +2959,43 @@ function diffLineLocator(c) {
   if (c.lineType === "del") return "-" + (c.oldNo != null ? c.oldNo : "?");
   return "line " + (c.newNo != null ? c.newNo : (c.oldNo != null ? c.oldNo : "?"));
 }
+function isNumberedCodeBlock(pre) {
+  if (!pre || pre.tagName !== "PRE" || !root.contains(pre)) return false;
+  if (typeof isCommentableCodeBlock === "function") return isCommentableCodeBlock(pre);
+  return !pre.classList.contains("mermaid") && !pre.classList.contains("cmh-diff")
+    && !pre.closest(".cm-skip")
+    && !pre.closest(".cmh-diff") && !pre.closest(".cmh-diff-host");
+}
+function ensureCodeLineGutter(target, extraClass) {
+  if (!target || target.dataset.cmhLineNumbers === "1") return;
+  const lines = String(target.textContent || "").replace(/\r\n?/g, "\n").split("\n");
+  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  const gutter = document.createElement("span");
+  gutter.className = "cmh-code-gutter cm-skip";
+  gutter.setAttribute("aria-hidden", "true");
+  const count = Math.max(1, lines.length);
+  const lh = parseFloat(getComputedStyle(target).lineHeight) || 20;
+  gutter.style.height = (count * lh) + "px";
+  for (let i = 0; i < count; i++) {
+    const line = document.createElement("span");
+    line.className = "cmh-code-line" + (extraClass ? (" " + extraClass) : "");
+    line.style.top = (i * lh) + "px";
+    line.style.height = lh + "px";
+    gutter.appendChild(line);
+  }
+  target.classList.add("cmh-code-lined");
+  target.dataset.cmhLineNumbers = "1";
+  target.insertBefore(gutter, target.firstChild);
+}
+function setupCodeLineNumbers() {
+  root.querySelectorAll("pre").forEach((pre) => {
+    if (!isNumberedCodeBlock(pre)) return;
+    const code = pre.querySelector("code");
+    const target = code || pre;
+    const isKql = !!pre.closest("figure.cmh-kql");
+    ensureCodeLineGutter(target, isKql ? "cmh-kql-line" : "");
+  });
+}
 function setupDiffLayer() {
   diffBlocks.length = 0;
   const hosts = root.querySelectorAll("pre.cmh-diff, div.cmh-diff");
@@ -2958,8 +3029,8 @@ function setupDiffLayer() {
     renderDiffBlock(block);
     applyDiffHighlightsForIndex(i);
   });
+  setupCodeLineNumbers();
 }
-
 /* ---------- Image comment layer ----------
    Makes any <img> inside #commentRoot commentable. Each image is indexed in
    document order (imageIndex); hovering or keyboard-focusing it reveals a

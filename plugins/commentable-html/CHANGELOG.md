@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-07-14
+
+### Fixed
+
+- The diff-line Add Comment hover button (`#diffAddBtn`) is now vertically centered on the hovered
+  row, so moving the pointer to click no longer jumps to the line above.
+
+### Added
+
+- Commentable code blocks, including KQL query blocks, now show per-line numbers in a
+  `.cmh-code-gutter` overlay via CSS-generated counters. The numbers are visible in the UI but
+  excluded from text selection and clipboard output, including each block's Copy button.
+
 ## [1.36.0] - 2026-07-14
 
 ### Added

@@ -91,6 +91,13 @@ html[data-theme="dark"] #commentRoot .cmh-code-fn  { color: #79c0ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-str { color: #7ee787; }
 html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 
+/* KQL line counters share the generic code-line wrappers but use KQL-tuned tones. */
+#commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
+  color: var(--cp-text-muted); opacity: 0.9;
+}
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
+  color: #9da7b3;
+}
+
 
 .cm-skip[hidden], .cm-skip [hidden] { display: none !important; }
-

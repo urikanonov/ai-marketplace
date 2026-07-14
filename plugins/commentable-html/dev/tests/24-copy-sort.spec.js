@@ -33,6 +33,58 @@ test.describe("copy buttons + sortable tables", () => {
     await expect(page.locator("#toast")).toContainText(/cluster copied/i);
   });
 
+  test("code and KQL blocks render line rows with CSS-generated counters (CMH-CODE-04)", async ({ page }) => {
+    await openInline(page);
+    const pyLine = page.locator('#commentRoot .cmh-code-wrap:has(code.language-python) code .cmh-code-line').first();
+    await expect(pyLine).toBeVisible();
+    const py = await pyLine.evaluate((line) => ({
+      text: line.textContent,
+      before: getComputedStyle(line, "::before").content,
+    }));
+    expect(py.before).toContain("counter(");
+    expect(py.text.trim().startsWith("1")).toBe(false);
+
+    const kqlLine = page.locator("figure.cmh-kql code .cmh-code-line.cmh-kql-line").first();
+    await expect(kqlLine).toBeVisible();
+    const kql = await kqlLine.evaluate((line) => ({
+      text: line.textContent,
+      before: getComputedStyle(line, "::before").content,
+    }));
+    expect(kql.before).toContain("counter(");
+    expect(kql.text.trim().startsWith("1")).toBe(false);
+  });
+
+  test("selection and Copy buttons exclude generated line numbers (CMH-CODE-04)", async ({ page }) => {
+    await openInline(page);
+    const pyCode = page.locator('#commentRoot .cmh-code-wrap code.language-python').first();
+    const pyText = await pyCode.evaluate((el) => el.textContent);
+    const pySel = await pyCode.evaluate((el) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      return s.toString();
+    });
+    expect(pySel).toBe(pyText);
+    await page.locator('#commentRoot .cmh-code-wrap:has(code.language-python) .cm-code-copy').first().click();
+    expect(await lastCopied(page)).toBe(pyText.replace(/\n$/, ""));
+
+    const kqlCode = page.locator("figure.cmh-kql code.language-kusto").first();
+    const kqlText = await kqlCode.evaluate((el) => el.textContent);
+    const kqlSel = await kqlCode.evaluate((el) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      return s.toString();
+    });
+    expect(kqlSel).toBe(kqlText);
+    await page.locator("figure.cmh-kql .cm-code-copy").first().click();
+    expect(await lastCopied(page)).toBe(kqlText.replace(/\n$/, ""));
+  });
+
   test("every table column header gets sort chevrons", async ({ page }) => {
     await openInline(page);
     const heads = page.locator("#commentRoot table.cmh-sortable thead th");
