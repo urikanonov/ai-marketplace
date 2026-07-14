@@ -289,6 +289,18 @@ The `-S` pickaxe shows exactly which commits added or removed the string; if a l
 change was clobbered and must be re-applied on top of current `main`. Run this for site pages and for any
 file a concurrent PR also touched.
 
+**Hand-edited SOURCE files have no `--check` backstop - the survival check IS their gate (finding 4.8).**
+Generated artifacts are all guarded (a `DO NOT EDIT` banner plus a `--check`), but the hand-edited SOURCES
+they are built from are not: `site-src/pages/**` and `site-src/css/**`, the runtime and CSS partials under
+`plugins/commentable-html/dev/assets/js/**` and `dev/assets/css/**`, and the static `site/assets/` files
+(`site.js`, the logo, the favicon). Git cannot follow lines that a WHOLE-FILE reorganization moved, so a
+3-way merge can silently drop a concurrent PR's edit to one of these with no conflict and green CI - the #34
+mechanism, now scoped to source. No single-PR CI check can detect this, so the PROCESS is the gate: keep the
+whole-file reorg rule above (run such a reorg ALONE and LAST, derived from the final file), and after ANY
+merge that touched a hand-edited source another in-flight PR also touched, run the `-S` survival check above
+against that source and re-apply anything a later commit removed. For these unguarded surfaces the survival
+check is MANDATORY, not optional.
+
 ## Resolving plugin conflicts when rebasing onto main
 
 When rebasing a plugin PR onto `main` and the same version number has already been merged into main,
@@ -382,6 +394,13 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
 - Plugin-directory source: bump the version in BOTH `plugin.json` and the manifest entry, and keep them equal.
 - Single-skill source: the manifest entry is the only version; bump it there.
 - Add an entry to the plugin's own `CHANGELOG.md` (for example `plugins/commentable-html/CHANGELOG.md`) for every version bump.
+- Do NOT put the plugin version in the PR title. The version already lives in `dev/VERSION`,
+  `plugin.json` / the manifest entry, and `CHANGELOG.md` (all CI-gated); a version copied into the
+  title is a fourth, ungated place that only drifts (finding 3.3: #68 was titled `commentable-html
+  1.13.0` but shipped `1.14.0` after a re-bump). Describe the CHANGE in the title, not the number.
+  When two PRs are in flight, the advisory `version-lane` check (`scripts/check_version_lane.py`)
+  warns if this PR's `dev/VERSION` duplicates or trails another open PR's, so pick a distinct lane
+  up front (see "Maximizing concurrency").
 
 ## Authorship and contribution policy
 
@@ -426,6 +445,13 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   workflow run it once a `BRANCH_PROTECTION_TOKEN` secret is configured), so the required set is
   code-reviewed rather than silently drifted. When you add or remove a required check, edit BOTH
   `.github/required-checks.json` and branch protection together.
+- Two ADVISORY checks also run on every PR but are intentionally NOT in the required set (so they
+  surface a signal without blocking merges, and adding them to `required-checks.json` without also
+  editing branch protection would trip `check_required_checks.py`): `zizmor` (a defense-in-depth
+  GitHub Actions security linter that complements the required `actionlint` and
+  `check_workflow_policy` gates) and `version-lane` (`scripts/check_version_lane.py`, an early
+  warning when this PR's commentable-html `dev/VERSION` collides with another open PR's lane). To
+  promote either to required later, add it to `required-checks.json` and branch protection together.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 - Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature

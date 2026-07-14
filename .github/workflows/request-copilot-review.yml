@@ -10,6 +10,9 @@ name: request-copilot-review
 # not surface that reviewer, so the REST call is the reliable path.
 
 on:
+  # zizmor: ignore[dangerous-triggers] audited-safe: never checks out or runs PR code
+  # (only calls the REST API with the PR number); the no-checkout invariant is enforced
+  # as code by scripts/check_workflow_policy.py RULE A.
   pull_request_target:
     types: [opened, reopened, ready_for_review]
 

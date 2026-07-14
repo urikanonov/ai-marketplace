@@ -172,3 +172,53 @@ jobs:
           echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
           tar -xzf actionlint.tar.gz actionlint
           ./actionlint -color
+
+  # Defense-in-depth GitHub Actions security linter, complementing the required actionlint and the
+  # scripts/check_workflow_policy.py trust-boundary gate. Advisory: NOT in required-checks.json, so a
+  # new dangerous pattern surfaces as a red check without blocking merges (the injection/trust
+  # invariants are already blocked by the required validate job). Runs offline (no token, no secrets)
+  # so it stays a clean pull_request job. The two audited-safe pull_request_target workflows carry
+  # inline `# zizmor: ignore[dangerous-triggers]` justifications; a NEW pull_request_target would fail.
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install zizmor (pinned; Dependabot keeps it current)
+        run: python -m pip install --disable-pip-version-check "zizmor==1.26.1"
+      - name: Lint workflows with zizmor (offline, no token)
+        run: zizmor --offline .github/workflows
+
+  # Advisory early warning for finding 4.5: if this PR bumps commentable-html to a version another
+  # open PR already claimed, flag it now so the author picks a distinct lane and avoids re-bump churn.
+  # Not required (the version state of other open PRs is non-deterministic); the required version-bump
+  # gate still blocks the actual collision at merge time. Keeps permissions at contents: read - the
+  # script gracefully SKIPS (green) if it cannot list open PRs, so no widened token is needed.
+  version-lane:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Warn on a colliding commentable-html version lane across open PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_LANE_BASE: ${{ github.event.pull_request.base.sha }}
+          VERSION_LANE_SELF: ${{ github.event.pull_request.number }}
+          VERSION_LANE_REPO: ${{ github.repository }}
+        run: python scripts/check_version_lane.py

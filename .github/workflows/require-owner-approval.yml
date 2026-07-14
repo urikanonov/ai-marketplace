@@ -25,6 +25,9 @@ name: require-owner-approval
 # a silent stale pass.
 
 on:
+  # zizmor: ignore[dangerous-triggers] audited-safe: never checks out or runs PR code
+  # (only reads the review list and publishes a head-SHA commit status); the no-checkout
+  # invariant is enforced as code by scripts/check_workflow_policy.py RULE A.
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
   pull_request_review:
