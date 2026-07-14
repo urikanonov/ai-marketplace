@@ -41,10 +41,29 @@ test("CMH-SYN-04: every mermaid diagram and chart in the shipped example reports
   expect(out).toContain("oracle:");
 });
 
+test("CMH-SYN-04: the oracle extracts diagrams robustly (nested div, unquoted attr, comment) and flags a broken one", () => {
+  test.setTimeout(60000);
+  // A fixture a naive regex extractor mis-handles: a mermaid <pre> nested in a
+  // wrapper <div>, an unquoted class, and a <pre> whose text has a comment with a
+  // fake </pre>. The DOMParser-based oracle must extract all 4 and flag the broken #4.
+  const fixture = path.join(DEV, "tests", "fixtures", "oracle-extract-edgecases.html");
+  let output = "";
+  try {
+    runNode([path.join(DEV, "tools", "validate_render.mjs"), fixture], 50000);
+    throw new Error("oracle should have exited non-zero on the broken diagram");
+  } catch (e) {
+    output = e.message;
+  }
+  expect(output).toContain("(4 mermaid"); // all four extracted, none silently skipped
+  expect(output).toContain("mermaid diagram #4"); // the broken one was caught
+});
+
 test("CMH-SYN-05: the differential corpus is in sync with the real parser and Python checker (no false positives)", () => {
   test.setTimeout(180000);
   // Regenerates every label from the REAL mermaid parser and the REAL Python
-  // checker; --check fails on any false positive or drift versus the committed file.
+  // checker; --check exits non-zero on any false positive or drift versus the
+  // committed file (runNode throws on a non-zero exit).
   const out = runNode([path.join(DEV, "tests", "fixtures", "build_mermaid_corpus.mjs"), "--check"], 170000);
   expect(out).toContain("up to date");
+  expect(out).not.toContain("FALSE POSITIVE");
 });

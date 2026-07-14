@@ -17,7 +17,6 @@ import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { extractMermaid, extractCharts } from "./diagram_extract.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -83,6 +82,24 @@ async function attachValidator(page) {
         return { ok: true };
       }, text);
     },
+    async extractFrom(html) {
+      // Parse with the browser's own DOMParser - authoritative for HTML comments,
+      // unquoted attributes, nested tags, and entity decoding - WITHOUT executing
+      // the file's scripts. This replaces fragile regex extraction.
+      return page.evaluate((h) => {
+        const LAYER = new Set(["handledCommentIds", "embeddedComments", "commentableHtmlLayer"]);
+        const doc = new DOMParser().parseFromString(h, "text/html");
+        const mermaids = [...doc.querySelectorAll("pre.mermaid, div.mermaid")]
+          .filter((el) => !el.querySelector("svg"))
+          .map((el) => (el.textContent || "").trim())
+          .filter(Boolean);
+        const charts = [...doc.querySelectorAll("script")]
+          .filter((s) => (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase() === "application/json")
+          .filter((s) => !LAYER.has(s.id))
+          .map((s, i) => ({ id: s.id || null, index: i + 1, text: (s.textContent || "").trim() }));
+        return { mermaids, charts };
+      }, html);
+    },
   };
 }
 
@@ -98,18 +115,19 @@ async function validateFiles(files, v) {
   let errors = 0;
   for (const file of files) {
     const html = fs.readFileSync(file, "utf8");
-    const diagrams = extractMermaid(html);
-    const charts = extractCharts(html);
+    const { mermaids, charts } = await v.extractFrom(html);
     const findings = [];
-    for (const d of diagrams) {
-      const r = await v.mermaid(d.src);
-      if (!r.ok) findings.push(`mermaid diagram #${d.index}: ${r.error.split("\n").join(" ")}`);
+    let mi = 0;
+    for (const src of mermaids) {
+      mi++;
+      const r = await v.mermaid(src);
+      if (!r.ok) findings.push(`mermaid diagram #${mi}: ${r.error.split("\n").join(" ")}`);
     }
     for (const c of charts) {
       const r = await v.chart(c.text);
       if (!r.ok) findings.push(`chart ${c.id ? `#${c.id}` : `#${c.index}`}: ${r.error}`);
     }
-    console.log(`oracle: ${file}  (${diagrams.length} mermaid, ${charts.length} chart)`);
+    console.log(`oracle: ${file}  (${mermaids.length} mermaid, ${charts.length} chart)`);
     for (const f of findings) console.log(`  ERROR: ${f}`);
     errors += findings.length;
   }

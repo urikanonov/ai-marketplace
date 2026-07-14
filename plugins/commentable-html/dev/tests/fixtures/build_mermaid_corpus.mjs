@@ -169,8 +169,9 @@ async function main() {
     await v.close();
   }
   if (falsePositives.length) {
-    throw new Error("FALSE POSITIVE(S) - the Python checker flags a diagram the real mermaid "
+    console.error("FALSE POSITIVE(S) - the Python checker flags a diagram the real mermaid "
       + "parser ACCEPTS:\n  " + falsePositives.join("\n  "));
+    return 1;  // fail the build (and --check) explicitly; do not write a corpus with FPs
   }
   rows.sort((a, b) => a.name.localeCompare(b.name));
   const json = JSON.stringify(rows, null, 2) + "\n";

@@ -142,6 +142,8 @@ def _check_sequence(lines, where):
         if not _is_signal(segments[0]):
             continue  # only a real message line splits into a dangling signal
         for seg in segments[1:]:
+            if seg.strip().startswith("%%"):
+                break  # a '%%' begins a comment that consumes the rest of the line
             if _tail_is_invalid_signal(seg):
                 errors.append(
                     "%s: a ';' in a sequence message splits it into a separate statement, and "

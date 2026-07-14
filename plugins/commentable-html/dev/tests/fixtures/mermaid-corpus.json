@@ -196,6 +196,34 @@
     "src": "gantt\n  title A\n  dateFormat YYYY-MM-DD\n  section S\n  Task :a1, 2024-01-01, 30d"
   },
   {
+    "name": "ge-comment-tail-arrow",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: msg; %% ->"
+  },
+  {
+    "name": "ge-comment-tail-arrow-nospace",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: msg; %%->"
+  },
+  {
+    "name": "ge-comment-tail-then-next-line",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; %% a note about -> flows\n  B->>A: bye"
+  },
+  {
+    "name": "ge-comment-tail-with-semicolons",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: msg; %% -> ; A->>C: x"
+  },
+  {
     "name": "ge-invalid-dangling-after-activate",
     "kind": "mermaid",
     "valid": false,
@@ -229,6 +257,13 @@
     "valid": false,
     "py_flag": true,
     "src": "sequenceDiagram\nA->>B: ok;A->>B"
+  },
+  {
+    "name": "ge-two-signals-then-comment-tail",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; C->>D: bye; %% wrap -> up"
   },
   {
     "name": "ge-valid-accdescr-no-space",

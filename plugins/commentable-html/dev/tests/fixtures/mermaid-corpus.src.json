@@ -142,5 +142,10 @@
   { "name": "ge-invalid-dangling-after-activate", "src": "sequenceDiagram\nA->>B: begin;activate B;B->>A" },
   { "name": "ge-valid-flowchart-ignore-sequence-check", "src": "flowchart LR\nA[\"literal ; -> : %%\"] --> B[\"ok\"]\nB --> C[\"still valid\"]" },
   { "name": "ge-valid-classdiagram-ignore-sequence-check", "src": "classDiagram\n%% comment with ; -> :\nclass UserService{\n  +parse(input)\n}\nclass Repo\nUserService --> Repo : uses" },
-  { "name": "ge-valid-statediagram-ignore-sequence-check", "src": "stateDiagram-v2\n[*] --> Idle\nIdle --> Busy: event -> run\nBusy --> [*]" }
+  { "name": "ge-valid-statediagram-ignore-sequence-check", "src": "stateDiagram-v2\n[*] --> Idle\nIdle --> Busy: event -> run\nBusy --> [*]" },
+  { "name": "ge-comment-tail-arrow", "src": "sequenceDiagram\n  A->>B: msg; %% ->" },
+  { "name": "ge-comment-tail-arrow-nospace", "src": "sequenceDiagram\n  A->>B: msg; %%->" },
+  { "name": "ge-comment-tail-with-semicolons", "src": "sequenceDiagram\n  A->>B: msg; %% -> ; A->>C: x" },
+  { "name": "ge-comment-tail-then-next-line", "src": "sequenceDiagram\n  A->>B: hi; %% a note about -> flows\n  B->>A: bye" },
+  { "name": "ge-two-signals-then-comment-tail", "src": "sequenceDiagram\n  A->>B: hi; C->>D: bye; %% wrap -> up" }
 ]

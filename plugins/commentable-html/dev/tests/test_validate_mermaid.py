@@ -190,6 +190,15 @@ class MermaidRound2Regressions(unittest.TestCase):
         # The hardening must not silence the original defect.
         self.assertTrue(_flag("sequenceDiagram\n  A->>B: validate; map X -> Y here"))
 
+    def test_comment_tail_after_semicolon_not_flagged(self):
+        # A '%%' at the start of a ';'-segment is a comment consuming the rest of
+        # the line, so an arrow inside it is not a dangling signal (real parser
+        # accepts these).
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: msg; %% ->"))
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: msg; %%->"))
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: msg; %% -> ; A->>C: x"))
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; C->>D: bye; %% wrap -> up"))
+
 
 class MermaidWiredIntoValidate(unittest.TestCase):
     """CMH-SYN-01: validate() surfaces the mermaid syntax error end to end."""
