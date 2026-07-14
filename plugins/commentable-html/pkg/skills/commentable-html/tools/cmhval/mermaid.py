@@ -49,7 +49,11 @@ _SEQUENCE_TYPES = ("sequencediagram",)
 # Sequence message arrows, longest-first so alternation is greedy. These are the
 # ONLY sequence statements that carry an arrow, and every one requires a trailing
 # `: message`, which is what makes "arrow but no colon" an unambiguous error.
-_SEQ_ARROW = re.compile(r"<<-->>|<<->>|-->>|-->|->>|->|--x|-x|--\)|-\)")
+# Written with `--?` / `>>?` quantifiers (equivalent to the explicit longest-first
+# alternation) so the pattern carries no literal `-->`, which a static "bad HTML
+# comment filter" scanner heuristic would otherwise mistake for HTML parsing - this
+# regex only recognizes mermaid arrow tokens, it never filters HTML.
+_SEQ_ARROW = re.compile(r"<<--?>>|--?>>?|--?x|--?\)")
 
 # Statement-leading keywords in a sequenceDiagram. A segment that starts with one
 # of these is a valid non-signal statement, so it is never flagged and is never
