@@ -3,11 +3,11 @@ id: TASK-16
 title: >-
   Deck: author a proper in-depth pitch/showcase deck demo and a reusable
   one-shot authoring prompt
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:21'
-updated_date: '2026-07-14 20:18'
+updated_date: '2026-07-14 20:22'
 labels: []
 dependencies:
   - TASK-7
@@ -31,16 +31,6 @@ The current sample/demo deck is low quality and has no proper theme. Deliver two
 - [x] #5 Add feature-id rows in plugins/commentable-html/dev/SPEC.md and tests/site/SPEC.md naming covering tests (deck renders/mounts; demo tab loads it); bump plugin version and update CHANGELOG.md
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -50,3 +40,9 @@ The current sample/demo deck is low quality and has no proper theme. Deliver two
 4. Add or update CMH-DECK-SHOWCASE and SITE-DEMO spec rows plus tests proving the shipped showcase deck validates, mounts in deck mode, is commentable, has working board/Mermaid/chart/diff/checklist content, and the site tab loads it.
 5. Set commentable-html version lane to 1.57.0, add the changelog entry, rebuild all generated artifacts, run deck validation, targeted tests, rebuild_all --check, validate_marketplace.py, and validate_markdown.py.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented the showcase deck, one-shot prompt, site demo wiring, specs, tests, version bump, changelog, and regenerated artifacts. PR: https://github.com/urikanonov/ai-marketplace/pull/140. Verified with rebuild_all --check, marketplace and Markdown validators, deck_validate --strict, site generator tests, targeted deck and site Playwright tests, and the pre-push hook.
+<!-- SECTION:FINAL_SUMMARY:END -->
