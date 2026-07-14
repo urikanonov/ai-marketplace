@@ -36,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.34.0";
+const CMH_VERSION = "1.35.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1699,6 +1699,8 @@ let _hadWidgetChanges = false;
 let _widgetOrder = new Map(); // Map partKey -> document order (O(1) sort lookup)
 let _lastWidgetSig = null;    // last widget state signature, to skip no-op re-renders
 let _widgetDrag = null;
+let _widgetDomBaseline = null;   // Array of {widget, part, parent}: each part's load-time DOM home, for reset.
+let _widgetFirstChangeAt = null; // ISO time of the 0 -> >0 layout-change transition (null while clean).
 
 function _cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
 function widgetName(el) { const w = el.closest("[data-cm-widget]"); return w ? (w.getAttribute("data-cm-widget") || "widget") : "widget"; }
@@ -1926,6 +1928,46 @@ function _snapshotWidgetState() {
     if (_widgetBaseline.has(key)) return;   // first-seen wins, matching indexWidgetParts dedupe
     _widgetBaseline.set(key, _partSlotCanon(p));
   });
+  // A parallel DOM baseline for draggable widgets: each part's element and its original
+  // parent, in document order, so resetWidgetMoves can put every card back where it loaded.
+  _widgetDomBaseline = [];
+  root.querySelectorAll("[data-cm-widget][data-cm-draggable] [data-cm-part]").forEach((p) => {
+    _widgetDomBaseline.push({ widget: p.closest("[data-cm-widget]"), part: p, parent: p.parentElement });
+  });
+}
+// Return the ISO time of the current widget layout change run (null when the layout matches
+// its load baseline), so the sidebar can show when a board was first edited.
+function widgetFirstChangeAt() { return _widgetFirstChangeAt; }
+// Put every recorded part of one widget back into its original parent slot in load order,
+// then re-run the mutation pass so the sidebar, badge, and reset buttons resync.
+function resetWidgetMoves(widgetEl) {
+  if (!widgetEl || !_widgetDomBaseline) return;
+  _widgetDomBaseline.forEach((rec) => {
+    if (rec.widget !== widgetEl || !rec.part || !rec.parent) return;
+    rec.parent.appendChild(rec.part);
+  });
+  _onWidgetMutation();
+}
+// Show a "Reset moves" button on each draggable widget that currently differs from its load
+// baseline, and remove it once the widget is clean again. The button is cm-skip and is not a
+// data-cm-part, so it never enters the layout signature and cannot loop the MutationObserver.
+function _syncWidgetResetButtons() {
+  const changed = new Set(((typeof widgetStateChanges === "function") ? widgetStateChanges() : []).map((ch) => ch.widget));
+  root.querySelectorAll("[data-cm-widget][data-cm-draggable]").forEach((w) => {
+    const has = changed.has(w.getAttribute("data-cm-widget") || "widget");
+    let btn = w.querySelector(":scope > .cm-widget-reset");
+    if (has && !btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cm-skip cm-widget-reset";
+      btn.textContent = "Reset moves";
+      btn.title = "Return cards to their original positions";
+      btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); resetWidgetMoves(w); });
+      w.appendChild(btn);
+    } else if (!has && btn) {
+      btn.remove();
+    }
+  });
 }
 // A stable signature of the current widget layout (part keys + slots), used to skip no-op
 // sidebar rebuilds when a mutation did not actually change any part or slot.
@@ -1978,13 +2020,19 @@ function _onWidgetMutation() {
     const sig = _widgetStateSig();
     if (sig === _lastWidgetSig) return;
     _lastWidgetSig = sig;
+    // Track when the first layout change happened (0 -> >0 transition) BEFORE rendering, so
+    // the state card can show the timestamp on the same pass. Clear it once the layout
+    // returns to its baseline.
+    const has = widgetStateChanges().length > 0;
+    if (has && !_hadWidgetChanges) _widgetFirstChangeAt = new Date().toISOString();
+    if (!has) _widgetFirstChangeAt = null;
     renderComments();
     // Surface a newly-detected layout change: open the panel so the state card (which is
     // not counted as a comment) is not missed. Only on the 0 -> >0 transition, so a user
     // who closes the panel is not fought.
-    const has = widgetStateChanges().length > 0;
     if (has && !_hadWidgetChanges && typeof openSidebar === "function") openSidebar();
     _hadWidgetChanges = has;
+    _syncWidgetResetButtons();
   };
   if (typeof requestAnimationFrame !== "function") { run(); return; }
   _widgetRaf = requestAnimationFrame(run);
@@ -1996,6 +2044,7 @@ function setupWidgetLayer() {
   _snapshotWidgetState();
   _lastWidgetSig = _widgetStateSig();
   _hadWidgetChanges = widgetStateChanges().length > 0;
+  _widgetFirstChangeAt = null;
   comments.filter((c) => c.anchorType === "widget").forEach((c) => {
     if (!applyWidgetHighlight(c)) console.warn("Could not restore widget highlight for", c.id);
   });
@@ -2016,6 +2065,7 @@ function setupWidgetLayer() {
     _widgetObserver = new MutationObserver(_onWidgetMutation);
     widgets.forEach((w) => _widgetObserver.observe(w, { childList: true, subtree: true }));
   }
+  _syncWidgetResetButtons();
 }
 
 /* ---------- Document-wide comments ---------- */
@@ -2086,17 +2136,29 @@ document.addEventListener("mouseup", (e) => {
   // would queue a hideMenu() that clobbers the just-opened menu, so the menu flickers open then
   // vanishes. Plain left/middle button releases still drive the text-selection popup.
   if (e.button === 2 || e.ctrlKey) return;
-  if (e.target.closest(".cm-skip")) return;
+  // A release inside the add-comment menu itself (clicking the Add Comment pill) is the
+  // menu's own click that opens the composer, not a new selection gesture; reprocessing it
+  // would re-show the menu on top of the just-opened composer.
+  if (menu && menu.contains && menu.contains(e.target)) return;
+  // A release over a cm-skip element (a tall chart canvas below its caption, the Add-Comment
+  // pill itself) must NOT bail before the selection is checked: the pointer often lifts over
+  // that neighbour while a valid content selection still stands. Remember it so the no-selection
+  // cleanup below can skip clobbering an open menu when the release landed on chrome.
+  const onSkip = !!(e.target.closest && e.target.closest(".cm-skip"));
   // Deck present mode: no text-selection comment popup (the comment UI is hidden).
   if (document.body.classList.contains("cmh-deck-present")) return;
   setTimeout(() => {
     const got = selectionInRoot();
     if (!got) {
       // A collapsed or whitespace-only selection: drop any menu/pending state left
-      // over from a prior selection so "Add comment" cannot fire on stale text.
-      hideMenu();
-      pendingRange = null;
-      pendingQuote = "";
+      // over from a prior selection so "Add comment" cannot fire on stale text - but only
+      // when the release was not on cm-skip chrome, so clicking the Add-Comment pill does
+      // not tear down the menu it belongs to.
+      if (!onSkip) {
+        hideMenu();
+        pendingRange = null;
+        pendingQuote = "";
+      }
       return;
     }
     pendingDiffSel = null;
@@ -2794,16 +2856,58 @@ function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
   return o == null ? 1e9 : o;
 }
+// The display name for a board in the sidebar: its author-supplied aria-label if present,
+// else the raw data-cm-widget name.
+function _widgetDisplayName(name) {
+  try {
+    const el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]');
+    if (el) { const al = el.getAttribute("aria-label"); if (al && al.trim()) return al.trim(); }
+  } catch (e) { /* invalid selector from an exotic name - fall through */ }
+  return name;
+}
+// Scroll a board into view and flash it, so a state card's "jump" behaves like a comment card.
+function _jumpToWidget(name) {
+  if (!name) return;
+  let el = null;
+  try { el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (e) { /* invalid selector */ }
+  if (!el) return;
+  expandCollapsedAncestors(el);
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("cm-widget-flash");
+  setTimeout(() => el.classList.remove("cm-widget-flash"), 2200);
+}
+// One state card PER changed board, shaped like a regular comment card: an "in: <board>"
+// title, a jump button that focuses that board, the moved-part list, and a meta line with the
+// first-change time plus a "Reset changes" button that restores that board only.
 function _renderWidgetStateCard(changes) {
-  const items = changes.map((ch) =>
-    `<li>"${escapeHtml(ch.label || ch.part)}" moved from <strong>${escapeHtml(ch.from)}</strong> to <strong>${escapeHtml(ch.to)}</strong></li>`
-  ).join("");
-  return `
-    <article class="cm-card cm-card-state" data-cm-state="1">
-      <div class="cm-card-state-title">Layout change - ${changes.length} item${changes.length === 1 ? "" : "s"} moved</div>
+  const groups = new Map();
+  changes.forEach((ch) => {
+    if (!groups.has(ch.widget)) groups.set(ch.widget, []);
+    groups.get(ch.widget).push(ch);
+  });
+  const first = (typeof widgetFirstChangeAt === "function") ? widgetFirstChangeAt() : null;
+  const timeHtml = first ? escapeHtml(formatTime(first)) : "";
+  let html = "";
+  groups.forEach((list, name) => {
+    const items = list.map((ch) =>
+      `<li>"${escapeHtml(ch.label || ch.part)}" moved from <strong>${escapeHtml(ch.from)}</strong> to <strong>${escapeHtml(ch.to)}</strong></li>`
+    ).join("");
+    html += `
+    <article class="cm-card cm-card-state" data-cm-state="1" data-cm-widget-name="${escapeHtml(name)}">
+      <div class="section">in: <strong>${escapeHtml(_widgetDisplayName(name))}</strong></div>
+      <div class="cm-card-state-title">Layout change - ${list.length} item${list.length === 1 ? "" : "s"} moved</div>
       <ul>${items}</ul>
       <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not portable until re-exported.</div>
+      <div class="meta">
+        <span>${timeHtml}</span>
+        <span class="acts">
+          <button type="button" data-act="state-jump" data-cm-widget-name="${escapeHtml(name)}" title="Scroll to this board">jump</button>
+          <button type="button" data-act="state-reset" data-cm-widget-name="${escapeHtml(name)}" title="Return cards to their original positions">Reset changes</button>
+        </span>
+      </div>
     </article>`;
+  });
+  return html;
 }
 // Scroll the anchored content (text highlight, mermaid node, diff line, or image) into
 // view and flash it. Shared by the jump button and by edit/delete (so the user sees which
@@ -2838,6 +2942,20 @@ function expandCollapsedAncestors(el) {
   }
 }
 listEl.addEventListener("click", (e) => {
+  // Widget state cards are not comments: their jump focuses the board and their Reset
+  // restores that board's layout. Handle them before the comment-id path below.
+  const stateCard = e.target.closest(".cm-card-state");
+  if (stateCard) {
+    const name = e.target.getAttribute("data-cm-widget-name") || stateCard.getAttribute("data-cm-widget-name");
+    if (e.target.dataset.act === "state-reset") {
+      let wel = null;
+      try { wel = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (err) { /* invalid selector */ }
+      if (wel && typeof resetWidgetMoves === "function") resetWidgetMoves(wel);
+    } else {
+      _jumpToWidget(name);
+    }
+    return;
+  }
   const card = e.target.closest(".cm-card");
   if (!card) return;
   const id = card.dataset.cid;

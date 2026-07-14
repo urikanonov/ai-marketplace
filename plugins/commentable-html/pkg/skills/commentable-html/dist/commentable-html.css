@@ -323,9 +323,11 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 .cm-side-toc.is-collapsed .cm-side-toc-top { display: none; }
 
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
-   active, and is correctly absent from a Plain HTML export where the layer is removed. */
+   active, and is correctly absent from a Plain HTML export where the layer is removed.
+   Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side
+   padding) so the footer never sticks out past the content sections above it. */
 .cm-footer {
-  margin: 0.5rem auto 1.25rem; max-width: 1480px; padding: 0.6rem 1rem;
+  margin: 0.5rem auto 1.25rem; max-width: calc(1480px - 3rem); padding: 0.6rem 1rem;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem;
   font-size: 0.72rem; color: var(--cp-text-soft);
   border: 1px solid var(--cp-border); border-radius: 0.6rem; background: var(--cp-surface);
@@ -339,10 +341,23 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-footer-help:hover { text-decoration: underline; }
 .cm-footer-ver { font-weight: 600; color: var(--cp-text); }
 .cm-footer-sep { opacity: 0.5; }
-/* When the comments panel is open, span the visible (non-sidebar) area so the centered
-   flex content reads as centralized in that region rather than hidden behind the panel. */
-body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-sidebar-w, 400px) + 1rem); max-width: none; }
-@media (max-width: 700px) { body.sidebar-open .cm-footer { margin-right: auto; max-width: 1240px; } }
+/* When the comments panel is open, track the .app content column exactly: the layout recipe
+   (10-layout.css) insets .app by 2rem left / sidebar+2rem right from 1100px, and by a centered
+   gutter from 1700px. Mirror those insets so the footer stays flush with the content sections
+   in the sidebar-open layout too. Below 1100px the base centered rule already matches .app. */
+@media (min-width: 1100px) {
+  body.sidebar-open .cm-footer {
+    max-width: none;
+    margin-left: 2rem;
+    margin-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
+  }
+}
+@media (min-width: 1700px) {
+  body.sidebar-open .cm-footer {
+    margin-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
+    margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
+  }
+}
 /* TOC section numbers. */
 .cm-side-toc-list .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
 .cm-side-toc-list a.is-active .cm-toc-num { color: var(--cp-accent); }
@@ -813,6 +828,18 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cm-card.cm-card-state .cm-card-state-title { font-weight: 600; color: var(--cp-text); font-size: 0.82rem; }
 .cm-card.cm-card-state ul { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--cp-text); }
 .cm-card.cm-card-state li { margin: 0.1rem 0; }
+/* A draggable widget hosts a corner "Reset moves" button (runtime, cm-skip) whenever its
+   layout differs from load; make the widget a positioning context so the button can pin. */
+#commentRoot [data-cm-widget][data-cm-draggable] { position: relative; }
+.cm-widget-reset {
+  position: absolute; top: 0.4rem; right: 0.4rem; z-index: 5;
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  border-radius: 999px; padding: 0.2rem 0.7rem; font-family: inherit; font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; box-shadow: var(--cp-shadow);
+}
+.cm-widget-reset:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* Jumping from a state card briefly rings its board. */
+#commentRoot [data-cm-widget].cm-widget-flash { outline: 3px solid var(--cp-warning); outline-offset: 4px; border-radius: 6px; }
 /* Per-code-block Copy button: always visible, pinned to the block's top-right. */
 .cmh-code-wrap { position: relative; }
 /* The language pill + Copy button float over the block's top-right corner; reserve

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.34.0" />
+<meta name="commentable-html-version" content="1.35.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.34.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.35.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -447,9 +447,11 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 .cm-side-toc.is-collapsed .cm-side-toc-top { display: none; }
 
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
-   active, and is correctly absent from a Plain HTML export where the layer is removed. */
+   active, and is correctly absent from a Plain HTML export where the layer is removed.
+   Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side
+   padding) so the footer never sticks out past the content sections above it. */
 .cm-footer {
-  margin: 0.5rem auto 1.25rem; max-width: 1480px; padding: 0.6rem 1rem;
+  margin: 0.5rem auto 1.25rem; max-width: calc(1480px - 3rem); padding: 0.6rem 1rem;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem;
   font-size: 0.72rem; color: var(--cp-text-soft);
   border: 1px solid var(--cp-border); border-radius: 0.6rem; background: var(--cp-surface);
@@ -463,10 +465,23 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-footer-help:hover { text-decoration: underline; }
 .cm-footer-ver { font-weight: 600; color: var(--cp-text); }
 .cm-footer-sep { opacity: 0.5; }
-/* When the comments panel is open, span the visible (non-sidebar) area so the centered
-   flex content reads as centralized in that region rather than hidden behind the panel. */
-body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-sidebar-w, 400px) + 1rem); max-width: none; }
-@media (max-width: 700px) { body.sidebar-open .cm-footer { margin-right: auto; max-width: 1240px; } }
+/* When the comments panel is open, track the .app content column exactly: the layout recipe
+   (10-layout.css) insets .app by 2rem left / sidebar+2rem right from 1100px, and by a centered
+   gutter from 1700px. Mirror those insets so the footer stays flush with the content sections
+   in the sidebar-open layout too. Below 1100px the base centered rule already matches .app. */
+@media (min-width: 1100px) {
+  body.sidebar-open .cm-footer {
+    max-width: none;
+    margin-left: 2rem;
+    margin-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
+  }
+}
+@media (min-width: 1700px) {
+  body.sidebar-open .cm-footer {
+    margin-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
+    margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
+  }
+}
 /* TOC section numbers. */
 .cm-side-toc-list .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
 .cm-side-toc-list a.is-active .cm-toc-num { color: var(--cp-accent); }
@@ -937,6 +952,18 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cm-card.cm-card-state .cm-card-state-title { font-weight: 600; color: var(--cp-text); font-size: 0.82rem; }
 .cm-card.cm-card-state ul { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--cp-text); }
 .cm-card.cm-card-state li { margin: 0.1rem 0; }
+/* A draggable widget hosts a corner "Reset moves" button (runtime, cm-skip) whenever its
+   layout differs from load; make the widget a positioning context so the button can pin. */
+#commentRoot [data-cm-widget][data-cm-draggable] { position: relative; }
+.cm-widget-reset {
+  position: absolute; top: 0.4rem; right: 0.4rem; z-index: 5;
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  border-radius: 999px; padding: 0.2rem 0.7rem; font-family: inherit; font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; box-shadow: var(--cp-shadow);
+}
+.cm-widget-reset:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* Jumping from a state card briefly rings its board. */
+#commentRoot [data-cm-widget].cm-widget-flash { outline: 3px solid var(--cp-warning); outline-offset: 4px; border-radius: 6px; }
 /* Per-code-block Copy button: always visible, pinned to the block's top-right. */
 .cmh-code-wrap { position: relative; }
 /* The language pill + Copy button float over the block's top-right corner; reserve
@@ -1455,7 +1482,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.34.0";
+const CMH_VERSION = "1.35.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3118,6 +3145,8 @@ let _hadWidgetChanges = false;
 let _widgetOrder = new Map(); // Map partKey -> document order (O(1) sort lookup)
 let _lastWidgetSig = null;    // last widget state signature, to skip no-op re-renders
 let _widgetDrag = null;
+let _widgetDomBaseline = null;   // Array of {widget, part, parent}: each part's load-time DOM home, for reset.
+let _widgetFirstChangeAt = null; // ISO time of the 0 -> >0 layout-change transition (null while clean).
 
 function _cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
 function widgetName(el) { const w = el.closest("[data-cm-widget]"); return w ? (w.getAttribute("data-cm-widget") || "widget") : "widget"; }
@@ -3345,6 +3374,46 @@ function _snapshotWidgetState() {
     if (_widgetBaseline.has(key)) return;   // first-seen wins, matching indexWidgetParts dedupe
     _widgetBaseline.set(key, _partSlotCanon(p));
   });
+  // A parallel DOM baseline for draggable widgets: each part's element and its original
+  // parent, in document order, so resetWidgetMoves can put every card back where it loaded.
+  _widgetDomBaseline = [];
+  root.querySelectorAll("[data-cm-widget][data-cm-draggable] [data-cm-part]").forEach((p) => {
+    _widgetDomBaseline.push({ widget: p.closest("[data-cm-widget]"), part: p, parent: p.parentElement });
+  });
+}
+// Return the ISO time of the current widget layout change run (null when the layout matches
+// its load baseline), so the sidebar can show when a board was first edited.
+function widgetFirstChangeAt() { return _widgetFirstChangeAt; }
+// Put every recorded part of one widget back into its original parent slot in load order,
+// then re-run the mutation pass so the sidebar, badge, and reset buttons resync.
+function resetWidgetMoves(widgetEl) {
+  if (!widgetEl || !_widgetDomBaseline) return;
+  _widgetDomBaseline.forEach((rec) => {
+    if (rec.widget !== widgetEl || !rec.part || !rec.parent) return;
+    rec.parent.appendChild(rec.part);
+  });
+  _onWidgetMutation();
+}
+// Show a "Reset moves" button on each draggable widget that currently differs from its load
+// baseline, and remove it once the widget is clean again. The button is cm-skip and is not a
+// data-cm-part, so it never enters the layout signature and cannot loop the MutationObserver.
+function _syncWidgetResetButtons() {
+  const changed = new Set(((typeof widgetStateChanges === "function") ? widgetStateChanges() : []).map((ch) => ch.widget));
+  root.querySelectorAll("[data-cm-widget][data-cm-draggable]").forEach((w) => {
+    const has = changed.has(w.getAttribute("data-cm-widget") || "widget");
+    let btn = w.querySelector(":scope > .cm-widget-reset");
+    if (has && !btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cm-skip cm-widget-reset";
+      btn.textContent = "Reset moves";
+      btn.title = "Return cards to their original positions";
+      btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); resetWidgetMoves(w); });
+      w.appendChild(btn);
+    } else if (!has && btn) {
+      btn.remove();
+    }
+  });
 }
 // A stable signature of the current widget layout (part keys + slots), used to skip no-op
 // sidebar rebuilds when a mutation did not actually change any part or slot.
@@ -3397,13 +3466,19 @@ function _onWidgetMutation() {
     const sig = _widgetStateSig();
     if (sig === _lastWidgetSig) return;
     _lastWidgetSig = sig;
+    // Track when the first layout change happened (0 -> >0 transition) BEFORE rendering, so
+    // the state card can show the timestamp on the same pass. Clear it once the layout
+    // returns to its baseline.
+    const has = widgetStateChanges().length > 0;
+    if (has && !_hadWidgetChanges) _widgetFirstChangeAt = new Date().toISOString();
+    if (!has) _widgetFirstChangeAt = null;
     renderComments();
     // Surface a newly-detected layout change: open the panel so the state card (which is
     // not counted as a comment) is not missed. Only on the 0 -> >0 transition, so a user
     // who closes the panel is not fought.
-    const has = widgetStateChanges().length > 0;
     if (has && !_hadWidgetChanges && typeof openSidebar === "function") openSidebar();
     _hadWidgetChanges = has;
+    _syncWidgetResetButtons();
   };
   if (typeof requestAnimationFrame !== "function") { run(); return; }
   _widgetRaf = requestAnimationFrame(run);
@@ -3415,6 +3490,7 @@ function setupWidgetLayer() {
   _snapshotWidgetState();
   _lastWidgetSig = _widgetStateSig();
   _hadWidgetChanges = widgetStateChanges().length > 0;
+  _widgetFirstChangeAt = null;
   comments.filter((c) => c.anchorType === "widget").forEach((c) => {
     if (!applyWidgetHighlight(c)) console.warn("Could not restore widget highlight for", c.id);
   });
@@ -3435,6 +3511,7 @@ function setupWidgetLayer() {
     _widgetObserver = new MutationObserver(_onWidgetMutation);
     widgets.forEach((w) => _widgetObserver.observe(w, { childList: true, subtree: true }));
   }
+  _syncWidgetResetButtons();
 }
 
 /* ---------- Document-wide comments ---------- */
@@ -3505,17 +3582,29 @@ document.addEventListener("mouseup", (e) => {
   // would queue a hideMenu() that clobbers the just-opened menu, so the menu flickers open then
   // vanishes. Plain left/middle button releases still drive the text-selection popup.
   if (e.button === 2 || e.ctrlKey) return;
-  if (e.target.closest(".cm-skip")) return;
+  // A release inside the add-comment menu itself (clicking the Add Comment pill) is the
+  // menu's own click that opens the composer, not a new selection gesture; reprocessing it
+  // would re-show the menu on top of the just-opened composer.
+  if (menu && menu.contains && menu.contains(e.target)) return;
+  // A release over a cm-skip element (a tall chart canvas below its caption, the Add-Comment
+  // pill itself) must NOT bail before the selection is checked: the pointer often lifts over
+  // that neighbour while a valid content selection still stands. Remember it so the no-selection
+  // cleanup below can skip clobbering an open menu when the release landed on chrome.
+  const onSkip = !!(e.target.closest && e.target.closest(".cm-skip"));
   // Deck present mode: no text-selection comment popup (the comment UI is hidden).
   if (document.body.classList.contains("cmh-deck-present")) return;
   setTimeout(() => {
     const got = selectionInRoot();
     if (!got) {
       // A collapsed or whitespace-only selection: drop any menu/pending state left
-      // over from a prior selection so "Add comment" cannot fire on stale text.
-      hideMenu();
-      pendingRange = null;
-      pendingQuote = "";
+      // over from a prior selection so "Add comment" cannot fire on stale text - but only
+      // when the release was not on cm-skip chrome, so clicking the Add-Comment pill does
+      // not tear down the menu it belongs to.
+      if (!onSkip) {
+        hideMenu();
+        pendingRange = null;
+        pendingQuote = "";
+      }
       return;
     }
     pendingDiffSel = null;
@@ -4213,16 +4302,58 @@ function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
   return o == null ? 1e9 : o;
 }
+// The display name for a board in the sidebar: its author-supplied aria-label if present,
+// else the raw data-cm-widget name.
+function _widgetDisplayName(name) {
+  try {
+    const el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]');
+    if (el) { const al = el.getAttribute("aria-label"); if (al && al.trim()) return al.trim(); }
+  } catch (e) { /* invalid selector from an exotic name - fall through */ }
+  return name;
+}
+// Scroll a board into view and flash it, so a state card's "jump" behaves like a comment card.
+function _jumpToWidget(name) {
+  if (!name) return;
+  let el = null;
+  try { el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (e) { /* invalid selector */ }
+  if (!el) return;
+  expandCollapsedAncestors(el);
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("cm-widget-flash");
+  setTimeout(() => el.classList.remove("cm-widget-flash"), 2200);
+}
+// One state card PER changed board, shaped like a regular comment card: an "in: <board>"
+// title, a jump button that focuses that board, the moved-part list, and a meta line with the
+// first-change time plus a "Reset changes" button that restores that board only.
 function _renderWidgetStateCard(changes) {
-  const items = changes.map((ch) =>
-    `<li>"${escapeHtml(ch.label || ch.part)}" moved from <strong>${escapeHtml(ch.from)}</strong> to <strong>${escapeHtml(ch.to)}</strong></li>`
-  ).join("");
-  return `
-    <article class="cm-card cm-card-state" data-cm-state="1">
-      <div class="cm-card-state-title">Layout change - ${changes.length} item${changes.length === 1 ? "" : "s"} moved</div>
+  const groups = new Map();
+  changes.forEach((ch) => {
+    if (!groups.has(ch.widget)) groups.set(ch.widget, []);
+    groups.get(ch.widget).push(ch);
+  });
+  const first = (typeof widgetFirstChangeAt === "function") ? widgetFirstChangeAt() : null;
+  const timeHtml = first ? escapeHtml(formatTime(first)) : "";
+  let html = "";
+  groups.forEach((list, name) => {
+    const items = list.map((ch) =>
+      `<li>"${escapeHtml(ch.label || ch.part)}" moved from <strong>${escapeHtml(ch.from)}</strong> to <strong>${escapeHtml(ch.to)}</strong></li>`
+    ).join("");
+    html += `
+    <article class="cm-card cm-card-state" data-cm-state="1" data-cm-widget-name="${escapeHtml(name)}">
+      <div class="section">in: <strong>${escapeHtml(_widgetDisplayName(name))}</strong></div>
+      <div class="cm-card-state-title">Layout change - ${list.length} item${list.length === 1 ? "" : "s"} moved</div>
       <ul>${items}</ul>
       <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not portable until re-exported.</div>
+      <div class="meta">
+        <span>${timeHtml}</span>
+        <span class="acts">
+          <button type="button" data-act="state-jump" data-cm-widget-name="${escapeHtml(name)}" title="Scroll to this board">jump</button>
+          <button type="button" data-act="state-reset" data-cm-widget-name="${escapeHtml(name)}" title="Return cards to their original positions">Reset changes</button>
+        </span>
+      </div>
     </article>`;
+  });
+  return html;
 }
 // Scroll the anchored content (text highlight, mermaid node, diff line, or image) into
 // view and flash it. Shared by the jump button and by edit/delete (so the user sees which
@@ -4257,6 +4388,20 @@ function expandCollapsedAncestors(el) {
   }
 }
 listEl.addEventListener("click", (e) => {
+  // Widget state cards are not comments: their jump focuses the board and their Reset
+  // restores that board's layout. Handle them before the comment-id path below.
+  const stateCard = e.target.closest(".cm-card-state");
+  if (stateCard) {
+    const name = e.target.getAttribute("data-cm-widget-name") || stateCard.getAttribute("data-cm-widget-name");
+    if (e.target.dataset.act === "state-reset") {
+      let wel = null;
+      try { wel = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (err) { /* invalid selector */ }
+      if (wel && typeof resetWidgetMoves === "function") resetWidgetMoves(wel);
+    } else {
+      _jumpToWidget(name);
+    }
+    return;
+  }
   const card = e.target.closest(".cm-card");
   if (!card) return;
   const id = card.dataset.cid;

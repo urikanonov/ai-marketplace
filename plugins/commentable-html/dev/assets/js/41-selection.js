@@ -61,17 +61,29 @@ document.addEventListener("mouseup", (e) => {
   // would queue a hideMenu() that clobbers the just-opened menu, so the menu flickers open then
   // vanishes. Plain left/middle button releases still drive the text-selection popup.
   if (e.button === 2 || e.ctrlKey) return;
-  if (e.target.closest(".cm-skip")) return;
+  // A release inside the add-comment menu itself (clicking the Add Comment pill) is the
+  // menu's own click that opens the composer, not a new selection gesture; reprocessing it
+  // would re-show the menu on top of the just-opened composer.
+  if (menu && menu.contains && menu.contains(e.target)) return;
+  // A release over a cm-skip element (a tall chart canvas below its caption, the Add-Comment
+  // pill itself) must NOT bail before the selection is checked: the pointer often lifts over
+  // that neighbour while a valid content selection still stands. Remember it so the no-selection
+  // cleanup below can skip clobbering an open menu when the release landed on chrome.
+  const onSkip = !!(e.target.closest && e.target.closest(".cm-skip"));
   // Deck present mode: no text-selection comment popup (the comment UI is hidden).
   if (document.body.classList.contains("cmh-deck-present")) return;
   setTimeout(() => {
     const got = selectionInRoot();
     if (!got) {
       // A collapsed or whitespace-only selection: drop any menu/pending state left
-      // over from a prior selection so "Add comment" cannot fire on stale text.
-      hideMenu();
-      pendingRange = null;
-      pendingQuote = "";
+      // over from a prior selection so "Add comment" cannot fire on stale text - but only
+      // when the release was not on cm-skip chrome, so clicking the Add-Comment pill does
+      // not tear down the menu it belongs to.
+      if (!onSkip) {
+        hideMenu();
+        pendingRange = null;
+        pendingQuote = "";
+      }
       return;
     }
     pendingDiffSel = null;

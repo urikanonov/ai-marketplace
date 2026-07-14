@@ -4,6 +4,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.0] - 2026-07-14
+
+### Added
+
+- Triage-board (and any `[data-cm-widget][data-cm-draggable]` widget) Reset controls. A moved board
+  now grows a runtime-injected "Reset moves" button in its corner whenever its layout differs from
+  the load-time baseline; clicking it returns every card to its original slot and order, and the
+  button disappears once there are no moves. Static (non-draggable) widgets never get the button.
+- Per-widget layout-change state cards. The sidebar now renders one "Layout change" card per widget
+  that has moves, each with a jump button that scrolls to and flashes that board and a "Reset
+  changes" button that restores only that widget. Each card mirrors a regular comment card's shape:
+  an `in: <board>` title (the widget aria-label, else its name) and a meta line showing the
+  first-change datetime, alongside the existing explanatory note.
+
+### Fixed
+
+- A chart caption sitting directly below a tall `cm-skip` chart is now commentable. The desktop
+  `mouseup` handler evaluates the selection before bailing on a `cm-skip` target, so selecting a
+  short caption still offers Add Comment even when the pointer releases over the adjacent chart
+  canvas.
+- The runtime footer no longer spans wider than the content column. Its box now aligns to the
+  `#commentRoot` content width in both the normal and the sidebar-open layout.
+
 ## [1.34.0] - 2026-07-13
 
 ### Changed

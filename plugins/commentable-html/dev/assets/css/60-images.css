@@ -32,6 +32,18 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cm-card.cm-card-state .cm-card-state-title { font-weight: 600; color: var(--cp-text); font-size: 0.82rem; }
 .cm-card.cm-card-state ul { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--cp-text); }
 .cm-card.cm-card-state li { margin: 0.1rem 0; }
+/* A draggable widget hosts a corner "Reset moves" button (runtime, cm-skip) whenever its
+   layout differs from load; make the widget a positioning context so the button can pin. */
+#commentRoot [data-cm-widget][data-cm-draggable] { position: relative; }
+.cm-widget-reset {
+  position: absolute; top: 0.4rem; right: 0.4rem; z-index: 5;
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  border-radius: 999px; padding: 0.2rem 0.7rem; font-family: inherit; font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; box-shadow: var(--cp-shadow);
+}
+.cm-widget-reset:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* Jumping from a state card briefly rings its board. */
+#commentRoot [data-cm-widget].cm-widget-flash { outline: 3px solid var(--cp-warning); outline-offset: 4px; border-radius: 6px; }
 /* Per-code-block Copy button: always visible, pinned to the block's top-right. */
 .cmh-code-wrap { position: relative; }
 /* The language pill + Copy button float over the block's top-right corner; reserve

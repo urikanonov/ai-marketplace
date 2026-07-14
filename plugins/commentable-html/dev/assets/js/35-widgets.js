@@ -16,6 +16,8 @@ let _hadWidgetChanges = false;
 let _widgetOrder = new Map(); // Map partKey -> document order (O(1) sort lookup)
 let _lastWidgetSig = null;    // last widget state signature, to skip no-op re-renders
 let _widgetDrag = null;
+let _widgetDomBaseline = null;   // Array of {widget, part, parent}: each part's load-time DOM home, for reset.
+let _widgetFirstChangeAt = null; // ISO time of the 0 -> >0 layout-change transition (null while clean).
 
 function _cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
 function widgetName(el) { const w = el.closest("[data-cm-widget]"); return w ? (w.getAttribute("data-cm-widget") || "widget") : "widget"; }
@@ -243,6 +245,46 @@ function _snapshotWidgetState() {
     if (_widgetBaseline.has(key)) return;   // first-seen wins, matching indexWidgetParts dedupe
     _widgetBaseline.set(key, _partSlotCanon(p));
   });
+  // A parallel DOM baseline for draggable widgets: each part's element and its original
+  // parent, in document order, so resetWidgetMoves can put every card back where it loaded.
+  _widgetDomBaseline = [];
+  root.querySelectorAll("[data-cm-widget][data-cm-draggable] [data-cm-part]").forEach((p) => {
+    _widgetDomBaseline.push({ widget: p.closest("[data-cm-widget]"), part: p, parent: p.parentElement });
+  });
+}
+// Return the ISO time of the current widget layout change run (null when the layout matches
+// its load baseline), so the sidebar can show when a board was first edited.
+function widgetFirstChangeAt() { return _widgetFirstChangeAt; }
+// Put every recorded part of one widget back into its original parent slot in load order,
+// then re-run the mutation pass so the sidebar, badge, and reset buttons resync.
+function resetWidgetMoves(widgetEl) {
+  if (!widgetEl || !_widgetDomBaseline) return;
+  _widgetDomBaseline.forEach((rec) => {
+    if (rec.widget !== widgetEl || !rec.part || !rec.parent) return;
+    rec.parent.appendChild(rec.part);
+  });
+  _onWidgetMutation();
+}
+// Show a "Reset moves" button on each draggable widget that currently differs from its load
+// baseline, and remove it once the widget is clean again. The button is cm-skip and is not a
+// data-cm-part, so it never enters the layout signature and cannot loop the MutationObserver.
+function _syncWidgetResetButtons() {
+  const changed = new Set(((typeof widgetStateChanges === "function") ? widgetStateChanges() : []).map((ch) => ch.widget));
+  root.querySelectorAll("[data-cm-widget][data-cm-draggable]").forEach((w) => {
+    const has = changed.has(w.getAttribute("data-cm-widget") || "widget");
+    let btn = w.querySelector(":scope > .cm-widget-reset");
+    if (has && !btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cm-skip cm-widget-reset";
+      btn.textContent = "Reset moves";
+      btn.title = "Return cards to their original positions";
+      btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); resetWidgetMoves(w); });
+      w.appendChild(btn);
+    } else if (!has && btn) {
+      btn.remove();
+    }
+  });
 }
 // A stable signature of the current widget layout (part keys + slots), used to skip no-op
 // sidebar rebuilds when a mutation did not actually change any part or slot.
@@ -295,13 +337,19 @@ function _onWidgetMutation() {
     const sig = _widgetStateSig();
     if (sig === _lastWidgetSig) return;
     _lastWidgetSig = sig;
+    // Track when the first layout change happened (0 -> >0 transition) BEFORE rendering, so
+    // the state card can show the timestamp on the same pass. Clear it once the layout
+    // returns to its baseline.
+    const has = widgetStateChanges().length > 0;
+    if (has && !_hadWidgetChanges) _widgetFirstChangeAt = new Date().toISOString();
+    if (!has) _widgetFirstChangeAt = null;
     renderComments();
     // Surface a newly-detected layout change: open the panel so the state card (which is
     // not counted as a comment) is not missed. Only on the 0 -> >0 transition, so a user
     // who closes the panel is not fought.
-    const has = widgetStateChanges().length > 0;
     if (has && !_hadWidgetChanges && typeof openSidebar === "function") openSidebar();
     _hadWidgetChanges = has;
+    _syncWidgetResetButtons();
   };
   if (typeof requestAnimationFrame !== "function") { run(); return; }
   _widgetRaf = requestAnimationFrame(run);
@@ -313,6 +361,7 @@ function setupWidgetLayer() {
   _snapshotWidgetState();
   _lastWidgetSig = _widgetStateSig();
   _hadWidgetChanges = widgetStateChanges().length > 0;
+  _widgetFirstChangeAt = null;
   comments.filter((c) => c.anchorType === "widget").forEach((c) => {
     if (!applyWidgetHighlight(c)) console.warn("Could not restore widget highlight for", c.id);
   });
@@ -333,5 +382,6 @@ function setupWidgetLayer() {
     _widgetObserver = new MutationObserver(_onWidgetMutation);
     widgets.forEach((w) => _widgetObserver.observe(w, { childList: true, subtree: true }));
   }
+  _syncWidgetResetButtons();
 }
 

@@ -159,16 +159,58 @@ function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
   return o == null ? 1e9 : o;
 }
+// The display name for a board in the sidebar: its author-supplied aria-label if present,
+// else the raw data-cm-widget name.
+function _widgetDisplayName(name) {
+  try {
+    const el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]');
+    if (el) { const al = el.getAttribute("aria-label"); if (al && al.trim()) return al.trim(); }
+  } catch (e) { /* invalid selector from an exotic name - fall through */ }
+  return name;
+}
+// Scroll a board into view and flash it, so a state card's "jump" behaves like a comment card.
+function _jumpToWidget(name) {
+  if (!name) return;
+  let el = null;
+  try { el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (e) { /* invalid selector */ }
+  if (!el) return;
+  expandCollapsedAncestors(el);
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("cm-widget-flash");
+  setTimeout(() => el.classList.remove("cm-widget-flash"), 2200);
+}
+// One state card PER changed board, shaped like a regular comment card: an "in: <board>"
+// title, a jump button that focuses that board, the moved-part list, and a meta line with the
+// first-change time plus a "Reset changes" button that restores that board only.
 function _renderWidgetStateCard(changes) {
-  const items = changes.map((ch) =>
-    `<li>"${escapeHtml(ch.label || ch.part)}" moved from <strong>${escapeHtml(ch.from)}</strong> to <strong>${escapeHtml(ch.to)}</strong></li>`
-  ).join("");
-  return `
-    <article class="cm-card cm-card-state" data-cm-state="1">
-      <div class="cm-card-state-title">Layout change - ${changes.length} item${changes.length === 1 ? "" : "s"} moved</div>
+  const groups = new Map();
+  changes.forEach((ch) => {
+    if (!groups.has(ch.widget)) groups.set(ch.widget, []);
+    groups.get(ch.widget).push(ch);
+  });
+  const first = (typeof widgetFirstChangeAt === "function") ? widgetFirstChangeAt() : null;
+  const timeHtml = first ? escapeHtml(formatTime(first)) : "";
+  let html = "";
+  groups.forEach((list, name) => {
+    const items = list.map((ch) =>
+      `<li>"${escapeHtml(ch.label || ch.part)}" moved from <strong>${escapeHtml(ch.from)}</strong> to <strong>${escapeHtml(ch.to)}</strong></li>`
+    ).join("");
+    html += `
+    <article class="cm-card cm-card-state" data-cm-state="1" data-cm-widget-name="${escapeHtml(name)}">
+      <div class="section">in: <strong>${escapeHtml(_widgetDisplayName(name))}</strong></div>
+      <div class="cm-card-state-title">Layout change - ${list.length} item${list.length === 1 ? "" : "s"} moved</div>
       <ul>${items}</ul>
       <div class="note">Auto-tracked from the current layout. Included in Copy all so the agent can reformat the source; the file stays Not portable until re-exported.</div>
+      <div class="meta">
+        <span>${timeHtml}</span>
+        <span class="acts">
+          <button type="button" data-act="state-jump" data-cm-widget-name="${escapeHtml(name)}" title="Scroll to this board">jump</button>
+          <button type="button" data-act="state-reset" data-cm-widget-name="${escapeHtml(name)}" title="Return cards to their original positions">Reset changes</button>
+        </span>
+      </div>
     </article>`;
+  });
+  return html;
 }
 // Scroll the anchored content (text highlight, mermaid node, diff line, or image) into
 // view and flash it. Shared by the jump button and by edit/delete (so the user sees which
@@ -203,6 +245,20 @@ function expandCollapsedAncestors(el) {
   }
 }
 listEl.addEventListener("click", (e) => {
+  // Widget state cards are not comments: their jump focuses the board and their Reset
+  // restores that board's layout. Handle them before the comment-id path below.
+  const stateCard = e.target.closest(".cm-card-state");
+  if (stateCard) {
+    const name = e.target.getAttribute("data-cm-widget-name") || stateCard.getAttribute("data-cm-widget-name");
+    if (e.target.dataset.act === "state-reset") {
+      let wel = null;
+      try { wel = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (err) { /* invalid selector */ }
+      if (wel && typeof resetWidgetMoves === "function") resetWidgetMoves(wel);
+    } else {
+      _jumpToWidget(name);
+    }
+    return;
+  }
   const card = e.target.closest(".cm-card");
   if (!card) return;
   const id = card.dataset.cid;
