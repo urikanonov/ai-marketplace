@@ -3,11 +3,11 @@ id: TASK-14
 title: >-
   UI: add the commentable-html brand icon to the toolbar overflow (...) menu
   header
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:20'
-updated_date: '2026-07-14 18:36'
+updated_date: '2026-07-14 18:40'
 labels: []
 dependencies: []
 ordinal: 13000
@@ -28,18 +28,14 @@ In the toolbar overflow menu (assets/js/55-toolbar-menu.js), the dropdown header
 - [x] #5 Bump plugin version, update CHANGELOG.md, rebuild via python scripts/rebuild_all.py, confirm --check is clean
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Add Playwright coverage for the overflow menu header icon and keyboard behavior.\n2. Add decorative CMH_ICON_SVG markup to the toolbar menu header without changing the badge or menu items.\n3. Rebuild, validate, and check acceptance criteria.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added a decorative Commentable HTML icon to the toolbar overflow menu header, covered by CMH-MENU-ICON-02 and verified in the relevant Playwright specs.
+<!-- SECTION:FINAL_SUMMARY:END -->

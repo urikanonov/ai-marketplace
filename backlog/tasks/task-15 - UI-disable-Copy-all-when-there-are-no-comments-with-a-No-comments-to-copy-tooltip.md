@@ -3,11 +3,11 @@ id: TASK-15
 title: >-
   UI: disable Copy all when there are no comments, with a No comments to copy
   tooltip
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:21'
-updated_date: '2026-07-14 18:36'
+updated_date: '2026-07-14 18:40'
 labels: []
 dependencies: []
 ordinal: 14000
@@ -29,20 +29,14 @@ The Copy all button (assets/js/56-copy-clear.js) is always enabled even when the
 - [x] #6 Bump plugin version, update CHANGELOG.md, rebuild via python scripts/rebuild_all.py, confirm --check is clean
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Add Playwright coverage for Copy all disabled with zero comments and enabled after a comment exists.\n2. Keep Copy all aria-disabled, disabled, title, and click behavior in sync with open comment count.\n3. Rebuild, validate, and check acceptance criteria.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added synced aria-disabled Copy all state with the No comments to copy tooltip, covered by CMH-COPY-04/07 and verified in the relevant Playwright specs.
+<!-- SECTION:FINAL_SUMMARY:END -->

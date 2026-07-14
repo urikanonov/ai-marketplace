@@ -3,11 +3,11 @@ id: TASK-12
 title: >-
   Runtime: Clear does not revert dynamic widget changes in checklist mode (and
   likely triage board)
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:20'
-updated_date: '2026-07-14 18:36'
+updated_date: '2026-07-14 18:41'
 labels: []
 dependencies: []
 ordinal: 11000
@@ -28,18 +28,14 @@ Clicking Clear (assets/js/56-copy-clear.js) removes comments but does not revert
 - [x] #5 Bump plugin version, update CHANGELOG.md, rebuild via python scripts/rebuild_all.py, confirm --check is clean
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Write Playwright tests that change checklist state and triage card layout, click Clear, and expect authored baselines to return.\n2. Confirm the new tests fail against the current built runtime.\n3. Reset dynamic widget state during Clear, then rebuild and validate the tests pass.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Clear now resets checklist state and draggable board moves to authored baselines, covered by CMH-CHECK-18 and CMH-BOARD-04 with red-first Playwright tests.
+<!-- SECTION:FINAL_SUMMARY:END -->

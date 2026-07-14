@@ -3,11 +3,11 @@ id: TASK-17
 title: >-
   Help/About: surface the author GitHub link visibly and add a plugin changelog
   link
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:23'
-updated_date: '2026-07-14 18:36'
+updated_date: '2026-07-14 18:41'
 labels: []
 dependencies: []
 ordinal: 16000
@@ -28,18 +28,14 @@ In the Help and About dialog (assets/js/75-help.js, About block) the author name
 - [x] #5 Bump plugin version, update CHANGELOG.md, rebuild via python scripts/rebuild_all.py, confirm --check is clean
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Add Playwright coverage for the About author link affordance and changelog link.\n2. Add the Changelog About link and update cm-brand-link CSS so the author link is visibly clickable.\n3. Rebuild, validate, and check acceptance criteria.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Help and About now shows a visible author link and a Changelog link, covered by CMH-HELP-AUTHOR-02 and CMH-HELP-SITE-02.
+<!-- SECTION:FINAL_SUMMARY:END -->
