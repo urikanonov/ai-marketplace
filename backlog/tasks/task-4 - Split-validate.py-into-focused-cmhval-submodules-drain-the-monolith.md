@@ -1,11 +1,11 @@
 ---
 id: TASK-4
 title: Split validate.py into focused cmhval submodules (drain the monolith)
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 16:41'
-updated_date: '2026-07-14 18:59'
+updated_date: '2026-07-14 19:21'
 labels: []
 dependencies: []
 ordinal: 4000
