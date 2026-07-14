@@ -160,6 +160,10 @@ class TestOtherChecks(unittest.TestCase):
     def test_blank_after_heading(self):
         self.assertEqual(codes(vm.check_blank_after_heading("# Title\ntext\n")), ["blank-heading"])
         self.assertEqual(vm.check_blank_after_heading("# Title\n\ntext\n"), [])
+        # A heading immediately followed by an HTML comment is a structural marker (Backlog.md
+        # generates "## Section\n<!-- SECTION:...:BEGIN -->"), not prose - it must not be flagged.
+        self.assertEqual(vm.check_blank_after_heading("## Acceptance Criteria\n<!-- AC:BEGIN -->\n"), [])
+        self.assertEqual(vm.check_blank_after_heading("## Description\n\n<!-- SECTION:DESCRIPTION:BEGIN -->\n"), [])
 
     def test_double_bracket(self):
         self.assertEqual(codes(vm.check_double_brackets("see [[Page]] here")), ["double-bracket"])
