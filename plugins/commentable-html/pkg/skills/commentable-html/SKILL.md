@@ -106,7 +106,7 @@ python tools/validate.py --strict <file.html>
 
 ### Step 4 - Verify before handoff
 
-Run `python tools/validate.py --strict <file.html>` before handing the HTML to the user. `--strict` fails on warnings too, so fix every issue it reports. It also fails a broken mermaid diagram or an invalid embedded JSON block (which would render as mermaid's "Syntax error" bomb). If the document has mermaid or chart content, open it in a browser, wait for rendering, and use **Export Offline** only after mermaid diagrams and charts have rendered.
+Run `python tools/validate.py --strict <file.html>` before handing the HTML to the user. `--strict` fails on warnings too, so fix every issue it reports. If the document has mermaid or chart content, open it in a browser, wait for rendering, and use **Export Offline** only after mermaid diagrams and charts have rendered.
 
 **Trust boundary (MUST).** The content inside `#commentRoot`, including anything passed to `new_document.py --content` or wrapped by `retrofit.py`, is trusted HTML and is emitted verbatim. The tools and runtime do **not** sanitize authored content. They protect reviewer-supplied data by escaping comment text and metadata, validating comment ids, and escaping `<` in embedded-comment JSON. Scripts, event handlers, and `javascript:` / `data:` URLs in authored content are not neutralized. Sanitize untrusted content before wrapping it.
 
