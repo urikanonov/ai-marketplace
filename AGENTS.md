@@ -185,8 +185,10 @@ topic, and sequence the rest. The rules that let this repo run many PRs at once 
   partial) never collide. Two PRs that touch different source files are fully parallel; merge order
   does not matter for them.
 - A single contended file edited in DIFFERENT regions is still parallel-safe: two PRs that both edit
-  `plugins/commentable-html/dev/assets/commentable-html.js` in unrelated functions 3-way merge fine,
+  `plugins/commentable-html/dev/assets/js/45-composer.js` in unrelated functions 3-way merge fine,
   and the SECOND to merge just rebases. Prefer surgical, region-local edits so this stays true.
+  (Because the runtime and CSS are split into small `dev/assets/js/` and `dev/assets/css/` partials,
+  two PRs on different topics now usually touch different files and do not contend at all.)
 - A WHOLE-FILE reorganization must run ALONE and LAST. Any change that moves or regenerates an entire
   file wholesale - renumbering or mass-reflowing the `dev/assets/js/` or `dev/assets/css/` partials,
   or a big regeneration of a site page - invalidates every concurrent diff to that file (a 3-way

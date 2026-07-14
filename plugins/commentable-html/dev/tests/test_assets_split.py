@@ -32,8 +32,9 @@ class AssemblyIntegrityTests(unittest.TestCase):
         _css, js, _shell, _v = build.load_sources(ASSETS)
         self.assertTrue(js.startswith("(() => {"), "assembled JS must open the arrow IIFE")
         self.assertTrue(js.rstrip().endswith("})();"), "assembled JS must close the arrow IIFE")
-        # Exactly one column-0 arrow-IIFE opener (inner IIFEs are `(function () {` and/or indented).
-        self.assertEqual(len(re.findall(r"(?m)^\(\(\) => \{", js)), 1,
+        # Exactly one column-0 arrow-IIFE opener (whitespace-tolerant; inner IIFEs are
+        # `(function () {` and/or indented).
+        self.assertEqual(len(re.findall(r"(?m)^\(\(\)\s*=>\s*\{", js)), 1,
                          "assembled JS must contain exactly one top-level arrow IIFE wrapper")
 
     def test_preamble_partial_is_first_and_captures_the_snapshot(self):
@@ -43,19 +44,36 @@ class AssemblyIntegrityTests(unittest.TestCase):
         text = build.read(parts[0])
         self.assertIn("SNAPSHOT_HTML", text)
         self.assertIn("currentScript", text)
-        # No earlier partial touches the DOM before the snapshot line - the preamble IS first, and
-        # its snapshot capture precedes any other partial by construction.
-        self.assertTrue(text.index("(() => {") < text.index("SNAPSHOT_HTML"))
+        # Adjacency, not just ordering: NOTHING executable may sit between the IIFE opener and the
+        # SNAPSHOT_HTML capture (the snapshot must be taken before any statement touches the DOM).
+        opener = "(() => {"
+        between = text[text.index(opener) + len(opener):text.index("SNAPSHOT_HTML")]
+        stripped = "\n".join(ln for ln in between.splitlines() if not ln.strip().startswith("//")).strip()
+        # Only the `const ` keyword of the SNAPSHOT_HTML declaration may precede the name.
+        self.assertRegex(stripped, r"^(const|let|var)?$",
+                         "no executable statement may run before SNAPSHOT_HTML is captured, found: %r" % stripped)
 
-    def test_ordered_parts_are_sorted_nonempty_and_named(self):
+    def test_ordered_parts_are_sorted_nonempty_named_and_numeric(self):
         for ext in ("js", "css"):
             parts = build.ordered_parts(ASSETS, ext)
             self.assertTrue(parts, "no %s partials found" % ext)
             names = [os.path.basename(p) for p in parts]
             self.assertEqual(names, sorted(names), "%s partials must be in sorted order" % ext)
+            # Lock the "lexicographic == numeric" invariant regardless of future prefix width.
+            prefixes = [int(n[:2]) for n in names]
+            self.assertEqual(prefixes, sorted(prefixes),
+                             "%s numeric prefixes must be in ascending order" % ext)
             for p in parts:
-                self.assertRegex(os.path.basename(p), r"^\d\d+-[a-z0-9-]+\." + ext + r"$")
+                self.assertRegex(os.path.basename(p), r"^\d{2}-[a-z0-9-]+\." + ext + r"$")
                 self.assertTrue(build.read(p).strip(), "%s is empty" % p)
+
+    def test_every_partial_ends_with_a_single_newline(self):
+        # A partial that does not end in a newline would join its last line to the next partial's
+        # first line on concatenation (a JS statement merge or a CSS rule run-on), silently changing
+        # the assembled bytes. Guard the boundary invariant for every partial in both dirs.
+        for ext in ("js", "css"):
+            for p in build.ordered_parts(ASSETS, ext):
+                self.assertTrue(build.read(p).endswith("\n"), "%s must end with a newline" % p)
 
     def test_ordered_parts_rejects_a_stray_unnumbered_file(self):
         tmp = tempfile.mkdtemp()

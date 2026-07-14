@@ -22,7 +22,7 @@ DEV = _paths.DEV
 ASSETS = _paths.ASSETS
 SPEC = os.path.join(DEV, "SPEC.md")
 
-_PART_RE = {"js": re.compile(r"^\d\d+-[a-z0-9-]+\.js$"), "css": re.compile(r"^\d\d+-[a-z0-9-]+\.css$")}
+_PART_RE = {"js": re.compile(r"^\d{2}-[a-z0-9-]+\.js$"), "css": re.compile(r"^\d{2}-[a-z0-9-]+\.css$")}
 _ROW_RE = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|")
 
 

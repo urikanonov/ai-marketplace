@@ -252,7 +252,7 @@ def source_stamps(version, assets_dir, out_dir):
 # build.py and two PRs adding partials do not collide here). The sorted order is load-bearing:
 # for JS it is the single-IIFE statement order; for CSS it is the cascade. The concatenation is
 # byte-for-byte the old monolith (the split is cut-only), which `--check` proves against dist.
-_PART_RE = {"js": re.compile(r"^\d\d+-[a-z0-9-]+\.js$"), "css": re.compile(r"^\d\d+-[a-z0-9-]+\.css$")}
+_PART_RE = {"js": re.compile(r"^\d{2}-[a-z0-9-]+\.js$"), "css": re.compile(r"^\d{2}-[a-z0-9-]+\.css$")}
 
 
 def ordered_parts(assets_dir, ext):
@@ -283,9 +283,10 @@ def _concat_parts(assets_dir, ext):
 
 def _js_version_part(assets_dir):
     """The single JS partial that declares `const CMH_VERSION = "..."` (build.py stamps it from
-    dev/VERSION). Located by content so it does not matter which partial owns it."""
+    dev/VERSION). Located by the SAME strict declaration regex build.py stamps with, so a mere
+    mention of CMH_VERSION in a comment or string cannot be mistaken for the declaration."""
     for p in ordered_parts(assets_dir, "js"):
-        if re.search(r'CMH_VERSION\s*=\s*"', read(p)):
+        if _CMH_CONST_RE.search(read(p)):
             return p
     raise SystemExit("no assets/js/ partial declares CMH_VERSION")
 

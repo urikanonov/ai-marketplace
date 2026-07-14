@@ -145,7 +145,7 @@ def _asset_hash(root, name):
 # `NN-topic.css` with a zero-padded 2-digit prefix; the sorted order is the load-bearing CSS
 # cascade. The concatenation is byte-for-byte the served bundle (same CSP, same cache-bust).
 CSS_DIR = ("site-src", "css")
-_CSS_PART_RE = re.compile(r"^\d\d+-[a-z0-9-]+\.css$")
+_CSS_PART_RE = re.compile(r"^\d{2}-[a-z0-9-]+\.css$")
 
 
 def ordered_css_parts(root):
@@ -157,6 +157,8 @@ def ordered_css_parts(root):
     if stray:
         raise SystemExit("site-src/css/ holds .css files that are not `NN-topic.css` partials: %s "
                          "(rename to the numbered convention or remove them)" % ", ".join(sorted(stray)))
+    if not names:
+        raise SystemExit("no CSS partials found under %s" % css_dir)
     return sorted(names)
 
 

@@ -1033,6 +1033,14 @@ class PageBannerAndGuardTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bsd.build_styles(root)
 
+    def test_build_styles_errors_on_an_empty_css_directory(self):
+        # A directory that EXISTS but holds no `.css` partials must fail loudly rather than emit a
+        # banner-only stylesheet (mirrors build.ordered_parts on the commentable-html side).
+        root = self._mktemp()
+        os.makedirs(os.path.join(root, "site-src", "css"))
+        with self.assertRaises(SystemExit):
+            bsd.build_styles(root)
+
     def test_build_styles_strips_a_bom_from_a_css_partial(self):
         # A BOM saved into any CSS partial must not land inside the concatenated bundle (it would sit
         # mid-file and can break CSS parsing); build_styles strips it like build_page does for pages.
