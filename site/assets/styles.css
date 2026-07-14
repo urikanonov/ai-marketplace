@@ -271,6 +271,9 @@ main > section:nth-of-type(even) {
   grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 18px;
 }
+/* The privacy section has four cards; lay them out 2x2 so there is no orphan third-row card. */
+#privacy .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 680px) { #privacy .grid { grid-template-columns: 1fr; } }
 .card {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);

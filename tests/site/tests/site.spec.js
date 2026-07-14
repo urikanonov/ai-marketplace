@@ -281,6 +281,13 @@ test("the plugin page has a Private by design section emphasizing local-only dat
   await expect(privacy).toContainText(/Export Offline|zero network|air-gapped/i);
   // The nav offers a link to the privacy section.
   await expect(page.locator('.nav-links a[href="#privacy"]')).toHaveCount(1);
+  // Four privacy cards laid out 2x2 (no orphan third-row card) on a desktop-width viewport.
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(page.locator("#privacy .grid > .card.feature")).toHaveCount(4);
+  const privacyCols = await page
+    .locator("#privacy .grid")
+    .evaluate((el) => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length);
+  expect(privacyCols).toBe(2);
 });
 
 test("each feature card leads with an inline SVG icon beside the title (SITE-PLUGIN-15)", async ({ page }) => {
