@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-07-14
+
+### Changed
+
+- Clarify the README privacy wording: the document and comments are "never uploaded, transmitted, or
+  sent to any external service - not to us, and not to anyone else", dropping the confusing "not to
+  the agent" (you do paste the Copy all bundle to your agent yourself, so listing the agent among the
+  never-sent destinations read as contradictory).
+
 ## [1.40.0] - 2026-07-14
 
 ### Added
