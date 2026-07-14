@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.46.0] - 2026-07-14
+
+### Added
+
+- Search within comments. The comments panel now has a single search field (with a leading
+  magnifier and a clear X button) that filters the comment cards to only those whose text - the
+  note, the quoted content, the section path, and the pin - matches the query case-insensitively.
+  A shown/total count sits beside the field, a no-results note appears when nothing matches, and
+  the filter re-applies after every render so it survives adding, editing, or sorting comments.
+
 ## [1.45.0] - 2026-07-14
 
 ### Changed

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.45.0" />
+<meta name="commentable-html-version" content="1.46.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.45.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.46.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -523,6 +523,29 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-sidebar .list { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
 .cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: 0.85rem; line-height: 1.55; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: 0.78rem; color: var(--cp-text); }
+
+/* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
+   button, and a shown/total count. Filtered-out cards are hidden with an explicit class
+   because .cm-card sets display:flex, which would otherwise win over the UA [hidden] rule. */
+.head-search { display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem clamp(0.75rem, 3vw, 1.1rem) 0.5rem; }
+.head-search[hidden] { display: none; }
+.cm-search-ico { flex: none; color: var(--cp-text-soft); }
+.cm-search-input {
+  flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.8rem; padding: 0.35rem 0.55rem;
+  border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text);
+}
+.cm-search-input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
+.cm-search-clear {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.55rem; height: 1.55rem; padding: 0; border: 1px solid var(--cp-border);
+  border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text-soft); cursor: pointer;
+}
+.cm-search-clear:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-search-clear[hidden] { display: none; }
+.cm-search-count { flex: none; font-size: 0.68rem; color: var(--cp-text-soft); min-width: 2.6rem; text-align: right; font-variant-numeric: tabular-nums; }
+.cm-search-count[hidden] { display: none; }
+.cm-card.cm-hidden { display: none !important; }
+.cm-search-empty[hidden] { display: none; }
 
 .cm-card {
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px;
@@ -1396,6 +1419,12 @@ body.cmh-deck-present #menuComment {
       <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
       <button type="button" id="btnClearAll" class="danger" aria-label="Clear Comments" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear</span></button>
     </div>
+    <div class="head-search" role="search" hidden>
+      <svg class="cm-search-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="text" id="cmSearchInput" class="cm-search-input" placeholder="Search comments" aria-label="Search comments" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" id="cmSearchClear" class="cm-search-clear" aria-label="Clear comment search" title="Clear search" hidden><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+      <span id="cmSearchCount" class="cm-search-count" aria-live="polite" title="Comments shown by the current search out of the total"></span>
+    </div>
   </header>
   <div class="list" id="commentList">
     <div class="cm-empty">
@@ -1756,7 +1785,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.45.0";
+const CMH_VERSION = "1.46.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4829,6 +4858,7 @@ function renderComments() {
         ${deckHint}
         <p>Select any text in the document, then right-click and choose <em>Add Comment</em>. Mermaid nodes, diff lines, images, and widget parts: hover (or keyboard-focus) and click <em>Add Comment</em>. Right-click empty space for a document-wide comment. Comments stay here until the agent processes them. Click <kbd>Copy all</kbd> to send the bundle to the clipboard; the agent then marks them handled in this HTML file, and they are pruned automatically on the next reload.</p>
       </div>`;
+    if (typeof applyCommentSearch === "function") applyCommentSearch();
     return;
   }
   const sortKey = (c) => (c.anchorType === "document")
@@ -4933,6 +4963,7 @@ function renderComments() {
   });
   while (ci < cls.length) parts.push(cls[ci++].html);
   listEl.innerHTML = stateHtml + parts.join("");
+  if (typeof applyCommentSearch === "function") applyCommentSearch();
 }
 function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
@@ -5094,6 +5125,101 @@ root.addEventListener("click", (e) => {
   if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(id); }
 });
 
+/* ---------- Comment search / filter ---------- */
+// A single search field in the sidebar header filters the rendered comment cards to only
+// those whose text matches the query case-insensitively, and shows a "shown / total" count.
+// The query is module-level so it survives re-renders: renderComments() re-applies it at the
+// end of every render, so adding, editing, or sorting comments keeps the active filter.
+let commentSearchQuery = "";
+
+// The substantive, reader-facing text of a comment card: the reviewer's note plus the quoted
+// content, section path, and pin. Action-button labels (jump/edit/delete) and the meta line
+// are excluded so a query never matches chrome.
+function _commentCardHaystack(card) {
+  let text = "";
+  card.querySelectorAll(".note, .quote, .section, .pin").forEach((el) => {
+    text += " " + (el.textContent || "");
+  });
+  return text.toLowerCase();
+}
+
+function _toggleSearchEmptyNote(show) {
+  if (!listEl) return;
+  let note = listEl.querySelector(".cm-search-empty");
+  if (show) {
+    if (!note) {
+      note = document.createElement("div");
+      note.className = "cm-empty cm-search-empty";
+      note.innerHTML = "<p>No comments match your search.</p>";
+      listEl.appendChild(note);
+    }
+    note.hidden = false;
+  } else if (note) {
+    note.hidden = true;
+  }
+}
+
+// Re-apply the active query to the currently-rendered cards. Called by the input handler and
+// at the end of renderComments(). With no comments the whole row is hidden (nothing to search).
+function applyCommentSearch() {
+  const row = document.querySelector(".head-search");
+  const countEl = document.getElementById("cmSearchCount");
+  const clearBtn = document.getElementById("cmSearchClear");
+  const total = Array.isArray(comments) ? comments.length : 0;
+  if (row) row.hidden = total === 0;
+  if (total === 0) {
+    _toggleSearchEmptyNote(false);
+    return;
+  }
+  const q = commentSearchQuery.trim().toLowerCase();
+  if (clearBtn) clearBtn.hidden = q === "";
+  const cards = listEl ? listEl.querySelectorAll(".cm-card[data-cid]") : [];
+  let shown = 0;
+  cards.forEach((card) => {
+    const match = q === "" || _commentCardHaystack(card).indexOf(q) !== -1;
+    card.classList.toggle("cm-hidden", !match);
+    if (match) shown++;
+  });
+  // A widget layout-change card and a checklist card are not comments; while a search is
+  // active they would be noise, so hide them. An empty query restores them.
+  if (listEl) {
+    listEl.querySelectorAll(".cm-card-state, .cm-card-checklist").forEach((c) => {
+      c.classList.toggle("cm-hidden", q !== "");
+    });
+  }
+  if (countEl) {
+    countEl.textContent = shown + " / " + total;
+    countEl.hidden = false;
+  }
+  _toggleSearchEmptyNote(q !== "" && shown === 0);
+}
+
+function setupCommentSearch() {
+  const input = document.getElementById("cmSearchInput");
+  const clearBtn = document.getElementById("cmSearchClear");
+  if (!input) return;
+  input.addEventListener("input", () => {
+    commentSearchQuery = input.value || "";
+    applyCommentSearch();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && input.value) {
+      input.value = "";
+      commentSearchQuery = "";
+      applyCommentSearch();
+      e.stopPropagation();
+    }
+  });
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      commentSearchQuery = "";
+      applyCommentSearch();
+      input.focus();
+    });
+  }
+  applyCommentSearch();
+}
 /* ---------- Hover bubble to open a comment ----------
    A highlighted region can itself be a link (or other clickable element), so a plain
    click there navigates instead of opening the comment. Hovering any highlight shows
@@ -8033,6 +8159,7 @@ setupCodeCopy();
 setupSortableTables();
 setupModeUi();
 setupSidebarResize();
+setupCommentSearch();
 function setupDeck() {
   if (window.__cmhDeck) return;  // idempotent: never install the deck chrome twice
   const stage = root.querySelector(".deck-stage");

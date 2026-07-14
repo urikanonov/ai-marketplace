@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.45.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.46.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -341,12 +341,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.46.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Search within comments. The comments panel now has a single search field (with a leading magnifier and a clear X button) that filters the comment cards to only those whose text - the note, the quoted content, the section path, and the pin - matches the query case-insensitively. A shown/total count sits beside the field, a no-results note appears when nothing matches, and the filter re-applies after every render so it survives adding, editing, or sorting comments.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.45.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The comments panel resizes narrower. The drag/keyboard minimum width dropped to 3/5 of the former floor - 192px on wide screens (was 320px) and 144px on narrow screens under 700px (was 240px) - so the panel can take less horizontal space and leave more room for the document. The panel&#x27;s CSS <code>min-width</code> floor was lowered to match, and the width still clamps to the viewport and persists across reloads.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.44.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -358,8 +367,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>A shipped demo report <code>examples/report-checklist.html</code> (Release readiness review) that showcases both checklist shapes - a nested-list sign-off checklist and a sortable-table component audit linked by <code>data-cmh-parent</code> - with its companion authoring prompt <code>examples/prompt-checklist.md</code>.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.43.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -390,18 +397,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>build.py</code>&#x27;s example pipeline now covers <code>deck-*.html</code> sources alongside <code>report-*.html</code>, so a deck source in <code>dev/examples-src/</code> regenerates its shipped copy under <code>pkg/**/examples/</code> and <code>build.py --check</code> catches a hand-edit or a stale/clobbered deck example. The site demos list syncs the deck under <code>site/commentable-html/demo/</code> next to the report demos.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.37.0] - 2026-07-14</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The diff-line Add Comment hover button (<code>#diffAddBtn</code>) is now vertically centered on the hovered row, so moving the pointer to click no longer jumps to the line above.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Commentable code blocks, including KQL query blocks, now show per-line numbers in a <code>.cmh-code-gutter</code> overlay via CSS-generated counters. The numbers are visible in the UI but excluded from text selection and clipboard output, including each block&#x27;s Copy button.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">46 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">47 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
