@@ -11,7 +11,8 @@ Order is always:
   1) generate_toc (when --toc)
   2) fix_skip (when --fix-skip)
   3) inline_images (when --inline-images)
-  4) validate
+  4) highlight_document (on by default; skip with --no-highlight)
+  5) validate
 """
 import argparse
 import os
@@ -22,6 +23,7 @@ sys.path.insert(0, HERE)
 
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402
+import highlight_document  # noqa: E402
 import inline_images  # noqa: E402
 import validate  # noqa: E402
 
@@ -63,7 +65,17 @@ def _run_inline_images(path, base_dir):
     return changed, inlined, missing
 
 
-def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None):
+def _run_highlight(path):
+    source = _read(path)
+    rewritten, count = highlight_document.highlight_document(source)
+    changed = rewritten != source
+    if changed:
+        _write(path, rewritten)
+    return changed, count
+
+
+def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
+             run_highlight=True):
     steps = []
     if run_toc:
         changed = _run_toc(path)
@@ -79,6 +91,10 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
         if not changed and not inlined and not missing:
             status = "unchanged"
         steps.append(("inline-images", status))
+    if run_highlight:
+        changed, count = _run_highlight(path)
+        status = "highlighted %d block(s)" % count if changed else "unchanged"
+        steps.append(("highlight", status))
     errors, warnings = validate.validate(path)
     return {"steps": steps, "errors": errors, "warnings": warnings}
 
@@ -93,6 +109,9 @@ def main(argv):
                         help='run fix_skip in place to add cm-skip to bare <pre class="mermaid"> blocks')
     parser.add_argument("--inline-images", action="store_true", help="run inline_images in place")
     parser.add_argument("--images-base", default=None, help="base directory used by --inline-images")
+    parser.add_argument("--no-highlight", action="store_true",
+                        help="skip baking syntax highlighting into raw language-labelled code blocks "
+                             "(on by default)")
     parser.add_argument("--strict", action="store_true",
                         help="treat validator warnings as failures (errors already fail)")
     args = parser.parse_args(argv[1:])
@@ -108,6 +127,7 @@ def main(argv):
             run_fix_skip=args.fix_skip,
             run_inline=args.inline_images,
             images_base=args.images_base,
+            run_highlight=not args.no_highlight,
         )
     except (OSError, ValueError) as exc:
         sys.stderr.write("finalize: %s\n" % exc)

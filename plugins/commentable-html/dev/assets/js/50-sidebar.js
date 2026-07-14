@@ -63,6 +63,7 @@ function renderComments() {
         ${deckHint}
         <p>Select any text in the document, then right-click and choose <em>Add Comment</em>. Mermaid nodes, diff lines, images, and widget parts: hover (or keyboard-focus) and click <em>Add Comment</em>. Right-click empty space for a document-wide comment. Comments stay here until the agent processes them. Click <kbd>Copy all</kbd> to send the bundle to the clipboard; the agent then marks them handled in this HTML file, and they are pruned automatically on the next reload.</p>
       </div>`;
+    if (typeof applyCommentSearch === "function") applyCommentSearch();
     return;
   }
   const sortKey = (c) => (c.anchorType === "document")
@@ -167,6 +168,7 @@ function renderComments() {
   });
   while (ci < cls.length) parts.push(cls[ci++].html);
   listEl.innerHTML = stateHtml + parts.join("");
+  if (typeof applyCommentSearch === "function") applyCommentSearch();
 }
 function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));

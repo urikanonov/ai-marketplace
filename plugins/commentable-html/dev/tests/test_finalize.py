@@ -130,6 +130,31 @@ class FinalizeTests(unittest.TestCase):
         self.assertEqual(code1, 1, err1)
         self.assertEqual(code2, 1, err2)
 
+    def test_highlights_code_blocks_by_default(self):
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, '<html><body><pre><code class="language-python">'
+                          "def f():\n    return 1</code></pre></body></html>")
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, out, err = self._run_main(["finalize.py", path])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            result = fh.read()
+        self.assertIn("cmh-code-", result)  # the raw language block was highlighted in place
+        self.assertIn("highlight", out)
+
+    def test_no_highlight_flag_skips_highlighting(self):
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        original = ('<html><body><pre><code class="language-python">'
+                    "def f():\n    return 1</code></pre></body></html>")
+        self._write(path, original)
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(["finalize.py", path, "--no-highlight"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), original)  # unchanged
+
     def test_clean_template_finalizes_to_exit_zero(self):
         directory = self._tmpdir()
         path = os.path.join(directory, "doc.html")

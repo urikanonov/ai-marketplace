@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.48.0" />
+<meta name="commentable-html-version" content="1.49.0" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.48.0","mode":"nonportable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.49.0","mode":"nonportable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - NonPortable Demo</title>
 
@@ -240,6 +240,12 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
       <button type="button" id="btnClearAll" class="danger" aria-label="Clear Comments" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear</span></button>
     </div>
+    <div class="head-search" role="search" hidden>
+      <svg class="cm-search-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input type="text" id="cmSearchInput" class="cm-search-input" placeholder="Search comments" aria-label="Search comments" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button type="button" id="cmSearchClear" class="cm-search-clear" aria-label="Clear comment search" title="Clear search" hidden><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+      <span id="cmSearchCount" class="cm-search-count" aria-live="polite" title="Comments shown by the current search out of the total"></span>
+    </div>
   </header>
   <div class="list" id="commentList">
     <div class="cm-empty">
@@ -337,12 +343,12 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
   <section>
     <h2 id="code-blocks">Code blocks (commentable by default)</h2>
     <p>Any <code>&lt;pre&gt;</code> or <code>&lt;pre&gt;&lt;code&gt;</code> block that is not tagged <code>cm-skip</code> is selectable. Highlights survive line wraps, the sidebar preview keeps monospace formatting, and the <strong>Copy all</strong> bundle emits a fenced block so newlines and indentation paste back correctly. The language tag from <code>class="language-XXX"</code> on the inner <code>&lt;code&gt;</code> is propagated.</p>
-    <pre><code class="language-python">def reduce(items, fn, acc=None):
-    for x in items:
-        acc = fn(acc, x) if acc is not None else x
-    return acc
+    <pre><code class="language-python"><span class="cmh-code-kw">def</span> <span class="cmh-code-fn">reduce</span><span class="cmh-code-op">(</span>items<span class="cmh-code-op">,</span> fn<span class="cmh-code-op">,</span> acc<span class="cmh-code-op">=</span><span class="cmh-code-kw">None</span><span class="cmh-code-op">):</span>
+    <span class="cmh-code-kw">for</span> x <span class="cmh-code-kw">in</span> items<span class="cmh-code-op">:</span>
+        acc <span class="cmh-code-op">=</span> <span class="cmh-code-fn">fn</span><span class="cmh-code-op">(</span>acc<span class="cmh-code-op">,</span> x<span class="cmh-code-op">)</span> <span class="cmh-code-kw">if</span> acc <span class="cmh-code-kw">is</span> <span class="cmh-code-kw">not</span> <span class="cmh-code-kw">None</span> <span class="cmh-code-kw">else</span> x
+    <span class="cmh-code-kw">return</span> acc
 
-print(reduce([1, 2, 3, 4], lambda a, b: a + b))</code></pre>
+<span class="cmh-code-fn">print</span><span class="cmh-code-op">(</span><span class="cmh-code-fn">reduce</span><span class="cmh-code-op">([</span><span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">3</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">4</span><span class="cmh-code-op">],</span> <span class="cmh-code-kw">lambda</span> a<span class="cmh-code-op">,</span> b<span class="cmh-code-op">:</span> a <span class="cmh-code-op">+</span> b<span class="cmh-code-op">))</span></code></pre>
   </section>
 
   <section>

@@ -26,7 +26,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |
 | `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD | Mermaid diagram commenting layer. |
 | `25-diff.js` | CMH-DIFF | Unified-diff / code-review rendering and anchoring. |
-| `26-highlight.js` | CMH-DIFF, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`). |
+| `26-highlight.js` | CMH-DIFF, CMH-HL, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`) and the runtime fallback that highlights un-highlighted prose code blocks (`highlightCodeBlocks`). |
 | `30-images.js` | CMH-IMG, CMH-CHART | Image and chart-canvas comment layer. |
 | `35-widgets.js` | CMH-WIDGET | Commentable widgets / SVG nodes; `widgetStateChanges` infra. |
 | `36-checklist.js` | CMH-CHECK | Layered checklist: four-state items, aggregation, minimal persistence, per-list state card, export bake. |
@@ -34,6 +34,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `41-selection.js` | CMH-SEL, CMH-CORE | Selection handling and the add-comment popup. |
 | `45-composer.js` | CMH-A11Y, CMH-CORE | Per-instance comment composer (parallel-safe). |
 | `50-sidebar.js` | CMH-SIDE | Sidebar rendering. |
+| `51-comment-search.js` | CMH-SEARCH | Comment search / filter row: case-insensitive filter of the rendered cards, shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |

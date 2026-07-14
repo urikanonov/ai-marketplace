@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.48.0] - 2026-07-14
+## [1.49.0] - 2026-07-14
 
 ### Added
 
@@ -41,6 +41,54 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `tools/validate.py` now fails CLOSED for content it would have inspected - a mermaid block or a
   non-layer JSON data block makes validation error instead of silently passing - while a document
   with no such content still validates and `--charts-only` is unaffected.
+
+## [1.48.0] - 2026-07-14
+
+### Added
+
+- Prevent code blocks from shipping without syntax highlighting, in three layers:
+  - Runtime fallback: the runtime now highlights any commentable `<pre><code class="language-XXX">`
+    block that shipped without highlight spans, on load, so a labelled block never renders as plain
+    monochrome text even when highlighting was never baked. It is idempotent, only fires for a
+    language the tokenizer knows, and keeps line numbers and comment anchoring consistent.
+  - `tools/highlight_document.py`: bakes highlighting into every raw, language-labelled code block
+    of a file in one pass (with a `--check` mode). `tools/finalize.py` runs it by default (opt out
+    with `--no-highlight`), so the standard finalization bakes highlighting.
+
+## [1.47.0] - 2026-07-14
+
+### Added
+
+- The validator now catches a code block that was labelled with a language but never highlighted.
+  `tools/validate.py` warns when a `<pre><code class="language-XXX">` block declares a language the
+  author-time highlighter supports (resolving aliases like `cs` to `csharp`) but carries no
+  `cmh-code-*` spans, so it renders as plain monochrome text. Inline code, non-highlightable labels
+  (`language-text`, `language-kusto`), and already-highlighted blocks are not flagged.
+
+### Fixed
+
+- The showcase demo's Python code block is now syntax-highlighted (it previously shipped as a plain
+  `language-python` block, which the new validator check flags).
+
+## [1.46.0] - 2026-07-14
+
+### Added
+
+- Search within comments. The comments panel now has a single search field (with a leading
+  magnifier and a clear X button) that filters the comment cards to only those whose text - the
+  note, the quoted content, the section path, and the pin - matches the query case-insensitively.
+  A shown/total count sits beside the field, a no-results note appears when nothing matches, and
+  the filter re-applies after every render so it survives adding, editing, or sorting comments.
+
+## [1.45.0] - 2026-07-14
+
+### Changed
+
+- The comments panel resizes narrower. The drag/keyboard minimum width dropped to 3/5 of the former
+  floor - 192px on wide screens (was 320px) and 144px on narrow screens under 700px (was 240px) - so
+  the panel can take less horizontal space and leave more room for the document. The panel's CSS
+  `min-width` floor was lowered to match, and the width still clamps to the viewport and persists
+  across reloads.
 
 ## [1.44.0] - 2026-07-14
 

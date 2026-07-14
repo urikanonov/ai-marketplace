@@ -56,7 +56,7 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
 
 .cm-sidebar {
   position: fixed; top: 0; right: 0; bottom: 0;
-  width: var(--cm-sidebar-w, 400px); min-width: min(16rem, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+  width: var(--cm-sidebar-w, 400px); min-width: min(9rem, calc(100vw - 24px)); max-width: calc(100vw - 24px);
   background: var(--cp-bg-elevated); border-left: 1px solid var(--cp-border);
   box-shadow: var(--cp-shadow);
   display: flex; flex-direction: column;
@@ -388,6 +388,29 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-sidebar .list { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
 .cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: 0.85rem; line-height: 1.55; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: 0.78rem; color: var(--cp-text); }
+
+/* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
+   button, and a shown/total count. Filtered-out cards are hidden with an explicit class
+   because .cm-card sets display:flex, which would otherwise win over the UA [hidden] rule. */
+.head-search { display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem clamp(0.75rem, 3vw, 1.1rem) 0.5rem; }
+.head-search[hidden] { display: none; }
+.cm-search-ico { flex: none; color: var(--cp-text-soft); }
+.cm-search-input {
+  flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.8rem; padding: 0.35rem 0.55rem;
+  border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text);
+}
+.cm-search-input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
+.cm-search-clear {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.55rem; height: 1.55rem; padding: 0; border: 1px solid var(--cp-border);
+  border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text-soft); cursor: pointer;
+}
+.cm-search-clear:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-search-clear[hidden] { display: none; }
+.cm-search-count { flex: none; font-size: 0.68rem; color: var(--cp-text-soft); min-width: 2.6rem; text-align: right; font-variant-numeric: tabular-nums; }
+.cm-search-count[hidden] { display: none; }
+.cm-card.cm-hidden { display: none !important; }
+.cm-search-empty[hidden] { display: none; }
 
 .cm-card {
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px;

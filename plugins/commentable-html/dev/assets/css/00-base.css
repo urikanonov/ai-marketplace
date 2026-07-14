@@ -56,7 +56,7 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
 
 .cm-sidebar {
   position: fixed; top: 0; right: 0; bottom: 0;
-  width: var(--cm-sidebar-w, 400px); min-width: min(16rem, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+  width: var(--cm-sidebar-w, 400px); min-width: min(9rem, calc(100vw - 24px)); max-width: calc(100vw - 24px);
   background: var(--cp-bg-elevated); border-left: 1px solid var(--cp-border);
   box-shadow: var(--cp-shadow);
   display: flex; flex-direction: column;
