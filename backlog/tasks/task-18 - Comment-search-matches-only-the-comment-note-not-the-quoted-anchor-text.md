@@ -1,11 +1,11 @@
 ---
 id: TASK-18
 title: 'Comment search matches only the comment note, not the quoted anchor text'
-status: In Progress
+status: Done
 assignee:
   - '@urikanonov'
 created_date: '2026-07-14 18:22'
-updated_date: '2026-07-14 18:26'
+updated_date: '2026-07-14 18:46'
 labels: []
 dependencies: []
 ordinal: 5000
