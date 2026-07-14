@@ -7,6 +7,7 @@
 - [Manual paste fallback](#manual-paste-fallback)
   - [Avoiding CSS collisions when retrofitting](#avoiding-css-collisions-when-retrofitting)
 - [Upgrade an existing instance to a new dist/PORTABLE.html](#upgrade-an-existing-instance-to-a-new-distportablehtml)
+  - [Upgrade safety and check mode](#upgrade-safety-and-check-mode)
 - [Introspection globals (for tests and tooling)](#introspection-globals-for-tests-and-tooling)
 
 ## Add the layer to an existing HTML
@@ -101,6 +102,25 @@ When a newer version of the skill ships, upgrading a deployed HTML is mechanical
 4. **Leave the `#commentRoot` element alone.** Its `data-*` attributes carry the document's per-instance config, so `data-comment-key` continues to point at the same `localStorage` bucket and comments survive the upgrade.
 
 Net result: an upgrade is "replace three regions (CSS, COMMENT UI, JS), leave three things alone (HANDLED IDS, EMBEDDED COMMENTS, `#commentRoot`), done". No merge, no per-doc patching.
+
+### Upgrade safety and check mode
+
+Use the deterministic helper instead of hand-swapping regions whenever Python is available:
+
+```bash
+python tools/authoring/upgrade.py <file.html>
+python tools/authoring/upgrade.py <file.html> --check
+```
+
+`--check` does not write. It prints that the file is up to date and exits 0 when no layer region would
+change; it prints the stale region list and exits 1 when CSS, COMMENT UI, JS, or the default kind-meta
+migration would change.
+
+The JS region has one load-bearing footgun: the real `END: commentable-html - JS` marker is the LAST real
+region marker in the file. `dist/PORTABLE.html` contains earlier marker-like strings inside the JS body, so
+a naive first-match replacement can truncate the runtime. `upgrade.py` uses a line-anchored marker parser and
+validates before replacing the target; if you must update by hand, locate the actual region comments and treat
+the final JS END marker as the boundary.
 
 
 
