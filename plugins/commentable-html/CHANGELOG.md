@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [1.55.0] - 2026-07-14
+
+### Added
+
+- Added the Commentable HTML brand icon to the toolbar overflow menu header as a decorative
+  top-right mark that does not change the menu's keyboard order.
+- Added a Help and About changelog link to the commentable-html plugin changelog.
+
+### Changed
+
+- Copy all now exposes a disabled, tooltip-backed state when there is no copyable review state, and
+  re-enables automatically once comments are available.
+- Clear now restores checklist state edits and draggable board moves to their authored baselines in
+  addition to deleting comments.
+- The Help and About author link now has a visible underline and accent color so it reads as a link.
+
 ## [1.54.0] - 2026-07-14
 
 ### Fixed

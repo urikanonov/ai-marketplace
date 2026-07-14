@@ -183,3 +183,17 @@ test("a state card carries an in:<board> title, jump, and a first-change timesta
   const metaText = (await card.locator(".meta span").first().innerText()).trim();
   expect(metaText).toMatch(/\d{4}/);
 });
+
+test("Clear restores draggable board moves to the authored baseline (CMH-BOARD-04)", async ({ page }) => {
+  await openContent(page, BOARD, "cmh-board-clear");
+  await move(page, "a", "triage", "later");
+  await expect(page.locator('#later [data-cm-part="a"]')).toHaveCount(1);
+  await expect(page.locator(".cm-card-state")).toHaveCount(1);
+
+  await page.click("#btnClearAll");
+  await page.locator(".cm-modal .danger").click();
+  await waitForWidgetMutationFrame(page);
+  await expect(page.locator('#now [data-cm-part="a"]')).toHaveCount(1);
+  await expect(page.locator(".cm-card-state")).toHaveCount(0);
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+});

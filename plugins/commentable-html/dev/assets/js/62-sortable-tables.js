@@ -269,11 +269,13 @@ function showConfirm(opts) {
 }
 let _clearAllBusy = false;
 document.getElementById("btnClearAll").addEventListener("click", async () => {
-  if (_clearAllBusy || !comments.length) return;  // guard re-entrant double-clicks
+  const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
+  const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
+  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length)) return;  // guard re-entrant double-clicks
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
-      message: `Delete all ${comments.length} comment(s)? This cannot be undone.`,
+      message: `Delete all ${comments.length} comment(s) and reset tracked widget changes? This cannot be undone.`,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
@@ -283,9 +285,10 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
     comments.forEach(c => removeHighlight(c));
     comments = [];
     saveComments();
+    if (typeof resetAllChecklists === "function") resetAllChecklists();
+    if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
     renderComments();
   } finally {
     _clearAllBusy = false;
   }
 });
-

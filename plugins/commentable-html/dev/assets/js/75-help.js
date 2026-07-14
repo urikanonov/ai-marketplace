@@ -144,6 +144,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/" target="_blank" rel="noopener noreferrer">Website and live demo</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace" target="_blank" rel="noopener noreferrer">Source on GitHub</a></li>' +
+          '<li><a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml" target="_blank" rel="noopener noreferrer">Report an issue</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml" target="_blank" rel="noopener noreferrer">Request a feature</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute</a></li>' +
@@ -218,4 +219,3 @@ function showHelp(restoreEl) {
     showHelp(restore);
   });
 });
-

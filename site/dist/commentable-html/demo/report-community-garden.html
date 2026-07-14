@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.54.0" />
+<meta name="commentable-html-version" content="1.55.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.54.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.55.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>Planning a Community Garden</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -356,6 +356,19 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }
 .cm-brand-link:hover { text-decoration: underline; }
 .cm-brand-link:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.cm-help-about .cm-brand-link { color: var(--cp-accent); text-decoration: underline; text-underline-offset: 2px; }
+.cm-help-about .cm-brand-link:hover { color: var(--cp-accent-hover); }
+.cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; }
+.cm-toolbar-menu-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--cp-accent); }
+.cm-toolbar-menu-brand .cm-brand-icon { width: 20px; height: 20px; margin: 0; }
+.cm-toolbar #btnCopyAllTop[aria-disabled="true"],
+.cm-sidebar .head-top #btnCopyAll[aria-disabled="true"] {
+  opacity: 0.58; cursor: not-allowed; box-shadow: none;
+}
+.cm-toolbar #btnCopyAllTop[aria-disabled="true"]:hover,
+.cm-sidebar .head-top #btnCopyAll[aria-disabled="true"]:hover {
+  background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-text-soft);
+}
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
 .cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .cm-help-btn {
@@ -456,7 +469,6 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 .cm-side-toc.is-collapsed .cm-side-toc-list,
 .cm-side-toc.is-collapsed .cm-side-toc-scroll,
 .cm-side-toc.is-collapsed .cm-side-toc-top { display: none; }
-
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
    active, and is correctly absent from a Plain HTML export where the layer is removed.
    Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side
@@ -1870,7 +1882,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.54.0";
+const CMH_VERSION = "1.55.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3838,6 +3850,15 @@ function resetWidgetMoves(widgetEl) {
   });
   _onWidgetMutation();
 }
+function resetAllWidgetMoves() {
+  if (!_widgetDomBaseline || !widgetStateChanges().length) return false;
+  _widgetDomBaseline.forEach((rec) => {
+    if (!rec.part || !rec.parent) return;
+    rec.parent.appendChild(rec.part);
+  });
+  _onWidgetMutation();
+  return true;
+}
 // Show a "Reset moves" button on each draggable widget that currently differs from its load
 // baseline, and remove it once the widget is clean again. The button is cm-skip and is not a
 // data-cm-part, so it never enters the layout signature and cannot loop the MutationObserver.
@@ -3957,7 +3978,6 @@ function setupWidgetLayer() {
   }
   _syncWidgetResetButtons();
 }
-
 /* ---------- Layered checklist (four-state items, aggregation, minimal persistence) ----------
    A container marked data-cmh-checklist is a checklist. Any descendant carrying data-cmh-state
    (or data-cmh-item) is an item; an item with child items is a branch (its checkbox aggregates
@@ -4192,6 +4212,12 @@ function resetChecklist(cid) {
   delete _clOverrides[cid];
   _clAfterChange();
 }
+function resetAllChecklists() {
+  if (!checklistChanges().length) return false;
+  _clOverrides = {};
+  _clAfterChange();
+  return true;
+}
 function jumpToChecklist(cid) {
   const cl = checklists.find((c) => c.id === cid);
   if (!cl || !cl.container) return;
@@ -4269,7 +4295,6 @@ function setupChecklistLayer() {
   if (checklists.length) _clRefresh();
   _clHadChanges = checklistChanges().length > 0;
 }
-
 /* ---------- Document-wide comments ---------- */
 // A comment not tied to any element (raised by right-clicking empty space). It has no
 // highlight and no offsets; it just carries a note about the whole document.
@@ -5600,6 +5625,26 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   const btn = document.getElementById("btnToolbarMenu");
   const menu = document.getElementById("toolbarMenu");
   if (!btn || !menu) return;
+  const badge = document.getElementById("cmhModeBadge");
+  if (badge && !menu.querySelector(".cm-toolbar-menu-head")) {
+    const head = document.createElement("div");
+    head.className = "cm-toolbar-menu-head";
+    badge.parentNode.insertBefore(head, badge);
+    head.appendChild(badge);
+    const brand = document.createElement("span");
+    brand.className = "cm-toolbar-menu-brand";
+    brand.setAttribute("aria-hidden", "true");
+    brand.innerHTML = CMH_ICON_SVG;
+    const svg = brand.querySelector("svg");
+    if (svg) {
+      svg.setAttribute("aria-hidden", "true");
+      svg.setAttribute("focusable", "false");
+      svg.removeAttribute("role");
+      svg.removeAttribute("aria-label");
+      svg.removeAttribute("data-cmh-tip");
+    }
+    head.appendChild(brand);
+  }
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
@@ -5612,7 +5657,6 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   // Escape is handled centrally (toolbar menu has priority) in the global keydown
   // listener above, so it is not duplicated here.
 })();
-
 /* ---------- Copy all + Clear all ---------- */
 function buildCopyText() {
   const liveComments = withoutHandled(comments);
@@ -5801,11 +5845,41 @@ function buildCopyText() {
   lines.push("HANDLED_IDS_JSON: " + JSON.stringify(sorted.map(c => c.id)));
   return lines.join("\n").trim() + "\n";
 }
-async function copyAll() {
+const CMH_COPY_ALL_TITLES = {
+  btnCopyAll: "Copy all comments to the clipboard as a Markdown bundle for pasting back to the agent",
+  btnCopyAllTop: "Copy all comments to the clipboard for pasting back to the agent",
+};
+function _copyAllState() {
   const live = withoutHandled(comments);
   const changes = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clCh = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  if (!live.length && !changes.length && !clCh.length) { showToast("No comments to copy."); return; }
+  return { live, changes, clCh, hasContent: !!(live.length || changes.length || clCh.length) };
+}
+function _setCopyAllTip(btn, text) {
+  if (btn.hasAttribute("title") || !btn.hasAttribute("data-cmh-tip")) btn.setAttribute("title", text);
+  else btn.setAttribute("data-cmh-tip", text);
+}
+function updateCopyAllState() {
+  const disabled = !_copyAllState().hasContent;
+  Object.keys(CMH_COPY_ALL_TITLES).forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+    btn.classList.toggle("cm-copy-disabled", disabled);
+    _setCopyAllTip(btn, disabled ? "No comments to copy" : CMH_COPY_ALL_TITLES[id]);
+  });
+}
+const _cmRenderCommentsForCopyAll = renderComments;
+renderComments = function () {
+  const result = _cmRenderCommentsForCopyAll.apply(this, arguments);
+  updateCopyAllState();
+  return result;
+};
+async function copyAll() {
+  const state = _copyAllState();
+  if (!state.hasContent) { updateCopyAllState(); showToast("No comments to copy."); return; }
+  const live = state.live;
+  const changes = state.changes;
   const n = live.length;
   const text = buildCopyText();
   let copied = false;
@@ -5831,7 +5905,6 @@ async function copyAll() {
 }
 document.getElementById("btnCopyAll").addEventListener("click", copyAll);
 document.getElementById("btnCopyAllTop").addEventListener("click", copyAll);
-
 /* ---------- Export to Markdown (deterministic content -> Markdown) ----------
    Walks #commentRoot structure (never rendered layout) and maps each block kind to one
    fixed Markdown construct, so the output is byte-stable and idempotent. cm-skip subtrees
@@ -6543,11 +6616,13 @@ function showConfirm(opts) {
 }
 let _clearAllBusy = false;
 document.getElementById("btnClearAll").addEventListener("click", async () => {
-  if (_clearAllBusy || !comments.length) return;  // guard re-entrant double-clicks
+  const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
+  const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
+  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length)) return;  // guard re-entrant double-clicks
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
-      message: `Delete all ${comments.length} comment(s)? This cannot be undone.`,
+      message: `Delete all ${comments.length} comment(s) and reset tracked widget changes? This cannot be undone.`,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
@@ -6557,12 +6632,13 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
     comments.forEach(c => removeHighlight(c));
     comments = [];
     saveComments();
+    if (typeof resetAllChecklists === "function") resetAllChecklists();
+    if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
     renderComments();
   } finally {
     _clearAllBusy = false;
   }
 });
-
 /* ---------- Export as Portable (embed comments + download a copy) ---------- */
 // Strategy: always download a fresh HTML copy with the current comments
 // embedded in the <script id="embeddedComments"> block. The user can keep
@@ -7638,6 +7714,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/" target="_blank" rel="noopener noreferrer">Website and live demo</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace" target="_blank" rel="noopener noreferrer">Source on GitHub</a></li>' +
+          '<li><a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml" target="_blank" rel="noopener noreferrer">Report an issue</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml" target="_blank" rel="noopener noreferrer">Request a feature</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contribute</a></li>' +
@@ -7712,7 +7789,6 @@ function showHelp(restoreEl) {
     showHelp(restore);
   });
 });
-
 /* ---------- Sort comments by time ---------- */
 // The two arrow buttons toggle time-ascending / time-descending order; clicking the
 // active one again returns to document (anchor position) order. The choice persists.
