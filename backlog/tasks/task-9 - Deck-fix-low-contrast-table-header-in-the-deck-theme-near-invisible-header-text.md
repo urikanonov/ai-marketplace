@@ -3,11 +3,11 @@ id: TASK-9
 title: >-
   Deck: fix low-contrast table header in the deck theme (near-invisible header
   text)
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:32'
+updated_date: '2026-07-14 18:38'
 labels: []
 dependencies: []
 ordinal: 8000
@@ -41,3 +41,9 @@ On a dark deck slide, a tables header row renders with a near-white background a
 <!-- SECTION:NOTES:BEGIN -->
 Added red-first CMH-DECK-10 Playwright coverage and deck table-header CSS for high-contrast dark-slide headers.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed dark-slide table-header contrast in the deck theme CSS and verified CMH-DECK-10 with the generated roadmap deck. PR: https://github.com/urikanonov/ai-marketplace/pull/131
+<!-- SECTION:FINAL_SUMMARY:END -->

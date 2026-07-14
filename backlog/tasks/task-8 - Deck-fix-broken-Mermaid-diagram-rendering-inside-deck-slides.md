@@ -1,11 +1,11 @@
 ---
 id: TASK-8
 title: 'Deck: fix broken Mermaid diagram rendering inside deck slides'
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:32'
+updated_date: '2026-07-14 18:38'
 labels: []
 dependencies: []
 ordinal: 7000
@@ -40,3 +40,9 @@ In the sample deck, the diagram on the Proposed architecture shift slide renders
 <!-- SECTION:NOTES:BEGIN -->
 Added red-first CMH-DECK-09 Playwright coverage and deck Mermaid CSS overrides for high-contrast nodes, labels, and connectors on dark slides.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed dark-slide Mermaid rendering by adding deck theme overrides for node fills, labels, clusters, edges, and edge labels, then verified CMH-DECK-09 and the affected deck specs. PR: https://github.com/urikanonov/ai-marketplace/pull/131
+<!-- SECTION:FINAL_SUMMARY:END -->

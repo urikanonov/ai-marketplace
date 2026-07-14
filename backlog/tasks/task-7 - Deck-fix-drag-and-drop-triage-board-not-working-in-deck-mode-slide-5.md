@@ -1,11 +1,11 @@
 ---
 id: TASK-7
 title: 'Deck: fix drag-and-drop triage board not working in deck mode (slide 5)'
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:32'
+updated_date: '2026-07-14 18:38'
 labels: []
 dependencies: []
 ordinal: 6000
@@ -39,3 +39,9 @@ In the current sample deck, the drag-and-drop triage board on slide 5 does not l
 <!-- SECTION:NOTES:BEGIN -->
 Added red-first CMH-DECK-08 Playwright coverage, opted the roadmap deck risk board into widget drag-and-drop, rebuilt generated artifacts, and verified the regression is green.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed the roadmap deck risk board by adding the missing widget drag opt-in to the source deck, regenerated the shipped deck and site demos, and verified CMH-DECK-08 plus widget/deck regression specs. PR: https://github.com/urikanonov/ai-marketplace/pull/131
+<!-- SECTION:FINAL_SUMMARY:END -->
