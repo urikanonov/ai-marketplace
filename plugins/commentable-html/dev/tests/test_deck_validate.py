@@ -181,6 +181,16 @@ class DeckValidateTests(unittest.TestCase):
         errs = _errors(bad)
         self.assertTrue(any("low text contrast" in e and ".bad-table th" in e for e in errs), errs)
 
+    def test_cmh_deck_12_background_shorthand_overrides_background_color(self):
+        bad = _inject(
+            self.html,
+            '<style>.shorthand-bg { color:#fff; background-color:#000; background:#eee; }</style>'
+            '<p class="shorthand-bg">Low contrast</p>')
+        errs = _errors(bad)
+        self.assertTrue(any(
+            "low text contrast" in e and ".shorthand-bg" in e and "background #eee" in e
+            for e in errs), errs)
+
     def test_cmh_deck_12_low_contrast_theme_variables_fail(self):
         bad = _inject(self.html, "<style>:root{--slide-fg:#777;--slide-bg:#777;}</style>")
         errs = _errors(bad)

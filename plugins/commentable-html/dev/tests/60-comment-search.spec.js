@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { openKitchenSink, addTextComment } from "./helpers.js";
+import fs from "fs";
+import { openKitchenSink, addTextComment, stageContent, fileUrl, ready } from "./helpers.js";
 
 async function openSidebarPanel(page) {
   if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
@@ -91,5 +92,39 @@ test.describe("comment search / filter", () => {
     await input.fill("zzznoteonly");
     await expect(visible).toHaveCount(1);
     await expect(page.locator("#cmSearchCount")).toHaveText("1 / 1");
+  });
+
+  test("search ignores section paths and pin labels (CMH-SEARCH-04)", async ({ page }) => {
+    const staged = stageContent(`
+<section>
+  <h2>cmhsectionprobe heading</h2>
+  <p>Anchor text for the section-path search guard.</p>
+  <pre><code class="language-cmhpinprobe">const answer = 42;</code></pre>
+</section>`, { key: "cmh-search-excluded-fields" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await addTextComment(page, "#commentRoot section p", "search-note-section-only", 0);
+      await addTextComment(page, "#commentRoot pre code", "search-note-pin-only", 0);
+      await openSidebarPanel(page);
+
+      const input = page.locator("#cmSearchInput");
+      const visible = page.locator("#commentList .cm-card[data-cid]:visible");
+      await expect(visible).toHaveCount(2);
+
+      await input.fill("cmhsectionprobe");
+      await expect(visible).toHaveCount(0);
+      await expect(page.locator("#cmSearchCount")).toHaveText("0 / 2");
+
+      await input.fill("cmhpinprobe");
+      await expect(visible).toHaveCount(0);
+      await expect(page.locator("#cmSearchCount")).toHaveText("0 / 2");
+
+      await input.fill("search-note-pin-only");
+      await expect(visible).toHaveCount(1);
+      await expect(page.locator("#cmSearchCount")).toHaveText("1 / 2");
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
   });
 });

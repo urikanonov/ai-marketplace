@@ -77,6 +77,15 @@ class ContrastUtilityTests(unittest.TestCase):
         """
         self.assertEqual(contrast.find_low_contrast_pairs(html), [])
 
+    def test_cmh_deck_12_color_in_quoted_string_content_is_not_a_color(self):
+        html = """
+        <style>
+        .icon::before { content: "#fff"; background: transparent; }
+        .quoted-bg { color:#fff; background: "#fff"; }
+        </style>
+        """
+        self.assertEqual(contrast.find_low_contrast_pairs(html), [])
+
     def test_cmh_deck_12_background_url_fallback_color_is_detected(self):
         html = '<style>.fallback { color:#fff; background:url("assets/banner.png") #eee; }</style>'
         issues = contrast.find_low_contrast_pairs(html)
