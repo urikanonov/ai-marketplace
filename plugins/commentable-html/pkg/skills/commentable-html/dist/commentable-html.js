@@ -36,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.38.0";
+const CMH_VERSION = "1.39.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5259,8 +5259,8 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Copy all</strong> copies every comment as a Markdown bundle to paste back to the agent.</li>' +
           '<li>The <strong>count bubble</strong> shows how many open comments there are.</li>' +
-          '<li><strong>Hide</strong> collapses the panel; a small floating toolbar stays to bring it back. The overflow <kbd>...</kbd> menu holds the export actions and Help.</li>' +
-          '<li>The <strong>Help</strong> and <strong>Hide</strong> controls sit together at the top of the panel; <strong>Help</strong> opens this dialog.</li>' +
+          '<li><strong>Hide</strong> collapses the panel; a small floating toolbar stays to bring it back. The overflow <kbd>...</kbd> menu holds the export actions and <strong>Help &amp; About</strong>.</li>' +
+          '<li>The <strong>Help &amp; About</strong> and <strong>Hide</strong> controls sit together at the top of the panel; <strong>Help &amp; About</strong> opens this dialog.</li>' +
         '</ul>') +
       T('Portable or Not portable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
@@ -5282,6 +5282,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li><strong>Copy all</strong> emits an ordered Markdown bundle with each comment\'s location, quoted text, and note, ending in a machine-readable <code>HANDLED_IDS_JSON</code> line.</li>' +
           '<li>Drag-and-drop changes to a commentable widget are captured as a <em>Widget layout changes</em> section in the bundle, so the agent can reformat the source to match.</li>' +
+          '<li>On a triage board, click <strong>Reset moves</strong> on the board to undo every drag move at once, or click <strong>Reset changes</strong> on the board-moves comment card to revert to the layout as of that comment.</li>' +
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
       T('Navigation',
@@ -5318,7 +5319,7 @@ function showHelp(restoreEl) {
         '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
         '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> after those features render to snapshot them into a zero-network file.</p>') +
       '<div class="cm-help-about"><h3>About</h3>' +
-        '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by Uri Kanonov.</p>' +
+        '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by <a class="cm-brand-link" href="https://github.com/urikanonov" target="_blank" rel="noopener noreferrer">Uri Kanonov</a>.</p>' +
         '<ul>' +
           '<li><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/" target="_blank" rel="noopener noreferrer">Website and live demo</a></li>' +
           '<li><a href="https://github.com/urikanonov/ai-marketplace" target="_blank" rel="noopener noreferrer">Source on GitHub</a></li>' +

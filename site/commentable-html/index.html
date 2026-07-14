@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.38.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.39.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -325,6 +325,14 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.39.0] - 2026-07-14</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The Help &amp; About panel now links the author&#x27;s name, &quot;Uri Kanonov&quot;, to <code>https://github.com/urikanonov</code> (opens in a new tab), reusing the existing brand-link style.</li>
+              <li>Help panel text now names the triage board&#x27;s <code>Reset moves</code> button and the board-moves comment card&#x27;s <code>Reset changes</code> button, and refers to the Help toggle by its exact on-screen label, <code>Help &amp; About</code>, instead of the shorthand <code>Help</code>.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.38.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -332,6 +340,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>build.py</code>&#x27;s example pipeline now covers <code>deck-*.html</code> sources alongside <code>report-*.html</code>, so a deck source in <code>dev/examples-src/</code> regenerates its shipped copy under <code>pkg/**/examples/</code> and <code>build.py --check</code> catches a hand-edit or a stale/clobbered deck example. The site demos list syncs the deck under <code>site/commentable-html/demo/</code> next to the report demos.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.37.0] - 2026-07-14</h3></div>
             <div class="group-label">Fixed</div>
@@ -343,8 +353,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Commentable code blocks, including KQL query blocks, now show per-line numbers in a <code>.cmh-code-gutter</code> overlay via CSS-generated counters. The numbers are visible in the UI but excluded from text selection and clipboard output, including each block&#x27;s Copy button.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.36.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -393,22 +401,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The deck authoring guide runs the deck validator with <code>--strict</code>, and the tutorial&#x27;s Show/Hide wording matches the actual toolbar behavior.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.32.0] - 2026-07-13</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Commentable decks: a built-in deck capability powered by a curated, pristine subset of the frontend-slides skill (MIT, (c) 2025 Zara Zhang) vendored under <code>vendor/frontend-slides/</code>. The Vercel deploy script and the PDF-export script are excluded, and a required CI gate (<code>dev/tools/check_vendor.py</code> plus a SHA-256 <code>MANIFEST.sha256</code>) fails on any unknown, changed, removed, or reintroduced file. See <code>vendor/frontend-slides/UPSTREAM.md</code> and <code>dev/frontend-slides-upstream-sync.md</code>.</li>
-              <li>Author-time deck tools under <code>deck/</code>: <code>deck_scaffold.py</code> builds a create-only, commentable-native fixed-stage deck with legible presentation defaults (light slide text and presentation-scale typography on the dark stage, overridable by a design pass) - each slide carries a stable <code>data-slide-id</code>, the inline editor and localStorage autosave are stripped, and fonts are self-hosted - and fails closed on the deck contract before writing; <code>pptx_to_fragment.py</code> HTML-escapes extracted slide text, schema-validates the input, vets every image path as local-relative, and fails closed without <code>python-pptx</code> (speaker notes are not supported); <code>deck_validate.py</code> enforces the deck contract fail-closed using an HTML parser (robust to solidus, entity-encoded, unquoted, and SVG bypasses), rejecting remote fonts/media/CSS, active content, and <code>javascript:</code>/<code>../</code> URLs while allowing external hyperlinks. The runtime interface both sides build against is documented in <code>references/deck-contract.md</code>.</li>
-              <li>A &quot;Deck capability (frontend-slides)&quot; flow in <code>SKILL.md</code>: detect a presentation request and confirm, optionally convert a <code>.pptx</code> (preferring the Anthropic <code>pptx</code> skill when installed, else the local extractor), scaffold, fill, validate, then comment on the live deck and iterate in place. Mermaid and Chart are supported; Export Offline produces the network-silent shareable artifact.</li>
-              <li>A runtime deck profile in the commentable-html layer, activated only by <code>data-cmh-mode=&quot;deck&quot;</code> on the real content root: it exposes a <code>window.__cmhDeck</code> controller, scales the fixed 1920x1080 stage (refit via a <code>ResizeObserver</code>), and replaces the flow-document chrome (heading anchors, collapsible carets, side TOC, footer, scroll progress) with a full-screen presentation - a <strong>present mode</strong> that hides the comment sidebar/toolbar plus a slide-oriented control bar (Prev, a live <code>N / total</code> slide counter, Next, with WCAG-2.5.3 aria-labels and boundary-disabled buttons) and keyboard / id navigation (guarded against out-of-range and editable-target keypresses). A <strong>comment mode</strong> toggle reveals the sidebar, insets and force-reveals the stage, and gates the navigation keys; a comment card jumps to (activates) its owning slide with highlights restoring on hidden slides. Non-deck documents are unaffected.</li>
-              <li>Dev tooling: <code>dev/tools/audit.mjs</code>, an AI-driven UX audit harness that tours any commentable HTML across viewports and colour schemes and emits screenshots plus machine observations for one or many agents to review (see <code>dev/AUDIT.md</code>). Not shipped.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The mermaid CDN import is now gated on the presence of a <code>pre.mermaid</code> / <code>div.mermaid</code> element, so a diagram-free document (including a deck) makes no external network request at all. A document that contains a diagram still loads and renders mermaid.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">41 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">42 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

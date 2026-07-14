@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-07-14
+
+### Changed
+
+- The Help & About panel now links the author's name, "Uri Kanonov", to
+  `https://github.com/urikanonov` (opens in a new tab), reusing the existing brand-link style.
+- Help panel text now names the triage board's `Reset moves` button and the board-moves comment
+  card's `Reset changes` button, and refers to the Help toggle by its exact on-screen label,
+  `Help & About`, instead of the shorthand `Help`.
+
 ## [1.38.0] - 2026-07-14
 
 ### Added
