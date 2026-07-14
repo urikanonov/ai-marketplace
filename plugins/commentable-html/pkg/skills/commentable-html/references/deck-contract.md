@@ -14,6 +14,7 @@ the runtime together.
 - [Controller (in the shipped layer JS, not the deck body)](#controller-in-the-shipped-layer-js-not-the-deck-body)
 - [Anchoring (comments to slides)](#anchoring-comments-to-slides)
 - [Content scripts and validator scope](#content-scripts-and-validator-scope)
+  - [Contrast validation scope](#contrast-validation-scope)
 
 ## Activation signal
 
@@ -118,6 +119,18 @@ The deck must also carry a `prefers-reduced-motion` rule (supplied by the inline
 `viewport-base.css`); `deck_validate.py` errors if it is absent, so entrance animations always
 honour a reduced-motion preference.
 
+### Contrast validation scope
+
+`deck_validate.py` also runs the shipped `tools/validate/cmhval/contrast.py` WCAG contrast helper
+over the deck CONTENT region. It errors when an explicit foreground/background pair has a contrast
+ratio below the configurable default threshold of 4.5:1. The static scope is intentionally
+deterministic: inline `style` attributes, CSS rules whose same declaration block contains `color`
+plus the last effective `background` or `background-color`, and the deck theme variable pairs
+`--slide-fg` with `--slide-bg` / `--stage-bg`, with simple custom-property (`var(...)`) resolution.
+The validator names the offending element, selector, or variable pair and both colors. It does not
+attempt a full CSS cascade, inherited color lookup, media-query evaluation, or alpha compositing
+against unknown ancestor backgrounds; semi-transparent backgrounds are skipped for that reason. Use
+explicit text/background pairs for any deck theme override that must be author-time checked.
+
 The strict "zero network of any kind" guarantee (including the optional mermaid/Chart CDN loaders
 and any chart init script) is asserted separately against the **Export Offline** deck.
-

@@ -173,6 +173,36 @@ class DeckValidateTests(unittest.TestCase):
             _inject(self.html, "<style>.x{background:url(//evil/bg.png)}</style>"),
             "remote CSS url()")
 
+    def test_cmh_deck_12_low_contrast_css_pair_fails_with_selector(self):
+        bad = _inject(
+            self.html,
+            '<style>.bad-table th { color: #777; background-color: #777; }</style>'
+            '<table class="bad-table"><thead><tr><th>Theme</th></tr></thead></table>')
+        errs = _errors(bad)
+        self.assertTrue(any("low text contrast" in e and ".bad-table th" in e for e in errs), errs)
+
+    def test_cmh_deck_12_low_contrast_theme_variables_fail(self):
+        bad = _inject(self.html, "<style>:root{--slide-fg:#777;--slide-bg:#777;}</style>")
+        errs = _errors(bad)
+        self.assertTrue(any("--slide-fg/--slide-bg" in e for e in errs), errs)
+
+    def test_cmh_deck_12_non_finite_rgb_does_not_crash(self):
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#000; background:rgb(inf 0 0)">Bad color</p>')), [])
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#000; background:rgb(1e309 0 0)">Bad color</p>')), [])
+
+    def test_cmh_deck_12_semi_transparent_background_is_skipped(self):
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#000; background:rgba(255,255,255,0.2)">Readable</p>')), [])
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#fff; background:rgba(255,255,255,0.2)">Unknown backdrop</p>')), [])
+
+    def test_cmh_deck_12_good_contrast_inline_pair_passes(self):
+        self.assertEqual(
+            _errors(_inject(self.html, '<p style="color: #fff; background-color: #000">Readable</p>')),
+            [])
+
     def test_local_media_and_data_uri_pass(self):
         # A local relative image and a data: URI are NOT egress and must not trip the media check.
         self.assertEqual(_errors(_inject(self.html, '<img src="assets/local.png" alt="">')), [])

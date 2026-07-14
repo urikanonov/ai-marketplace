@@ -30,6 +30,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 from deck_common import SLIDE_ID_RE  # noqa: E402
 from html.parser import HTMLParser  # noqa: E402
+from cmhval import contrast  # noqa: E402
 
 PKG = Path(_toolpath.SKILL_ROOT)
 try:
@@ -53,6 +54,10 @@ CSS_IMAGE_SET_RE = re.compile(r"image-set\(\s*['\"]?\s*(?:https?:)?//", re.I)
 # The upstream inline editor ships as an <edit-toggle> custom element / .edit-toggle control;
 # match the actual element or class, not the bare substring (which can occur in slide prose).
 EDIT_TOGGLE_RE = re.compile(r"<\s*edit-toggle\b|class\s*=\s*['\"][^'\"]*\bedit-toggle\b", re.I)
+DECK_CONTRAST_VARIABLE_PAIRS = (
+    ("--slide-fg", "--slide-bg", "deck theme variables --slide-fg/--slide-bg"),
+    ("--slide-fg", "--stage-bg", "deck theme variables --slide-fg/--stage-bg"),
+)
 
 # Active-content and egress checks run through an HTML parser rather than regex, so an attacker
 # cannot bypass them with a solidus attribute separator (<svg/onload=...>), an entity-encoded
@@ -167,6 +172,10 @@ def _content_region(html: str):
 
 
 def deck_checks(html: str):
+    return deck_checks_with_options(html)
+
+
+def deck_checks_with_options(html: str, contrast_threshold=contrast.DEFAULT_MIN_CONTRAST_RATIO):
     errors = []
     body = _content_region(html)
     if body is None:
@@ -216,25 +225,30 @@ def deck_checks(html: str):
     # Parser-based active-content / egress checks (event handlers, dangerous schemes, remote
     # media, iframe/object/embed, ../ traversal) - robust to solidus, entities, and quoting.
     errors.extend(_active_content_errors(body))
+    for issue in contrast.find_low_contrast_pairs(
+            body, threshold=contrast_threshold, variable_pairs=DECK_CONTRAST_VARIABLE_PAIRS):
+        errors.append("deck: " + issue.message())
     return errors
 
 
-def validate_deck(path):
+def validate_deck(path, contrast_threshold=contrast.DEFAULT_MIN_CONTRAST_RATIO):
     html = Path(path).read_text(encoding="utf-8")
     base_errors = []
     base_warnings = []
     if _base is not None:  # pragma: no branch
         base_errors, base_warnings = _base.validate(path)
-    return base_errors, base_warnings, deck_checks(html)
+    return base_errors, base_warnings, deck_checks_with_options(html, contrast_threshold=contrast_threshold)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Validate a commentable-html deck.")
     ap.add_argument("file")
     ap.add_argument("--strict", action="store_true", help="treat base-validator warnings as errors too")
+    ap.add_argument("--contrast-threshold", type=float, default=contrast.DEFAULT_MIN_CONTRAST_RATIO,
+                    help="minimum WCAG contrast ratio for explicit text/background color pairs")
     args = ap.parse_args(argv)
 
-    base_errors, base_warnings, deck_errors = validate_deck(args.file)
+    base_errors, base_warnings, deck_errors = validate_deck(args.file, contrast_threshold=args.contrast_threshold)
     print(f"deck_validate: {args.file}")
     for e in base_errors + deck_errors:
         print(f"  ERROR: {e}", file=sys.stderr)

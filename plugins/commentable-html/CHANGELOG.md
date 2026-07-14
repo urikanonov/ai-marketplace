@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.57.0] - 2026-07-15
+
+### Added
+
+- Added a shipped `tools/validate/cmhval/contrast.py` WCAG contrast helper and wired
+  `deck_validate.py` to fail decks whose explicit inline or same-rule CSS text/background color
+  pairs fall below the configurable 4.5:1 default threshold, with diagnostics that name the
+  selector or element and both colors.
+
+### Fixed
+
+- Hardened the contrast helper so malformed or non-finite `rgb()`/`rgba()` values are skipped
+  instead of crashing, semi-transparent backgrounds are skipped, background shorthand follows
+  declaration order, and colors embedded only inside `url(...)` or quoted strings do not create
+  false positives.
+
 ## [1.56.0] - 2026-07-14
 
 ### Added
