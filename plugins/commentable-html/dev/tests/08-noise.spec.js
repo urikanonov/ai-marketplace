@@ -64,7 +64,12 @@ async function addRandomComment(page, note, mode = "single") {
     // browser), so derive the EXPECTED covered text from that same live range, not
     // from selection.toString() (which inserts block separators / snaps astral).
     const live = sel.rangeCount ? sel.getRangeAt(0) : r;
-    const expected = live.cloneContents().textContent;
+    // The runtime never wraps cm-skip content (e.g. a code block's top-right Copy button) in a
+    // highlight, so strip any cm-skip element the live range snapped across before deriving the
+    // expected covered text - otherwise a selection that ends next to the Copy button reports it.
+    const frag = live.cloneContents();
+    frag.querySelectorAll(".cm-skip").forEach((n) => n.remove());
+    const expected = frag.textContent;
     const anchor = (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement) || root;
     anchor.scrollIntoView({ block: "center" });
     anchor.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));

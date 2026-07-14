@@ -26,7 +26,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |
 | `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD | Mermaid diagram commenting layer. |
 | `25-diff.js` | CMH-DIFF | Unified-diff / code-review rendering and anchoring. |
-| `26-highlight.js` | CMH-DIFF, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`). |
+| `26-highlight.js` | CMH-DIFF, CMH-HL, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`) and the runtime fallback that highlights un-highlighted prose code blocks (`highlightCodeBlocks`). |
 | `30-images.js` | CMH-IMG, CMH-CHART | Image and chart-canvas comment layer. |
 | `35-widgets.js` | CMH-WIDGET | Commentable widgets / SVG nodes; `widgetStateChanges` infra. |
 | `36-checklist.js` | CMH-CHECK | Layered checklist: four-state items, aggregation, minimal persistence, per-list state card, export bake. |

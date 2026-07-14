@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.48.0] - 2026-07-14
+
+### Added
+
+- Prevent code blocks from shipping without syntax highlighting, in three layers:
+  - Runtime fallback: the runtime now highlights any commentable `<pre><code class="language-XXX">`
+    block that shipped without highlight spans, on load, so a labelled block never renders as plain
+    monochrome text even when highlighting was never baked. It is idempotent, only fires for a
+    language the tokenizer knows, and keeps line numbers and comment anchoring consistent.
+  - `tools/highlight_document.py`: bakes highlighting into every raw, language-labelled code block
+    of a file in one pass (with a `--check` mode). `tools/finalize.py` runs it by default (opt out
+    with `--no-highlight`), so the standard finalization bakes highlighting.
+
 ## [1.47.0] - 2026-07-14
 
 ### Added
