@@ -189,6 +189,48 @@
     "src": "sequenceDiagram\n  A->>B: say #quot;hi#quot;; C->>D: y"
   },
   {
+    "name": "fp-r5-hash-comment-consumes-line",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; # c; D->>E: bad ->"
+  },
+  {
+    "name": "fp-r5-hash-comment-tail",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; # comment ->"
+  },
+  {
+    "name": "fp-r5-linestart-hash-comment",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: ok\n  # note; foo ->"
+  },
+  {
+    "name": "fp-r5-linestart-percent-comment",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: ok\n  % A->>B: x; foo ->"
+  },
+  {
+    "name": "fp-r5-percent-comment-consumes-line",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; % c; D->>E: bad ->"
+  },
+  {
+    "name": "fp-r5-percent-comment-tail",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; % comment ->"
+  },
+  {
     "name": "gantt-basic",
     "kind": "mermaid",
     "valid": true,
@@ -1398,6 +1440,13 @@
     "valid": true,
     "py_flag": false,
     "src": "sequenceDiagram\n  par to B\n    A->>B: x\n  and to C\n    A->>C: y\n  end"
+  },
+  {
+    "name": "seq-r5-entity-led-tail-bug",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "sequenceDiagram\n  A->>B: hi; #quot; foo ->"
   },
   {
     "name": "seq-semicolon-arrow-async",

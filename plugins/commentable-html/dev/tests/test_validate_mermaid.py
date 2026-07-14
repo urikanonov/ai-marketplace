@@ -157,12 +157,20 @@ class MermaidTypeGating(unittest.TestCase):
         errs, _ = M.check_mermaid_syntax(P())
         self.assertEqual(errs, [])
 
-    def test_empty_block_no_crash(self):
+    def test_empty_block_is_flagged(self):
+        # An empty (or whitespace-only) mermaid host renders as mermaid's "No
+        # diagram type detected" error, so the shipped checker flags it (parity
+        # with the repo-side oracle) rather than silently passing.
         class P:
             mermaid_blocks = [{"has_svg": False, "src_parts": []},
                               {"has_svg": False, "src_parts": ["   "]}]
         errs, _ = M.check_mermaid_syntax(P())
-        self.assertEqual(errs, [])
+        self.assertEqual(len(errs), 2)
+        self.assertIn("empty", errs[0])
+        # A rendered (has_svg) empty block is still skipped - its text is SVG.
+        class Q:
+            mermaid_blocks = [{"has_svg": True, "src_parts": []}]
+        self.assertEqual(M.check_mermaid_syntax(Q()), ([], []))
 
 
 class MermaidRound2Regressions(unittest.TestCase):
@@ -198,6 +206,40 @@ class MermaidRound2Regressions(unittest.TestCase):
         self.assertFalse(_flag("sequenceDiagram\n  A->>B: msg; %%->"))
         self.assertFalse(_flag("sequenceDiagram\n  A->>B: msg; %% -> ; A->>C: x"))
         self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; C->>D: bye; %% wrap -> up"))
+
+
+class MermaidRound5Regressions(unittest.TestCase):
+    """CMH-SYN-02: a single '%' or '#' begins a comment in a sequenceDiagram (not
+    just '%%'), verified against the real mermaid v11 parser. Earlier versions only
+    recognized '%%' and false-flagged a '; % ... ->' or '; # ... ->' tail."""
+
+    def test_percent_comment_tail_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; % comment ->"))
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; %comment ->"))
+
+    def test_hash_comment_tail_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; # comment ->"))
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; #comment ->"))
+
+    def test_comment_leader_consumes_rest_of_line(self):
+        # A comment runs to end of line, so a later ';'-segment with a broken tail
+        # is inside the comment and must not be flagged (real parser accepts these).
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; % c; D->>E: bad ->"))
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; # c; D->>E: bad ->"))
+
+    def test_linestart_single_comment_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: ok\n  % A->>B: x; foo ->"))
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: ok\n  # note; foo ->"))
+
+    def test_entity_led_tail_is_still_flagged(self):
+        # An entity such as `#quot;` is decoded first, so an entity-led segment is
+        # NOT a comment; the real parser rejects `; #quot; foo ->`, and the checker
+        # (after neutralizing the entity) still flags the dangling `foo ->`.
+        self.assertTrue(_flag("sequenceDiagram\n  A->>B: hi; #quot; foo ->"))
+
+    def test_still_flags_the_real_bug(self):
+        # Broadening comment recognition must not silence the arrow-without-colon bug.
+        self.assertTrue(_flag("sequenceDiagram\n  A->>B: hi; foo ->"))
 
 
 class MermaidWiredIntoValidate(unittest.TestCase):

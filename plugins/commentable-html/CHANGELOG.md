@@ -15,10 +15,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
     after the `;` carries a message arrow but no `:` message) is an error. The check is calibrated
     to zero false positives against a broad, real-parser-labeled corpus - a valid multi-signal
     (`A->>B: x; C->>D: y`), an arrow inside message text, a `participant ... as "a->b"` alias, an
-    `accTitle:`/`accDescr:` directive, and an inline `%%{init}%%` directive or `%%` comment are
-    never flagged. Only `sequenceDiagram` is deep-checked in Python; every other diagram family
-    (flowchart, class, state, ...) is delegated to the repo-side real-parser oracle, so a flowchart
-    label with a `%%` or a literal quote is never a false positive.
+    `accTitle:`/`accDescr:` directive, and an inline `%%{init}%%` directive or a `%%`, single `%`,
+    or `#` comment are never flagged (all confirmed against the real mermaid v11 parser). Only
+    `sequenceDiagram` is deep-checked in Python; every other diagram family (flowchart, class,
+    state, ...) is delegated to the repo-side real-parser oracle, so a flowchart label with a `%%`
+    or a literal quote is never a false positive. An empty mermaid block (which renders as
+    mermaid's "No diagram type detected" error) is also flagged.
   - Embedded JSON: an empty or invalid `<script type="application/json">` data block (whose
     `JSON.parse()` would throw at runtime, including a `NaN`/`Infinity` literal or a raw
     `</script>` that truncates the block) is an error when no chart canvas owns it; the chart

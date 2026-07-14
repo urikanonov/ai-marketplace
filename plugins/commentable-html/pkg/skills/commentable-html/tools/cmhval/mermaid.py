@@ -30,9 +30,12 @@ The sequence rule (all ERRORS, because a broken diagram renders as mermaid's
       valid statement. The leading token is split on whitespace OR `:` so
       `accTitle:` (no space) is recognized.
     - `%%{ ... }%%` init directives and mermaid character entities (`#59;`,
-      `#quot;`) are neutralized first, and only a LINE-START `%%` is a comment
-      (mid-line `%%` is literal text in mermaid), so a `;`/arrow inside a
-      directive, entity, or comment is never split on.
+      `#quot;`) are neutralized first, and a line or `;`-segment whose first
+      non-space character is `%%`, a single `%`, or `#` is a comment that mermaid
+      ignores to end of line (mid-line `%`/`#` is literal text), so a `;`/arrow
+      inside a directive, entity, or comment is never split on. An entity such as
+      `#quot;` is decoded first, so an entity-led (not comment-led) segment is
+      still inspected.
 """
 
 import re
@@ -85,8 +88,9 @@ def block_source(block):
 def _diagram_type_and_lines(src):
     """(lowercase diagram type or None, [body line, ...]) after removing YAML
     frontmatter and `%%{...}%%` directives, and dropping blank lines and LINE-START
-    `%%` comment lines (mid-line `%%` is literal in mermaid, so it is kept). Body
-    lines keep their arrows and text intact so the sequence check can inspect
+    comment lines. Mermaid treats a line whose first non-space character is `%%`, a
+    single `%`, or `#` as a comment (mid-line `%`/`#` is literal, so it is kept).
+    Body lines keep their arrows and text intact so the sequence check can inspect
     them."""
     body = _FRONTMATTER_RE.sub("", src, count=1)
     body = _DIRECTIVE_RE.sub("", body)
@@ -94,8 +98,8 @@ def _diagram_type_and_lines(src):
     out = []
     for raw in body.splitlines():
         stripped = raw.strip()
-        if not stripped or stripped.startswith("%%"):
-            continue  # blank, a full-line comment, or a leftover unterminated directive
+        if not stripped or stripped[0] in ("%", "#"):
+            continue  # blank, a full-line comment (%%, single %, or #), or a leftover directive
         if dtype is None:
             dtype = stripped.split()[0].lower()
             continue
@@ -142,8 +146,8 @@ def _check_sequence(lines, where):
         if not _is_signal(segments[0]):
             continue  # only a real message line splits into a dangling signal
         for seg in segments[1:]:
-            if seg.strip().startswith("%%"):
-                break  # a '%%' begins a comment that consumes the rest of the line
+            if seg.strip()[:1] in ("%", "#"):
+                break  # a '%%', single '%', or '#' begins a comment that consumes the rest of the line
             if _tail_is_invalid_signal(seg):
                 errors.append(
                     "%s: a ';' in a sequence message splits it into a separate statement, and "
@@ -170,7 +174,9 @@ def check_mermaid_source(src):
 def check_mermaid_syntax(parser):
     """Return (errors, warnings). Validates the syntax of every un-rendered
     mermaid block the parser collected. A block that has already rendered to
-    <svg> (offline export) is skipped - its text is SVG, not diagram source."""
+    <svg> (offline export) is skipped - its text is SVG, not diagram source. An
+    empty (or whitespace-only) block is flagged: mermaid renders it as a "No
+    diagram type detected" error, so it must never ship."""
     errors, warnings = [], []
     blocks = getattr(parser, "mermaid_blocks", None) or []
     for i, block in enumerate(blocks):
@@ -178,6 +184,11 @@ def check_mermaid_syntax(parser):
             continue
         src = block_source(block).strip()
         if not src:
+            errors.append(
+                "mermaid diagram #%d: the mermaid block is empty - mermaid renders it as a "
+                "\"No diagram type detected\" error; remove the empty block or add diagram source."
+                % (i + 1)
+            )
             continue
         dtype, lines = _diagram_type_and_lines(src)
         if dtype in _SEQUENCE_TYPES:

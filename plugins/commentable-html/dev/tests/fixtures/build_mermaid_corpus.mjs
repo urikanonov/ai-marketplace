@@ -126,6 +126,17 @@ const ENTRIES = [
   { name: "fp-flow-slash-literal-quote", py_flag: false, src: 'flowchart LR\n  A[/x " y/] --> B' },
   { name: "fp-flow-subgraph-percent", py_flag: false, src: 'flowchart TD\n  subgraph "Group %% one"\n    A --> B\n  end' },
 
+  // ---- round-5 regression: a single '%' or '#' is a comment leader (not just
+  //      '%%'). The real parser accepts these; earlier versions false-flagged the
+  //      '; % ... ->' / '; # ... ->' tails. The entity-led case stays a true bug. ----
+  { name: "fp-r5-percent-comment-tail", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; % comment ->" },
+  { name: "fp-r5-hash-comment-tail", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; # comment ->" },
+  { name: "fp-r5-percent-comment-consumes-line", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; % c; D->>E: bad ->" },
+  { name: "fp-r5-hash-comment-consumes-line", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; # c; D->>E: bad ->" },
+  { name: "fp-r5-linestart-percent-comment", py_flag: false, src: "sequenceDiagram\n  A->>B: ok\n  % A->>B: x; foo ->" },
+  { name: "fp-r5-linestart-hash-comment", py_flag: false, src: "sequenceDiagram\n  A->>B: ok\n  # note; foo ->" },
+  { name: "seq-r5-entity-led-tail-bug", py_flag: true, src: "sequenceDiagram\n  A->>B: hi; #quot; foo ->" },
+
   // ---- valid other diagram types (Python must skip -> never flag) ----
   { name: "class-basic", py_flag: false, src: "classDiagram\n  Animal <|-- Dog\n  Animal : +int age\n  Animal : +String name" },
   { name: "state-basic", py_flag: false, src: "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running: start\n  Running --> [*]" },
