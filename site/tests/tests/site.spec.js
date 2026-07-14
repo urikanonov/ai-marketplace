@@ -310,6 +310,18 @@ test("each feature card leads with an inline SVG icon beside the title (SITE-PLU
   }
 });
 
+test("feature card headings render without a generated greater-than prefix (SITE-PLUGIN-17)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const headings = page.locator(".card.feature h3");
+  const prefixes = await headings.evaluateAll((els) =>
+    els.map((el) => getComputedStyle(el, "::before").content)
+  );
+  expect(prefixes.length).toBeGreaterThan(0);
+  for (const prefix of prefixes) {
+    expect(["none", "normal", '""']).toContain(prefix);
+  }
+});
+
 test("the What you get section has a Rich content card covering charts, diagrams, boards, diffs, and code (SITE-PLUGIN-16)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const features = page.locator("#features");
