@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.58.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.59.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -343,6 +343,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.59.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Reduced the always-loaded <code>SKILL.md</code> token footprint by replacing reference-duplicated guidance with concise pointers to the existing on-demand reference docs while keeping routing, validation, trust-boundary, iteration-loop, and deck invariants in the entry point.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.58.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -354,6 +361,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deck code, KQL, and diff blocks now use dark, readable surfaces, distinct syntax token colors, and readable add/delete row tints on dark deck slides.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.57.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -365,8 +374,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Hardened the contrast helper so malformed or non-finite <code>rgb()</code>/<code>rgba()</code> values are skipped instead of crashing, semi-transparent backgrounds are skipped, background shorthand follows declaration order, and colors embedded only inside <code>url(...)</code> or quoted strings do not create false positives.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.56.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -411,14 +418,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Added CLI tests for <code>validate.py</code>&#x27;s <code>-h</code>/<code>--help</code> output and the <code>--</code> end-of-options separator (<code>ValidateMainTests</code>), and refreshed the <code>CMH-VAL-11</code> / <code>CMH-CONTENT-16</code> spec source pointers to the new module paths.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.52.0] - 2026-07-14</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Comment search now filters by the comment note text only. A query that appears solely in the quoted anchor content (or the section path / pin) no longer keeps a card visible, so reviewers filter by what they wrote rather than by the surrounding quote. A query present in the note still matches, and the case-insensitive substring, shown/total count, clear button, and no-results behaviors are unchanged.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">59 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">60 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

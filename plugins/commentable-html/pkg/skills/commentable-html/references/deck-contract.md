@@ -9,6 +9,8 @@ the runtime together.
 ## Contents
 
 - [Activation signal](#activation-signal)
+- [Authoring commands and PPTX conversion](#authoring-commands-and-pptx-conversion)
+- [Slide design and fonts](#slide-design-and-fonts)
 - [Slide markup](#slide-markup)
   - [Stable slide id](#stable-slide-id)
 - [Controller (in the shipped layer JS, not the deck body)](#controller-in-the-shipped-layer-js-not-the-deck-body)
@@ -28,6 +30,60 @@ The runtime reads this once at startup. When present it activates the **deck pro
 NOT install the document-mode features that assume a scrolling flow document (heading deep-links,
 collapsible-section carets, the scroll-spy table-of-contents side menu, the scroll-progress
 bubble, and the runtime footer). When absent the layer behaves exactly as today.
+
+## Authoring commands and PPTX conversion
+
+Use `tools/deck/deck_scaffold.py` to create a commentable-native fixed-stage deck. It accepts either a
+slide-sections HTML fragment or placeholder count:
+
+```bash
+python tools/deck/deck_scaffold.py --content slides.html --label "Roadmap" --source roadmap.html --out roadmap.html
+python tools/deck/deck_scaffold.py --slides 5 --label "Draft" --out draft-deck.html
+```
+
+`--content -` reads the slide fragment from stdin. `--slides N` emits N placeholder slides and must be at
+least 1. `--out` is create-only unless `--force` is supplied, so a normal scaffold cannot overwrite a deck
+that already has stable slide ids and review state. `--key auto` derives a comment key from `--label`;
+`--source` sets `data-doc-source`; `--generated` stamps a deterministic generated timestamp.
+
+For PowerPoint input, convert extracted content through `tools/deck/pptx_to_fragment.py` before scaffolding:
+
+```bash
+python tools/deck/pptx_to_fragment.py --input extracted-slides.json --out slides.html
+some-extractor | python tools/deck/pptx_to_fragment.py --input - > slides.html
+python tools/deck/pptx_to_fragment.py --pptx deck.pptx --out slides.html
+```
+
+`--input` reads the JSON shape produced by a PPTX extractor, or `-` for stdin. `--pptx` uses the vendored
+local extractor and fails closed if extraction fails. In both paths, `pptx_to_fragment.py` HTML-escapes
+extracted strings before they enter slide markup. Speaker notes are not supported and are ignored.
+
+## Slide design and fonts
+
+After scaffolding, fill the existing `.slide` sections in place. For design-system guidance, read the
+vendored frontend-slides references before authoring slide layouts:
+
+- `vendor/frontend-slides/html-template.md`
+- `vendor/frontend-slides/viewport-base.css`
+- `vendor/frontend-slides/animation-patterns.md`
+- `vendor/frontend-slides/STYLE_PRESETS.md`
+- `vendor/frontend-slides/bold-template-pack/`
+
+Keep the style's palette, layout, spacing rhythm, and component grammar, but do not copy remote font
+loads from the vendored examples. The upstream templates and style packs can include
+`<link href="https://fonts.googleapis.com/...">`, `https://api.fontshare.com/...`, `@import`, or
+`@font-face url(https://...)` examples. Those are not allowed in commentable decks: `deck_validate.py`
+rejects remote fonts, remote CSS imports, and protocol-relative resource URLs. Use system fonts by default:
+
+- Serif or editorial faces: `"Iowan Old Style","Palatino Linotype","Georgia",serif`.
+- Slab, display, or script faces: `"Impact","Rockwell","Arial Black",sans-serif` with heavier
+  `letter-spacing`.
+- Geometric or body sans faces: `system-ui,-apple-system,"Segoe UI",Roboto,sans-serif`.
+- Monospace faces: `"Cascadia Code","Consolas","Fira Code",ui-monospace,monospace`.
+- CJK faces: drop the explicit remote family and let the system CJK face resolve.
+
+If a deck truly needs a specific face, obtain the `.woff2` locally and embed it as a `@font-face` whose
+`src` is a `data:font/woff2;base64,...` URI, then rerun `deck_validate.py`.
 
 ## Slide markup
 
