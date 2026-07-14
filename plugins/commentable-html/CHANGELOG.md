@@ -24,6 +24,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (`ValidateMainTests`), and refreshed the `CMH-VAL-11` / `CMH-CONTENT-16` spec source pointers to the
   new module paths.
 
+
 ## [1.52.0] - 2026-07-14
 
 ### Changed
@@ -46,7 +47,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `SKILL.md` and the references move to `tools/<topic>/<tool>.py`; there is no runtime behavior change.
 
 ## [1.50.0] - 2026-07-14
-
 
 ### Added
 
