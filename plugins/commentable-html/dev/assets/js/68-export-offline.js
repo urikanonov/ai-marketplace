@@ -232,6 +232,7 @@ async function saveOffline() {
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+  baseHtml = _applyChecklistStateToHtml(baseHtml);
   const exportComments = _exportableComments();
   let portable;
   try {

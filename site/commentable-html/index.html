@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.43.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.44.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -341,12 +341,25 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.44.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Layered checklists. A <code>data-cmh-checklist</code> container turns a nested list (or a table) into interactive four-state item checkboxes (blank / check / cross / question) drawn with inline-SVG icons. A branch item aggregates over its direct children (all-same shows that state, any disagreement shows a neutral mixed marker), and clicking a branch propagates its next state to every descendant leaf. Item labels stay ordinary commentable content; only the injected icon control is <code>cm-skip</code>. Hierarchy comes from DOM nesting for lists, or an explicit <code>data-cmh-parent</code> reference for tables, which cannot nest rows and may be sorted.</li>
+              <li>Minimal checklist persistence. Only leaves whose state differs from their authored <code>data-cmh-state</code> baseline are stored, as one-character codes under <code>COMMENT_KEY + &quot;::cl&quot;</code>; returning a leaf to its baseline prunes its entry, so a large checklist with a few edits costs a few bytes.</li>
+              <li>Per-list checklist change card. The sidebar renders one non-comment card per checklist with changes, placed by document order, with a jump button and a Reset button that reverts that checklist to its authored state. Copy all gains a <code>## Checklist &quot;&lt;id&gt;&quot;</code> section plus a machine-readable <code>CHECKLIST_STATE_JSON</code> line, an unsaved change flips the badge to Not portable, and every export bakes the current states into <code>data-cmh-state</code>. A checklist that loads with a persisted change opens the sidebar so the card is seen.</li>
+              <li>Two checklist tools. <code>tools/checklist_scaffold.py</code> generates list or table markup with stable ids from an indented outline, and <code>tools/checklist_apply.py</code> cements the reviewer&#x27;s states from a Copy-all bundle (or <code>--state-json</code>) back into the source HTML. <code>validate.py</code> gains checklist checks (duplicate ids, invalid tokens, empty lists, unresolved parents) that a checklist-free document ignores. See the bundled <code>references/checklist-contract.md</code> for the authoring contract.</li>
+              <li>A shipped demo report <code>examples/report-checklist.html</code> (Release readiness review) that showcases both checklist shapes - a nested-list sign-off checklist and a sortable-table component audit linked by <code>data-cmh-parent</code> - with its companion authoring prompt <code>examples/prompt-checklist.md</code>.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.43.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Clarify the README privacy wording: the document and comments are &quot;never uploaded, transmitted, or sent to any external service - not to us, and not to anyone else&quot;, dropping the confusing &quot;not to the agent&quot; (you do paste the Copy all bundle to your agent yourself, so listing the agent among the never-sent destinations read as contradictory).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.40.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -354,8 +367,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>A &quot;Privacy and compliance&quot; section in the packaged README and a &quot;Private by design&quot; section on the plugin site page (linked from the nav), emphasizing that the document and every comment stay local - in the browser&#x27;s <code>localStorage</code> or embedded in your own HTML file - are never uploaded or sent to any external service, and that only the Mermaid/Chart.js rendering libraries load from a CDN (not your data) while Export Offline strips even that for air-gapped, sensitive, or regulated use.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.39.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -390,20 +401,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The <code>cmh</code> shorthand now discovers the skill: it is a <code>plugin.json</code> and marketplace keyword, and the <code>SKILL.md</code> front-matter discovery description ends with an explicit <code>Also triggers on the shorthand cmh.</code> clause, so typing <code>cmh</code> auto-triggers the skill and matches it in marketplace search.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.35.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Triage-board (and any <code>[data-cm-widget][data-cm-draggable]</code> widget) Reset controls. A moved board now grows a runtime-injected &quot;Reset moves&quot; button in its corner whenever its layout differs from the load-time baseline; clicking it returns every card to its original slot and order, and the button disappears once there are no moves. Static (non-draggable) widgets never get the button.</li>
-              <li>Per-widget layout-change state cards. The sidebar now renders one &quot;Layout change&quot; card per widget that has moves, each with a jump button that scrolls to and flashes that board and a &quot;Reset changes&quot; button that restores only that widget. Each card mirrors a regular comment card&#x27;s shape: an <code>in: &lt;board&gt;</code> title (the widget aria-label, else its name) and a meta line showing the first-change datetime, alongside the existing explanatory note.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A chart caption sitting directly below a tall <code>cm-skip</code> chart is now commentable. The desktop <code>mouseup</code> handler evaluates the selection before bailing on a <code>cm-skip</code> target, so selecting a short caption still offers Add Comment even when the pointer releases over the adjacent chart canvas.</li>
-              <li>The runtime footer no longer spans wider than the content column. Its box now aligns to the <code>#commentRoot</code> content width in both the normal and the sidebar-open layout.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">44 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">45 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

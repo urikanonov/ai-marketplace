@@ -180,6 +180,7 @@ restoreHighlights();
 setupMermaidLayer();
 setupImageLayer();
 setupWidgetLayer();
+setupChecklistLayer();
 setupChartContainment();
 setupCodeCopy();
 setupSortableTables();
@@ -357,7 +358,8 @@ renderComments();
 if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
-if (!comments.length) closeSidebar(); else openSidebar();
+if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length)) openSidebar();
+else closeSidebar();
 // Signals the nonportable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.
 window.__commentableHtmlReady = true;

@@ -1,0 +1,35 @@
+/* Layered checklist: four-state item controls, hierarchy indentation, and the per-list
+   change card. The state icon (an injected cm-skip button) replaces the native list marker;
+   the item label stays ordinary commentable content. */
+#commentRoot .cmh-checklist ul, #commentRoot .cmh-checklist ol { list-style: none; }
+#commentRoot .cmh-checklist.cmh-checklist-ready ul { padding-left: 1.4rem; }
+#commentRoot .cmh-checklist.cmh-checklist-ready > ul { padding-left: 0.2rem; }
+#commentRoot li.cmh-check-item { position: relative; margin: 0.15rem 0; }
+#commentRoot .cmh-check-item[data-cmh-check-role="branch"] { font-weight: 600; }
+#commentRoot .cmh-check-item[data-cmh-check-role="branch"] .cmh-check-item { font-weight: 400; }
+
+/* The four-state control. It is cm-skip (never a comment target) and sits inline before the
+   label, or inside a table row's state cell. */
+.cmh-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  vertical-align: -0.35em; margin-right: 0.4rem; padding: 0;
+  width: 1.35rem; height: 1.35rem;
+  background: transparent; border: none; border-radius: 6px;
+  cursor: pointer; color: inherit; line-height: 0;
+}
+.cmh-check:hover { background: var(--cp-accent-soft); }
+.cmh-check:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.cmh-check svg { display: block; }
+#commentRoot table.cmh-checklist td .cmh-check { margin-right: 0; }
+#commentRoot table.cmh-checklist.cmh-checklist-ready td:first-child { width: 1.8rem; text-align: center; }
+
+/* Jump-flash when a change card's jump button targets a checklist. */
+@keyframes cmh-check-flash-kf { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px var(--cp-accent-soft); } }
+#commentRoot .cmh-check-flash { animation: cmh-check-flash-kf 0.7s ease-in-out 2; border-radius: 8px; }
+
+/* Per-list change card in the sidebar (shaped like a comment card, not counted as one). */
+.cm-card-checklist .cmh-cl-changes { list-style: none; margin: 0.25rem 0 0; padding: 0; }
+.cm-card-checklist .cmh-cl-changes li { display: flex; align-items: center; gap: 0.3rem; margin: 0.15rem 0; font-size: 0.8rem; }
+.cm-card-checklist .cmh-cl-mini { display: inline-flex; line-height: 0; }
+.cm-card-checklist .cmh-cl-arrow { color: var(--cp-text-soft); }
+.cm-card-checklist .cm-card-state-title { font-weight: 600; margin-top: 0.15rem; }
