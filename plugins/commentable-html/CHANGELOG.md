@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-07-14
+
+### Added
+
+- A shipped example deck `examples/deck-roadmap.html` (Autumn Roadmap Review) plus its companion
+  authoring prompt `examples/prompt-roadmap.md`. The deck is a `kind=slides` document with a
+  fixed 1920x1080 stage of six commentable slides (title, current-state stats, themes table,
+  mermaid architecture diagram, three-column risk board, and the ask), giving reviewers a real
+  deck target for the same commenting workflow the report demos exercise.
+- `build.py`'s example pipeline now covers `deck-*.html` sources alongside `report-*.html`, so a
+  deck source in `dev/examples-src/` regenerates its shipped copy under `pkg/**/examples/` and
+  `build.py --check` catches a hand-edit or a stale/clobbered deck example. The site demos list
+  syncs the deck under `site/commentable-html/demo/` next to the report demos.
+
 ## [1.37.0] - 2026-07-14
 
 ### Fixed
