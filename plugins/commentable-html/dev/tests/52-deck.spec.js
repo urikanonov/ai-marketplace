@@ -117,6 +117,100 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await page.locator(".cmh-deck-nav").count()).toBe(1);
   });
 
+  test("CMH-DECK-06: overview grid opens, lists every slide, titles slides, and click-jumps", async ({ page }) => {
+    await openDeck(page);
+    const overviewButton = page.locator(".cmh-deck-nav").getByRole("button", { name: "Slide overview", exact: true });
+    await expect(overviewButton).toHaveAttribute("aria-expanded", "false");
+
+    await overviewButton.click();
+    const overview = page.locator(".cmh-deck-overview");
+    await expect(overview).toBeVisible();
+    await expect(overviewButton).toHaveAttribute("aria-expanded", "true");
+
+    const slides = overview.locator(".cmh-deck-overview-card");
+    await expect(slides).toHaveCount(3);
+    await expect(slides.nth(1)).toHaveAttribute("title", "Two");
+    await slides.nth(1).hover();
+    await expect(page.locator(".cm-tooltip")).toHaveText("Two");
+
+    await slides.nth(2).click();
+    await expect(overview).toBeHidden();
+    expect(await activeId(page)).toBe("slide-00000003");
+    await expect(page.locator(".cmh-deck-count")).toHaveText("3 / 3");
+    await expect(overviewButton).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("CMH-DECK-06: overview keyboard shortcut opens, closes, and selects in present and comment modes", async ({ page }) => {
+    await openDeck(page);
+    const overview = page.locator(".cmh-deck-overview");
+    await page.evaluate(() => {
+      window.__overviewEvts = [];
+      document.addEventListener("cmh:slidechange", (e) => window.__overviewEvts.push(e.detail));
+    });
+
+    await page.keyboard.press("o");
+    await expect(overview).toBeVisible();
+    expect(await page.evaluate(() => document.activeElement && document.activeElement.getAttribute("data-slide-id")))
+      .toBe("slide-00000001");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press(" ");
+    await expect(overview).toBeHidden();
+    expect(await activeId(page)).toBe("slide-00000003");
+    expect(await page.evaluate(() => window.__overviewEvts.length)).toBe(1);
+
+    await page.keyboard.press("o");
+    await expect(overview).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(overview).toBeHidden();
+
+    await page.locator(".cmh-deck-mode-toggle").click();
+    await expect(page.locator(".cmh-deck-mode-toggle")).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("o");
+    await expect(overview).toBeVisible();
+    await page.keyboard.press("End");
+    await page.keyboard.press(" ");
+    await expect(overview).toBeHidden();
+    expect(await activeId(page)).toBe("slide-00000003");
+  });
+
+  test("CMH-DECK-06: overview clones stay out of tab order", async ({ page }) => {
+    const slides =
+      '<section class="slide active" data-slide-id="slide-link-1"><h2>Links</h2>'
+      + '<p><a href="#inside">Focusable link</a> in the source slide.</p>'
+      + '<mark class="cm-hl" data-cid="cabc1234"><strong>Nested highlight</strong></mark></section>'
+      + '<section class="slide" data-slide-id="slide-link-2"><h2>Next</h2><p>Second slide</p></section>';
+    await installClipboardCapture(page);
+    const { html } = stageDeck(slides, { key: "cmh-deck-tab-order" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+
+    await page.keyboard.press("o");
+    const overview = page.locator(".cmh-deck-overview");
+    await expect(overview).toBeVisible();
+    await expect(overview.locator(".cmh-deck-overview-scale strong")).toHaveText("Nested highlight");
+    expect(await page.locator(".cmh-deck-overview-scale a[href]").count()).toBe(0);
+
+    const focused = [];
+    for (let i = 0; i < 4; i++) {
+      focused.push(await page.evaluate(() => {
+        const el = document.activeElement;
+        return {
+          inClone: !!(el && el.closest && el.closest(".cmh-deck-overview-scale")),
+          label: el && (el.getAttribute("aria-label") || el.textContent || "").trim(),
+        };
+      }));
+      await page.keyboard.press("Tab");
+    }
+    expect(focused.some((entry) => entry.inClone)).toBe(false);
+    expect(focused.map((entry) => entry.label)).toEqual([
+      "Slide 1: Links",
+      "Slide 2: Next",
+      "Slide 1: Links",
+      "Slide 2: Next",
+    ]);
+  });
+
   test("CMH-DECK-05: the stage refits on viewport resize and comment mode narrows it", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openDeck(page);
@@ -214,6 +308,28 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(preventedInComment).toBe(true);
     await expect(page.locator("#contextMenu")).toBeVisible();
     await expect(page.locator("#menuDocComment")).toBeVisible();
+  });
+
+  test("CMH-DECK-11: comment-mode toggle uses the brand icon label and still toggles", async ({ page }) => {
+    await openDeck(page);
+    const toggle = page.getByRole("button", { name: "Comment Mode" });
+    await expect(toggle).toHaveAttribute("title", "Comment Mode");
+    await expect(toggle).toHaveAttribute("aria-label", "Comment Mode");
+    await expect(toggle.locator("svg.cm-brand-icon")).toHaveCount(1);
+    await expect(toggle.locator("svg.cm-brand-icon")).toHaveAttribute("aria-hidden", "true");
+    await expect(toggle.locator("svg.cm-brand-icon")).not.toHaveAttribute("data-cmh-tip");
+    await expect(toggle).not.toHaveText(/Comment mode/i);
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await toggle.hover();
+    await expect(page.locator(".cm-tooltip")).toHaveText("Comment Mode");
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#sidebar")).toBeVisible();
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator("#sidebar")).toBeHidden();
   });
 
   test("CMH-DECK-05c: a comment on a hidden slide restores after reload", async ({ page }) => {
@@ -353,6 +469,8 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       await page.locator(".cmh-deck-mode-toggle").click();
       await page.evaluate(() => window.__cmhDeck.showSlideById("slide-00000003"));
       await addTextComment(page, ".slide.active p", "offline deck note");
+      await page.getByRole("button", { name: "Slide overview", exact: true }).click();
+      await expect(page.locator(".cmh-deck-overview")).toBeVisible();
       // the sidebar Export Offline button is reachable in comment mode (the sidebar is revealed)
       const [download] = await Promise.all([
         page.waitForEvent("download"),
@@ -363,6 +481,9 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       // deck mode survives the export; the transient present-mode body class is NOT baked in
       expect(exportedHtml).toContain('data-cmh-mode="deck"');
       expect(/<body[^>]*class="[^"]*cmh-deck-present/.test(exportedHtml)).toBe(false);
+      expect(exportedHtml).not.toMatch(/<section\b[^>]*\bcmh-deck-overview\b/);
+      const slideIds = Array.from(exportedHtml.matchAll(/data-slide-id="([^"]+)"/g), (m) => m[1]);
+      expect(new Set(slideIds).size).toBe(slideIds.length);
 
       const exportedPath = path.join(dir, "deck-offline.html");
       fs.writeFileSync(exportedPath, exportedHtml);

@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.55.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.56.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -342,6 +342,15 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.56.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Added a deck slide-overview navigator with a split-screen thumbnail grid, slide-title tooltips, click-to-jump navigation, and keyboard open, close, and select support in present and comment modes.</li>
+              <li>Replaced the deck comment-mode text toggle with the commentable-html brand icon while preserving the Comment Mode tooltip, accessible name, and aria-pressed toggle behavior.</li>
+              <li>Hardened the overview so thumbnail clones stay out of the tab order, preserve nested highlight markup, do not receive background deck navigation keys, and are stripped from offline exports.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.55.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -355,6 +364,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The Help and About author link now has a visible underline and accent color so it reads as a link.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.54.0] - 2026-07-14</h3></div>
             <div class="group-label">Fixed</div>
@@ -364,8 +375,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deck table headers now keep readable label contrast on dark slides.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.53.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -405,14 +414,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>If the sibling <code>tools/cmhval/</code> package cannot be imported (a broken/partial install), <code>tools/validate.py</code> now fails CLOSED for content it would have inspected - a mermaid block or a non-layer JSON data block makes validation error instead of silently passing - while a document with no such content still validates and <code>--charts-only</code> is unaffected.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.49.0] - 2026-07-14</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Consolidated the skill&#x27;s docs assets: the review-loop diagram and the tutorial screenshots now live together under <code>docs/assets/</code> (previously split across <code>docs/images/</code> and <code>docs/tutorial-images/</code>). Shipped references in <code>SKILL.md</code>, <code>README.md</code>, <code>TUTORIAL.md</code>, and the file inventory point at the new location; there is no runtime behavior change.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">56 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">57 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
