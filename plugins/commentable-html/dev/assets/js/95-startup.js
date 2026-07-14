@@ -198,9 +198,18 @@ function setupDeck() {
   if (current < 0) current = 0;
   let commentMode = false;
   let counter = null, prevBtn = null, nextBtn = null;
+  let overview = null, overviewGrid = null, overviewBtn = null;
+  const slideTitles = slides.map((slide, i) => slideTitle(slide, i));
   // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
   // the present-mode default applied below.
   root.classList.remove("cmh-deck-comment-mode");
+
+  function slideTitle(slide, index) {
+    const explicit = slide.getAttribute("data-slide-title") || slide.getAttribute("aria-label");
+    const heading = slide.querySelector("h1,h2,h3,h4,h5,h6");
+    const text = explicit || (heading && heading.textContent) || slide.getAttribute("data-slide-id");
+    return (text || ("Slide " + (index + 1))).replace(/\s+/g, " ").trim();
+  }
 
   function fitStage() {
     const host = viewport || document.documentElement;
@@ -228,6 +237,7 @@ function setupDeck() {
     }
     if (prevBtn) prevBtn.disabled = index === 0;
     if (nextBtn) nextBtn.disabled = index === slides.length - 1;
+    syncOverview();
     // Fire only on a real move (a changed active slide), never for the initial render or a
     // re-selection of the already-active slide.
     if (changed) {
@@ -241,6 +251,151 @@ function setupDeck() {
     if (!id) return false;
     const i = slides.findIndex((s) => s.getAttribute("data-slide-id") === id);
     return i >= 0 ? show(i) : false;
+  }
+
+  function overviewCards() {
+    return overviewGrid ? Array.prototype.slice.call(overviewGrid.querySelectorAll(".cmh-deck-overview-card")) : [];
+  }
+
+  function syncOverview() {
+    overviewCards().forEach((card, i) => {
+      const active = i === current;
+      card.classList.toggle("is-current", active);
+      if (active) card.setAttribute("aria-current", "true");
+      else card.removeAttribute("aria-current");
+    });
+  }
+
+  function focusOverviewCard(index) {
+    const cards = overviewCards();
+    if (!cards.length) return;
+    const next = Math.max(0, Math.min(cards.length - 1, index));
+    cards[next].focus();
+  }
+
+  function cleanOverviewClone(node) {
+    if (node.removeAttribute) node.removeAttribute("id");
+    if (node.classList) node.classList.remove("active", "visible");
+    node.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+    node.querySelectorAll("mark.cm-hl").forEach((mark) => {
+      mark.replaceWith(document.createTextNode(mark.textContent || ""));
+    });
+    node.querySelectorAll("[data-cid],[data-cids]").forEach((el) => {
+      el.removeAttribute("data-cid");
+      el.removeAttribute("data-cids");
+    });
+  }
+
+  function makeOverview() {
+    if (overview) return;
+    overview = document.createElement("section");
+    overview.id = "cmhDeckOverview";
+    overview.className = "cm-skip cmh-deck-overview";
+    overview.hidden = true;
+    overview.setAttribute("role", "dialog");
+    overview.setAttribute("aria-modal", "false");
+    overview.setAttribute("aria-labelledby", "cmhDeckOverviewTitle");
+
+    const head = document.createElement("div");
+    head.className = "cmh-deck-overview-head";
+    const title = document.createElement("h2");
+    title.id = "cmhDeckOverviewTitle";
+    title.className = "cmh-deck-overview-title";
+    title.textContent = "Slide overview";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "cmh-deck-overview-close";
+    close.textContent = "Close";
+    close.setAttribute("aria-label", "Close slide overview");
+    close.addEventListener("click", () => closeOverview());
+    head.appendChild(title);
+    head.appendChild(close);
+
+    overviewGrid = document.createElement("div");
+    overviewGrid.className = "cmh-deck-overview-grid";
+    overviewGrid.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeOverview();
+        return;
+      }
+      const cards = overviewCards();
+      const at = cards.indexOf(document.activeElement);
+      let next = at;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = at < 0 ? current : at + 1;
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = at < 0 ? current : at - 1;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = cards.length - 1;
+      else return;
+      e.preventDefault();
+      focusOverviewCard(next);
+    });
+
+    slides.forEach((slide, i) => {
+      const card = document.createElement("button");
+      const id = slide.getAttribute("data-slide-id") || "";
+      const titleText = slideTitles[i];
+      card.type = "button";
+      card.className = "cmh-deck-overview-card";
+      card.title = titleText;
+      card.setAttribute("aria-label", "Slide " + (i + 1) + ": " + titleText);
+      card.setAttribute("data-slide-index", String(i));
+      card.setAttribute("data-slide-id", id);
+
+      const thumb = document.createElement("span");
+      thumb.className = "cmh-deck-overview-thumb";
+      const scale = document.createElement("span");
+      scale.className = "cmh-deck-overview-scale";
+      const clone = slide.cloneNode(true);
+      cleanOverviewClone(clone);
+      clone.setAttribute("aria-hidden", "true");
+      scale.appendChild(clone);
+      thumb.appendChild(scale);
+
+      const label = document.createElement("span");
+      label.className = "cmh-deck-overview-card-label";
+      label.textContent = (i + 1) + ". " + titleText;
+      card.appendChild(thumb);
+      card.appendChild(label);
+      card.addEventListener("click", () => {
+        if (show(i)) closeOverview();
+      });
+      overviewGrid.appendChild(card);
+    });
+
+    overview.appendChild(head);
+    overview.appendChild(overviewGrid);
+    document.body.appendChild(overview);
+    syncOverview();
+  }
+
+  function openOverview() {
+    makeOverview();
+    overview.hidden = false;
+    document.body.classList.add("cmh-deck-overview-open");
+    if (overviewBtn) {
+      overviewBtn.setAttribute("aria-expanded", "true");
+      overviewBtn.classList.add("cmh-deck-overview-on");
+    }
+    syncOverview();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => focusOverviewCard(current));
+    else focusOverviewCard(current);
+  }
+
+  function closeOverview() {
+    if (!overview || overview.hidden) return;
+    overview.hidden = true;
+    document.body.classList.remove("cmh-deck-overview-open");
+    if (overviewBtn) {
+      overviewBtn.setAttribute("aria-expanded", "false");
+      overviewBtn.classList.remove("cmh-deck-overview-on");
+      overviewBtn.focus();
+    }
+  }
+
+  function toggleOverview() {
+    if (overview && !overview.hidden) closeOverview();
+    else openOverview();
   }
 
   window.__cmhDeck = {
@@ -269,6 +424,18 @@ function setupDeck() {
     return !!(t.closest && t.closest(".cm-skip"));
   }
   document.addEventListener("keydown", (e) => {
+    if (!e.defaultPrevented && overview && !overview.hidden && e.key === "Escape") {
+      e.preventDefault();
+      closeOverview();
+      return;
+    }
+    const overviewShortcutTarget = e.target === overviewBtn || !isEditableTarget(e.target);
+    if (!e.defaultPrevented && overviewShortcutTarget && e.key && e.key.toLowerCase() === "o"
+      && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      toggleOverview();
+      return;
+    }
     if (commentMode || e.defaultPrevented || isEditableTarget(e.target)) return;
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
       if (show(current + 1)) e.preventDefault();
@@ -310,7 +477,9 @@ function setupDeck() {
   toggle.type = "button";
   // Stable accessible name; state is conveyed by aria-pressed + the on-colour, per the ARIA
   // toggle-button pattern (a name that flips to "Present" would read "Present, pressed").
-  toggle.textContent = "Comment mode";
+  toggle.innerHTML = CMH_ICON_SVG;
+  toggle.title = "Comment Mode";
+  toggle.setAttribute("aria-label", "Comment Mode");
   toggle.setAttribute("aria-pressed", "false");
   toggle.addEventListener("click", () => { setCommentMode(!commentMode); toggle.blur(); });
   document.body.prepend(toggle);
@@ -326,13 +495,22 @@ function setupDeck() {
   counter.setAttribute("aria-live", "polite");
   counter.textContent = (current + 1) + " / " + slides.length;
   counter.setAttribute("aria-label", "Slide " + (current + 1) + " of " + slides.length);
+  const overviewControl = document.createElement("button");
+  overviewControl.type = "button";
+  overviewControl.textContent = "Overview";
+  overviewControl.title = "Slide overview";
+  overviewControl.setAttribute("aria-label", "Slide overview");
+  overviewControl.setAttribute("aria-controls", "cmhDeckOverview");
+  overviewControl.setAttribute("aria-expanded", "false");
+  overviewControl.addEventListener("click", toggleOverview);
+  overviewBtn = overviewControl;
   const next = document.createElement("button");
   next.type = "button"; next.textContent = "Next"; next.setAttribute("aria-label", "Next slide");
   next.addEventListener("click", () => { show(current + 1); next.blur(); });
   nextBtn = next;
   prev.disabled = current === 0;
   next.disabled = current === slides.length - 1;
-  nav.appendChild(prev); nav.appendChild(counter); nav.appendChild(next);
+  nav.appendChild(prev); nav.appendChild(counter); nav.appendChild(overviewControl); nav.appendChild(next);
   // Focus order: the toggle sits at the top of the DOM (top-right visually), the nav bar at the
   // end (bottom visually), so keyboard focus flows toggle -> slide content -> navigation.
   document.body.appendChild(nav);
