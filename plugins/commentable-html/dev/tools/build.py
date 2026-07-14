@@ -69,14 +69,14 @@ DIST = os.path.join(HERE, "dist")
 # dist/ can leave them stale. build.py --check --check-fixtures runs the fixtures'
 # own generate.mjs --check so the single dist gate also owns fixture freshness.
 FIXTURES_GEN = os.path.join(HERE, "tests", "fixtures", "generate.mjs")
-# Independent CONTENT source for the shipped examples. Each dev/examples-src/report-*.html is the
-# source of truth for a demo report's own content (and handled/embedded-comment data); build.py
-# assembles the shipped pkg examples/report-*.html from it by swapping in the current layer and
-# re-stamping the version. Because the shipped example is a pure artifact of this source (not of
-# itself), --check compares it to a fresh assembly and CATCHES a hand-edit or a stale/clobbered
-# committed example - closing the self-sourced hole that the site pages had before #91. The layer
-# regions inside a source file are ignored (build.py overwrites them), kept only so the source is
-# itself a valid, openable commentable-html document.
+# Independent CONTENT source for the shipped examples. Each dev/examples-src/report-*.html or
+# dev/examples-src/deck-*.html is the source of truth for a demo's own content (and handled/
+# embedded-comment data); build.py assembles the shipped pkg examples/<same-name>.html from it by
+# swapping in the current layer and re-stamping the version. Because the shipped example is a pure
+# artifact of this source (not of itself), --check compares it to a fresh assembly and CATCHES a
+# hand-edit or a stale/clobbered committed example - closing the self-sourced hole that the site
+# pages had before #91. The layer regions inside a source file are ignored (build.py overwrites
+# them), kept only so the source is itself a valid, openable commentable-html document.
 EXAMPLES_SRC = os.path.join(HERE, "examples-src")
 
 
@@ -158,11 +158,11 @@ def read_mermaid_version(package_json=None):
 
 
 def example_stamps(out_dir, mermaid_version):
-    """Return {path: stamped_text} for hand-maintained example reports that build_examples
+    """Return {path: stamped_text} for hand-maintained example files that build_examples
     does NOT fully regenerate, with only their mermaid CDN version rewritten to the single
-    source (package.json). report-*.html files are owned by build_examples (which stamps
-    mermaid itself), so they are skipped here to avoid two producers writing the same path.
-    --check flags drift."""
+    source (package.json). report-*.html and deck-*.html files are owned by build_examples
+    (which stamps mermaid itself), so they are skipped here to avoid two producers writing
+    the same path. --check flags drift."""
     stamps = {}
     ex_dir = os.path.join(out_dir, "examples")
     if not os.path.isdir(ex_dir):
@@ -531,7 +531,7 @@ def _region_inner(text, name, where):
 # and are never touched.
 _LAYER_REGIONS = ("CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS")
 _EXAMPLE_SWAP_REGIONS = ("CSS", "COMMENT UI", "JS")
-_EXAMPLE_NAME_RE = re.compile(r"^report-.*\.html$")
+_EXAMPLE_NAME_RE = re.compile(r"^(?:report|deck)-.*\.html$")
 _META_VERSION_RE = re.compile(
     r'(<meta name="commentable-html-version" content=")[0-9]+\.[0-9]+\.[0-9]+(")')
 _LAYER_DESCRIPTOR_RE = re.compile(
@@ -602,11 +602,11 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
 
 
 def build_examples(portable_html, version, mermaid_version, out_dir):
-    """Regenerate every shipped examples/report-*.html under out_dir from its INDEPENDENT content
-    source in dev/examples-src/ (not from the shipped file itself). Returns {out_path: text}. An
-    absent out_dir/examples directory (e.g. a temp-dir build) or an absent source dir yields no
-    entries. Assembling from an independent source is what lets --check catch a stale or hand-edited
-    shipped example instead of comparing it to itself."""
+    """Regenerate every shipped examples/report-*.html and examples/deck-*.html under out_dir
+    from its INDEPENDENT content source in dev/examples-src/ (not from the shipped file itself).
+    Returns {out_path: text}. An absent out_dir/examples directory (e.g. a temp-dir build) or an
+    absent source dir yields no entries. Assembling from an independent source is what lets
+    --check catch a stale or hand-edited shipped example instead of comparing it to itself."""
     examples_dir = os.path.join(out_dir, "examples")
     result = {}
     if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
@@ -621,10 +621,11 @@ def build_examples(portable_html, version, mermaid_version, out_dir):
 
 
 def _orphan_examples(out_dir):
-    """Shipped examples/report-*.html that have NO dev/examples-src source. build_examples only
-    assembles examples that have a source, so an orphan shipped example would otherwise be a pure
-    artifact validated against nothing (the exact self-sourced hole this split closed). --check
-    reports it so it cannot drift undetected; the fix is to add its source or delete it."""
+    """Shipped examples/report-*.html or examples/deck-*.html that have NO dev/examples-src source.
+    build_examples only assembles examples that have a source, so an orphan shipped example would
+    otherwise be a pure artifact validated against nothing (the exact self-sourced hole this split
+    closed). --check reports it so it cannot drift undetected; the fix is to add its source or
+    delete it."""
     examples_dir = os.path.join(out_dir, "examples")
     if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
         return []

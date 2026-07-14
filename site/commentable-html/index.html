@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.37.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.38.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -325,6 +325,14 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.38.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>A shipped example deck <code>examples/deck-roadmap.html</code> (Autumn Roadmap Review) plus its companion authoring prompt <code>examples/prompt-roadmap.md</code>. The deck is a <code>kind=slides</code> document with a fixed 1920x1080 stage of six commentable slides (title, current-state stats, themes table, mermaid architecture diagram, three-column risk board, and the ask), giving reviewers a real deck target for the same commenting workflow the report demos exercise.</li>
+              <li><code>build.py</code>&#x27;s example pipeline now covers <code>deck-*.html</code> sources alongside <code>report-*.html</code>, so a deck source in <code>dev/examples-src/</code> regenerates its shipped copy under <code>pkg/**/examples/</code> and <code>build.py --check</code> catches a hand-edit or a stale/clobbered deck example. The site demos list syncs the deck under <code>site/commentable-html/demo/</code> next to the report demos.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.37.0] - 2026-07-14</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -335,6 +343,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Commentable code blocks, including KQL query blocks, now show per-line numbers in a <code>.cmh-code-gutter</code> overlay via CSS-generated counters. The numbers are visible in the UI but excluded from text selection and clipboard output, including each block&#x27;s Copy button.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.36.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -342,8 +352,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The <code>cmh</code> shorthand now discovers the skill: it is a <code>plugin.json</code> and marketplace keyword, and the <code>SKILL.md</code> front-matter discovery description ends with an explicit <code>Also triggers on the shorthand cmh.</code> clause, so typing <code>cmh</code> auto-triggers the skill and matches it in marketplace search.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.35.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -400,14 +408,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The mermaid CDN import is now gated on the presence of a <code>pre.mermaid</code> / <code>div.mermaid</code> element, so a diagram-free document (including a deck) makes no external network request at all. A document that contains a diagram still loads and renders mermaid.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.31.0] - 2026-07-13</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>In the sidebar&#x27;s narrow layout the export buttons now pack two per row (Portable | Offline, then Markdown | Plain HTML) instead of one full-width button per row, so the actions take less vertical space and are quicker to scan. The Clear button keeps its own full-width row so the destructive action stays visually apart.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">40 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">41 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
