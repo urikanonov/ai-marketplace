@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.34.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.35.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -312,6 +312,19 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.35.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Triage-board (and any <code>[data-cm-widget][data-cm-draggable]</code> widget) Reset controls. A moved board now grows a runtime-injected &quot;Reset moves&quot; button in its corner whenever its layout differs from the load-time baseline; clicking it returns every card to its original slot and order, and the button disappears once there are no moves. Static (non-draggable) widgets never get the button.</li>
+              <li>Per-widget layout-change state cards. The sidebar now renders one &quot;Layout change&quot; card per widget that has moves, each with a jump button that scrolls to and flashes that board and a &quot;Reset changes&quot; button that restores only that widget. Each card mirrors a regular comment card&#x27;s shape: an <code>in: &lt;board&gt;</code> title (the widget aria-label, else its name) and a meta line showing the first-change datetime, alongside the existing explanatory note.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A chart caption sitting directly below a tall <code>cm-skip</code> chart is now commentable. The desktop <code>mouseup</code> handler evaluates the selection before bailing on a <code>cm-skip</code> target, so selecting a short caption still offers Add Comment even when the pointer releases over the adjacent chart canvas.</li>
+              <li>The runtime footer no longer spans wider than the content column. Its box now aligns to the <code>#commentRoot</code> content width in both the normal and the sidebar-open layout.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.34.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -322,6 +335,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The comments-panel toggle and the overflow-menu trigger now declare the element they control with <code>aria-controls</code> (<code>#sidebar</code> and <code>#toolbarMenu</code>), so assistive technology can associate each toggle with its target.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.33.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -339,8 +354,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The deck authoring guide runs the deck validator with <code>--strict</code>, and the tutorial&#x27;s Show/Hide wording matches the actual toolbar behavior.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.32.0] - 2026-07-13</h3></div>
             <div class="group-label">Added</div>
@@ -391,14 +404,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>tools/validate.py</code> now errors when a document&#x27;s <code>&lt;body&gt;</code> open tag carries a transient runtime UI-state class (<code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, or <code>cm-widget-dragging</code>), so a persisted transient state can never ship. The check inspects only the <code>&lt;body&gt;</code> open tag, so a legitimate CSS/JS reference to <code>sidebar-open</code> is not flagged. New specs <code>CMH-BUILD-06</code> (no shipped document bakes the class) and <code>CMH-VAL-10</code> (the validator guard), covered by <code>dev/tests/test_build.py</code>, <code>dev/tests/test_new_document.py</code>, <code>dev/tests/test_examples.py</code>, and <code>dev/tests/test_validate.py</code>.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.28.0] - 2026-07-13</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Exports no longer bake transient runtime body-state classes into the saved file. Every export path (Save, Export as Portable, Export Offline, and Export to Plain HTML) now strips <code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, and <code>cm-widget-dragging</code> from the exported <code>&lt;body&gt;</code> open tag, so a stale or open-sidebar source can no longer persist that state and propagate it across re-exports. A stuck <code>sidebar-open</code> made the document render full width with an empty right gutter (the <code>body.sidebar-open .app</code> layout rule) for a sidebar that is not shown. Non-transient body classes are preserved, and the live layer re-derives the sidebar state on load. The normalization is centralized in <code>_getBaseHtml()</code> (covering the on-disk and <code>file://</code> snapshot bases) and shared with the Plain export via a new <code>_stripTransientBodyClasses()</code> helper. New spec <code>CMH-EXP-09</code> and <code>dev/tests/54-export-body-normalize.spec.js</code> cover all four export paths.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">37 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">38 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
