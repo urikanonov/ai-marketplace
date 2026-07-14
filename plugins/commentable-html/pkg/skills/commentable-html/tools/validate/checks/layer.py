@@ -103,6 +103,11 @@ def _check_comment_root(parser, html):
                     "- the demo content root survived the retrofit; give your content "
                     "root a unique data-comment-key and replace the demo body"
                     % _active_key)
+        elif _active_key == DOC_EXAMPLE_COMMENT_KEY:
+            errors.append(
+                'the active #commentRoot uses documentation example data-comment-key "%s"; '
+                "give the live root a unique data-comment-key"
+                % DOC_EXAMPLE_COMMENT_KEY)
 
     # 3b) No REAL content root may be hidden inside an HTML comment. Guards the
     #     retrofit failure where a script replaced the WRONG "<main id=commentRoot>"
@@ -181,6 +186,11 @@ def _check_theme_and_skip(html, parser, nonportable):
     # 11) Mermaid blocks should keep cm-skip.
     if any(not mb["cm_skip"] for mb in parser.mermaid_blocks):
         warnings.append("a mermaid block is missing class \"cm-skip\" (its source text becomes selectable)")
+    for block in getattr(parser, "cm_skip_code_blocks", []):
+        warnings.append(
+            'a non-mermaid %s block has class "cm-skip" and will not be commentable; '
+            "remove cm-skip unless it is host chrome"
+            % block["kind"])
     return errors, warnings
 
 

@@ -233,6 +233,7 @@ class _DocParser(HTMLParser):
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
         self.body_attrs = None           # attrs dict of the REAL <body> start tag (first one)
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
+        self.cm_skip_code_blocks = []    # [{"kind": "<pre>"|"<pre><code>"}] for direct cm-skip misuse
         self._mermaid_stack = []         # parallel to self.stack: current mermaid block index, or None
         self._cur_script = None   # (pos, attrs_dict) while inside a <script>
         self._cur_style = None    # (pos, attrs_dict) while inside a <style>
@@ -240,6 +241,7 @@ class _DocParser(HTMLParser):
         self.commentroot_prose = []  # #commentRoot text NOT inside <a> or a cm-skip element
         self._cr_depth = None        # stack depth at which #commentRoot was entered
         self._cr_closed = False      # True once #commentRoot (or an ancestor) has closed
+        self._in_content_region = False
         self.headings = []           # [{"id": str|None, "text": str, "top_level": bool}] in #commentRoot
         self._cur_heading = None     # (tag, id, [parts], top_level) while capturing a heading's text
         self.has_top_level_lede = False  # a direct child of #commentRoot carries class cmh-lede
@@ -274,6 +276,12 @@ class _DocParser(HTMLParser):
         # active DOM (getElementById does not see them, scripts do not run), so
         # ids / canvases / scripts inside a template must not be counted.
         return any(t == "template" for (t, _s) in self.stack)
+
+    def _in_comment_root(self):
+        return self._cr_depth is not None and not self._cr_closed and len(self.stack) > self._cr_depth
+
+    def _in_commentable_content(self):
+        return self._in_content_region and self._in_comment_root()
 
     def _implicit_close(self, tag):
         # HTML5 "close a p element" / li handling: a block-level start tag closes an
@@ -318,8 +326,17 @@ class _DocParser(HTMLParser):
             self.has_offline_chart = True
         if "style" in ad:
             self.inline_styles.append({"tag": tag, "value": ad.get("style", "")})
-        if tag in ("pre", "div") and "mermaid" in set((ad.get("class") or "").split()):
+        classes = set((ad.get("class") or "").split())
+        is_mermaid_host = tag in ("pre", "div") and "mermaid" in classes
+        if is_mermaid_host:
             self.mermaid_blocks.append({"cm_skip": own_skip, "has_svg": False})
+        elif tag == "pre" and own_skip and self._in_commentable_content():
+            self.cm_skip_code_blocks.append({"kind": "<pre>"})
+        elif (tag == "code" and own_skip and self._in_commentable_content()
+              and any(t == "pre" for (t, _s) in self.stack)):
+            current_mermaid = self._mermaid_stack[-1] if self._mermaid_stack else None
+            if current_mermaid is None:
+                self.cm_skip_code_blocks.append({"kind": "<pre><code>"})
         idv = ad.get("id")
         if idv:
             self.all_ids.append(idv)
@@ -438,6 +455,7 @@ class _DocParser(HTMLParser):
                 # good, so headings/prose in a later sibling container are not collected.
                 if self._cr_depth is not None and i <= self._cr_depth:
                     self._cr_closed = True
+                    self._in_content_region = False
                 if self._lede_depth is not None and i <= self._lede_depth:
                     self._lede_depth = None
                 del self.stack[i:]
@@ -451,6 +469,12 @@ class _DocParser(HTMLParser):
         if (self.js_end_marker_pos is None and not self._in_template()
                 and data.strip() == JS_END_MARKER_TEXT):
             self.js_end_marker_pos = self._off()
+        if not self._in_template():
+            marker = data.strip()
+            if marker == CONTENT_BEGIN[4:-3].strip() and self._in_comment_root():
+                self._in_content_region = True
+            elif marker == CONTENT_END[4:-3].strip():
+                self._in_content_region = False
 
 
 def _is_json_attrs(ad):

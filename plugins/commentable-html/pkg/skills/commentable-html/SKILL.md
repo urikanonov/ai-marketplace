@@ -69,9 +69,9 @@ For companion-copy modes, export semantics, network requirements, merge behavior
 
 ### Step 3 - Wire the content root and avoid the footguns
 
-The reviewable content must be inside the body's last active `#commentRoot`, never the commented demo example from a template. Use a unique non-demo key; never reuse `commentable-html-demo`, `commentable-html-nonportable-demo`, or `my-doc`. `validate.py` catches duplicate active roots, demo keys left on customized documents, and real content buried inside an HTML comment.
+Keep reviewable content inside the live `#commentRoot` with a unique non-demo `data-comment-key`; `python tools/validate/validate.py --strict <file.html>` rejects duplicate roots, demo/example keys, and hidden commented roots.
 
-Add `class="cm-skip"` only to host floating panels, modals, sticky headers, toolbars, interactive widgets, and bare mermaid source blocks that should not receive text-selection comments. Do not add it to normal `<pre>` or `<pre><code>` code blocks.
+Use `cm-skip` only for host chrome and bare mermaid source blocks; `python tools/validate/validate.py --strict <file.html>` warns when normal code blocks would become non-commentable.
 
 A valid document has five layer regions in order: CSS, HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, and JS, plus one configured content root:
 

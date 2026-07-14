@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.59.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.60.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -343,12 +343,22 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.60.0] - 2026-07-15</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Validator now warns when normal <code>&lt;pre&gt;</code> or <code>&lt;pre&gt;&lt;code&gt;</code> blocks carry <code>cm-skip</code>, which would make their code content non-commentable.</li>
+              <li>Validator now rejects a live <code>#commentRoot</code> that still uses the documentation example key <code>my-doc</code>, while allowing the commented-out example.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.59.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Reduced the always-loaded <code>SKILL.md</code> token footprint by replacing reference-duplicated guidance with concise pointers to the existing on-demand reference docs while keeping routing, validation, trust-boundary, iteration-loop, and deck invariants in the entry point.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.58.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -361,8 +371,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deck code, KQL, and diff blocks now use dark, readable surfaces, distinct syntax token colors, and readable add/delete row tints on dark deck slides.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.57.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -406,19 +414,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deck table headers now keep readable label contrast on dark slides.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.53.0] - 2026-07-14</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Split the 1,959-line <code>tools/validate/validate.py</code> into focused, single-purpose modules under a new <code>tools/validate/checks/</code> package (<code>parsing</code>, <code>resources</code>, <code>kind</code>, <code>charts</code>, <code>checklist</code>, <code>highlighting</code>, <code>layer</code>), leaving <code>validate.py</code> as a thin entry point and orchestrator that re-exports each module&#x27;s public names. The content-syntax checks continue to live in the sibling <code>cmhval/</code> package. This is a pure internal refactor with no behavior change: every existing test passes unchanged and the validator&#x27;s output on every shipped example and template is identical.</li>
-              <li>Decomposed the ~460-line <code>check_layer</code> into a 94-line orchestrator plus focused per-check helpers (region markers, content root, state JSON blocks, element ids, self-contained resources, KQL, diff blocks, headings, and more), so each layer invariant is its own small, testable function.</li>
-            </ul>
-            <div class="group-label">Development</div>
-            <ul>
-              <li>Added CLI tests for <code>validate.py</code>&#x27;s <code>-h</code>/<code>--help</code> output and the <code>--</code> end-of-options separator (<code>ValidateMainTests</code>), and refreshed the <code>CMH-VAL-11</code> / <code>CMH-CONTENT-16</code> spec source pointers to the new module paths.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">60 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">61 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

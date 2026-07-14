@@ -295,6 +295,27 @@ class ValidateUnitTests(unittest.TestCase):
         doc = self._doc_with_code('<pre><code>just some plain code {}</code></pre>')
         self.assertOkNoWarn(doc)
 
+    def test_normal_pre_cmskip_warns_CMH_VAL_12(self):
+        doc = self._doc_with_code('<pre class="cm-skip"><code>just some plain code {}</code></pre>')
+        self.assertWarn(doc, "will not be commentable")
+
+    def test_normal_pre_code_cmskip_warns_CMH_VAL_12(self):
+        doc = self._doc_with_code('<pre><code class="cm-skip">just some plain code {}</code></pre>')
+        self.assertWarn(doc, "will not be commentable")
+
+    def test_host_chrome_pre_cmskip_is_not_flagged_CMH_VAL_12(self):
+        doc = build(body=[
+            HANDLED_REGION,
+            EMBEDDED_REGION,
+            comment_ui('<pre class="cm-skip">host chrome</pre>\n'),
+            MAIN,
+            JS_REGION,
+        ])
+        errors, warnings = _validate_text(doc)
+        self.assertEqual(errors, [], "expected no errors, got: %r" % errors)
+        self.assertFalse(any("will not be commentable" in w for w in warnings),
+                         "host chrome cm-skip should not be flagged: %r" % warnings)
+
     def test_inline_language_code_is_not_flagged(self):
         # Only block code (<pre><code>) is author-highlighted; an inline <code class="language-...">
         # in prose is never highlighted, so it must not be flagged.
@@ -780,6 +801,11 @@ class ValidateUnitTests(unittest.TestCase):
         doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), self._DEMO_MAIN, JS_REGION])
         doc = doc.replace("<head>\n", "<head>\n<title>Commentable HTML - Demo</title>\n", 1)
         self.assertOkNoWarn(doc)
+
+    def test_active_my_doc_key_is_error_CMH_VAL_13(self):
+        main = MAIN.replace('data-comment-key="k"', 'data-comment-key="my-doc"', 1)
+        self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                         "documentation example data-comment-key")
 
     def test_real_content_root_in_comment_is_error(self):
         # A retrofit that buried the real content root inside a comment (a key
