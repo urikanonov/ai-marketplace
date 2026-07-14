@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.53.0] - 2026-07-14
+
+### Changed
+
+- Split the 1,959-line `tools/validate/validate.py` into focused, single-purpose modules under a new
+  `tools/validate/checks/` package (`parsing`, `resources`, `kind`, `charts`, `checklist`,
+  `highlighting`, `layer`), leaving `validate.py` as a thin entry point and orchestrator that
+  re-exports each module's public names. The content-syntax checks continue to live in the sibling
+  `cmhval/` package. This is a pure internal refactor with no behavior change: every existing test
+  passes unchanged and the validator's output on every shipped example and template is identical.
+- Decomposed the ~460-line `check_layer` into a 94-line orchestrator plus focused per-check helpers
+  (region markers, content root, state JSON blocks, element ids, self-contained resources, KQL, diff
+  blocks, headings, and more), so each layer invariant is its own small, testable function.
+
+### Development
+
+- Added CLI tests for `validate.py`'s `-h`/`--help` output and the `--` end-of-options separator
+  (`ValidateMainTests`), and refreshed the `CMH-VAL-11` / `CMH-CONTENT-16` spec source pointers to the
+  new module paths.
+
+
 ## [1.52.0] - 2026-07-14
 
 ### Changed
