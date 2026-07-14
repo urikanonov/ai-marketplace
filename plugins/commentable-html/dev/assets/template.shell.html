@@ -330,12 +330,12 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
   <section>
     <h2 id="code-blocks">Code blocks (commentable by default)</h2>
     <p>Any <code>&lt;pre&gt;</code> or <code>&lt;pre&gt;&lt;code&gt;</code> block that is not tagged <code>cm-skip</code> is selectable. Highlights survive line wraps, the sidebar preview keeps monospace formatting, and the <strong>Copy all</strong> bundle emits a fenced block so newlines and indentation paste back correctly. The language tag from <code>class="language-XXX"</code> on the inner <code>&lt;code&gt;</code> is propagated.</p>
-    <pre><code class="language-python">def reduce(items, fn, acc=None):
-    for x in items:
-        acc = fn(acc, x) if acc is not None else x
-    return acc
+    <pre><code class="language-python"><span class="cmh-code-kw">def</span> <span class="cmh-code-fn">reduce</span><span class="cmh-code-op">(</span>items<span class="cmh-code-op">,</span> fn<span class="cmh-code-op">,</span> acc<span class="cmh-code-op">=</span><span class="cmh-code-kw">None</span><span class="cmh-code-op">):</span>
+    <span class="cmh-code-kw">for</span> x <span class="cmh-code-kw">in</span> items<span class="cmh-code-op">:</span>
+        acc <span class="cmh-code-op">=</span> <span class="cmh-code-fn">fn</span><span class="cmh-code-op">(</span>acc<span class="cmh-code-op">,</span> x<span class="cmh-code-op">)</span> <span class="cmh-code-kw">if</span> acc <span class="cmh-code-kw">is</span> <span class="cmh-code-kw">not</span> <span class="cmh-code-kw">None</span> <span class="cmh-code-kw">else</span> x
+    <span class="cmh-code-kw">return</span> acc
 
-print(reduce([1, 2, 3, 4], lambda a, b: a + b))</code></pre>
+<span class="cmh-code-fn">print</span><span class="cmh-code-op">(</span><span class="cmh-code-fn">reduce</span><span class="cmh-code-op">([</span><span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">3</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">4</span><span class="cmh-code-op">],</span> <span class="cmh-code-kw">lambda</span> a<span class="cmh-code-op">,</span> b<span class="cmh-code-op">:</span> a <span class="cmh-code-op">+</span> b<span class="cmh-code-op">))</span></code></pre>
   </section>
 
   <section>

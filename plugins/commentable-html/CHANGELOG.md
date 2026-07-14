@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.0] - 2026-07-14
+
+### Added
+
+- The validator now catches a code block that was labelled with a language but never highlighted.
+  `tools/validate.py` warns when a `<pre><code class="language-XXX">` block declares a language the
+  author-time highlighter supports (resolving aliases like `cs` to `csharp`) but carries no
+  `cmh-code-*` spans, so it renders as plain monochrome text. Inline code, non-highlightable labels
+  (`language-text`, `language-kusto`), and already-highlighted blocks are not flagged.
+
+### Fixed
+
+- The showcase demo's Python code block is now syntax-highlighted (it previously shipped as a plain
+  `language-python` block, which the new validator check flags).
+
 ## [1.46.0] - 2026-07-14
 
 ### Added

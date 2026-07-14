@@ -252,6 +252,55 @@ class ValidateUnitTests(unittest.TestCase):
     def test_minimal_document_is_clean(self):
         self.assertOkNoWarn(build())
 
+    # -- code-block highlighting guard (CMH-VAL-11) ------------------------- #
+    def _doc_with_code(self, code_html):
+        main = (
+            '<main id="commentRoot" data-cmh-content-root data-comment-key="k" '
+            'data-doc-label="l" data-doc-source="s">\n'
+            + CONTENT_BEGIN + "\n" + code_html + "\n" + CONTENT_END + "\n</main>"
+        )
+        return build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+
+    def test_unhighlighted_language_code_block_warns(self):
+        # CMH-VAL-11: a <pre><code class="language-XXX"> block for a highlightable language that
+        # carries no cmh-code-* spans was never run through highlight_code.py, so it renders as
+        # monochrome text - warn so the author highlights it.
+        doc = self._doc_with_code(
+            '<pre><code class="language-csharp">public sealed class X { int Y { get; } }</code></pre>')
+        self.assertWarn(doc, "is not syntax-highlighted")
+
+    def test_unhighlighted_alias_language_code_block_warns(self):
+        # The language token is normalized through the highlighter aliases (cs -> csharp).
+        doc = self._doc_with_code('<pre><code class="language-cs">var x = 1;</code></pre>')
+        self.assertWarn(doc, "is not syntax-highlighted")
+
+    def test_highlighted_code_block_is_clean(self):
+        doc = self._doc_with_code(
+            '<pre><code class="language-python">'
+            '<span class="cmh-code-kw">def</span> f(): <span class="cmh-code-kw">return</span> 1'
+            '</code></pre>')
+        self.assertOkNoWarn(doc)
+
+    def test_non_highlightable_language_code_block_is_clean(self):
+        # language-text / an unknown label (e.g. kusto) is not a highlightable language, so a
+        # monochrome block is expected, not a defect.
+        for cls in ("language-text", "language-kusto"):
+            doc = self._doc_with_code('<pre><code class="%s">plain content 123</code></pre>' % cls)
+            errors, warnings = _validate_text(doc)
+            self.assertEqual(errors, [], "expected no errors for %s, got: %r" % (cls, errors))
+            self.assertFalse(any("syntax-highlighted" in w for w in warnings),
+                             "%s should not be flagged, got: %r" % (cls, warnings))
+
+    def test_code_block_without_language_is_not_flagged(self):
+        doc = self._doc_with_code('<pre><code>just some plain code {}</code></pre>')
+        self.assertOkNoWarn(doc)
+
+    def test_inline_language_code_is_not_flagged(self):
+        # Only block code (<pre><code>) is author-highlighted; an inline <code class="language-...">
+        # in prose is never highlighted, so it must not be flagged.
+        doc = self._doc_with_code('<p>see <code class="language-csharp">Foo.Bar()</code> inline</p>')
+        self.assertOkNoWarn(doc)
+
     # -- transient body-state class guard (CMH-VAL-10) ---------------------- #
     def test_sidebar_open_body_class_errors(self):
         # CMH-VAL-10: sidebar-open is a transient runtime UI-state class the layer toggles on

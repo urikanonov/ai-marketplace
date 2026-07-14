@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.46.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.47.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -341,12 +341,25 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.47.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The validator now catches a code block that was labelled with a language but never highlighted. <code>tools/validate.py</code> warns when a <code>&lt;pre&gt;&lt;code class=&quot;language-XXX&quot;&gt;</code> block declares a language the author-time highlighter supports (resolving aliases like <code>cs</code> to <code>csharp</code>) but carries no <code>cmh-code-*</code> spans, so it renders as plain monochrome text. Inline code, non-highlightable labels (<code>language-text</code>, <code>language-kusto</code>), and already-highlighted blocks are not flagged.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The showcase demo&#x27;s Python code block is now syntax-highlighted (it previously shipped as a plain <code>language-python</code> block, which the new validator check flags).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.46.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Search within comments. The comments panel now has a single search field (with a leading magnifier and a clear X button) that filters the comment cards to only those whose text - the note, the quoted content, the section path, and the pin - matches the query case-insensitively. A shown/total count sits beside the field, a no-results note appears when nothing matches, and the filter re-applies after every render so it survives adding, editing, or sorting comments.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.45.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -354,8 +367,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The comments panel resizes narrower. The drag/keyboard minimum width dropped to 3/5 of the former floor - 192px on wide screens (was 320px) and 144px on narrow screens under 700px (was 240px) - so the panel can take less horizontal space and leave more room for the document. The panel&#x27;s CSS <code>min-width</code> floor was lowered to match, and the width still clamps to the viewport and persists across reloads.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.44.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -389,15 +400,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Help panel text now names the triage board&#x27;s <code>Reset moves</code> button and the board-moves comment card&#x27;s <code>Reset changes</code> button, and refers to the Help toggle by its exact on-screen label, <code>Help &amp; About</code>, instead of the shorthand <code>Help</code>.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.38.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>A shipped example deck <code>examples/deck-roadmap.html</code> (Autumn Roadmap Review) plus its companion authoring prompt <code>examples/prompt-roadmap.md</code>. The deck is a <code>kind=slides</code> document with a fixed 1920x1080 stage of six commentable slides (title, current-state stats, themes table, mermaid architecture diagram, three-column risk board, and the ask), giving reviewers a real deck target for the same commenting workflow the report demos exercise.</li>
-              <li><code>build.py</code>&#x27;s example pipeline now covers <code>deck-*.html</code> sources alongside <code>report-*.html</code>, so a deck source in <code>dev/examples-src/</code> regenerates its shipped copy under <code>pkg/**/examples/</code> and <code>build.py --check</code> catches a hand-edit or a stale/clobbered deck example. The site demos list syncs the deck under <code>site/commentable-html/demo/</code> next to the report demos.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">47 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">48 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
