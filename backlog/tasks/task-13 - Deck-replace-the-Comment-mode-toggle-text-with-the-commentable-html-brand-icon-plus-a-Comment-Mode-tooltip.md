@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:20'
-updated_date: '2026-07-14 18:39'
+updated_date: '2026-07-14 20:48'
 labels: []
 dependencies: []
 ordinal: 12000
@@ -31,19 +31,22 @@ In deck mode the comment-mode toggle button (assets/js/95-startup.js sets toggle
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add Playwright coverage first for the deck comment-mode toggle icon, Comment Mode tooltip, aria-label, aria-pressed state, and unchanged toggle behavior.
-2. Replace the text label in setupDeck with the existing CMH_ICON_SVG markup while preserving the button state updates and click handler.
-3. Update SPEC and release metadata alongside TASK-11, rebuild generated artifacts, and run targeted and repository checks.
+1. Rebase deck/features onto current origin/main, resolve version lane conflicts by taking generated artifacts from main then rebuilding with version 1.56.0.
+2. Renumber the comment-mode icon feature id to CMH-DECK-11 while keeping overview CMH-DECK-06 and verify no duplicate deck ids.
+3. Fix review findings in setupDeck: decorative toggle icon tooltip, inert/non-focusable overview clones, preserved mark child nodes, no background navigation while overview is open, and export stripping of the lazy overview.
+4. Extend deck Playwright coverage and SPEC rows, rebuild, validate, force-push, and confirm PR checks.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Validation passed: npx playwright test 52-deck.spec.js; python scripts/rebuild_all.py; python scripts/rebuild_all.py --check; python scripts/validate_marketplace.py; python scripts/validate_markdown.py; pre-push hook.
+
+Review fixes passed: npx playwright test 52-deck.spec.js 62-deck-regressions.spec.js; python scripts/rebuild_all.py --check; python scripts/validate_marketplace.py; python scripts/validate_markdown.py; duplicate CMH-DECK id check.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Replaced the deck comment-mode text toggle with the existing brand icon while preserving Comment Mode title, aria-label, aria-pressed semantics, toggle behavior, spec coverage CMH-DECK-08, and regenerated artifacts. PR: https://github.com/urikanonov/ai-marketplace/pull/132
+Rebased onto origin/main, renumbered the comment-mode icon feature to CMH-DECK-11, made the inserted brand SVG decorative so the button tooltip stays Comment Mode, and verified toggle behavior with Playwright coverage.
 <!-- SECTION:FINAL_SUMMARY:END -->

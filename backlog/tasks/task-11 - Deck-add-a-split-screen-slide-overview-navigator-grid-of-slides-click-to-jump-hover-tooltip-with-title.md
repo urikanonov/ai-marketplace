@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:39'
+updated_date: '2026-07-14 20:48'
 labels: []
 dependencies: []
 ordinal: 10000
@@ -32,19 +32,22 @@ Add a deck overview mode that shows all slides as a grid (split screen). Clickin
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add Playwright coverage first for the deck overview grid: open, slide count, title tooltip, click navigation, close behavior, and keyboard open/close/select in present and comment modes.
-2. Extend setupDeck with an overview toggle, keyboard shortcut, slide title extraction, focus management, grid item activation, and current-slide synchronization.
-3. Add deck overview CSS in 90-deck.css, update SPEC and release metadata, rebuild generated artifacts, and run targeted and repository checks.
+1. Rebase deck/features onto current origin/main, resolve version lane conflicts by taking generated artifacts from main then rebuilding with version 1.56.0.
+2. Renumber the comment-mode icon feature id to CMH-DECK-11 while keeping overview CMH-DECK-06 and verify no duplicate deck ids.
+3. Fix review findings in setupDeck: decorative toggle icon tooltip, inert/non-focusable overview clones, preserved mark child nodes, no background navigation while overview is open, and export stripping of the lazy overview.
+4. Extend deck Playwright coverage and SPEC rows, rebuild, validate, force-push, and confirm PR checks.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Validation passed: npx playwright test 52-deck.spec.js; python scripts/rebuild_all.py; python scripts/rebuild_all.py --check; python scripts/validate_marketplace.py; python scripts/validate_markdown.py; pre-push hook.
+
+Review fixes passed: npx playwright test 52-deck.spec.js 62-deck-regressions.spec.js; python scripts/rebuild_all.py --check; python scripts/validate_marketplace.py; python scripts/validate_markdown.py; duplicate CMH-DECK id check.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented the deck slide-overview navigator with toolbar and keyboard access, per-slide thumbnails, title tooltips, click and keyboard selection, spec coverage CMH-DECK-06, and regenerated artifacts. PR: https://github.com/urikanonov/ai-marketplace/pull/132
+Rebased onto origin/main, moved the lane to 1.56.0, kept overview as CMH-DECK-06, and fixed review findings for overview tab order, mark clone preservation, background-key gating, export stripping, generated artifacts, and tests.
 <!-- SECTION:FINAL_SUMMARY:END -->

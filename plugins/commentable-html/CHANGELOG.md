@@ -4,13 +4,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
 ## [1.56.0] - 2026-07-14
 
 ### Added
 
 - Added a deck slide-overview navigator with a split-screen thumbnail grid, slide-title tooltips, click-to-jump navigation, and keyboard open, close, and select support in present and comment modes.
 - Replaced the deck comment-mode text toggle with the commentable-html brand icon while preserving the Comment Mode tooltip, accessible name, and aria-pressed toggle behavior.
+- Hardened the overview so thumbnail clones stay out of the tab order, preserve nested highlight markup, do not receive background deck navigation keys, and are stripped from offline exports.
 
 ## [1.55.0] - 2026-07-14
 

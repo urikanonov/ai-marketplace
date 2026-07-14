@@ -8494,13 +8494,26 @@ function setupDeck() {
   function cleanOverviewClone(node) {
     if (node.removeAttribute) node.removeAttribute("id");
     if (node.classList) node.classList.remove("active", "visible");
+    node.setAttribute("inert", "");
+    node.inert = true;
+    node.tabIndex = -1;
     node.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
     node.querySelectorAll("mark.cm-hl").forEach((mark) => {
-      mark.replaceWith(document.createTextNode(mark.textContent || ""));
+      mark.replaceWith(...Array.prototype.slice.call(mark.childNodes));
+    });
+    node.querySelectorAll("a[href],area[href]").forEach((el) => {
+      el.removeAttribute("href");
+      el.tabIndex = -1;
     });
     node.querySelectorAll("[data-cid],[data-cids]").forEach((el) => {
       el.removeAttribute("data-cid");
       el.removeAttribute("data-cids");
+    });
+    node.querySelectorAll(
+      "a,area,button,input,select,textarea,summary,iframe,object,embed,audio[controls],video[controls],[tabindex],[contenteditable]"
+    ).forEach((el) => {
+      el.tabIndex = -1;
+      if (el.hasAttribute("contenteditable")) el.setAttribute("contenteditable", "false");
     });
   }
 
@@ -8539,6 +8552,12 @@ function setupDeck() {
       }
       const cards = overviewCards();
       const at = cards.indexOf(document.activeElement);
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const next = at < 0 ? current : (at + (e.shiftKey ? -1 : 1) + cards.length) % cards.length;
+        focusOverviewCard(next);
+        return;
+      }
       let next = at;
       if (e.key === "ArrowRight" || e.key === "ArrowDown") next = at < 0 ? current : at + 1;
       else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = at < 0 ? current : at - 1;
@@ -8584,6 +8603,7 @@ function setupDeck() {
     overview.appendChild(head);
     overview.appendChild(overviewGrid);
     document.body.appendChild(overview);
+    CMH_INJECTED_CHROME.add(overview);
     syncOverview();
   }
 
@@ -8642,9 +8662,12 @@ function setupDeck() {
     return !!(t.closest && t.closest(".cm-skip"));
   }
   document.addEventListener("keydown", (e) => {
-    if (!e.defaultPrevented && overview && !overview.hidden && e.key === "Escape") {
-      e.preventDefault();
-      closeOverview();
+    if (!e.defaultPrevented && overview && !overview.hidden) {
+      if (e.key === "Escape" || (e.key && e.key.toLowerCase() === "o"
+        && !e.altKey && !e.ctrlKey && !e.metaKey)) {
+        e.preventDefault();
+        closeOverview();
+      }
       return;
     }
     const overviewShortcutTarget = e.target === overviewBtn || !isEditableTarget(e.target);
@@ -8696,6 +8719,14 @@ function setupDeck() {
   // Stable accessible name; state is conveyed by aria-pressed + the on-colour, per the ARIA
   // toggle-button pattern (a name that flips to "Present" would read "Present, pressed").
   toggle.innerHTML = CMH_ICON_SVG;
+  const toggleIcon = toggle.querySelector("svg");
+  if (toggleIcon) {
+    toggleIcon.setAttribute("aria-hidden", "true");
+    toggleIcon.setAttribute("focusable", "false");
+    toggleIcon.removeAttribute("role");
+    toggleIcon.removeAttribute("aria-label");
+    toggleIcon.removeAttribute("data-cmh-tip");
+  }
   toggle.title = "Comment Mode";
   toggle.setAttribute("aria-label", "Comment Mode");
   toggle.setAttribute("aria-pressed", "false");
