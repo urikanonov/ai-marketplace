@@ -130,32 +130,37 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     expect(restored).toBeCloseTo(metrics.sidebarWidth, 0);
   });
 
-  test("the sidebar can be resized down to 3/5 of the former minimum width (CMH-SIDE-06)", async ({ page }) => {
-    // Wide screen: the drag minimum is now 192px (3/5 of the former 320px floor).
-    await page.setViewportSize({ width: 1400, height: 800 });
-    await openKitchenSink(page);
-    await openSidebarPanel(page);
-    const handle = page.locator("#sidebarResizeHandle");
-    await handle.focus();
-    await page.keyboard.press("Home");
-    const wide = await page.evaluate(() => ({
-      width: document.getElementById("sidebar").getBoundingClientRect().width,
-      min: Number(document.getElementById("sidebarResizeHandle").getAttribute("aria-valuemin")),
-    }));
-    expect(wide.min).toBe(192);
-    expect(Math.abs(wide.width - 192)).toBeLessThanOrEqual(2);
-    expect(wide.width).toBeLessThan(320);
-
-    // Narrow screen (< 700px): the drag minimum is 144px (3/5 of the former 240px floor).
-    await page.setViewportSize({ width: 640, height: 800 });
-    await handle.focus();
-    await page.keyboard.press("Home");
-    const narrow = await page.evaluate(() => ({
-      width: document.getElementById("sidebar").getBoundingClientRect().width,
-      min: Number(document.getElementById("sidebarResizeHandle").getAttribute("aria-valuemin")),
-    }));
-    expect(narrow.min).toBe(144);
-    expect(Math.abs(narrow.width - 144)).toBeLessThanOrEqual(2);
+  test("the sidebar minimum width keeps every action button label legible (CMH-SIDE-06)", async ({ page }) => {
+    // The resize floor is 256px - the empirically measured minimum at which the two-per-row export
+    // button labels ("Portable", "Offline", "Markdown", "Plain HTML") and Copy all stay fully shown
+    // (below ~240px they clip). The same floor applies on wide and narrow viewports.
+    for (const vw of [1400, 640]) {
+      await page.setViewportSize({ width: vw, height: 800 });
+      await openKitchenSink(page);
+      await openSidebarPanel(page);
+      const handle = page.locator("#sidebarResizeHandle");
+      await handle.focus();
+      await page.keyboard.press("Home");
+      const m = await page.evaluate(() => {
+        const sidebar = document.getElementById("sidebar");
+        const clip = (el) => Math.max(0, el.scrollWidth - el.clientWidth);
+        const spanClips = Array.from(sidebar.querySelectorAll(".head-actions button > span")).map(clip);
+        return {
+          width: sidebar.getBoundingClientRect().width,
+          min: Number(document.getElementById("sidebarResizeHandle").getAttribute("aria-valuemin")),
+          maxSpanClip: Math.max(0, ...spanClips),
+          copyClip: clip(document.getElementById("btnCopyAll")),
+          narrow: sidebar.classList.contains("is-narrow"),
+        };
+      });
+      expect(m.min).toBe(256);
+      expect(Math.abs(m.width - 256)).toBeLessThanOrEqual(2);
+      // No action-button label (nor Copy all) clips at the enforced minimum width.
+      expect(m.maxSpanClip).toBeLessThanOrEqual(0.5);
+      expect(m.copyClip).toBeLessThanOrEqual(0.5);
+      // At the minimum the panel is in the compact two-per-row layout.
+      expect(m.narrow).toBe(true);
+    }
   });
 
   test("the sidebar header wraps without overflowing when resized narrow", async ({ page }) => {

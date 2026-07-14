@@ -127,4 +127,27 @@ test.describe("comment search / filter", () => {
       fs.rmSync(staged.dir, { recursive: true, force: true });
     }
   });
+
+  test("the search field shows its full placeholder even at the minimum panel width (CMH-SEARCH-05)", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 800 });
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "note so the search row appears");
+    await openSidebarPanel(page);
+    // Shrink the panel to its enforced minimum width.
+    const handle = page.locator("#sidebarResizeHandle");
+    await handle.focus();
+    await page.keyboard.press("Home");
+    const input = page.locator("#cmSearchInput");
+    await expect(input).toBeVisible();
+    // The full "Search comments" placeholder fits in the input without horizontal clipping.
+    const clip = await input.evaluate((el) => {
+      const probe = el.value;
+      el.value = el.getAttribute("placeholder");
+      void el.getBoundingClientRect();
+      const c = Math.max(0, el.scrollWidth - el.clientWidth);
+      el.value = probe;
+      return c;
+    });
+    expect(clip).toBeLessThanOrEqual(0.5);
+  });
 });

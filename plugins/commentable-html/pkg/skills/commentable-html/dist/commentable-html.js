@@ -36,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.60.0";
+const CMH_VERSION = "1.61.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3618,7 +3618,11 @@ let _sidebarWidthPx = 0;
 function _sidebarWidthBounds() {
   const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
   const narrow = vw < 700;
-  const min = Math.min(narrow ? 144 : 192, Math.max(108, vw - 48));
+  // Legible floor: below ~240px the two-per-row export button labels ("Portable",
+  // "Plain HTML", ...) and the search placeholder start to clip. 256px (16rem) keeps every
+  // panel control fully shown with a small cross-platform buffer; the CSS min-width matches.
+  // Still clamped to the viewport so a very small screen keeps a usable pane.
+  const min = Math.min(256, Math.max(108, vw - 48));
   const max = Math.max(min, Math.min(narrow ? Math.round(vw * 0.82) : 720, vw - 24));
   return { min: min, max: max, defaultWidth: Math.max(min, Math.min(400, max)) };
 }
