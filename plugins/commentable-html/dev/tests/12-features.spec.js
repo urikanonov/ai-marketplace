@@ -119,15 +119,16 @@ test.describe("copy all", () => {
     expect(b).toContain("HANDLED_IDS_JSON: [");
   });
 
-  test("Copy all is disabled with zero comments and re-enabled after a comment exists (CMH-COPY-08, CMH-COPY-07)", async ({ page }) => {
+  test("Copy all is disabled with zero comments and re-enabled after a comment exists (CMH-COPY-04, CMH-COPY-07)", async ({ page }) => {
     await openKitchenSink(page);
     const topCopy = page.locator("#btnCopyAllTop");
     await expect(topCopy).toHaveAttribute("aria-disabled", "true");
     await expect(topCopy).toHaveAttribute("title", "No comments to copy");
     await topCopy.focus();
     await expect(page.locator(".cm-tooltip")).toContainText("No comments to copy");
+    const emptyToast = await currentToast(page);
     await page.keyboard.press("Enter");
-    await expect(page.locator("#toast")).toContainText("No comments to copy.");
+    expect(await currentToast(page)).toBe(emptyToast);
     expect(await copiedBundle(page)).toBeNull();
 
     await addTextComment(page, "#commentRoot section p", "copy me");
@@ -567,8 +568,9 @@ test.describe("mermaid copy + activation", () => {
       // 0 live comments after prune -> the toolbar Copy all stays focusable but aria-disabled.
       await expect(page.locator("#btnCopyAllTop")).toHaveAttribute("aria-disabled", "true");
       await page.locator("#btnCopyAllTop").focus();
+      const pruneToast = await currentToast(page);
       await page.keyboard.press("Enter");
-      await expect(page.locator("#toast")).toContainText("No comments to copy.");
+      expect(await currentToast(page)).toBe(pruneToast);
       expect(await copiedBundle(page)).toBeNull();
     } finally {
       if (server) await server.close();

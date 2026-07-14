@@ -5620,7 +5620,7 @@ renderComments = function () {
 };
 async function copyAll() {
   const state = _copyAllState();
-  if (!state.hasContent) { updateCopyAllState(); showToast("No comments to copy."); return; }
+  if (!state.hasContent) { updateCopyAllState(); return; }
   const live = state.live;
   const changes = state.changes;
   const n = live.length;
