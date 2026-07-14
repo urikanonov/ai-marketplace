@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.49.0] - 2026-07-14
+
+### Changed
+
+- Consolidated the skill's docs assets: the review-loop diagram and the tutorial screenshots now
+  live together under `docs/assets/` (previously split across `docs/images/` and
+  `docs/tutorial-images/`). Shipped references in `SKILL.md`, `README.md`, `TUTORIAL.md`, and the
+  file inventory point at the new location; there is no runtime behavior change.
+
 ## [1.48.0] - 2026-07-14
 
 ### Added

@@ -64,7 +64,7 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .steps-vertical { grid-template-columns: 1fr; gap: 14px; }
 
 /* Review-loop diagram: an inline, light-only twin of
-   plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg.
+   plugins/commentable-html/pkg/skills/commentable-html/docs/assets/review-loop.svg.
    Styling lives here (not inline) so the page keeps a tight CSP with no 'unsafe-inline'. */
 .loop-figure { margin: 0 auto 30px; max-width: 640px; }
 .loop-figure svg { display: block; width: 100%; height: auto; }

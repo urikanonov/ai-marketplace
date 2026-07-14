@@ -30,23 +30,32 @@ CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "deck-roadmap.html"]
 EXAMPLES_REL = os.path.join(
     "plugins", "commentable-html", "pkg", "skills", "commentable-html", "examples")
-DEMO_REL = os.path.join("site", "commentable-html", "demo")
+# Site layout (all under site/): sources and the generated publishable output live together.
+#   site/pages/  page templates (source)        site/css/  CSS partials (source)
+#   site/src/    hand-maintained static asset sources (site.js, logos, og-cover.png)
+#   site/dist/   the generated publishable site (the Pages deploy artifact); DO NOT hand-edit
+#   site/tests/  the site's Playwright suite
+SITE_OUT = os.path.join("site", "dist")
+SITE_PAGES = os.path.join("site", "pages")
+SITE_STATIC_SRC = os.path.join("site", "src")
+
+DEMO_REL = os.path.join(SITE_OUT, "commentable-html", "demo")
 TUTORIAL_SRC = os.path.join(
     "plugins", "commentable-html", "pkg", "skills", "commentable-html", "docs", "TUTORIAL.md")
 TUTORIAL_IMAGES_SRC = os.path.join(
-    "plugins", "commentable-html", "pkg", "skills", "commentable-html", "docs", "tutorial-images")
-TUTORIAL_PAGE = os.path.join("site", "commentable-html", "tutorial", "index.html")
-TUTORIAL_IMAGES_DST = os.path.join("site", "commentable-html", "tutorial", "tutorial-images")
+    "plugins", "commentable-html", "pkg", "skills", "commentable-html", "docs", "assets")
+TUTORIAL_PAGE = os.path.join(SITE_OUT, "commentable-html", "tutorial", "index.html")
+TUTORIAL_IMAGES_DST = os.path.join(SITE_OUT, "commentable-html", "tutorial", "assets")
 
-# Site pages: the hand-edited SOURCE templates live under site-src/pages/ and the committed pages
-# under site/ are PURE build artifacts assembled by build_page(). Keeping the source separate from
-# the artifact (mirroring the site-src/css/ partials) is what lets --check cover the ENTIRE page,
+# Site pages: the hand-edited SOURCE templates live under site/pages/ and the committed pages
+# under site/dist/ are PURE build artifacts assembled by build_page(). Keeping the source separate
+# from the artifact (mirroring the site/css/ partials) is what lets --check cover the ENTIRE page,
 # so a hand-edit or a stale copy committed by a concurrent PR fails CI instead of silently landing.
-HUB_SRC = os.path.join("site-src", "pages", "index.html")
-HUB_OUT = os.path.join("site", "index.html")
-PLUGIN_SRC = os.path.join("site-src", "pages", "commentable-html", "index.html")
-PLUGIN_OUT = os.path.join("site", "commentable-html", "index.html")
-TUTORIAL_PAGE_SRC = os.path.join("site-src", "pages", "commentable-html", "tutorial", "index.html")
+HUB_SRC = os.path.join(SITE_PAGES, "index.html")
+HUB_OUT = os.path.join(SITE_OUT, "index.html")
+PLUGIN_SRC = os.path.join(SITE_PAGES, "commentable-html", "index.html")
+PLUGIN_OUT = os.path.join(SITE_OUT, "commentable-html", "index.html")
+TUTORIAL_PAGE_SRC = os.path.join(SITE_PAGES, "commentable-html", "tutorial", "index.html")
 
 # The commentable-html skill root. The tutorial references example files with
 # skill-root-relative display paths; locally (in the shipped skill) those links resolve to
@@ -122,14 +131,14 @@ _ASSET_REF_RE = re.compile(
 
 
 def _asset_hash(root, name):
-    # styles.css is itself a build artifact (assembled from site-src/css/ partials), so hash the
+    # styles.css is itself a build artifact (assembled from site/css/ partials), so hash the
     # freshly-built stylesheet rather than the on-disk copy: the page's ?v= stamp then reflects the
     # SOURCE partials directly (a pure artifact), it is normalization-independent, and a missing or
-    # stale site/assets/styles.css cannot crash --check or embed a stale hash. Other assets (site.js)
-    # are hand-maintained files, so their bytes on disk are the source of truth.
+    # stale site/dist/assets/styles.css cannot crash --check or embed a stale hash. Other assets
+    # (site.js) are copied verbatim from their site/src/ source, so the served bytes are the source.
     if name == "styles.css":
         return hashlib.sha256(build_styles(root).encode("utf-8")).hexdigest()[:12]
-    path = os.path.join(root, "site", "assets", name)
+    path = os.path.join(root, SITE_OUT, "assets", name)
     try:
         with open(path, "rb") as fh:
             data = fh.read()
@@ -139,12 +148,12 @@ def _asset_hash(root, name):
     return hashlib.sha256(data).hexdigest()[:12]
 
 
-# The served site/assets/styles.css is assembled from ALL ordered source partials under
-# site-src/css/, discovered by directory sort (no hand-maintained list, so adding a partial does
+# The served site/dist/assets/styles.css is assembled from ALL ordered source partials under
+# site/css/, discovered by directory sort (no hand-maintained list, so adding a partial does
 # not edit this script and two PRs adding partials do not collide here). Each partial is named
 # `NN-topic.css` with a zero-padded 2-digit prefix; the sorted order is the load-bearing CSS
 # cascade. The concatenation is byte-for-byte the served bundle (same CSP, same cache-bust).
-CSS_DIR = ("site-src", "css")
+CSS_DIR = ("site", "css")
 _CSS_PART_RE = re.compile(r"^\d{2}-[a-z0-9-]+\.css$")
 
 
@@ -155,7 +164,7 @@ def ordered_css_parts(root):
     names = [n for n in os.listdir(css_dir) if os.path.isfile(os.path.join(css_dir, n)) and n.lower().endswith(".css")]
     stray = [n for n in names if not _CSS_PART_RE.match(n)]
     if stray:
-        raise SystemExit("site-src/css/ holds .css files that are not `NN-topic.css` partials: %s "
+        raise SystemExit("site/css/ holds .css files that are not `NN-topic.css` partials: %s "
                          "(rename to the numbered convention or remove them)" % ", ".join(sorted(stray)))
     if not names:
         raise SystemExit("no CSS partials found under %s" % css_dir)
@@ -177,7 +186,7 @@ _RUN_HINT = "run: python scripts/build_site_data.py"
 
 
 def css_banner():
-    return ("/* %s Built from site-src/css/*.css by scripts/build_site_data.py; %s */\n"
+    return ("/* %s Built from site/css/*.css by scripts/build_site_data.py; %s */\n"
             % (GENERATED_BANNER_PREFIX, _RUN_HINT))
 
 
@@ -205,7 +214,7 @@ def apply_page_banner(html, source_rel):
 
 
 def build_page(root, source_rel, region_fillers):
-    """Assemble one site page ARTIFACT from its site-src/pages SOURCE: fill each marker region,
+    """Assemble one site page ARTIFACT from its site/pages SOURCE: fill each marker region,
     cache-bust asset references, and inject the DO NOT EDIT banner. The source is independent of
     the built artifact under site/, so `--check` (comparing this result to the committed artifact)
     covers the whole page - not just the marker regions - which is what closes the site clobber gap."""
@@ -403,7 +412,7 @@ def site_page_urls(root):
     for page in PLUGIN_PAGES.values():
         urls.append(SITE_BASE_URL + page.lstrip("./"))
     if _tutorial_source_exists(root):
-        rel = os.path.relpath(TUTORIAL_PAGE, "site").replace(os.sep, "/")
+        rel = os.path.relpath(TUTORIAL_PAGE, SITE_OUT).replace(os.sep, "/")
         urls.append(SITE_BASE_URL + rel[: -len("index.html")])
     return urls
 
@@ -586,6 +595,36 @@ def _orphans(dst_dir, allowed_names, check):
             except OSError as exc:
                 sys.stderr.write("warning: could not remove orphaned file %s (%s); "
                                  "delete it manually\n" % (os.path.join(dst_dir, name), exc))
+    return drift
+
+
+def sync_static_assets(root, check):
+    """Copy the hand-maintained static assets (site.js, the logos, og-cover.png) from their
+    site/src/ SOURCE into the published site/dist/assets/. They are byte-for-byte copies, and
+    --check compares them so a stale copy fails CI. styles.css is excluded from the orphan sweep
+    because it is a generated artifact assembled from site/css/, not a site/src source."""
+    src_dir = os.path.join(root, SITE_STATIC_SRC)
+    dst_dir = os.path.join(root, SITE_OUT, "assets")
+    drift = []
+    src_names = []
+    if os.path.isdir(src_dir):
+        src_names = [n for n in sorted(os.listdir(src_dir)) if os.path.isfile(os.path.join(src_dir, n))]
+    for name in src_names:
+        with open(os.path.join(src_dir, name), "rb") as fh:
+            data = fh.read()
+        dst = os.path.join(dst_dir, name)
+        if check:
+            existing = None
+            if os.path.exists(dst):
+                with open(dst, "rb") as fh:
+                    existing = fh.read()
+            if existing != data:
+                drift.append(name)
+        else:
+            _safe_makedirs(dst_dir)
+            with open(dst, "wb") as fh:
+                fh.write(data)
+    drift.extend(_orphans(dst_dir, set(src_names) | {"styles.css"}, check))
     return drift
 
 
@@ -790,9 +829,10 @@ def main(argv):
 
     # Assemble the served stylesheet from its source partials before anything stamps its hash.
     styles_text = build_styles(root)
-    styles_path = os.path.join(root, "site", "assets", "styles.css")
+    styles_path = os.path.join(root, SITE_OUT, "assets", "styles.css")
     if not args.check:
         write_text(styles_path, styles_text)
+    static_drift = sync_static_assets(root, args.check)
 
     plugins_html = render_plugins(manifest)
     changelog_html = render_changelog([])
@@ -807,8 +847,8 @@ def main(argv):
 
     for src_rel in (HUB_SRC, PLUGIN_SRC):
         if not os.path.isfile(os.path.join(root, src_rel)):
-            raise SystemExit("page source missing: %s (a built page under site/ has no source to "
-                             "rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
+            raise SystemExit("page source missing: %s (a built page under site/dist/ has no source "
+                             "to rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
 
     hub_out = build_page(root, HUB_SRC, [
         ("block", "plugins", plugins_html),
@@ -843,37 +883,39 @@ def main(argv):
     demo_drift = sync_demos(root, args.check)
     tutorial_img_drift = sync_tutorial_images(root, args.check)
     sitemap_drift = write_or_check(
-        os.path.join(root, "site", "sitemap.xml"), render_sitemap(root), args.check)
+        os.path.join(root, SITE_OUT, "sitemap.xml"), render_sitemap(root), args.check)
     llms_drift = write_or_check(
-        os.path.join(root, "site", "llms.txt"), render_llms(root, manifest), args.check)
+        os.path.join(root, SITE_OUT, "llms.txt"), render_llms(root, manifest), args.check)
 
     if args.check:
         problems = []
+        if static_drift:
+            problems.append("static site assets differ from site/src/: " + ", ".join(static_drift))
         if styles_text != _read_artifact(styles_path):
-            problems.append("site/assets/styles.css is stale vs site-src/css/ partials")
+            problems.append("site/dist/assets/styles.css is stale vs site/css/ partials")
         if hub_out != _read_artifact(hub_out_path):
-            problems.append("site/index.html is stale vs its site-src/pages/index.html source "
+            problems.append("site/dist/index.html is stale vs its site/pages/index.html source "
                             "(do not hand-edit the built page; edit the source and rebuild)")
         if plugin_out != _read_artifact(plugin_out_path):
-            problems.append("site/commentable-html/index.html is stale vs its "
-                            "site-src/pages/commentable-html/index.html source "
+            problems.append("site/dist/commentable-html/index.html is stale vs its "
+                            "site/pages/commentable-html/index.html source "
                             "(do not hand-edit the built page; edit the source and rebuild)")
         if tutorial_out is not None and tutorial_out != _read_artifact(tutorial_out_path):
-            problems.append("site/commentable-html/tutorial/index.html is stale vs its "
-                            "site-src/pages/commentable-html/tutorial/index.html source and "
+            problems.append("site/dist/commentable-html/tutorial/index.html is stale vs its "
+                            "site/pages/commentable-html/tutorial/index.html source and "
                             "TUTORIAL.md (do not hand-edit the built page; edit the source and rebuild)")
         if tutorial_orphaned:
-            problems.append("site/commentable-html/tutorial/index.html is orphaned: its "
-                            "site-src/pages source was removed but the built page lingers; "
+            problems.append("site/dist/commentable-html/tutorial/index.html is orphaned: its "
+                            "site/pages source was removed but the built page lingers; "
                             "run build_site_data.py to remove it")
         if demo_drift:
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
         if tutorial_img_drift:
             problems.append("tutorial images differ from source: " + ", ".join(tutorial_img_drift))
         if sitemap_drift:
-            problems.append("site/sitemap.xml is stale")
+            problems.append("site/dist/sitemap.xml is stale")
         if llms_drift:
-            problems.append("site/llms.txt is stale")
+            problems.append("site/dist/llms.txt is stale")
         if problems:
             for problem in problems:
                 sys.stderr.write("drift: %s\n" % problem)

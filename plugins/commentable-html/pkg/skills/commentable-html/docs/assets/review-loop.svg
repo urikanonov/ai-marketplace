@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 250" width="640" height="250" role="img" aria-labelledby="cmh-loop-title cmh-loop-desc" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <title id="cmh-loop-title">Commentable HTML self-review loop</title>
+  <desc id="cmh-loop-desc">An AI agent generates a commentable HTML report; you review it and leave inline comments; you Copy all the comments back to the agent; the agent returns the updated file and you repeat until every comment is resolved.</desc>
+  <!-- The site keeps an inline (light-only) twin of this diagram in site/commentable-html/index.html (the #loop section). Keep the two in sync if the labels or flow change. -->
+  <style>
+    .bg { fill: #f7f4ef; stroke: #dedede; }
+    .node { fill: #ffffff; stroke: #b11f4b; }
+    .node-title { fill: #b11f4b; }
+    .sub { fill: #5c5c5c; }
+    .arrow { stroke: #b11f4b; }
+    .head { fill: #b11f4b; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; stroke: #30363d; }
+      .node { fill: #161b22; stroke: #ff6b93; }
+      .node-title { fill: #ff6b93; }
+      .sub { fill: #9aa4ad; }
+      .arrow { stroke: #ff6b93; }
+      .head { fill: #ff6b93; }
+    }
+  </style>
+  <defs>
+    <marker id="cmh-ah" markerWidth="10" markerHeight="10" refX="7.5" refY="4.5" orient="auto" markerUnits="userSpaceOnUse">
+      <path class="head" d="M1,1 L8,4.5 L1,8 Z" fill="#b11f4b" />
+    </marker>
+  </defs>
+
+  <rect class="bg" fill="#f7f4ef" stroke="#dedede" x="1" y="1" width="638" height="248" rx="16" />
+
+  <!-- Actor nodes -->
+  <rect class="node" fill="#ffffff" stroke="#b11f4b" x="60" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
+  <text class="node-title" fill="#b11f4b" x="145" y="133" text-anchor="middle" font-size="17" font-weight="600">AI agent</text>
+
+  <rect class="node" fill="#ffffff" stroke="#b11f4b" x="410" y="96" width="170" height="64" rx="12" stroke-width="1.5" />
+  <text class="node-title" fill="#b11f4b" x="495" y="133" text-anchor="middle" font-size="17" font-weight="600">You</text>
+
+  <!-- 1. agent generates -> you -->
+  <text class="sub" fill="#5c5c5c" x="320" y="106" text-anchor="middle" font-size="12.5">1. Generates HTML</text>
+  <line class="arrow" stroke="#b11f4b" x1="236" y1="116" x2="402" y2="116" stroke-width="1.8" marker-end="url(#cmh-ah)" />
+
+  <!-- 2. you comment (self loop over You) -->
+  <text class="sub" fill="#5c5c5c" x="495" y="52" text-anchor="middle" font-size="12.5">2. Comment Inline</text>
+  <path class="arrow" stroke="#b11f4b" fill="none" d="M468,95 C 456,60 534,60 522,95" stroke-width="1.8" marker-end="url(#cmh-ah)" />
+
+  <!-- 3. copy all back to the agent -->
+  <line class="arrow" stroke="#b11f4b" x1="404" y1="142" x2="238" y2="142" stroke-width="1.8" marker-end="url(#cmh-ah)" />
+  <text class="sub" fill="#5c5c5c" x="320" y="160" text-anchor="middle" font-size="12.5">3. Copy all back to the agent</text>
+
+  <!-- 4. agent returns the updated file -> you (curved loop back below the nodes) -->
+  <path class="arrow" stroke="#b11f4b" fill="none" d="M160,175 C 250,235 380,235 470,161" stroke-width="1.8" marker-end="url(#cmh-ah)" />
+  <text class="sub" fill="#5c5c5c" x="320" y="242" text-anchor="middle" font-size="12.5">4. reload and repeat</text>
+</svg>

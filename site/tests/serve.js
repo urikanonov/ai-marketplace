@@ -2,9 +2,9 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-// Minimal static file server for the built site/ folder, used only by the
+// Minimal static file server for the built site/dist/ folder, used only by the
 // Playwright suite. No dependencies so the test install stays tiny.
-const ROOT = path.resolve(__dirname, "..", "..", "site");
+const ROOT = path.resolve(__dirname, "..", "dist");
 const PORT = 4173;
 const TYPES = {
   ".html": "text/html; charset=utf-8",

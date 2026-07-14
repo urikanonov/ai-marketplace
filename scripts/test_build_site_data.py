@@ -481,8 +481,8 @@ class StampAssetsTests(unittest.TestCase):
 
 
 class StampWiringTests(unittest.TestCase):
-    PAGES = ["site/index.html", "site/commentable-html/index.html",
-             "site/commentable-html/tutorial/index.html"]
+    PAGES = ["site/dist/index.html", "site/dist/commentable-html/index.html",
+             "site/dist/commentable-html/tutorial/index.html"]
 
     def test_committed_pages_carry_current_asset_stamps(self):
         import os as _os
@@ -500,7 +500,7 @@ class StampWiringTests(unittest.TestCase):
         alternation = "|".join(re.escape(name) for name in bsd.CACHE_BUSTED_ASSETS)
         pat = re.compile(r'(?:href|src)="[^"]*?assets/(%s)([^"]*)"' % alternation)
         bad = []
-        for path in sorted(glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "**", "*.html"), recursive=True)):
+        for path in sorted(glob.glob(_os.path.join(bsd.REPO_ROOT, "site", "dist", "**", "*.html"), recursive=True)):
             for m in pat.finditer(bsd.read_text(path)):
                 if m.group(2) != want[m.group(1)]:
                     bad.append(_os.path.relpath(path, bsd.REPO_ROOT) + ": " + m.group(0))
@@ -620,9 +620,11 @@ class CheckDriftTests(unittest.TestCase):
         for rel in tracked:
             if not rel:
                 continue
-            # build_site_data.py reads site-src/, the plugins' pkg changelogs/docs/examples, and the
-            # marketplace manifest - never plugins/*/dev/** or the generated dist/ bundles.
-            if "/dev/" in rel or rel.endswith("/dev") or "/dist/" in rel:
+            # build_site_data.py reads site/ (sources AND the committed site/dist output) plus the
+            # plugins' pkg changelogs/docs/examples and the marketplace manifest - never
+            # plugins/*/dev/** or the generated plugin dist/ bundles. Keep site/dist/ (the tests
+            # operate on the built site), but drop the plugin pkg dist bundles.
+            if "/dev/" in rel or rel.endswith("/dev") or ("/dist/" in rel and not rel.startswith("site/dist/")):
                 continue
             src = _os.path.join(bsd.REPO_ROOT, rel.replace("/", _os.sep))
             if not _os.path.isfile(src):
@@ -653,19 +655,19 @@ class CheckDriftTests(unittest.TestCase):
         root = self._clone_repo()
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
-        with open(_os.path.join(root, "site", "assets", "styles.css"), "a", encoding="utf-8") as fh:
+        with open(_os.path.join(root, "site", "dist", "assets", "styles.css"), "a", encoding="utf-8") as fh:
             fh.write("\n/* mutate without regenerating */\n")
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
     def test_check_flags_a_hand_edited_built_page(self):
         # The clobber guard, end to end through the real CLI: a hand-edit to a built page's STATIC
         # content (not a marker region) must fail --check, because the page is rebuilt from its
-        # independent site-src/pages source. This is the CI gate SITE-BUILD-14 promises.
+        # independent site/pages source. This is the CI gate SITE-BUILD-14 promises.
         import os as _os
         root = self._clone_repo()
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
-        page = _os.path.join(root, "site", "commentable-html", "index.html")
+        page = _os.path.join(root, "site", "dist", "commentable-html", "index.html")
         html = bsd.read_text(page)
         self.assertIn("Why Commentable HTML", html)
         with open(page, "w", encoding="utf-8", newline="") as fh:
@@ -673,7 +675,7 @@ class CheckDriftTests(unittest.TestCase):
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
     def test_check_flags_an_orphaned_page_whose_source_was_removed(self):
-        # If a page's site-src source is removed but its built artifact lingers, --check must flag it
+        # If a page's site source is removed but its built artifact lingers, --check must flag it
         # so the "pure artifact" invariant never silently ignores a stranded page. Capture stderr so
         # the assertion isolates the orphan guard (a --check would also fail from sitemap/llms drift).
         import contextlib
@@ -713,7 +715,7 @@ class CheckDriftTests(unittest.TestCase):
         import os as _os
         root = self._clone_repo()
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
-        llms = _os.path.join(root, "site", "llms.txt")
+        llms = _os.path.join(root, "site", "dist", "llms.txt")
         self.assertIn("commentable-html/tutorial/", bsd.read_text(llms))
         _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
@@ -745,7 +747,7 @@ class CheckDriftTests(unittest.TestCase):
         root = self._clone_repo()
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
-        _os.remove(_os.path.join(root, "site", "assets", "styles.css"))
+        _os.remove(_os.path.join(root, "site", "dist", "assets", "styles.css"))
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
     def test_styles_asset_hash_ignores_a_stale_on_disk_stylesheet(self):
@@ -756,7 +758,7 @@ class CheckDriftTests(unittest.TestCase):
         import hashlib as _hashlib
         import os as _os
         root = self._clone_repo()
-        stale = _os.path.join(root, "site", "assets", "styles.css")
+        stale = _os.path.join(root, "site", "dist", "assets", "styles.css")
         with open(stale, "w", encoding="utf-8", newline="\n") as fh:
             fh.write("/* STALE - not the real bundle */\n")
         source_derived = _hashlib.sha256(bsd.build_styles(root).encode("utf-8")).hexdigest()[:12]
@@ -772,7 +774,7 @@ class CheckDriftTests(unittest.TestCase):
         import os as _os
         import shutil
         root = self._clone_repo()
-        shutil.rmtree(_os.path.join(root, "site", "commentable-html"))
+        shutil.rmtree(_os.path.join(root, "site", "dist", "commentable-html"))
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
         self.assertTrue(_os.path.isfile(_os.path.join(root, bsd.PLUGIN_OUT)))
         self.assertTrue(_os.path.isfile(_os.path.join(root, bsd.TUTORIAL_PAGE)))
@@ -823,7 +825,7 @@ class CheckDriftTests(unittest.TestCase):
         # fail loudly with a clear SystemExit rather than silently stamping or a raw traceback.
         import os as _os
         root = self._clone_repo()
-        _os.remove(_os.path.join(root, "site", "assets", "site.js"))
+        _os.remove(_os.path.join(root, "site", "dist", "assets", "site.js"))
         with self.assertRaises(SystemExit):
             bsd.main(["build_site_data.py", "--check", "--root", root])
 
@@ -833,7 +835,7 @@ class CheckDriftTests(unittest.TestCase):
         import os as _os
         root = self._clone_repo()
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
-        sitemap = _os.path.join(root, "site", "sitemap.xml")
+        sitemap = _os.path.join(root, "site", "dist", "sitemap.xml")
         self.assertIn("commentable-html/tutorial/", bsd.read_text(sitemap))
         _os.remove(_os.path.join(root, bsd.TUTORIAL_PAGE_SRC))
         self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
@@ -845,19 +847,19 @@ class StylesConcatTests(unittest.TestCase):
         import os as _os
         root = bsd.REPO_ROOT
         built = bsd.build_styles(root)
-        committed = bsd.read_text(_os.path.join(root, "site", "assets", "styles.css"))
+        committed = bsd.read_text(_os.path.join(root, "site", "dist", "assets", "styles.css"))
         self.assertEqual(
             built, committed,
-            "site/assets/styles.css is stale vs site-src/css/ partials; run build_site_data.py")
+            "site/dist/assets/styles.css is stale vs site/css/ partials; run build_site_data.py")
 
     def test_parts_exist_and_base_loads_first(self):
         import os as _os
         root = bsd.REPO_ROOT
         parts = bsd.ordered_css_parts(root)
-        self.assertTrue(parts, "no CSS partials discovered under site-src/css/")
+        self.assertTrue(parts, "no CSS partials discovered under site/css/")
         for name in parts:
             self.assertTrue(
-                _os.path.exists(_os.path.join(root, "site-src", "css", name)),
+                _os.path.exists(_os.path.join(root, "site", "css", name)),
                 "missing CSS partial: " + name)
         # Order is load-bearing (directory-sorted): the tokens/base partial must come first.
         self.assertEqual(parts[0], "10-base.css")
@@ -868,7 +870,7 @@ class StylesConcatTests(unittest.TestCase):
         import tempfile
         root = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, root, ignore_errors=True)
-        css_dir = _os.path.join(root, "site-src", "css")
+        css_dir = _os.path.join(root, "site", "css")
         _os.makedirs(css_dir)
         with open(_os.path.join(css_dir, "10-base.css"), "w", encoding="utf-8") as fh:
             fh.write("a{}")
@@ -879,7 +881,7 @@ class StylesConcatTests(unittest.TestCase):
 
 
 class PageBannerAndGuardTests(unittest.TestCase):
-    """Site pages are pure artifacts built from site-src/pages/ sources and carry a DO NOT EDIT
+    """Site pages are pure artifacts built from site/pages/ sources and carry a DO NOT EDIT
     banner; a hand-edit to a built page is caught by comparing it to a fresh build (SITE-BUILD-14)."""
 
     def _mktemp(self):
@@ -889,9 +891,9 @@ class PageBannerAndGuardTests(unittest.TestCase):
         return d
 
     def test_page_banner_names_source_and_says_do_not_edit(self):
-        b = bsd.page_banner(os.path.join("site-src", "pages", "index.html"))
+        b = bsd.page_banner(os.path.join("site", "pages", "index.html"))
         self.assertIn("DO NOT EDIT", b)
-        self.assertIn("site-src/pages/index.html", b)  # forward slashes even on Windows
+        self.assertIn("site/pages/index.html", b)  # forward slashes even on Windows
         self.assertIn("build_site_data.py", b)
 
     def test_css_banner_says_do_not_edit(self):
@@ -901,10 +903,10 @@ class PageBannerAndGuardTests(unittest.TestCase):
 
     def test_apply_page_banner_inserts_after_doctype_and_is_idempotent(self):
         html = "<!DOCTYPE html>\n<html><head></head><body></body></html>\n"
-        once = bsd.apply_page_banner(html, "site-src/pages/index.html")
+        once = bsd.apply_page_banner(html, "site/pages/index.html")
         self.assertRegex(once, r"^<!DOCTYPE html>\n<!-- GENERATED FILE - DO NOT EDIT\.")
         # Re-applying replaces the prior banner instead of stacking a second one.
-        twice = bsd.apply_page_banner(once, "site-src/pages/index.html")
+        twice = bsd.apply_page_banner(once, "site/pages/index.html")
         self.assertEqual(once, twice)
         self.assertEqual(twice.count(bsd.GENERATED_BANNER_PREFIX), 1)
 
@@ -913,21 +915,21 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # the page body that happens to start with the banner prefix must NOT be stripped.
         body_comment = "<!-- %s real body content -->" % bsd.GENERATED_BANNER_PREFIX
         html = "<!DOCTYPE html>\n<html><body>\n%s\n</body></html>\n" % body_comment
-        out = bsd.apply_page_banner(html, "site-src/pages/index.html")
+        out = bsd.apply_page_banner(html, "site/pages/index.html")
         self.assertIn(body_comment, out)
         self.assertEqual(out.count(bsd.GENERATED_BANNER_PREFIX), 2)  # slot banner + body comment
-        self.assertEqual(out, bsd.apply_page_banner(out, "site-src/pages/index.html"))  # idempotent
+        self.assertEqual(out, bsd.apply_page_banner(out, "site/pages/index.html"))  # idempotent
 
     def test_apply_page_banner_tolerates_a_doctype_with_attributes(self):
         html = '<!DOCTYPE html SYSTEM "about:legacy-compat">\n<html></html>\n'
-        out = bsd.apply_page_banner(html, "site-src/pages/index.html")
+        out = bsd.apply_page_banner(html, "site/pages/index.html")
         # The banner goes AFTER the doctype (never before it, which would trip quirks mode).
         self.assertRegex(
             out, r'^<!DOCTYPE html SYSTEM "about:legacy-compat">\n<!-- GENERATED FILE - DO NOT EDIT\.')
 
     def _write_source(self, root):
-        src_rel = os.path.join("site-src", "pages", "x.html")
-        os.makedirs(os.path.join(root, "site-src", "pages"))
+        src_rel = os.path.join("site", "pages", "x.html")
+        os.makedirs(os.path.join(root, "site", "pages"))
         with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
             fh.write("<!DOCTYPE html>\n<html><body>\n<h1>Real title</h1>\n"
                      "<!-- BEGIN:plugins -->OLD<!-- END:plugins -->\n</body></html>\n")
@@ -949,7 +951,7 @@ class PageBannerAndGuardTests(unittest.TestCase):
         root = self._mktemp()
         src_rel = self._write_source(root)
         out_path = os.path.join(root, "site", "x.html")
-        os.makedirs(os.path.join(root, "site"))
+        os.makedirs(os.path.join(root, "site"), exist_ok=True)
         fillers = [("block", "plugins", "GRID")]
         art = bsd.build_page(root, src_rel, fillers)
         with open(out_path, "w", encoding="utf-8", newline="") as fh:
@@ -994,8 +996,8 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # Every shipped page must start with a doctype so the banner has a slot; a source missing it
         # must raise rather than emit a page the banner cannot be applied to.
         root = self._mktemp()
-        os.makedirs(os.path.join(root, "site-src", "pages"))
-        src_rel = os.path.join("site-src", "pages", "y.html")
+        os.makedirs(os.path.join(root, "site", "pages"))
+        src_rel = os.path.join("site", "pages", "y.html")
         with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
             fh.write("<html><body><h1>No doctype</h1></body></html>\n")
         with self.assertRaises(SystemExit):
@@ -1005,8 +1007,8 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # A duplicated <!doctype> is the classic malformed-merge artifact: it would build and match
         # its committed copy (passing --check) while shipping invalid HTML, so reject it at build.
         root = self._mktemp()
-        os.makedirs(os.path.join(root, "site-src", "pages"))
-        src_rel = os.path.join("site-src", "pages", "dup.html")
+        os.makedirs(os.path.join(root, "site", "pages"))
+        src_rel = os.path.join("site", "pages", "dup.html")
         with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
             fh.write("<!DOCTYPE html>\n<html><body>\n<!DOCTYPE html>\n</body></html>\n")
         with self.assertRaises(SystemExit):
@@ -1017,8 +1019,8 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # embedded in a script string or in prose (a real HTML-tooling page could carry one) does not
         # false-trip the guard.
         root = self._mktemp()
-        os.makedirs(os.path.join(root, "site-src", "pages"))
-        src_rel = os.path.join("site-src", "pages", "lit.html")
+        os.makedirs(os.path.join(root, "site", "pages"))
+        src_rel = os.path.join("site", "pages", "lit.html")
         with open(os.path.join(root, src_rel), "w", encoding="utf-8", newline="") as fh:
             fh.write('<!DOCTYPE html>\n<html><body>\n'
                      '<script>var s = "<!doctype html>";</script>\n'
@@ -1028,7 +1030,7 @@ class PageBannerAndGuardTests(unittest.TestCase):
         self.assertIn('var s = "<!doctype html>";', art)  # the literal survived; no SystemExit
 
     def test_build_styles_errors_on_a_missing_css_directory(self):
-        # A missing site-src/css/ directory must raise a clear SystemExit, not a raw OSError.
+        # A missing site/css/ directory must raise a clear SystemExit, not a raw OSError.
         root = self._mktemp()
         with self.assertRaises(SystemExit):
             bsd.build_styles(root)
@@ -1037,7 +1039,7 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # A directory that EXISTS but holds no `.css` partials must fail loudly rather than emit a
         # banner-only stylesheet (mirrors build.ordered_parts on the commentable-html side).
         root = self._mktemp()
-        os.makedirs(os.path.join(root, "site-src", "css"))
+        os.makedirs(os.path.join(root, "site", "css"))
         with self.assertRaises(SystemExit):
             bsd.build_styles(root)
 
@@ -1045,7 +1047,7 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # A BOM saved into any CSS partial must not land inside the concatenated bundle (it would sit
         # mid-file and can break CSS parsing); build_styles strips it like build_page does for pages.
         root = self._mktemp()
-        css_dir = os.path.join(root, "site-src", "css")
+        css_dir = os.path.join(root, "site", "css")
         os.makedirs(css_dir)
         names = ["10-base.css", "20-mid.css", "30-tail.css"]
         for i, name in enumerate(names):
@@ -1057,8 +1059,8 @@ class PageBannerAndGuardTests(unittest.TestCase):
         # A source saved with a UTF-8 BOM still builds (the BOM is stripped before the doctype check),
         # and the built artifact never carries the BOM into the shipped page.
         root = self._mktemp()
-        os.makedirs(os.path.join(root, "site-src", "pages"))
-        src_rel = os.path.join("site-src", "pages", "bom.html")
+        os.makedirs(os.path.join(root, "site", "pages"))
+        src_rel = os.path.join("site", "pages", "bom.html")
         with open(os.path.join(root, src_rel), "w", encoding="utf-8-sig", newline="") as fh:
             fh.write("<!DOCTYPE html>\n<html><body><h1>BOM</h1></body></html>\n")
         art = bsd.build_page(root, src_rel, [])
@@ -1066,7 +1068,7 @@ class PageBannerAndGuardTests(unittest.TestCase):
         self.assertRegex(art, r"^<!DOCTYPE html>\n<!-- %s" % bsd.GENERATED_BANNER_PREFIX)
 
     def test_committed_page_sources_are_banner_free(self):
-        # The editable sources under site-src/pages must NOT carry the generated banner; the banner
+        # The editable sources under site/pages must NOT carry the generated banner; the banner
         # is injected only into the built artifact. If a source picked one up, a rebuild would be a
         # no-op on the banner line and hand-edits could hide there.
         for rel in (bsd.HUB_SRC, bsd.PLUGIN_SRC, bsd.TUTORIAL_PAGE_SRC):
@@ -1077,7 +1079,7 @@ class PageBannerAndGuardTests(unittest.TestCase):
                              "%s must not contain the generated banner" % rel)
 
     def test_committed_stylesheet_carries_the_banner(self):
-        css = os.path.join(bsd.REPO_ROOT, "site", "assets", "styles.css")
+        css = os.path.join(bsd.REPO_ROOT, "site", "dist", "assets", "styles.css")
         self.assertIn("DO NOT EDIT", bsd.read_text(css))
 
 
