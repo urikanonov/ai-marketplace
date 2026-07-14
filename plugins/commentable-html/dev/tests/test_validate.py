@@ -34,7 +34,7 @@ sys.path.insert(0, TOOLS)
 import validate  # noqa: E402
 
 TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
-VALIDATE_PY = os.path.join(TOOLS, "validate.py")
+VALIDATE_PY = os.path.join(TOOLS, "validate", "validate.py")
 
 # Frozen, test-owned copy of the required-id contract. The fixture is built from
 # THIS list (not validate.REQUIRED_IDS), and test_required_ids_contract asserts

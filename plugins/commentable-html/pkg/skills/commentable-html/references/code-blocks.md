@@ -37,12 +37,12 @@ Code-block comments are stored as regular text comments with two extra fields:
 
 ### Syntax highlighting (author-time, self-contained)
 
-Highlight code blocks with `tools/highlight_code.py`, a standard-library highlighter that bakes token spans at author time:
+Highlight code blocks with `tools/blocks/highlight_code.py`, a standard-library highlighter that bakes token spans at author time:
 
 ```bash
-python tools/highlight_code.py <language> "<code>" # code as an argument
-python tools/highlight_code.py <language> < snippet.txt # or piped on stdin
-python tools/highlight_code.py --list # supported languages
+python tools/blocks/highlight_code.py <language> "<code>" # code as an argument
+python tools/blocks/highlight_code.py <language> < snippet.txt # or piped on stdin
+python tools/blocks/highlight_code.py --list # supported languages
 ```
 
 It emits a `<pre><code class="language-<lang>">...</code></pre>` block whose tokens are wrapped in `<span class="cmh-code-...">` (kw, fn, str, num, com, op). The spans only add structure, so `textContent` is the exact original code (LF-normalized), selecting and commenting still see raw code, and every character is HTML-escaped. The layer CSS ships token colors for light and dark themes. Unknown languages fall back to a safely escaped unhighlighted block.
@@ -51,6 +51,6 @@ It emits a `<pre><code class="language-<lang>">...</code></pre>` block whose tok
 
 Never ship a `language-XXX` block that renders as plain monochrome text. Three layers make that hard to get wrong:
 
-- **Bake it in one pass.** `tools/highlight_document.py <file.html>` highlights every raw, language-labelled `<pre><code>` block in a file at once (aliases like `cs` -> `csharp` resolved); an already-highlighted block, an inline `<code>`, and a non-highlightable label (`language-text`, `language-kusto`) are left untouched. `tools/finalize.py` runs this step by default (skip it with `--no-highlight`), so the standard finalization bakes highlighting.
-- **The validator flags a miss.** `tools/validate.py` warns when a `language-XXX` block for a highlightable language has no `cmh-code-*` spans, and `--strict` turns that warning into a handoff failure, so a block that slipped through is caught before the file reaches the user.
+- **Bake it in one pass.** `tools/blocks/highlight_document.py <file.html>` highlights every raw, language-labelled `<pre><code>` block in a file at once (aliases like `cs` -> `csharp` resolved); an already-highlighted block, an inline `<code>`, and a non-highlightable label (`language-text`, `language-kusto`) are left untouched. `tools/authoring/finalize.py` runs this step by default (skip it with `--no-highlight`), so the standard finalization bakes highlighting.
+- **The validator flags a miss.** `tools/validate/validate.py` warns when a `language-XXX` block for a highlightable language has no `cmh-code-*` spans, and `--strict` turns that warning into a handoff failure, so a block that slipped through is caught before the file reaches the user.
 - **The runtime is a safety net.** If a labelled block still ships unhighlighted, the runtime tokenizes it on load with the same `cmh-code-*` classes, so the reader always sees highlighting instead of monochrome text. Baking is still preferred (it survives with scripts disabled and in a Plain HTML export).

@@ -13,8 +13,9 @@ import re
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 
 import new_document  # noqa: E402
 import upgrade  # noqa: E402

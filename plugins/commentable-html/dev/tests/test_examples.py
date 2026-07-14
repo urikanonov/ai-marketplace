@@ -53,7 +53,7 @@ class ExampleTests(unittest.TestCase):
 
     def test_example_validates_clean(self):
         r = subprocess.run(
-            [sys.executable, os.path.join(SKILL, "tools", "validate.py"), *EXAMPLES],
+            [sys.executable, os.path.join(SKILL, "tools", "validate", "validate.py"), *EXAMPLES],
             capture_output=True, text=True, cwd=SKILL)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertRegex(r.stdout, r"\b0 warning")
@@ -271,7 +271,7 @@ class ChecklistExampleTests(unittest.TestCase):
     def test_checklist_example_ships_and_validates_strict(self):
         self.assertTrue(os.path.isfile(self._EX), "report-checklist.html is missing")
         r = subprocess.run(
-            [sys.executable, os.path.join(SKILL, "tools", "validate.py"), "--strict", self._EX],
+            [sys.executable, os.path.join(SKILL, "tools", "validate", "validate.py"), "--strict", self._EX],
             capture_output=True, text=True, cwd=SKILL)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 

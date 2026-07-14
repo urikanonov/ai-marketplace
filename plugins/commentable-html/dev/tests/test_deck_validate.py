@@ -16,7 +16,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 
-DECK = os.path.join(_paths.PKG, "deck")
+DECK = os.path.join(_paths.PKG, "tools", "deck")
 sys.path.insert(0, DECK)
 import deck_validate  # noqa: E402
 

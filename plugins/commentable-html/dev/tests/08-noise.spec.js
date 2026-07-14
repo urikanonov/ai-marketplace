@@ -148,7 +148,7 @@ for (const seed of [0x9e3779b9, 0x1234567, 0xdeadbeef]) {
       const all = stored.map((c) => c.id);
       const handled = all.filter((_, idx) => idx % 2 === 0);
       const remaining = all.filter((id) => !handled.includes(id));
-      execFileSync(PYTHON, ["tools/mark_handled.py", html, ...handled], { cwd: SKILL });
+      execFileSync(PYTHON, ["tools/authoring/mark_handled.py", html, ...handled], { cwd: SKILL });
       await page.reload();
       await ready(page);
       expect(warnings).toEqual([]);

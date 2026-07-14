@@ -12,9 +12,9 @@ Idempotent and conservative: an already-highlighted block, a non-highlightable l
 carries markup are all left untouched.
 
 Usage (run from the skill root):
-    python tools/highlight_document.py file.html            # rewrite in place
-    python tools/highlight_document.py --check file.html    # exit 1 if any block needs highlighting
-    python tools/highlight_document.py -                    # read stdin, write highlighted HTML to stdout
+    python tools/blocks/highlight_document.py file.html            # rewrite in place
+    python tools/blocks/highlight_document.py --check file.html    # exit 1 if any block needs highlighting
+    python tools/blocks/highlight_document.py -                    # read stdin, write highlighted HTML to stdout
 """
 import argparse
 import html as _html
@@ -22,9 +22,9 @@ import os
 import re
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 import highlight_code  # noqa: E402
 
 # A block code element: <pre ...><code ...>INNER</code></pre> (optional whitespace between tags).
@@ -108,7 +108,7 @@ def main(argv=None):
     if args.check:
         if count:
             sys.stderr.write("highlight_document: %d code block(s) are not highlighted in %s "
-                             "- run: python tools/highlight_document.py %s\n"
+                             "- run: python tools/blocks/highlight_document.py %s\n"
                              % (count, args.file, args.file))
             return 1
         print("highlight_document: all code blocks are highlighted")

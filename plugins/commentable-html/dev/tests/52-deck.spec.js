@@ -322,7 +322,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       '<section class="slide"><h2>A</h2><p>first slide alpha</p></section>'
       + '<section class="slide"><h2>B</h2><p>second slide beta</p></section>');
     const out = path.join(dir, "deck.html");
-    const r = spawnSync(PYTHON, [path.join(SKILL, "deck", "deck_scaffold.py"),
+    const r = spawnSync(PYTHON, [path.join(SKILL, "tools", "deck", "deck_scaffold.py"),
       "--content", frag, "--label", "Real Deck", "--source", out, "--out", out], { encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0);
     await installClipboardCapture(page);

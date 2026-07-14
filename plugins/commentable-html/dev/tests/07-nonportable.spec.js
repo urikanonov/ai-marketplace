@@ -64,7 +64,7 @@ test.describe("nonportable mode", () => {
     fs.writeFileSync(tmp, html);
     let page2;
     try {
-      execFileSync(PYTHON, ["tools/validate.py", tmp], { cwd: SKILL }); // throws on non-zero exit
+      execFileSync(PYTHON, ["tools/validate/validate.py", tmp], { cwd: SKILL }); // throws on non-zero exit
 
       // And it re-opens as a working inline (portable) document.
       page2 = await context.newPage();

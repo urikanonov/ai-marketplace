@@ -17,7 +17,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import fix_skip  # noqa: E402
 
-FIX_PY = os.path.join(TOOLS, "fix_skip.py")
+FIX_PY = os.path.join(TOOLS, "authoring", "fix_skip.py")
 
 
 class FixSkipCoreTests(unittest.TestCase):

@@ -54,7 +54,9 @@ import shutil
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 
 BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
 END_MARKER = "<!-- END: commentable-html - CONTENT -->"
@@ -336,8 +338,7 @@ def _self_validate(html_out, base_dir=None):
 
 
 def _skill_root():
-    # tools/ lives directly under the skill root, next to dist/.
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return _toolpath.SKILL_ROOT
 
 
 def _default_template(nonportable=False):

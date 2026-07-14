@@ -52,7 +52,7 @@ first cell or its `[data-cmh-state-cell]`); the item's label text stays ordinary
 ```
 
 Do not hand-write the ids and parent links: generate the markup with
-`python tools/checklist_scaffold.py --in outline.txt --shape list|table --id <id> --label "..."`.
+`python tools/checklist/checklist_scaffold.py --in outline.txt --shape list|table --id <id> --label "..."`.
 
 ## Runtime behavior
 
@@ -78,12 +78,12 @@ Do not hand-write the ids and parent links: generate the markup with
 When the reviewer pastes a Copy-all bundle back, cement the states into the source HTML deterministically:
 
 ```
-python tools/checklist_apply.py source.html --from-bundle bundle.txt   # or: - for stdin
-python tools/checklist_apply.py source.html --state-json '{"audit":{"fw":"cross"}}'
+python tools/checklist/checklist_apply.py source.html --from-bundle bundle.txt   # or: - for stdin
+python tools/checklist/checklist_apply.py source.html --state-json '{"audit":{"fw":"cross"}}'
 ```
 
 It rewrites `data-cmh-state` on each named item (by `data-cmh-item` id, else positional key), leaves
-branches untouched, is idempotent, and skips invalid tokens. Run `python tools/validate.py --strict`
+branches untouched, is idempotent, and skips invalid tokens. Run `python tools/validate/validate.py --strict`
 afterward.
 
 ## Validation

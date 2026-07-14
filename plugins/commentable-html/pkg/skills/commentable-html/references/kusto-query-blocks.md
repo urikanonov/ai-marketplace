@@ -3,7 +3,7 @@
 
 ## Kusto query blocks (Run in Azure Data Explorer deep link)
 
-Whenever a report embeds a Kusto (KQL) query, render the query as a normal commentable code block **and place a "Run in Azure Data Explorer" deep link right next to it**. The report is static and self-contained, so the link is the reader's one-click path from "here is the query" to opening it, pre-loaded and ready to run, in the Azure Data Explorer web UX. This is a required convention: a framed KQL figure (`figure.cmh-kql`) **MUST** carry a run link built with `tools/kusto_link.py`. `validate.py` enforces this - a framed KQL figure with no `cmh-kql-run` link is a hard validation **error** (not a warning), so the document does not pass validation until the link is added.
+Whenever a report embeds a Kusto (KQL) query, render the query as a normal commentable code block **and place a "Run in Azure Data Explorer" deep link right next to it**. The report is static and self-contained, so the link is the reader's one-click path from "here is the query" to opening it, pre-loaded and ready to run, in the Azure Data Explorer web UX. This is a required convention: a framed KQL figure (`figure.cmh-kql`) **MUST** carry a run link built with `tools/kusto/kusto_link.py`. `validate.py` enforces this - a framed KQL figure with no `cmh-kql-run` link is a hard validation **error** (not a warning), so the document does not pass validation until the link is added.
 
 **Escape hatch for illustrative queries.** The rule applies only to framed `figure.cmh-kql` cards. If a query is purely illustrative - a syntax example with no real cluster/database to run against - render it as a plain `<pre><code class="language-kusto">...</code></pre>` code block instead of a framed figure. A bare `<pre>` is not a `figure.cmh-kql`, so it is exempt from the run-link rule (still HTML-escape the query text). Reserve the framed figure for queries that target a reachable cluster/database.
 
@@ -14,8 +14,8 @@ Whenever a report embeds a Kusto (KQL) query, render the query as a normal comme
 Use the helper (deterministic, so the same query always yields the same URL; line endings are normalized so a CRLF `.kql` file and an LF query produce the same link):
 
 ```bash
-python tools/kusto_link.py <cluster> <database> "<query>" # query as an argument
-python tools/kusto_link.py <cluster> <database> < query.kql # or piped on stdin
+python tools/kusto/kusto_link.py <cluster> <database> "<query>" # query as an argument
+python tools/kusto/kusto_link.py <cluster> <database> < query.kql # or piped on stdin
 ```
 
 It emits `https://dataexplorer.azure.com/clusters/<cluster>/databases/<database>?query=<payload>`, where `<payload>` is the query **gzip-compressed (mtime pinned to 0), base64-encoded, then percent-encoded** - the same scheme the Kusto web UX uses for share links. `<cluster>` may be a bare host (`help.kusto.windows.net`) or a full `https://...` URL; the helper validates it is a plain DNS host and rejects anything with quotes/spaces/URL-structural characters (which would otherwise break the `href`). Very large queries can exceed browser URL limits (the helper warns past ~8k chars) - trim or parameterize them.
@@ -27,9 +27,9 @@ It emits `https://dataexplorer.azure.com/clusters/<cluster>/databases/<database>
 The easiest path is the one-call helper, which emits the complete figure - caption, "Run in Azure Data Explorer" link (via `kusto_link.py`), and syntax-highlighted code:
 
 ```bash
-python tools/kql_highlight.py <cluster> <database> "<title>" "<query>" # full figure
-python tools/kql_highlight.py <cluster> <database> "<title>" < query.kql # query on stdin
-python tools/kql_highlight.py --code-only "<query>" # just the <pre><code>
+python tools/kusto/kql_highlight.py <cluster> <database> "<title>" "<query>" # full figure
+python tools/kusto/kql_highlight.py <cluster> <database> "<title>" < query.kql # query on stdin
+python tools/kusto/kql_highlight.py --code-only "<query>" # just the <pre><code>
 ```
 
 ### Markup

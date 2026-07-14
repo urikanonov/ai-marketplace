@@ -19,7 +19,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import new_document  # noqa: E402
 
-NEW_DOC_PY = os.path.join(TOOLS, "new_document.py")
+NEW_DOC_PY = os.path.join(TOOLS, "authoring", "new_document.py")
 TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 
 CONTENT = '<section><h2 id="a">Hi</h2><p>x</p></section>'

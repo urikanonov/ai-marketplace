@@ -18,7 +18,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import chart_block  # noqa: E402
 
-CHART_BLOCK_PY = os.path.join(TOOLS, "chart_block.py")
+CHART_BLOCK_PY = os.path.join(TOOLS, "blocks", "chart_block.py")
 
 SPEC = {
     "type": "bar",
@@ -95,23 +95,26 @@ class ChartBlockRenderTests(unittest.TestCase):
         self.assertEqual(warnings, [], warnings)
 
     def test_tools_dir_is_on_sys_path_for_self_validation(self):
-        # chart_block must add its own tools dir to sys.path so `import validate` (and
-        # thus self-validation) is not silently skipped under a non-standard invocation.
-        # Load the module fresh with the tools dir removed from sys.path and the cached
-        # modules dropped: it must re-add its own dir so validate becomes importable.
+        # chart_block runs the tools/_toolpath.py bootstrap at import so `import validate` (and
+        # thus self-validation) is not silently skipped under a non-standard invocation. Load the
+        # module fresh with the validate bucket (and the tools dirs) removed from sys.path and the
+        # cached modules dropped: the bootstrap must re-add them so validate becomes importable.
         import importlib.util
         saved_path = list(sys.path)
-        saved_modules = {k: sys.modules[k] for k in ("validate", "chart_block") if k in sys.modules}
+        saved_modules = {k: sys.modules[k]
+                         for k in ("validate", "chart_block", "_toolpath") if k in sys.modules}
         try:
-            for k in ("validate", "chart_block"):
+            for k in ("validate", "chart_block", "_toolpath"):
                 sys.modules.pop(k, None)
-            here = os.path.abspath(chart_block.HERE)
-            sys.path[:] = [p for p in sys.path if os.path.abspath(p) != here]
+            validate_dir = os.path.abspath(os.path.join(TOOLS, "validate"))
+            drop = {os.path.abspath(TOOLS), validate_dir,
+                    os.path.abspath(os.path.join(TOOLS, "blocks"))}
+            sys.path[:] = [p for p in sys.path if os.path.abspath(p) not in drop]
             spec = importlib.util.spec_from_file_location(
-                "chart_block", os.path.join(TOOLS, "chart_block.py"))
+                "chart_block", os.path.join(TOOLS, "blocks", "chart_block.py"))
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
-            self.assertIn(mod.HERE, sys.path)
+            self.assertIn(validate_dir, [os.path.abspath(p) for p in sys.path])
             importlib.import_module("validate")
         finally:
             sys.path[:] = saved_path

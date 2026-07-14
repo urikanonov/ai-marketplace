@@ -509,7 +509,7 @@ def _region_marker_matches(text, kind, name):
 def _region_inner(text, name, where):
     """Return (start, end) offsets of a layer region's inner content (between the BEGIN
     and END marker lines). The line-anchored match ignores marker-like strings.
-    Mirrors tools/upgrade.py so example regeneration and end-user upgrades agree."""
+    Mirrors tools/authoring/upgrade.py so example regeneration and end-user upgrades agree."""
     begins = _region_marker_matches(text, "BEGIN", name)
     if not begins:
         raise SystemExit("build: %s: '%s' region BEGIN marker not found" % (where, name))

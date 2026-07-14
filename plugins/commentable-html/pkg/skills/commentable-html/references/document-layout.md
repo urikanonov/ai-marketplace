@@ -145,7 +145,7 @@ document has restored comments and leaves it closed otherwise, and it toggles th
 `<body>` as the user shows or hides the panel. Do not bake `sidebar-open` (or any other transient state
 class) into the `<body>` open tag of a saved file - a persisted `sidebar-open` renders the content full
 width with an empty sidebar gutter (the `body.sidebar-open .app` rule) for a panel that is not shown, and
-`tools/validate.py` rejects it. Ship a plain `<body>` and let the runtime derive the state.
+`tools/validate/validate.py` rejects it. Ship a plain `<body>` and let the runtime derive the state.
 
 ## Per-document configuration example
 

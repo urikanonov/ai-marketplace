@@ -14,7 +14,7 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `dist/commentable-html.js` | Runtime companion. |
 | `dist/commentable-html.assets.js` | Asset registry used by Export as Portable. |
 | `dist/manifest.json` | Version and SHA-256 metadata for companions. |
-| `tools/` | Runtime Python helpers that ship with the skill. |
+| `tools/` | Runtime Python helpers that ship with the skill, grouped into per-topic buckets (`tools/deck`, `tools/kusto`, `tools/checklist`, `tools/blocks`, `tools/authoring`, `tools/validate`). |
 | `references/` | Detailed generated-report references. |
 | `docs/TUTORIAL.md` | Tutorial using `examples/report-community-garden.html`. |
 | `docs/assets/` | Tutorial screenshots and the review-loop diagram (the diagram is embedded in the plugin README). |

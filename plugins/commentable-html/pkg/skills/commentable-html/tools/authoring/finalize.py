@@ -18,8 +18,9 @@ import argparse
 import os
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402

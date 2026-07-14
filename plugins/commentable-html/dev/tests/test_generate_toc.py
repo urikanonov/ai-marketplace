@@ -16,7 +16,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import generate_toc  # noqa: E402
 
-GENERATE_TOC_PY = os.path.join(TOOLS, "generate_toc.py")
+GENERATE_TOC_PY = os.path.join(TOOLS, "authoring", "generate_toc.py")
 
 
 def doc(body):

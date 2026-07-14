@@ -19,7 +19,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import mark_handled  # noqa: E402
 
-MARK_PY = os.path.join(TOOLS, "mark_handled.py")
+MARK_PY = os.path.join(TOOLS, "authoring", "mark_handled.py")
 
 DOC = (
     "<!DOCTYPE html>\n<html><body>\n"
