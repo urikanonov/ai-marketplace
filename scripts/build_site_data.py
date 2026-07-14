@@ -152,7 +152,7 @@ def ordered_css_parts(root):
     css_dir = os.path.join(root, *CSS_DIR)
     if not os.path.isdir(css_dir):
         raise SystemExit("CSS source directory missing: %s" % css_dir)
-    names = [n for n in os.listdir(css_dir) if os.path.isfile(os.path.join(css_dir, n)) and n.endswith(".css")]
+    names = [n for n in os.listdir(css_dir) if os.path.isfile(os.path.join(css_dir, n)) and n.lower().endswith(".css")]
     stray = [n for n in names if not _CSS_PART_RE.match(n)]
     if stray:
         raise SystemExit("site-src/css/ holds .css files that are not `NN-topic.css` partials: %s "

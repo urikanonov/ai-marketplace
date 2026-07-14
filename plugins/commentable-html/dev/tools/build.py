@@ -263,7 +263,7 @@ def ordered_parts(assets_dir, ext):
     if not os.path.isdir(d):
         raise SystemExit("commentable-html source directory missing: %s "
                          "(sources live under assets/js/ and assets/css/)" % d)
-    names = [n for n in os.listdir(d) if os.path.isfile(os.path.join(d, n)) and n.endswith("." + ext)]
+    names = [n for n in os.listdir(d) if os.path.isfile(os.path.join(d, n)) and n.lower().endswith("." + ext)]
     stray = [n for n in names if not _PART_RE[ext].match(n)]
     if stray:
         raise SystemExit("%s/ holds .%s files that are not `NN-topic.%s` partials: %s "

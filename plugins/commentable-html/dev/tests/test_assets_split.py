@@ -45,13 +45,29 @@ class AssemblyIntegrityTests(unittest.TestCase):
         self.assertIn("SNAPSHOT_HTML", text)
         self.assertIn("currentScript", text)
         # Adjacency, not just ordering: NOTHING executable may sit between the IIFE opener and the
-        # SNAPSHOT_HTML capture (the snapshot must be taken before any statement touches the DOM).
+        # SNAPSHOT_HTML DECLARATION (anchored on the real `const SNAPSHOT_HTML =`, not the first token
+        # occurrence, so a comment mentioning the name cannot hide an inserted statement).
         opener = "(() => {"
-        between = text[text.index(opener) + len(opener):text.index("SNAPSHOT_HTML")]
+        decl = re.search(r"(?m)^\s*(?:const|let|var)\s+SNAPSHOT_HTML\s*=", text)
+        self.assertIsNotNone(decl, "the preamble must DECLARE SNAPSHOT_HTML")
+        between = text[text.index(opener) + len(opener):decl.start()]
         stripped = "\n".join(ln for ln in between.splitlines() if not ln.strip().startswith("//")).strip()
-        # Only the `const ` keyword of the SNAPSHOT_HTML declaration may precede the name.
-        self.assertRegex(stripped, r"^(const|let|var)?$",
+        self.assertEqual(stripped, "",
                          "no executable statement may run before SNAPSHOT_HTML is captured, found: %r" % stripped)
+
+    def test_ordered_parts_rejects_a_mis_cased_extension(self):
+        # A mis-cased extension (95-startup.JS) must FAIL the build (case-insensitively collected,
+        # then rejected by the strict lowercase regex) rather than be silently dropped on a
+        # case-sensitive filesystem.
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        os.makedirs(os.path.join(tmp, "js"))
+        with open(os.path.join(tmp, "js", "00-a.js"), "w", encoding="utf-8") as fh:
+            fh.write("x\n")
+        with open(os.path.join(tmp, "js", "95-startup.JS"), "w", encoding="utf-8") as fh:
+            fh.write("y\n")
+        with self.assertRaises(SystemExit):
+            build.ordered_parts(tmp, "js")
 
     def test_ordered_parts_are_sorted_nonempty_named_and_numeric(self):
         for ext in ("js", "css"):
