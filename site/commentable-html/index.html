@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.47.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.48.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -341,6 +341,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.48.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Prevent code blocks from shipping without syntax highlighting, in three layers: - Runtime fallback: the runtime now highlights any commentable <code>&lt;pre&gt;&lt;code class=&quot;language-XXX&quot;&gt;</code> block that shipped without highlight spans, on load, so a labelled block never renders as plain monochrome text even when highlighting was never baked. It is idempotent, only fires for a language the tokenizer knows, and keeps line numbers and comment anchoring consistent. - <code>tools/highlight_document.py</code>: bakes highlighting into every raw, language-labelled code block of a file in one pass (with a <code>--check</code> mode). <code>tools/finalize.py</code> runs it by default (opt out with <code>--no-highlight</code>), so the standard finalization bakes highlighting.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.47.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -351,6 +358,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The showcase demo&#x27;s Python code block is now syntax-highlighted (it previously shipped as a plain <code>language-python</code> block, which the new validator check flags).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.46.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -358,8 +367,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Search within comments. The comments panel now has a single search field (with a leading magnifier and a clear X button) that filters the comment cards to only those whose text - the note, the quoted content, the section path, and the pin - matches the query case-insensitively. A shown/total count sits beside the field, a no-results note appears when nothing matches, and the filter re-applies after every render so it survives adding, editing, or sorting comments.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.45.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -392,15 +399,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>A &quot;Privacy and compliance&quot; section in the packaged README and a &quot;Private by design&quot; section on the plugin site page (linked from the nav), emphasizing that the document and every comment stay local - in the browser&#x27;s <code>localStorage</code> or embedded in your own HTML file - are never uploaded or sent to any external service, and that only the Mermaid/Chart.js rendering libraries load from a CDN (not your data) while Export Offline strips even that for air-gapped, sensitive, or regulated use.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.39.0] - 2026-07-14</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The Help &amp; About panel now links the author&#x27;s name, &quot;Uri Kanonov&quot;, to <code>https://github.com/urikanonov</code> (opens in a new tab), reusing the existing brand-link style.</li>
-              <li>Help panel text now names the triage board&#x27;s <code>Reset moves</code> button and the board-moves comment card&#x27;s <code>Reset changes</code> button, and refers to the Help toggle by its exact on-screen label, <code>Help &amp; About</code>, instead of the shorthand <code>Help</code>.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">48 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">49 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

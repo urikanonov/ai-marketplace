@@ -46,3 +46,11 @@ python tools/highlight_code.py --list # supported languages
 ```
 
 It emits a `<pre><code class="language-<lang>">...</code></pre>` block whose tokens are wrapped in `<span class="cmh-code-...">` (kw, fn, str, num, com, op). The spans only add structure, so `textContent` is the exact original code (LF-normalized), selecting and commenting still see raw code, and every character is HTML-escaped. The layer CSS ships token colors for light and dark themes. Unknown languages fall back to a safely escaped unhighlighted block.
+
+### Highlighting is baked and verified automatically
+
+Never ship a `language-XXX` block that renders as plain monochrome text. Three layers make that hard to get wrong:
+
+- **Bake it in one pass.** `tools/highlight_document.py <file.html>` highlights every raw, language-labelled `<pre><code>` block in a file at once (aliases like `cs` -> `csharp` resolved); an already-highlighted block, an inline `<code>`, and a non-highlightable label (`language-text`, `language-kusto`) are left untouched. `tools/finalize.py` runs this step by default (skip it with `--no-highlight`), so the standard finalization bakes highlighting.
+- **The validator flags a miss.** `tools/validate.py` warns when a `language-XXX` block for a highlightable language has no `cmh-code-*` spans, and `--strict` turns that warning into a handoff failure, so a block that slipped through is caught before the file reaches the user.
+- **The runtime is a safety net.** If a labelled block still ships unhighlighted, the runtime tokenizes it on load with the same `cmh-code-*` classes, so the reader always sees highlighting instead of monochrome text. Baking is still preferred (it survives with scripts disabled and in a Plain HTML export).

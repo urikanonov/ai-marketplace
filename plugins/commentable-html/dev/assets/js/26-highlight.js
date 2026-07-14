@@ -631,6 +631,24 @@ function ensureCodeLineGutter(target, extraClass) {
   target.dataset.cmhLineNumbers = "1";
   target.insertBefore(gutter, target.firstChild);
 }
+// Fallback highlighting: if a commentable <pre><code class="language-XXX"> block was authored with a
+// language label but never run through tools/highlight_code.py (no cmh-code-* token spans), and the
+// language is one this tokenizer knows, highlight it in place so it never renders as plain monochrome
+// text. Runs before setupCodeLineNumbers (which prepends a line gutter) and, via setupDiffLayer,
+// before comment restoration - so line numbers and text-offset anchoring stay consistent.
+function highlightCodeBlocks() {
+  root.querySelectorAll("pre code[class*=\"language-\"]").forEach((code) => {
+    const pre = code.closest("pre");
+    if (!isNumberedCodeBlock(pre)) return;
+    if (code.innerHTML.indexOf("cmh-code-") !== -1) return; // already highlighted (baked or a prior pass)
+    const m = /(?:^|\s)language-([\w#+.-]+)/i.exec(code.className || "");
+    const lang = m ? m[1].toLowerCase() : "";
+    if (!diffLangKnown(lang)) return; // an unknown / non-tokenizable label (text, kusto, ...) stays plain
+    const text = code.textContent;
+    if (!text.trim()) return;
+    code.innerHTML = cmhHighlightCode(text, lang);
+  });
+}
 function setupCodeLineNumbers() {
   root.querySelectorAll("pre").forEach((pre) => {
     if (!isNumberedCodeBlock(pre)) return;
@@ -673,5 +691,6 @@ function setupDiffLayer() {
     renderDiffBlock(block);
     applyDiffHighlightsForIndex(i);
   });
+  highlightCodeBlocks();
   setupCodeLineNumbers();
 }

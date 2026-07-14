@@ -36,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.47.0";
+const CMH_VERSION = "1.48.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1507,6 +1507,24 @@ function ensureCodeLineGutter(target, extraClass) {
   target.dataset.cmhLineNumbers = "1";
   target.insertBefore(gutter, target.firstChild);
 }
+// Fallback highlighting: if a commentable <pre><code class="language-XXX"> block was authored with a
+// language label but never run through tools/highlight_code.py (no cmh-code-* token spans), and the
+// language is one this tokenizer knows, highlight it in place so it never renders as plain monochrome
+// text. Runs before setupCodeLineNumbers (which prepends a line gutter) and, via setupDiffLayer,
+// before comment restoration - so line numbers and text-offset anchoring stay consistent.
+function highlightCodeBlocks() {
+  root.querySelectorAll("pre code[class*=\"language-\"]").forEach((code) => {
+    const pre = code.closest("pre");
+    if (!isNumberedCodeBlock(pre)) return;
+    if (code.innerHTML.indexOf("cmh-code-") !== -1) return; // already highlighted (baked or a prior pass)
+    const m = /(?:^|\s)language-([\w#+.-]+)/i.exec(code.className || "");
+    const lang = m ? m[1].toLowerCase() : "";
+    if (!diffLangKnown(lang)) return; // an unknown / non-tokenizable label (text, kusto, ...) stays plain
+    const text = code.textContent;
+    if (!text.trim()) return;
+    code.innerHTML = cmhHighlightCode(text, lang);
+  });
+}
 function setupCodeLineNumbers() {
   root.querySelectorAll("pre").forEach((pre) => {
     if (!isNumberedCodeBlock(pre)) return;
@@ -1549,6 +1567,7 @@ function setupDiffLayer() {
     renderDiffBlock(block);
     applyDiffHighlightsForIndex(i);
   });
+  highlightCodeBlocks();
   setupCodeLineNumbers();
 }
 /* ---------- Image comment layer ----------

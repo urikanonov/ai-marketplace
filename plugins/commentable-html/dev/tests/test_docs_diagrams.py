@@ -149,6 +149,10 @@ class SkillTrimDocsTests(unittest.TestCase):
                 "Manual paste fallback",
                 "--root-selector",
             ),
+            "code-blocks.md": (
+                "tools/highlight_document.py",
+                "runtime tokenizes it on load",
+            ),
         }
         for name, snippets in checks.items():
             with self.subTest(reference=name):
