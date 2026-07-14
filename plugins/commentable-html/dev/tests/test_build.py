@@ -15,6 +15,7 @@ import json
 import os
 import re
 import runpy
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -59,15 +60,18 @@ class BuildTests(unittest.TestCase):
         cls.outputs, cls.version = build.build_all()
 
     def _write_checked_tree(self, root):
+        # Copy the REAL partial source dirs (assets/js/, assets/css/) and the shell into a temp
+        # assets tree, then build from THAT tree - so build_all/--check are exercised against a
+        # passed --assets-dir, not the default. (Writing single monolith files here would no longer
+        # match load_sources, which reads the numbered partials.)
         assets = os.path.join(root, "assets")
         out_dir = os.path.join(root, "skill")
         os.makedirs(assets)
-        css, js, shell, version = build.load_sources()
-        build.write(os.path.join(assets, "commentable-html.css"), css + "\n")
-        build.write(os.path.join(assets, "commentable-html.js"),
-                    build._stamp_const(js, version, "commentable-html.js") + "\n")
-        build.write(os.path.join(assets, "template.shell.html"), shell)
-        outputs, _ = build.build_all(assets, out_dir)
+        shutil.copytree(os.path.join(build.ASSETS, "js"), os.path.join(assets, "js"))
+        shutil.copytree(os.path.join(build.ASSETS, "css"), os.path.join(assets, "css"))
+        shutil.copy2(os.path.join(build.ASSETS, "template.shell.html"),
+                     os.path.join(assets, "template.shell.html"))
+        outputs, version = build.build_all(assets, out_dir)
         for path, text in outputs.items():
             build.write(path, text)
         for path, text in build.source_stamps(version, assets, out_dir).items():

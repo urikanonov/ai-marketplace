@@ -26,6 +26,14 @@ These three rules are the ones most often forgotten. They are a MUST on every ch
    writing or changing any test. It captures the conventions and past pitfalls (hermetic tests, pinning the
    new behavior so a test is genuinely red first, rebuilding generated output before asserting, feature-id
    discipline) so they are not relearned the hard way.
+4. **Edit the split source partials, never a monolith.** The commentable-html runtime and layer CSS live
+   ONLY as numbered topic partials under `plugins/commentable-html/dev/assets/js/NN-topic.js` and
+   `dev/assets/css/NN-topic.css` (and the site CSS as `site-src/css/NN-topic.css`); `build.py` /
+   `build_site_data.py` assemble each directory by directory sort - there is no order list in the build
+   script to edit, so adding a partial is just adding a file. Edit the owning partial (see `MODULES.md`
+   in each assets dir). NEVER recombine them into a `commentable-html.js`/`.css` monolith - a test
+   (`tests/test_assets_split.py`) fails if either monolith reappears, and reintroducing one revives the
+   whole-file clobber class this split removed.
 
 ## Layout
 
@@ -177,14 +185,20 @@ topic, and sequence the rest. The rules that let this repo run many PRs at once 
   partial) never collide. Two PRs that touch different source files are fully parallel; merge order
   does not matter for them.
 - A single contended file edited in DIFFERENT regions is still parallel-safe: two PRs that both edit
-  `plugins/commentable-html/dev/assets/commentable-html.js` in unrelated functions 3-way merge fine,
+  `plugins/commentable-html/dev/assets/js/45-composer.js` in unrelated functions 3-way merge fine,
   and the SECOND to merge just rebases. Prefer surgical, region-local edits so this stays true.
+  (Because the runtime and CSS are split into small `dev/assets/js/` and `dev/assets/css/` partials,
+  two PRs on different topics now usually touch different files and do not contend at all.)
 - A WHOLE-FILE reorganization must run ALONE and LAST. Any change that moves or regenerates an entire
-  file wholesale - splitting `commentable-html.js` into ordered `dev/assets/src/*.js` partials, or a
-  big regeneration of a site page - invalidates every concurrent diff to that file (a 3-way merge
-  cannot follow lines that all moved). Do NOT run it beside other edits to the same file. Let every
-  other PR that touches that file merge first, then DERIVE the reorganization from the final file and
-  merge it by itself.
+  file wholesale - renumbering or mass-reflowing the `dev/assets/js/` or `dev/assets/css/` partials,
+  or a big regeneration of a site page - invalidates every concurrent diff to that file (a 3-way
+  merge cannot follow lines that all moved). Do NOT run it beside other edits to the same file. Let
+  every other PR that touches that file merge first, then DERIVE the reorganization from the final
+  file and merge it by itself. (The commentable-html runtime and layer CSS are already split into
+  small `dev/assets/js/NN-topic.js` and `dev/assets/css/NN-topic.css` partials that `build.py`
+  concatenates by directory sort, so a normal feature edit now touches one small partial, not a
+  6,000-line monolith - the clobber surface is a single topic file plus, at most, a shared-infra
+  partial noted in `MODULES.md`.)
 - Generated files (`site/**`, `pkg/**/dist/**`, `examples/report-*.html`, fixtures, `manifest.json`)
   will always "overlap" across PRs, and that is fine: never hand-merge them - take the base version
   and REBUILD (`build.py` then `build_site_data.py`), which is deterministic. See the two sections

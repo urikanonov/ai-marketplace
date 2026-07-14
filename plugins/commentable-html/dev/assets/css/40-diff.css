@@ -1,0 +1,84 @@
+/* --- Diff / code-review layer (pre.cmh-diff / div.cmh-diff) --- */
+.cmh-diff-host { margin: 1rem 0; }
+.cmh-diff-view {
+  border: 1px solid var(--cp-border); border-radius: 10px; overflow: hidden;
+  background: var(--cp-surface); font-size: 0.82rem;
+}
+.cmh-diff-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+  padding: 0.45rem 0.7rem; background: var(--cp-surface-soft);
+  border-bottom: 1px solid var(--cp-border);
+}
+.cmh-diff-label {
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.8rem; color: var(--cp-text); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmh-diff-toggle, .cmh-diff-hltoggle {
+  flex: none; background: var(--cp-surface); border: 1px solid var(--cp-border);
+  color: var(--cp-text); border-radius: 999px; padding: 0.22rem 0.7rem;
+  font-family: inherit; font-size: 0.76rem; cursor: pointer;
+}
+.cmh-diff-toggle:hover, .cmh-diff-hltoggle:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* Syntax toggle: light green when ON, light red when OFF. */
+.cmh-diff-hltoggle[aria-pressed="true"] { background: rgba(45, 164, 78, 0.16); border-color: rgba(45, 164, 78, 0.55); }
+.cmh-diff-hltoggle[aria-pressed="false"] { background: rgba(209, 36, 47, 0.14); border-color: rgba(209, 36, 47, 0.5); }
+.cmh-diff-body {
+  overflow-x: auto;
+  font-family: Consolas, "Courier New", Courier, monospace; line-height: 1.5;
+}
+.cmh-diff-inline .cmh-diff-body { display: block; }
+.cmh-diff-split .cmh-diff-body { display: grid; grid-template-columns: 1fr 1fr; }
+.cmh-diff-split .cmh-dl[data-side="old"] { border-right: 1px solid var(--cp-border); }
+.cmh-diff-split .cmh-dl-full { grid-column: 1 / -1; }
+.cmh-diff-pane { min-width: 0; }
+.cmh-diff-raw .cmh-diff-body { display: block; }
+.cmh-diff-toobig { padding: 0.4rem 0.7rem; font-family: inherit; font-size: 0.78rem; color: var(--cp-warning); background: var(--cp-surface-soft); border-bottom: 1px solid var(--cp-border); }
+.cmh-diff-raw pre.cmh-diff-raw { margin: 0; padding: 0.5rem 0.7rem; white-space: pre; overflow-x: auto; color: var(--cp-text-muted); }
+
+.cmh-dl {
+  display: flex; align-items: flex-start; gap: 0.4rem;
+  padding: 0 0.5rem; white-space: pre-wrap; word-break: break-word;
+  border-left: 3px solid transparent;
+}
+.cmh-dl[tabindex]:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: -2px; }
+.cmh-dl-gutter {
+  flex: none; width: 2.6em; text-align: right; user-select: none;
+  color: var(--cp-text-soft); opacity: 0.75; font-size: 0.72rem; padding-top: 0.05rem;
+}
+.cmh-dl-sign { flex: none; width: 0.8em; user-select: none; color: var(--cp-text-soft); }
+.cmh-dl-code { flex: 1 1 auto; min-width: 0; }
+.cmh-dl-full { color: var(--cp-text-muted); background: var(--cp-surface-soft); }
+.cmh-dl-hunk { color: var(--cp-link); background: rgba(0, 120, 212, 0.06); font-style: italic; }
+.cmh-dl-file { color: var(--cp-text-soft); font-size: 0.76rem; }
+.cmh-dl-add { background: rgba(22, 163, 74, 0.10); }
+.cmh-dl-add .cmh-dl-sign { color: var(--cp-success); }
+.cmh-dl-del { background: rgba(220, 38, 38, 0.10); }
+.cmh-dl-del .cmh-dl-sign { color: var(--cp-danger); }
+.cmh-dl-spacer { background: repeating-linear-gradient(45deg, transparent, transparent 6px, var(--cp-surface-soft) 6px, var(--cp-surface-soft) 12px); min-height: 1.5em; }
+.cmh-dl-add, .cmh-dl-del, .cmh-dl-ctx { cursor: default; }
+.cmh-dl-add:hover, .cmh-dl-del:hover, .cmh-dl-ctx:hover { filter: brightness(0.97); }
+html[data-theme="dark"] .cmh-dl-add:hover,
+html[data-theme="dark"] .cmh-dl-del:hover,
+html[data-theme="dark"] .cmh-dl-ctx:hover { filter: brightness(1.15); }
+.cmh-dl-hl { border-left-color: var(--cp-warning); box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.10); }
+@keyframes cmh-dl-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.10); }
+  50%      { box-shadow: inset 0 0 0 9999px rgba(245, 158, 11, 0.30); }
+}
+.cmh-dl-hl.cmh-dl-active { animation: cmh-dl-pulse 0.7s ease-in-out 3; }
+/* Sub-line region highlight: a comment on part of a diff line. */
+mark.cmh-dl-mark {
+  background: rgba(245, 158, 11, 0.34);
+  color: inherit; border-radius: 2px; padding: 0 1px; cursor: pointer;
+  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+mark.cmh-dl-mark:hover { background: rgba(245, 158, 11, 0.5); }
+mark.cmh-dl-mark.cmh-dl-mark-active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+html[data-theme="dark"] mark.cmh-dl-mark { background: rgba(251, 191, 36, 0.30); }
+html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 0.44); }
+.cm-diff-add { position: fixed; z-index: 200; }
+
+

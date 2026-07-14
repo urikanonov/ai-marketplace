@@ -1,0 +1,104 @@
+/* Deck profile (data-cmh-mode="deck"): comment-mode force-reveal and slide chrome. */
+body.cmh-deck-present .cm-toolbar,
+body.cmh-deck-present #sidebar {
+  display: none !important;
+}
+/* In present mode, suppress the text-selection popup so a selection is not a dead end
+   (the composer/sidebar are hidden; the user enters comment mode to review). */
+body.cmh-deck-present #menuComment {
+  display: none !important;
+}
+/* In comment mode on a wide screen, narrow the stage so the sidebar does not overlap it
+   (the deck runtime refits the stage to the reduced viewport width via a ResizeObserver), and
+   shift the centered nav bar left by half the sidebar width so it stays centered on the stage. */
+@media (min-width: 900px) {
+  #commentRoot.cmh-deck-comment-mode .deck-viewport {
+    right: 400px;
+  }
+  body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-nav {
+    left: calc(50% - 200px);
+  }
+  /* Keep the comment-mode toggle clear of the open sidebar (top-right) so it does not cover the
+     sidebar's own header controls. */
+  body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle {
+    right: 414px;
+  }
+}
+#commentRoot.cmh-deck-comment-mode .slide .reveal,
+#commentRoot.cmh-deck-comment-mode .slide [class*="reveal"] {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+}
+.cmh-deck-mode-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 100001;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--cp-border, #444);
+  background: var(--cp-surface, #222);
+  color: var(--cp-text, #fff);
+  font: inherit;
+  cursor: pointer;
+  /* Lift the chrome off arbitrary slide backgrounds so it stays legible over any slide colour. */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.cmh-deck-mode-toggle.cmh-deck-mode-on {
+  background: var(--cp-accent, #2ecc71);
+  color: #000;
+}
+.cmh-deck-nav {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--cp-surface, #222);
+  border: 1px solid var(--cp-border, #444);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.cmh-deck-count {
+  color: var(--cp-text, #fff);
+  font: inherit;
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.cmh-deck-nav button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--cp-border, #444);
+  background: var(--cp-surface-soft, #333);
+  color: var(--cp-text, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.cmh-deck-nav button:disabled {
+  opacity: 0.55;
+  color: var(--cp-text-muted, #9aa0a6);
+  cursor: default;
+}
+@media (max-width: 640px) {
+  .cmh-deck-nav button,
+  .cmh-deck-mode-toggle {
+    padding: 11px 16px;
+    min-height: 44px;
+  }
+}
+/* On a narrow screen the sidebar opens as a near-full-width overlay, so the fixed deck controls
+   (high z-index) would float on top of it. Hide them only while the sidebar is actually open in
+   comment mode; when the user hides the sidebar they reappear, so returning to present mode and
+   navigating stay reachable. */
+@media (max-width: 899px) {
+  body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle,
+  body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-nav {
+    display: none;
+  }
+}

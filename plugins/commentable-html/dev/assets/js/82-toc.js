@@ -1,0 +1,336 @@
+/* ---------- Table-of-contents side menu (wide screens) ---------- */
+// When the document carries a table of contents (an author `.cm-toc`, else h2/h3
+// ids), render a fixed, collapsible section menu on the left with scroll-spy and a
+// back-to-top button. It is a runtime-only aid (never in the base HTML, so plain /
+// standalone exports and the startup snapshot never include it) and is cm-skip so it
+// is not itself commentable. CSS gates it to wide viewports.
+function _cmSlugify(text) {
+  const s = String(text).toLowerCase().trim()
+    .replace(/[^\w\s-]/g, "").replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  return s || "section";
+}
+// Every heading inside #commentRoot gets a stable id and becomes a deep-link: a plain
+// click (no text selection, not on a link or highlight) updates the URL to #<id> and
+// scrolls to it, so a reader can copy a link straight to any section.
+function setupHeadingAnchors() {
+  const seen = {};
+  const headingAddBtn = document.getElementById("headingAddBtn");
+  let headingHoverEl = null, headingHideTimer = null;
+  function positionHeadingAdd(h) {
+    const r = h.getBoundingClientRect();
+    const bw = headingAddBtn.offsetWidth || 110, bh = headingAddBtn.offsetHeight || 26;
+    // Place the button just after the heading TEXT (not at the far right of the full
+    // block): measure where the rendered text actually ends via a contents range, then
+    // sit a small gap to its right, vertically centered on that line.
+    let anchorRight = r.left, anchorTop = r.top, anchorH = r.height;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(h);
+      const rects = [...range.getClientRects()].filter((x) => x.width > 0.5 && x.height > 0.5);
+      if (rects.length) {
+        const end = rects.reduce((a, b) => (b.right > a.right ? b : a));
+        anchorRight = end.right; anchorTop = end.top; anchorH = end.height;
+      }
+    } catch (e) { /* fall back to the block box */ }
+    const gap = 10;
+    let left = anchorRight + gap;
+    let top = anchorTop + (anchorH - bh) / 2;
+    // If the label would run off the right edge, tuck it back against the block right.
+    if (left + bw + 8 > window.innerWidth) left = r.right - bw - 6;
+    headingAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
+    headingAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
+    // Return anchor visibility (not button fit) so repositionActiveAdd only hides the
+    // button when the heading scrolls out of view, not when it sits near an edge.
+    return _rectInViewport(r);
+  }
+  function showHeadingAdd(h) {
+    if (!headingAddBtn) return;
+    headingHoverEl = h;
+    if (headingHideTimer) { clearTimeout(headingHideTimer); headingHideTimer = null; }
+    headingAddBtn.hidden = false;
+    positionHeadingAdd(h);
+    _activeAdd = { el: h, btn: headingAddBtn, position: () => positionHeadingAdd(h), clear: () => {} };
+  }
+  function scheduleHideHeadingAdd() {
+    if (headingHideTimer) clearTimeout(headingHideTimer);
+    headingHideTimer = setTimeout(function () {
+      if (headingAddBtn && !headingAddBtn.matches(":hover")) { headingAddBtn.hidden = true; headingHoverEl = null; }
+    }, 220);
+  }
+  // Comment on a whole heading by selecting its text and opening the text composer, so
+  // headings stay commentable even though a plain click deep-links them.
+  function commentOnHeading(h) {
+    const first = firstTextNodeIn(h), last = lastTextNodeIn(h);
+    if (!first || !last) return;
+    const r = document.createRange();
+    r.setStart(first, 0); r.setEnd(last, last.nodeValue.length);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    const s = offsetWithin(first, 0), e = offsetWithin(last, last.nodeValue.length);
+    if (s >= 0 && e > s) {
+      const existing = comments.find(function (c) { return !c.anchorType && c.start === s && c.end === e; });
+      if (existing) { openComposerForEdit(existing); return; }
+    }
+    pendingDiffSel = null;
+    pendingRange = r.cloneRange();
+    pendingQuote = sel.toString();
+    openComposer(pendingRange, pendingQuote);
+  }
+  if (headingAddBtn && !headingAddBtn._cmWired) {
+    headingAddBtn._cmWired = true;
+    headingAddBtn.addEventListener("mouseenter", function () { if (headingHideTimer) { clearTimeout(headingHideTimer); headingHideTimer = null; } });
+    headingAddBtn.addEventListener("mouseleave", scheduleHideHeadingAdd);
+    headingAddBtn.addEventListener("click", function () {
+      const h = headingHoverEl;
+      headingAddBtn.hidden = true;
+      if (h) commentOnHeading(h);
+    });
+  }
+  root.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach(function (h) {
+    if (h.closest(".cm-skip")) return;
+    if (!h.id) {
+      const base = _cmSlugify(h.textContent || "section");
+      let id = base, n = 2;
+      while (document.getElementById(id) || seen[id]) { id = base + "-" + n; n++; }
+      h.id = id;
+    }
+    seen[h.id] = true;
+    h.classList.add("cm-anchored");
+    if (!h.title) h.title = "Click or press Enter to link to this section (hover or focus to comment on it)";
+    // Keyboard parity: the heading is a deep-link affordance, so make it focusable and
+    // activate the link on Enter/Space just like a click (a visible :focus-visible outline
+    // is defined in CSS). Focusing it also reveals the add-comment button, which is itself
+    // a real focusable button reachable by Tab.
+    if (!h.hasAttribute("tabindex")) h.setAttribute("tabindex", "0");
+    function deepLink() {
+      if (window.history && history.pushState) history.pushState(null, "", "#" + h.id);
+      else location.hash = h.id;
+      h.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    h.addEventListener("click", function (e) {
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;              // selecting text to comment
+      if (e.target.closest("a, mark.cm-hl")) return;    // let links / highlight-clicks win
+      deepLink();
+    });
+    h.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      if (e.target !== h) return;                       // let a focused child (link) act
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;
+      e.preventDefault();
+      deepLink();
+    });
+    h.addEventListener("mouseenter", function () { showHeadingAdd(h); });
+    h.addEventListener("mouseleave", scheduleHideHeadingAdd);
+    h.addEventListener("focus", function () { showHeadingAdd(h); });
+    h.addEventListener("blur", scheduleHideHeadingAdd);
+  });
+}
+// Every authored <section> with a heading becomes collapsible: a caret on the heading
+// toggles it, and the side TOC gets Expand All / Collapse All. Collapsing sets a class
+// (display:none via CSS) - it never removes or reorders nodes, so comment text offsets
+// stay valid. The caret is a text-free cm-skip element (pseudo-element glyph) so it does
+// not pollute heading text or offsets.
+const _cmSectionToggles = [];
+function setupCollapsibleSections() {
+  _cmSectionToggles.length = 0;
+  root.querySelectorAll("section").forEach(function (sec) {
+    if (sec.closest(".cm-skip")) return;
+    const heading = sec.querySelector(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6");
+    if (!heading || heading.closest(".cm-skip")) return;
+    if (heading.querySelector(".cmh-sec-caret")) return;
+    heading.classList.add("cmh-section-heading");
+    const caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "cmh-sec-caret cm-skip";
+    caret.setAttribute("aria-expanded", "true");
+    caret.setAttribute("aria-label", "Collapse section");
+    caret.title = "Collapse section";
+    heading.insertBefore(caret, heading.firstChild);
+    function setState(collapsed) {
+      sec.classList.toggle("cmh-section-collapsed", collapsed);
+      caret.setAttribute("aria-expanded", String(!collapsed));
+      caret.title = collapsed ? "Expand section" : "Collapse section";
+      caret.setAttribute("aria-label", collapsed ? "Expand section" : "Collapse section");
+    }
+    caret.addEventListener("click", function (e) {
+      e.stopPropagation();
+      setState(!sec.classList.contains("cmh-section-collapsed"));
+    });
+    // Clicking a collapsed section's title (anywhere but the caret) expands it too - a
+    // collapsed section shows only its heading, so a plain click is the natural gesture.
+    // Ignore clicks that are part of a text selection so commenting on an expanded heading
+    // is unaffected.
+    heading.addEventListener("click", function (e) {
+      if (e.target.closest(".cmh-sec-caret")) return;
+      if (!sec.classList.contains("cmh-section-collapsed")) return;
+      const sel = window.getSelection();
+      if (sel && sel.toString().trim()) return;
+      setState(false);
+    });
+    _cmSectionToggles.push(setState);
+  });
+}
+function setupSideToc() {
+  const root = document.getElementById("commentRoot") || document.body;
+  const items = [];
+  const tocLinks = root.querySelectorAll(".cm-toc a[href^='#']");
+  if (tocLinks.length) {
+    tocLinks.forEach(function (a) {
+      let id = (a.getAttribute("href") || "").slice(1);
+      try { id = decodeURIComponent(id); } catch (e) { /* malformed %-encoding: keep the raw id */ }
+      const el = id && document.getElementById(id);
+      if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, level: 1 });
+    });
+  } else {
+    root.querySelectorAll("h2[id], h3[id]").forEach(function (h) {
+      items.push({ id: h.id, label: (h.textContent || "").trim(), el: h, level: h.tagName === "H3" ? 2 : 1 });
+    });
+  }
+  if (items.length < 2) return; // not worth a side menu
+  const nav = document.createElement("nav");
+  nav.className = "cm-side-toc cm-skip";
+  nav.id = "cmSideToc";
+  nav.setAttribute("aria-label", "Section navigation");
+  const head = document.createElement("div");
+  head.className = "cm-side-toc-head";
+  const title = document.createElement("span");
+  title.className = "cm-side-toc-title";
+  title.textContent = "Navigation";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "cm-side-toc-toggle";
+  toggle.title = "Collapse the section menu";
+  toggle.setAttribute("aria-expanded", "true");
+  toggle.setAttribute("aria-label", "Collapse section menu");
+  toggle.innerHTML = "&laquo;";
+  head.append(title, toggle);
+  const list = document.createElement("ul");
+  list.className = "cm-side-toc-list";
+  const links = [];
+  // If the author already numbered their headings (e.g. "1. Summary", "3.1 Goals"), do NOT
+  // add a second computed number - show the label as-is so there is a single number.
+  const _numRe = /^(?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*)\s+/;
+  const authorNumbered = items.some(function (it) { return _numRe.test(it.label); });
+  let n1 = 0, n2 = 0;
+  items.forEach(function (it) {
+    const li = document.createElement("li");
+    if (it.level === 2) li.className = "is-sub";
+    const a = document.createElement("a");
+    a.href = "#" + it.id;
+    if (authorNumbered) {
+      a.textContent = it.label;
+    } else {
+      // Section numbers: top-level items count 1, 2, 3...; sub-items count 1.1, 1.2...
+      let num;
+      if (it.level === 2) { n2++; num = (n1 || 1) + "." + n2; }
+      else { n1++; n2 = 0; num = String(n1); }
+      a.innerHTML = '<span class="cm-toc-num">' + num + '</span> ' + escapeHtml(it.label);
+    }
+    li.appendChild(a);
+    list.appendChild(li);
+    links.push(a);
+  });
+  const scrollBtns = document.createElement("div");
+  scrollBtns.className = "cm-side-toc-scroll";
+  let expandGrp = null;
+  if (_cmSectionToggles.length) {
+    const expandAll = document.createElement("button");
+    expandAll.type = "button";
+    expandAll.className = "cm-side-toc-top";
+    expandAll.title = "Expand all sections";
+    expandAll.innerHTML = _cmIco("expand") + "<span>Expand All</span>";
+    expandAll.addEventListener("click", function () { _cmSectionToggles.forEach(function (t) { t(false); }); });
+    const collapseAll = document.createElement("button");
+    collapseAll.type = "button";
+    collapseAll.className = "cm-side-toc-top";
+    collapseAll.title = "Collapse all sections";
+    collapseAll.innerHTML = _cmIco("collapse") + "<span>Collapse All</span>";
+    collapseAll.addEventListener("click", function () { _cmSectionToggles.forEach(function (t) { t(true); }); });
+    expandGrp = document.createElement("div");
+    expandGrp.className = "cm-side-toc-scroll";
+    expandGrp.append(expandAll, collapseAll);
+  }
+  const top = document.createElement("button");
+  top.type = "button";
+  top.className = "cm-side-toc-top";
+  top.title = "Scroll to the top of the document";
+  top.innerHTML = _cmIco("top") + "<span>Scroll to Top</span>";
+  const bottom = document.createElement("button");
+  bottom.type = "button";
+  bottom.className = "cm-side-toc-top cm-side-toc-bottom";
+  bottom.title = "Scroll to the bottom of the document";
+  bottom.innerHTML = _cmIco("bottom") + "<span>Scroll to Bottom</span>";
+  scrollBtns.append(top, bottom);
+  if (expandGrp) nav.append(head, list, expandGrp, scrollBtns);
+  else nav.append(head, list, scrollBtns);
+  document.body.appendChild(nav);
+  document.body.classList.add("cm-side-toc-on");
+  toggle.addEventListener("click", function () {
+    const collapsed = nav.classList.toggle("is-collapsed");
+    document.body.classList.toggle("cm-side-toc-collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    // Collapsed shows a "Navigation" label + >> expand chevron; open shows << collapse.
+    toggle.innerHTML = collapsed ? "Navigation &raquo;" : "&laquo;";
+    toggle.setAttribute("aria-label", collapsed ? "Expand section menu" : "Collapse section menu");
+    toggle.title = collapsed ? "Expand the section menu" : "Collapse the section menu";
+  });
+  top.addEventListener("click", function () {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  bottom.addEventListener("click", function () {
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+  });
+  function onScroll() {
+    // Activate the section nearest above the threshold by GEOMETRY (greatest top that is
+    // still <= 120), so it is correct even if the author TOC links are not in document order.
+    let activeIdx = 0;
+    let bestTop = -Infinity;
+    for (let i = 0; i < items.length; i++) {
+      const top = items[i].el.getBoundingClientRect().top;
+      if (top <= 120 && top > bestTop) { bestTop = top; activeIdx = i; }
+    }
+    // At the page bottom a short trailing section never reaches the 120px threshold, so the
+    // final item would never light up. Force it active once the document is fully scrolled.
+    const doc = document.documentElement;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) activeIdx = items.length - 1;
+    for (let i = 0; i < links.length; i++) links[i].classList.toggle("is-active", i === activeIdx);
+  }
+  let raf = 0;
+  function schedule() {
+    if (raf) return;
+    if (typeof requestAnimationFrame !== "function") { onScroll(); return; }
+    raf = requestAnimationFrame(function () { raf = 0; onScroll(); });
+  }
+  window.addEventListener("scroll", schedule, { passive: true });
+  window.addEventListener("resize", schedule);
+  onScroll();
+}
+
+// A small bottom-right bubble showing how far through the document the reader has
+// scrolled. cm-skip and runtime-created, so it never appears in a Plain export.
+function setupScrollProgress() {
+  if (document.getElementById("cmScrollProgress")) return;
+  const el = document.createElement("div");
+  el.className = "cm-scroll-progress cm-skip";
+  el.id = "cmScrollProgress";
+  el.setAttribute("aria-hidden", "true");
+  el.title = "Scroll position in the document";
+  document.body.appendChild(el);
+  function update() {
+    const doc = document.documentElement;
+    const max = doc.scrollHeight - window.innerHeight;
+    const pct = max > 4 ? Math.round((window.scrollY / max) * 100) : 100;
+    el.textContent = Math.max(0, Math.min(100, pct)) + "%";
+  }
+  let raf = 0;
+  function schedule() {
+    if (raf) return;
+    if (typeof requestAnimationFrame !== "function") { update(); return; }
+    raf = requestAnimationFrame(function () { raf = 0; update(); });
+  }
+  window.addEventListener("scroll", schedule, { passive: true });
+  window.addEventListener("resize", schedule);
+  update();
+}
+
