@@ -1,6 +1,6 @@
-"""CMH-DECK-EXAMPLE-01: the shipped deck example (examples/deck-roadmap.html) is a valid
-commentable-html deck (kind=slides, `data-cmh-mode="deck"`, unique slide ids, no remote
-egress) AND rebuilds byte-identically from its independent source in dev/examples/src/.
+"""CMH-DECK-SHOWCASE-01: the shipped showcase deck example is a valid commentable-html deck
+(kind=slides, `data-cmh-mode="deck"`, unique slide ids, no remote egress) AND rebuilds
+byte-identically from its independent source in dev/examples/src/.
 
 The byte-identical rebuild is the guard against a hand-edit or a stale/clobbered committed
 copy of the shipped deck, mirroring the report-example self-source contract in
@@ -17,9 +17,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 SKILL = _paths.PKG
-DECK = os.path.join(SKILL, "examples", "deck-roadmap.html")
-DECK_SRC = os.path.join(_paths.DEV, "examples", "src", "deck-roadmap.html")
-DECK_PROMPT = os.path.join(SKILL, "examples", "prompt-roadmap.md")
+DECK = os.path.join(SKILL, "examples", "deck-showcase.html")
+DECK_SRC = os.path.join(_paths.DEV, "examples", "src", "deck-showcase.html")
+DECK_PROMPT = os.path.join(SKILL, "examples", "prompt-showcase.md")
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 DECK_VALIDATE = os.path.join(SKILL, "tools", "deck", "deck_validate.py")
 
@@ -39,6 +39,25 @@ class DeckExampleTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(DECK), "shipped deck example is missing: " + DECK)
         self.assertTrue(os.path.isfile(DECK_SRC), "deck example source is missing: " + DECK_SRC)
         self.assertTrue(os.path.isfile(DECK_PROMPT), "deck prompt is missing: " + DECK_PROMPT)
+
+    def test_showcase_prompt_prescribes_features_and_slide_outline(self):
+        prompt = _read(DECK_PROMPT)
+        for required in [
+            "Comment on anything",
+            "Chart.js charts",
+            "Mermaid diagrams",
+            "drag-and-drop triage board",
+            "rendered code diffs",
+            "syntax-highlighted code and KQL",
+            "layered checklist",
+            "Copy all",
+            "handled-comment pruning",
+            "Export Offline",
+            "split-screen slide-overview navigator",
+            "strict validator",
+            "Slide outline",
+        ]:
+            self.assertIn(required, prompt)
 
     def test_deck_declares_slides_kind_and_deck_mode(self):
         html = _read(DECK)
@@ -87,7 +106,7 @@ class DeckExampleTests(unittest.TestCase):
             base = [sys.executable, BUILD_PY, "--assets-dir", assets, "--out-dir", out_dir]
             self.assertEqual(subprocess.run(base + ["--check"], capture_output=True, text=True).returncode, 0,
                              "freshly copied tree should be in sync")
-            deck = os.path.join(out_dir, "examples", "deck-roadmap.html")
+            deck = os.path.join(out_dir, "examples", "deck-showcase.html")
             html = _read(deck)
             poisoned = re.sub(r'(<main\b[^>]*\bid="commentRoot"[^>]*>)',
                               r'\1<p>POISON-DECK-DRIFT</p>', html, count=1)
@@ -96,7 +115,7 @@ class DeckExampleTests(unittest.TestCase):
                 fh.write(poisoned)
             r = subprocess.run(base + ["--check"], capture_output=True, text=True)
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-            self.assertIn("deck-roadmap.html", r.stdout + r.stderr)
+            self.assertIn("deck-showcase.html", r.stdout + r.stderr)
 
     def test_build_check_flags_an_orphaned_deck_with_no_source(self):
         # A shipped deck-*.html with no dev/examples/src source is a pure artifact validated
@@ -112,7 +131,7 @@ class DeckExampleTests(unittest.TestCase):
             self.assertEqual(subprocess.run(base + ["--check"], capture_output=True, text=True).returncode, 0,
                              "freshly copied tree should be in sync")
             orphan = os.path.join(out_dir, "examples", "deck-orphan.html")
-            shutil.copyfile(os.path.join(out_dir, "examples", "deck-roadmap.html"), orphan)
+            shutil.copyfile(os.path.join(out_dir, "examples", "deck-showcase.html"), orphan)
             r = subprocess.run(base + ["--check"], capture_output=True, text=True)
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
             self.assertIn("deck-orphan.html", r.stdout + r.stderr)

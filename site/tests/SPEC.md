@@ -90,7 +90,7 @@ suite (see `.github/workflows/pages.yml`).
 
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |
-| SITE-DEMO-01 | The demo has a single full-screen button that opens in a new tab with `rel="noopener"` and announces the new-tab behavior in its accessible name, and a five-option slider whose Taxi tab is active by default. | `site/tests/tests/site.spec.js` - `demo has one safe full-screen button and a five-option slider`; `scripts/test_build_site_data.py` - `DemoFullscreenTests.test_link_accessible_name_announces_new_tab` |
+| SITE-DEMO-01 | The demo has a single full-screen button that opens in a new tab with `rel="noopener"` and announces the new-tab behavior in its accessible name, and a six-option slider whose Taxi tab is active by default. | `site/tests/tests/site.spec.js` - `demo has one safe full-screen button and a six-option slider`; `scripts/test_build_site_data.py` - `DemoFullscreenTests.test_link_accessible_name_announces_new_tab` |
 | SITE-DEMO-02 | Selecting a slider tab switches the iframe `src`, the demo title, and the full-screen target to the chosen report. | `site/tests/tests/site.spec.js` - `demo slider switches the iframe, title, and full-screen target` |
 | SITE-DEMO-03 | The slider is keyboard operable: arrow keys move focus and switch the shown report. | `site/tests/tests/site.spec.js` - `demo tabs are keyboard operable (arrow keys switch the shown report)` |
 | SITE-DEMO-04 | The slider implements a complete ARIA tabs contract: `role="tabpanel"` panel, `aria-controls`, `aria-selected`, a roving `tabindex`, an `aria-labelledby` that tracks the active tab, and Home/End jump to the first/last tab. | `site/tests/tests/site.spec.js` - `demo tabs expose a complete ARIA tabs contract` |
@@ -99,6 +99,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-DEMO-07 | The demo full-screen button carries an accent-tinted (light-red) background so it reads as the primary action in the frame bar. | `site/tests/tests/site.spec.js` - `the full-screen button has a light-red (accent-tinted) background` |
 | SITE-DEMO-08 | The full-bleed demo frame keeps a comfortable side buffer (~50px each side) so it never runs too wide or touches the viewport edges. | `site/tests/tests/site.spec.js` - `the full-bleed demo frame keeps a comfortable side buffer inside the viewport (SITE-DEMO-08)` |
 | SITE-DEMO-09 | The Try it live slider exposes a Checklist tab after the existing demo tabs, uses the ARIA tab attributes expected by the slider, and loads `report-checklist.html` with checklist markup in the iframe. | `site/tests/tests/site.spec.js` - `demo slider exposes and loads the Checklist report (SITE-DEMO-09)` |
+| SITE-DEMO-10 | The Try it live slider exposes a Showcase Deck tab, uses the same ARIA tab contract as the report demos, loads `deck-showcase.html` in the iframe, updates the full-screen target and title, and the framed deck mounts in deck mode with its deck controls visible. | `site/tests/tests/site.spec.js` - `demo slider exposes and loads the Showcase deck (SITE-DEMO-10)` |
 
 ## Copy buttons
 

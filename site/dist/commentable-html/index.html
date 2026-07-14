@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.57.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.58.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -241,12 +241,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
     <section id="demo">
       <div class="wrap">
         <h2 class="section-title">Try it live</h2>
-        <p class="section-sub">A real commentable report. Select any text and the Add comment popup appears.</p>
+        <p class="section-sub">Real commentable examples, including the flagship showcase deck. Select any text and the Add comment popup appears.</p>
         <div class="demo-switch" role="tablist" aria-label="Choose a demo report">
           <button class="demo-tab active" type="button" role="tab" id="demo-tab-taxi" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="demo/report-taxi.html" data-file="report-taxi.html" data-label="NYC Taxi Report">NYC Taxi Report</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html" data-label="Community Garden Plan">Community Garden Plan</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-triage" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-triage.html" data-file="report-triage.html" data-label="Triage Board">Triage Board</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-metrics" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-metrics.html" data-file="report-metrics.html" data-label="Visuals Matrix">Visuals Matrix</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-showcase" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/deck-showcase.html" data-file="deck-showcase.html" data-label="Showcase Deck">Showcase Deck</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-checklist" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-checklist.html" data-file="report-checklist.html" data-label="Checklist">Checklist</button>
         </div>
       </div>
@@ -342,6 +343,18 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.58.0] - 2026-07-15</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Replaced the weak roadmap deck demo with a themed, in-depth Commentable HTML showcase deck and a reusable one-shot authoring prompt that prescribes the full slide outline and feature coverage.</li>
+              <li>Added the showcase deck to the live site demo tabs so visitors can open the deck-mode review experience directly.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Deck code, KQL, and diff blocks now use dark, readable surfaces, distinct syntax token colors, and readable add/delete row tints on dark deck slides.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.57.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -352,6 +365,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Hardened the contrast helper so malformed or non-finite <code>rgb()</code>/<code>rgba()</code> values are skipped instead of crashing, semi-transparent backgrounds are skipped, background shorthand follows declaration order, and colors embedded only inside <code>url(...)</code> or quoted strings do not create false positives.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.56.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -361,8 +376,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Hardened the overview so thumbnail clones stay out of the tab order, preserve nested highlight markup, do not receive background deck navigation keys, and are stripped from offline exports.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.55.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -405,14 +418,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Comment search now filters by the comment note text only. A query that appears solely in the quoted anchor content (or the section path / pin) no longer keeps a card visible, so reviewers filter by what they wrote rather than by the surrounding quote. A query present in the note still matches, and the case-insensitive substring, shown/total count, clear button, and no-results behaviors are unchanged.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.51.0] - 2026-07-14</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Grouped the shipped runtime tools into per-topic buckets under <code>tools/&lt;topic&gt;/</code> (<code>deck</code>, <code>kusto</code>, <code>checklist</code>, <code>blocks</code>, <code>authoring</code>, <code>validate</code>), moving the former top-level <code>deck/</code> under <code>tools/deck/</code>. A shared <code>tools/_toolpath.py</code> bootstrap puts the tools root and every topic subdirectory on <code>sys.path</code> and exposes <code>SKILL_ROOT</code>, so a tool imports its siblings and resolves shipped resources (<code>dist/</code>, <code>vendor/</code>) regardless of which bucket it lives in. Invocation paths in <code>SKILL.md</code> and the references move to <code>tools/&lt;topic&gt;/&lt;tool&gt;.py</code>; there is no runtime behavior change.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">58 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">59 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

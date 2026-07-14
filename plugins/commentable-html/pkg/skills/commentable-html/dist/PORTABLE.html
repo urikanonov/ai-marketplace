@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.57.0" />
+<meta name="commentable-html-version" content="1.58.0" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.57.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.58.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - Demo</title>
 
@@ -1230,10 +1230,113 @@ body.cmh-deck-present #sidebar {
 body.cmh-deck-present #menuComment {
   display: none !important;
 }
+#commentRoot[data-cmh-mode="deck"] .slide {
+  --cmh-deck-code-bg: #0f172a;
+  --cmh-deck-code-bg-soft: #111827;
+  --cmh-deck-code-border: rgba(148, 163, 184, 0.44);
+  --cmh-deck-code-text: #f8fafc;
+  --cmh-deck-code-muted: #cbd5e1;
+  --cmh-deck-code-soft: #94a3b8;
+}
 #commentRoot[data-cmh-mode="deck"] .slide table thead th {
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
   border-color: rgba(148, 163, 184, 0.48);
+}
+#commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid),
+#commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid) code,
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql,
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql pre,
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql code {
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid),
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql,
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql pre {
+  background: var(--cmh-deck-code-bg);
+  border-color: var(--cmh-deck-code-border);
+}
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-cap,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-bar,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-toobig {
+  background: var(--cmh-deck-code-bg-soft);
+  border-color: var(--cmh-deck-code-border);
+  color: var(--cmh-deck-code-muted);
+}
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-title,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-label {
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-fn { color: #93c5fd; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-str,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-str { color: #86efac; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-num,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-num { color: #fbbf24; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-com,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-com { color: #94a3b8; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-op,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-op { color: #cbd5e1; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line::before,
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
+  color: var(--cmh-deck-code-soft);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-code-lang,
+#commentRoot[data-cmh-mode="deck"] .slide .cm-code-copy {
+  background: rgba(15, 23, 42, 0.88);
+  border-color: var(--cmh-deck-code-border);
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-code-copy:hover {
+  border-color: #93c5fd;
+  color: #bfdbfe;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-body,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view pre,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view code,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view span:not([class*="cmh-code-"]):not([class*="cmh-kql-"]),
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view button {
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-toggle,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-hltoggle {
+  background: var(--cmh-deck-code-bg);
+  border-color: var(--cmh-deck-code-border);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-gutter,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-sign,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-file {
+  color: var(--cmh-deck-code-soft);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-full,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-spacer {
+  background: var(--cmh-deck-code-bg-soft);
+  color: var(--cmh-deck-code-muted);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-hunk {
+  background: rgba(96, 165, 250, 0.16);
+  color: #bfdbfe;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add {
+  background: rgba(34, 197, 94, 0.20);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add .cmh-dl-sign {
+  color: #86efac;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del {
+  background: rgba(248, 113, 113, 0.22);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del .cmh-dl-sign {
+  color: #fca5a5;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add:hover,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del:hover,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-ctx:hover {
+  filter: brightness(1.12);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node rect,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node polygon,
@@ -1843,7 +1946,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.57.0";
+const CMH_VERSION = "1.58.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
