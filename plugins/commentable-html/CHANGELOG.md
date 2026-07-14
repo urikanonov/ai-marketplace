@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-07-14
+
+### Added
+
+- A "Privacy and compliance" section in the packaged README and a "Private by design" section on
+  the plugin site page (linked from the nav), emphasizing that the document and every comment stay
+  local - in the browser's `localStorage` or embedded in your own HTML file - are never uploaded or
+  sent to any external service, and that only the Mermaid/Chart.js rendering libraries load from a
+  CDN (not your data) while Export Offline strips even that for air-gapped, sensitive, or regulated
+  use.
+
 ## [1.39.0] - 2026-07-14
 
 ### Changed
