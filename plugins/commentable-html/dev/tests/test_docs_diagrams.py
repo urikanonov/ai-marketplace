@@ -176,6 +176,8 @@ class ReferenceReachabilityDocsTests(unittest.TestCase):
 
 LONG_REFERENCE_LINE_THRESHOLD = 100
 PLUGIN_JSON = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "plugin.json"))
+MARKETPLACE_JSON = os.path.normpath(
+    os.path.join(_paths.DEV, "..", "..", "..", ".github", "plugin", "marketplace.json"))
 
 
 def _lines_outside_fences(text):
@@ -334,6 +336,14 @@ class FrontmatterDescriptionDocsTests(unittest.TestCase):
             "comment" in low or "review" in low,
             "description must name the comment/review capability")
 
+    def test_description_carries_the_cmh_shorthand_trigger(self):
+        # CMH-DOC-06: the discovery description ends with an explicit 'cmh' shorthand clause so
+        # the skill auto-triggers when the user types the shorthand.
+        desc = _unquote(_frontmatter_description_raw(_read(SKILL_MD))).lower()
+        self.assertRegex(
+            desc, r"\bcmh\b",
+            "front-matter discovery description must carry the 'cmh' shorthand trigger")
+
 
 class DirectReferenceLinkDocsTests(unittest.TestCase):
     """CMH-DOC-07: every shipped reference is linked DIRECTLY from SKILL.md as a real Markdown
@@ -387,6 +397,26 @@ class DescriptionConsistencyDocsTests(unittest.TestCase):
                     self.assertRegex(
                         desc, pattern,
                         f"{label} description must mention '{word}' (shared vocabulary)")
+
+
+class CmhKeywordDocsTests(unittest.TestCase):
+    """CMH-DOC-09: the `cmh` shorthand is a declared keyword in BOTH plugin.json and the
+    commentable-html marketplace entry, so marketplace search and the site keyword chips match
+    the shorthand."""
+
+    def test_cmh_is_a_keyword_in_plugin_and_marketplace(self):
+        import json
+
+        with open(PLUGIN_JSON, encoding="utf-8") as fh:
+            plugin_keywords = json.load(fh).get("keywords", [])
+        self.assertIn(
+            "cmh", plugin_keywords, "plugin.json keywords must include the 'cmh' shorthand")
+        with open(MARKETPLACE_JSON, encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        entry = next(p for p in manifest["plugins"] if p["name"] == "commentable-html")
+        self.assertIn(
+            "cmh", entry.get("keywords", []),
+            "the commentable-html marketplace entry keywords must include the 'cmh' shorthand")
 
 
 if __name__ == "__main__":

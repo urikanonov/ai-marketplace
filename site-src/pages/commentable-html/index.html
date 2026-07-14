@@ -193,7 +193,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           <div class="card feature"><h3>Export as Portable or Offline</h3><p>Export as Portable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
           <div class="card feature"><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
           <div class="card feature"><h3>Deterministic tools</h3><p>Ships stdlib-only Python tools and a strict validator so generated documents are correct by construction, not by luck.</p></div>
-          <div class="card feature"><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p></div>
+          <div class="card feature"><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p><p class="feature-credit">Deck engine: a curated, vendored subset of <a href="https://github.com/zarazhangrui/frontend-slides" target="_blank" rel="noopener noreferrer">frontend-slides</a> by Zara Zhang (MIT). See <a href="#credits">Credits</a>.</p></div>
         </div>
       </div>
     </section>
@@ -301,6 +301,19 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           </div>
         </div>
         <p class="modes-note"><span class="src src-cdn">CDN</span> marks the parts that load over the network. A Non-portable or Portable report that uses mermaid diagrams or charts therefore needs an internet connection to render them - static images and the rest of the review layer still work with no network. Export Offline to inline those diagrams and charts as snapshots and drop the network dependency entirely.</p>
+      </div>
+    </section>
+
+    <section id="credits">
+      <div class="wrap">
+        <h2 class="section-title">Credits</h2>
+        <p class="section-sub">The open-source projects this plugin builds on.</p>
+        <div class="grid">
+          <div class="card feature">
+            <h3>Deck engine: frontend-slides</h3>
+            <p>The built-in commentable-decks capability is powered by a curated, hardened, vendored subset of the <a href="https://github.com/zarazhangrui/frontend-slides" target="_blank" rel="noopener noreferrer">frontend-slides</a> skill by <a href="https://github.com/zarazhangrui" target="_blank" rel="noopener noreferrer">Zara Zhang</a>, used under the MIT License (&copy; 2025 Zara Zhang). The upstream deploy and PDF-export scripts are excluded, and a CI gate keeps the vendored subtree pristine.</p>
+          </div>
+        </div>
       </div>
     </section>
 

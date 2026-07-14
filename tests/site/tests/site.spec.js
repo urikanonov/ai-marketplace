@@ -241,6 +241,35 @@ test("the What you get section showcases the commentable-decks capability (SITE-
   await expect(features).toContainText(/slide|present mode|presentation/i);
 });
 
+test("the plugin page credits the vendored frontend-slides deck engine (SITE-PLUGIN-13)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+
+  // A dedicated Credits section names the upstream project, its author, and its license.
+  const credits = page.locator("#credits");
+  await expect(credits).toBeVisible();
+  await expect(credits).toContainText(/frontend-slides/i);
+  await expect(credits).toContainText(/Zara Zhang/i);
+  await expect(credits).toContainText(/MIT/);
+  await expect(
+    credits.locator('a[href="https://github.com/zarazhangrui/frontend-slides"]')
+  ).toHaveCount(1);
+
+  // The Commentable decks feature card also carries the credit line.
+  const deckCredit = page.locator("#features .feature-credit");
+  await expect(deckCredit).toContainText(/frontend-slides/i);
+  await expect(deckCredit).toContainText(/Zara Zhang/i);
+
+  // Credits sits above the changelog in document order.
+  const changelogFollowsCredits = await page.evaluate(() => {
+    const credits = document.querySelector("#credits");
+    const changelog = document.querySelector("#changelog");
+    return Boolean(
+      credits.compareDocumentPosition(changelog) & Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+  expect(changelogFollowsCredits).toBe(true);
+});
+
 test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });

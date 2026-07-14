@@ -140,8 +140,8 @@ class RenderPluginsTests(unittest.TestCase):
         out = bsd.render_plugins(manifest)
         # The commentable-html card badge renders the "planning and analysis" category.
         self.assertIn('<span class="badge">planning and analysis</span>', out)
-        # The keyword chips include analysis, plan, and report.
-        for chip in ("analysis", "plan", "report"):
+        # The keyword chips include the cmh shorthand, analysis, plan, and report.
+        for chip in ("cmh", "analysis", "plan", "report"):
             self.assertIn('<span class="chip">%s</span>' % chip, out)
 
 

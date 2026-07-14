@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Inline comments on any static HTML report that round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=5a6236642108" />
+  <link rel="stylesheet" href="../assets/styles.css?v=5947f4998c07" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.35.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.36.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -194,7 +194,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           <div class="card feature"><h3>Export as Portable or Offline</h3><p>Export as Portable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
           <div class="card feature"><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
           <div class="card feature"><h3>Deterministic tools</h3><p>Ships stdlib-only Python tools and a strict validator so generated documents are correct by construction, not by luck.</p></div>
-          <div class="card feature"><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p></div>
+          <div class="card feature"><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p><p class="feature-credit">Deck engine: a curated, vendored subset of <a href="https://github.com/zarazhangrui/frontend-slides" target="_blank" rel="noopener noreferrer">frontend-slides</a> by Zara Zhang (MIT). See <a href="#credits">Credits</a>.</p></div>
         </div>
       </div>
     </section>
@@ -305,12 +305,32 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
       </div>
     </section>
 
+    <section id="credits">
+      <div class="wrap">
+        <h2 class="section-title">Credits</h2>
+        <p class="section-sub">The open-source projects this plugin builds on.</p>
+        <div class="grid">
+          <div class="card feature">
+            <h3>Deck engine: frontend-slides</h3>
+            <p>The built-in commentable-decks capability is powered by a curated, hardened, vendored subset of the <a href="https://github.com/zarazhangrui/frontend-slides" target="_blank" rel="noopener noreferrer">frontend-slides</a> skill by <a href="https://github.com/zarazhangrui" target="_blank" rel="noopener noreferrer">Zara Zhang</a>, used under the MIT License (&copy; 2025 Zara Zhang). The upstream deploy and PDF-export scripts are excluded, and a CI gate keeps the vendored subtree pristine.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="changelog">
       <div class="wrap">
         <h2 class="section-title">Changelog</h2>
         <p class="section-sub">Changes to Commentable HTML. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
         <div class="changelog">
           <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.36.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The <code>cmh</code> shorthand now discovers the skill: it is a <code>plugin.json</code> and marketplace keyword, and the <code>SKILL.md</code> front-matter discovery description ends with an explicit <code>Also triggers on the shorthand cmh.</code> clause, so typing <code>cmh</code> auto-triggers the skill and matches it in marketplace search.</li>
+            </ul>
+          </div>
           <div class="release">
             <div class="rel-head"><h3>[1.35.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -324,6 +344,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The runtime footer no longer spans wider than the content column. Its box now aligns to the <code>#commentRoot</code> content width in both the normal and the sidebar-open layout.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.34.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -335,8 +357,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The comments-panel toggle and the overflow-menu trigger now declare the element they control with <code>aria-controls</code> (<code>#sidebar</code> and <code>#toolbarMenu</code>), so assistive technology can associate each toggle with its target.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.33.0] - 2026-07-13</h3></div>
             <div class="group-label">Fixed</div>
@@ -393,18 +413,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>references/validation.md</code> error list now documents the mandatory/unknown <code>commentable-html-kind</code> meta (with the report/plan top-level <code>&lt;h1&gt;</code> sub-rule) and the transient body-state class guard, matching the authoritative error list <code>SKILL.md</code> points to.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.29.0] - 2026-07-13</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The template and shipped example reports no longer bake the transient runtime <code>sidebar-open</code> body class into <code>&lt;body&gt;</code>. <code>sidebar-open</code> is a UI-state class the layer toggles on <code>document.body</code> as the panel opens and closes; hardcoding it in <code>assets/template.shell.html</code> meant every generated document, both <code>dist/</code> templates, and all four <code>examples/report-*.html</code> shipped with <code>&lt;body class=&quot;sidebar-open&quot;&gt;</code>, which rendered a fresh document full width with an empty reserved right gutter (the <code>body.sidebar-open .app</code> layout rule) even when the sidebar panel is not shown. The template and examples now ship a plain <code>&lt;body&gt;</code>, and the runtime derives the sidebar state on load (open when the document has restored comments, closed otherwise). Where 1.28.0 stripped the class on export, this removes it at the source.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li><code>tools/validate.py</code> now errors when a document&#x27;s <code>&lt;body&gt;</code> open tag carries a transient runtime UI-state class (<code>sidebar-open</code>, <code>cm-sidebar-resizing</code>, or <code>cm-widget-dragging</code>), so a persisted transient state can never ship. The check inspects only the <code>&lt;body&gt;</code> open tag, so a legitimate CSS/JS reference to <code>sidebar-open</code> is not flagged. New specs <code>CMH-BUILD-06</code> (no shipped document bakes the class) and <code>CMH-VAL-10</code> (the validator guard), covered by <code>dev/tests/test_build.py</code>, <code>dev/tests/test_new_document.py</code>, <code>dev/tests/test_examples.py</code>, and <code>dev/tests/test_validate.py</code>.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">38 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">39 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

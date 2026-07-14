@@ -1,6 +1,6 @@
 ---
 name: commentable-html
-description: Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface. Reviewers select any paragraph, table cell, code block, KQL query, chart, image, Mermaid diagram, or heading, leave inline comments, and export the whole thread back to the agent as a machine-readable bundle. Use when the user asks to add inline comments, leave review feedback, or add a code-review UI on an HTML report, plan, dashboard, or design doc, or wants to retrofit an existing HTML file or a Markdown doc into one portable, self-contained review file.
+description: Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface. Reviewers select any paragraph, table cell, code block, KQL query, chart, image, Mermaid diagram, or heading, leave inline comments, and export the whole thread back to the agent as a machine-readable bundle. Use when the user asks to add inline comments, leave review feedback, or add a code-review UI on an HTML report, plan, dashboard, or design doc, or wants to retrofit an existing HTML file or a Markdown doc into one portable, self-contained review file. Also triggers on the shorthand cmh.
 ---
 
 # Commentable HTML

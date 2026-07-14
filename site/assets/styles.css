@@ -364,6 +364,10 @@ main > section:nth-of-type(even) {
 .feature h3 { font-size: 1.02rem; margin-bottom: 6px; }
 .feature h3::before { content: "> "; color: var(--cp-accent); }
 .feature p { color: var(--cp-text-muted); font-size: 0.93rem; }
+/* Attribution line inside a feature card (for example the vendored deck engine credit). */
+.feature-credit { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--cp-border); color: var(--cp-text-soft); font-size: 0.8rem; }
+.feature-credit a { color: inherit; text-decoration: underline; }
+.feature-credit a:hover { color: var(--cp-accent); }
 
 /* Steps */
 .steps { counter-reset: step; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 18px; }
