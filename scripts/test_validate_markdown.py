@@ -160,6 +160,10 @@ class TestOtherChecks(unittest.TestCase):
     def test_blank_after_heading(self):
         self.assertEqual(codes(vm.check_blank_after_heading("# Title\ntext\n")), ["blank-heading"])
         self.assertEqual(vm.check_blank_after_heading("# Title\n\ntext\n"), [])
+        # A heading immediately followed by an HTML comment is a structural marker (Backlog.md
+        # generates "## Section\n<!-- SECTION:...:BEGIN -->"), not prose - it must not be flagged.
+        self.assertEqual(vm.check_blank_after_heading("## Acceptance Criteria\n<!-- AC:BEGIN -->\n"), [])
+        self.assertEqual(vm.check_blank_after_heading("## Description\n\n<!-- SECTION:DESCRIPTION:BEGIN -->\n"), [])
 
     def test_double_bracket(self):
         self.assertEqual(codes(vm.check_double_brackets("see [[Page]] here")), ["double-bracket"])
@@ -203,6 +207,17 @@ class TestDiscovery(unittest.TestCase):
             wt = root / ".worktrees" / "feature"
             wt.mkdir(parents=True)
             (wt / "other.md").write_text("x", encoding="utf-8")
+            files = [p.name for p in vm.find_markdown_files(root)]
+            self.assertEqual(files, ["keep.md"])
+
+    def test_excludes_scratch_dirs(self):
+        # .plans/ and tmp/ are gitignored local scratch: their .md files must not be scanned.
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "keep.md").write_text("x", encoding="utf-8")
+            for sub in (".plans", "tmp"):
+                (root / sub).mkdir()
+                (root / sub / "scratch.md").write_text("x", encoding="utf-8")
             files = [p.name for p in vm.find_markdown_files(root)]
             self.assertEqual(files, ["keep.md"])
 
