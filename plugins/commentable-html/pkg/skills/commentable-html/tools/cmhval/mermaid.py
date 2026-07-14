@@ -7,7 +7,7 @@ both the reported bug class and provably safe: a `sequenceDiagram` message that 
 `;` splits into a dangling statement. Every OTHER diagram family (flowchart,
 class, state, er, gantt, pie, ...) is recognized but intentionally left
 unchecked - reproducing their grammar in Python kept producing false positives
-(a flowchart label may legitimately contain `%%` or a literal `"` inside a
+(a flowchart label may legitimately contain `%%` or a literal `"` in a
 slash/round/hex shape, a `click` callback may carry unbalanced quotes), and the
 zero-false-positive guarantee matters more than catching those in the shipped
 checker. The repo-side real-parser oracle (dev/tools/validate_render.mjs) does
@@ -22,20 +22,25 @@ The sequence rule (all ERRORS, because a broken diagram renders as mermaid's
   arrow but no `:` message is an invalid signal - the exact class of the bug this
   checker was built for. To stay zero-false-positive:
     - Only a line whose FIRST `;`-segment is a real signal (an arrow WITH a `:`
-      message after it) is inspected; a directive like `accTitle: A -> B` (whose
-      colon precedes the arrow) is never mistaken for one.
+      message after it, and not led by a keyword) is inspected; a directive like
+      `accTitle: A -> B` (whose value is free text to end of line) is never
+      mistaken for one.
     - Only NON-keyword-led tail segments are flagged, so a `participant`,
-      `activate`, `Note`, `loop`, etc. after the `;` is a valid statement.
-    - `%%{ ... }%%` init directives and `%%` comments are stripped first, so a
-      `;` or arrow inside a directive/comment is never split on.
+      `activate`, `Note`, `loop`, `link`, `accTitle:`, etc. after the `;` is a
+      valid statement. The leading token is split on whitespace OR `:` so
+      `accTitle:` (no space) is recognized.
+    - `%%{ ... }%%` init directives and mermaid character entities (`#59;`,
+      `#quot;`) are neutralized first, and only a LINE-START `%%` is a comment
+      (mid-line `%%` is literal text in mermaid), so a `;`/arrow inside a
+      directive, entity, or comment is never split on.
 """
 
 import re
 
 # Diagram-type keywords we deep-check. Detection mirrors mermaid: the type is the
 # first token of the first meaningful line (after YAML frontmatter, `%%{...}%%`
-# directives, and `%%` comments). Any other type is accepted without deep checks
-# so a new/other diagram family can never be a false positive.
+# directives, and line-start `%%` comments). Any other type is accepted without
+# deep checks so a new/other diagram family can never be a false positive.
 _SEQUENCE_TYPES = ("sequencediagram",)
 
 # Sequence message arrows, longest-first so alternation is greedy. These are the
@@ -43,10 +48,10 @@ _SEQUENCE_TYPES = ("sequencediagram",)
 # `: message`, which is what makes "arrow but no colon" an unambiguous error.
 _SEQ_ARROW = re.compile(r"<<-->>|<<->>|-->>|-->|->>|->|--x|-x|--\)|-\)")
 
-# Statement-leading keywords in a sequenceDiagram. A tail segment that starts with
-# one of these is a valid non-signal statement, so it is never flagged - that is
-# what prevents a `participant ... as ...`, `activate`, `Note`, or `accTitle:`
-# false positive. A trailing `:` on the token (`accTitle:`) is tolerated.
+# Statement-leading keywords in a sequenceDiagram. A segment that starts with one
+# of these is a valid non-signal statement, so it is never flagged and is never
+# treated as a signal - that is what prevents a `participant ... as ...`,
+# `activate`, `Note`, `link`, or `accTitle:` false positive.
 _SEQ_KEYWORDS = frozenset((
     "participant", "actor", "create", "destroy", "box", "end",
     "activate", "deactivate", "note", "loop", "alt", "else", "opt", "par",
@@ -54,13 +59,19 @@ _SEQ_KEYWORDS = frozenset((
     "title", "acctitle", "accdescr", "link", "links", "properties", "details",
 ))
 
+# The leading token of a segment ends at the first whitespace OR `:` (so
+# `accTitle:` with no following space still resolves to `acctitle`).
+_LEAD_TOKEN = re.compile(r"[\s:]")
+
 _FRONTMATTER_RE = re.compile(r"^\s*---\r?\n.*?\r?\n---[ \t]*\r?\n", re.DOTALL)
 # A `%%{ ... }%%` init/config directive (may span lines) - NOT a comment; remove it
 # wholesale so a `;`/arrow inside it is never split on.
 _DIRECTIVE_RE = re.compile(r"%%\{.*?\}%%", re.DOTALL)
-# A `%%` comment runs to end of line. Applied only AFTER directives are removed, so
-# it never eats a `%%{ ... }%%`.
-_LINE_COMMENT_RE = re.compile(r"%%.*$")
+# A mermaid character entity: `#` then a decimal code or a name then `;` (e.g.
+# `#59;` = ';', `#quot;` = '"'). The trailing `;` is NOT a statement separator, so
+# neutralize entities before splitting. Replaced with a space to avoid gluing
+# neighbouring characters into a spurious arrow.
+_MERMAID_ENTITY_RE = re.compile(r"#(?:\d+|[a-zA-Z]+);")
 
 
 def block_source(block):
@@ -73,27 +84,38 @@ def block_source(block):
 
 def _diagram_type_and_lines(src):
     """(lowercase diagram type or None, [body line, ...]) after removing YAML
-    frontmatter, `%%{...}%%` directives, `%%` comments, and blank lines. Body lines
-    keep their arrows and text intact so the sequence check can inspect them."""
+    frontmatter and `%%{...}%%` directives, and dropping blank lines and LINE-START
+    `%%` comment lines (mid-line `%%` is literal in mermaid, so it is kept). Body
+    lines keep their arrows and text intact so the sequence check can inspect
+    them."""
     body = _FRONTMATTER_RE.sub("", src, count=1)
     body = _DIRECTIVE_RE.sub("", body)
     dtype = None
     out = []
     for raw in body.splitlines():
-        line = _LINE_COMMENT_RE.sub("", raw)
-        if not line.strip():
-            continue
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("%%"):
+            continue  # blank, a full-line comment, or a leftover unterminated directive
         if dtype is None:
-            dtype = line.strip().split()[0].lower()
+            dtype = stripped.split()[0].lower()
             continue
-        out.append(line)
+        out.append(raw)
     return dtype, out
 
 
+def _leads_with_keyword(segment):
+    seg = segment.strip()
+    if not seg:
+        return False
+    return _LEAD_TOKEN.split(seg, maxsplit=1)[0].lower() in _SEQ_KEYWORDS
+
+
 def _is_signal(segment):
-    """True when a segment is a real sequence signal: a message arrow followed by a
-    `: message`. The colon must come AFTER the arrow, which distinguishes a signal
-    from a directive such as `accTitle: A -> B` (colon before the arrow)."""
+    """True when a segment is a real sequence signal: not keyword-led, and a
+    message arrow followed by a `: message`. Keyword-led lines (accTitle, note,
+    ...) carry free text and are never signals."""
+    if _leads_with_keyword(segment):
+        return False
     m = _SEQ_ARROW.search(segment)
     return bool(m) and ":" in segment[m.end():]
 
@@ -102,10 +124,7 @@ def _tail_is_invalid_signal(segment):
     """True when a NON-keyword-led tail segment carries a message arrow but has no
     `:` after it - a signal without its message, which mermaid always rejects."""
     seg = segment.strip()
-    if not seg:
-        return False
-    first = seg.split()[0].lower().rstrip(":")  # tolerate `accTitle:` / `accDescr:`
-    if first in _SEQ_KEYWORDS:
+    if not seg or _leads_with_keyword(seg):
         return False
     m = _SEQ_ARROW.search(seg)
     if not m:
@@ -115,10 +134,11 @@ def _tail_is_invalid_signal(segment):
 
 def _check_sequence(lines, where):
     errors = []
-    for line in lines:
+    for raw in lines:
+        line = _MERMAID_ENTITY_RE.sub(" ", raw)  # an entity-escaped ';' is not a separator
         segments = line.split(";")
         if len(segments) < 2:
-            continue  # no `;`, so mermaid parses the line as a single statement
+            continue  # no separator ';', so mermaid parses the line as one statement
         if not _is_signal(segments[0]):
             continue  # only a real message line splits into a dangling signal
         for seg in segments[1:]:

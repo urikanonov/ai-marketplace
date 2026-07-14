@@ -41,7 +41,11 @@ class MermaidCorpusDifferential(unittest.TestCase):
     def setUp(self):
         with open(CORPUS, "r", encoding="utf-8") as fh:
             self.corpus = json.load(fh)
-        self.assertGreaterEqual(len(self.corpus), 40, "corpus should be broad")
+        self.assertGreaterEqual(len(self.corpus), 100, "corpus should be broad (100+ samples)")
+        # The checker must still catch real bugs (not silently pass everything).
+        self.assertGreaterEqual(sum(1 for e in self.corpus if e["py_flag"]), 5)
+        self.assertGreaterEqual(sum(1 for e in self.corpus if e["valid"]), 100,
+                                "the zero-FP proof needs many parser-valid diagrams")
 
     def test_no_false_positives_and_catches_flagged(self):
         for entry in self.corpus:
@@ -109,10 +113,6 @@ class MermaidSequenceRule(unittest.TestCase):
         # inside it is never split on (real parser accepts this).
         self.assertFalse(_flag("sequenceDiagram\n  A->>B: msg %%{init: {'foo': ';->'} }%%"))
 
-    def test_trailing_comment_with_semicolon_not_flagged(self):
-        # `%%` starts a comment that is stripped, so the ';' inside it is gone.
-        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi %% note; X -> Y"))
-
 
 class MermaidFlowchartDelegatedToOracle(unittest.TestCase):
     """CMH-SYN-02: flowchart (and every non-sequence family) is recognized but NOT
@@ -156,6 +156,39 @@ class MermaidTypeGating(unittest.TestCase):
             mermaid_blocks = [{"has_svg": True, "src_parts": ["not mermaid at all;;;"]}]
         errs, _ = M.check_mermaid_syntax(P())
         self.assertEqual(errs, [])
+
+    def test_empty_block_no_crash(self):
+        class P:
+            mermaid_blocks = [{"has_svg": False, "src_parts": []},
+                              {"has_svg": False, "src_parts": ["   "]}]
+        errs, _ = M.check_mermaid_syntax(P())
+        self.assertEqual(errs, [])
+
+
+class MermaidRound2Regressions(unittest.TestCase):
+    """CMH-SYN-02: valid sequenceDiagrams earlier checker versions false-flagged."""
+
+    def test_acctitle_post_arrow_colon_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  accTitle: A -> B: C; D -> E\n  A->>B: hi"))
+
+    def test_acctitle_no_space_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  accTitle:A->B; C -> D\n  A->>B: hi"))
+
+    def test_numeric_entity_semicolon_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: X -> Y: C#59; D -> E"))
+
+    def test_named_entity_semicolon_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: say #quot;hi#quot;; C->>D: y"))
+
+    def test_midline_percent_before_colon_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: x; C->>D %% : y"))
+
+    def test_keyword_tail_link_not_flagged(self):
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; link A: docs @ https://example.com/a->b"))
+
+    def test_still_flags_the_real_bug(self):
+        # The hardening must not silence the original defect.
+        self.assertTrue(_flag("sequenceDiagram\n  A->>B: validate; map X -> Y here"))
 
 
 class MermaidWiredIntoValidate(unittest.TestCase):

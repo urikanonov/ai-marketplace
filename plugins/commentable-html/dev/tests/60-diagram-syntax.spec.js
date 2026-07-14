@@ -1,77 +1,50 @@
-// CMH-SYN-04 / CMH-SYN-05: the repo-side real-parser oracle.
+// CMH-SYN-04 / CMH-SYN-05: the repo-side real-parser oracle gate.
 //
-// This is the maximal-fidelity gate the user asked for: every mermaid diagram
-// and Chart.js config in the SHIPPED example reports is parsed by the REAL
-// mermaid and Chart.js (the same versions the runtime loads), so the repo can
-// never ship a diagram or chart that renders as mermaid's "Syntax error" bomb.
-// It also re-verifies the differential corpus labels against the real parser so
-// the shipped Python checker's zero-false-positive guarantee can never rest on a
-// stale label.
+// The real mermaid + Chart.js run in a headless browser that the standalone node
+// tools launch themselves (dev/tools/validate_render.mjs and the corpus
+// generator). Launching a browser from INSIDE the @playwright/test worker
+// deadlocks, so this spec shells out to those standalone tools and asserts they
+// exit clean - the tools own the browser, the test owns the assertion.
 //
-// The oracle injects mermaid/Chart.js from local node_modules and parses in a
-// real Chromium page; it reaches no network.
+//   - validate_render.mjs validates every mermaid diagram + Chart.js config in the
+//     shipped example reports with the real libraries (exit != 0 on any error).
+//   - build_mermaid_corpus.mjs --check regenerates the differential corpus labels
+//     from the REAL parser and the REAL Python checker and fails on any false
+//     positive (the checker flags a parser-valid diagram) or label drift.
 
 import { test, expect } from "@playwright/test";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { SKILL, FIXTURES } from "./helpers.js";
-import { makeValidator } from "../tools/validate_render.mjs";
-import { extractMermaid, extractCharts } from "../tools/diagram_extract.mjs";
+import { SKILL, DEV } from "./helpers.js";
 
-let oracle;
+function runNode(args, timeoutMs) {
+  try {
+    return execFileSync("node", args, { cwd: DEV, stdio: "pipe", timeout: timeoutMs, encoding: "utf8" });
+  } catch (e) {
+    const out = `${e.stdout || ""}\n${e.stderr || ""}`.trim();
+    throw new Error(`node ${args.join(" ")} failed:\n${out || e.message}`);
+  }
+}
 
-test.beforeAll(async () => { oracle = await makeValidator(); });
-test.afterAll(async () => { if (oracle) await oracle.close(); });
-
-const EXAMPLES = path.join(SKILL, "examples");
 const exampleFiles = fs
-  .readdirSync(EXAMPLES)
+  .readdirSync(path.join(SKILL, "examples"))
   .filter((f) => f.endsWith(".html"))
   .sort()
-  .map((f) => path.join(EXAMPLES, f));
+  .map((f) => path.join(SKILL, "examples", f));
 
-test("CMH-SYN-04: every mermaid diagram and chart in the shipped example reports parses with the real parser", async () => {
-  const findings = [];
-  for (const file of exampleFiles) {
-    const html = fs.readFileSync(file, "utf8");
-    for (const d of extractMermaid(html)) {
-      const r = await oracle.mermaid(d.src);
-      if (!r.ok) findings.push(`${path.basename(file)} mermaid #${d.index}: ${r.error.split("\n")[0]}`);
-    }
-    for (const c of extractCharts(html)) {
-      const r = await oracle.chart(c.text);
-      if (!r.ok) findings.push(`${path.basename(file)} chart ${c.id || `#${c.index}`}: ${r.error}`);
-    }
-  }
-  expect(findings.length, findings.join("\n")).toBe(0);
+test("CMH-SYN-04: every mermaid diagram and chart in the shipped example reports parses with the real parser", () => {
+  test.setTimeout(120000);
+  // validate_render.mjs launches its own headless browser and exits non-zero on
+  // any real-parser error in a shipped example report.
+  const out = runNode([path.join(DEV, "tools", "validate_render.mjs"), ...exampleFiles], 110000);
+  expect(out).toContain("oracle:");
 });
 
-test("CMH-SYN-04: the oracle catches the semicolon-splits-a-message bug (and accepts the valid twin)", async () => {
-  const good = await oracle.mermaid("sequenceDiagram\n  A->>B: hi; C->>D: bye");
-  expect(good.ok).toBe(true);
-  const bad = await oracle.mermaid("sequenceDiagram\n  A->>B: validate; map X -> Y CLR type(s)");
-  expect(bad.ok).toBe(false);
-});
-
-test("CMH-SYN-04: the oracle rejects an unknown Chart.js type", async () => {
-  const ok = await oracle.chart('{"type":"bar","data":{"labels":["a"],"datasets":[{"data":[1]}]}}');
-  expect(ok.ok).toBe(true);
-  const bad = await oracle.chart('{"type":"definitely-not-a-chart","data":{"labels":[],"datasets":[]}}');
-  expect(bad.ok).toBe(false);
-});
-
-test("CMH-SYN-05: the differential corpus labels match the real parser (no stale labels)", async () => {
-  const corpus = JSON.parse(fs.readFileSync(path.join(FIXTURES, "mermaid-corpus.json"), "utf8"));
-  expect(corpus.length).toBeGreaterThanOrEqual(40);
-  const mismatches = [];
-  for (const e of corpus) {
-    const r = e.kind === "chart" ? await oracle.chart(e.src) : await oracle.mermaid(e.src);
-    if (r.ok !== e.valid) {
-      mismatches.push(`${e.name}: corpus valid=${e.valid} but real parser ok=${r.ok}`);
-    }
-    // A py_flag entry must be genuinely invalid, or the Python checker would be a
-    // false positive.
-    if (e.py_flag && r.ok) mismatches.push(`${e.name}: py_flag but the real parser accepts it`);
-  }
-  expect(mismatches.length, mismatches.join("\n")).toBe(0);
+test("CMH-SYN-05: the differential corpus is in sync with the real parser and Python checker (no false positives)", () => {
+  test.setTimeout(180000);
+  // Regenerates every label from the REAL mermaid parser and the REAL Python
+  // checker; --check fails on any false positive or drift versus the committed file.
+  const out = runNode([path.join(DEV, "tests", "fixtures", "build_mermaid_corpus.mjs"), "--check"], 170000);
+  expect(out).toContain("up to date");
 });

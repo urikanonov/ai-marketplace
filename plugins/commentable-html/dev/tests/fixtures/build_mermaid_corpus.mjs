@@ -3,21 +3,51 @@
 // positives (it must never flag a diagram the real parser accepts) and still
 // catches the target bug classes.
 //
-// Each authored entry carries `py_flag`: whether the Python checker is EXPECTED
-// to flag it. The real parser stamps `valid`. Invariants enforced here:
-//   - py_flag === true  implies the real parser says INVALID (we never flag valid).
-//   - the file is deterministic (sorted, stable) so `--check` can gate drift.
+// Each entry's `valid` is stamped by the REAL mermaid parser (headless browser)
+// and its `py_flag` is computed by the REAL shipped Python checker (via
+// mermaid_pyflag.py). Because both labels come from the authoritative tools, the
+// build is a live differential test: any source the Python checker flags that the
+// real parser ACCEPTS is a false positive and fails generation here. Authored
+// entries only need {name, src}; the file is deterministic (sorted) so `--check`
+// gates drift.
 //
 //   node tests/fixtures/build_mermaid_corpus.mjs           # (re)write the corpus
 //   node tests/fixtures/build_mermaid_corpus.mjs --check   # fail if out of date
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { makeValidator } from "../../tools/validate_render.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, "mermaid-corpus.json");
+
+function pythonCmd() {
+  for (const c of ["python", "python3"]) {
+    try { execFileSync(c, ["--version"], { stdio: "ignore" }); return c; } catch { /* try next */ }
+  }
+  return "python";
+}
+
+// Compute py_flag for every entry from the shipped Python checker.
+function computePyFlags(entries) {
+  const casesPath = path.join(os.tmpdir(), `mmcorpus-${process.pid}-${Date.now()}.json`);
+  fs.writeFileSync(casesPath, JSON.stringify(entries.map((e) => ({ name: e.name, src: e.src }))));
+  const flags = {};
+  try {
+    const out = execFileSync(pythonCmd(), [path.join(__dirname, "mermaid_pyflag.py"), casesPath], { encoding: "utf8" });
+    for (const line of out.split(/\r?\n/)) {
+      if (!line) continue;
+      const i = line.lastIndexOf("\t");
+      flags[line.slice(0, i)] = line.slice(i + 1) === "1";
+    }
+  } finally {
+    fs.unlinkSync(casesPath);
+  }
+  return flags;
+}
 
 // --- Authored diagrams. kind defaults to "mermaid". -----------------------
 const ENTRIES = [
@@ -78,7 +108,20 @@ const ENTRIES = [
   { name: "fp-accdescr-semicolon-arrow", py_flag: false, src: "sequenceDiagram\n  accDescr: A -> B; overview\n  A->>B: hi" },
   { name: "fp-inline-init-directive-semicolon", py_flag: false, src: "sequenceDiagram\n  %%{init: {'theme':'dark'}}%%\n  A->>B: hi; C->>D: bye" },
   { name: "fp-message-inline-directive-semi-arrow", py_flag: false, src: "sequenceDiagram\n  A->>B: msg %%{init: {'foo': ';->'} }%%" },
-  { name: "fp-message-trailing-comment-semi-arrow", py_flag: false, src: "sequenceDiagram\n  A->>B: hi %% note; X -> Y" },
+  { name: "seq-midline-comment-dangling-tail", py_flag: true, src: "sequenceDiagram\n  A->>B: hi %% note; X -> Y" },
+
+  // ---- round-2 regression: valid diagrams earlier checker versions flagged ----
+  { name: "fp-acctitle-postarrow-colon", py_flag: false, src: "sequenceDiagram\n  accTitle: A -> B: C; D -> E\n  A->>B: hi" },
+  { name: "fp-acctitle-no-space", py_flag: false, src: "sequenceDiagram\n  accTitle:A->B; C -> D\n  A->>B: hi" },
+  { name: "fp-numeric-entity-semicolon", py_flag: false, src: "sequenceDiagram\n  A->>B: X -> Y: C#59; D -> E" },
+  { name: "fp-alias-numeric-entity", py_flag: false, src: 'sequenceDiagram\n  participant A as "A -> B: C#59; D -> E"\n  A->>A: z' },
+  { name: "fp-quot-entity-semicolon", py_flag: false, src: "sequenceDiagram\n  A->>B: say #quot;hi#quot;; C->>D: y" },
+  { name: "fp-midline-percent-colon", py_flag: false, src: "sequenceDiagram\n  A->>B: x; C->>D %% : y" },
+  // keyword-led tails after a ';' are valid statements and must never be flagged
+  { name: "kw-tail-link", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; link A: docs @ https://example.com/a->b" },
+  { name: "kw-tail-accitle", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; accTitle: Overview" },
+  { name: "kw-tail-rect", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; rect rgb(0,0,0)\n    A->>B: y\n  end" },
+  { name: "kw-tail-critical", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; critical net\n    A->>B: y\n  end" },
   { name: "fp-flow-percent-in-label", py_flag: false, src: 'flowchart TD\n  A["100%% done"] --> B' },
   { name: "fp-flow-slash-literal-quote", py_flag: false, src: 'flowchart LR\n  A[/x " y/] --> B' },
   { name: "fp-flow-subgraph-percent", py_flag: false, src: 'flowchart TD\n  subgraph "Group %% one"\n    A --> B\n  end' },
@@ -98,19 +141,36 @@ const ENTRIES = [
 
 async function main() {
   const check = process.argv.includes("--check");
+  // Bulk candidates (agent-generated, diverse) live in a data file so the inline
+  // ENTRIES above stay small and documented; both are labeled the same way.
+  const SRC = path.join(__dirname, "mermaid-corpus.src.json");
+  const extra = fs.existsSync(SRC) ? JSON.parse(fs.readFileSync(SRC, "utf8")) : [];
+  const all = [...ENTRIES, ...extra.map((e) => ({ name: e.name, kind: e.kind, src: e.src }))];
+  // Guard against duplicate names (they would collide in the py_flag map).
+  const seen = new Set();
+  for (const e of all) {
+    if (seen.has(e.name)) throw new Error(`duplicate corpus entry name: ${e.name}`);
+    seen.add(e.name);
+  }
+  const pyFlag = computePyFlags(all);
   const v = await makeValidator();
   const rows = [];
+  const falsePositives = [];
   try {
-    for (const e of ENTRIES) {
+    for (const e of all) {
       const kind = e.kind || "mermaid";
       const r = kind === "chart" ? await v.chart(e.src) : await v.mermaid(e.src);
-      if (e.py_flag && r.ok) {
-        throw new Error(`corpus invariant violated: "${e.name}" is py_flag=true but the real parser ACCEPTS it (would be a false positive)`);
-      }
-      rows.push({ name: e.name, kind, valid: r.ok, py_flag: !!e.py_flag, src: e.src });
+      const py = kind === "chart" ? false : !!pyFlag[e.name];
+      // A false positive: the Python checker flags a source the REAL parser accepts.
+      if (py && r.ok) falsePositives.push(e.name);
+      rows.push({ name: e.name, kind, valid: r.ok, py_flag: py, src: e.src });
     }
   } finally {
     await v.close();
+  }
+  if (falsePositives.length) {
+    throw new Error("FALSE POSITIVE(S) - the Python checker flags a diagram the real mermaid "
+      + "parser ACCEPTS:\n  " + falsePositives.join("\n  "));
   }
   rows.sort((a, b) => a.name.localeCompare(b.name));
   const json = JSON.stringify(rows, null, 2) + "\n";
@@ -124,7 +184,8 @@ async function main() {
     return 0;
   }
   fs.writeFileSync(OUT, json);
-  console.log(`wrote ${OUT} (${rows.length} entries, ${rows.filter((r) => r.py_flag).length} py_flag)`);
+  console.log(`wrote ${OUT} (${rows.length} entries, ${rows.filter((r) => r.py_flag).length} py_flag, `
+    + `${rows.filter((r) => !r.valid).length} parser-invalid)`);
   return 0;
 }
 

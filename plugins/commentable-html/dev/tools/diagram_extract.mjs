@@ -13,7 +13,9 @@ export function decodeEntities(s) {
   return String(s).replace(/&(#x[0-9a-fA-F]+|#\d+|lt|gt|quot|apos|nbsp|amp);/g, (m, e) => {
     if (e[0] === "#") {
       const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      // Only convert valid Unicode scalar values; an out-of-range code point would
+      // make String.fromCodePoint throw a RangeError and abort the oracle.
+      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
     }
     return NAMED[e] ?? m;
   });
@@ -29,8 +31,14 @@ export const LAYER_JSON_IDS = new Set([
 
 // <pre class="mermaid"> / <div class="mermaid"> source blocks that have NOT yet
 // rendered to <svg>. A rendered block's inner HTML is SVG, not diagram source.
+// A tag's attribute span, allowing a quoted `>` inside an attribute value so a
+// `data-x="a>b"` does not truncate the tag early. The fallback class excludes
+// quotes so it cannot overlap the quoted-string alternatives (which would cause
+// catastrophic regex backtracking on a large document).
+const ATTRS = `(?:"[^"]*"|'[^']*'|[^"'>])*`;
+
 export function extractMermaid(html) {
-  const re = /<(pre|div)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
+  const re = new RegExp(`<(pre|div)\\b(${ATTRS})>([\\s\\S]*?)<\\/\\1\\s*>`, "gi");
   const out = [];
   let m;
   while ((m = re.exec(html)) !== null) {
@@ -49,7 +57,7 @@ export function extractMermaid(html) {
 // Chart.js configs: <script type="application/json" id="...">{...}</script> whose
 // id is not a layer block. Returns the raw JSON text (Chart.js parses it itself).
 export function extractCharts(html) {
-  const re = /<script\b([^>]*?)>([\s\S]*?)<\/script\s*>/gi;
+  const re = new RegExp(`<script\\b(${ATTRS})>([\\s\\S]*?)<\\/script\\s*>`, "gi");
   const out = [];
   let m;
   while ((m = re.exec(html)) !== null) {

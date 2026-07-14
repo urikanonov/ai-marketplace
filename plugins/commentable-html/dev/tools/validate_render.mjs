@@ -27,11 +27,13 @@ const NM = path.join(__dirname, "..", "node_modules");
 const MERMAID_JS = fs.readFileSync(path.join(NM, "mermaid", "dist", "mermaid.min.js"), "utf8");
 const CHART_JS = fs.readFileSync(path.join(NM, "chart.js", "dist", "chart.umd.js"), "utf8");
 
-async function makeValidator() {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
+// Attach the mermaid + Chart.js validators to an EXISTING Playwright page (the
+// page must be blank; nothing network is fetched). Returns { mermaid,
+// mermaidBatch, chart } bound to that page. Used both by makeValidator (which
+// owns its own browser) and by the Playwright spec (which passes the test's own
+// page fixture - launching a second browser from inside the test runner hangs).
+async function attachValidator(page) {
   page.on("console", () => {}); // swallow Chart.js/mermaid console noise
-  await page.setContent("<!doctype html><html><body></body></html>");
   await page.addScriptTag({ content: MERMAID_JS });
   await page.addScriptTag({ content: CHART_JS });
   await page.evaluate(() => window.mermaid.initialize({ startOnLoad: false, securityLevel: "loose" }));
@@ -42,6 +44,18 @@ async function makeValidator() {
         try { await window.mermaid.parse(s); return { ok: true }; }
         catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
       }, src);
+    },
+    async mermaidBatch(srcs) {
+      // Parse many diagrams in ONE round-trip (per-entry page.evaluate is too slow
+      // for a large corpus).
+      return page.evaluate(async (arr) => {
+        const out = [];
+        for (const s of arr) {
+          try { await window.mermaid.parse(s); out.push({ ok: true }); }
+          catch (e) { out.push({ ok: false, error: String((e && e.message) || e) }); }
+        }
+        return out;
+      }, srcs);
     },
     async chart(text) {
       return page.evaluate((t) => {
@@ -54,28 +68,30 @@ async function makeValidator() {
           return { ok: true, note: "not-a-chart-config" };
         }
         // Chart.js does NOT throw for an unknown type in the constructor (it fails
-        // silently at render), so check the controller registry explicitly.
+        // silently at render), so validate the type against the controller registry.
+        // We deliberately do NOT `new Chart(...)` it: instantiating a chart kicks off
+        // rendering/animation/resize observers that can hang a headless page, and the
+        // registry check plus JSON validity is the reliable, non-hanging signal.
         let ctrl = null;
         try { ctrl = window.Chart.registry.getController(cfg.type); } catch (e) { ctrl = null; }
         if (!ctrl) {
           return { ok: false, error: `unknown chart type "${cfg.type}" (not a registered Chart.js controller)` };
         }
-        const cv = document.createElement("canvas");
-        cv.width = 300; cv.height = 200;
-        document.body.appendChild(cv);
-        try {
-          const ch = new window.Chart(cv, cfg);
-          ch.destroy();
-          return { ok: true };
-        } catch (e) {
-          return { ok: false, error: String((e && e.message) || e) };
-        } finally {
-          cv.remove();
+        if (!cfg.data || typeof cfg.data !== "object") {
+          return { ok: false, error: "chart config has no valid data object" };
         }
+        return { ok: true };
       }, text);
     },
-    async close() { await browser.close(); },
   };
+}
+
+async function makeValidator() {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.setContent("<!doctype html><html><body></body></html>");
+  const v = await attachValidator(page);
+  return { ...v, async close() { await browser.close(); } };
 }
 
 async function validateFiles(files, v) {
@@ -137,7 +153,7 @@ async function main() {
   }
 }
 
-export { makeValidator, validateFiles, runCorpus };
+export { makeValidator, attachValidator, validateFiles, runCorpus };
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(await main());

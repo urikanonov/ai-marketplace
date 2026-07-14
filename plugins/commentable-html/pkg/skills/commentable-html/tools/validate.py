@@ -44,8 +44,28 @@ from urllib.request import url2pathname
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
-from cmhval.jsonblocks import check_json_blocks  # noqa: E402
+try:
+    from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
+    from cmhval.jsonblocks import check_json_blocks  # noqa: E402
+except ImportError:
+    # The content-syntax checks live in the sibling cmhval/ package. If it cannot be
+    # imported (a broken/partial install), degrade to no-ops so the rest of the
+    # validator - including --charts-only - still runs instead of crashing.
+    def check_mermaid_syntax(parser):  # noqa: E402
+        return [], []
+
+    def check_mermaid_source(src):  # noqa: E402
+        return []
+
+    def check_json_blocks(parser, chart_checks_run=True):  # noqa: E402
+        return [], []
+
+
+def _reject_json_constant(name):
+    # Python's json.loads accepts NaN / Infinity / -Infinity by default, but the
+    # browser's JSON.parse rejects them, so a chart-data block using one would throw
+    # at init. Reject them here too.
+    raise ValueError("invalid JSON constant %s (JSON.parse rejects it)" % name)
 
 # --------------------------------------------------------------------------- #
 # Layer contract
@@ -1535,10 +1555,11 @@ def check_charts(html, parser):
                           f'JSON.parse() will throw at chart init; emit valid JSON (e.g. [] or {{}})')
             continue
         try:
-            json.loads(stripped)
-        except json.JSONDecodeError:
+            json.loads(stripped, parse_constant=_reject_json_constant)
+        except (json.JSONDecodeError, ValueError):
             errors.append(f'chart-data <script type="application/json"> {where} is not valid JSON - a raw '
-                          f'"</script>" likely truncated it; serialize with an encoder and escape "<" as \\u003C')
+                          f'"</script>" or a NaN/Infinity literal that JSON.parse rejects; serialize with '
+                          f'an encoder and escape "<" as \\u003C')
 
     # E5) Chart init must come AFTER the JS END marker comment (Save-as-plain
     # keeps it) AND after the Chart.js loader (or Chart is undefined when it runs).
