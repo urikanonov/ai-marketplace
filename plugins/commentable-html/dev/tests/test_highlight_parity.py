@@ -2,7 +2,7 @@
 """Cross-implementation parity for the syntax highlighter (GH-REGRESS-HIGHLIGHT-PARITY).
 
 The author-time Python tool (highlight_code.py) and the runtime JS diff highlighter
-(cmhHighlightCode in assets/commentable-html.js) are parallel reimplementations of the same
+(cmhHighlightCode in assets/js/26-highlight.js) are parallel reimplementations of the same
 tokenizer. They can drift silently - the PR #33 regression (single quotes swallowing Rust
 lifetimes, YAML apostrophes, C++ digit separators as strings) had to be fixed in both. This test
 pins the PYTHON side to the shared fixture tests/fixtures/highlight_parity.json; tests/57-highlight-parity.spec.js

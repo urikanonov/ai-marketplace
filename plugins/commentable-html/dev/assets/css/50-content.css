@@ -1,0 +1,76 @@
+/* ---------------------------------------------------------------------------
+   Default content styling (sections, tables, TOC, images, badges) - shipped so
+   a generated or retrofitted document looks neat without the host adding its own
+   rules. All are scoped to #commentRoot and use the --cp-* theme vars, and carry
+   no !important so a host stylesheet can still override them.
+   --------------------------------------------------------------------------- */
+#commentRoot > section {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px;
+  padding: 1.5rem; margin: 1.5rem 0;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+#commentRoot > section > h2:first-child, #commentRoot > section > h3:first-child { margin-top: 0; }
+/* Document title: a themed top-level h1 so a generated or retrofitted document has a
+   visible heading. A bare top-level h1 gets an underline rule; an h1 inside the lede
+   surface stays borderless because the box already frames it. */
+#commentRoot > h1, #commentRoot > header > h1 {
+  font-size: 1.9rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em;
+  margin: 0 0 0.85rem; color: var(--cp-text);
+}
+#commentRoot > h1 { padding-bottom: 0.4rem; border-bottom: 2px solid var(--cp-border); }
+#commentRoot .badge {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 0.78rem; font-weight: 600; line-height: 1.5;
+  max-width: 100%; overflow-wrap: anywhere;
+  border: 1px solid var(--cp-border); background: var(--cp-surface-soft); color: var(--cp-text-muted);
+}
+/* State badges convey status via a tinted background + colored border while keeping
+   the label in --cp-text, so contrast stays >= 4.5:1 in both light and dark. */
+#commentRoot .badge.ok { border-color: var(--cp-success); background: rgba(22, 163, 74, 0.14); color: var(--cp-text); }
+#commentRoot .badge.warn { border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.16); color: var(--cp-text); }
+#commentRoot .badge.danger { border-color: var(--cp-danger); background: rgba(220, 38, 38, 0.14); color: var(--cp-text); }
+/* The light-theme amber border is faint against a white card; darken it. */
+html:not([data-theme="dark"]) #commentRoot .badge.warn { border-color: #b45309; }
+
+#commentRoot table { border-collapse: collapse; width: 100%; margin: 0.75rem 0 0.25rem; font-size: 0.9rem; }
+#commentRoot th, #commentRoot td { border: 1px solid var(--cp-border); padding: 6px 9px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+#commentRoot th { background: var(--cp-bg-elevated); font-weight: 600; }
+#commentRoot tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.04); }
+html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.03); }
+#commentRoot table caption { caption-side: top; text-align: left; color: var(--cp-text-soft); font-size: 0.82rem; padding: 0.2rem 0; }
+/* On a narrow screen a wide multi-column table would push the whole page sideways.
+   Let the table scroll horizontally inside its own box instead: display:block wraps
+   the rows/cells in anonymous table boxes so the columns still align, while overflow-x
+   keeps the overflow contained rather than spilling onto the document. */
+@media (max-width: 700px) {
+  #commentRoot table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+#commentRoot .cmh-lede { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 0.75rem 1.25rem 1rem; margin: 0 0 1.25rem; color: var(--cp-text); font-size: 1.04em; line-height: 1.6; }
+#commentRoot .cmh-lede > :first-child { margin-top: 0; }
+#commentRoot .cmh-lede > :last-child { margin-bottom: 0; }
+
+/* Callouts: theme-aware boxed asides. Text stays var(--cp-text) so it is readable
+   on the soft tinted backgrounds in both light and dark themes. Authors must use
+   these classes (or the theme variables) instead of hardcoding colors. */
+#commentRoot .cmh-callout { border-radius: 8px; padding: 0.75rem 1rem; margin: 1rem 0; border: 1px solid var(--cp-border); background: var(--cp-surface-soft); color: var(--cp-text); line-height: 1.55; }
+#commentRoot .cmh-callout > :first-child { margin-top: 0; }
+#commentRoot .cmh-callout > :last-child { margin-bottom: 0; }
+#commentRoot .cmh-callout-danger { border-color: var(--cp-danger); background: var(--cp-danger-soft); }
+#commentRoot .cmh-callout-warning { border-color: var(--cp-warning); background: var(--cp-warning-soft); }
+#commentRoot .cmh-callout-success { border-color: var(--cp-success); background: var(--cp-success-soft); }
+#commentRoot .cmh-callout-info { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+
+#commentRoot .cm-toc { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
+#commentRoot .cm-toc-title { font-weight: 700; color: var(--cp-text); margin-bottom: 0.5rem; font-size: 1rem; }
+#commentRoot .cm-toc ol { margin: 0; padding-left: 1.4rem; }
+#commentRoot .cm-toc li { margin: 0.25rem 0; font-size: 0.92rem; }
+#commentRoot .cm-toc a { color: var(--cp-link); text-decoration: none; }
+#commentRoot .cm-toc a:hover { text-decoration: underline; }
+
+#commentRoot img { max-width: 100%; height: auto; }
+/* Bare content figures (images) default to the browser's 40px side margins, which
+   crowd the image on narrow screens; use symmetric block spacing so the figure fills
+   the content width like the framed chart/KQL figures do. */
+#commentRoot figure { margin: 1.25rem 0; }
+

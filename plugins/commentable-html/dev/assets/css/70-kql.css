@@ -1,0 +1,96 @@
+/* ---------------------------------------------------------------------------
+   Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
+   syntax highlighting. The .cmh-kql-* token spans are baked into the code by
+   tools/kql_highlight.py; these rules only supply the frame and token colors, so
+   no per-report CSS is needed. Scoped to #commentRoot, --cp-* vars, no !important.
+   --------------------------------------------------------------------------- */
+#commentRoot figure.cmh-kql {
+  margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
+  overflow: hidden; background: var(--cp-surface);
+}
+#commentRoot figure.cmh-kql .cmh-kql-cap {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 0.4rem 0.75rem; font-size: 0.82rem;
+  background: var(--cp-surface-soft); border-bottom: 1px solid var(--cp-border);
+}
+#commentRoot figure.cmh-kql .cmh-kql-title {
+  flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; font-weight: 600; color: var(--cp-text-muted); cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: transparent; border: 0; padding: 0; font-size: inherit; text-align: left;
+}
+#commentRoot figure.cmh-kql .cmh-kql-title:hover { color: var(--cp-accent); text-decoration: underline; }
+#commentRoot figure.cmh-kql .cmh-kql-run {
+  flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
+}
+#commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+/* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
+   side without cramping, so stack them on their own lines. */
+@media (max-width: 700px) {
+  #commentRoot figure.cmh-kql .cmh-kql-cap { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+}
+#commentRoot figure.cmh-kql pre {
+  margin: 0; border: 0; border-radius: 0; padding: 0.7rem 0.9rem; overflow-x: auto;
+  background: var(--cp-bg-elevated);
+}
+/* The Copy/language pills are wrapped around every code block at runtime, KQL figures
+   included, so the KQL <pre> needs the same top headroom; this selector outranks the
+   frameless-KQL rule just above so the reserved space is not lost. */
+#commentRoot figure.cmh-kql .cmh-code-wrap > pre { padding-top: 2.5rem; }
+/* Standalone code blocks get a light frame like the KQL figure. The KQL figure's own
+   <pre> (higher specificity above) stays frameless; the mermaid host is reset below. */
+#commentRoot pre {
+  background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
+  border-radius: 10px; padding: 0.85rem 1rem; overflow-x: auto;
+}
+#commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+#commentRoot pre.mermaid svg { max-width: none; }
+/* Chart figures are boxed for readability, like code and KQL blocks. */
+#commentRoot figure.chart {
+  margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
+  padding: 0.85rem 1rem; background: var(--cp-surface); max-width: 100%; overflow-x: auto; overflow-y: hidden;
+}
+#commentRoot figure.chart > .chart-wrap {
+  position: relative; width: 100%; max-width: 100%; height: clamp(220px, 42vw, 440px);
+  max-height: min(60vh, 480px); min-height: 160px; overflow: hidden;
+}
+#commentRoot figure.chart canvas,
+#commentRoot figure.chart img.cmh-chart,
+#commentRoot canvas.cmh-chart {
+  display: block; width: 100% !important; max-width: 100% !important;
+  height: 100% !important; max-height: 100% !important; box-sizing: border-box;
+  object-fit: contain;
+}
+#commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
+@media (max-width: 480px) {
+  #commentRoot pre.mermaid svg { min-width: 560px; }
+  #commentRoot figure.chart > .chart-wrap { min-width: 560px; max-width: none; }
+}
+/* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
+   identifiers/columns inherit --cp-text; only these categories are tinted. */
+#commentRoot .cmh-kql-kw  { color: #8250df; font-weight: 600; }
+#commentRoot .cmh-kql-fn  { color: #0550ae; }
+#commentRoot .cmh-kql-str { color: #0a7d33; }
+#commentRoot .cmh-kql-num { color: #953800; }
+#commentRoot .cmh-kql-com { color: var(--cp-text-soft); font-style: italic; }
+#commentRoot .cmh-kql-op  { color: var(--cp-text-muted); }
+html[data-theme="dark"] #commentRoot .cmh-kql-kw  { color: #d2a8ff; }
+html[data-theme="dark"] #commentRoot .cmh-kql-fn  { color: #79c0ff; }
+html[data-theme="dark"] #commentRoot .cmh-kql-str { color: #7ee787; }
+html[data-theme="dark"] #commentRoot .cmh-kql-num { color: #ffa657; }
+
+/* General code syntax token colors (baked at author time by tools/highlight_code.py;
+   same primer palette as the KQL tokens). Plain identifiers inherit --cp-text. */
+#commentRoot .cmh-code-kw  { color: #8250df; font-weight: 600; }
+#commentRoot .cmh-code-fn  { color: #0550ae; }
+#commentRoot .cmh-code-str { color: #0a7d33; }
+#commentRoot .cmh-code-num { color: #953800; }
+#commentRoot .cmh-code-com { color: var(--cp-text-soft); font-style: italic; }
+#commentRoot .cmh-code-op  { color: var(--cp-text-muted); }
+html[data-theme="dark"] #commentRoot .cmh-code-kw  { color: #d2a8ff; }
+html[data-theme="dark"] #commentRoot .cmh-code-fn  { color: #79c0ff; }
+html[data-theme="dark"] #commentRoot .cmh-code-str { color: #7ee787; }
+html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
+
+
+.cm-skip[hidden], .cm-skip [hidden] { display: none !important; }
+

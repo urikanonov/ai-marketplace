@@ -13,9 +13,12 @@ Single source of truth
                                   into the shipped templates and the example reports,
                                   so they never drift from the version the tests
                                   vendor. Dependabot bumps it; --check flags drift.
-  assets/commentable-html.css   - the layer CSS (region body)
-  assets/commentable-html.js    - the runtime JS (region body); its CMH_VERSION
-                                  constant is stamped from VERSION by build.
+  assets/css/NN-topic.css       - the layer CSS as numbered topic partials (directory-sorted,
+                                  concatenated by build; the sort order is the cascade)
+  assets/js/NN-topic.js         - the runtime JS as numbered topic partials (directory-sorted,
+                                  concatenated by build; the sort order is the single-IIFE
+                                  statement order). One partial declares CMH_VERSION, stamped
+                                  from VERSION by build. See assets/js/MODULES.md.
   assets/template.shell.html    - the page shell with {{CMH_CSS}} / {{CMH_JS}} /
                                   {{CMH_VERSION}} / {{MERMAID_VERSION}} placeholders
                                   and the demo content.
@@ -229,8 +232,8 @@ def source_stamps(version, assets_dir, out_dir):
     are NOT stamped here - they embed the whole layer and are regenerated from
     dist, which already carries the version."""
     stamps = {}
-    js_path = os.path.join(assets_dir, "commentable-html.js")
-    stamps[js_path] = _stamp_const(read(js_path), version, "commentable-html.js")
+    js_path = _js_version_part(assets_dir)
+    stamps[js_path] = _stamp_const(read(js_path), version, os.path.basename(js_path))
     plugin_json = os.path.join(os.path.dirname(os.path.dirname(out_dir)), "plugin.json")
     if os.path.exists(plugin_json):
         stamps[plugin_json] = _stamp_plugin_json(read(plugin_json), version)
@@ -243,10 +246,54 @@ def source_stamps(version, assets_dir, out_dir):
 # --------------------------------------------------------------------------- #
 # Sources + version
 # --------------------------------------------------------------------------- #
+# The layer CSS and runtime JS ship as small topic partials under assets/css/ and assets/js/,
+# each named `NN-topic.ext` with a zero-padded 2-digit prefix. build.py assembles them by
+# DIRECTORY SORT (no hand-maintained order list in this script, so adding a partial does not edit
+# build.py and two PRs adding partials do not collide here). The sorted order is load-bearing:
+# for JS it is the single-IIFE statement order; for CSS it is the cascade. The concatenation is
+# byte-for-byte the old monolith (the split is cut-only), which `--check` proves against dist.
+_PART_RE = {"js": re.compile(r"^\d\d+-[a-z0-9-]+\.js$"), "css": re.compile(r"^\d\d+-[a-z0-9-]+\.css$")}
+
+
+def ordered_parts(assets_dir, ext):
+    """Return the absolute paths of the `NN-topic.<ext>` partials under assets_dir/<ext>/, in
+    directory-sorted (load-bearing) order. Rejects a stray unnumbered file so a partial cannot be
+    silently dropped from or misordered in the bundle."""
+    d = os.path.join(assets_dir, ext)
+    if not os.path.isdir(d):
+        raise SystemExit("commentable-html source directory missing: %s "
+                         "(sources live under assets/js/ and assets/css/)" % d)
+    names = [n for n in os.listdir(d) if os.path.isfile(os.path.join(d, n)) and n.endswith("." + ext)]
+    stray = [n for n in names if not _PART_RE[ext].match(n)]
+    if stray:
+        raise SystemExit("%s/ holds .%s files that are not `NN-topic.%s` partials: %s "
+                         "(rename to the numbered convention or remove them)"
+                         % (d, ext, ext, ", ".join(sorted(stray))))
+    if not names:
+        raise SystemExit("no %s partials found under %s" % (ext, d))
+    return [os.path.join(d, n) for n in sorted(names)]
+
+
+def _concat_parts(assets_dir, ext):
+    # Concatenate the exact partial bytes; rstrip the FINAL newline ONCE on the whole aggregate
+    # (the old monolith read did `.rstrip("\n")`) - never per partial, or a boundary would gain a
+    # byte and break byte-identity.
+    return "".join(read(p) for p in ordered_parts(assets_dir, ext))
+
+
+def _js_version_part(assets_dir):
+    """The single JS partial that declares `const CMH_VERSION = "..."` (build.py stamps it from
+    dev/VERSION). Located by content so it does not matter which partial owns it."""
+    for p in ordered_parts(assets_dir, "js"):
+        if re.search(r'CMH_VERSION\s*=\s*"', read(p)):
+            return p
+    raise SystemExit("no assets/js/ partial declares CMH_VERSION")
+
+
 def load_sources(assets_dir=None):
     assets_dir = ASSETS if assets_dir is None else assets_dir
-    css = read(os.path.join(assets_dir, "commentable-html.css")).rstrip("\n")
-    js = read(os.path.join(assets_dir, "commentable-html.js")).rstrip("\n")
+    css = _concat_parts(assets_dir, "css").rstrip("\n")
+    js = _concat_parts(assets_dir, "js").rstrip("\n")
     shell = read(os.path.join(assets_dir, "template.shell.html"))
     return css, js, shell, read_version()
 

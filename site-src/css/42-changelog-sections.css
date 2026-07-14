@@ -1,35 +1,3 @@
-/* Demo preview */
-.demo-frame {
-  border: 1px solid var(--cp-border);
-  border-radius: var(--cp-radius);
-  overflow: hidden;
-  background: var(--cp-surface);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 16px 40px rgba(0, 0, 0, 0.11);
-}
-.demo-frame .bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: var(--cp-surface-soft);
-  border-bottom: 1px solid var(--cp-border);
-}
-.demo-frame .bar .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--cp-border-strong); }
-.demo-frame .bar .demo-fs {
-  margin-left: 8px; font-size: 0.78rem; font-weight: 600; line-height: 1;
-  color: var(--cp-accent); text-decoration: none;
-  border: 1px solid var(--cp-accent); border-radius: 999px; padding: 4px 10px;
-  background: var(--cp-accent-soft); transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-.demo-frame .bar .demo-fs:hover { color: var(--cp-accent-fg); border-color: var(--cp-accent); background: var(--cp-accent); }
-.demo-frame .bar .title { margin-left: auto; font-size: 0.82rem; color: var(--cp-text-muted); font-family: var(--cp-mono); }
-.demo-frame iframe { width: 100%; height: 420px; border: 0; display: block; background: var(--cp-bg); }
-/* The demo frame breaks out of the content column to span the full viewport width; the
-   section title, description, and tabs stay in the column above it. */
-.demo-frame.full-bleed { border-left: 0; border-right: 0; border-radius: 0; margin-inline: 50px; }
-@media (max-width: 720px) { .demo-frame.full-bleed { margin-inline: 16px; } }
-.demo-actions { margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
-
 /* Changelog */
 .changelog { display: flex; flex-direction: column; gap: 18px; }
 .changelog .release .rel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }

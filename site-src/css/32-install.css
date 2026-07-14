@@ -1,0 +1,42 @@
+/* Install command block */
+.cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #1f1720;
+  color: #fbeef2;
+  border: 1px solid var(--cp-accent-hover);
+  border-radius: 12px;
+  padding: 16px 18px;
+  font-family: var(--cp-mono);
+  font-size: 0.92rem;
+  overflow-x: auto;
+}
+.cmd pre { margin: 0; white-space: pre-wrap; word-break: break-word; flex: 1; }
+.cmd .prompt { color: #fd8ea1; user-select: none; }
+.cmd .copy-btn {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fbeef2;
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.cmd .copy-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.cmd .copy-btn.copied { color: #7ee2a8; border-color: rgba(126, 226, 168, 0.5); }
+.cmd .copy-btn.copy-failed { color: #ffd7b0; border-color: rgba(255, 175, 120, 0.6); }
+.copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+

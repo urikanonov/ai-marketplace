@@ -139,25 +139,30 @@ def _asset_hash(root, name):
     return hashlib.sha256(data).hexdigest()[:12]
 
 
-# The served site/assets/styles.css is assembled from ordered source partials under
-# site-src/css/, so concurrent edits land in disjoint files. The concatenation is byte-for-byte
-# the served bundle (same CSP, same cache-bust); the partial order is load-bearing (CSS cascade).
-CSS_PARTS = (
-    "10-base.css",
-    "20-nav-hero.css",
-    "30-components.css",
-    "40-demo-changelog.css",
-    "50-media-footer.css",
-)
+# The served site/assets/styles.css is assembled from ALL ordered source partials under
+# site-src/css/, discovered by directory sort (no hand-maintained list, so adding a partial does
+# not edit this script and two PRs adding partials do not collide here). Each partial is named
+# `NN-topic.css` with a zero-padded 2-digit prefix; the sorted order is the load-bearing CSS
+# cascade. The concatenation is byte-for-byte the served bundle (same CSP, same cache-bust).
+CSS_DIR = ("site-src", "css")
+_CSS_PART_RE = re.compile(r"^\d\d+-[a-z0-9-]+\.css$")
+
+
+def ordered_css_parts(root):
+    css_dir = os.path.join(root, *CSS_DIR)
+    if not os.path.isdir(css_dir):
+        raise SystemExit("CSS source directory missing: %s" % css_dir)
+    names = [n for n in os.listdir(css_dir) if os.path.isfile(os.path.join(css_dir, n)) and n.endswith(".css")]
+    stray = [n for n in names if not _CSS_PART_RE.match(n)]
+    if stray:
+        raise SystemExit("site-src/css/ holds .css files that are not `NN-topic.css` partials: %s "
+                         "(rename to the numbered convention or remove them)" % ", ".join(sorted(stray)))
+    return sorted(names)
 
 
 def build_styles(root):
-    parts = []
-    for name in CSS_PARTS:
-        path = os.path.join(root, "site-src", "css", name)
-        if not os.path.isfile(path):
-            raise SystemExit("CSS partial missing: %s (restore it or update CSS_PARTS)" % path)
-        parts.append(read_text(path))
+    css_dir = os.path.join(root, *CSS_DIR)
+    parts = [read_text(os.path.join(css_dir, name)) for name in ordered_css_parts(root)]
     return css_banner() + "".join(parts)
 
 

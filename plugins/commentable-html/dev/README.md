@@ -26,8 +26,8 @@ dev/
 
 Edit `dev/assets/` only when changing the review layer:
 
-- `assets/commentable-html.css` - layer stylesheet.
-- `assets/commentable-html.js` - runtime. Its `CMH_VERSION` const is stamped from `VERSION` by the build; do not hand-edit the const.
+- `assets/css/NN-topic.css` - layer stylesheet partials (directory-sorted into one bundle by the build).
+- `assets/js/NN-topic.js` - runtime partials (directory-sorted into one bundle by the build). One partial declares the `CMH_VERSION` const, stamped from `VERSION` by the build; do not hand-edit the const.
 - `assets/template.shell.html` - shell with the five commentable regions, toolbar, sidebar, and demo content.
 
 The version lives in `dev/VERSION` (plain-text semver) and is the only hand-edited version. `build.py` reads it and stamps the runtime `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each generated document's `<meta name="commentable-html-version">`. Companion filenames are version-agnostic, so a version bump never renames dist files.

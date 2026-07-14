@@ -853,12 +853,29 @@ class StylesConcatTests(unittest.TestCase):
     def test_parts_exist_and_base_loads_first(self):
         import os as _os
         root = bsd.REPO_ROOT
-        for name in bsd.CSS_PARTS:
+        parts = bsd.ordered_css_parts(root)
+        self.assertTrue(parts, "no CSS partials discovered under site-src/css/")
+        for name in parts:
             self.assertTrue(
                 _os.path.exists(_os.path.join(root, "site-src", "css", name)),
                 "missing CSS partial: " + name)
-        # Order is load-bearing: the tokens/base partial must come first.
-        self.assertEqual(bsd.CSS_PARTS[0], "10-base.css")
+        # Order is load-bearing (directory-sorted): the tokens/base partial must come first.
+        self.assertEqual(parts[0], "10-base.css")
+        self.assertEqual(parts, sorted(parts), "partials must be returned in sorted (cascade) order")
+
+    def test_a_stray_non_numbered_css_file_is_rejected(self):
+        import os as _os
+        import tempfile
+        root = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, root, ignore_errors=True)
+        css_dir = _os.path.join(root, "site-src", "css")
+        _os.makedirs(css_dir)
+        with open(_os.path.join(css_dir, "10-base.css"), "w", encoding="utf-8") as fh:
+            fh.write("a{}")
+        with open(_os.path.join(css_dir, "helpers.css"), "w", encoding="utf-8") as fh:
+            fh.write("b{}")
+        with self.assertRaises(SystemExit):
+            bsd.ordered_css_parts(root)
 
 
 class PageBannerAndGuardTests(unittest.TestCase):
@@ -1010,14 +1027,9 @@ class PageBannerAndGuardTests(unittest.TestCase):
         art = bsd.build_page(root, src_rel, [])
         self.assertIn('var s = "<!doctype html>";', art)  # the literal survived; no SystemExit
 
-    def test_build_styles_errors_on_a_missing_partial(self):
-        # A missing CSS partial must raise a clear SystemExit rather than a raw FileNotFoundError.
+    def test_build_styles_errors_on_a_missing_css_directory(self):
+        # A missing site-src/css/ directory must raise a clear SystemExit, not a raw OSError.
         root = self._mktemp()
-        css_dir = os.path.join(root, "site-src", "css")
-        os.makedirs(css_dir)
-        for name in bsd.CSS_PARTS[:-1]:  # write all but the last, so one partial is missing.
-            with open(os.path.join(css_dir, name), "w", encoding="utf-8", newline="") as fh:
-                fh.write("/* %s */\n" % name)
         with self.assertRaises(SystemExit):
             bsd.build_styles(root)
 
@@ -1027,7 +1039,8 @@ class PageBannerAndGuardTests(unittest.TestCase):
         root = self._mktemp()
         css_dir = os.path.join(root, "site-src", "css")
         os.makedirs(css_dir)
-        for i, name in enumerate(bsd.CSS_PARTS):
+        names = ["10-base.css", "20-mid.css", "30-tail.css"]
+        for i, name in enumerate(names):
             enc = "utf-8-sig" if i == 1 else "utf-8"  # a BOM on a non-first partial is the worst case.
             with open(os.path.join(css_dir, name), "w", encoding=enc, newline="") as fh:
                 fh.write("/* %s */\n" % name)

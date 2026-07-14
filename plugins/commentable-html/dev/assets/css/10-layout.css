@@ -1,0 +1,239 @@
+/* === Layout recipe (centered max-width). Swap as needed. === */
+body.sidebar-open .app { padding-right: 1.5rem; }
+@media (min-width: 1100px) {
+  body.sidebar-open .app {
+    max-width: none; margin: 0;
+    padding-left: 2rem;
+    padding-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
+  }
+}
+@media (min-width: 1700px) {
+  body.sidebar-open .app {
+    padding-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
+    padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
+  }
+}
+
+.cm-sidebar header {
+  padding: clamp(0.75rem, 3vw, 1rem) clamp(0.75rem, 3vw, 1.1rem); border-bottom: 1px solid var(--cp-border);
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+.cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 0.45rem 0.6rem; }
+.cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex: 1 1 8rem; min-width: 0; }
+.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
+.cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: normal; }
+.cm-sidebar.is-narrow .head-meta .cm-head-actions { margin-left: 0; width: 100%; justify-content: stretch; }
+.cm-sidebar.is-narrow .head-meta .cm-head-actions button { flex: 1 1 8rem; }
+.cm-sidebar.is-narrow .head-top { align-items: stretch; }
+.cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
+.cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
+.cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
+/* In narrow layout the export buttons pack two per row (Portable | Offline, then Markdown | Plain
+   HTML) instead of one full-width button per row; Clear keeps its own full-width row so the
+   destructive action stays visually apart. */
+.cm-sidebar.is-narrow .head-actions button { flex: 1 1 calc(50% - 0.2rem); min-width: 0; justify-content: center; }
+.cm-sidebar.is-narrow .head-actions button.danger { flex-basis: 100%; }
+.cm-ui-ico { flex: none; vertical-align: middle; }
+
+/* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with
+   a centered arrow; pointer-events:none so it never blocks the control it describes. */
+.cm-tooltip {
+  position: fixed; z-index: 400; max-width: 260px;
+  background: #22272e; color: #fff;
+  font-size: 0.72rem; line-height: 1.35; padding: 0.35rem 0.55rem;
+  border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);
+  pointer-events: none; opacity: 0; transform: translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.cm-tooltip.is-visible { opacity: 1; transform: none; }
+.cm-tooltip::after {
+  content: ""; position: absolute; left: var(--cm-tip-arrow, 50%); margin-left: -5px;
+  top: 100%; border: 5px solid transparent; border-top-color: #22272e;
+}
+.cm-tooltip.below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #22272e; }
+.cm-sidebar .head-top button,
+.cm-sidebar .head-actions button {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  padding: 0.35rem 0.6rem; border-radius: 0.5rem; cursor: pointer;
+  font-family: inherit; font-size: 0.78rem;
+}
+.cm-sidebar .head-top button:hover,
+.cm-sidebar .head-actions button:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-sidebar .head-top button.primary,
+.cm-sidebar .head-actions button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+.cm-sidebar .head-top button.primary:hover,
+.cm-sidebar .head-actions button.primary:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+/* The Copy all action is the most-used control: make it visibly larger and bolder than the
+   other header buttons so it is easy to find and click. */
+.cm-sidebar .head-top #btnCopyAll {
+  padding: 0.5rem 1.15rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-radius: 0.6rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+}
+/* Sort-by-time arrows sit at the far right of the header row (Copy all stays next to the count). */
+.cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: 0.15rem; }
+.cm-sidebar .head-top .cm-sort-btn { padding: 0.2rem 0.42rem; font-size: 0.7rem; line-height: 1; color: var(--cp-text-soft); }
+.cm-sidebar .head-top .cm-sort-btn[aria-pressed="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+/* Informational "Generated on / Last comment" line under the header. */
+.cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem 0.7rem; font-size: 0.66rem; color: var(--cp-text-soft); margin: 0.15rem 0 0.35rem; }
+.cm-side-info > span { white-space: nowrap; }
+/* Clear Comments wears a persistent warning treatment so it is not clicked by accident. */
+.cm-sidebar .head-actions button.danger {
+  background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger);
+}
+.cm-sidebar .head-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); border-color: var(--cp-danger); color: var(--cp-danger); }
+/* Hide gets a distinct filled (secondary) look, separate from the outline export buttons. */
+.cm-sidebar .head-actions button#btnCloseSidebar {
+  background: var(--cp-accent-soft); border-color: transparent; color: var(--cp-text);
+}
+.cm-sidebar .head-actions button#btnCloseSidebar:hover {
+  background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg);
+}
+
+/* Confirm dialog (used for destructive actions such as Clear Comments). */
+.cm-modal-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.cm-modal {
+  background: var(--cp-bg-elevated); color: var(--cp-text);
+  border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
+  max-width: 24rem; width: calc(100% - 3rem); padding: 1.1rem 1.2rem;
+}
+.cm-modal-msg { margin: 0 0 1rem; font-size: 0.9rem; line-height: 1.5; }
+.cm-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.cm-modal-actions button {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  padding: 0.4rem 0.9rem; border-radius: 0.5rem; cursor: pointer;
+  font-family: inherit; font-size: 0.82rem;
+}
+.cm-modal-actions button:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-modal-actions button.cm-modal-default {
+  background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg);
+}
+.cm-modal-actions button.cm-modal-default:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+.cm-modal-actions button.danger {
+  background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger);
+}
+.cm-modal-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); color: var(--cp-danger); }
+
+/* Sidebar header meta row: document-type bubble, version, and Help. */
+.cm-sidebar .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
+.cm-type-badge {
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
+  padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--cp-border); color: var(--cp-text-soft);
+}
+.cm-type-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
+.cm-type-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
+.cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
+.cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
+.cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }
+.cm-brand-link:hover { text-decoration: underline; }
+.cm-brand-link:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
+.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.cm-help-btn {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  padding: 0.2rem 0.6rem; border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: 0.72rem;
+  display: inline-flex; align-items: center; gap: 0.25rem;
+}
+.cm-help-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* The Hide control sits next to Help; give it a slightly recessed neutral tone (and a
+   neutral hover) so it reads as distinct from the accent-hover Help button. */
+.cm-hide-btn { background: var(--cp-bg-elevated); color: var(--cp-text-soft); }
+.cm-hide-btn:hover { background: var(--cp-surface); border-color: var(--cp-text-soft); color: var(--cp-text); }
+.cm-btn-chevron { flex: none; opacity: 0.65; margin-right: -0.1rem; }
+
+/* Help dialog (reuses .cm-modal-overlay). */
+.cm-modal.cm-help { max-width: 42rem; width: calc(100% - 3rem); max-height: calc(100vh - 4rem); display: flex; flex-direction: column; padding: 0; }
+.cm-help-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--cp-border); }
+.cm-help-head h2 { margin: 0; font-size: 1.05rem; }
+.cm-help-close { background: transparent; border: none; color: var(--cp-text-soft); font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.35rem; border-radius: 6px; }
+.cm-help-close:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-help-body { padding: 0.5rem 1.2rem 1.2rem; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.cm-help-body h3 { font-size: 0.92rem; margin: 1rem 0 0.3rem; color: var(--cp-text); }
+.cm-help-body p, .cm-help-body li { font-size: 0.86rem; line-height: 1.5; color: var(--cp-text); }
+.cm-help-body ul { margin: 0.3rem 0; padding-left: 1.3rem; }
+.cm-help-body kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 0 4px; font-family: inherit; font-size: 0.8em; }
+/* Searchable, collapsible Help topics. */
+.cm-help-search { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.2rem; border-bottom: 1px solid var(--cp-border); color: var(--cp-text-soft); }
+.cm-help-search-input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.86rem; padding: 0.4rem 0.6rem; border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text); }
+.cm-help-search-input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
+.cm-help-topic { border-bottom: 1px solid var(--cp-border); }
+.cm-help-topic > summary { cursor: pointer; list-style: none; padding: 0.6rem 0.2rem; font-weight: 600; font-size: 0.9rem; color: var(--cp-text); display: flex; align-items: center; gap: 0.5rem; }
+.cm-help-topic > summary::-webkit-details-marker { display: none; }
+.cm-help-topic > summary::before { content: "\25B8"; color: var(--cp-text-soft); font-size: 0.8em; transition: transform 0.12s ease; }
+.cm-help-topic[open] > summary::before { transform: rotate(90deg); }
+.cm-help-topic > summary:hover { color: var(--cp-accent); }
+.cm-help-topic-body { padding: 0 0.2rem 0.7rem 1.3rem; }
+/* Review-loop diagram in the "Getting started" help topic. Themed with the framework's
+   --cp-* variables so it follows the light/dark theme like the rest of the UI. */
+.cm-loop-figure { margin: 0.7rem 0 0.3rem; }
+.cm-loop-figure svg { width: 100%; height: auto; max-width: 560px; display: block; }
+.cm-loop-figure figcaption { margin-top: 0.35rem; font-size: 0.82rem; color: var(--cp-text-muted); }
+.cm-loop-bg { fill: var(--cp-surface-soft); stroke: var(--cp-border); }
+.cm-loop-node { fill: var(--cp-surface); stroke: var(--cp-accent); stroke-width: 1.5; }
+.cm-loop-title { fill: var(--cp-accent); }
+.cm-loop-sub { fill: var(--cp-text-muted); }
+.cm-loop-arrow { stroke: var(--cp-accent); stroke-width: 1.8; fill: none; }
+.cm-loop-head { fill: var(--cp-accent); }
+.cm-help-noresults { color: var(--cp-text-soft); font-style: italic; padding: 0.9rem 0.2rem; }
+/* About is a static, always-shown block (not a collapsible topic). */
+.cm-help-about { border-top: 1px solid var(--cp-border); padding: 0.2rem 0.2rem 0.4rem; }
+.cm-help-about h3 { margin: 0.6rem 0 0.3rem; font-size: 0.9rem; color: var(--cp-text); }
+
+/* Table-of-contents side menu (wide screens only; runtime-generated, collapsible). */
+.cm-side-toc {
+  position: fixed; left: 1rem; top: 1rem; z-index: 90;
+  width: var(--cm-side-toc-w, 17rem); max-height: calc(100vh - 2rem);
+  display: none; flex-direction: column;
+  background: var(--cp-panel-strong); backdrop-filter: blur(8px);
+  border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
+  padding: 0.6rem 0.5rem 0.6rem 0.75rem; font-size: 0.82rem;
+}
+@media (min-width: 1400px) {
+  .cm-side-toc { display: flex; }
+  /* Reserve gutter space so an expanded TOC never overlaps the (centered) content.
+     Collapsing the TOC reclaims the full width. */
+  body.cm-side-toc-on { padding-left: calc(var(--cm-side-toc-w, 17rem) + 2rem); }
+  body.cm-side-toc-on.cm-side-toc-collapsed { padding-left: 0; }
+}
+.cm-side-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+.cm-side-toc-title { font-weight: 700; color: var(--cp-text); }
+.cm-side-toc-toggle { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; font-size: 1.05rem; line-height: 1; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 6px; }
+.cm-side-toc-toggle:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-side-toc-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; }
+.cm-side-toc-list li { margin: 0.05rem 0; }
+.cm-side-toc-list li.is-sub { padding-left: 0.8rem; }
+.cm-side-toc-list a { display: block; color: var(--cp-text-soft); text-decoration: none; padding: 0.2rem 0.45rem; border-radius: 6px; border-left: 2px solid transparent; }
+.cm-side-toc-list a:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-side-toc-list a.is-active { color: var(--cp-accent); border-left-color: var(--cp-accent); background: var(--cp-accent-soft); font-weight: 600; }
+.cm-side-toc-top { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; margin-top: 0.4rem; background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text); border-radius: 0.5rem; padding: 0.3rem; cursor: pointer; font-family: inherit; font-size: 0.75rem; }
+.cm-side-toc-top:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-side-toc-scroll { display: flex; gap: 0.3rem; }
+.cm-side-toc-scroll .cm-side-toc-top { flex: 1 1 0; margin-top: 0.4rem; }
+/* Bottom-right scroll-position bubble (runtime, cm-skip, absent from Plain export). */
+.cm-scroll-progress {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 95;
+  background: var(--cp-panel-strong); backdrop-filter: blur(6px);
+  border: 1px solid var(--cp-border); border-radius: 999px;
+  padding: 0.25rem 0.6rem; font-size: 0.72rem; font-weight: 600;
+  color: var(--cp-text-soft); box-shadow: var(--cp-shadow);
+  min-width: 2.6rem; text-align: center; pointer-events: none;
+}
+body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) + 1rem); }
+@media (max-width: 700px) { body.sidebar-open .cm-scroll-progress { right: 1rem; } }
+/* Collapsed: shrink to a single clear chevron box (the >> expand affordance). */
+.cm-side-toc.is-collapsed { width: auto; padding: 0.25rem; }
+.cm-side-toc.is-collapsed .cm-side-toc-head { margin-bottom: 0; }
+.cm-side-toc.is-collapsed .cm-side-toc-title,
+.cm-side-toc.is-collapsed .cm-side-toc-list,
+.cm-side-toc.is-collapsed .cm-side-toc-scroll,
+.cm-side-toc.is-collapsed .cm-side-toc-top { display: none; }
+
