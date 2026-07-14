@@ -409,7 +409,9 @@ def check_blank_after_heading(content):
             continue
         if HEADING_RE.match(line):
             nxt = lines[idx + 1] if idx + 1 < len(lines) else ""
-            if nxt.strip() != "":
+            # An HTML comment right after a heading is a structural marker, not prose (Backlog.md
+            # generates "## Section\n<!-- SECTION:...:BEGIN -->"), so it does not need a blank line.
+            if nxt.strip() != "" and not nxt.lstrip().startswith("<!--"):
                 findings.append(Finding(
                     WARNING, idx + 1, "blank-heading",
                     "heading is not followed by a blank line"))

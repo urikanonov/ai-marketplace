@@ -405,8 +405,10 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   title is a fourth, ungated place that only drifts (finding 3.3: #68 was titled `commentable-html
   1.13.0` but shipped `1.14.0` after a re-bump). Describe the CHANGE in the title, not the number.
   When two PRs are in flight, the advisory `version-lane` check (`scripts/check_version_lane.py`)
-  warns if this PR's `dev/VERSION` duplicates or trails another open PR's, so pick a distinct lane
-  up front (see "Maximizing concurrency").
+  fails only if this PR's `dev/VERSION` DUPLICATES another open PR's lane (that forces a re-bump);
+  merely TRAILING a higher open lane is fine (the intentional stacked order - the lower version
+  merges first) and is reported as an informational note, not a failure. Pick a distinct lane up
+  front (see "Maximizing concurrency").
 
 ## Authorship and contribution policy
 
@@ -456,7 +458,8 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   editing branch protection would trip `check_required_checks.py`): `zizmor` (a defense-in-depth
   GitHub Actions security linter that complements the required `actionlint` and
   `check_workflow_policy` gates) and `version-lane` (`scripts/check_version_lane.py`, an early
-  warning when this PR's commentable-html `dev/VERSION` collides with another open PR's lane). To
+  warning when this PR's commentable-html `dev/VERSION` DUPLICATES another open PR's lane; trailing
+  a higher open lane is an informational note, not a failure). To
   promote either to required later, add it to `required-checks.json` and branch protection together.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.

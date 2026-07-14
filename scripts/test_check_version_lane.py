@@ -47,11 +47,23 @@ class TestEvaluate(unittest.TestCase):
         conflicts = cvl.evaluate("1.7.0", base="1.6.0", others=[other(40, "1.7.0")])
         self.assertEqual([c["number"] for c in conflicts], [40])
 
-    def test_lower_than_open_pr_conflicts(self):
-        # Current is lower than an open PR that already claimed a higher lane: a merge-order
-        # collision waiting to happen, so warn now.
+    def test_trailing_higher_lane_is_not_a_conflict(self):
+        # Current is LOWER than an open PR that claimed a higher lane. That is the intentional
+        # stacked-merge order (merge the lower one first), so it is NOT a re-bump conflict; it is
+        # reported separately as an informational trailing lane.
         conflicts = cvl.evaluate("1.7.0", base="1.6.0", others=[other(40, "1.8.0")])
-        self.assertEqual([c["number"] for c in conflicts], [40])
+        self.assertEqual(conflicts, [])
+
+    def test_trailing_lanes_reports_higher_open_prs(self):
+        # trailing_lanes lists open PRs that claimed a HIGHER lane than current (current bumped
+        # past base). Duplicates and lower/equal lanes are not trailing.
+        trailing = cvl.trailing_lanes("1.7.0", base="1.6.0",
+                                      others=[other(40, "1.8.0"), other(41, "1.7.0"),
+                                              other(42, "1.6.0"), other(43, "1.9.0")])
+        self.assertEqual(sorted(c["number"] for c in trailing), [40, 43])
+
+    def test_no_trailing_when_current_did_not_bump(self):
+        self.assertEqual(cvl.trailing_lanes("1.6.0", base="1.6.0", others=[other(40, "1.8.0")]), [])
 
     def test_others_that_did_not_bump_are_ignored(self):
         # An open PR still at the base version has not claimed a lane, so it never conflicts.
@@ -64,12 +76,13 @@ class TestEvaluate(unittest.TestCase):
         self.assertEqual([c["number"] for c in conflicts], [41])
 
     def test_suggested_next_is_above_the_highest_conflict(self):
+        # Only a DUPLICATE lane is a conflict now, so evaluate returns just PR #40 (also 1.7.0);
+        # the higher open PR #41 (1.9.0) is a trailing lane, not a conflict. The suggestion
+        # patch-bumps above the highest CONFLICTING (duplicate) version (1.7.0 -> 1.7.1).
         conflicts = cvl.evaluate("1.7.0", base="1.6.0",
                                  others=[other(40, "1.7.0"), other(41, "1.9.0")])
-        # Both conflict (current 1.7.0 <= each); the suggestion patch-bumps above the
-        # highest (1.9.0 -> 1.9.1), matching how the repo actually cleared such a collision
-        # (#40 at 1.6.0 was overtaken and #44 re-landed as 1.6.1).
-        self.assertEqual(cvl.suggested_next(conflicts), "1.9.1")
+        self.assertEqual([c["number"] for c in conflicts], [40])
+        self.assertEqual(cvl.suggested_next(conflicts), "1.7.1")
 
 
 class TestParseOthersEnv(unittest.TestCase):
@@ -119,6 +132,18 @@ class TestMain(unittest.TestCase):
             "VERSION_LANE_OTHERS": json.dumps([{"number": 40, "version": "1.7.0"}]),
         })
         self.assertEqual(code, 0)
+
+    def test_trailing_higher_lane_exits_0_with_note(self):
+        # This PR (1.47.0) trails an open higher lane (#119 at 1.48.0): the intentional stacked
+        # order. It must NOT fail the advisory check; it prints an informational note and exits 0.
+        code, text = self._run({
+            "VERSION_LANE_CURRENT": "1.47.0",
+            "VERSION_LANE_BASE": "1.46.0",
+            "VERSION_LANE_OTHERS": json.dumps([{"number": 119, "version": "1.48.0"}]),
+        })
+        self.assertEqual(code, 0)
+        self.assertIn("#119", text)
+        self.assertIn("trails", text.lower())
 
 
 if __name__ == "__main__":

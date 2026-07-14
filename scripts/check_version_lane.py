@@ -10,9 +10,10 @@ gate. Its job is to WARN early - at PR time - so the author picks a distinct lan
 avoids the re-bump churn.
 
 Scope: the high-churn commentable-html `dev/VERSION`. A PR "claims a lane" only when its version
-is strictly greater than base `main`'s version (i.e., it actually bumped). A lane conflict is when
-the current PR's version is a duplicate of, or lower than, another open PR that also bumped - in
-either case the two cannot both merge without a re-bump.
+is strictly greater than base `main`'s version (i.e., it actually bumped). A DUPLICATE lane (two
+open PRs at the same version above base) is a hard conflict: whoever merges second must re-bump. A
+PR that merely TRAILS a higher open lane is NOT a conflict - that is the intentional stacked-merge
+order (the lower version merges first); it is reported as an informational note, not a failure.
 
 Live data (the versions of other open PRs) comes one of two ways, mirroring
 `check_required_checks.py`:
@@ -22,8 +23,8 @@ Live data (the versions of other open PRs) comes one of two ways, mirroring
     `dev/VERSION`. A PR whose version cannot be read (a fork head not in this repo, a PR that
     does not touch the file) is skipped, not treated as a conflict.
 
-Exit codes: 0 = clear, not bumping, or live data unavailable (advisory - do not block); 1 = a
-lane conflict was found. Standard library only.
+Exit codes: 0 = clear, not bumping, only trailing a higher lane, or live data unavailable
+(advisory - do not block); 1 = a DUPLICATE lane conflict was found. Standard library only.
 """
 import argparse
 import json
@@ -57,11 +58,12 @@ def parse_others_env(raw):
 
 
 def evaluate(current, base, others):
-    """Return the list of other-PR dicts that conflict with *current*.
+    """Return the list of other-PR dicts that are a hard lane CONFLICT with *current*.
 
-    A conflict exists only when the current PR claims a lane (current > base) and another open PR
-    that also claimed a lane (its version > base) sits at a version >= current (duplicate or higher,
-    so they cannot both merge without a re-bump). Others with an unparseable version are skipped.
+    A hard conflict is a DUPLICATE: the current PR claimed a lane (current > base) and another
+    open PR that also bumped sits at the SAME version. Whoever merges second must re-bump. A PR
+    that merely trails a HIGHER open lane is not a conflict (that is the intentional stacked order,
+    lower merges first); see trailing_lanes(). Others with an unparseable version are skipped.
     """
     try:
         cur = semver(current)
@@ -78,9 +80,36 @@ def evaluate(current, base, others):
             continue
         if ver <= base_v:  # this PR did not bump either: no lane, no conflict.
             continue
-        if cur <= ver:  # duplicate of, or lower than, an open lane.
+        if cur == ver:  # same lane: a real duplicate that forces a re-bump for one of them.
             conflicts.append(item)
     return conflicts
+
+
+def trailing_lanes(current, base, others):
+    """Return open PRs that claimed a HIGHER lane than *current* (both bumped past base).
+
+    This PR trails them. It is not a conflict: if this (lower) PR merges first, nothing is needed;
+    only if a higher PR merges first must this one re-bump. Reported as an informational note so an
+    intentional stacked order does not look like a failure.
+    """
+    try:
+        cur = semver(current)
+        base_v = semver(base)
+    except ValueError:
+        return []
+    if cur <= base_v:
+        return []
+    trailing = []
+    for item in others:
+        try:
+            ver = semver(item["version"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        if ver <= base_v:
+            continue
+        if cur < ver:
+            trailing.append(item)
+    return trailing
 
 
 def suggested_next(conflicts):
@@ -182,15 +211,26 @@ def main(argv=None):
     conflicts = evaluate(current, base, others)
     if conflicts:
         sys.stderr.write(
-            "check-version-lane: this PR's commentable-html version %s collides with another "
-            "open PR's lane (base %s):\n" % (current, base))
+            "check-version-lane: this PR's commentable-html version %s DUPLICATES another open "
+            "PR's lane (base %s):\n" % (current, base))
         for c in sorted(conflicts, key=lambda c: c["number"]):
-            sys.stderr.write("  - PR #%s already claims %s\n" % (c["number"], c["version"]))
+            sys.stderr.write("  - PR #%s also claims %s\n" % (c["number"], c["version"]))
         sys.stderr.write(
-            "Pick a distinct, higher lane (for example %s) now to avoid a re-bump when the other "
-            "PR merges first. This is advisory: the required version-bump gate still blocks the "
-            "actual collision at merge time.\n" % suggested_next(conflicts))
+            "One of you must re-bump: pick a distinct, higher lane (for example %s) now to avoid a "
+            "re-bump when the other PR merges first. This is advisory: the required version-bump "
+            "gate still blocks the actual collision at merge time.\n" % suggested_next(conflicts))
         return 1
+    trailing = trailing_lanes(current, base, others)
+    if trailing:
+        # Trailing a higher open lane is the intentional stacked order (this lower version merges
+        # first), not a failure. Note it for awareness and exit 0.
+        print("check-version-lane: this PR's commentable-html version %s trails a higher open "
+              "lane (base %s):" % (current, base))
+        for c in sorted(trailing, key=lambda c: c["number"]):
+            print("  - PR #%s claims %s" % (c["number"], c["version"]))
+        print("This is fine if this PR merges first (the stacked order); only re-bump if a higher "
+              "PR merges before this one. Advisory: not a conflict.")
+        return 0
     print("check-version-lane OK (commentable-html %s does not collide with any open PR's lane)."
           % current)
     return 0
