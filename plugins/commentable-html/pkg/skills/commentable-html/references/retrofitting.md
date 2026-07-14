@@ -11,12 +11,12 @@
 
 ## Add the layer to an existing HTML
 
-Use `tools/retrofit.py` as the primary path for unlayered standalone HTML:
+Use `tools/authoring/retrofit.py` as the primary path for unlayered standalone HTML:
 
 ```bash
-python tools/retrofit.py existing.html --label "My Report" --key auto --source existing.html --out existing-commentable.html
-python tools/retrofit.py existing.html --label "My Report" --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
-python tools/retrofit.py existing.html --label "My Report" --portable --out shareable.html
+python tools/authoring/retrofit.py existing.html --label "My Report" --key auto --source existing.html --out existing-commentable.html
+python tools/authoring/retrofit.py existing.html --label "My Report" --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
+python tools/authoring/retrofit.py existing.html --label "My Report" --portable --out shareable.html
 ```
 
 The tool parses the real HTML token stream with Python's standard `html.parser`; it does not regex-match `<head>` or
@@ -37,7 +37,7 @@ CSS. The selector grammar is intentionally limited to a single `#id`; the matche
 
 `--key auto` derives a unique non-demo key from the label and output path. The tool refuses template/demo keys and
 ignores a commented example `#commentRoot`, so it never binds to the template's documentation sample. It also refuses
-an already-layered file and tells you to use `tools/upgrade.py` instead.
+an already-layered file and tells you to use `tools/authoring/upgrade.py` instead.
 
 Use `--skip-selectors "sel,sel"` for host floating panels, modals, toolbars, navs, or sticky headers that should not
 receive comments. Each selector may be `#id`, `.class`, or a tag name. Matching elements receive `class="cm-skip"`;
@@ -73,7 +73,7 @@ verbatim into another document:
    data-doc-label="..." data-doc-source="...">`.
 8. **Avoid the duplicate-root footgun.** `dist/PORTABLE.html` contains a commented example `#commentRoot` with key
    `my-doc`; the real root is inside `<body>`. Target the body/last active root and give it a unique non-demo key.
-9. **Add `cm-skip`** only to host chrome that must be excluded from selection, and run `tools/validate.py --strict`.
+9. **Add `cm-skip`** only to host chrome that must be excluded from selection, and run `tools/validate/validate.py --strict`.
 
 ### Avoiding CSS collisions when retrofitting
 

@@ -41,7 +41,7 @@ test.describe("Copy all + handled-id pruning", () => {
       const keptCid = cids[1];
 
       // Simulate the agent's iteration step with the real helper.
-      execFileSync(PYTHON, ["tools/mark_handled.py", html, handledCid], { cwd: SKILL });
+      execFileSync(PYTHON, ["tools/authoring/mark_handled.py", html, handledCid], { cwd: SKILL });
       expect(fs.readFileSync(html, "utf8")).toContain(handledCid);
 
       await page.reload();

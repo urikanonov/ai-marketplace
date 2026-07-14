@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed behavior when the sibling cmhval/ package cannot be imported.
 
-The content-syntax checks (mermaid, embedded JSON) live in tools/cmhval/, which
+The content-syntax checks (mermaid, embedded JSON) live in tools/validate/cmhval/, which
 ships alongside validate.py. If a broken/partial install makes cmhval
 unimportable, validate.py must fail CLOSED for any content it would have
 inspected - a validator that silently passes because its checks vanished is worse
@@ -27,7 +27,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import _paths  # noqa: E402
 
-VALIDATE_PY = os.path.join(_paths.TOOLS, "validate.py")
+VALIDATE_PY = os.path.join(_paths.TOOLS, "validate", "validate.py")
 
 
 def _load_validate_without_cmhval():

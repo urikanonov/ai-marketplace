@@ -1,12 +1,12 @@
 # Validation
 
 
-## Validating a generated file (tools/validate.py)
+## Validating a generated file (tools/validate/validate.py)
 
-`tools/validate.py` is a standard-library-only Python script (no third-party packages) that codifies the skill's structural invariants so a generated or augmented file can be checked automatically. **MUST** run it before handing a file to the user whenever Python is available (`python` or `python3`); only skip it when Python is not installed:
+`tools/validate/validate.py` is a standard-library-only Python script (no third-party packages) that codifies the skill's structural invariants so a generated or augmented file can be checked automatically. **MUST** run it before handing a file to the user whenever Python is available (`python` or `python3`); only skip it when Python is not installed:
 
 ```
-python tools/validate.py --strict path/to/file.html [more.html ...]
+python tools/validate/validate.py --strict path/to/file.html [more.html ...]
 ```
 
 It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when every file passes (warnings allowed) and `1` when any file has errors; `--strict` also fails on any warning, so a single run surfaces *everything* to fix and you iterate until it reports `OK (0 warning(s))`. When the document embeds Chart.js charts (a `<canvas>` is present), it **also** runs the chart-embedding checks automatically (see `charts.md`); pass `--charts-only` or `--layer-only` to run just one half. If Python is not installed, skip it and fall back to the manual [Quick verification after retrofitting](#quick-verification-after-retrofitting) checks.
@@ -20,7 +20,7 @@ It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when e
 - Every structural UI id the JS wires up is present (`sidebar`, `commentList`, `contextMenu`, `mermaidAddBtn`, `hlBubble`, `toast`, the toolbar/sidebar buttons, `menuComment`).
 - The `--cp-*` theme variables are defined.
 - A `<pre class="cmh-diff">` diff block contains a raw HTML tag (unescaped diff text is an HTML-injection hazard - escape `<`/`>`/`&`).
-- A framed KQL figure (`figure.cmh-kql`) has no `cmh-kql-run` ("Run in Azure Data Explorer") link, **or** its run link does not point at an `https://dataexplorer.azure.com/` URL (a `javascript:`/`data:`/non-ADX href is rejected; the URL is parsed and its host must be exactly `dataexplorer.azure.com`). The run link is mandatory on a framed figure and must open the query safely in ADX; build it with `tools/kusto_link.py`. A purely illustrative query with no real cluster/database should use a plain `<pre>` code block (which is exempt) instead of a framed figure.
+- A framed KQL figure (`figure.cmh-kql`) has no `cmh-kql-run` ("Run in Azure Data Explorer") link, **or** its run link does not point at an `https://dataexplorer.azure.com/` URL (a `javascript:`/`data:`/non-ADX href is rejected; the URL is parsed and its host must be exactly `dataexplorer.azure.com`). The run link is mandatory on a framed figure and must open the query safely in ADX; build it with `tools/kusto/kusto_link.py`. A purely illustrative query with no real cluster/database should use a plain `<pre>` code block (which is exempt) instead of a framed figure.
 - The document does not declare its kind, or declares an unknown one. Every document carries `<meta name="commentable-html-kind" content="...">` with one of `report`, `plan`, `slides`, `board`, `generic`; a missing meta or an unknown kind is an error. A `report` or a `plan` additionally requires a top-level `<h1>` title inside `#commentRoot` (a top-level `<header class="cmh-lede">` title header counts); `slides`, `board`, and `generic` need no title.
 - The `<body>` open tag bakes in a transient runtime UI-state class (`sidebar-open`, `cm-sidebar-resizing`, or `cm-widget-dragging`). The layer toggles these on `document.body` at runtime and re-derives them on load, so a shipped file must never persist one (a baked `sidebar-open` renders the document full width with an empty sidebar gutter for a sidebar that is not shown). The real parsed `<body>` is checked, so a `<body ...>` literal inside a script/comment does not trip it.
 

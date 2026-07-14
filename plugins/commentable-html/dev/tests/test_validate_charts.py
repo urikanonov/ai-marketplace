@@ -32,7 +32,7 @@ sys.path.insert(0, TOOLS)
 import validate  # noqa: E402
 
 TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
-SCRIPT = os.path.join(TOOLS, "validate.py")
+SCRIPT = os.path.join(TOOLS, "validate", "validate.py")
 # An optional real-world artifact used by the field test below; skipped when absent.
 # Point CMH_FIELD_ARTIFACT at a local report to exercise it, otherwise a generic
 # Downloads path is probed (no personal/internal paths are hard-coded here).

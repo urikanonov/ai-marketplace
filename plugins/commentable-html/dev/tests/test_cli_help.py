@@ -15,9 +15,17 @@ import _paths  # noqa: E402  shared pkg/dev split path constants
 TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 
+# Discover every shipped CLI tool directly under a topic bucket (tools/<topic>/<name>.py).
+# deck_common is a shared library (no CLI) and nested helper packages (validate/cmhval/) are not
+# standalone tools, so neither is included in the --help contract.
+_NO_CLI = {"deck_common.py"}
 SHIPPED_TOOLS = sorted(
-    name for name in os.listdir(TOOLS)
-    if name.endswith(".py") and not name.startswith("_"))
+    os.path.join(TOOLS, topic, name)
+    for topic in os.listdir(TOOLS)
+    if os.path.isdir(os.path.join(TOOLS, topic)) and not topic.startswith(("_", "."))
+    for name in os.listdir(os.path.join(TOOLS, topic))
+    if name.endswith(".py") and not name.startswith("_") and name not in _NO_CLI
+    and os.path.isfile(os.path.join(TOOLS, topic, name)))
 
 # Tools that parse argv themselves and honor a "--" end-of-options separator so a data
 # value that looks like a flag (a filename/query/id of "-h") is not mistaken for --help.
@@ -30,17 +38,18 @@ class CliHelpTests(unittest.TestCase):
 
     def test_every_tool_answers_help_with_exit_zero(self):
         for tool in SHIPPED_TOOLS:
+            rel = os.path.relpath(tool, TOOLS)
             for flag in ("--help", "-h"):
-                with self.subTest(tool=tool, flag=flag):
+                with self.subTest(tool=rel, flag=flag):
                     r = subprocess.run(
-                        [sys.executable, os.path.join(TOOLS, tool), flag],
+                        [sys.executable, tool, flag],
                         capture_output=True, text=True, cwd=TOOLS, timeout=60)
                     self.assertEqual(
                         r.returncode, 0,
                         "%s %s exited %d\nstdout:%s\nstderr:%s"
-                        % (tool, flag, r.returncode, r.stdout, r.stderr))
+                        % (rel, flag, r.returncode, r.stdout, r.stderr))
                     self.assertIn("usage", (r.stdout + r.stderr).lower(),
-                                  "%s %s printed no usage text" % (tool, flag))
+                                  "%s %s printed no usage text" % (rel, flag))
 
 
 class EndOfOptionsHelpTests(unittest.TestCase):
@@ -66,7 +75,7 @@ class EndOfOptionsHelpTests(unittest.TestCase):
         # kusto_link takes cluster/database/query positionals; "-h" after "--" must be used
         # as the query (a real URL), never trigger the usage/help path.
         r = subprocess.run(
-            [sys.executable, os.path.join(TOOLS, "kusto_link.py"), "help", "db", "--", "-h"],
+            [sys.executable, os.path.join(TOOLS, "kusto", "kusto_link.py"), "help", "db", "--", "-h"],
             capture_output=True, text=True, cwd=TOOLS, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("usage:", r.stdout.lower())

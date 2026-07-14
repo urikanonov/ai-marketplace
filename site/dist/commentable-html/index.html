@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.50.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.51.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -341,6 +341,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.51.0] - 2026-07-14</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Grouped the shipped runtime tools into per-topic buckets under <code>tools/&lt;topic&gt;/</code> (<code>deck</code>, <code>kusto</code>, <code>checklist</code>, <code>blocks</code>, <code>authoring</code>, <code>validate</code>), moving the former top-level <code>deck/</code> under <code>tools/deck/</code>. A shared <code>tools/_toolpath.py</code> bootstrap puts the tools root and every topic subdirectory on <code>sys.path</code> and exposes <code>SKILL_ROOT</code>, so a tool imports its siblings and resolves shipped resources (<code>dist/</code>, <code>vendor/</code>) regardless of which bucket it lives in. Invocation paths in <code>SKILL.md</code> and the references move to <code>tools/&lt;topic&gt;/&lt;tool&gt;.py</code>; there is no runtime behavior change.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.50.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -353,6 +360,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>If the sibling <code>tools/cmhval/</code> package cannot be imported (a broken/partial install), <code>tools/validate.py</code> now fails CLOSED for content it would have inspected - a mermaid block or a non-layer JSON data block makes validation error instead of silently passing - while a document with no such content still validates and <code>--charts-only</code> is unaffected.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.49.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -360,8 +369,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Consolidated the skill&#x27;s docs assets: the review-loop diagram and the tutorial screenshots now live together under <code>docs/assets/</code> (previously split across <code>docs/images/</code> and <code>docs/tutorial-images/</code>). Shipped references in <code>SKILL.md</code>, <code>README.md</code>, <code>TUTORIAL.md</code>, and the file inventory point at the new location; there is no runtime behavior change.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.48.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -394,18 +401,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The comments panel resizes narrower. The drag/keyboard minimum width dropped to 3/5 of the former floor - 192px on wide screens (was 320px) and 144px on narrow screens under 700px (was 240px) - so the panel can take less horizontal space and leave more room for the document. The panel&#x27;s CSS <code>min-width</code> floor was lowered to match, and the width still clamps to the viewport and persists across reloads.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.44.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Layered checklists. A <code>data-cmh-checklist</code> container turns a nested list (or a table) into interactive four-state item checkboxes (blank / check / cross / question) drawn with inline-SVG icons. A branch item aggregates over its direct children (all-same shows that state, any disagreement shows a neutral mixed marker), and clicking a branch propagates its next state to every descendant leaf. Item labels stay ordinary commentable content; only the injected icon control is <code>cm-skip</code>. Hierarchy comes from DOM nesting for lists, or an explicit <code>data-cmh-parent</code> reference for tables, which cannot nest rows and may be sorted.</li>
-              <li>Minimal checklist persistence. Only leaves whose state differs from their authored <code>data-cmh-state</code> baseline are stored, as one-character codes under <code>COMMENT_KEY + &quot;::cl&quot;</code>; returning a leaf to its baseline prunes its entry, so a large checklist with a few edits costs a few bytes.</li>
-              <li>Per-list checklist change card. The sidebar renders one non-comment card per checklist with changes, placed by document order, with a jump button and a Reset button that reverts that checklist to its authored state. Copy all gains a <code>## Checklist &quot;&lt;id&gt;&quot;</code> section plus a machine-readable <code>CHECKLIST_STATE_JSON</code> line, an unsaved change flips the badge to Not portable, and every export bakes the current states into <code>data-cmh-state</code>. A checklist that loads with a persisted change opens the sidebar so the card is seen.</li>
-              <li>Two checklist tools. <code>tools/checklist_scaffold.py</code> generates list or table markup with stable ids from an indented outline, and <code>tools/checklist_apply.py</code> cements the reviewer&#x27;s states from a Copy-all bundle (or <code>--state-json</code>) back into the source HTML. <code>validate.py</code> gains checklist checks (duplicate ids, invalid tokens, empty lists, unresolved parents) that a checklist-free document ignores. See the bundled <code>references/checklist-contract.md</code> for the authoring contract.</li>
-              <li>A shipped demo report <code>examples/report-checklist.html</code> (Release readiness review) that showcases both checklist shapes - a nested-list sign-off checklist and a sortable-table component audit linked by <code>data-cmh-parent</code> - with its companion authoring prompt <code>examples/prompt-checklist.md</code>.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">51 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">52 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

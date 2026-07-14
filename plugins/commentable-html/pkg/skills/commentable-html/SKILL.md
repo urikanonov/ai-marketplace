@@ -24,7 +24,7 @@ Why not just plan in chat, Markdown, or plain HTML?
 
 - **Self review loop:** generate the artifact, open it, comment inline, click **Copy all**, paste the bundle to the agent, let the agent update the HTML and mark handled ids, then reload so handled comments disappear.
 - **Peer review loop:** self-review first, click **Export as Portable**, share the downloaded HTML, receive the peer's Portable HTML with embedded comments, then feed those comments back to the agent.
-- **Reviewer loop:** when someone sends Markdown, first render it to HTML and pass that to `tools/new_document.py --content`; when they send existing HTML, retrofit it with `tools/retrofit.py`. Review inline, then send back a Portable file with embedded comments.
+- **Reviewer loop:** when someone sends Markdown, first render it to HTML and pass that to `tools/authoring/new_document.py --content`; when they send existing HTML, retrofit it with `tools/authoring/retrofit.py`. Review inline, then send back a Portable file with embedded comments.
 
 The runtime supports text selection, right-click fallback, multiple open composers, composer drag handles, a highlight bubble for link-wrapped highlights, `localStorage` persistence, embedded comments, and handled-id pruning. See [Interaction model](references/interaction-model.md) for the full walkthrough and edge cases.
 
@@ -32,7 +32,7 @@ The runtime supports text selection, right-click fallback, multiple open compose
 
 **Preconditions:** the target is a standalone HTML artifact or a content fragment about to become one; it will open in a modern browser with `localStorage` and Clipboard API access; it is not inside a sandbox that blocks those APIs.
 
-**Postconditions:** the HTML has the five layer regions, one configured `#commentRoot`, a `commentableHtmlLayer` descriptor, the handled-id and embedded-comment JSON blocks, and passes `python tools/validate.py --strict <file.html>`.
+**Postconditions:** the HTML has the five layer regions, one configured `#commentRoot`, a `commentableHtmlLayer` descriptor, the handled-id and embedded-comment JSON blocks, and passes `python tools/validate/validate.py --strict <file.html>`.
 
 ## Steps
 
@@ -48,31 +48,31 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 
 | Input | Tool | Key behavior |
 | --- | --- | --- |
-| New document from a content fragment | `tools/new_document.py` | Builds the full shell, sets `data-comment-key`, `data-doc-label`, optional `data-doc-source`, the `commentable-html-kind` meta from `--kind`, adds `data-cmh-content-root`, and validates before writing. |
-| New animated slide **deck** | `deck/deck_scaffold.py` | Builds a fixed-stage 1920x1080 deck runtime (`data-cmh-mode="deck"`, `.deck-viewport > .deck-stage`, stable per-slide ids), self-validates against the deck contract, and is create-only. See "Deck capability (frontend-slides)" below - this is the ONLY tool that produces a real deck. |
-| Unlayered existing standalone HTML | `tools/retrofit.py` | Injects the layer into that HTML, wraps body children or stamps `--root-selector "#id"`, sets the same data attributes and descriptor, and validates before writing. |
-| Already-layered commentable HTML | `tools/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attrs. |
+| New document from a content fragment | `tools/authoring/new_document.py` | Builds the full shell, sets `data-comment-key`, `data-doc-label`, optional `data-doc-source`, the `commentable-html-kind` meta from `--kind`, adds `data-cmh-content-root`, and validates before writing. |
+| New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage 1920x1080 deck runtime (`data-cmh-mode="deck"`, `.deck-viewport > .deck-stage`, stable per-slide ids), self-validates against the deck contract, and is create-only. See "Deck capability (frontend-slides)" below - this is the ONLY tool that produces a real deck. |
+| Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer into that HTML, wraps body children or stamps `--root-selector "#id"`, sets the same data attributes and descriptor, and validates before writing. |
+| Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attrs. |
 
 `--key auto` derives a stable non-demo key; an explicit `--key` must be unique per document on the same origin. `--label` becomes `data-doc-label` for the Copy header. `--source` becomes `data-doc-source` so the agent knows what source file to edit. `--kind` (required) declares the document type in a `<meta name="commentable-html-kind">`: `report` and `plan` must have a top-level `<h1>` title (auto-added from `--label` when the fragment has none), while `slides`, `board`, and `generic` do not. The validator enforces this, so a title-bearing document can never ship without a title.
 
 ```
 # New NonPortable document (default): companions referenced from the skill dist/ by file:// URLs
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --out my-report.html
+python tools/authoring/new_document.py --content fragment.html --key auto --label "My Report" --kind report --out my-report.html
 # Relative refs for a movable folder on this machine:
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --assets-relative --out my-report.html
+python tools/authoring/new_document.py --content fragment.html --key auto --label "My Report" --kind report --assets-relative --out my-report.html
 # Copy companions next to the file for a movable folder:
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --copy-assets --out my-report.html
+python tools/authoring/new_document.py --content fragment.html --key auto --label "My Report" --kind report --copy-assets --out my-report.html
 # Single self-contained Portable file:
-python tools/new_document.py --content fragment.html --key auto --label "My Report" --kind report --portable --out my-report.html
+python tools/authoring/new_document.py --content fragment.html --key auto --label "My Report" --kind report --portable --out my-report.html
 # A titleless flat "slides"-kind document (NOT the animated deck runtime; for a real
-# fixed-stage, navigable deck see "Deck capability (frontend-slides)" below and use deck/deck_scaffold.py):
-python tools/new_document.py --content slides.html --key auto --label "My Notes" --kind slides --portable --out my-notes.html
+# fixed-stage, navigable deck see "Deck capability (frontend-slides)" below and use tools/deck/deck_scaffold.py):
+python tools/authoring/new_document.py --content slides.html --key auto --label "My Notes" --kind slides --portable --out my-notes.html
 # Retrofit an existing unlayered host HTML:
-python tools/retrofit.py existing.html --label "My Report" --kind report --key auto --source existing.html --out existing-commentable.html
+python tools/authoring/retrofit.py existing.html --label "My Report" --kind report --key auto --source existing.html --out existing-commentable.html
 # Retrofit without wrapping body children when the host already has a content wrapper:
-python tools/retrofit.py existing.html --label "My Report" --kind report --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
+python tools/authoring/retrofit.py existing.html --label "My Report" --kind report --root-selector "#content" --skip-selectors "#toolbar,.modal" --out existing-commentable.html
 # Upgrade an existing layered file (adds a default generic kind if the document predates kinds):
-python tools/upgrade.py existing-commentable.html
+python tools/authoring/upgrade.py existing-commentable.html
 ```
 
 **Mode decision:** NonPortable is for fast iteration, Portable is for peer review, Offline is for zero-network handoff. Portable still fetches optional mermaid / Chart.js from a CDN unless those libraries are vendored or the browser **Export Offline** path snapshots them. Portable != offline. See [Exports](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where).
@@ -89,24 +89,24 @@ Add `class="cm-skip"` only to host floating panels, modals, sticky headers, or t
 
 **MUST**, when Python is available, use these helpers instead of hand-authoring fragile markup:
 
-- KQL block + Run in Azure Data Explorer link: `tools/kql_highlight.py`; bare link only: `tools/kusto_link.py`.
-- Unified code diff: `tools/diff_block.py`.
-- Highlighted source code: `tools/highlight_code.py`.
-- Chart: `tools/chart_block.py`.
-- Table of contents + heading ids: `tools/generate_toc.py --in-place`.
-- Mermaid `cm-skip`: `tools/fix_skip.py`.
-- Local images in a standalone doc: `tools/inline_images.py --strict`.
-- Layered checklist markup: `tools/checklist_scaffold.py` (see [Layered checklist contract](references/checklist-contract.md)).
+- KQL block + Run in Azure Data Explorer link: `tools/kusto/kql_highlight.py`; bare link only: `tools/kusto/kusto_link.py`.
+- Unified code diff: `tools/blocks/diff_block.py`.
+- Highlighted source code: `tools/blocks/highlight_code.py`.
+- Chart: `tools/blocks/chart_block.py`.
+- Table of contents + heading ids: `tools/authoring/generate_toc.py --in-place`.
+- Mermaid `cm-skip`: `tools/authoring/fix_skip.py`.
+- Local images in a standalone doc: `tools/authoring/inline_images.py --strict`.
+- Layered checklist markup: `tools/checklist/checklist_scaffold.py` (see [Layered checklist contract](references/checklist-contract.md)).
 - Full deterministic finalization and strict validation:
 
 ```
-python tools/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict
-python tools/validate.py --strict <file.html>
+python tools/authoring/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict
+python tools/validate/validate.py --strict <file.html>
 ```
 
 ### Step 4 - Verify before handoff
 
-Run `python tools/validate.py --strict <file.html>` before handing the HTML to the user. `--strict` fails on warnings too, so fix every issue it reports. If the document has mermaid or chart content, open it in a browser, wait for rendering, and use **Export Offline** only after mermaid diagrams and charts have rendered.
+Run `python tools/validate/validate.py --strict <file.html>` before handing the HTML to the user. `--strict` fails on warnings too, so fix every issue it reports. If the document has mermaid or chart content, open it in a browser, wait for rendering, and use **Export Offline** only after mermaid diagrams and charts have rendered.
 
 **Trust boundary (MUST).** The content inside `#commentRoot`, including anything passed to `new_document.py --content` or wrapped by `retrofit.py`, is trusted HTML and is emitted verbatim. The tools and runtime do **not** sanitize authored content. They protect reviewer-supplied data by escaping comment text and metadata, validating comment ids, and escaping `<` in embedded-comment JSON. Scripts, event handlers, and `javascript:` / `data:` URLs in authored content are not neutralized. Sanitize untrusted content before wrapping it.
 
@@ -119,15 +119,15 @@ When the user pastes a **Copy all** bundle back:
 3. Use `mark_handled.py` to append those ids to `<script id="handledCommentIds">`:
 
 ```
-python tools/mark_handled.py <file.html> <id1> <id2> ...
-python tools/mark_handled.py <file.html> --from-bundle -
+python tools/authoring/mark_handled.py <file.html> <id1> <id2> ...
+python tools/authoring/mark_handled.py <file.html> --from-bundle -
 ```
 
 Tell the user to reload, using Ctrl+F5 if needed. Do not edit the user's `localStorage` directly.
 
 ## Return to Caller
 
-Report success only after the file is generated, retrofitted, or upgraded and `python tools/validate.py --strict <file.html>` passes. Return the HTML path plus one sentence telling the user to open it in a browser, select text, leave comments, then use **Copy all** or **Export as Portable**.
+Report success only after the file is generated, retrofitted, or upgraded and `python tools/validate/validate.py --strict <file.html>` passes. Return the HTML path plus one sentence telling the user to open it in a browser, select text, leave comments, then use **Copy all** or **Export as Portable**.
 
 ## Handled comments stay handled (defense in depth)
 
@@ -157,7 +157,7 @@ Use `cmh-callout` plus `cmh-callout-info`, `cmh-callout-success`, `cmh-callout-w
 
 ## Editing the skill (maintainer)
 
-Editing the skill's own layer code is a maintainer task done in the project's source repository, not per generated document; packaged installs do not include that development harness. Per generated document, the only thing to run is `tools/validate.py` below.
+Editing the skill's own layer code is a maintainer task done in the project's source repository, not per generated document; packaged installs do not include that development harness. Per generated document, the only thing to run is `tools/validate/validate.py` below.
 
 ## When to use
 
@@ -176,7 +176,7 @@ This skill can build a real slide **deck** (an animation-rich, fixed 16:9 HTML p
 also a commentable-html document, so the user can create a deck, comment on the live deck, and iterate -
 all in one plugin. The deck engine is a curated, hardened, vendored copy of the MIT-licensed
 `frontend-slides` skill (Zara Zhang) under `vendor/frontend-slides/`; the author-time tools live under
-`deck/`. See [deck contract](references/deck-contract.md) for the runtime interface.
+`tools/deck/`. See [deck contract](references/deck-contract.md) for the runtime interface.
 
 **Detect and confirm (CMH-DECK-01).** When the request is really a presentation ("slide deck",
 "presentation", "pitch deck", "slides for a talk", "convert this ppt"), do NOT silently produce a flat
@@ -187,9 +187,9 @@ commentable HTML.
 
 1. **PPTX (optional).** To convert a `.pptx`, prefer the Anthropic `pptx` skill when it is installed
    (more powerful) and fall back to the vendored local `extract-pptx.py`. Either way, pass the extracted
-   content through `deck/pptx_to_fragment.py` (via `--input`/stdin, or `--pptx` for the local fallback) so
+   content through `tools/deck/pptx_to_fragment.py` (via `--input`/stdin, or `--pptx` for the local fallback) so
    every extracted string is HTML-escaped before it enters the deck. Speaker notes are not supported.
-2. **Scaffold.** Run `python deck/deck_scaffold.py --content slides.html --label "..." --source <out> --out
+2. **Scaffold.** Run `python tools/deck/deck_scaffold.py --content slides.html --label "..." --source <out> --out
    <out>` (or `--slides N` for placeholders). It emits a create-only, commentable-native fixed-stage deck:
    `data-cmh-mode="deck"`, a `.deck-viewport > .deck-stage` at 1920x1080, one `<section class="slide"
    data-slide-id=...>` per slide with the first `.active`, `viewport-base.css` inlined, a `commentable-html-kind`
@@ -215,12 +215,12 @@ commentable HTML.
    TC, ...) -> drop and let the system CJK face resolve. If a design truly needs a specific face, obtain the
    `.woff2` locally and embed it as a `@font-face` whose `src` is a `data:font/woff2;base64,...` URI (the
    `data:` scheme is allowed), then re-run `deck_validate.py`.
-4. **Validate.** Run `python deck/deck_validate.py --strict <out>`; fix every error before handoff (it enforces the
+4. **Validate.** Run `python tools/deck/deck_validate.py --strict <out>`; fix every error before handoff (it enforces the
    fixed-stage structure, no remote fonts, and no dangerous active content on top of the base validator).
 5. **Comment and iterate.** The user opens the deck, presents it normally, and comments inline. When they
    paste a Copy-all bundle back, edit the DECK **in place** (never re-run `deck_scaffold.py` without
    `--force`; it is create-only precisely so a re-scaffold cannot renumber slide ids or reset comment
-   state), re-validate, and mark the handled ids with `tools/mark_handled.py`.
+   state), re-validate, and mark the handled ids with `tools/authoring/mark_handled.py`.
 
 **Diagrams and offline (corporate-safe sharing).** Mermaid and Chart are supported. While iterating, keep
 the deck NonPortable (the layer may load mermaid/Chart from a CDN on the local machine). When the deck is
@@ -250,7 +250,7 @@ The content anchor is:
 </main>
 ```
 
-For existing HTML, prefer `tools/retrofit.py`; it inserts the five regions, descriptor, content markers, and data attributes without manual paste mistakes. The manual paste recipe is a fallback in [Retrofitting](references/retrofitting.md). The five regions carry a versioned `commentableHtmlLayer` descriptor so tooling can replace the layer without touching content; see [Forward-compatible layout](references/forward-compatible-layout.md) for the descriptor contract and version compatibility.
+For existing HTML, prefer `tools/authoring/retrofit.py`; it inserts the five regions, descriptor, content markers, and data attributes without manual paste mistakes. The manual paste recipe is a fallback in [Retrofitting](references/retrofitting.md). The five regions carry a versioned `commentableHtmlLayer` descriptor so tooling can replace the layer without touching content; see [Forward-compatible layout](references/forward-compatible-layout.md) for the descriptor contract and version compatibility.
 
 ### Document kind (required)
 
@@ -282,7 +282,7 @@ Code selections are commentable by default and keep language, indentation, and f
 
 ## Kusto query blocks (Run in Azure Data Explorer deep link)
 
-KQL blocks should pair a commentable `<pre><code class="language-kusto">` with a safe Run in Azure Data Explorer deep link. A framed KQL figure (`figure.cmh-kql`) **must** include a Run in Azure Data Explorer link built with `tools/kusto_link.py` - `validate.py` rejects a framed KQL figure without one as a hard error. If a query is purely illustrative and has no real cluster/database to run against, use a plain `<pre>` code block instead of a framed figure so it is exempt. The caption title is the click-to-copy cluster affordance, so do not add a separate cluster chip. See [Kusto query blocks](references/kusto-query-blocks.md) for link generation, data-safety rules, and markup.
+KQL blocks should pair a commentable `<pre><code class="language-kusto">` with a safe Run in Azure Data Explorer deep link. A framed KQL figure (`figure.cmh-kql`) **must** include a Run in Azure Data Explorer link built with `tools/kusto/kusto_link.py` - `validate.py` rejects a framed KQL figure without one as a hard error. If a query is purely illustrative and has no real cluster/database to run against, use a plain `<pre>` code block instead of a framed figure so it is exempt. The caption title is the click-to-copy cluster affordance, so do not add a separate cluster chip. See [Kusto query blocks](references/kusto-query-blocks.md) for link generation, data-safety rules, and markup.
 
 ## Mermaid diagrams
 
@@ -354,11 +354,11 @@ Export to Markdown downloads a `.md` file via a deterministic block-by-block con
 
 ## Add the layer to an existing HTML
 
-Use `tools/retrofit.py` as the primary path for unlayered host HTML. It uses the same layer regions as the generated templates, parses real `<head>` / `<body>` tags, refuses already-layered files, wraps body children by default, supports `--root-selector "#id"` for an existing wrapper, marks host chrome with `--skip-selectors`, warns about likely CSS collisions, validates before writing, and leaves the target unchanged on failure.
+Use `tools/authoring/retrofit.py` as the primary path for unlayered host HTML. It uses the same layer regions as the generated templates, parses real `<head>` / `<body>` tags, refuses already-layered files, wraps body children by default, supports `--root-selector "#id"` for an existing wrapper, marks host chrome with `--skip-selectors`, warns about likely CSS collisions, validates before writing, and leaves the target unchanged on failure.
 
 ```
-python tools/retrofit.py existing.html --label "My Report" --key auto --source existing.html --out existing-commentable.html
-python tools/retrofit.py existing.html --label "My Report" --root-selector "#content" --portable --out shareable.html
+python tools/authoring/retrofit.py existing.html --label "My Report" --key auto --source existing.html --out existing-commentable.html
+python tools/authoring/retrofit.py existing.html --label "My Report" --root-selector "#content" --portable --out shareable.html
 ```
 
 See [Retrofitting](references/retrofitting.md) for the tool contract, CSS collision checklist, and manual paste fallback.
@@ -368,8 +368,8 @@ See [Retrofitting](references/retrofitting.md) for the tool contract, CSS collis
 Upgrades replace the CSS, COMMENT UI, and JS regions while preserving handled ids, embedded comments, and `#commentRoot`. **SHOULD** run the deterministic helper instead of swapping regions by hand (the JS body contains marker-like text, so the JS region END is the LAST occurrence - a naive hand/regex swap truncates it):
 
 ```
-python tools/upgrade.py <file.html> # upgrade in place from dist/PORTABLE.html
-python tools/upgrade.py <file.html> --check # report stale regions without writing
+python tools/authoring/upgrade.py <file.html> # upgrade in place from dist/PORTABLE.html
+python tools/authoring/upgrade.py <file.html> --check # report stale regions without writing
 ```
 
 It refuses nonportable documents (companion assets), preserves the document's state/content, and self-validates the result. See [Retrofitting](references/retrofitting.md) for the mechanical upgrade recipe.
@@ -418,9 +418,9 @@ Use these files and folders when producing, validating, or maintaining commentab
 
 See [File inventory](references/file-inventory.md) for script-by-script and doc-by-doc details.
 
-## Validating a generated file (tools/validate.py)
+## Validating a generated file (tools/validate/validate.py)
 
-Run `python tools/validate.py <file.html>` when Python is available to check the structural invariants. See [Validation](references/validation.md) for error, warning, and chart details.
+Run `python tools/validate/validate.py <file.html>` when Python is available to check the structural invariants. See [Validation](references/validation.md) for error, warning, and chart details.
 
 ## Quick verification after retrofitting
 

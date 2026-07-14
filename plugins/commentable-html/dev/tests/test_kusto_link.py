@@ -18,7 +18,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import kusto_link  # noqa: E402
 
-KUSTO_PY = os.path.join(TOOLS, "kusto_link.py")
+KUSTO_PY = os.path.join(TOOLS, "kusto", "kusto_link.py")
 
 QUERY = "DetectionReports\n| where IsTestOrg == false\n| summarize dcount(DetectionId)"
 # A query loaded with URL-reserved and non-ASCII characters, to prove they survive

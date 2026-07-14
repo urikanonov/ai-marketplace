@@ -17,7 +17,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import kql_highlight as K  # noqa: E402
 
-KQL_PY = os.path.join(TOOLS, "kql_highlight.py")
+KQL_PY = os.path.join(TOOLS, "kusto", "kql_highlight.py")
 
 QUERY = (
     "cluster('c.kusto.windows.net').database('db').MyTable\n"

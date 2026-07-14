@@ -21,7 +21,9 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 import kusto_link  # noqa: E402
 
 # KQL query/tabular operators and control keywords (lowercased). Hyphenated forms

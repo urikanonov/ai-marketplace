@@ -118,7 +118,7 @@ test.describe("mermaid node comments (local vendored mermaid)", () => {
       await expect(composer).toHaveCount(0);
 
       const cid = await page.locator(".cm-card").first().getAttribute("data-cid");
-      execFileSync(PYTHON, ["tools/mark_handled.py", html, cid], { cwd: SKILL });
+      execFileSync(PYTHON, ["tools/authoring/mark_handled.py", html, cid], { cwd: SKILL });
 
       await page.reload();
       await ready(page);

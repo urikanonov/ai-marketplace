@@ -359,7 +359,7 @@ tooltip `<div>`. Two reliable checks:
 A quick sanity assert set: `Chart.version` is defined, `Chart.getChart(id)` is truthy, dataset count
 and point count match the source, and `c.scales.y.min` is the floor you set.
 
-3. **Automated (static, no browser).** Run `python tools/validate.py <file.html>` (ships with this
+3. **Automated (static, no browser).** Run `python tools/validate/validate.py <file.html>` (ships with this
  skill, standard library only). It always checks the commentable layer and, when the document has a
  `<canvas>`, also checks the chart rules above statically: `cm-skip` on the canvas wrapper (not the
  `<figure>`, so captions stay commentable), an SRI-pinned synchronous Chart.js CDN tag, valid

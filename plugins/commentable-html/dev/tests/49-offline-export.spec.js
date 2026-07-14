@@ -236,7 +236,7 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
 
     const exportedPath = path.join(outDir, "offline-export.html");
     fs.writeFileSync(exportedPath, exportedHtml);
-    execFileSync(PYTHON, ["tools/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
 
     ctx2 = await browser.newContext();
     const page2 = await ctx2.newPage();
@@ -407,7 +407,7 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
 
     const exportedPath = path.join(outDir, "offline-zero.html");
     fs.writeFileSync(exportedPath, exportedHtml);
-    execFileSync(PYTHON, ["tools/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
 
     ctx2 = await browser.newContext();
     const page2 = await ctx2.newPage();
@@ -480,7 +480,7 @@ test("Export Offline neutralizes form posts and preserves safe canvas scripts (C
 
     const exportedPath = path.join(outDir, "offline-forms-canvas.html");
     fs.writeFileSync(exportedPath, exportedHtml);
-    execFileSync(PYTHON, ["tools/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
 
     ctx2 = await browser.newContext();
     const page2 = await ctx2.newPage();

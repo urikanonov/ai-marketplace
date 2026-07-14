@@ -25,12 +25,13 @@ from pathlib import Path
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 from deck_common import SLIDE_ID_RE  # noqa: E402
 from html.parser import HTMLParser  # noqa: E402
 
-PKG = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PKG / "tools"))
+PKG = Path(_toolpath.SKILL_ROOT)
 try:
     import validate as _base
 except ImportError:  # pragma: no cover

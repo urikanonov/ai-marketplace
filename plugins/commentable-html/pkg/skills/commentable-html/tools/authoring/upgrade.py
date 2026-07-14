@@ -26,8 +26,10 @@ import sys
 import tempfile
 from html.parser import HTMLParser
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SKILL_ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
+SKILL_ROOT = _toolpath.SKILL_ROOT
 DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 
 # Regions swapped from the template. HANDLED IDS, EMBEDDED COMMENTS, CONTENT, and the
@@ -262,7 +264,7 @@ def main(argv):
         # the validator is unavailable (skip); any OTHER exception is a real validator
         # failure and must surface instead of being swallowed.
         try:
-            sys.path.insert(0, HERE)
+            _toolpath.ensure()
             import validate  # noqa: E402
         except ImportError:
             validate = None

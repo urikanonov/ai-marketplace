@@ -929,7 +929,7 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 /* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
    syntax highlighting. The .cmh-kql-* token spans are baked into the code by
-   tools/kql_highlight.py; these rules only supply the frame and token colors, so
+   tools/kusto/kql_highlight.py; these rules only supply the frame and token colors, so
    no per-report CSS is needed. Scoped to #commentRoot, --cp-* vars, no !important.
    --------------------------------------------------------------------------- */
 #commentRoot figure.cmh-kql {
@@ -999,7 +999,7 @@ html[data-theme="dark"] #commentRoot .cmh-kql-fn  { color: #79c0ff; }
 html[data-theme="dark"] #commentRoot .cmh-kql-str { color: #7ee787; }
 html[data-theme="dark"] #commentRoot .cmh-kql-num { color: #ffa657; }
 
-/* General code syntax token colors (baked at author time by tools/highlight_code.py;
+/* General code syntax token colors (baked at author time by tools/blocks/highlight_code.py;
    same primer palette as the KQL tokens). Plain identifiers inherit --cp-text. */
 #commentRoot .cmh-code-kw  { color: #8250df; font-weight: 600; }
 #commentRoot .cmh-code-fn  { color: #0550ae; }
@@ -2127,7 +2127,7 @@ function setDefaultDiffLayout(layout) {
 
 /* ---------- Diff syntax highlighting (runtime, self-contained, default ON) ----------
    A compact tokenizer emitting the same .cmh-code-* classes as the author-time
-   tools/highlight_code.py, applied to each diff line's code. Diff comments anchor
+   tools/blocks/highlight_code.py, applied to each diff line's code. Diff comments anchor
    structurally (diffIndex + lineKey + side), never by text offset, and the diff
    host is cm-skip, so wrapping tokens in spans is anchor-safe. Each line is
    highlighted independently (no cross-line block comments). A per-document toggle

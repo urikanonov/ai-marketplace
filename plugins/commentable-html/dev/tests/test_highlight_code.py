@@ -18,7 +18,7 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 import highlight_code as H  # noqa: E402
 
-HIGHLIGHT_PY = os.path.join(TOOLS, "highlight_code.py")
+HIGHLIGHT_PY = os.path.join(TOOLS, "blocks", "highlight_code.py")
 
 SNIPPETS = {
     "python": 'def foo(x):\n    s = "hi"\n    return 42  # comment\n',

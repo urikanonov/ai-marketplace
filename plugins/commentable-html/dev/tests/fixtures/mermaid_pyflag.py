@@ -14,7 +14,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.normpath(os.path.join(HERE, "..", "..", "..", "pkg", "skills", "commentable-html"))
-sys.path.insert(0, os.path.join(PKG, "tools"))
+sys.path.insert(0, os.path.join(PKG, "tools", "validate"))
 
 from cmhval.mermaid import check_mermaid_source  # noqa: E402
 

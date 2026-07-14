@@ -1,7 +1,7 @@
 # Deck runtime interface contract
 
 This is the frozen interface between the three deck workstreams: the author-time tools
-(`deck/deck_scaffold.py`, `deck/deck_validate.py`) and the commentable-html runtime (the deck
+(`tools/deck/deck_scaffold.py`, `tools/deck/deck_validate.py`) and the commentable-html runtime (the deck
 profile in the layer JS). Both sides build against these names so they can be developed and
 tested independently. Do not change a name here without updating the scaffold, the validator, and
 the runtime together.

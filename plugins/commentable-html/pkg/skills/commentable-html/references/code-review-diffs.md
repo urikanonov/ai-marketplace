@@ -22,7 +22,7 @@ Put a unified diff as the text content of a `pre` or `div` with `class="cmh-diff
 ```
 
 - **Do NOT add `cm-skip`** yourself. The layer replaces the block with a `.cm-skip` rendered host automatically.
-- **HTML-escape the diff text.** Write `<` as `&lt;`, `>` as `&gt;`, and `&` as `&amp;`. `tools/validate.py` errors on raw tags inside `pre.cmh-diff`.
+- **HTML-escape the diff text.** Write `<` as `&lt;`, `>` as `&gt;`, and `&` as `&amp;`. `tools/validate/validate.py` errors on raw tags inside `pre.cmh-diff`.
 - Standard unified-diff syntax is supported. Very large diffs over 2000 logical lines render as inert raw text with per-line commenting disabled.
 
 ### How it behaves at runtime

@@ -21,7 +21,7 @@ DECK = os.path.join(SKILL, "examples", "deck-roadmap.html")
 DECK_SRC = os.path.join(_paths.DEV, "examples", "src", "deck-roadmap.html")
 DECK_PROMPT = os.path.join(SKILL, "examples", "prompt-roadmap.md")
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
-DECK_VALIDATE = os.path.join(SKILL, "deck", "deck_validate.py")
+DECK_VALIDATE = os.path.join(SKILL, "tools", "deck", "deck_validate.py")
 
 
 def _read(path):

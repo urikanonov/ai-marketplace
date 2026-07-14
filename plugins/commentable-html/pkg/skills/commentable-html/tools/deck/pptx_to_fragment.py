@@ -33,11 +33,13 @@ import subprocess
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 from deck_common import esc, slide_id  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-VENDOR_EXTRACTOR = HERE.parent / "vendor" / "frontend-slides" / "scripts" / "extract-pptx.py"
+VENDOR_EXTRACTOR = Path(_toolpath.SKILL_ROOT) / "vendor" / "frontend-slides" / "scripts" / "extract-pptx.py"
 
 _IMG_MIME = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",

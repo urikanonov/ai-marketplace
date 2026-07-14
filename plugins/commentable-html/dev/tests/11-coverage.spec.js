@@ -188,7 +188,7 @@ test.describe("targeted coverage gaps", () => {
       fs.writeFileSync(tmp, out);
       let page2;
       try {
-        execFileSync(PYTHON, ["tools/validate.py", tmp], { cwd: SKILL });
+        execFileSync(PYTHON, ["tools/validate/validate.py", tmp], { cwd: SKILL });
         page2 = await context.newPage();
         await page2.goto(fileUrl(tmp));
         await ready(page2);

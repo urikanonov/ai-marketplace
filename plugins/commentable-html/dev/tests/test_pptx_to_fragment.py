@@ -15,7 +15,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 
-DECK = os.path.join(_paths.PKG, "deck")
+DECK = os.path.join(_paths.PKG, "tools", "deck")
 sys.path.insert(0, DECK)
 import pptx_to_fragment as p2f  # noqa: E402
 from deck_common import SLIDE_ID_RE  # noqa: E402

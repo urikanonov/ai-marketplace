@@ -26,15 +26,16 @@ import re
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 from deck_common import esc, slide_id  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-PKG = HERE.parent
+PKG = Path(_toolpath.SKILL_ROOT)
 TEMPLATE = PKG / "dist" / "PORTABLE.html"
 VIEWPORT_CSS = PKG / "vendor" / "frontend-slides" / "viewport-base.css"
 
-sys.path.insert(0, str(PKG / "tools"))
 import new_document  # noqa: E402
 import deck_validate  # noqa: E402
 try:

@@ -21,7 +21,7 @@ sys.path.insert(0, TOOLS)
 import diff_block as D  # noqa: E402
 import validate  # noqa: E402
 
-DIFF_BLOCK_PY = os.path.join(TOOLS, "diff_block.py")
+DIFF_BLOCK_PY = os.path.join(TOOLS, "blocks", "diff_block.py")
 TEMPLATE = os.path.join(ROOT, "dist", "PORTABLE.html")
 _CONTENT_START = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
 _CONTENT_END = "<!-- END: commentable-html - CONTENT -->"

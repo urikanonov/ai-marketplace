@@ -26,7 +26,7 @@
 
 ## Producing a NonPortable document
 
-Use `tools/new_document.py` without `--portable`. It starts from `dist/NONPORTABLE.html`, keeps HANDLED IDS,
+Use `tools/authoring/new_document.py` without `--portable`. It starts from `dist/NONPORTABLE.html`, keeps HANDLED IDS,
 EMBEDDED COMMENTS, COMMENT UI, and content inline, and rewrites the companion references for the CSS, runtime JS, and
 asset registry. By default those references are absolute `file://` URLs to the installed skill `dist/` directory, so a
 loose HTML file can move anywhere on the same machine. Use `--assets-relative` for a folder whose relative path to the
@@ -34,7 +34,7 @@ skill stays valid, `--copy-assets` to copy companions next to the output, or `--
 manages hosting.
 
 If you must hand-produce one, start from `dist/NONPORTABLE.html`, keep the version meta stamp in sync with the
-referenced companions, set a unique `data-comment-key`, and validate with `tools/validate.py --strict`.
+referenced companions, set a unique `data-comment-key`, and validate with `tools/validate/validate.py --strict`.
 
 
 ## Guardrails that make NonPortable safe
@@ -172,7 +172,7 @@ Clicking it:
 
 Mermaid diagrams must already be rendered when you click the button. If a mermaid block is still source text, the export aborts with a toast rather than producing a file that would fail offline. A chart snapshot can fail only when the canvas is tainted by cross-origin pixels; in that case the export also aborts and leaves the open document unchanged.
 
-The exported file still has the five Commentable HTML regions, embedded comments, and version metadata. It is intended to pass `tools/validate.py --strict` and reopen with all external network blocked.
+The exported file still has the five Commentable HTML regions, embedded comments, and version metadata. It is intended to pass `tools/validate/validate.py --strict` and reopen with all external network blocked.
 
 
 ## Combined file from a nonportable document

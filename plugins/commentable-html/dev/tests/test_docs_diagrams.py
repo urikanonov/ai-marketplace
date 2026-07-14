@@ -106,15 +106,18 @@ class SkillTrimDocsTests(unittest.TestCase):
 
     def test_skill_is_lean_and_keeps_generation_critical_contracts(self):
         text = _read(SKILL_MD)
-        self.assertLess(os.path.getsize(SKILL_MD), 36 * 1024)
+        # Leanness guard. Topic-bucketed tool paths (tools/<topic>/<tool>.py) add a per-invocation
+        # path segment across the ~44 tool references, so the cap allows for that qualification while
+        # still holding SKILL.md well under the skill-loader budget.
+        self.assertLess(os.path.getsize(SKILL_MD), 38 * 1024)
         for snippet in (
             "TOOL ROUTING contract",
-            "tools/new_document.py",
-            "tools/retrofit.py",
-            "tools/upgrade.py",
-            "tools/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict",
-            "python tools/validate.py --strict <file.html>",
-            "python tools/mark_handled.py <file.html> --from-bundle -",
+            "tools/authoring/new_document.py",
+            "tools/authoring/retrofit.py",
+            "tools/authoring/upgrade.py",
+            "tools/authoring/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict",
+            "python tools/validate/validate.py --strict <file.html>",
+            "python tools/authoring/mark_handled.py <file.html> --from-bundle -",
             "Trust boundary (MUST)",
             "Portable != offline",
             "private class prefix",
@@ -145,12 +148,12 @@ class SkillTrimDocsTests(unittest.TestCase):
                 "Network requirements and CDN caveats",
             ),
             "retrofitting.md": (
-                "tools/retrofit.py",
+                "tools/authoring/retrofit.py",
                 "Manual paste fallback",
                 "--root-selector",
             ),
             "code-blocks.md": (
-                "tools/highlight_document.py",
+                "tools/blocks/highlight_document.py",
                 "runtime tokenizes it on load",
             ),
         }

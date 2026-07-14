@@ -22,7 +22,7 @@ When authoring the content inside `#commentRoot`, follow these conventions so th
 
  This is also how an appendix (for example, of the source queries or raw data behind each figure) links back and forth with the sections that use it: the appendix entries get ids and each section links to the appendix entry it relies on.
 
- `tools/validate.py` **warns** when a section cross-reference in the `#commentRoot` prose is left as plain text: directional references ("the section below", "previous section") and named references ("see `<Heading>`" or "`<Heading>` section" for an actual heading) that are not wrapped in an `<a href="#...">`. Linked references and anything inside a `cm-skip` region are ignored, so the check only fires on real, fixable cases.
+ `tools/validate/validate.py` **warns** when a section cross-reference in the `#commentRoot` prose is left as plain text: directional references ("the section below", "previous section") and named references ("see `<Heading>`" or "`<Heading>` section" for an actual heading) that are not wrapped in an `<a href="#...">`. Linked references and anything inside a `cm-skip` region are ignored, so the check only fires on real, fixable cases.
 
 ## Callouts and theme-safe styling
 
