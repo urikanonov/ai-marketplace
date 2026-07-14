@@ -262,5 +262,34 @@ class ExampleNoSidebarOpenBodyTests(unittest.TestCase):
                              % os.path.basename(path))
 
 
+class ChecklistExampleTests(unittest.TestCase):
+    """CMH-DEMO-04: the layered-checklist demo report ships, validates clean, carries both
+    checklist shapes, and uses a unique comment key at the current version."""
+
+    _EX = os.path.join(SKILL, "examples", "report-checklist.html")
+
+    def test_checklist_example_ships_and_validates_strict(self):
+        self.assertTrue(os.path.isfile(self._EX), "report-checklist.html is missing")
+        r = subprocess.run(
+            [sys.executable, os.path.join(SKILL, "tools", "validate.py"), "--strict", self._EX],
+            capture_output=True, text=True, cwd=SKILL)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_checklist_example_has_both_shapes(self):
+        html = _read(self._EX)
+        self.assertIn('data-cmh-checklist="release"', html)   # nested-list shape
+        self.assertIn('data-cmh-checklist="audit"', html)     # table shape
+        self.assertIn('data-cmh-parent="network"', html)      # table hierarchy link
+        self.assertIn('data-cmh-item="backend"', html)
+
+    def test_checklist_example_key_is_unique_and_versioned(self):
+        html = _read(self._EX)
+        key = _active_root_attr(html, "data-comment-key")
+        self.assertIsNotNone(key, "checklist example is missing data-comment-key")
+        others = [_active_root_attr(_read(p), "data-comment-key") for p in EXAMPLES]
+        self.assertNotIn(key, others, "checklist example reuses another example's comment key")
+        self.assertIn('const CMH_VERSION = "%s"' % _read_version(), html)
+
+
 if __name__ == "__main__":
     unittest.main()

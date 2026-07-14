@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.0] - 2026-07-14
+
+### Added
+
+- Layered checklists. A `data-cmh-checklist` container turns a nested list (or a table) into
+  interactive four-state item checkboxes (blank / check / cross / question) drawn with inline-SVG
+  icons. A branch item aggregates over its direct children (all-same shows that state, any
+  disagreement shows a neutral mixed marker), and clicking a branch propagates its next state to
+  every descendant leaf. Item labels stay ordinary commentable content; only the injected icon
+  control is `cm-skip`. Hierarchy comes from DOM nesting for lists, or an explicit `data-cmh-parent`
+  reference for tables, which cannot nest rows and may be sorted.
+- Minimal checklist persistence. Only leaves whose state differs from their authored `data-cmh-state`
+  baseline are stored, as one-character codes under `COMMENT_KEY + "::cl"`; returning a leaf to its
+  baseline prunes its entry, so a large checklist with a few edits costs a few bytes.
+- Per-list checklist change card. The sidebar renders one non-comment card per checklist with
+  changes, placed by document order, with a jump button and a Reset button that reverts that
+  checklist to its authored state. Copy all gains a `## Checklist "<id>"` section plus a
+  machine-readable `CHECKLIST_STATE_JSON` line, an unsaved change flips the badge to Not portable,
+  and every export bakes the current states into `data-cmh-state`. A checklist that loads with a
+  persisted change opens the sidebar so the card is seen.
+- Two checklist tools. `tools/checklist_scaffold.py` generates list or table markup with stable ids
+  from an indented outline, and `tools/checklist_apply.py` cements the reviewer's states from a
+  Copy-all bundle (or `--state-json`) back into the source HTML. `validate.py` gains checklist checks
+  (duplicate ids, invalid tokens, empty lists, unresolved parents) that a checklist-free document
+  ignores. See the bundled `references/checklist-contract.md` for the authoring contract.
+- A shipped demo report `examples/report-checklist.html` (Release readiness review) that showcases both
+  checklist shapes - a nested-list sign-off checklist and a sortable-table component audit linked by
+  `data-cmh-parent` - with its companion authoring prompt `examples/prompt-checklist.md`.
+
 ## [1.43.0] - 2026-07-14
 
 ### Changed

@@ -2,7 +2,8 @@
 function buildCopyText() {
   const liveComments = withoutHandled(comments);
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
-  if (!liveComments.length && !stateChanges.length) return "";
+  const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
+  if (!liveComments.length && !stateChanges.length && !clChanges.length) return "";
   const sortKey = (c) => (c.anchorType === "document")
     ? -1
     : (c.anchorType === "mermaid")
@@ -151,6 +152,27 @@ function buildCopyText() {
     lines.push("");
     stateChanges.forEach((ch) => lines.push(`- widget "${oneLine(ch.widget)}": "${oneLine(ch.label || ch.part)}" moved from ${oneLine(ch.from)} to ${oneLine(ch.to)}`));
   }
+  if (clChanges.length) {
+    const byCl = new Map();
+    clChanges.forEach((ch) => {
+      if (!byCl.has(ch.checklist)) byCl.set(ch.checklist, { label: ch.checklistLabel, items: [] });
+      byCl.get(ch.checklist).items.push(ch);
+    });
+    const stateMap = {};
+    byCl.forEach((info, cid) => {
+      const label = (info.label && info.label !== cid) ? ` (${oneLine(info.label)})` : "";
+      lines.push(`## Checklist "${oneLine(cid)}"${label}`);
+      lines.push("Apply with tools/checklist_apply.py, or set data-cmh-state on each item.");
+      lines.push("");
+      info.items.forEach((ch) => {
+        lines.push(`- [${oneLine(ch.key)}] "${oneLine(ch.label || ch.key)}": ${oneLine(ch.from)} -> ${oneLine(ch.to)}`);
+        if (!stateMap[cid]) stateMap[cid] = {};
+        stateMap[cid][ch.key] = ch.to;
+      });
+      lines.push("");
+    });
+    lines.push("CHECKLIST_STATE_JSON: " + JSON.stringify(stateMap));
+  }
   lines.push("");
   lines.push("---");
   lines.push("");
@@ -167,7 +189,8 @@ function buildCopyText() {
 async function copyAll() {
   const live = withoutHandled(comments);
   const changes = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
-  if (!live.length && !changes.length) { showToast("No comments to copy."); return; }
+  const clCh = (typeof checklistChanges === "function") ? checklistChanges() : [];
+  if (!live.length && !changes.length && !clCh.length) { showToast("No comments to copy."); return; }
   const n = live.length;
   const text = buildCopyText();
   let copied = false;

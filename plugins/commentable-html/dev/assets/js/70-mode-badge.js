@@ -108,6 +108,9 @@ function currentDocState() {
   if (typeof widgetStateChanges === "function" && widgetStateChanges().length > 0) {
     reasons.push("a widget's layout was changed in this session and is not saved into the file");
   }
+  if (typeof checklistChanges === "function" && checklistChanges().length > 0) {
+    reasons.push("a checklist's state was changed in this session and is not saved into the file");
+  }
   const emb = _embeddedCommentSig();
   if (comments.length > 0) {
     const hasUnembedded = !comments.every(function (c) {

@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.44.0" />
-<meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.44.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<meta name="commentable-html-version" content="1.40.0" />
+<meta name="commentable-html-kind" content="report" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.40.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
-<title>Incident Triage Board</title>
+<title>Release readiness review</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
 <script>
@@ -28,16 +28,20 @@
      block degrades to readable source text. For a fully self-contained artifact, vendor a
      local copy of mermaid and import it by relative path (see SKILL.md). -->
 <script type="module">
-  try {
-    const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
-    const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-    m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
-    } else {
-      m.run().catch(() => {});
-    }
-  } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  // Only reach out to the mermaid CDN when the document actually contains a diagram, so a
+  // diagram-free document (including a deck) makes no network request at all.
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    try {
+      const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
+      const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
+      } else {
+        m.run().catch(() => {});
+      }
+    } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  }
 </script>
 
 <style>
@@ -1289,19 +1293,6 @@ body.cmh-deck-present #menuComment {
    END: commentable-html - CSS
    ============================================================ */
 </style>
-
-<style>
-#commentRoot .triage-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
-#commentRoot .triage-stat { border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface-soft); padding: 0.85rem; }
-#commentRoot .triage-stat strong { display: block; font-size: 1.45rem; color: var(--cp-text); }
-#commentRoot .triage-board-demo { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0; align-items: start; }
-#commentRoot .triage-column { border: 1px solid var(--cp-border); border-radius: 14px; background: var(--cp-surface); padding: 0.85rem; min-width: 0; }
-#commentRoot .triage-column h3 { margin: 0 0 0.65rem; font-size: 1rem; }
-#commentRoot .triage-card { border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface-soft); padding: 0.8rem; margin: 0.65rem 0; box-shadow: 0 8px 20px var(--cp-shadow); }
-#commentRoot .triage-card strong { display: block; margin-bottom: 0.35rem; }
-#commentRoot .triage-meta { color: var(--cp-text-muted); font-size: 0.86rem; }
-@media (max-width: 820px) { #commentRoot .triage-board-demo { grid-template-columns: 1fr; } }
-</style>
 </head>
 
 <body>
@@ -1439,65 +1430,77 @@ body.cmh-deck-present #menuComment {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-07-12">
-<nav class="cm-toc" aria-label="Table of contents">
-  <div class="cm-toc-title">Contents</div>
-  <ol>
-    <li><a href="#triage-snapshot">Snapshot</a></li>
-    <li><a href="#triage-board">Commentable board</a></li>
-    <li><a href="#triage-chart">Queue counts</a></li>
-  </ol>
-</nav>
+<main id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
-<h1>Incident Triage Board</h1>
-<p class="cmh-lede">A compact review surface for queue order, ownership, and the next repair move.</p>
-<section aria-labelledby="triage-snapshot">
-  <h2 id="triage-snapshot">Snapshot</h2>
-  <div class="triage-summary-grid">
-    <div class="triage-stat"><strong>18</strong><span>open incidents</span></div>
-    <div class="triage-stat"><strong>3</strong><span>customer-impacting</span></div>
-    <div class="triage-stat"><strong>42 min</strong><span>median age</span></div>
+<header class="cmh-lede">
+  <h1>Release readiness review</h1>
+</header>
+
+<section>
+  <h1>Release readiness review</h1>
+  <p>A worked example of commentable-html <strong>layered checklists</strong>. Click any state box to cycle it
+     <em>blank &rarr; check &rarr; cross &rarr; question</em>. A parent row aggregates its children automatically,
+     and clicking a parent pushes its state down to every child. Changes are saved in this browser and collected
+     into the <em>Copy all</em> bundle so an agent can cement them back into the source with
+     <code>tools/checklist_apply.py</code>.</p>
+</section>
+
+<section>
+  <h2 id="sign-off">Sign-off checklist (nested list)</h2>
+  <p>Hierarchy comes from the nested lists here. Toggle the leaves and watch each area - and the top-level row -
+     re-aggregate. Set every child of an area to the same state and the area adopts it; leave them mixed and the
+     area shows a neutral dash.</p>
+  <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release readiness">
+    <ul>
+      <li data-cmh-item="backend" data-cmh-state="blank">Backend
+        <ul>
+          <li data-cmh-item="migrations" data-cmh-state="check">Database migrations applied and reversible</li>
+          <li data-cmh-item="loadtest" data-cmh-state="cross">Load test meets the p99 latency target</li>
+          <li data-cmh-item="flags" data-cmh-state="question">Feature flags default to the safe state</li>
+        </ul>
+      </li>
+      <li data-cmh-item="frontend" data-cmh-state="blank">Frontend
+        <ul>
+          <li data-cmh-item="a11y" data-cmh-state="check">Accessibility audit passes (keyboard and screen reader)</li>
+          <li data-cmh-item="i18n" data-cmh-state="check">All new strings are localized</li>
+        </ul>
+      </li>
+      <li data-cmh-item="docs" data-cmh-state="question">Release notes and customer docs updated</li>
+      <li data-cmh-item="rollback" data-cmh-state="blank">Rollback plan rehearsed with on-call</li>
+    </ul>
   </div>
-  <table>
-    <thead><tr><th>Queue</th><th>Owner</th><th>Oldest</th><th>Exit check</th></tr></thead>
+</section>
+
+<section>
+  <h2 id="component-audit">Component audit (sortable table)</h2>
+  <p>The same four-state control works in a table. Rows link to their parent with <code>data-cmh-parent</code>
+     instead of nesting, so the hierarchy survives even after you sort a column. Try sorting by <em>Owner</em>,
+     then toggle a control: the parent still aggregates correctly.</p>
+  <table class="cmh-checklist" data-cmh-checklist="audit" data-cmh-checklist-label="Security audit">
+    <thead><tr><th>State</th><th>Control</th><th>Owner</th></tr></thead>
     <tbody>
-      <tr><td>New</td><td>Live site</td><td>36 min</td><td>First responder assigned</td></tr>
-      <tr><td>Investigating</td><td>Platform</td><td>2 h</td><td>Repro and trace attached</td></tr>
-      <tr><td>Fixed</td><td>Release</td><td>4 h</td><td>Patch verified in canary</td></tr>
+      <tr data-cmh-item="network" data-cmh-state="blank"><td></td><td>Network</td><td>Dana</td></tr>
+      <tr data-cmh-item="firewall" data-cmh-parent="network" data-cmh-state="check"><td></td><td>Firewall rules reviewed</td><td>Ravi</td></tr>
+      <tr data-cmh-item="tls" data-cmh-parent="network" data-cmh-state="cross"><td></td><td>TLS 1.2+ enforced end to end</td><td>Ravi</td></tr>
+      <tr data-cmh-item="identity" data-cmh-state="blank"><td></td><td>Identity</td><td>Mei</td></tr>
+      <tr data-cmh-item="mfa" data-cmh-parent="identity" data-cmh-state="check"><td></td><td>MFA required for admin roles</td><td>Mei</td></tr>
+      <tr data-cmh-item="secrets" data-cmh-parent="identity" data-cmh-state="question"><td></td><td>Secrets rotated within 90 days</td><td>Priya</td></tr>
     </tbody>
   </table>
 </section>
-<section aria-labelledby="triage-board">
-  <h2 id="triage-board">Commentable board</h2>
-  <div class="triage-board-demo cm-skip" data-cm-widget="incident-triage-board" data-cm-draggable aria-label="Incident triage board">
-    <div class="triage-column" data-cm-slot="New" data-cm-part="column-new" data-cm-part-label="New column">
-      <h3>New</h3>
-      <article class="triage-card" data-cm-part="api-saturation" data-cm-part-label="API saturation"><strong>API saturation</strong><div class="triage-meta">Sev 2 - owner: gateway - impact: 8 regions</div></article>
-      <article class="triage-card" data-cm-part="checkout-timeouts" data-cm-part-label="Checkout timeouts"><strong>Checkout timeouts</strong><div class="triage-meta">Sev 1 - owner: commerce - impact: paid users</div></article>
-      <article class="triage-card" data-cm-part="schema-drift" data-cm-part-label="Schema drift alert"><strong>Schema drift alert</strong><div class="triage-meta">Sev 3 - owner: data - impact: reports delayed</div></article>
-    </div>
-    <div class="triage-column" data-cm-slot="Investigating" data-cm-part="column-investigating" data-cm-part-label="Investigating column">
-      <h3>Investigating</h3>
-      <article class="triage-card" data-cm-part="auth-retries" data-cm-part-label="Auth retries"><strong>Auth retries</strong><div class="triage-meta">Sev 2 - owner: identity - trace: retry storm</div></article>
-      <article class="triage-card" data-cm-part="worker-lag" data-cm-part-label="Worker lag"><strong>Worker lag</strong><div class="triage-meta">Sev 3 - owner: jobs - trace: queue depth</div></article>
-    </div>
-    <div class="triage-column" data-cm-slot="Fixed" data-cm-part="column-fixed" data-cm-part-label="Fixed column">
-      <h3>Fixed</h3>
-      <article class="triage-card" data-cm-part="cache-patch" data-cm-part-label="Cache patch"><strong>Cache patch</strong><div class="triage-meta">Sev 2 - owner: platform - verified in canary</div></article>
-      <article class="triage-card" data-cm-part="log-sampling" data-cm-part-label="Log sampling restored"><strong>Log sampling restored</strong><div class="triage-meta">Sev 3 - owner: observability - rolled out</div></article>
-    </div>
-  </div>
-</section>
-<section aria-labelledby="triage-chart">
-  <h2 id="triage-chart">Queue counts</h2>
-  <!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="triageQueueChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="triageQueueChart" role="img" aria-label="Chart: Incident queue health. Open incidents by queue and severity."></canvas>
-  </div>
-  <figcaption id="triageQueueChart-caption">Open incidents by queue and severity.</figcaption>
-</figure>
+
+<section>
+  <h2 id="how">How to use this</h2>
+  <ul>
+    <li>Click a state box (or focus it and press Enter or Space) to cycle its state.</li>
+    <li>Click a parent box to set every child to the same state at once.</li>
+    <li>Open the comments panel: each checklist with changes shows a card with <em>jump</em> and <em>Reset</em>
+        buttons, placed in document order alongside any comments.</li>
+    <li>Click <strong>Copy all</strong> to hand the state changes to an agent, or <strong>Export as Portable</strong>
+        to share a copy with the states baked into the HTML.</li>
+  </ul>
+  <p>You can still comment on any item's label text - only the icon control itself is excluded from selection.</p>
 </section>
 
 <!-- END: commentable-html - CONTENT -->
@@ -1551,7 +1554,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.44.0";
+const CMH_VERSION = "1.40.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3665,8 +3668,7 @@ function _clLabel(el) {
   if (el.tagName === "TR") {
     const cells = Array.prototype.filter.call(el.children, (c) => c.tagName === "TD" || c.tagName === "TH");
     const stateCell = el.querySelector("[data-cmh-state-cell]") || cells[0];
-    const labelCell = cells.find((c) => c !== stateCell);
-    const txt = labelCell ? (labelCell.textContent || "").replace(/\s+/g, " ").trim() : "";
+    const txt = cells.filter((c) => c !== stateCell).map((c) => c.textContent).join(" ").replace(/\s+/g, " ").trim();
     return txt || (el.textContent || "").replace(/\s+/g, " ").trim();
   }
   let s = "";
@@ -3814,7 +3816,7 @@ function checklistChanges() {
 function _clMini(token) { return '<span class="cmh-cl-mini">' + _clSvg(token, 14) + "</span>"; }
 function _renderOneChecklistCard(cl, list) {
   const items = list.map((ch) =>
-    "<li>" + _clMini(ch.from) + ' <span class="cmh-cl-arrow">&rarr;</span> ' + _clMini(ch.to)
+    "<li>" + _clMini(ch.from) + ' <span class="cmh-cl-arrow">-&gt;</span> ' + _clMini(ch.to)
     + " " + escapeHtml(ch.label || ch.key) + "</li>"
   ).join("");
   return `
@@ -3827,7 +3829,7 @@ function _renderOneChecklistCard(cl, list) {
         <span></span>
         <span class="acts">
           <button type="button" data-act="cl-jump" data-cmh-checklist-name="${escapeHtml(cl.id)}" title="Scroll to this checklist">jump</button>
-          <button type="button" data-act="cl-reset" data-cmh-checklist-name="${escapeHtml(cl.id)}" title="Revert this checklist to its authored state">reset</button>
+          <button type="button" data-act="cl-reset" data-cmh-checklist-name="${escapeHtml(cl.id)}" title="Revert this checklist to its authored state">Reset</button>
         </span>
       </div>
     </article>`;
@@ -8000,81 +8002,13 @@ renderComments();
 if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
-if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length)) openSidebar();
-else closeSidebar();
+if (!comments.length) closeSidebar(); else openSidebar();
 // Signals the nonportable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.
 window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
 <!-- END: commentable-html - JS -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
-<script id="triageQueueChart-data" type="application/json">
-{
-  "type": "bar",
-  "data": {
-    "labels": [
-      "New",
-      "Investigating",
-      "Fixed"
-    ],
-    "datasets": [
-      {
-        "label": "Sev 1",
-        "data": [
-          2,
-          1,
-          0
-        ]
-      },
-      {
-        "label": "Sev 2",
-        "data": [
-          4,
-          3,
-          2
-        ]
-      },
-      {
-        "label": "Sev 3",
-        "data": [
-          6,
-          4,
-          5
-        ]
-      }
-    ]
-  },
-  "options": {
-    "plugins": {
-      "legend": {
-        "position": "bottom"
-      }
-    },
-    "scales": {
-      "x": {
-        "stacked": true
-      },
-      "y": {
-        "stacked": true,
-        "beginAtZero": true
-      }
-    }
-  }
-}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("triageQueueChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("triageQueueChart-data").textContent);
-  config.options = config.options || {};
-  config.options.responsive = true;
-  config.options.maintainAspectRatio = false;
-  new Chart(el, config);
-})();
-</script>
-
 
 </body>
 </html>

@@ -17,4 +17,5 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `60-images.css` | CMH-IMG | Image comment layer. |
 | `70-kql.css` | CMH-KQL | Kusto query figure + KQL token styling. |
 | `80-focus.css` | CMH-A11Y | Shared themed focus ring for interactive controls. |
+| `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |
 | `90-deck.css` | CMH-DECK | Deck profile (`data-cmh-mode="deck"`) overrides. |
