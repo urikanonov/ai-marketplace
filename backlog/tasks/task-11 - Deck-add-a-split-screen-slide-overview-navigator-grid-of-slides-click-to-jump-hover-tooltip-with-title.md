@@ -3,11 +3,11 @@ id: TASK-11
 title: >-
   Deck: add a split-screen slide-overview navigator (grid of slides, click to
   jump, hover tooltip with title)
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:33'
+updated_date: '2026-07-14 18:39'
 labels: []
 dependencies: []
 ordinal: 10000
@@ -29,18 +29,6 @@ Add a deck overview mode that shows all slides as a grid (split screen). Clickin
 - [x] #6 Bump plugin version, update CHANGELOG.md, rebuild via python scripts/rebuild_all.py, confirm --check is clean
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -48,3 +36,15 @@ Add a deck overview mode that shows all slides as a grid (split screen). Clickin
 2. Extend setupDeck with an overview toggle, keyboard shortcut, slide title extraction, focus management, grid item activation, and current-slide synchronization.
 3. Add deck overview CSS in 90-deck.css, update SPEC and release metadata, rebuild generated artifacts, and run targeted and repository checks.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Validation passed: npx playwright test 52-deck.spec.js; python scripts/rebuild_all.py; python scripts/rebuild_all.py --check; python scripts/validate_marketplace.py; python scripts/validate_markdown.py; pre-push hook.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented the deck slide-overview navigator with toolbar and keyboard access, per-slide thumbnails, title tooltips, click and keyboard selection, spec coverage CMH-DECK-06, and regenerated artifacts. PR: https://github.com/urikanonov/ai-marketplace/pull/132
+<!-- SECTION:FINAL_SUMMARY:END -->

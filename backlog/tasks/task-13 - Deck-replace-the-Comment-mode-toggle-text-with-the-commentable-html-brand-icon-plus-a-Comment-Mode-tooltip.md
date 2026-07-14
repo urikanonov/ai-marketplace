@@ -3,11 +3,11 @@ id: TASK-13
 title: >-
   Deck: replace the Comment mode toggle text with the commentable-html brand
   icon plus a Comment Mode tooltip
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:20'
-updated_date: '2026-07-14 18:33'
+updated_date: '2026-07-14 18:39'
 labels: []
 dependencies: []
 ordinal: 12000
@@ -28,16 +28,6 @@ In deck mode the comment-mode toggle button (assets/js/95-startup.js sets toggle
 - [x] #5 Bump plugin version, update CHANGELOG.md, rebuild via python scripts/rebuild_all.py, confirm --check is clean
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -45,3 +35,15 @@ In deck mode the comment-mode toggle button (assets/js/95-startup.js sets toggle
 2. Replace the text label in setupDeck with the existing CMH_ICON_SVG markup while preserving the button state updates and click handler.
 3. Update SPEC and release metadata alongside TASK-11, rebuild generated artifacts, and run targeted and repository checks.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Validation passed: npx playwright test 52-deck.spec.js; python scripts/rebuild_all.py; python scripts/rebuild_all.py --check; python scripts/validate_marketplace.py; python scripts/validate_markdown.py; pre-push hook.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replaced the deck comment-mode text toggle with the existing brand icon while preserving Comment Mode title, aria-label, aria-pressed semantics, toggle behavior, spec coverage CMH-DECK-08, and regenerated artifacts. PR: https://github.com/urikanonov/ai-marketplace/pull/132
+<!-- SECTION:FINAL_SUMMARY:END -->
