@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- GENERATED FILE - DO NOT EDIT. Built from site/pages/commentable-html/index.html by scripts/build_site_data.py; run: python scripts/build_site_data.py -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -21,7 +22,7 @@
   <meta name="twitter:description" content="Tighten the planning loop. Inline comment on any HTML report and round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-commentable-html.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=d922538f9528" />
+  <link rel="stylesheet" href="../assets/styles.css?v=0c5b2c597102" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -78,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.25.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.50.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -89,7 +90,7 @@
           <p><strong>HTML</strong> has become the de-facto standard for planning and reporting with AI agents: plans, reports, design docs, and code reviews increasingly arrive as HTML, not Markdown. It is a spatial, richer medium - diffs and call-graphs as boxes and arrows, data as real charts, long documents as navigable sections. (Anthropic makes the same case in <a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html" target="_blank" rel="noopener noreferrer">"The unreasonable effectiveness of HTML"</a>.) But the moment you want to <em>revise</em> that artifact the loop breaks down: you alt-tab between the render and the chat and describe in prose what to change. The richer the document, the more painful the round-trip.</p>
           <p><strong>Commentable HTML closes that loop - it is a code review for your plan.</strong> Select any paragraph, table cell, chart, diagram, or code block and comment in place, exactly where you mean it, then one <em>Copy all</em> hands the agent a structured bundle of every note. It <strong>drastically shortens the AI planning and iteration loop</strong>: you stay in the document and return to the chat only at the end.</p>
         </div>
-        <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/images/review-loop.svg; keep the two in sync if the labels or flow change. -->
+        <!-- Inline (light) twin of plugins/commentable-html/pkg/skills/commentable-html/docs/assets/review-loop.svg; keep the two in sync if the labels or flow change. -->
         <div class="section-block why-loop-block">
         <figure class="loop-figure">
           <svg class="loop-fig-h" viewBox="0 0 640 250" role="img" aria-labelledby="loopFigTitle loopFigDesc">
@@ -340,79 +341,71 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.25.0] - 2026-07-13</h3></div>
-            <div class="group-label">Changed</div>
+            <div class="rel-head"><h3>[1.50.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
             <ul>
-              <li>Generated documents no longer carry the leading &quot;Commentable HTML - TEMPLATE / DEMO&quot; documentation comment. That guidance duplicated the skill references and mislabeled real reports as a template or demo, so every shipped report and generated document is now leaner and cleaner without it.</li>
+              <li>Content-syntax validation in <code>tools/validate.py</code>, so a document with a broken mermaid diagram or invalid embedded JSON now FAILS validation instead of shipping and rendering as mermaid&#x27;s &quot;Syntax error in text&quot; bomb: - Mermaid: a <code>sequenceDiagram</code> message that a <code>;</code> splits into a dangling statement (the text after the <code>;</code> carries a message arrow but no <code>:</code> message) is an error. The check is calibrated to zero false positives against a broad, real-parser-labeled corpus - a valid multi-signal (<code>A-&gt;&gt;B: x; C-&gt;&gt;D: y</code>), an arrow inside message text, a <code>participant ... as &quot;a-&gt;b&quot;</code> alias, an <code>accTitle:</code>/<code>accDescr:</code> directive, and an inline <code>%%{init}%%</code> directive or a <code>%%</code>, single <code>%</code>, or <code>#</code> comment are never flagged (all confirmed against the real mermaid v11 parser). Only <code>sequenceDiagram</code> is deep-checked in Python; every other diagram family (flowchart, class, state, ...) is delegated to the repo-side real-parser oracle, so a flowchart label with a <code>%%</code> or a literal quote is never a false positive. An empty mermaid block (which renders as mermaid&#x27;s &quot;No diagram type detected&quot; error) is also flagged. - Embedded JSON: an empty or invalid <code>&lt;script type=&quot;application/json&quot;&gt;</code> data block (whose <code>JSON.parse()</code> would throw at runtime, including a <code>NaN</code>/<code>Infinity</code> literal or a raw <code>&lt;/script&gt;</code> that truncates the block) is an error when no chart canvas owns it; the chart checks continue to own chart-data JSON when a canvas is present.</li>
+              <li>The new checks live in a <code>tools/cmhval/</code> package (<code>mermaid.py</code>, <code>jsonblocks.py</code>) so the validator does not grow into one giant script; <code>tools/validate.py</code> stays the entry point.</li>
+            </ul>
+            <div class="group-label">Development</div>
+            <ul>
+              <li>A repo-side real-parser oracle (<code>dev/tools/validate_render.mjs</code>, never shipped) validates every mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker&#x27;s zero-false-positive guarantee is gated by the authoritative parser in CI. The oracle also flags an empty/whitespace-only <code>&lt;pre class=&quot;mermaid&quot;&gt;</code> host (which the real parser rejects as &quot;No diagram type detected&quot;) rather than silently skipping it.</li>
+              <li>If the sibling <code>tools/cmhval/</code> package cannot be imported (a broken/partial install), <code>tools/validate.py</code> now fails CLOSED for content it would have inspected - a mermaid block or a non-layer JSON data block makes validation error instead of silently passing - while a document with no such content still validates and <code>--charts-only</code> is unaffected.</li>
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.24.0] - 2026-07-13</h3></div>
+            <div class="rel-head"><h3>[1.49.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>Aligned the skill with Anthropic&#x27;s Agent Skills authoring guidelines (documentation only, no runtime or tool behavior change). Rewrote the <code>SKILL.md</code> front-matter description into a what-plus-when discovery string with an explicit <code>Use when ...</code> trigger clause scoped to HTML artifacts, linked <code>references/forward-compatible-layout.md</code> directly from <code>SKILL.md</code> so every reference is one level deep, added a <code>## Contents</code> table of contents to each reference longer than 100 lines (charts, exports, document-layout, comment-data-shape, retrofitting), documented the Markdown-to-HTML reviewer path, removed legacy UI-label and past-version wording from the Charts and Exports references, and removed a time-relative phrase from the Interaction-model reference. The repository <code>README.md</code> plugin row was aligned with the new description.</li>
-              <li>Added spec-covered guards for the above (<code>CMH-DOC-05</code> reference tables of contents, <code>CMH-DOC-06</code> front-matter description, <code>CMH-DOC-07</code> direct reference links, <code>CMH-DOC-08</code> SKILL/marketplace description consistency), each validated by a covering test in <code>dev/tests/test_docs_diagrams.py</code>.</li>
-              <li>Deferred: trimming the <code>SKILL.md</code> body toward Anthropic&#x27;s ~5k-token soft cap is intentionally left to a focused follow-up, because the body carries pinned generation contracts (<code>CMH-DOC-02</code>/<code>CMH-DOC-03</code>) that a de-duplication pass should not churn in the same change.</li>
+              <li>Consolidated the skill&#x27;s docs assets: the review-loop diagram and the tutorial screenshots now live together under <code>docs/assets/</code> (previously split across <code>docs/images/</code> and <code>docs/tutorial-images/</code>). Shipped references in <code>SKILL.md</code>, <code>README.md</code>, <code>TUTORIAL.md</code>, and the file inventory point at the new location; there is no runtime behavior change.</li>
             </ul>
           </div>
           <details class="older-releases">
             <summary>Show 5 older releases</summary>
           <div class="release">
-            <div class="rel-head"><h3>[1.23.0] - 2026-07-13</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A real desktop right-click on empty document space no longer flashes the document-comment menu open and then hides it: the right-button <code>mouseup</code> no longer runs the text-selection cleanup that queued a <code>hideMenu()</code> clobbering the just-opened menu.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The sidebar Copy all button is larger and bolder so the most-used action is easier to find and click.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.22.0] - 2026-07-13</h3></div>
+            <div class="rel-head"><h3>[1.48.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>Documents now declare their kind in a mandatory <code>&lt;meta name=&quot;commentable-html-kind&quot;&gt;</code> (report, plan, slides, board, or generic). The validator requires it and enforces per-type rules: report and plan must carry a top-level <code>&lt;h1&gt;</code> title, while slides, board, and generic do not.</li>
-              <li><code>new_document.py</code> and <code>retrofit.py</code> require <code>--kind</code> and stamp the meta; report and plan auto-add a title from <code>--label</code> when the fragment has none, while slides and board do not.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>upgrade.py</code> now adds a default <code>generic</code> kind meta to a document that predates kinds, so upgrading an older document produces one that still validates.</li>
+              <li>Prevent code blocks from shipping without syntax highlighting, in three layers: - Runtime fallback: the runtime now highlights any commentable <code>&lt;pre&gt;&lt;code class=&quot;language-XXX&quot;&gt;</code> block that shipped without highlight spans, on load, so a labelled block never renders as plain monochrome text even when highlighting was never baked. It is idempotent, only fires for a language the tokenizer knows, and keeps line numbers and comment anchoring consistent. - <code>tools/highlight_document.py</code>: bakes highlighting into every raw, language-labelled code block of a file in one pass (with a <code>--check</code> mode). <code>tools/finalize.py</code> runs it by default (opt out with <code>--no-highlight</code>), so the standard finalization bakes highlighting.</li>
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.21.0] - 2026-07-13</h3></div>
+            <div class="rel-head"><h3>[1.47.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>Added <code>tools/retrofit.py</code> to deterministically inject the commentable layer into existing unlayered HTML with validation-before-write, root selection, Portable output, companion-asset options, and host chrome skip selectors.</li>
+              <li>The validator now catches a code block that was labelled with a language but never highlighted. <code>tools/validate.py</code> warns when a <code>&lt;pre&gt;&lt;code class=&quot;language-XXX&quot;&gt;</code> block declares a language the author-time highlighter supports (resolving aliases like <code>cs</code> to <code>csharp</code>) but carries no <code>cmh-code-*</code> spans, so it renders as plain monochrome text. Inline code, non-highlightable labels (<code>language-text</code>, <code>language-kusto</code>), and already-highlighted blocks are not flagged.</li>
             </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The showcase demo&#x27;s Python code block is now syntax-highlighted (it previously shipped as a plain <code>language-python</code> block, which the new validator check flags).</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.46.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Search within comments. The comments panel now has a single search field (with a leading magnifier and a clear X button) that filters the comment cards to only those whose text - the note, the quoted content, the section path, and the pin - matches the query case-insensitively. A shown/total count sits beside the field, a no-results note appears when nothing matches, and the filter re-applies after every render so it survives adding, editing, or sorting comments.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.45.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>Trimmed <code>SKILL.md</code> by moving runtime UI, interaction, NonPortable, network, and manual retrofit details into existing references while keeping generation-time routing, caveats, and commands inline.</li>
+              <li>The comments panel resizes narrower. The drag/keyboard minimum width dropped to 3/5 of the former floor - 192px on wide screens (was 320px) and 144px on narrow screens under 700px (was 240px) - so the panel can take less horizontal space and leave more room for the document. The panel&#x27;s CSS <code>min-width</code> floor was lowered to match, and the width still clamps to the viewport and persists across reloads.</li>
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.20.0] - 2026-07-12</h3></div>
-            <div class="group-label">Fixed</div>
+            <div class="rel-head"><h3>[1.44.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
             <ul>
-              <li>Offline export now blocks form submissions in CSP, removes remote form targets, keeps benign inline scripts with non-network dynamic import comments, and preserves custom canvas renderers that are not chart snapshots.</li>
-              <li>Strict offline validation now requires the restrictive CSP and rejects network form targets, meta refresh redirects, and network CSS <code>url(...)</code> values in style blocks or inline styles.</li>
-              <li>Offline validation now ignores non-fetching remote links such as canonical and alternate metadata while still blocking fetching link relations.</li>
-              <li>Region marker guards in validation, upgrade, build, and runtime export now count only comment-delimited infra markers, so marker text inside prose or code blocks no longer causes duplicate-region failures.</li>
+              <li>Layered checklists. A <code>data-cmh-checklist</code> container turns a nested list (or a table) into interactive four-state item checkboxes (blank / check / cross / question) drawn with inline-SVG icons. A branch item aggregates over its direct children (all-same shows that state, any disagreement shows a neutral mixed marker), and clicking a branch propagates its next state to every descendant leaf. Item labels stay ordinary commentable content; only the injected icon control is <code>cm-skip</code>. Hierarchy comes from DOM nesting for lists, or an explicit <code>data-cmh-parent</code> reference for tables, which cannot nest rows and may be sorted.</li>
+              <li>Minimal checklist persistence. Only leaves whose state differs from their authored <code>data-cmh-state</code> baseline are stored, as one-character codes under <code>COMMENT_KEY + &quot;::cl&quot;</code>; returning a leaf to its baseline prunes its entry, so a large checklist with a few edits costs a few bytes.</li>
+              <li>Per-list checklist change card. The sidebar renders one non-comment card per checklist with changes, placed by document order, with a jump button and a Reset button that reverts that checklist to its authored state. Copy all gains a <code>## Checklist &quot;&lt;id&gt;&quot;</code> section plus a machine-readable <code>CHECKLIST_STATE_JSON</code> line, an unsaved change flips the badge to Not portable, and every export bakes the current states into <code>data-cmh-state</code>. A checklist that loads with a persisted change opens the sidebar so the card is seen.</li>
+              <li>Two checklist tools. <code>tools/checklist_scaffold.py</code> generates list or table markup with stable ids from an indented outline, and <code>tools/checklist_apply.py</code> cements the reviewer&#x27;s states from a Copy-all bundle (or <code>--state-json</code>) back into the source HTML. <code>validate.py</code> gains checklist checks (duplicate ids, invalid tokens, empty lists, unresolved parents) that a checklist-free document ignores. See the bundled <code>references/checklist-contract.md</code> for the authoring contract.</li>
+              <li>A shipped demo report <code>examples/report-checklist.html</code> (Release readiness review) that showcases both checklist shapes - a nested-list sign-off checklist and a sortable-table component audit linked by <code>data-cmh-parent</code> - with its companion authoring prompt <code>examples/prompt-checklist.md</code>.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.19.0] - 2026-07-12</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Offline export now adds a zero-network CSP, removes event-handler attributes, strips same-origin absolute media and additional preload/media/SVG/CSS/refresh egress vectors, and validates offline documents with no Chart.js CDN exemption.</li>
-              <li>Region replacement tools and runtime export slicers now reject duplicate BEGIN or END markers instead of risking content loss.</li>
-              <li>Validator hardening now rejects protocol-relative and non-file companion refs, descriptor id decoys, and commented <code>data-id=&quot;commentRoot&quot;</code> false positives.</li>
-              <li>Save, Portable, and Offline exports now filter handled comments so resolved feedback cannot reappear in exported embedded comment JSON.</li>
-              <li>Markdown export now summarizes offline chart snapshots by label instead of embedding base64 chart images.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">28 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">51 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
@@ -427,6 +420,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
     </div>
   </footer>
 
-  <script src="../assets/site.js?v=36daf28ac632"></script>
+  <script src="../assets/site.js?v=a3f6922a73c3"></script>
 </body>
 </html>

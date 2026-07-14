@@ -46,7 +46,7 @@ Your agent can draft a plan in seconds; the real bottleneck is everything after 
 
 Commentable HTML turns any report into a review you can hand straight back to an AI agent, then iterate until every comment is resolved.
 
-![The self-review loop: an AI agent generates a commentable HTML report, you review it and leave inline comments, you Copy all the comments back to the agent, then reload and repeat until every comment is resolved.](skills/commentable-html/docs/images/review-loop.svg)
+![The self-review loop: an AI agent generates a commentable HTML report, you review it and leave inline comments, you Copy all the comments back to the agent, then reload and repeat until every comment is resolved.](skills/commentable-html/docs/assets/review-loop.svg)
 
 - **Self review** - generate the report, comment on it, `Copy all` back to the agent, and reload; repeat until the panel is empty.
 - **Peer review** - `Export as Portable` and share the single file; the peer comments in place and sends it back with the comments embedded, then you feed those back to the agent.
@@ -91,5 +91,5 @@ Contributors: see the [contributing guide](https://github.com/urikanonov/ai-mark
 | `skills/commentable-html/dist/` | Generated bundle: `PORTABLE.html`, `NONPORTABLE.html`, CSS/JS/assets companions, and `manifest.json`. |
 | `skills/commentable-html/tools/` | Runtime Python tools used while generating, validating, upgrading, and processing reports. |
 | `skills/commentable-html/references/` | Detailed reference docs for anchors, layout, charts, validation, exports, and helper tools. |
-| `skills/commentable-html/docs/` | Tutorial and diagrams: `docs/TUTORIAL.md`, `tutorial-images/`, and `docs/images/` (the review-loop diagram embedded in this README). |
+| `skills/commentable-html/docs/` | Tutorial and diagrams: `docs/TUTORIAL.md` and `docs/assets/` (tutorial screenshots plus the review-loop diagram embedded in this README). |
 | `skills/commentable-html/examples/` | Worked prompts and reports, including `prompt-community-garden.md`, `prompt-taxi.md`, `prompt-triage.md`, `prompt-metrics.md`, `report-community-garden.html`, `report-taxi.html`, `report-triage.html`, and `report-metrics.html`. |

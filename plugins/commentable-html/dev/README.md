@@ -113,10 +113,10 @@ python tools\validate.py --strict dist\PORTABLE.html examples\report-community-g
 
 ## Rebuilding the example images
 
-The shipped example reports are single self-contained files with their images inlined as data URIs, so `pkg/skills/commentable-html/examples/` has no `images/` folder. The source images for the community garden example live here in `dev/example-images/` (kept for reproducibility, not shipped). To re-inline them into a freshly authored example and validate it, run from `dev/`:
+The shipped example reports are single self-contained files with their images inlined as data URIs, so `pkg/skills/commentable-html/examples/` has no `images/` folder. The source images for the community garden example live here in `dev/examples/images/` (kept for reproducibility, not shipped). To re-inline them into a freshly authored example and validate it, run from `dev/`:
 
 ```powershell
-python ..\pkg\skills\commentable-html\tools\inline_images.py <report>.html --base ..\dev\example-images --strict
+python ..\pkg\skills\commentable-html\tools\inline_images.py <report>.html --base ..\dev\examples\images --strict
 python ..\pkg\skills\commentable-html\tools\validate.py <report>.html
 ```
 

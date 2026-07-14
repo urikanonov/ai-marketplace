@@ -19,7 +19,7 @@ updates:
       dev-deps:
         patterns: ["*"]
   - package-ecosystem: "npm"
-    directory: "/tests/site"
+    directory: "/site/tests"
     schedule:
       interval: "weekly"
     cooldown:

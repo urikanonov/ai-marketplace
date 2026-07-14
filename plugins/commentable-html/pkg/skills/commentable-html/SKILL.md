@@ -413,7 +413,7 @@ Use these files and folders when producing, validating, or maintaining commentab
  - `inline_images.py <file>` - inline local images as data URIs for a portable file.
 - **`deck/*`** - author-time deck tools: `deck_scaffold.py` (build a fixed-stage deck), `pptx_to_fragment.py` (escape extracted PowerPoint into a deck fragment), `deck_validate.py` (enforce the deck contract). See "Deck capability (frontend-slides)" and [deck contract](references/deck-contract.md).
 - **`vendor/frontend-slides/*`** - the vendored, hardened deck engine (MIT, (c) 2025 Zara Zhang); styles and CSS the deck inlines. Not edited directly; resynced via the dev-side playbook.
-- **`docs/*`** - the shipped tutorial (`docs/TUTORIAL.md`) and its screenshots (`docs/tutorial-images/`).
+- **`docs/*`** - the shipped tutorial (`docs/TUTORIAL.md`) and its screenshots (`docs/assets/`).
 - **`references/`** - detailed reference material moved out of this lean `SKILL.md`.
 
 See [File inventory](references/file-inventory.md) for script-by-script and doc-by-doc details.

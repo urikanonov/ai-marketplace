@@ -34,7 +34,7 @@ These rules are the ones most often forgotten. They are a MUST on every change, 
    discipline) so they are not relearned the hard way.
 5. **Edit the split source partials, never a monolith.** The commentable-html runtime and layer CSS live
    ONLY as numbered topic partials under `plugins/commentable-html/dev/assets/js/NN-topic.js` and
-   `dev/assets/css/NN-topic.css` (and the site CSS as `site-src/css/NN-topic.css`); `build.py` /
+   `dev/assets/css/NN-topic.css` (and the site CSS as `site/css/NN-topic.css`); `build.py` /
    `build_site_data.py` assemble each directory by directory sort - there is no order list in the build
    script to edit, so adding a partial is just adding a file. Edit the owning partial (see `MODULES.md`
    in each assets dir). NEVER recombine them into a `commentable-html.js`/`.css` monolith - a test
@@ -53,10 +53,13 @@ These rules are the ones most often forgotten. They are a MUST on every change, 
 plugins/
   <plugin>/pkg/               # shipped source: plugin.json + skills/ (+ hooks/ or .mcp.json)
   <plugin>/dev/               # development-only, NEVER distributed (tests, build tooling, sources, SPEC.md)
-site-src/                     # site SOURCE: page templates (pages/) and CSS partials (css/); edit these
-site/                         # GENERATED static GitHub Pages site (pure artifacts; DO NOT hand-edit)
-tests/site/                   # site Playwright suite + SPEC.md (the site's feature spec; not shipped)
-scripts/build_site_data.py          # regenerates site/ from sources; --check gates drift in CI
+site/                         # everything for the GitHub Pages site lives here:
+  pages/                      #   site SOURCE: page templates (hub, plugin, tutorial); edit these
+  css/                        #   site SOURCE: NN-topic.css partials assembled into the stylesheet
+  src/                        #   site SOURCE: hand-maintained static assets (site.js, logos, og-cover.png)
+  dist/                       #   GENERATED publishable site (the Pages deploy artifact; DO NOT hand-edit)
+  tests/                      #   site Playwright suite + SPEC.md (the site's feature spec; not shipped)
+scripts/build_site_data.py          # regenerates site/dist from site/{pages,css,src}; --check gates drift in CI
 scripts/validate_marketplace.py     # the validator CI runs; also run it locally
 scripts/validate_markdown.py        # Markdown hygiene validator CI runs; also run it locally
 .github/workflows/plugin-tests.yml  # runs each plugin's dev/ Playwright suite
@@ -132,7 +135,7 @@ automated test that covers it:
 
 - Each skill/plugin has one at `plugins/<plugin>/dev/SPEC.md` (for example
   `plugins/commentable-html/dev/SPEC.md`).
-- The GitHub Pages site has one at `tests/site/SPEC.md`.
+- The GitHub Pages site has one at `site/tests/SPEC.md`.
 
 The spec is the source of truth for what the surface promises, and every row must name a covering
 test. The rule is simple and non-negotiable:
@@ -187,7 +190,7 @@ Worktrees remove filesystem collisions, but two PRs are only truly parallel-safe
 HAND-EDITED (non-generated) source files are DISJOINT. Plan the split by file ownership, not by
 topic, and sequence the rest. The rules that let this repo run many PRs at once without merge pain:
 
-- Partition by hand-edited file set. New files (a new example report, a new test, a new `site-src/`
+- Partition by hand-edited file set. New files (a new example report, a new test, a new `site/css/`
   partial) never collide. Two PRs that touch different source files are fully parallel; merge order
   does not matter for them.
 - A single contended file edited in DIFFERENT regions is still parallel-safe: two PRs that both edit
@@ -242,32 +245,32 @@ and nothing failed - CI stayed green because the clobbered file was still valid.
 
 **The site pages are now structurally protected (do not reintroduce the hole).** The hub, plugin, and
 tutorial pages under `site/**` are PURE build artifacts: their hand-edited source lives under
-`site-src/pages/` and `build_site_data.py` assembles the committed page from it, stamping a
+`site/pages/` and `build_site_data.py` assembles the committed page from it, stamping a
 `GENERATED FILE - DO NOT EDIT` banner that names the source. Because the source is independent of the
 artifact, the required `site` job's `--check` (which runs on the PR merged into `main`) compares the WHOLE
 built page - not just its marker regions - to the committed file. So a hand-edit to a built site page, or a
 stale copy of it committed by a concurrent PR, now FAILS `--check` instead of silently landing (this is the
-#34 class, structurally closed for the site). Edit the source under `site-src/pages/` or `site-src/css/`,
+#34 class, structurally closed for the site). Edit the source under `site/pages/` or `site/css/`,
 then run `python scripts/build_site_data.py`; never hand-edit a file under `site/`, and never move the page
 source back into `site/` (that would re-open the self-sourced hole).
 
 **Never hand-edit a generated artifact.** Any file that carries a `DO NOT EDIT` banner - the `site/**`
-pages, `site/assets/styles.css`, and every `pkg/**/dist/**` bundle - is rebuilt from a named source and
+pages, `site/dist/assets/styles.css`, and every `pkg/**/dist/**` bundle - is rebuilt from a named source and
 gated by a `--check` (`site` for the site, `dist-in-sync` / `build.py --check` for the layer). Edit the
 named source and rebuild; a hand-edit to the artifact fails CI. That banner-plus-`--check` pairing is what
 turns the clobber classes below from SILENT into DETECTED. Note the carve-out: not everything under
-`site/**` is generated. The static assets under `site/assets/` that carry NO banner - `site.js`, the SVG
+`site/**` is generated. The static assets under `site/src/` that carry NO banner - `site.js`, the SVG
 logo, the favicon - are HAND-MAINTAINED SOURCES (the generator only content-hashes `site.js` to cache-bust
 it; it never rewrites it). Edit those directly and resolve conflicts on them as source files; do NOT try to
 "rebuild" them.
 
 The self-sourced surface is now closed for the example reports too: each `examples/report-*.html` is a
-pure build artifact assembled from an INDEPENDENT content source at `dev/examples-src/report-*.html`, so
+pure build artifact assembled from an INDEPENDENT content source at `dev/examples/src/report-*.html`, so
 `--check` compares the shipped file to a fresh assembly and catches a stale or hand-edited copy of its
-CONTENT (edit demo content in `dev/examples-src/`, never in the shipped `pkg/**/examples/` file).
-`pkg/**/dist/**` bundles, generated fixtures, the `site/**` pages, `styles.css`, and the example reports are
+CONTENT (edit demo content in `dev/examples/src/`, never in the shipped `pkg/**/examples/` file).
+`pkg/**/dist/**` bundles, generated fixtures, the `site/dist/**` pages, `styles.css`, and the example reports are
 therefore all pure artifacts with an independent source and a `--check`, so a stale copy of them fails CI
-(the hand-maintained `site/assets/` static files above are the exception - they are sources, not artifacts) -
+(the hand-maintained `site/src/` static files above are the exception - they are sources, not artifacts) -
 but still treat any file that more than one in-flight PR touches as CONTENDED and REBUILD rather than
 hand-merge.
 
@@ -297,8 +300,8 @@ file a concurrent PR also touched.
 
 **Hand-edited SOURCE files have no `--check` backstop - the survival check IS their gate (finding 4.8).**
 Generated artifacts are all guarded (a `DO NOT EDIT` banner plus a `--check`), but the hand-edited SOURCES
-they are built from are not: `site-src/pages/**` and `site-src/css/**`, the runtime and CSS partials under
-`plugins/commentable-html/dev/assets/js/**` and `dev/assets/css/**`, and the static `site/assets/` files
+they are built from are not: `site/pages/**` and `site/css/**`, the runtime and CSS partials under
+`plugins/commentable-html/dev/assets/js/**` and `dev/assets/css/**`, and the static `site/src/` files
 (`site.js`, the logo, the favicon). Git cannot follow lines that a WHOLE-FILE reorganization moved, so a
 3-way merge can silently drop a concurrent PR's edit to one of these with no conflict and green CI - the #34
 mechanism, now scoped to source. No single-PR CI check can detect this, so the PROCESS is the gate: keep the
@@ -319,12 +322,12 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
 1. **Bump `dev/VERSION`**: write the next semver (e.g. `1.4.0` -> `1.5.0`) and mark it resolved.
 2. **Resolve `CHANGELOG.md`**: keep main's released `[x.y.z]` section intact; rename your section
    to the new version number and place it above the previously-released heading.
-3. **Resolve HAND-EDITED source files you own** (runtime `assets/*.js` and `.css`, `site-src/**` page
+3. **Resolve HAND-EDITED source files you own** (runtime `assets/*.js` and `.css`, `site/pages/**` and `site/css/**` page
    templates and CSS partials, tests, `SPEC.md`, `SKILL.md`): take YOUR version. During a REBASE the sides
    are inverted, so yours is `--theirs`: `git checkout --theirs -- <file>` (`--ours` is `origin/main`). For a
    genuine content conflict inside such a file, merge the two edits by hand.
-4. **Do NOT hand-merge GENERATED artifacts** (`pkg/**/dist/**`, the generated `site/**` pages plus
-   `site/assets/styles.css`, `manifest.json`, the asset registry, generated fixtures,
+4. **Do NOT hand-merge GENERATED artifacts** (`pkg/**/dist/**`, the generated `site/dist/**` pages plus
+   `site/dist/assets/styles.css`, `manifest.json`, the asset registry, generated fixtures,
    `examples/report-*.html`, `plugin.json`, and the `marketplace.json` version field): take MAIN's clean copy
    FIRST so the file carries no conflict markers - during a rebase that is `--ours`:
    `git checkout --ours -- <files>` - then REBUILD so your change is re-stamped on top of what landed in
@@ -336,7 +339,7 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
    ```
    `git add` the rebuilt files. Never pick `--theirs` (your stale artifact) or `--ours` alone (main's
    artifact without your change) for a generated file - the only correct resolution is to REBUILD. EXCEPTION:
-   the hand-maintained `site/assets/` static sources (`site.js`, the SVG logo, the favicon) are NOT generated
+   the hand-maintained `site/src/` static sources (`site.js`, the SVG logo, the favicon) are NOT generated
    - a rebuild will not reproduce another branch's edits to them, so resolve them like the source files in
    step 3 (take/merge the edited version), not by rebuilding.
 5. `git add` all resolved and regenerated files, then `git rebase --continue`.
@@ -466,7 +469,7 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
 - Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature
   must also update the owning spec and a covering test. This applies to site additions too - a change
   to the site pages, its assets, or its generator (`site/**`, `scripts/build_site_data.py`) must
-  update `tests/site/SPEC.md` and its Playwright suite / generator unit tests. The required `site`
+  update `site/tests/SPEC.md` and its Playwright suite / generator unit tests. The required `site`
   check runs the site suite and `build_site_data.py --check`, and `plugin-tests` runs the plugin
   suites, so a new behavior that lacks a passing spec-named test does not merge.
 
@@ -576,10 +579,10 @@ request description), not in `.plans/`.
   `CHANGELOG.md`, and run the validator and the plugin's test suite.
 - Add a skill to an existing collection plugin: create `plugins/<plugin>/skills/<skill>/SKILL.md`, register it
   in `marketplace.json`, bump versions per the rules, update the plugin's `CHANGELOG.md`, run the validator.
-- Add or change a site behavior: edit the SOURCE under `site-src/pages/` (hub, plugin, tutorial page
-  templates) or `site-src/css/` (or the generator `scripts/build_site_data.py`) - never hand-edit the built
-  pages under `site/`, which carry a `DO NOT EDIT` banner. Add a feature-id row to `tests/site/SPEC.md`
-  naming a covering test, add that test under `tests/site/tests/` (browser) or
+- Add or change a site behavior: edit the SOURCE under `site/pages/` (hub, plugin, tutorial page
+  templates) or `site/css/` (or the generator `scripts/build_site_data.py`) - never hand-edit the built
+  pages under `site/`, which carry a `DO NOT EDIT` banner. Add a feature-id row to `site/tests/SPEC.md`
+  naming a covering test, add that test under `site/tests/tests/` (browser) or
   `scripts/test_build_site_data.py` (generator), then regenerate with `python scripts/build_site_data.py`
   and confirm `--check` is clean.
 - Fix the auto-updater: edit `hooks/marketplace-update.ps1`, keep it non-blocking and 5.1-safe, bump the plugin
