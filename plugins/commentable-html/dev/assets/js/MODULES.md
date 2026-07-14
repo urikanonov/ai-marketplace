@@ -34,6 +34,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `41-selection.js` | CMH-SEL, CMH-CORE | Selection handling and the add-comment popup. |
 | `45-composer.js` | CMH-A11Y, CMH-CORE | Per-instance comment composer (parallel-safe). |
 | `50-sidebar.js` | CMH-SIDE | Sidebar rendering. |
+| `51-comment-search.js` | CMH-SEARCH | Comment search / filter row: case-insensitive filter of the rendered cards, shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
