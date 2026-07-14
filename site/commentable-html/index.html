@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.36.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.37.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -325,12 +325,25 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.37.0] - 2026-07-14</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The diff-line Add Comment hover button (<code>#diffAddBtn</code>) is now vertically centered on the hovered row, so moving the pointer to click no longer jumps to the line above.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Commentable code blocks, including KQL query blocks, now show per-line numbers in a <code>.cmh-code-gutter</code> overlay via CSS-generated counters. The numbers are visible in the UI but excluded from text selection and clipboard output, including each block&#x27;s Copy button.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.36.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The <code>cmh</code> shorthand now discovers the skill: it is a <code>plugin.json</code> and marketplace keyword, and the <code>SKILL.md</code> front-matter discovery description ends with an explicit <code>Also triggers on the shorthand cmh.</code> clause, so typing <code>cmh</code> auto-triggers the skill and matches it in marketplace search.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.35.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -344,8 +357,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The runtime footer no longer spans wider than the content column. Its box now aligns to the <code>#commentRoot</code> content width in both the normal and the sidebar-open layout.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.34.0] - 2026-07-13</h3></div>
             <div class="group-label">Changed</div>
@@ -396,24 +407,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>In the sidebar&#x27;s narrow layout the export buttons now pack two per row (Portable | Offline, then Markdown | Plain HTML) instead of one full-width button per row, so the actions take less vertical space and are quicker to scan. The Clear button keeps its own full-width row so the destructive action stays visually apart.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.30.0] - 2026-07-13</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Hardening pass from a multi-model audit of the day&#x27;s merged changes. Six latent robustness and correctness defects are fixed, each covered by a test that reproduces the defect before the fix. No shipped example, template, or fixture changed behavior; they all still validate clean.</li>
-              <li><code>tools/validate.py</code> KQL run-link rule (<code>CMH-KQL-07</code>) now treats a framed <code>figure.cmh-kql</code> whose <code>cmh-kql-run</code> link points anywhere other than <code>https://dataexplorer.azure.com/</code> as a hard error instead of a warning. The href is HTML-entity decoded and URL-parsed (not substring-matched), so a <code>javascript:</code>, <code>data:</code>, non-ADX, or look-alike-host link fails validation. The &quot;has a run link&quot; check now looks for a real <code>&lt;a&gt;</code> element carrying the <code>cmh-kql-run</code> class token, so a figure whose query text merely mentions <code>cmh-kql-run</code> no longer passes as if it had a link. A bare <code>&lt;pre&gt;</code> KQL block stays exempt.</li>
-              <li><code>tools/validate.py</code> transient-body-class guard (<code>CMH-VAL-10</code>) now inspects the REAL parsed <code>&lt;body&gt;</code> element instead of the first raw <code>&lt;body ...&gt;</code> token in the file, so a decoy <code>&lt;body class=&quot;sidebar-open&quot;&gt;</code> inside a <code>&lt;head&gt;</code> script or comment can no longer hide a dirty real body or trigger a false positive.</li>
-              <li><code>tools/validate.py</code> report/plan title rule (<code>CMH-KIND-01</code>) now requires a TOP-LEVEL <code>&lt;h1&gt;</code> (a direct child of <code>#commentRoot</code>, or a lede-wrapped <code>&lt;header class=&quot;cmh-lede&quot;&gt;&lt;h1&gt;</code>), matching <code>new_document.py</code>. An <code>&lt;h1&gt;</code> nested only inside a deeper <code>&lt;section&gt;</code> no longer satisfies the rule.</li>
-              <li><code>assets/commentable-html.js</code> document-comment context menu (<code>CMH-DOCCMT-02</code>) no longer vanishes on a macOS-style Ctrl-click: the <code>mouseup</code> cleanup is suppressed for any context-menu gesture (<code>button === 2 || ctrlKey</code>), not right-click alone.</li>
-              <li><code>assets/commentable-html.js</code> export body-class normalizer (<code>CMH-EXP-09</code>) now operates only on the first <code>&lt;body&gt;</code> open tag, handles double-quoted, single-quoted, and unquoted class values, matches whole class tokens (a superstring like <code>x-sidebar-open</code> is preserved), and removes an emptied class attribute, so it can no longer mutate a <code>&lt;body class=...&gt;</code> literal that appears later in page content or a script.</li>
-              <li><code>tools/upgrade.py</code> and <code>tools/retrofit.py</code> kind-meta handling (<code>CMH-KIND-02</code>, <code>CMH-KIND-03</code>) now detect an existing <code>commentable-html-kind</code> meta by parsing head metadata order-independently (including a non-canonical <code>content</code>/<code>name</code> attribute order). <code>upgrade.py</code> no longer appends a duplicate meta to a document that already declares a kind, and <code>retrofit.py --kind</code> replaces an existing kind meta in place instead of appending a second one.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>references/validation.md</code> error list now documents the mandatory/unknown <code>commentable-html-kind</code> meta (with the report/plan top-level <code>&lt;h1&gt;</code> sub-rule) and the transient body-state class guard, matching the authoritative error list <code>SKILL.md</code> points to.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">39 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">40 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

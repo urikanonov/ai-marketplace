@@ -74,3 +74,30 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
    the content width like the framed chart/KQL figures do. */
 #commentRoot figure { margin: 1.25rem 0; }
 
+/* Per-line code numbers are generated in an absolute cm-skip gutter, so they stay
+   visible but never enter text selection, copy payloads, or offset anchoring. */
+#commentRoot .cmh-code-wrap pre.cmh-code-lined,
+#commentRoot .cmh-code-wrap pre code.cmh-code-lined {
+  position: relative;
+  counter-reset: cmh-code-line;
+  padding-left: 3.4em;
+}
+#commentRoot .cmh-code-wrap pre code.cmh-code-lined { display: block; }
+#commentRoot .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter {
+  position: absolute; left: 0; top: 0;
+  width: 2.6em; text-align: right; pointer-events: none;
+  line-height: inherit;
+}
+#commentRoot .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  counter-increment: cmh-code-line;
+}
+#commentRoot .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line::before {
+  content: counter(cmh-code-line);
+  display: block;
+  color: var(--cp-text-soft);
+  opacity: 0.82;
+  font-variant-numeric: tabular-nums;
+}

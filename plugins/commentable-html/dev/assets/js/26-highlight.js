@@ -496,10 +496,10 @@ function positionDiffAdd(el) {
   const btnH = diffAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
   const left = visible.right - btnW;
-  let top = visible.top - btnH - 2;
-  if (top < bounds.top) top = visible.bottom + 2;
+  const lineCenter = rect.top + ((rect.bottom - rect.top) / 2);
+  const top = lineCenter - (btnH / 2);
   diffAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
-  diffAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
+  diffAddBtn.style.top = top + "px";
   return true;
 }
 function showDiffAddFor(el, info) {
@@ -603,6 +603,43 @@ function diffLineLocator(c) {
   if (c.lineType === "del") return "-" + (c.oldNo != null ? c.oldNo : "?");
   return "line " + (c.newNo != null ? c.newNo : (c.oldNo != null ? c.oldNo : "?"));
 }
+function isNumberedCodeBlock(pre) {
+  if (!pre || pre.tagName !== "PRE" || !root.contains(pre)) return false;
+  if (typeof isCommentableCodeBlock === "function") return isCommentableCodeBlock(pre);
+  return !pre.classList.contains("mermaid") && !pre.classList.contains("cmh-diff")
+    && !pre.closest(".cm-skip")
+    && !pre.closest(".cmh-diff") && !pre.closest(".cmh-diff-host");
+}
+function ensureCodeLineGutter(target, extraClass) {
+  if (!target || target.dataset.cmhLineNumbers === "1") return;
+  const lines = String(target.textContent || "").replace(/\r\n?/g, "\n").split("\n");
+  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  const gutter = document.createElement("span");
+  gutter.className = "cmh-code-gutter cm-skip";
+  gutter.setAttribute("aria-hidden", "true");
+  const count = Math.max(1, lines.length);
+  const lh = parseFloat(getComputedStyle(target).lineHeight) || 20;
+  gutter.style.height = (count * lh) + "px";
+  for (let i = 0; i < count; i++) {
+    const line = document.createElement("span");
+    line.className = "cmh-code-line" + (extraClass ? (" " + extraClass) : "");
+    line.style.top = (i * lh) + "px";
+    line.style.height = lh + "px";
+    gutter.appendChild(line);
+  }
+  target.classList.add("cmh-code-lined");
+  target.dataset.cmhLineNumbers = "1";
+  target.insertBefore(gutter, target.firstChild);
+}
+function setupCodeLineNumbers() {
+  root.querySelectorAll("pre").forEach((pre) => {
+    if (!isNumberedCodeBlock(pre)) return;
+    const code = pre.querySelector("code");
+    const target = code || pre;
+    const isKql = !!pre.closest("figure.cmh-kql");
+    ensureCodeLineGutter(target, isKql ? "cmh-kql-line" : "");
+  });
+}
 function setupDiffLayer() {
   diffBlocks.length = 0;
   const hosts = root.querySelectorAll("pre.cmh-diff, div.cmh-diff");
@@ -636,5 +673,5 @@ function setupDiffLayer() {
     renderDiffBlock(block);
     applyDiffHighlightsForIndex(i);
   });
+  setupCodeLineNumbers();
 }
-
