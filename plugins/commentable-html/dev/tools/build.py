@@ -69,15 +69,15 @@ DIST = os.path.join(HERE, "dist")
 # dist/ can leave them stale. build.py --check --check-fixtures runs the fixtures'
 # own generate.mjs --check so the single dist gate also owns fixture freshness.
 FIXTURES_GEN = os.path.join(HERE, "tests", "fixtures", "generate.mjs")
-# Independent CONTENT source for the shipped examples. Each dev/examples-src/report-*.html or
-# dev/examples-src/deck-*.html is the source of truth for a demo's own content (and handled/
+# Independent CONTENT source for the shipped examples. Each dev/examples/src/report-*.html or
+# dev/examples/src/deck-*.html is the source of truth for a demo's own content (and handled/
 # embedded-comment data); build.py assembles the shipped pkg examples/<same-name>.html from it by
 # swapping in the current layer and re-stamping the version. Because the shipped example is a pure
 # artifact of this source (not of itself), --check compares it to a fresh assembly and CATCHES a
 # hand-edit or a stale/clobbered committed example - closing the self-sourced hole that the site
 # pages had before #91. The layer regions inside a source file are ignored (build.py overwrites
 # them), kept only so the source is itself a valid, openable commentable-html document.
-EXAMPLES_SRC = os.path.join(HERE, "examples-src")
+EXAMPLES_SRC = os.path.join(HERE, "examples", "src")
 
 
 # --------------------------------------------------------------------------- #
@@ -603,7 +603,7 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
 
 def build_examples(portable_html, version, mermaid_version, out_dir):
     """Regenerate every shipped examples/report-*.html and examples/deck-*.html under out_dir
-    from its INDEPENDENT content source in dev/examples-src/ (not from the shipped file itself).
+    from its INDEPENDENT content source in dev/examples/src/ (not from the shipped file itself).
     Returns {out_path: text}. An absent out_dir/examples directory (e.g. a temp-dir build) or an
     absent source dir yields no entries. Assembling from an independent source is what lets
     --check catch a stale or hand-edited shipped example instead of comparing it to itself."""
@@ -621,7 +621,7 @@ def build_examples(portable_html, version, mermaid_version, out_dir):
 
 
 def _orphan_examples(out_dir):
-    """Shipped examples/report-*.html or examples/deck-*.html that have NO dev/examples-src source.
+    """Shipped examples/report-*.html or examples/deck-*.html that have NO dev/examples/src source.
     build_examples only assembles examples that have a source, so an orphan shipped example would
     otherwise be a pure artifact validated against nothing (the exact self-sourced hole this split
     closed). --check reports it so it cannot drift undetected; the fix is to add its source or
@@ -731,7 +731,7 @@ def main(argv):
             drift.append(os.path.join("dist", name) + " (stale - not produced by the current build; delete it)")
         for name in _orphan_examples(out_dir):
             drift.append(os.path.join("examples", name)
-                         + " (orphaned - no dev/examples-src source; add its source or delete it)")
+                         + " (orphaned - no dev/examples/src source; add its source or delete it)")
         for path in legacy:
             drift.append(os.path.relpath(path, out_dir) + " (legacy generated file - delete it)")
         if drift:

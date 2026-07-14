@@ -1,6 +1,6 @@
 """CMH-DECK-EXAMPLE-01: the shipped deck example (examples/deck-roadmap.html) is a valid
 commentable-html deck (kind=slides, `data-cmh-mode="deck"`, unique slide ids, no remote
-egress) AND rebuilds byte-identically from its independent source in dev/examples-src/.
+egress) AND rebuilds byte-identically from its independent source in dev/examples/src/.
 
 The byte-identical rebuild is the guard against a hand-edit or a stale/clobbered committed
 copy of the shipped deck, mirroring the report-example self-source contract in
@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 SKILL = _paths.PKG
 DECK = os.path.join(SKILL, "examples", "deck-roadmap.html")
-DECK_SRC = os.path.join(_paths.DEV, "examples-src", "deck-roadmap.html")
+DECK_SRC = os.path.join(_paths.DEV, "examples", "src", "deck-roadmap.html")
 DECK_PROMPT = os.path.join(SKILL, "examples", "prompt-roadmap.md")
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 DECK_VALIDATE = os.path.join(SKILL, "deck", "deck_validate.py")
@@ -76,7 +76,7 @@ class DeckExampleTests(unittest.TestCase):
                          "deck example data-doc-source does not match the shipped filename")
 
     def test_build_check_flags_a_hand_edit_to_the_deck_content(self):
-        # The shipped deck is a pure artifact of its independent source in dev/examples-src/;
+        # The shipped deck is a pure artifact of its independent source in dev/examples/src/;
         # --check must catch a hand-edit inside the CONTENT region.
         with tempfile.TemporaryDirectory() as d:
             assets = os.path.join(d, "assets")
@@ -99,7 +99,7 @@ class DeckExampleTests(unittest.TestCase):
             self.assertIn("deck-roadmap.html", r.stdout + r.stderr)
 
     def test_build_check_flags_an_orphaned_deck_with_no_source(self):
-        # A shipped deck-*.html with no dev/examples-src source is a pure artifact validated
+        # A shipped deck-*.html with no dev/examples/src source is a pure artifact validated
         # against nothing; --check must flag it as orphaned (regressed if _EXAMPLE_NAME_RE
         # drops deck- support).
         with tempfile.TemporaryDirectory() as d:

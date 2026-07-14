@@ -17,8 +17,7 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `tools/` | Runtime Python helpers that ship with the skill. |
 | `references/` | Detailed generated-report references. |
 | `docs/TUTORIAL.md` | Tutorial using `examples/report-community-garden.html`. |
-| `docs/tutorial-images/` | Tutorial screenshots. |
-| `docs/images/review-loop.svg` | Review-loop diagram embedded in the plugin README. |
+| `docs/assets/` | Tutorial screenshots and the review-loop diagram (the diagram is embedded in the plugin README). |
 | `examples/prompt-community-garden.md` | Prompt for the community garden example. |
 | `examples/prompt-taxi.md` | Prompt for the NYC taxi example. |
 | `examples/prompt-triage.md` | Prompt for the incident triage board example. |

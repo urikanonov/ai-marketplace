@@ -206,13 +206,13 @@ class TestLockfileDiff(unittest.TestCase):
                 d = os.path.join(root, "plugins", name, "dev")
                 os.makedirs(d)
                 open(os.path.join(d, "package-lock.json"), "wb").close()
-            os.makedirs(os.path.join(root, "tests", "site"))
-            open(os.path.join(root, "tests", "site", "package-lock.json"), "wb").close()
+            os.makedirs(os.path.join(root, "site", "tests"))
+            open(os.path.join(root, "site", "tests", "package-lock.json"), "wb").close()
 
             result = cdc.discover_lockfiles(root)
             expected = tuple(sorted(
                 ["plugins/%s/dev/package-lock.json" % n for n in names]
-                + ["tests/site/package-lock.json"]
+                + ["site/tests/package-lock.json"]
             ))
             self.assertEqual(result, expected)
             self.assertEqual(list(result), sorted(result))

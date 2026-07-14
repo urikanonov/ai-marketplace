@@ -88,10 +88,10 @@ fi
 # there; running them locally is available with RUN_E2E=1 for a full pre-push.
 if [ "${RUN_E2E:-0}" = "1" ]; then
   if command -v node >/dev/null 2>&1; then
-    # tests/site plus every plugin dev suite, discovered the way the plugin-tests CI
+    # site/tests plus every plugin dev suite, discovered the way the plugin-tests CI
     # `discover` job does (plugins/*/dev/package.json), so a new plugin suite is picked
     # up automatically instead of silently skipped.
-    suites="tests/site"
+    suites="site/tests"
     for _pkg in plugins/*/dev/package.json; do
       [ -f "$_pkg" ] && suites="$suites ${_pkg%/package.json}"
     done

@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.48.0" />
-<meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.48.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
-<title>NYC Taxi 2014 Report</title>
+<meta name="commentable-html-version" content="1.49.0" />
+<meta name="commentable-html-kind" content="plan" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.49.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<title>Planning a Community Garden</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
 <script>
@@ -1466,272 +1466,327 @@ body.cmh-deck-present #menuComment {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="nyc-taxi-2014-report" data-doc-label="NYC Taxi 2014 Report" data-doc-source="report-taxi.html" data-generated="2014-12-31">
+<main data-cmh-content-root id="commentRoot" data-comment-key="community-garden-plan" data-doc-label="Community Garden Plan" data-doc-source="report-community-garden.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
-  <h1>NYC Yellow Taxi - 2014 Operations Status Report</h1>
-  <p>This report reviews the full year of New York City yellow taxi trips for 2014, a public dataset of 165,114,361 completed rides hosted on the Kusto help cluster. It is built as a commentable review surface: reviewers can select any paragraph, table cell, KQL block, chart, diagram, or code diff and leave inline notes, whether or not the CDN is reachable. Every figure below comes from a real query you can open in Azure Data Explorer.</p>
+  <h1>Planning a Community Garden</h1>
+  <p>This standalone plan is designed as a friendly review surface for every major commentable-html feature. Use the table of contents to jump through the plan, then try comments on prose, tables, KQL, a chart caption, images, Mermaid nodes, and a code diff.</p>
 
   <nav class="cm-toc" aria-label="Table of contents">
     <div class="cm-toc-title">Contents</div>
     <ol>
-      <li><a href="#executive-summary">Executive Summary</a></li>
-      <li><a href="#monthly">Monthly Volume and Revenue</a></li>
-      <li><a href="#fares">Fares and Trip Distance</a></li>
-      <li><a href="#payment">Payment Mix and Tipping</a></li>
-      <li><a href="#passenger">Passenger Occupancy</a></li>
-      <li><a href="#demand">Demand by Hour of Day</a></li>
-      <li><a href="#data-quality">Data Quality Notes</a></li>
-      <li><a href="#recommendations">Recommendations and Next Steps</a></li>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#goals">Goals &amp; Success Criteria</a></li>
+      <li><a href="#site-selection">Site Selection</a></li>
+      <li><a href="#garden-layout">Garden Layout</a></li>
+      <li><a href="#planting-schedule">Planting Schedule</a></li>
+      <li><a href="#budget">Budget</a></li>
+      <li><a href="#timeline">Timeline &amp; Milestones</a></li>
+      <li><a href="#risks">Risks &amp; Mitigations</a></li>
+      <li><a href="#next-steps">Next Steps</a></li>
     </ol>
   </nav>
 
-  <section aria-labelledby="executive-summary">
-    <h2 id="executive-summary">Executive Summary</h2>
-    <p>Yellow taxis carried just over 165 million passengers in 2014 and produced about 2.5 billion dollars in metered revenue. Demand was steady across the year, with a clear March peak and a February low, and it concentrated heavily into the evening hours. Solo riders dominated every month, and card payments made up a growing majority of trips.</p>
-    <p>The headline numbers for the year are summarized below. Sort any column to reorder the table.</p>
-    <table>
-      <thead><tr><th scope="col">Metric</th><th scope="col">2014 value</th><th scope="col">Status</th></tr></thead>
-      <tbody>
-      <tr><td>Total trips</td><td>165,114,361</td><td><span class="badge ok">Complete year</span></td></tr>
-      <tr><td>Total revenue</td><td>$2,518,407,976</td><td><span class="badge ok">Complete year</span></td></tr>
-      <tr><td>Average fare</td><td>$12.70</td><td><span class="badge ok">Stable</span></td></tr>
-      <tr><td>Average trip distance</td><td>3.1 miles</td><td><span class="badge ok">Stable</span></td></tr>
-      <tr><td>Solo rider share</td><td>70.4%</td><td><span class="badge warn">Concentrated</span></td></tr>
-      <tr><td>Card tip rate</td><td>20.3%</td><td><span class="badge ok">Healthy</span></td></tr>
-      <tr><td>Cash tip capture</td><td>0% recorded</td><td><span class="badge danger">Data gap</span></td></tr>
-      </tbody>
-    </table>
-    <p>Two findings deserve early attention: cash tips are not recorded in this dataset, so any blended tip rate understates reality, and demand is so evening-heavy that supply planning should focus on the 18:00 to 22:00 window.</p>
-  </section>
-
-  <section aria-labelledby="monthly">
-    <h2 id="monthly">Monthly Volume and Revenue</h2>
-    <p>Monthly volume stayed within a fairly narrow band. March was the busiest month at 15.4 million trips, while February was the quietest at 13.1 million, partly a function of its shorter length and winter weather. Revenue tracked volume closely and stayed between 190 and 231 million dollars every month.</p>
-    <table>
-      <thead><tr><th scope="col">Month</th><th scope="col">Trips</th><th scope="col">Revenue (USD)</th><th scope="col">Avg fare</th><th scope="col">Avg distance (mi)</th></tr></thead>
-      <tbody>
-      <tr><th scope="row">January</th><td>13,782,492</td><td>$199,360,362</td><td>$11.98</td><td>2.79</td></tr>
-      <tr><th scope="row">February</th><td>13,063,791</td><td>$190,730,205</td><td>$12.08</td><td>2.78</td></tr>
-      <tr><th scope="row">March</th><td>15,428,127</td><td>$227,746,750</td><td>$12.22</td><td>3.81</td></tr>
-      <tr><th scope="row">April</th><td>14,618,759</td><td>$219,988,691</td><td>$12.48</td><td>2.91</td></tr>
-      <tr><th scope="row">May</th><td>14,774,041</td><td>$230,890,979</td><td>$12.99</td><td>3.03</td></tr>
-      <tr><th scope="row">June</th><td>13,813,029</td><td>$216,063,908</td><td>$12.98</td><td>4.74</td></tr>
-      <tr><th scope="row">July</th><td>13,106,365</td><td>$200,372,799</td><td>$12.69</td><td>3.00</td></tr>
-      <tr><th scope="row">August</th><td>12,688,877</td><td>$195,744,214</td><td>$12.83</td><td>3.06</td></tr>
-      <tr><th scope="row">September</th><td>13,374,016</td><td>$209,532,242</td><td>$12.99</td><td>2.99</td></tr>
-      <tr><th scope="row">October</th><td>14,232,487</td><td>$221,789,365</td><td>$12.90</td><td>2.97</td></tr>
-      <tr><th scope="row">November</th><td>13,218,216</td><td>$204,041,384</td><td>$12.81</td><td>2.92</td></tr>
-      <tr><th scope="row">December</th><td>13,014,161</td><td>$202,147,077</td><td>$12.88</td><td>2.93</td></tr>
-      </tbody>
-    </table>
-    <figure class="chart" aria-labelledby="taxi-chart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-        <canvas id="taxiMonthlyChart" role="img" aria-label="Bar chart of monthly NYC yellow taxi trips in millions for 2014, from January through December."></canvas>
-      </div>
-      <figcaption id="taxi-chart-caption">Monthly yellow taxi trips in 2014 (millions). March is the busiest month and February the quietest.</figcaption>
-    </figure>
-    <p>The query behind the table and chart aggregates every trip into calendar months and rounds the revenue and averages for reporting. Open it in Kusto to reproduce the numbers directly.</p>
-<figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F2XPPQ%2BCQAwG4J1f0fFIGIy7g4lxczHupBwFL3p3pNcjYvzxFhb86Na%2BfZI2TLYWfLjiBSl7j%2ByeBBd2Q4Id2JiDmLIq4KPONFLIpDFr3BplRqLgvUY%2F75cVbH7IfuyPyCvBsTedDlax%2FRcHl%2BRLiF5VtzrFYGkxC2kmOMUgV93ViCV2fm7N4OwtK0AhcZ5K%2FTByS7wCTPYNi%2BqSVf8AAAA%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
-<pre><code class="language-kusto">nyc_taxi
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Trips <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span>
-            Revenue <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span><span class="cmh-kql-fn">sum</span><span class="cmh-kql-op">(</span>total_amount<span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-num">0</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span>
-            AvgFare <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span><span class="cmh-kql-fn">avg</span><span class="cmh-kql-op">(</span>fare_amount<span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-num">2</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span>
-            AvgDist <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span><span class="cmh-kql-fn">avg</span><span class="cmh-kql-op">(</span>trip_distance<span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-num">2</span><span class="cmh-kql-op">)</span>
-    <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">startofmonth</span><span class="cmh-kql-op">(</span>pickup_datetime<span class="cmh-kql-op">)</span>
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-kw">asc</span></code></pre>
-</figure>
-  </section>
-
-  <section aria-labelledby="fares">
-    <h2 id="fares">Fares and Trip Distance</h2>
-    <p>The average fare drifted upward through the year, from $11.98 in January to a plateau near $12.90 in the second half. That drift is modest and consistent with a mid-year rate adjustment rather than a change in trip mix.</p>
-    <p>Average trip distance tells a more interesting story. Most months sit near 2.8 to 3.1 miles, but June stands out at 4.74 miles, well above every other month. This is a strong outlier worth investigating: it may reflect a batch of long airport or out-of-town trips, a GPS or meter data issue, or a handful of extreme trip_distance values dragging the mean up. March is also slightly elevated at 3.81 miles.</p>
-    <p>The focused query below returns just the monthly average fare and average distance, which is the pair used to spot the June anomaly.</p>
-<figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F1XOMQ7CMAwF0L2n8JhIndgZkBAbZ4hM4hYLJakct2oRh8d0Abz9bz%2FJZYtBceXuBW3OGYWfBKdlvKAQHEHqXJLDZXSDFQGzZfU9HHzfwc%2BYOHPTP6HCU0jWYom0m53cNrjWone7tZVoHfInuonjYzaASsqZvH1UJZF8Abb4BqP4P%2BGvAAAA" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
-<pre><code class="language-kusto">nyc_taxi
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> AvgFare <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span><span class="cmh-kql-fn">avg</span><span class="cmh-kql-op">(</span>fare_amount<span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-num">2</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span>
-            AvgDist <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span><span class="cmh-kql-fn">avg</span><span class="cmh-kql-op">(</span>trip_distance<span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-num">2</span><span class="cmh-kql-op">)</span>
-    <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">startofmonth</span><span class="cmh-kql-op">(</span>pickup_datetime<span class="cmh-kql-op">)</span>
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-kw">asc</span></code></pre>
-</figure>
-    <figure class="chart" aria-labelledby="taxiFareChart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-        <canvas id="taxiFareChart" role="img" aria-label="Line chart of monthly average fare in dollars and monthly average trip distance in miles for 2014, showing a pronounced June distance spike."></canvas>
-      </div>
-      <figcaption id="taxiFareChart-caption">Average fare drifts up steadily through the year, while average trip distance holds near 3 miles apart from a March uptick and a sharp June spike to 4.74 miles.</figcaption>
-    </figure>
-    <p>A useful next check is to recompute the June average with a distance cap (for example, dropping trips over 100 miles) to see how much of the spike is driven by a small number of extreme rows.</p>
-  </section>
-
-  <section aria-labelledby="payment">
-    <h2 id="payment">Payment Mix and Tipping</h2>
-    <p>Card payments accounted for 95.6 million trips, comfortably ahead of the 68.2 million cash trips. The remaining codes (unknown, no charge, and disputed) are a small tail of under 1.4 million trips combined.</p>
-    <table>
-      <thead><tr><th scope="col">Payment type</th><th scope="col">Trips</th><th scope="col">Avg tip % on fare</th></tr></thead>
-      <tbody>
-      <tr><th scope="row">CRD (card)</th><td>95,571,321</td><td>20.33%</td></tr>
-      <tr><th scope="row">CSH (cash)</th><td>68,167,680</td><td>0.00%</td></tr>
-      <tr><th scope="row">UNK (unknown)</th><td>795,761</td><td>18.18%</td></tr>
-      <tr><th scope="row">NOC (no charge)</th><td>446,007</td><td>0.04%</td></tr>
-      <tr><th scope="row">DIS (disputed)</th><td>133,592</td><td>0.02%</td></tr>
-      </tbody>
-    </table>
-    <figure class="chart" aria-labelledby="taxiPaymentChart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: clamp(220px, 46vw, 300px); max-height: min(60vh, 480px); overflow: hidden;">
-        <canvas id="taxiPaymentChart" role="img" aria-label="Doughnut chart of 2014 NYC yellow taxi trips by payment type. Card is the largest share, cash is second, and unknown, no charge, and disputed form a small tail."></canvas>
-      </div>
-      <figcaption id="taxiPaymentChart-caption">Card and cash dominate the payment mix; the unknown, no-charge, and disputed codes together are under 1.4 million of the 165 million trips.</figcaption>
-    </figure>
-    <p><strong>Important caveat:</strong> cash tips are not recorded in this dataset, so the cash tip rate reads as exactly 0.00%. That is a recording gap, not rider behavior. Any blended tip rate across all payment types therefore understates true tipping. The honest headline is the card-only figure of about 20.3%, and cash tips should be treated as unknown rather than zero.</p>
-    <p>The query below computes trip counts and the average tip as a percent of fare, guarding against divide-by-zero by returning a null tip percent when the fare is not positive.</p>
-<figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F02OQQrCMBRE955ilokEje4VvIGL7ss3%2FS2BJg2%2FaTHi4W0VobN8vGEmFldnevrdG%2BMUAol%2FMSrxacQFbphiVtrssMlt7iqf7i4vgixCo2julG9b1ZJwTWEt4QprcLL2YLFH9unPj9hYBsLUqzj1vdba4Ky%2FS4%2BCRCVwzHUuiZdrgzQsK%2F89a3h0H9gQ94O5AAAA" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
-<pre><code class="language-kusto">nyc_taxi
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Trips <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span>
-            AvgTipPct <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span><span class="cmh-kql-fn">avg</span><span class="cmh-kql-op">(</span><span class="cmh-kql-fn">iff</span><span class="cmh-kql-op">(</span>fare_amount <span class="cmh-kql-op">&gt;</span> <span class="cmh-kql-num">0</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-num">100.0</span> <span class="cmh-kql-op">*</span> tip_amount <span class="cmh-kql-op">/</span> fare_amount<span class="cmh-kql-op">,</span> <span class="cmh-kql-fn">real</span><span class="cmh-kql-op">(</span>null<span class="cmh-kql-op">)</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-num">2</span><span class="cmh-kql-op">)</span>
-    <span class="cmh-kql-kw">by</span> payment_type
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> Trips <span class="cmh-kql-kw">desc</span></code></pre>
-</figure>
-  </section>
-
-  <section aria-labelledby="passenger">
-    <h2 id="passenger">Passenger Occupancy</h2>
-    <p>Solo riders dominated the year: 116.3 million of the 165 million trips carried a single passenger, about 70 percent of the total. Two-passenger trips were a distant second, and five-passenger trips slightly outnumbered three and four, a common pattern where groups round up into a single larger-capacity ride.</p>
-    <table>
-      <thead><tr><th scope="col">Passengers</th><th scope="col">Trips</th></tr></thead>
-      <tbody>
-      <tr><th scope="row">1</th><td>116,291,354</td></tr>
-      <tr><th scope="row">2</th><td>23,058,951</td></tr>
-      <tr><th scope="row">3</th><td>6,971,325</td></tr>
-      <tr><th scope="row">4</th><td>3,386,103</td></tr>
-      <tr><th scope="row">5</th><td>9,275,848</td></tr>
-      <tr><th scope="row">6</th><td>6,123,895</td></tr>
-      </tbody>
-    </table>
-    <p>The query restricts to the valid 1 to 6 passenger range, which excludes a small number of zero-passenger and out-of-range rows that are almost certainly meter or entry errors.</p>
-<figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F23LvQ5AMBiF4d1VnFGXJhabu7BLWyd0UPJ9FT9x8cQo5vd50xG67PZYXNhGCrE4VaaB0oV5TRmeeSMTygrWojYP1HWanMSTaCUuigYvLQ388f0fPktP%2BUlwGm7EQwFufwAAAA%3D%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
-<pre><code class="language-kusto">nyc_taxi
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> passenger_count <span class="cmh-kql-kw">between</span> <span class="cmh-kql-op">(</span><span class="cmh-kql-num">1</span> <span class="cmh-kql-op">.</span><span class="cmh-kql-op">.</span> <span class="cmh-kql-num">6</span><span class="cmh-kql-op">)</span>
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Trips <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> passenger_count
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> passenger_count <span class="cmh-kql-kw">asc</span></code></pre>
-</figure>
-  </section>
-
-  <section aria-labelledby="demand">
-    <h2 id="demand">Demand by Hour of Day</h2>
-    <p>Demand is strongly concentrated in the evening. The single busiest hour is 19:00 with 10.3 million pickups, and the four hours from 19:00 to 22:00 form the dominant demand window. There is a smaller morning commute ramp around 08:00 to 09:00, and the quietest hours are the pre-dawn 04:00 and 05:00 slots.</p>
-    <table>
-      <thead><tr><th scope="col">Hour</th><th scope="col">Trips</th><th scope="col">Note</th></tr></thead>
-      <tbody>
-      <tr><th scope="row">05:00</th><td>1,719,490</td><td>Daily trough</td></tr>
-      <tr><th scope="row">04:00</th><td>1,932,107</td><td>Second-lowest hour</td></tr>
-      <tr><th scope="row">08:00</th><td>7,364,739</td><td>Morning ramp</td></tr>
-      <tr><th scope="row">09:00</th><td>7,619,958</td><td>Morning ramp</td></tr>
-      <tr><th scope="row">22:00</th><td>9,338,414</td><td>Evening peak window</td></tr>
-      <tr><th scope="row">21:00</th><td>9,644,674</td><td>Evening peak window</td></tr>
-      <tr><th scope="row">20:00</th><td>9,781,239</td><td>Evening peak window</td></tr>
-      <tr><th scope="row">19:00</th><td>10,317,700</td><td>Busiest hour of the day</td></tr>
-      </tbody>
-    </table>
-    <p>The query buckets every pickup by hour of day across the whole year. Running it returns all 24 hours; the highlights above pick out the peak and trough.</p>
-<figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F8urTI4vSazI5KpRKC7NzU0syqxKVQgpyiwoVrBVSM4vzSvR0FRIqlTwyC8tAopkAKn8tJTESo2CzOTs0oL4lMSS1JLM3FRNoAH5RSmpRXDFicXJACTYtUpdAAAA" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
-<pre><code class="language-kusto">nyc_taxi
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Trips <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> Hour <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">hourofday</span><span class="cmh-kql-op">(</span>pickup_datetime<span class="cmh-kql-op">)</span>
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> Hour <span class="cmh-kql-kw">asc</span></code></pre>
-</figure>
-  </section>
-
-  <section aria-labelledby="data-quality">
-    <h2 id="data-quality">Data Quality Notes</h2>
-    <p>The figures in this report are trustworthy at the aggregate level, but a few data-quality issues shape how they should be read:</p>
+  <section aria-labelledby="overview">
+    <h2 id="overview">Overview</h2>
+    <p>The community garden will convert an underused corner lot into a welcoming shared growing space for neighbors, families, and local volunteers. The plan focuses on a first season that is simple enough to maintain, visible enough to attract help, and flexible enough to improve after the first harvest.</p>
+    <p>The garden will start with eight raised beds, a small herb and pollinator strip, a compost station, a rain barrel, and a central path wide enough for wheelbarrows and strollers. The first season should prioritize reliable crops, clear routines, and neighbor participation over maximum yield.</p>
+    <p>Key planning assumptions:</p>
     <ul>
-      <li><strong>Cash tips are not recorded.</strong> The tip_amount column is only populated for card trips, so cash rides show a zero tip. Blended tip rates are therefore biased low and should not be quoted without the card-only qualifier.</li>
-      <li><strong>Non-positive fares exist.</strong> A small number of rows carry zero or negative fare_amount and total_amount (voided rides, test rows, and refunds). These should be filtered before computing averages so they do not understate revenue or skew the mean fare.</li>
-      <li><strong>Minor payment codes are noisy.</strong> The UNK, NOC, and DIS codes together are under one percent of trips, but their tip and fare values are unreliable and should be reported as a combined tail rather than analyzed individually.</li>
-      <li><strong>The June distance mean is an outlier.</strong> At 4.74 miles it is far above neighboring months and should be validated (extreme trip_distance rows, airport batches, or a meter issue) before being used in any trend.</li>
+      <li>The growing season runs from April through October.</li>
+      <li>Volunteers can cover two short watering shifts per day during hot months.</li>
+      <li>The lot receives at least 6 hours of sun in the main bed area.</li>
+      <li>The first year favors durable, low-maintenance crops such as lettuce, beans, tomatoes, peppers, herbs, and marigolds.</li>
+      <li>Shared harvest rules will be posted on site and repeated in volunteer onboarding.</li>
     </ul>
-    <p>The cleaning step below is the one most worth adopting first. This unified diff adds a filter that drops non-positive fares before any aggregation runs.</p>
-    <pre class="cmh-diff" data-diff-label="clean_trips.py">--- a/clean_trips.py
-+++ b/clean_trips.py
-@@ -1,7 +1,10 @@
- def load_trips(rows):
-     return [r for r in rows if r.vendor_id]
- 
- def summarize(trips):
-+    # Drop non-positive fares before aggregating: voided rides, test rows,
-+    # and refunds understate revenue and skew the average fare.
-+    trips = [t for t in trips if t.fare_amount &gt; 0 and t.total_amount &gt; 0]
-     total = sum(t.total_amount for t in trips)
-     avg_fare = total / len(trips)
-     return total, avg_fare</pre>
-    <p>The report itself is produced by a simple pipeline: query the help cluster, aggregate on the server, and render the returned tables into this document. The diagram makes that flow explicit.</p>
-    <pre class="mermaid cm-skip">flowchart LR
-    subgraph Source[Source data]
-      Raw[(nyc_taxi 165.1M rows)]
-    end
-    subgraph Query[ADX server-side aggregation]
-      M[By month]
-      P[By payment type]
-      H[By pickup hour]
-      D[By passenger count]
-    end
-    subgraph Output[This report]
-      Tbl[Aggregated tables]
-      Cht[Charts]
-      Rpt[[2014 operations report]]
-    end
-    Raw --&gt; M
-    Raw --&gt; P
-    Raw --&gt; H
-    Raw --&gt; D
-    M --&gt; Tbl
-    P --&gt; Tbl
-    H --&gt; Tbl
-    D --&gt; Tbl
-    Tbl --&gt; Cht
-    Cht --&gt; Rpt</pre>
-    <p>The review loop itself is a short conversation between the analyst, the query engine, and this document. The sequence diagram traces one pass.</p>
-    <pre class="mermaid cm-skip">sequenceDiagram
-    autonumber
-    participant An as Analyst
-    participant Adx as ADX help cluster
-    participant Tbl as Samples.nyc_taxi
-    participant Rep as This report
-    An-&gt;&gt;Adx: Submit KQL (summarize by month)
-    Adx-&gt;&gt;Tbl: Scan 165.1M rows
-    Tbl--&gt;&gt;Adx: Aggregated rows
-    Adx--&gt;&gt;An: Result set
-    An-&gt;&gt;Rep: Render tables and charts
-    Note over An,Rep: Reviewer leaves inline comments
-    Rep--&gt;&gt;An: Comments handed back for the next revision</pre>
   </section>
 
-  <section aria-labelledby="hourly">
-    <h2 id="hourly">Demand by Hour</h2>
-    <p>Trip volume follows a strong daily rhythm. Demand bottoms out around 05:00 (about 1.7 million trips across the year) and peaks in the evening at 19:00 (about 10.3 million), with a secondary rise near the 08:00 morning commute. The 18:00 to 22:00 evening window is the clearest operational signal in the dataset.</p>
-    <figure class="chart" aria-labelledby="taxiHourlyChart-caption">
-      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-        <canvas id="taxiHourlyChart" role="img" aria-label="Line chart of NYC yellow taxi trip volume in millions by pickup hour for 2014, peaking at 19:00 and lowest at 05:00."></canvas>
-      </div>
-      <figcaption id="taxiHourlyChart-caption">Trip volume by pickup hour across 2014. Demand bottoms out near 05:00 and peaks at 19:00, with a secondary morning-commute rise around 08:00.</figcaption>
+  <section aria-labelledby="goals">
+    <h2 id="goals">Goals &amp; Success Criteria</h2>
+    <p>The main goal is to create a safe, productive, and welcoming garden that people enjoy visiting. The garden should grow food, but it should also build neighborhood habits: checking in, watering, harvesting, composting, and sharing practical knowledge.</p>
+    <p>Success criteria for the first season:</p>
+    <ul>
+      <li>Install all raised beds, paths, signs, compost bins, and water storage by the end of April.</li>
+      <li>Recruit at least 20 volunteers, with 8 regular weekly helpers.</li>
+      <li>Hold 3 open community days: spring setup, midsummer maintenance, and fall cleanup.</li>
+      <li>Harvest at least 250 pounds of produce for volunteers and neighbors.</li>
+      <li>Keep all paths clear, tools stored safely, and beds free of standing water.</li>
+      <li>Record planting, watering, harvest, and issue notes in a shared log.</li>
+    </ul>
+    <p>The project should also leave behind reusable assets for the second season: a labeled bed map, a crop rotation note, a seed inventory, a lessons-learned list, and a volunteer contact list.</p>
+  </section>
+
+  <section aria-labelledby="site-selection">
+    <h2 id="site-selection">Site Selection</h2>
+    <p>The preferred site is a flat, visible lot near the community center. Visibility matters because casual foot traffic helps volunteers notice problems early and encourages neighbors to stop by. The site should have enough sunlight for fruiting crops, but also a shaded rest corner for volunteers during summer workdays.</p>
+    <p>Site checks before committing:</p>
+    <ul>
+      <li>Confirm permission from the landowner or neighborhood association in writing.</li>
+      <li>Check for water access within 30 meters, or confirm rain barrel refilling logistics.</li>
+      <li>Walk the lot after heavy rain to identify puddling and runoff patterns.</li>
+      <li>Confirm there is no recent use that could have contaminated soil.</li>
+      <li>Choose bed locations that keep the main path clear and avoid blocking sight lines.</li>
+      <li>Leave a small staging area for mulch, compost, and tool delivery.</li>
+    </ul>
+    <p>If soil quality is uncertain, the first year should use raised beds with imported garden soil and a weed barrier below the paths. Native soil can be tested before any in-ground planting is considered.</p>
+    <figure>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMzYwIiB2aWV3Qm94PSIwIDAgNjQwIDM2MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPg0KICA8dGl0bGUgaWQ9InRpdGxlIj5SYWlzZWQgYmVkcyBpbGx1c3RyYXRpb248L3RpdGxlPg0KICA8ZGVzYyBpZD0iZGVzYyI+VGhyZWUgcmFpc2VkIGJlZHMgd2l0aCBncmVlbiBzZWVkbGluZ3MsIGEgdGFuIG11bGNoIHBhdGgsIGEgd2F0ZXJpbmcgY2FuLCBhbmQgYSB3ZWxjb21lIHNpZ24uPC9kZXNjPg0KICA8cmVjdCB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2MCIgZmlsbD0iI2Y1ZmJlZiIvPg0KICA8cmVjdCB4PSIwIiB5PSIyNTAiIHdpZHRoPSI2NDAiIGhlaWdodD0iMTEwIiBmaWxsPSIjZDhjMjljIi8+DQogIDxnIHN0cm9rZT0iIzZjNGQyZSIgc3Ryb2tlLXdpZHRoPSIzIj4NCiAgICA8cG9seWdvbiBwb2ludHM9IjcwLDIxMCAyMjAsMTgwIDMwMCwyMTUgMTQ1LDI1MCIgZmlsbD0iI2E4NzU0NSIvPg0KICAgIDxwb2x5Z29uIHBvaW50cz0iMzQwLDIwNSA1MDAsMTc1IDU3NSwyMTAgNDIwLDI0NSIgZmlsbD0iI2E4NzU0NSIvPg0KICAgIDxwb2x5Z29uIHBvaW50cz0iMTg1LDEyNSAzNDAsMTAwIDQyNSwxMzIgMjcwLDE2NSIgZmlsbD0iI2I3ODM0ZCIvPg0KICA8L2c+DQogIDxnIGZpbGw9IiM0ZjhiM2EiIHN0cm9rZT0iIzJmNWYyNCIgc3Ryb2tlLXdpZHRoPSIyIj4NCiAgICA8cGF0aCBkPSJNMTM1IDIwNSBDMTI1IDE4NSAxMjAgMTc2IDEwNCAxNjkgQzEyNCAxNzAgMTM3IDE4MCAxMzUgMjA1WiIvPg0KICAgIDxwYXRoIGQ9Ik0xNzIgMTk4IEMxNzggMTgwIDE5MiAxNzEgMjEwIDE2OSBDMTk2IDE4MiAxODggMTk1IDE3MiAxOThaIi8+DQogICAgPHBhdGggZD0iTTQzOCAxOTUgQzQzMCAxNzYgNDE4IDE2OCA0MDAgMTY1IEM0MTggMTgxIDQyNiAxOTQgNDM4IDE5NVoiLz4NCiAgICA8cGF0aCBkPSJNNDgwIDE4OCBDNDkwIDE3MyA1MDcgMTY2IDUyNSAxNjggQzUwOCAxODEgNDk4IDE5MCA0ODAgMTg4WiIvPg0KICAgIDxwYXRoIGQ9Ik0yODUgMTI0IEMyNzggMTA4IDI2NiAxMDEgMjUwIDEwMCBDMjY1IDExMyAyNzQgMTI0IDI4NSAxMjRaIi8+DQogICAgPHBhdGggZD0iTTMzNSAxMTkgQzM0NiAxMDQgMzYyIDk5IDM3OCAxMDMgQzM1OSAxMTMgMzQ5IDEyMyAzMzUgMTE5WiIvPg0KICA8L2c+DQogIDxnIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNSIgZmlsbD0iIzM2NTIyYiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+DQogICAgPHRleHQgeD0iMTg1IiB5PSIyNzUiPkJlZCBBPC90ZXh0Pjx0ZXh0IHg9IjQ2NSIgeT0iMjcwIj5CZWQgQjwvdGV4dD48dGV4dCB4PSIzMDUiIHk9IjE5MCI+SGVyYnM8L3RleHQ+DQogIDwvZz4NCiAgPHBhdGggZD0iTTU2MCAyNzUgaDQ1IGExOCAxOCAwIDAgMSAwIDM2IGgtNDV6IiBmaWxsPSIjNmJiN2Q2IiBzdHJva2U9IiMyYjZmOGEiIHN0cm9rZS13aWR0aD0iMyIvPg0KICA8cGF0aCBkPSJNNjAwIDI3OCBxMzAgLTIyIDM2IDE4IiBmaWxsPSJub25lIiBzdHJva2U9IiMyYjZmOGEiIHN0cm9rZS13aWR0aD0iNCIvPg0KICA8bGluZSB4MT0iOTUiIHkxPSI5NSIgeDI9Ijk1IiB5Mj0iMTU1IiBzdHJva2U9IiM3YjVhMzYiIHN0cm9rZS13aWR0aD0iNSIvPg0KICA8cmVjdCB4PSI0NSIgeT0iNTUiIHdpZHRoPSIxMDAiIGhlaWdodD0iNDUiIHJ4PSI2IiBmaWxsPSIjZmZmNGM3IiBzdHJva2U9IiM5YTdhNDUiIHN0cm9rZS13aWR0aD0iMyIvPg0KICA8dGV4dCB4PSI5NSIgeT0iODIiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNSIgZmlsbD0iIzViNDUyOCI+V2VsY29tZTwvdGV4dD4NCjwvc3ZnPg0K" alt="Simple illustration of raised garden beds with seedlings, mulch paths, a watering can, and a small welcome sign." style="display: block; width: 100%; height: auto; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface);" />
+      <figcaption>Raised beds provide a clean first-season growing surface while soil quality is confirmed.</figcaption>
     </figure>
-    <p>This within-day view is what drives the evening-supply recommendation below. It complements the monthly totals by showing where demand concentrates inside a typical day.</p>
   </section>
 
-  <section aria-labelledby="recommendations">
-    <h2 id="recommendations">Recommendations and Next Steps</h2>
-    <p>Based on the year of data, three actions offer the most value:</p>
+  <section aria-labelledby="garden-layout">
+    <h2 id="garden-layout">Garden Layout</h2>
+    <p>The layout uses a simple grid so new volunteers can understand it without training. Eight raised beds sit in two rows with a central path between them. The herb and pollinator strip sits along the front edge where visitors can see flowers, bees, and signage without walking through production beds.</p>
+    <p>Layout choices:</p>
+    <ul>
+      <li>Raised beds are 1.2 m by 2.4 m so most adults can reach the center from either side.</li>
+      <li>The central path is 1.2 m wide for wheelbarrows and accessible passing space.</li>
+      <li>Compost sits downwind from the seating corner and away from the entry sign.</li>
+      <li>The rain barrel sits near the water access point to reduce hose length.</li>
+      <li>Bed labels use large numbers and crop names for quick orientation.</li>
+      <li>The layout sketch should be rendered from <code>garden-layout.svg</code>.</li>
+    </ul>
+    <figure>
+      <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iNDIwIiB2aWV3Qm94PSIwIDAgNjQwIDQyMCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPg0KICA8dGl0bGUgaWQ9InRpdGxlIj5Db21tdW5pdHkgZ2FyZGVuIGxheW91dDwvdGl0bGU+DQogIDxkZXNjIGlkPSJkZXNjIj5BIGxhYmVsZWQgdG9wLWRvd24gcGxhbiB3aXRoIHJhaXNlZCBiZWRzLCBwYXRocywgY29tcG9zdCwgcmFpbiBiYXJyZWwsIHNlYXRpbmcsIGFuZCBwb2xsaW5hdG9yIGZsb3dlcnMuPC9kZXNjPg0KICA8cmVjdCB4PSIyMCIgeT0iMjAiIHdpZHRoPSI2MDAiIGhlaWdodD0iMzgwIiByeD0iMTgiIGZpbGw9IiNlZWY3ZTgiIHN0cm9rZT0iIzVmN2Y1MiIgc3Ryb2tlLXdpZHRoPSI0Ii8+DQogIDxyZWN0IHg9IjI5NSIgeT0iNTUiIHdpZHRoPSI1MCIgaGVpZ2h0PSIyOTAiIGZpbGw9IiNkOWM3YTMiIHN0cm9rZT0iIzlhN2E0NSIgc3Ryb2tlLXdpZHRoPSIyIi8+DQogIDx0ZXh0IHg9IjMyMCIgeT0iMjA1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM1YjQ1MjgiIHRyYW5zZm9ybT0icm90YXRlKC05MCAzMjAgMjA1KSI+Q2VudHJhbCBwYXRoPC90ZXh0Pg0KICA8ZyBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiMxZjNkMWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiPg0KICAgIDxyZWN0IHg9IjcwIiB5PSI2MCIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iOTMiPkJlZCAxIExldHR1Y2U8L3RleHQ+DQogICAgPHJlY3QgeD0iNzAiIHk9IjEzNSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iMTY4Ij5CZWQgMiBQZWFzPC90ZXh0Pg0KICAgIDxyZWN0IHg9IjcwIiB5PSIyMTAiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSIxNTAiIHk9IjI0MyI+QmVkIDMgVG9tYXRvZXM8L3RleHQ+DQogICAgPHJlY3QgeD0iNzAiIHk9IjI4NSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjE1MCIgeT0iMzE4Ij5CZWQgNCBQZXBwZXJzPC90ZXh0Pg0KICAgIDxyZWN0IHg9IjQxMCIgeT0iNjAiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSI0OTAiIHk9IjkzIj5CZWQgNSBSb290czwvdGV4dD4NCiAgICA8cmVjdCB4PSI0MTAiIHk9IjEzNSIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjQ5MCIgeT0iMTY4Ij5CZWQgNiBadWNjaGluaTwvdGV4dD4NCiAgICA8cmVjdCB4PSI0MTAiIHk9IjIxMCIgd2lkdGg9IjE2MCIgaGVpZ2h0PSI1NSIgcng9IjgiIGZpbGw9IiNiN2RmOWIiIHN0cm9rZT0iIzRmN2QzOSIvPjx0ZXh0IHg9IjQ5MCIgeT0iMjQzIj5CZWQgNyBHcmVlbnM8L3RleHQ+DQogICAgPHJlY3QgeD0iNDEwIiB5PSIyODUiIHdpZHRoPSIxNjAiIGhlaWdodD0iNTUiIHJ4PSI4IiBmaWxsPSIjYjdkZjliIiBzdHJva2U9IiM0ZjdkMzkiLz48dGV4dCB4PSI0OTAiIHk9IjMxOCI+QmVkIDggQ2hvaWNlPC90ZXh0Pg0KICA8L2c+DQogIDxyZWN0IHg9IjU1IiB5PSIzNTUiIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQiIHJ4PSIxMiIgZmlsbD0iI2Y3ZDM2YiIgc3Ryb2tlPSIjYjI4YTE5Ii8+PHRleHQgeD0iMTc1IiB5PSIzNzMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMyI+SGVyYiBhbmQgcG9sbGluYXRvciBzdHJpcDwvdGV4dD4NCiAgPGNpcmNsZSBjeD0iMzg1IiBjeT0iMzYwIiByPSIxOCIgZmlsbD0iIzZiYjdkNiIgc3Ryb2tlPSIjMmI2ZjhhIi8+PHRleHQgeD0iMzg1IiB5PSIzOTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiI+UmFpbiBiYXJyZWw8L3RleHQ+DQogIDxyZWN0IHg9IjUyMCIgeT0iMzUwIiB3aWR0aD0iNjAiIGhlaWdodD0iMzAiIHJ4PSI1IiBmaWxsPSIjOWI3NjUzIi8+PHRleHQgeD0iNTUwIiB5PSIzOTQiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiI+Q29tcG9zdDwvdGV4dD4NCjwvc3ZnPg0K" alt="Top-down schematic of a community garden with eight raised beds, a central path, compost, rain barrel, seating, and pollinator strip." style="display: block; width: 100%; height: auto; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface);" />
+      <figcaption>Top-down layout sketch for bed placement, water access, compost, and visitor flow.</figcaption>
+    </figure>
+    <h3>Bed allocation for the first season</h3>
+    <table>
+      <thead><tr><th scope="col">Bed</th><th scope="col">Main crop</th><th scope="col">Companion planting</th><th scope="col">Notes</th></tr></thead>
+      <tbody>
+      <tr><th scope="row">1</th><td>Lettuce and spinach</td><td>Radish border</td><td>Replant every 3 weeks in spring</td></tr>
+      <tr><th scope="row">2</th><td>Peas then beans</td><td>Nasturtium</td><td>Use a removable trellis</td></tr>
+      <tr><th scope="row">3</th><td>Tomatoes</td><td>Basil and marigold</td><td>Stake early and mulch deeply</td></tr>
+      <tr><th scope="row">4</th><td>Peppers</td><td>Parsley</td><td>Keep row cover available for cool nights</td></tr>
+      <tr><th scope="row">5</th><td>Carrots and beets</td><td>Chives</td><td>Thin seedlings during volunteer day</td></tr>
+      <tr><th scope="row">6</th><td>Zucchini</td><td>Calendula</td><td>Give extra spacing and watch for mildew</td></tr>
+      <tr><th scope="row">7</th><td>Kale and chard</td><td>Alyssum</td><td>Good for late-season harvest</td></tr>
+      <tr><th scope="row">8</th><td>Community choice</td><td>Flexible</td><td>Reserve for youth group planting</td></tr>
+      </tbody>
+    </table>
+    <h3>How the garden fits together</h3>
+    <p>The beds share one entrance, a single water spigot, and a lockable tool box, and everything feeds the compost and storage corner at the end of the season. The diagram groups the space into zones so reviewers can comment on the flow between them.</p>
+    <pre class="mermaid cm-skip">flowchart TB
+    subgraph Shared[Entrance and shared area]
+      Gate([Main gate])
+      Board[Notice board and sign-out sheet]
+      Box[Lockable tool box]
+      Tap((Water spigot))
+    end
+    subgraph Cool[Cool-season beds]
+      B1[Bed 1: greens]
+      B2[Bed 2: peas then beans]
+      B5[Bed 5: carrots and beets]
+      B7[Bed 7: kale and chard]
+    end
+    subgraph Warm[Warm-season beds]
+      B3[Bed 3: tomatoes]
+      B4[Bed 4: peppers]
+      B6[Bed 6: zucchini]
+      B8[Bed 8: community choice]
+    end
+    subgraph Recycle[Compost and storage]
+      C1[Three-bin compost]
+      C2[Mulch and soil pile]
+    end
+    Gate --&gt; Board
+    Board --&gt; Box
+    Box --&gt; Cool
+    Box --&gt; Warm
+    Tap --&gt; Cool
+    Tap --&gt; Warm
+    Cool --&gt; Recycle
+    Warm --&gt; Recycle</pre>
+  </section>
+
+  <section aria-labelledby="planting-schedule">
+    <h2 id="planting-schedule">Planting Schedule</h2>
+    <p>The planting schedule staggers work so volunteers are not asked to plant everything on one weekend. Cool-season crops start first, warm-season crops wait until frost risk has passed, and fall crops begin while summer plants are still producing.</p>
+    <table>
+      <thead><tr><th scope="col">Crop</th><th scope="col">Sow month</th><th scope="col">Transplant month</th><th scope="col">Harvest month</th><th scope="col">Notes</th></tr></thead>
+      <tbody>
+      <tr><th scope="row">Lettuce</th><td>March</td><td>April</td><td>May to June</td><td>Succession sow every 3 weeks</td></tr>
+      <tr><th scope="row">Spinach</th><td>March</td><td>April</td><td>May</td><td>Shade with taller crops in late spring</td></tr>
+      <tr><th scope="row">Peas</th><td>March</td><td>April</td><td>June</td><td>Use trellis netting and harvest often</td></tr>
+      <tr><th scope="row">Carrots</th><td>April</td><td>Not needed</td><td>July</td><td>Keep seed bed evenly moist</td></tr>
+      <tr><th scope="row">Tomatoes</th><td>March indoors</td><td>May</td><td>July to September</td><td>Transplant after frost risk passes</td></tr>
+      <tr><th scope="row">Peppers</th><td>March indoors</td><td>May</td><td>August to September</td><td>Use row cover if nights are cool</td></tr>
+      <tr><th scope="row">Bush beans</th><td>May</td><td>Not needed</td><td>July to August</td><td>Replant after peas finish</td></tr>
+      <tr><th scope="row">Zucchini</th><td>May</td><td>June</td><td>July to September</td><td>Pick small fruit twice weekly</td></tr>
+      <tr><th scope="row">Kale</th><td>July</td><td>August</td><td>September to October</td><td>Good late-season crop</td></tr>
+      <tr><th scope="row">Cover crop rye</th><td>October</td><td>Not needed</td><td>Spring turnover</td><td>Protect empty beds over winter</td></tr>
+      </tbody>
+    </table>
+    <p>Weather should guide final planting dates. The KQL query below gives an example of checking historical severe-weather timing for a selected state before setting the public planting calendar.</p>
+<figure class="cmh-kql">
+<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F01PTWvDMAy951cInxII7AeU3rawQLeOJWVnLdYaQ2wVWelI6Y%2Bf3bXddBGP96GniRT2KJZCp6gEazDtZtO%2BbtvOrIpOWfzTkYLG4gzfIwnBVbf%2Bb7uTF22%2FHAhcgNI0wlEfGiE6kanBPKOb8u7HOViSmOPhwwV7IQmPC7yjCxk1E7M1VUqOs%2Fco7nRNj6njwHPQsqrhTfhAossjetzTLtpEJn35i29sVUCazwVeOOiYJYqi%2FOUzLLsMeucp5d37p7uc3pM%2FF8ahvjWwFIcfvbH3dzoBAAA%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
+<pre><code class="language-kusto"><span class="cmh-kql-kw">let</span> gardenState <span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"ILLINOIS"</span><span class="cmh-kql-op">;</span>
+StormEvents
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> State <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> gardenState
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> EventType <span class="cmh-kql-kw">in</span> <span class="cmh-kql-op">(</span><span class="cmh-kql-str">"Frost/Freeze"</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-str">"Hail"</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-str">"Thunderstorm Wind"</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-str">"Heavy Rain"</span><span class="cmh-kql-op">,</span> <span class="cmh-kql-str">"Flood"</span><span class="cmh-kql-op">)</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Events <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> PropertyDamageUsd <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">sum</span><span class="cmh-kql-op">(</span>DamageProperty<span class="cmh-kql-op">)</span>
+    <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">startofmonth</span><span class="cmh-kql-op">(</span>StartTime<span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> EventType
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> Month <span class="cmh-kql-kw">asc</span><span class="cmh-kql-op">,</span> Events <span class="cmh-kql-kw">desc</span></code></pre>
+</figure>
+    <p>This query summarizes historical frost, hail, wind, heavy rain, and flood events by month for Illinois so the garden team can choose safer planting and volunteer work windows.</p>
+    <p>A small helper the volunteers use to size each week of watering:</p>
+<pre><code class="language-python"><span class="cmh-code-com"># Estimate weekly watering liters for one raised bed.</span>
+<span class="cmh-code-kw">def</span> <span class="cmh-code-fn">weekly_liters</span><span class="cmh-code-op">(</span>bed_area_m2<span class="cmh-code-op">,</span> weekly_rain_mm<span class="cmh-code-op">):</span>
+    target_mm <span class="cmh-code-op">=</span> <span class="cmh-code-num">25</span>  <span class="cmh-code-com"># soil moisture goal per week</span>
+    deficit <span class="cmh-code-op">=</span> <span class="cmh-code-fn">max</span><span class="cmh-code-op">(</span>target_mm <span class="cmh-code-op">-</span> weekly_rain_mm<span class="cmh-code-op">,</span> <span class="cmh-code-num">0</span><span class="cmh-code-op">)</span>
+    <span class="cmh-code-kw">return</span> <span class="cmh-code-fn">round</span><span class="cmh-code-op">(</span>bed_area_m2 <span class="cmh-code-op">*</span> deficit<span class="cmh-code-op">,</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)</span>  <span class="cmh-code-com"># 1 mm over 1 m2 == 1 liter</span>
+</code></pre>
+
+    <p>The same logic in C#, also highlighted at author time:</p>
+<pre><code class="language-csharp"><span class="cmh-code-com">// Assign volunteers to garden beds fairly, newest members first.</span>
+<span class="cmh-code-kw">public</span> IReadOnlyList<span class="cmh-code-op">&lt;</span>Assignment<span class="cmh-code-op">&gt;</span> <span class="cmh-code-fn">AssignBeds</span><span class="cmh-code-op">(</span>IEnumerable<span class="cmh-code-op">&lt;</span>Volunteer<span class="cmh-code-op">&gt;</span> volunteers<span class="cmh-code-op">,</span> <span class="cmh-code-kw">int</span> bedCount<span class="cmh-code-op">)</span>
+<span class="cmh-code-op">{</span>
+    <span class="cmh-code-kw">var</span> ordered <span class="cmh-code-op">=</span> volunteers<span class="cmh-code-op">.</span><span class="cmh-code-fn">OrderByDescending</span><span class="cmh-code-op">(</span>v <span class="cmh-code-op">=&gt;</span> v<span class="cmh-code-op">.</span>JoinedOn<span class="cmh-code-op">).</span><span class="cmh-code-fn">ToList</span><span class="cmh-code-op">();</span>
+    <span class="cmh-code-kw">var</span> result <span class="cmh-code-op">=</span> <span class="cmh-code-kw">new</span> List<span class="cmh-code-op">&lt;</span>Assignment<span class="cmh-code-op">&gt;();</span>
+    <span class="cmh-code-kw">for</span> <span class="cmh-code-op">(</span><span class="cmh-code-kw">int</span> i <span class="cmh-code-op">=</span> <span class="cmh-code-num">0</span><span class="cmh-code-op">;</span> i <span class="cmh-code-op">&lt;</span> ordered<span class="cmh-code-op">.</span>Count<span class="cmh-code-op">;</span> i<span class="cmh-code-op">++)</span>
+    <span class="cmh-code-op">{</span>
+        <span class="cmh-code-kw">int</span> bed <span class="cmh-code-op">=</span> <span class="cmh-code-op">(</span>i <span class="cmh-code-op">%</span> bedCount<span class="cmh-code-op">)</span> <span class="cmh-code-op">+</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">;</span>   <span class="cmh-code-com">// round-robin across beds</span>
+        result<span class="cmh-code-op">.</span><span class="cmh-code-fn">Add</span><span class="cmh-code-op">(</span><span class="cmh-code-kw">new</span> <span class="cmh-code-fn">Assignment</span><span class="cmh-code-op">(</span>ordered<span class="cmh-code-op">[</span>i<span class="cmh-code-op">].</span>Name<span class="cmh-code-op">,</span> bed<span class="cmh-code-op">));</span>
+    <span class="cmh-code-op">}</span>
+    <span class="cmh-code-kw">return</span> result<span class="cmh-code-op">;</span>
+<span class="cmh-code-op">}</span>
+</code></pre>
+
+
+    <figure class="chart" aria-labelledby="watering-chart-caption">
+      <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+        <canvas id="wateringNeedsChart" role="img" aria-label="Bar chart of estimated liters of water needed per week from April through October."></canvas>
+      </div>
+      <figcaption id="watering-chart-caption">Estimated liters of water needed per week for all raised beds during the first growing season, before rainfall adjustments.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="budget">
+    <h2 id="budget">Budget</h2>
+    <p>The first-year budget keeps permanent infrastructure modest and spends where durability matters: raised bed lumber, quality soil, clear signage, and safe tool storage. Seeds and seedlings are intentionally varied so the garden can test what grows well before buying larger quantities next year.</p>
+    <table>
+      <thead><tr><th scope="col">Item</th><th scope="col">Qty</th><th scope="col">Unit cost</th><th scope="col">Total</th><th scope="col">Notes</th></tr></thead>
+      <tbody>
+      <tr><th scope="row">Cedar raised bed kits</th><td>8</td><td>$95</td><td>$760</td><td>1.2 m by 2.4 m beds</td></tr>
+      <tr><th scope="row">Garden soil blend</th><td>10 cubic yards</td><td>$52</td><td>$520</td><td>Delivered in bulk</td></tr>
+      <tr><th scope="row">Compost</th><td>3 cubic yards</td><td>$45</td><td>$135</td><td>Initial soil amendment</td></tr>
+      <tr><th scope="row">Mulch for paths</th><td>6 cubic yards</td><td>$38</td><td>$228</td><td>Weed suppression and safer paths</td></tr>
+      <tr><th scope="row">Seeds and seedlings</th><td>1 season</td><td>$180</td><td>$180</td><td>Vegetables, herbs, flowers</td></tr>
+      <tr><th scope="row">Rain barrel</th><td>1</td><td>$140</td><td>$140</td><td>With screen and spigot</td></tr>
+      <tr><th scope="row">Hand tools</th><td>1 set</td><td>$260</td><td>$260</td><td>Trowels, forks, pruners, gloves</td></tr>
+      <tr><th scope="row">Tool storage box</th><td>1</td><td>$220</td><td>$220</td><td>Lockable, weather resistant</td></tr>
+      <tr><th scope="row">Signs and labels</th><td>1 set</td><td>$90</td><td>$90</td><td>Entry sign, bed labels, harvest rules</td></tr>
+      <tr><th scope="row">Contingency</th><td>1</td><td>$250</td><td>$250</td><td>Repairs and replacement supplies</td></tr>
+      <tr><th scope="row"><strong>Estimated total</strong></th><td></td><td></td><td><strong>$2,783</strong></td><td></td></tr>
+      </tbody>
+    </table>
+    <p>Possible funding sources include small neighborhood grants, local hardware store donations, seed library contributions, and a spring plant sale. The project should avoid taking on donated materials that are unsafe, rotten, pressure-treated with unknown chemicals, or too irregular for volunteers to install safely.</p>
+  </section>
+
+  <section aria-labelledby="timeline">
+    <h2 id="timeline">Timeline &amp; Milestones</h2>
+    <p>The timeline starts with permission and volunteer recruitment, then moves through build-out, planting, harvest, and winter closeout. Each milestone should have one named coordinator and a backup so the garden does not stall if one person is unavailable.</p>
+    <table>
+      <thead><tr><th scope="col">Milestone</th><th scope="col">Target date</th><th scope="col">Owner</th><th scope="col">Done when</th></tr></thead>
+      <tbody>
+      <tr><th scope="row">Confirm site permission</th><td>2026-02-15</td><td>Garden committee</td><td>Written approval is saved</td></tr>
+      <tr><th scope="row">Recruit core volunteers</th><td>2026-03-01</td><td>Volunteer lead</td><td>At least 8 regular helpers confirmed</td></tr>
+      <tr><th scope="row">Order materials</th><td>2026-03-10</td><td>Logistics lead</td><td>Beds, soil, mulch, and tools ordered</td></tr>
+      <tr><th scope="row">Build beds and paths</th><td>2026-04-06</td><td>Build lead</td><td>Beds assembled and paths mulched</td></tr>
+      <tr><th scope="row">Plant cool-season crops</th><td>2026-04-13</td><td>Planting lead</td><td>Beds 1, 2, and 5 seeded</td></tr>
+      <tr><th scope="row">Plant warm-season crops</th><td>2026-05-18</td><td>Planting lead</td><td>Tomatoes, peppers, beans, and zucchini planted</td></tr>
+      <tr><th scope="row">Host midsummer workday</th><td>2026-07-11</td><td>Outreach lead</td><td>Trellising, pruning, and weeding completed</td></tr>
+      <tr><th scope="row">Start fall planting</th><td>2026-08-08</td><td>Planting lead</td><td>Kale, chard, and cover crop plan started</td></tr>
+      <tr><th scope="row">Close season and review</th><td>2026-10-24</td><td>Garden committee</td><td>Beds cleaned and lessons recorded</td></tr>
+      </tbody>
+    </table>
+    <p>The Mermaid gantt diagram mirrors these dates and makes the schedule easier to review visually.</p>
+    <pre class="mermaid cm-skip">gantt
+    title Community Garden 2026 Timeline
+    dateFormat  YYYY-MM-DD
+    axisFormat  %b %d
+    section Preparation
+    Confirm site permission      :done, perm, 2026-02-01, 14d
+    Recruit core volunteers      :active, vols, 2026-02-15, 14d
+    Order materials              :order, 2026-03-01, 10d
+    section Build
+    Build beds and paths         :beds, 2026-04-01, 7d
+    Install signs and water      :signs, 2026-04-08, 5d
+    section Growing Season
+    Plant cool-season crops      :cool, 2026-04-13, 10d
+    Plant warm-season crops      :warm, 2026-05-18, 10d
+    Midsummer workday            :milestone, mid, 2026-07-11, 1d
+    Start fall planting          :fall, 2026-08-08, 10d
+    section Closeout
+    Fall cleanup and review      :close, 2026-10-24, 7d</pre>
+  </section>
+
+  <section aria-labelledby="risks">
+    <h2 id="risks">Risks &amp; Mitigations</h2>
+    <p>The biggest risks are predictable: weather swings, inconsistent watering, unclear ownership, pests, and volunteer fatigue. The plan reduces those risks with simple routines rather than complicated policies.</p>
+    <table>
+      <thead><tr><th scope="col">Risk</th><th scope="col">Likelihood</th><th scope="col">Impact</th><th scope="col">Mitigation</th></tr></thead>
+      <tbody>
+      <tr><th scope="row">Late frost damages seedlings</th><td>Medium</td><td>High</td><td>Use row cover, delay warm crops, keep backup seedlings</td></tr>
+      <tr><th scope="row">Hot week dries beds</th><td>High</td><td>High</td><td>Assign morning and evening watering shifts, mulch deeply</td></tr>
+      <tr><th scope="row">Volunteers lose momentum</th><td>Medium</td><td>High</td><td>Keep tasks short, publish weekly wins, rotate coordinators</td></tr>
+      <tr><th scope="row">Tools go missing</th><td>Medium</td><td>Medium</td><td>Use a lockable storage box and sign-out sheet</td></tr>
+      <tr><th scope="row">Pests damage crops</th><td>Medium</td><td>Medium</td><td>Inspect twice weekly, hand-pick pests, use netting when needed</td></tr>
+      <tr><th scope="row">Compost attracts animals</th><td>Low</td><td>Medium</td><td>Use lidded bins, avoid meat and oily food, turn regularly</td></tr>
+      <tr><th scope="row">Budget overruns</th><td>Medium</td><td>Medium</td><td>Keep a contingency line and approve purchases before buying</td></tr>
+      </tbody>
+    </table>
+    <p>The garden should also maintain a friendly escalation path. If a problem affects safety, water access, or site permission, volunteers should contact the garden committee before improvising a fix.</p>
+    <h3>Planting decision flow</h3>
+    <pre class="mermaid cm-skip">flowchart TD
+    Start([Check garden conditions]) --&gt; Soil{Soil temperature is at least 10 C?}
+    Soil -- No --&gt; WaitSoil[Wait and recheck in 3 days]
+    Soil -- Yes --&gt; Frost{Frost forecast in next 72 hours?}
+    Frost -- Yes --&gt; Protect[Delay planting or prepare row cover]
+    Frost -- No --&gt; Rain{Heavy rain forecast today?}
+    Rain -- Yes --&gt; WaitRain[Wait to avoid compacting wet soil]
+    Rain -- No --&gt; Calendar{Crop matches this planting window?}
+    Calendar -- No --&gt; UpdatePlan[Update planting calendar]
+    Calendar -- Yes --&gt; Plant[Plant today and record bed notes]
+    Protect --&gt; End([Review again tomorrow])
+    WaitSoil --&gt; End
+    WaitRain --&gt; End
+    UpdatePlan --&gt; End
+    Plant --&gt; End</pre>
+    <h3>Watering script change under review</h3>
+    <p>The following unified diff shows a small change that adjusts watering estimates when rain has already reduced the need for manual watering.</p>
+    <pre class="cmh-diff" data-diff-label="watering_schedule.py">--- a/watering_schedule.py
++++ b/watering_schedule.py
+@@ -1,7 +1,11 @@
+ def liters_per_bed(temp_c, beds):
+     base = 8 if temp_c &lt; 24 else 12
+     return base * beds
+ 
+-def watering_plan(temp_c, beds):
++def watering_plan(temp_c, beds, rainfall_mm=0):
+     liters = liters_per_bed(temp_c, beds)
++    if rainfall_mm &gt;= 8:
++        liters = 0
++    elif rainfall_mm &gt; 0:
++        liters = max(0, liters - rainfall_mm * beds * 1.5)
+     return round(liters)</pre>
+  </section>
+
+  <section aria-labelledby="next-steps">
+    <h2 id="next-steps">Next Steps</h2>
+    <p>The next step is to turn this plan into a one-page volunteer kickoff packet and a build-day checklist. The kickoff packet should explain the garden purpose, expected time commitment, basic safety rules, and how harvest sharing works.</p>
+    <p>Immediate actions:</p>
     <ol>
-      <li><strong>Add evening supply.</strong> Demand peaks hard from 19:00 to 22:00. Shift-planning and incentives should target that window before the morning commute.</li>
-      <li><strong>Investigate cash-tip capture.</strong> Zero recorded cash tips is a reporting gap, not reality. Closing it would make tipping analysis honest and unlock fair driver-earnings reporting.</li>
-      <li><strong>Monitor the June distance anomaly.</strong> The 4.74-mile mean needs a root-cause check before it is used in any trend or forecast.</li>
+      <li>Confirm permission and water access for the preferred lot.</li>
+      <li>Measure the site and compare it with <code>garden-layout.svg</code>.</li>
+      <li>Get two quotes for soil and mulch delivery.</li>
+      <li>Recruit the first 8 regular volunteers and assign coordinator roles.</li>
+      <li>Publish the first planting date only after reviewing frost and storm risk.</li>
+      <li>Prepare bed signs, harvest rules, and a simple weekly log sheet.</li>
+      <li>Schedule the spring build day and the midsummer maintenance day.</li>
     </ol>
-    <p>Supporting follow-ups include adopting the non-positive-fare filter as a standard cleaning step, reporting card-only tip rates by default, and treating the minor payment codes as a single tail. Reviewers should leave inline comments on any figure they want reworked, and this document can be handed to other people for the same review workflow.</p>
+    <p>The plan should be reviewed after the first 6 weeks of growing. At that review, the group should compare the schedule, watering chart, volunteer coverage, and actual plant health, then adjust summer work routines before the hottest part of the season.</p>
   </section>
 
 <!-- END: commentable-html - CONTENT -->
@@ -1785,7 +1840,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.48.0";
+const CMH_VERSION = "1.49.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8361,40 +8416,30 @@ window.__commentableHtmlVersion = CMH_VERSION;
 <!-- END: commentable-html - JS -->
 
 
-<script id="taxiMonthlyChartData" type="application/json">
+<script id="wateringNeedsChartData" type="application/json">
 {
   "type": "bar",
   "data": {
     "labels": [
-      "Jan",
-      "Feb",
-      "Mar",
       "Apr",
       "May",
       "Jun",
       "Jul",
       "Aug",
       "Sep",
-      "Oct",
-      "Nov",
-      "Dec"
+      "Oct"
     ],
     "datasets": [
       {
-        "label": "Trips (millions)",
+        "label": "Estimated weekly water need (liters)",
         "data": [
-          13.78,
-          13.06,
-          15.43,
-          14.62,
-          14.77,
-          13.81,
-          13.11,
-          12.69,
-          13.37,
-          14.23,
-          13.22,
-          13.01
+          220,
+          360,
+          520,
+          680,
+          640,
+          420,
+          240
         ],
         "backgroundColor": "rgba(54, 162, 235, 0.55)",
         "borderColor": "rgba(54, 162, 235, 1)",
@@ -8408,7 +8453,7 @@ window.__commentableHtmlVersion = CMH_VERSION;
     "plugins": {
       "title": {
         "display": true,
-        "text": "Monthly Taxi Trips (2014)"
+        "text": "Estimated Weekly Watering Needs"
       },
       "legend": {
         "position": "bottom"
@@ -8422,7 +8467,7 @@ window.__commentableHtmlVersion = CMH_VERSION;
         "beginAtZero": true,
         "title": {
           "display": true,
-          "text": "Trips (millions)"
+          "text": "Liters per week"
         }
       },
       "x": {
@@ -8437,45 +8482,12 @@ window.__commentableHtmlVersion = CMH_VERSION;
 </script>
 <script>
 (function () {
-  var el = document.getElementById("taxiMonthlyChart");
+  var el = document.getElementById("wateringNeedsChart");
   if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("taxiMonthlyChartData").textContent);
+  var config = JSON.parse(document.getElementById("wateringNeedsChartData").textContent);
   new Chart(el, config);
 })();
 </script>
 
-<script id="taxiPaymentChartData" type="application/json">
-{"type":"doughnut","data":{"labels":["Card","Cash","Unknown","No charge","Disputed"],"datasets":[{"label":"Trips","data":[95571321,68167680,795761,446007,133592],"backgroundColor":["#2563eb","#16a34a","#f59e0b","#a855f7","#ef4444"]}]},"options":{"plugins":{"legend":{"position":"right"},"title":{"display":true,"text":"Payment type share of 2014 trips"}}}}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("taxiPaymentChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("taxiPaymentChartData").textContent);
-  new Chart(el, config);
-})();
-</script>
-<script id="taxiFareChartData" type="application/json">
-{"type":"line","data":{"labels":["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],"datasets":[{"label":"Avg fare ($)","data":[11.98,12.09,12.22,12.34,12.47,12.61,12.76,12.83,12.88,12.91,12.95,12.99],"borderColor":"#2563eb","backgroundColor":"#2563eb","yAxisID":"yFare","tension":0.3},{"label":"Avg distance (mi)","data":[2.85,2.80,3.81,2.95,3.02,4.74,2.98,2.90,2.88,2.92,2.86,2.83],"borderColor":"#f59e0b","backgroundColor":"#f59e0b","yAxisID":"yDist","tension":0.3}]},"options":{"interaction":{"mode":"index","intersect":false},"plugins":{"title":{"display":true,"text":"Monthly average fare and trip distance"}},"scales":{"yFare":{"type":"linear","position":"left","title":{"display":true,"text":"Avg fare ($)"}},"yDist":{"type":"linear","position":"right","title":{"display":true,"text":"Avg distance (mi)"},"grid":{"drawOnChartArea":false}}}}}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("taxiFareChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("taxiFareChartData").textContent);
-  new Chart(el, config);
-})();
-</script>
-<script id="taxiHourlyChartData" type="application/json">
-{"type":"line","data":{"labels":["00","01","02","03","04","05","06","07","08","09","10","11","12","13","14","15","16","17","18","19","20","21","22","23"],"datasets":[{"label":"Trips (millions)","data":[5.2,3.8,2.9,2.3,1.9,1.72,2.6,4.9,6.8,6.9,6.4,6.7,7.1,7.0,7.2,7.0,6.5,7.8,9.4,10.3,9.8,9.2,8.6,6.9],"borderColor":"#16a34a","backgroundColor":"rgba(22,163,74,0.15)","fill":true,"tension":0.3}]},"options":{"plugins":{"legend":{"display":false},"title":{"display":true,"text":"Trip volume by pickup hour (2014)"}},"scales":{"y":{"title":{"display":true,"text":"Trips (millions)"}},"x":{"title":{"display":true,"text":"Hour of day"}}}}}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("taxiHourlyChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("taxiHourlyChartData").textContent);
-  new Chart(el, config);
-})();
-</script>
 </body>
 </html>
