@@ -1643,7 +1643,7 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
         e, w = check_mermaid_syntax(parser)
         errors += e
         warnings += w
-        e, w = check_json_blocks(parser)
+        e, w = check_json_blocks(parser, chart_checks_run=charts)
         errors += e
         warnings += w
     if charts:

@@ -48,9 +48,9 @@ async function makeValidator() {
         let cfg;
         try { cfg = JSON.parse(t); }
         catch (e) { return { ok: false, error: "invalid JSON: " + e.message }; }
-        if (!cfg || typeof cfg !== "object" || typeof cfg.type !== "string") {
-          // Not a full Chart.js config (e.g. a bare data array) - JSON validity
-          // is all the oracle can assert here.
+        if (!cfg || typeof cfg !== "object" || typeof cfg.type !== "string" || !("data" in cfg)) {
+          // Not a full Chart.js config (a bare data array, or unrelated JSON that
+          // merely has a "type" field) - JSON validity is all the oracle asserts.
           return { ok: true, note: "not-a-chart-config" };
         }
         // Chart.js does NOT throw for an unknown type in the constructor (it fails

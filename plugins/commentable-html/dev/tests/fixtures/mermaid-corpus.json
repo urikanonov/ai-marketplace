@@ -87,15 +87,71 @@
     "name": "flow-unterminated-quote",
     "kind": "mermaid",
     "valid": false,
-    "py_flag": true,
+    "py_flag": false,
     "src": "flowchart TD\n  A[\"unterminated --> B"
   },
   {
     "name": "flow-unterminated-quote-2",
     "kind": "mermaid",
     "valid": false,
-    "py_flag": true,
+    "py_flag": false,
     "src": "flowchart TD\n  A[\"ok\"] --> B[\"oops --> C"
+  },
+  {
+    "name": "fp-accdescr-semicolon-arrow",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  accDescr: A -> B; overview\n  A->>B: hi"
+  },
+  {
+    "name": "fp-acctitle-semicolon-arrow",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  accTitle: A -> B; overview\n  A->>B: hi"
+  },
+  {
+    "name": "fp-flow-percent-in-label",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A[\"100%% done\"] --> B"
+  },
+  {
+    "name": "fp-flow-slash-literal-quote",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart LR\n  A[/x \" y/] --> B"
+  },
+  {
+    "name": "fp-flow-subgraph-percent",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  subgraph \"Group %% one\"\n    A --> B\n  end"
+  },
+  {
+    "name": "fp-inline-init-directive-semicolon",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  %%{init: {'theme':'dark'}}%%\n  A->>B: hi; C->>D: bye"
+  },
+  {
+    "name": "fp-message-inline-directive-semi-arrow",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: msg %%{init: {'foo': ';->'} }%%"
+  },
+  {
+    "name": "fp-message-trailing-comment-semi-arrow",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi %% note; X -> Y"
   },
   {
     "name": "gantt-basic",

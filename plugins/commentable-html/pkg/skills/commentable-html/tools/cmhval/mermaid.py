@@ -2,54 +2,51 @@
 subset of the real mermaid parser).
 
 The full mermaid grammar is only reproducible by mermaid itself, so this module
-does NOT try to reimplement it. It flags a small set of mistakes that are
-DEFINITELY invalid in every mermaid version - each rule is proven by the mermaid
-grammar and calibrated against a large corpus of real, valid diagrams (see
-dev/tests/test_mermaid_corpus.py and the differential oracle
-dev/tools/validate_render.mjs) so it never rejects a diagram the real parser
-accepts. The repo-side oracle covers everything this module conservatively skips.
+does NOT try to reimplement it. It deep-checks exactly ONE thing, because it is
+both the reported bug class and provably safe: a `sequenceDiagram` message that a
+`;` splits into a dangling statement. Every OTHER diagram family (flowchart,
+class, state, er, gantt, pie, ...) is recognized but intentionally left
+unchecked - reproducing their grammar in Python kept producing false positives
+(a flowchart label may legitimately contain `%%` or a literal `"` inside a
+slash/round/hex shape, a `click` callback may carry unbalanced quotes), and the
+zero-false-positive guarantee matters more than catching those in the shipped
+checker. The repo-side real-parser oracle (dev/tools/validate_render.mjs) does
+validate every diagram family with the authoritative parser in CI.
 
-Rules (all ERRORS, because a syntactically broken diagram renders as mermaid's
+The sequence rule (all ERRORS, because a broken diagram renders as mermaid's
 "Syntax error in text" bomb instead of a diagram):
 
-  MERMAID SEQUENCE - semicolon splits a message into a dangling statement.
-    In a sequenceDiagram, `;` is a statement separator, so
-    `A->>B: validate; map X -> Y` is parsed as the signal `A->>B: validate`
-    followed by a second statement `map X -> Y`. A statement that contains a
-    message arrow but no `:` message is an invalid signal - the exact class of
-    the bug this checker was built for. Only NON-keyword-led segments are
-    checked, so a `participant A as "x->y"` alias is never mis-flagged.
-
-  MERMAID FLOWCHART - an unbalanced double quote.
-    In flowchart/graph node text a literal `"` must be escaped (`#quot;` /
-    `&quot;`); an odd count of raw quotes (after removing comments, directives,
-    and escaped quotes) is always a parse error.
-
-Everything else (unknown diagram types, other diagram families, deeper flowchart
-structure) is intentionally NOT flagged here to keep the guarantee of no false
-positives; the Node/Playwright oracle validates those repo-side.
+  In a sequenceDiagram, `;` is a statement separator, so
+  `A->>B: validate; map X -> Y` is parsed as the signal `A->>B: validate`
+  followed by a second statement `map X -> Y`. A statement that carries a message
+  arrow but no `:` message is an invalid signal - the exact class of the bug this
+  checker was built for. To stay zero-false-positive:
+    - Only a line whose FIRST `;`-segment is a real signal (an arrow WITH a `:`
+      message after it) is inspected; a directive like `accTitle: A -> B` (whose
+      colon precedes the arrow) is never mistaken for one.
+    - Only NON-keyword-led tail segments are flagged, so a `participant`,
+      `activate`, `Note`, `loop`, etc. after the `;` is a valid statement.
+    - `%%{ ... }%%` init directives and `%%` comments are stripped first, so a
+      `;` or arrow inside a directive/comment is never split on.
 """
 
 import re
 
-# Diagram-type keywords we understand well enough to deep-check. Detection mirrors
-# mermaid: the type is the first token of the first meaningful line (after any
-# YAML frontmatter, `%%{init}%%` directives, and `%%` comment lines). Any other /
-# unknown type is accepted without deep checks so a new mermaid diagram type can
-# never be a false positive.
+# Diagram-type keywords we deep-check. Detection mirrors mermaid: the type is the
+# first token of the first meaningful line (after YAML frontmatter, `%%{...}%%`
+# directives, and `%%` comments). Any other type is accepted without deep checks
+# so a new/other diagram family can never be a false positive.
 _SEQUENCE_TYPES = ("sequencediagram",)
-_FLOWCHART_TYPES = ("flowchart", "graph")
 
 # Sequence message arrows, longest-first so alternation is greedy. These are the
-# ONLY sequence statements that carry an arrow, and every one of them requires a
-# trailing `: message`, which is what makes "arrow but no colon" an unambiguous
-# error.
+# ONLY sequence statements that carry an arrow, and every one requires a trailing
+# `: message`, which is what makes "arrow but no colon" an unambiguous error.
 _SEQ_ARROW = re.compile(r"<<-->>|<<->>|-->>|-->|->>|->|--x|-x|--\)|-\)")
 
-# Statement-leading keywords in a sequenceDiagram. A segment that starts with one
-# of these is a non-signal statement (or a free-text-bearing one such as
-# `participant ... as ...`), so it is never checked for the arrow-without-colon
-# rule - that is what prevents a `participant A as "a->b"` false positive.
+# Statement-leading keywords in a sequenceDiagram. A tail segment that starts with
+# one of these is a valid non-signal statement, so it is never flagged - that is
+# what prevents a `participant ... as ...`, `activate`, `Note`, or `accTitle:`
+# false positive. A trailing `:` on the token (`accTitle:`) is tolerated.
 _SEQ_KEYWORDS = frozenset((
     "participant", "actor", "create", "destroy", "box", "end",
     "activate", "deactivate", "note", "loop", "alt", "else", "opt", "par",
@@ -58,9 +55,12 @@ _SEQ_KEYWORDS = frozenset((
 ))
 
 _FRONTMATTER_RE = re.compile(r"^\s*---\r?\n.*?\r?\n---[ \t]*\r?\n", re.DOTALL)
-# An inline `%%` comment runs to end of line, but `%%{ ... }%%` is an init
-# directive, not a comment - do not strip that.
-_INLINE_COMMENT_RE = re.compile(r"%%(?!\{).*$")
+# A `%%{ ... }%%` init/config directive (may span lines) - NOT a comment; remove it
+# wholesale so a `;`/arrow inside it is never split on.
+_DIRECTIVE_RE = re.compile(r"%%\{.*?\}%%", re.DOTALL)
+# A `%%` comment runs to end of line. Applied only AFTER directives are removed, so
+# it never eats a `%%{ ... }%%`.
+_LINE_COMMENT_RE = re.compile(r"%%.*$")
 
 
 def block_source(block):
@@ -71,45 +71,40 @@ def block_source(block):
     return block.get("src", "") or ""
 
 
-def _meaningful_lines(src):
-    """(diagram_type, [body_line, ...]) after stripping YAML frontmatter, the
-    leading `%%{init}%%` directive(s), `%%` comment lines, and blank lines.
-    diagram_type is lowercase; body_line keeps the ORIGINAL text (arrows intact)
-    but with any trailing inline `%%` comment removed."""
+def _diagram_type_and_lines(src):
+    """(lowercase diagram type or None, [body line, ...]) after removing YAML
+    frontmatter, `%%{...}%%` directives, `%%` comments, and blank lines. Body lines
+    keep their arrows and text intact so the sequence check can inspect them."""
     body = _FRONTMATTER_RE.sub("", src, count=1)
-    raw_lines = body.splitlines()
+    body = _DIRECTIVE_RE.sub("", body)
     dtype = None
     out = []
-    for raw in raw_lines:
-        stripped = raw.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("%%"):
-            continue  # `%%{init}%%` directive or a full-line comment
-        line = _INLINE_COMMENT_RE.sub("", raw).rstrip()
+    for raw in body.splitlines():
+        line = _LINE_COMMENT_RE.sub("", raw)
         if not line.strip():
             continue
         if dtype is None:
-            dtype = line.strip().split()[0].lower() if line.strip().split() else ""
+            dtype = line.strip().split()[0].lower()
             continue
         out.append(line)
     return dtype, out
 
 
-def _split_statements(line):
-    """Split a sequence line into `;`-separated statement segments, matching how
-    mermaid treats `;` as a statement terminator."""
-    return line.split(";")
+def _is_signal(segment):
+    """True when a segment is a real sequence signal: a message arrow followed by a
+    `: message`. The colon must come AFTER the arrow, which distinguishes a signal
+    from a directive such as `accTitle: A -> B` (colon before the arrow)."""
+    m = _SEQ_ARROW.search(segment)
+    return bool(m) and ":" in segment[m.end():]
 
 
-def _segment_is_invalid_signal(segment):
-    """True when a NON-keyword-led segment carries a message arrow but has no `:`
-    after it - a signal without its message, which mermaid always rejects."""
+def _tail_is_invalid_signal(segment):
+    """True when a NON-keyword-led tail segment carries a message arrow but has no
+    `:` after it - a signal without its message, which mermaid always rejects."""
     seg = segment.strip()
     if not seg:
         return False
-    first = seg.split()[0].lower()
-    # Strip a leading `+`/`-` (activate/deactivate shorthand on a signal target).
+    first = seg.split()[0].lower().rstrip(":")  # tolerate `accTitle:` / `accDescr:`
     if first in _SEQ_KEYWORDS:
         return False
     m = _SEQ_ARROW.search(seg)
@@ -121,56 +116,32 @@ def _segment_is_invalid_signal(segment):
 def _check_sequence(lines, where):
     errors = []
     for line in lines:
-        segments = _split_statements(line)
+        segments = line.split(";")
         if len(segments) < 2:
-            continue  # no `;`, so the line is a single statement mermaid parses as-is
-        for seg in segments:
-            if _segment_is_invalid_signal(seg):
-                bad = seg.strip()
+            continue  # no `;`, so mermaid parses the line as a single statement
+        if not _is_signal(segments[0]):
+            continue  # only a real message line splits into a dangling signal
+        for seg in segments[1:]:
+            if _tail_is_invalid_signal(seg):
                 errors.append(
                     "%s: a ';' in a sequence message splits it into a separate statement, and "
                     "the text after it (\"%s\") is parsed as a signal with no message - "
                     "mermaid reports \"Syntax error in text\". Remove the ';' or rephrase the "
-                    "message (a ';' is a statement separator in mermaid)." % (where, bad)
+                    "message (a ';' is a statement separator in mermaid)." % (where, seg.strip())
                 )
                 break  # one finding per line is enough
     return errors
 
 
-# A raw double quote that is NOT an escaped/entity quote. `#quot;` and `&quot;`
-# are mermaid/HTML escapes for a literal quote; `\"` is a JS-style escape. After
-# removing those, a leftover `"` is a real structural quote.
-_ESCAPED_QUOTE_RE = re.compile(r"#quot;|&quot;|&#34;|\\\"")
-
-
-def _check_flowchart_quotes(lines, where):
-    # Count structural double quotes across the whole diagram body (comments and
-    # inline `%%` comments are already stripped by _meaningful_lines). An odd
-    # count cannot be balanced, so a node label opened with `"` was never closed.
-    joined = "\n".join(lines)
-    joined = _ESCAPED_QUOTE_RE.sub("", joined)
-    if joined.count('"') % 2 == 1:
-        return ["%s: a flowchart node label has an unbalanced double quote (an odd number of "
-                "unescaped '\"') - close the quote, or escape a literal quote as #quot; . "
-                "mermaid reports \"Syntax error in text\"." % where]
-    return []
-
-
 def check_mermaid_source(src):
     """Validate one raw mermaid source string. Returns a list of error strings
-    (empty when the checker has nothing to flag). Used by the differential corpus
-    test and by callers that already have the diagram text."""
+    (empty when the checker has nothing to flag)."""
     src = (src or "").strip()
     if not src:
         return []
-    dtype, lines = _meaningful_lines(src)
-    if dtype is None:
-        return []
-    where = "mermaid diagram"
+    dtype, lines = _diagram_type_and_lines(src)
     if dtype in _SEQUENCE_TYPES:
-        return _check_sequence(lines, where)
-    if dtype in _FLOWCHART_TYPES:
-        return _check_flowchart_quotes(lines, where)
+        return _check_sequence(lines, "mermaid diagram")
     return []
 
 
@@ -186,12 +157,7 @@ def check_mermaid_syntax(parser):
         src = block_source(block).strip()
         if not src:
             continue
-        dtype, lines = _meaningful_lines(src)
-        if dtype is None:
-            continue
-        where = "mermaid diagram #%d" % (i + 1)
+        dtype, lines = _diagram_type_and_lines(src)
         if dtype in _SEQUENCE_TYPES:
-            errors.extend(_check_sequence(lines, where))
-        elif dtype in _FLOWCHART_TYPES:
-            errors.extend(_check_flowchart_quotes(lines, where))
+            errors.extend(_check_sequence(lines, "mermaid diagram #%d" % (i + 1)))
     return errors, warnings

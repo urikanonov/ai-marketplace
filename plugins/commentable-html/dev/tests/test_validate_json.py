@@ -17,10 +17,10 @@ import validate  # noqa: E402
 from cmhval import jsonblocks as J  # noqa: E402
 
 
-def _errs(html):
+def _errs(html, chart_checks_run=True):
     parser, ok = validate._parse(html)
     assert ok, "parse failed"
-    e, _w = J.check_json_blocks(parser)
+    e, _w = J.check_json_blocks(parser, chart_checks_run=chart_checks_run)
     return e
 
 
@@ -58,6 +58,28 @@ class JsonBlockValidity(unittest.TestCase):
 
     def test_wired_into_validate_module(self):
         self.assertTrue(hasattr(validate, "check_json_blocks"))
+
+    def test_nan_infinity_flagged(self):
+        # Python's json.loads accepts these by default, but browser JSON.parse
+        # rejects them, so they must fail here too.
+        for lit in ("NaN", "Infinity", "-Infinity"):
+            html = '<script type="application/json" id="data">{"x": %s}</script>' % lit
+            with self.subTest(lit=lit):
+                self.assertTrue(_errs(html), lit)
+
+    def test_script_breakout_is_caught_via_json_validity(self):
+        # A raw </script> truncates the block in the browser; the captured body is
+        # then invalid JSON, so JSON-validity already catches a real breakout. A
+        # lone "<!--" inside a valid JSON string is NOT a breakout and is not flagged.
+        self.assertEqual(_errs('<script type="application/json" id="d">"<!-- ok -->"</script>'), [])
+
+    def test_layer_only_still_checks_json_when_canvas_present(self):
+        # In --layer-only mode the chart checks do not run, so this module must not
+        # defer just because a canvas exists.
+        html = ('<span class="cm-skip"><canvas id="c"></canvas></span>'
+                '<script type="application/json" id="data">{bad</script>')
+        self.assertEqual(_errs(html, chart_checks_run=True), [])   # default: charts own it
+        self.assertTrue(_errs(html, chart_checks_run=False))       # layer-only: we own it
 
 
 if __name__ == "__main__":

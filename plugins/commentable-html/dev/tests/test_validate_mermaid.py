@@ -97,21 +97,42 @@ class MermaidSequenceRule(unittest.TestCase):
         # flag it (a safe false negative, never a false positive).
         self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; world"))
 
+    def test_acctitle_directive_not_flagged(self):
+        # accTitle:/accDescr: consume the rest of the line; their ':' precedes any
+        # arrow so the first segment is not a signal - never flagged (real parser
+        # accepts these).
+        self.assertFalse(_flag("sequenceDiagram\n  accTitle: A -> B; overview\n  A->>B: hi"))
+        self.assertFalse(_flag("sequenceDiagram\n  accDescr: A -> B; overview\n  A->>B: hi"))
 
-class MermaidFlowchartRule(unittest.TestCase):
-    """CMH-SYN-02: an unbalanced double quote in a flowchart node label."""
+    def test_inline_init_directive_not_flagged(self):
+        # A `%%{init}%%` directive is stripped before splitting, so a ';'/arrow
+        # inside it is never split on (real parser accepts this).
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: msg %%{init: {'foo': ';->'} }%%"))
 
-    def test_flags_unbalanced_quote(self):
-        self.assertTrue(_flag('flowchart TD\n  A["unterminated --> B'))
+    def test_trailing_comment_with_semicolon_not_flagged(self):
+        # `%%` starts a comment that is stripped, so the ';' inside it is gone.
+        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi %% note; X -> Y"))
 
-    def test_balanced_quotes_not_flagged(self):
-        self.assertFalse(_flag('flowchart TD\n  A["one"] --> B["two"]'))
 
-    def test_quot_escape_not_flagged(self):
-        self.assertFalse(_flag('flowchart TD\n  A["say #quot;hi#quot;"] --> B'))
+class MermaidFlowchartDelegatedToOracle(unittest.TestCase):
+    """CMH-SYN-02: flowchart (and every non-sequence family) is recognized but NOT
+    structurally checked in Python - it is delegated to the repo-side real-parser
+    oracle - so a flowchart is never a false positive, including the constructs
+    earlier quote heuristics mis-flagged (a label with %%, a literal quote in a
+    slash shape, a click callback). Genuinely broken flowcharts are a safe false
+    negative here; the oracle catches them in CI."""
 
-    def test_edge_label_quotes_not_flagged(self):
-        self.assertFalse(_flag('flowchart LR\n  A -->|"yes"| B\n  A -->|"no"| C'))
+    def test_flowchart_never_flagged(self):
+        for src in (
+            'flowchart TD\n  A["100%% done"] --> B',
+            'flowchart LR\n  A[/x " y/] --> B',
+            'flowchart TD\n  subgraph "Group %% one"\n    A --> B\n  end',
+            'flowchart TD\n  A["unterminated --> B',
+            'flowchart TD\n  A["one"] --> B["two"]',
+            'graph LR\n  A -->|"yes"| B',
+        ):
+            with self.subTest(src=src.split("\n")[0]):
+                self.assertEqual(M.check_mermaid_source(src), [])
 
 
 class MermaidTypeGating(unittest.TestCase):
@@ -119,6 +140,7 @@ class MermaidTypeGating(unittest.TestCase):
 
     def test_other_types_not_flagged(self):
         for src in (
+            "flowchart TD\n  A --> B; B --> C",  # flowchart is delegated to the oracle
             "classDiagram\n  Animal <|-- Dog",
             "erDiagram\n  A ||--o{ B : has",
             "gantt\n  title x\n  section s\n  t: a1, 2024-01-01, 1d",

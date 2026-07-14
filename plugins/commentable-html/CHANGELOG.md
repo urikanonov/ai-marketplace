@@ -12,14 +12,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   or invalid embedded JSON now FAILS validation instead of shipping and rendering as mermaid's
   "Syntax error in text" bomb:
   - Mermaid: a `sequenceDiagram` message that a `;` splits into a dangling statement (the text
-    after the `;` carries a message arrow but no `:` message) is an error, and a flowchart/graph
-    node label with an unbalanced double quote is an error. The checks are calibrated to zero
-    false positives against a broad, real-parser-labeled corpus - a valid multi-signal
-    (`A->>B: x; C->>D: y`), an arrow inside message text, and a `participant ... as "a->b"` alias
-    are never flagged, and unknown diagram types are skipped rather than guessed.
+    after the `;` carries a message arrow but no `:` message) is an error. The check is calibrated
+    to zero false positives against a broad, real-parser-labeled corpus - a valid multi-signal
+    (`A->>B: x; C->>D: y`), an arrow inside message text, a `participant ... as "a->b"` alias, an
+    `accTitle:`/`accDescr:` directive, and an inline `%%{init}%%` directive or `%%` comment are
+    never flagged. Only `sequenceDiagram` is deep-checked in Python; every other diagram family
+    (flowchart, class, state, ...) is delegated to the repo-side real-parser oracle, so a flowchart
+    label with a `%%` or a literal quote is never a false positive.
   - Embedded JSON: an empty or invalid `<script type="application/json">` data block (whose
-    `JSON.parse()` would throw at runtime) is an error when the document has no chart canvas; the
-    chart checks continue to own chart-data JSON when a canvas is present.
+    `JSON.parse()` would throw at runtime, including a `NaN`/`Infinity` literal or a raw
+    `</script>` that truncates the block) is an error when no chart canvas owns it; the chart
+    checks continue to own chart-data JSON when a canvas is present.
 - The new checks live in a `tools/cmhval/` package (`mermaid.py`, `jsonblocks.py`) so the
   validator does not grow into one giant script; `tools/validate.py` stays the entry point.
 

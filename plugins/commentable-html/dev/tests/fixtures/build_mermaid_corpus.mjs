@@ -66,9 +66,22 @@ const ENTRIES = [
   { name: "flow-semicolons", py_flag: false, src: "flowchart TD\n  A --> B; B --> C; C --> D" },
   { name: "flow-multiline-many-quotes", py_flag: false, src: 'flowchart TD\n  A["one"] --> B["two"]\n  B --> C["three"]\n  C --> D["four"]' },
 
-  // ---- invalid flowcharts the Python checker SHOULD flag (unbalanced quote) ----
-  { name: "flow-unterminated-quote", py_flag: true, src: 'flowchart TD\n  A["unterminated --> B' },
-  { name: "flow-unterminated-quote-2", py_flag: true, src: 'flowchart TD\n  A["ok"] --> B["oops --> C' },
+  // ---- invalid flowcharts (the Python checker delegates flowchart syntax to the
+  //      repo-side oracle, so it does NOT flag these - py_flag stays false; the
+  //      oracle still catches them via the real parser) ----
+  { name: "flow-unterminated-quote", py_flag: false, src: 'flowchart TD\n  A["unterminated --> B' },
+  { name: "flow-unterminated-quote-2", py_flag: false, src: 'flowchart TD\n  A["ok"] --> B["oops --> C' },
+
+  // ---- regression: valid diagrams that EARLIER checker versions false-flagged.
+  //      All are accepted by the real parser and must never be flagged. ----
+  { name: "fp-acctitle-semicolon-arrow", py_flag: false, src: "sequenceDiagram\n  accTitle: A -> B; overview\n  A->>B: hi" },
+  { name: "fp-accdescr-semicolon-arrow", py_flag: false, src: "sequenceDiagram\n  accDescr: A -> B; overview\n  A->>B: hi" },
+  { name: "fp-inline-init-directive-semicolon", py_flag: false, src: "sequenceDiagram\n  %%{init: {'theme':'dark'}}%%\n  A->>B: hi; C->>D: bye" },
+  { name: "fp-message-inline-directive-semi-arrow", py_flag: false, src: "sequenceDiagram\n  A->>B: msg %%{init: {'foo': ';->'} }%%" },
+  { name: "fp-message-trailing-comment-semi-arrow", py_flag: false, src: "sequenceDiagram\n  A->>B: hi %% note; X -> Y" },
+  { name: "fp-flow-percent-in-label", py_flag: false, src: 'flowchart TD\n  A["100%% done"] --> B' },
+  { name: "fp-flow-slash-literal-quote", py_flag: false, src: 'flowchart LR\n  A[/x " y/] --> B' },
+  { name: "fp-flow-subgraph-percent", py_flag: false, src: 'flowchart TD\n  subgraph "Group %% one"\n    A --> B\n  end' },
 
   // ---- valid other diagram types (Python must skip -> never flag) ----
   { name: "class-basic", py_flag: false, src: "classDiagram\n  Animal <|-- Dog\n  Animal : +int age\n  Animal : +String name" },
