@@ -78,7 +78,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.39.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.42.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -325,6 +325,18 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.42.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Content-syntax validation in <code>tools/validate.py</code>, so a document with a broken mermaid diagram or invalid embedded JSON now FAILS validation instead of shipping and rendering as mermaid&#x27;s &quot;Syntax error in text&quot; bomb: - Mermaid: a <code>sequenceDiagram</code> message that a <code>;</code> splits into a dangling statement (the text after the <code>;</code> carries a message arrow but no <code>:</code> message) is an error, and a flowchart/graph node label with an unbalanced double quote is an error. The checks are calibrated to zero false positives against a broad, real-parser-labeled corpus - a valid multi-signal (<code>A-&gt;&gt;B: x; C-&gt;&gt;D: y</code>), an arrow inside message text, and a <code>participant ... as &quot;a-&gt;b&quot;</code> alias are never flagged, and unknown diagram types are skipped rather than guessed. - Embedded JSON: an empty or invalid <code>&lt;script type=&quot;application/json&quot;&gt;</code> data block (whose <code>JSON.parse()</code> would throw at runtime) is an error when the document has no chart canvas; the chart checks continue to own chart-data JSON when a canvas is present.</li>
+              <li>The new checks live in a <code>tools/cmhval/</code> package (<code>mermaid.py</code>, <code>jsonblocks.py</code>) so the validator does not grow into one giant script; <code>tools/validate.py</code> stays the entry point.</li>
+            </ul>
+            <div class="group-label">Development</div>
+            <ul>
+              <li>A repo-side real-parser oracle (<code>dev/tools/validate_render.mjs</code>, never shipped) validates every mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker&#x27;s zero-false-positive guarantee is gated by the authoritative parser in CI.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.39.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -332,6 +344,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Help panel text now names the triage board&#x27;s <code>Reset moves</code> button and the board-moves comment card&#x27;s <code>Reset changes</code> button, and refers to the Help toggle by its exact on-screen label, <code>Help &amp; About</code>, instead of the shorthand <code>Help</code>.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.38.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -340,8 +354,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>build.py</code>&#x27;s example pipeline now covers <code>deck-*.html</code> sources alongside <code>report-*.html</code>, so a deck source in <code>dev/examples-src/</code> regenerates its shipped copy under <code>pkg/**/examples/</code> and <code>build.py --check</code> catches a hand-edit or a stale/clobbered deck example. The site demos list syncs the deck under <code>site/commentable-html/demo/</code> next to the report demos.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.37.0] - 2026-07-14</h3></div>
             <div class="group-label">Fixed</div>
@@ -384,24 +396,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The comments-panel toggle and the overflow-menu trigger now declare the element they control with <code>aria-controls</code> (<code>#sidebar</code> and <code>#toolbarMenu</code>), so assistive technology can associate each toggle with its target.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.33.0] - 2026-07-13</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Export as Portable no longer corrupts a comment whose body contains <code>$&amp;</code>, <code>$1</code>, `<code> $</code> `<code>, </code>$&#x27;<code>, or </code>$$<code>: the saved-HTML builder now uses a function replacer so </code>String.replace<code> cannot expand those </code>$`-patterns from the comment text.</li>
-              <li>Export as Plain now recognizes region markers with any number of <code>=</code> fill characters (matching the validator&#x27;s grammar) when stripping the comment-UI, embedded-comments, and script regions, and the post-export leak guard now matches <code>id=&quot;handledCommentIds&quot;</code> / <code>id=&quot;embeddedComments&quot;</code> regardless of quote style, so a Plain export cannot silently ship comment data.</li>
-              <li>The strict validator now rejects a report whose top-level lede exists but is empty: a document must carry a non-empty top-level <code>&lt;h1&gt;</code> title, not just the lede wrapper class.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The plugin site page now showcases the commentable-decks capability in the &quot;What you get&quot; section.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The deck authoring guide runs the deck validator with <code>--strict</code>, and the tutorial&#x27;s Show/Hide wording matches the actual toolbar behavior.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">42 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">43 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-07-14
+
+### Added
+
+- Content-syntax validation in `tools/validate.py`, so a document with a broken mermaid diagram
+  or invalid embedded JSON now FAILS validation instead of shipping and rendering as mermaid's
+  "Syntax error in text" bomb:
+  - Mermaid: a `sequenceDiagram` message that a `;` splits into a dangling statement (the text
+    after the `;` carries a message arrow but no `:` message) is an error, and a flowchart/graph
+    node label with an unbalanced double quote is an error. The checks are calibrated to zero
+    false positives against a broad, real-parser-labeled corpus - a valid multi-signal
+    (`A->>B: x; C->>D: y`), an arrow inside message text, and a `participant ... as "a->b"` alias
+    are never flagged, and unknown diagram types are skipped rather than guessed.
+  - Embedded JSON: an empty or invalid `<script type="application/json">` data block (whose
+    `JSON.parse()` would throw at runtime) is an error when the document has no chart canvas; the
+    chart checks continue to own chart-data JSON when a canvas is present.
+- The new checks live in a `tools/cmhval/` package (`mermaid.py`, `jsonblocks.py`) so the
+  validator does not grow into one giant script; `tools/validate.py` stays the entry point.
+
+### Development
+
+- A repo-side real-parser oracle (`dev/tools/validate_render.mjs`, never shipped) validates every
+  mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and
+  Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo
+  cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker's
+  zero-false-positive guarantee is gated by the authoritative parser in CI.
+
 ## [1.39.0] - 2026-07-14
 
 ### Changed

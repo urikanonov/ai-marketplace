@@ -38,6 +38,15 @@ from html.parser import HTMLParser
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
+# The focused check modules live in the sibling cmhval/ package. Guarantee this
+# tools dir is importable so `from cmhval...` resolves under any invocation
+# (mirrors the sys.path guard the other tools use).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
+from cmhval.jsonblocks import check_json_blocks  # noqa: E402
+
 # --------------------------------------------------------------------------- #
 # Layer contract
 # --------------------------------------------------------------------------- #
@@ -461,6 +470,12 @@ class _DocParser(HTMLParser):
         self._record(tag, ad, own_skip)
 
     def handle_data(self, data):
+        # Capture the raw source text of the current mermaid block (entities are already
+        # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
+        # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
+        # flag lets the checker skip it.
+        if self._mermaid_stack and self._mermaid_stack[-1] is not None:
+            self.mermaid_blocks[self._mermaid_stack[-1]].setdefault("src_parts", []).append(data)
         if self._cur_script is not None:
             self._cur_body.append(data)
             return
@@ -1620,6 +1635,15 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
     if layer:
         bd = os.path.dirname(os.path.abspath(path)) if base_dir is _BASE_DIR_UNSET else base_dir
         e, w = check_layer(html, parser, base_dir=bd)
+        errors += e
+        warnings += w
+        # Content-syntax checks (mermaid diagrams, embedded JSON, and later
+        # diff/kql) are document-content invariants, so they run with the layer
+        # checks, not the chart-only path.
+        e, w = check_mermaid_syntax(parser)
+        errors += e
+        warnings += w
+        e, w = check_json_blocks(parser)
         errors += e
         warnings += w
     if charts:

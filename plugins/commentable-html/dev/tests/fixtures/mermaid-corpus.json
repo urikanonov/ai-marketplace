@@ -1,0 +1,345 @@
+[
+  {
+    "name": "class-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "classDiagram\n  Animal <|-- Dog\n  Animal : +int age\n  Animal : +String name"
+  },
+  {
+    "name": "er-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE : contains"
+  },
+  {
+    "name": "flow-arrow-in-quoted-label",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A[\"maps x -> y\"] --> B"
+  },
+  {
+    "name": "flow-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A --> B --> C"
+  },
+  {
+    "name": "flow-edge-label-quotes",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart LR\n  A -->|\"yes, ok\"| B\n  A -->|\"no\"| C"
+  },
+  {
+    "name": "flow-graph-alias",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "graph LR\n  A-->B"
+  },
+  {
+    "name": "flow-multiline-many-quotes",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A[\"one\"] --> B[\"two\"]\n  B --> C[\"three\"]\n  C --> D[\"four\"]"
+  },
+  {
+    "name": "flow-quot-escape",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A[\"say #quot;hi#quot;\"] --> B"
+  },
+  {
+    "name": "flow-quoted-label",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A[\"a label\"] --> B[\"another\"]"
+  },
+  {
+    "name": "flow-semicolons",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A --> B; B --> C; C --> D"
+  },
+  {
+    "name": "flow-shapes",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TD\n  A[/parallelogram/] --> B[(database)]\n  B --> C{{hexagon}}\n  C --> D[[subroutine]]"
+  },
+  {
+    "name": "flow-subgraph",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "flowchart TB\n  subgraph one\n    A --> B\n  end\n  subgraph two\n    C --> D\n  end\n  B --> C"
+  },
+  {
+    "name": "flow-unterminated-quote",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "flowchart TD\n  A[\"unterminated --> B"
+  },
+  {
+    "name": "flow-unterminated-quote-2",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "flowchart TD\n  A[\"ok\"] --> B[\"oops --> C"
+  },
+  {
+    "name": "gantt-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "gantt\n  title A\n  dateFormat YYYY-MM-DD\n  section S\n  Task :a1, 2024-01-01, 30d"
+  },
+  {
+    "name": "gitgraph-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "gitGraph\n  commit\n  branch dev\n  commit\n  checkout main\n  merge dev"
+  },
+  {
+    "name": "journey-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "journey\n  title My day\n  section Work\n    Code: 5: Me\n    Review: 3: Me"
+  },
+  {
+    "name": "mindmap-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "mindmap\n  root((central))\n    a\n    b"
+  },
+  {
+    "name": "pie-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "pie title Pets\n  \"Dogs\" : 40\n  \"Cats\" : 60"
+  },
+  {
+    "name": "quadrant-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "quadrantChart\n  title Reach\n  x-axis Low --> High\n  y-axis Low --> High\n  A: [0.3, 0.6]"
+  },
+  {
+    "name": "seq-activation-plusminus",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>+B: open\n  B-->>-A: close"
+  },
+  {
+    "name": "seq-arrow-in-message",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: project observations -> TceBehaviorInfo"
+  },
+  {
+    "name": "seq-arrow-in-message-double",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: maps ActionType --> observation type"
+  },
+  {
+    "name": "seq-async-arrow",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A-)B: async ping"
+  },
+  {
+    "name": "seq-autonumber-title",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  autonumber\n  title My Flow\n  A->>B: hi"
+  },
+  {
+    "name": "seq-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hello"
+  },
+  {
+    "name": "seq-box",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  box Purple Group\n    participant A\n    participant B\n  end\n  A->>B: hi"
+  },
+  {
+    "name": "seq-bug-original",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "sequenceDiagram\n  SEQ->>SEQ: validate against allowlist; map ActionType -> observation CLR type(s)"
+  },
+  {
+    "name": "seq-colon-in-message",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: the ratio is 3:1 across runs"
+  },
+  {
+    "name": "seq-cross-arrow",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A-xB: lost message"
+  },
+  {
+    "name": "seq-frontmatter",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "---\ntitle: Flow\n---\nsequenceDiagram\n  A->>B: hi"
+  },
+  {
+    "name": "seq-init-directive",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "%%{init: {'theme':'dark'}}%%\nsequenceDiagram\n  A->>B: hi"
+  },
+  {
+    "name": "seq-inline-comment",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hello  %% reuses the same store"
+  },
+  {
+    "name": "seq-loop-alt-opt",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  loop every minute\n    A->>B: poll\n  end\n  alt ok\n    B->>A: 200\n  else fail\n    B->>A: 500\n  end"
+  },
+  {
+    "name": "seq-message-with-parens-brackets",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: GetBehaviorsAsync([\"ProcessInjection\",\"SuspiciousDllLoad\"])"
+  },
+  {
+    "name": "seq-par-and",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  par to B\n    A->>B: x\n  and to C\n    A->>C: y\n  end"
+  },
+  {
+    "name": "seq-semicolon-arrow-async",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "sequenceDiagram\n  A->>B: kick off; worker -) queue drains"
+  },
+  {
+    "name": "seq-semicolon-arrow-no-colon",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "sequenceDiagram\n  A->>B: first step; then X -> Y happens"
+  },
+  {
+    "name": "seq-semicolon-arrow-no-colon-double",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "sequenceDiagram\n  A->>B: begin; Z --> W continues here"
+  },
+  {
+    "name": "seq-semicolon-bare-word",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; world"
+  },
+  {
+    "name": "seq-semicolon-prose-tail",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; then two more words"
+  },
+  {
+    "name": "seq-semicolon-then-activate",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; activate B\n  deactivate B"
+  },
+  {
+    "name": "seq-semicolon-then-note",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; Note right of B: thinking"
+  },
+  {
+    "name": "seq-semicolon-then-participant",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; participant C"
+  },
+  {
+    "name": "seq-semicolon-then-signal-then-note",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; C->>D: bye; Note over C,D: done"
+  },
+  {
+    "name": "seq-trailing-semicolon",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hello;"
+  },
+  {
+    "name": "seq-two-signals-semicolon",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "sequenceDiagram\n  A->>B: hi; C->>D: bye"
+  },
+  {
+    "name": "state-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running: start\n  Running --> [*]"
+  },
+  {
+    "name": "timeline-basic",
+    "kind": "mermaid",
+    "valid": true,
+    "py_flag": false,
+    "src": "timeline\n  title History\n  2021 : one\n  2022 : two"
+  }
+]
