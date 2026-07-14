@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 21:02'
+updated_date: '2026-07-14 21:15'
 labels: []
 dependencies: []
 ordinal: 9000
@@ -31,11 +31,11 @@ Add an author-time check that flags color pairs whose foreground and background 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add regression tests for the six review findings first, including non-finite rgb handling, transparent backgrounds, declaration-order background precedence, url() masking, malformed rgb arity, and equal-color ratio.\n2. Update tools/validate/cmhval/contrast.py to reject non-finite values, skip semi-transparent backgrounds, preserve declaration order, ignore url()/quoted content during color fallback extraction, and enforce rgb()/rgba() arity.\n3. Update the CMH-DECK-08 spec row test list, rebuild without changing the 1.55.0 version, run targeted pytest and shipped deck validation, then run rebuild_all, rebuild_all --check, validate_marketplace, and validate_markdown.\n4. Commit the review fixes and force-push tooling/contrast-check, then finalize TASK-10 again.
+1. Rebase tooling/contrast-check onto origin/main and resolve conflicts by keeping main for generated artifacts, preserving contrast source/test changes, and re-laning to the next free version.\n2. Rename the contrast feature id from CMH-DECK-08 to CMH-DECK-12 across spec and tests, then verify there are no duplicate CMH-DECK ids after the rebase.\n3. Rebuild generated outputs, run targeted contrast tests, deck example validation, rebuild/validation checks, and push with the pre-push hook.\n4. Finalize TASK-10 and report the final version, feature id, and hook result.
 <!-- SECTION:PLAN:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Addressed review findings for the contrast checker: non-finite and malformed rgb/rgba values are skipped without crashing, semi-transparent backgrounds are skipped, background shorthand follows declaration order, url() and quoted text are ignored during fallback color extraction, equal-color ratio coverage was added, CMH-DECK-08 docs/spec were updated, generated site output was rebuilt, and validation passed with targeted pytest, deck_validate on examples/deck-roadmap.html, rebuild_all, rebuild_all --check, validate_marketplace, and validate_markdown.
+Rebased tooling/contrast-check onto origin/main, re-laned commentable-html to 1.57.0, renumbered the contrast feature to CMH-DECK-12, preserved the contrast checker hardening fixes, rebuilt generated artifacts, verified no duplicate CMH-DECK ids, and validated with targeted pytest, deck_validate on shipped deck examples, rebuild_all, rebuild_all --check, validate_marketplace, and validate_markdown.
 <!-- SECTION:FINAL_SUMMARY:END -->

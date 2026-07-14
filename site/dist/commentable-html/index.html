@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.56.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.57.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -342,6 +342,17 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.57.0] - 2026-07-15</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Added a shipped <code>tools/validate/cmhval/contrast.py</code> WCAG contrast helper and wired <code>deck_validate.py</code> to fail decks whose explicit inline or same-rule CSS text/background color pairs fall below the configurable 4.5:1 default threshold, with diagnostics that name the selector or element and both colors.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Hardened the contrast helper so malformed or non-finite <code>rgb()</code>/<code>rgba()</code> values are skipped instead of crashing, semi-transparent backgrounds are skipped, background shorthand follows declaration order, and colors embedded only inside <code>url(...)</code> or quoted strings do not create false positives.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.56.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -350,6 +361,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Hardened the overview so thumbnail clones stay out of the tab order, preserve nested highlight markup, do not receive background deck navigation keys, and are stripped from offline exports.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.55.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -364,8 +377,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The Help and About author link now has a visible underline and accent color so it reads as a link.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.54.0] - 2026-07-14</h3></div>
             <div class="group-label">Fixed</div>
@@ -401,20 +412,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Grouped the shipped runtime tools into per-topic buckets under <code>tools/&lt;topic&gt;/</code> (<code>deck</code>, <code>kusto</code>, <code>checklist</code>, <code>blocks</code>, <code>authoring</code>, <code>validate</code>), moving the former top-level <code>deck/</code> under <code>tools/deck/</code>. A shared <code>tools/_toolpath.py</code> bootstrap puts the tools root and every topic subdirectory on <code>sys.path</code> and exposes <code>SKILL_ROOT</code>, so a tool imports its siblings and resolves shipped resources (<code>dist/</code>, <code>vendor/</code>) regardless of which bucket it lives in. Invocation paths in <code>SKILL.md</code> and the references move to <code>tools/&lt;topic&gt;/&lt;tool&gt;.py</code>; there is no runtime behavior change.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.50.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Content-syntax validation in <code>tools/validate.py</code>, so a document with a broken mermaid diagram or invalid embedded JSON now FAILS validation instead of shipping and rendering as mermaid&#x27;s &quot;Syntax error in text&quot; bomb: - Mermaid: a <code>sequenceDiagram</code> message that a <code>;</code> splits into a dangling statement (the text after the <code>;</code> carries a message arrow but no <code>:</code> message) is an error. The check is calibrated to zero false positives against a broad, real-parser-labeled corpus - a valid multi-signal (<code>A-&gt;&gt;B: x; C-&gt;&gt;D: y</code>), an arrow inside message text, a <code>participant ... as &quot;a-&gt;b&quot;</code> alias, an <code>accTitle:</code>/<code>accDescr:</code> directive, and an inline <code>%%{init}%%</code> directive or a <code>%%</code>, single <code>%</code>, or <code>#</code> comment are never flagged (all confirmed against the real mermaid v11 parser). Only <code>sequenceDiagram</code> is deep-checked in Python; every other diagram family (flowchart, class, state, ...) is delegated to the repo-side real-parser oracle, so a flowchart label with a <code>%%</code> or a literal quote is never a false positive. An empty mermaid block (which renders as mermaid&#x27;s &quot;No diagram type detected&quot; error) is also flagged. - Embedded JSON: an empty or invalid <code>&lt;script type=&quot;application/json&quot;&gt;</code> data block (whose <code>JSON.parse()</code> would throw at runtime, including a <code>NaN</code>/<code>Infinity</code> literal or a raw <code>&lt;/script&gt;</code> that truncates the block) is an error when no chart canvas owns it; the chart checks continue to own chart-data JSON when a canvas is present.</li>
-              <li>The new checks live in a <code>tools/cmhval/</code> package (<code>mermaid.py</code>, <code>jsonblocks.py</code>) so the validator does not grow into one giant script; <code>tools/validate.py</code> stays the entry point.</li>
-            </ul>
-            <div class="group-label">Development</div>
-            <ul>
-              <li>A repo-side real-parser oracle (<code>dev/tools/validate_render.mjs</code>, never shipped) validates every mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker&#x27;s zero-false-positive guarantee is gated by the authoritative parser in CI. The oracle also flags an empty/whitespace-only <code>&lt;pre class=&quot;mermaid&quot;&gt;</code> host (which the real parser rejects as &quot;No diagram type detected&quot;) rather than silently skipping it.</li>
-              <li>If the sibling <code>tools/cmhval/</code> package cannot be imported (a broken/partial install), <code>tools/validate.py</code> now fails CLOSED for content it would have inspected - a mermaid block or a non-layer JSON data block makes validation error instead of silently passing - while a document with no such content still validates and <code>--charts-only</code> is unaffected.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">57 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">58 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
