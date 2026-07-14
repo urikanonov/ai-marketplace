@@ -63,4 +63,33 @@ test.describe("comment search / filter", () => {
     await addTextComment(page, "#commentRoot section p", "cmhsearch first", 0);
     await expect(page.locator(".head-search")).toBeVisible();
   });
+
+  test("search matches only the comment note, not the quoted anchor text (CMH-SEARCH-04)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "zzznoteonly", 0);
+    await openSidebarPanel(page);
+
+    const input = page.locator("#cmSearchInput");
+    const visible = page.locator("#commentList .cm-card[data-cid]:visible");
+    await expect(visible).toHaveCount(1);
+
+    // Pull a distinctive word out of the QUOTED anchor text that is NOT in the note.
+    const quoteWord = await page.evaluate(() => {
+      const q = document.querySelector("#commentList .cm-card[data-cid] .quote");
+      const words = (q ? q.textContent : "").trim().split(/\s+/)
+        .filter((w) => w.length >= 4 && !/zzznoteonly/i.test(w));
+      return words[0] || "";
+    });
+    expect(quoteWord.length).toBeGreaterThan(0);
+
+    // Searching a quote-only word must NOT match: the filter looks only at the comment note.
+    await input.fill(quoteWord);
+    await expect(visible).toHaveCount(0);
+    await expect(page.locator("#cmSearchCount")).toHaveText("0 / 1");
+
+    // The reviewer's own note text still matches.
+    await input.fill("zzznoteonly");
+    await expect(visible).toHaveCount(1);
+    await expect(page.locator("#cmSearchCount")).toHaveText("1 / 1");
+  });
 });

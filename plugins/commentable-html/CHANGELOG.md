@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.52.0] - 2026-07-14
+
+### Changed
+
+- Comment search now filters by the comment note text only. A query that appears solely in the
+  quoted anchor content (or the section path / pin) no longer keeps a card visible, so reviewers
+  filter by what they wrote rather than by the surrounding quote. A query present in the note still
+  matches, and the case-insensitive substring, shown/total count, clear button, and no-results
+  behaviors are unchanged.
+
 ## [1.51.0] - 2026-07-14
 
 ### Changed
