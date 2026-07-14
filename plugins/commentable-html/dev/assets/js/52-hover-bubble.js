@@ -112,7 +112,7 @@ let _sidebarWidthPx = 0;
 function _sidebarWidthBounds() {
   const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
   const narrow = vw < 700;
-  const min = Math.min(narrow ? 240 : 320, Math.max(180, vw - 48));
+  const min = Math.min(narrow ? 144 : 192, Math.max(108, vw - 48));
   const max = Math.max(min, Math.min(narrow ? Math.round(vw * 0.82) : 720, vw - 24));
   return { min: min, max: max, defaultWidth: Math.max(min, Math.min(400, max)) };
 }

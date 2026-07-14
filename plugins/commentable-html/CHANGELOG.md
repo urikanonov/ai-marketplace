@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.45.0] - 2026-07-14
+
+### Changed
+
+- The comments panel resizes narrower. The drag/keyboard minimum width dropped to 3/5 of the former
+  floor - 192px on wide screens (was 320px) and 144px on narrow screens under 700px (was 240px) - so
+  the panel can take less horizontal space and leave more room for the document. The panel's CSS
+  `min-width` floor was lowered to match, and the width still clamps to the viewport and persists
+  across reloads.
+
 ## [1.44.0] - 2026-07-14
 
 ### Added
