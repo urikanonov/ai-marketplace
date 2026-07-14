@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.53.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.56.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -342,6 +342,15 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.56.0] - 2026-07-14</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Deck roadmap risk board cards can be dragged between columns inside the scaled deck stage.</li>
+              <li>Mermaid diagrams on dark deck slides now render with high-contrast nodes, labels, and connectors.</li>
+              <li>Deck table headers now keep readable label contrast on dark slides.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.53.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -353,6 +362,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Added CLI tests for <code>validate.py</code>&#x27;s <code>-h</code>/<code>--help</code> output and the <code>--</code> end-of-options separator (<code>ValidateMainTests</code>), and refreshed the <code>CMH-VAL-11</code> / <code>CMH-CONTENT-16</code> spec source pointers to the new module paths.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.52.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -360,8 +371,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Comment search now filters by the comment note text only. A query that appears solely in the quoted anchor content (or the section path / pin) no longer keeps a card visible, so reviewers filter by what they wrote rather than by the surrounding quote. A query present in the note still matches, and the case-insensitive substring, shown/total count, clear button, and no-results behaviors are unchanged.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.51.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -396,18 +405,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Prevent code blocks from shipping without syntax highlighting, in three layers: - Runtime fallback: the runtime now highlights any commentable <code>&lt;pre&gt;&lt;code class=&quot;language-XXX&quot;&gt;</code> block that shipped without highlight spans, on load, so a labelled block never renders as plain monochrome text even when highlighting was never baked. It is idempotent, only fires for a language the tokenizer knows, and keeps line numbers and comment anchoring consistent. - <code>tools/highlight_document.py</code>: bakes highlighting into every raw, language-labelled code block of a file in one pass (with a <code>--check</code> mode). <code>tools/finalize.py</code> runs it by default (opt out with <code>--no-highlight</code>), so the standard finalization bakes highlighting.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.47.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The validator now catches a code block that was labelled with a language but never highlighted. <code>tools/validate.py</code> warns when a <code>&lt;pre&gt;&lt;code class=&quot;language-XXX&quot;&gt;</code> block declares a language the author-time highlighter supports (resolving aliases like <code>cs</code> to <code>csharp</code>) but carries no <code>cmh-code-*</code> spans, so it renders as plain monochrome text. Inline code, non-highlightable labels (<code>language-text</code>, <code>language-kusto</code>), and already-highlighted blocks are not flagged.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The showcase demo&#x27;s Python code block is now syntax-highlighted (it previously shipped as a plain <code>language-python</code> block, which the new validator check flags).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">54 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">55 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

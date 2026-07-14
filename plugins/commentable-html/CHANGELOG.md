@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.56.0] - 2026-07-14
+
+### Fixed
+
+- Deck roadmap risk board cards can be dragged between columns inside the scaled deck stage.
+- Mermaid diagrams on dark deck slides now render with high-contrast nodes, labels, and connectors.
+- Deck table headers now keep readable label contrast on dark slides.
+
 ## [1.53.0] - 2026-07-14
 
 ### Changed
@@ -23,7 +31,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - Added CLI tests for `validate.py`'s `-h`/`--help` output and the `--` end-of-options separator
   (`ValidateMainTests`), and refreshed the `CMH-VAL-11` / `CMH-CONTENT-16` spec source pointers to the
   new module paths.
-
 
 ## [1.52.0] - 2026-07-14
 
