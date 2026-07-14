@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.51.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.52.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -341,12 +341,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.52.0] - 2026-07-14</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Comment search now filters by the comment note text only. A query that appears solely in the quoted anchor content (or the section path / pin) no longer keeps a card visible, so reviewers filter by what they wrote rather than by the surrounding quote. A query present in the note still matches, and the case-insensitive substring, shown/total count, clear button, and no-results behaviors are unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.51.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Grouped the shipped runtime tools into per-topic buckets under <code>tools/&lt;topic&gt;/</code> (<code>deck</code>, <code>kusto</code>, <code>checklist</code>, <code>blocks</code>, <code>authoring</code>, <code>validate</code>), moving the former top-level <code>deck/</code> under <code>tools/deck/</code>. A shared <code>tools/_toolpath.py</code> bootstrap puts the tools root and every topic subdirectory on <code>sys.path</code> and exposes <code>SKILL_ROOT</code>, so a tool imports its siblings and resolves shipped resources (<code>dist/</code>, <code>vendor/</code>) regardless of which bucket it lives in. Invocation paths in <code>SKILL.md</code> and the references move to <code>tools/&lt;topic&gt;/&lt;tool&gt;.py</code>; there is no runtime behavior change.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.50.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -360,8 +369,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>If the sibling <code>tools/cmhval/</code> package cannot be imported (a broken/partial install), <code>tools/validate.py</code> now fails CLOSED for content it would have inspected - a mermaid block or a non-layer JSON data block makes validation error instead of silently passing - while a document with no such content still validates and <code>--charts-only</code> is unaffected.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.49.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
@@ -394,14 +401,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Search within comments. The comments panel now has a single search field (with a leading magnifier and a clear X button) that filters the comment cards to only those whose text - the note, the quoted content, the section path, and the pin - matches the query case-insensitively. A shown/total count sits beside the field, a no-results note appears when nothing matches, and the filter re-applies after every render so it survives adding, editing, or sorting comments.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.45.0] - 2026-07-14</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The comments panel resizes narrower. The drag/keyboard minimum width dropped to 3/5 of the former floor - 192px on wide screens (was 320px) and 144px on narrow screens under 700px (was 240px) - so the panel can take less horizontal space and leave more room for the document. The panel&#x27;s CSS <code>min-width</code> floor was lowered to match, and the width still clamps to the viewport and persists across reloads.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">52 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">53 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
