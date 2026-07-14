@@ -46,14 +46,24 @@ import re
 # deep checks so a new/other diagram family can never be a false positive.
 _SEQUENCE_TYPES = ("sequencediagram",)
 
-# Sequence message arrows, longest-first so alternation is greedy. These are the
-# ONLY sequence statements that carry an arrow, and every one requires a trailing
-# `: message`, which is what makes "arrow but no colon" an unambiguous error.
-# Written with `--?` / `>>?` quantifiers (equivalent to the explicit longest-first
-# alternation) so the pattern carries no literal `-->`, which a static "bad HTML
-# comment filter" scanner heuristic would otherwise mistake for HTML parsing - this
-# regex only recognizes mermaid arrow tokens, it never filters HTML.
-_SEQ_ARROW = re.compile(r"<<--?>>|--?>>?|--?x|--?\)")
+# Sequence message arrows, longest-first. These are the ONLY sequence statements
+# that carry an arrow, and every one requires a trailing `: message`, which is what
+# makes "arrow but no colon" an unambiguous error. Matched by a small string scan
+# rather than a regex: an arrow-token regex contains a literal `-->`, which a static
+# "bad HTML comment filter" heuristic mistakes for incomplete HTML parsing, but this
+# only recognizes mermaid arrow tokens and never filters or sanitizes HTML.
+_ARROW_TOKENS = ("<<-->>", "<<->>", "-->>", "-->", "->>", "->", "--x", "-x", "--)", "-)")
+
+
+def _find_arrow(s):
+    """(start, end) of the first mermaid arrow token in `s`, else None. Mirrors a
+    longest-first regex search: the earliest position, and the longest token there
+    (`_ARROW_TOKENS` is ordered longest-first, so the first prefix match wins)."""
+    for i in range(len(s)):
+        for tok in _ARROW_TOKENS:
+            if s.startswith(tok, i):
+                return i, i + len(tok)
+    return None
 
 # Statement-leading keywords in a sequenceDiagram. A segment that starts with one
 # of these is a valid non-signal statement, so it is never flagged and is never
@@ -124,8 +134,8 @@ def _is_signal(segment):
     ...) carry free text and are never signals."""
     if _leads_with_keyword(segment):
         return False
-    m = _SEQ_ARROW.search(segment)
-    return bool(m) and ":" in segment[m.end():]
+    m = _find_arrow(segment)
+    return bool(m) and ":" in segment[m[1]:]
 
 
 def _tail_is_invalid_signal(segment):
@@ -134,10 +144,10 @@ def _tail_is_invalid_signal(segment):
     seg = segment.strip()
     if not seg or _leads_with_keyword(seg):
         return False
-    m = _SEQ_ARROW.search(seg)
+    m = _find_arrow(seg)
     if not m:
         return False
-    return ":" not in seg[m.end():]
+    return ":" not in seg[m[1]:]
 
 
 def _check_sequence(lines, where):
