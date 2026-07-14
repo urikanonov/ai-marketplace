@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.0] - 2026-07-14
+
+### Added
+
+- The `cmh` shorthand now discovers the skill: it is a `plugin.json` and marketplace keyword, and
+  the `SKILL.md` front-matter discovery description ends with an explicit `Also triggers on the
+  shorthand cmh.` clause, so typing `cmh` auto-triggers the skill and matches it in marketplace
+  search.
+
 ## [1.35.0] - 2026-07-14
 
 ### Added

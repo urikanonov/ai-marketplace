@@ -97,6 +97,14 @@ Want a plugin to do more? [Request a feature](https://github.com/urikanonov/ai-m
 
 The `main` branch is protected: every change - including the maintainer's - lands through a pull request that passes CI. Direct pushes to `main` are blocked for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, including how to improve an existing plugin and how new plugins are added.
 
+## Credits
+
+The `commentable-html` plugin's built-in deck capability is powered by a curated, hardened, vendored
+subset of the [frontend-slides](https://github.com/zarazhangrui/frontend-slides) skill by
+[Zara Zhang](https://github.com/zarazhangrui), used under the MIT License (c) 2025 Zara Zhang. The
+upstream deploy and PDF-export scripts are excluded and a CI gate keeps the vendored subtree pristine;
+see `plugins/commentable-html/pkg/skills/commentable-html/vendor/frontend-slides/UPSTREAM.md`.
+
 ## License
 
 [MIT](LICENSE) (c) Uri Kanonov
