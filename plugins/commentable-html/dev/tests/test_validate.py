@@ -1677,6 +1677,30 @@ class ValidateMainTests(unittest.TestCase):
                 rc = validate.main(["validate.py", "x.html"])
         self.assertEqual(rc, 0)
 
+    def test_help_flag_prints_usage(self):
+        # CMH-TOOL-01: -h/--help print usage plus the flag list and exit 0.
+        for flag in ("--help", "-h"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = validate.main(["validate.py", flag])
+            out = buf.getvalue()
+            self.assertEqual(rc, 0, out)
+            self.assertIn("usage:", out)
+            self.assertIn("--charts-only", out)
+            self.assertIn("--strict", out)
+
+    def test_double_dash_separator_treats_following_token_as_path(self):
+        # CMH-TOOL-01: a bare "--" ends options, so a following dash-led token is a
+        # PATH, not an unknown flag. A missing such file exits 1 (a read error), not
+        # 2 (which is what an unrecognized flag before "--" would produce).
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = validate.main(["validate.py", "--", "--not-a-flag.html"])
+        out = buf.getvalue()
+        self.assertEqual(rc, 1, out)
+        self.assertIn("--not-a-flag.html", out)
+        self.assertIn("cannot read file", out)
+
 
 class ErrorPathTests(unittest.TestCase):
     """The validator's failure and resilience paths: unreadable input, unparseable

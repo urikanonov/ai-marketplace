@@ -1,10 +1,11 @@
 ---
 id: TASK-4
 title: Split validate.py into focused cmhval submodules (drain the monolith)
-status: To Do
+status: In Progress
 assignee:
   - '@me'
 created_date: '2026-07-14 16:41'
+updated_date: '2026-07-14 18:00'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -28,5 +29,5 @@ The shipped tools/validate.py is a large single module (~1750 lines) that mixes 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Wait for #113/#121/#122 to merge. 2. Fresh worktree off the resulting main. 3. Identify cohesive check groups in validate.py and extract each into its own submodule (doc_parser, layer, charts, checklist, advisories, resources, kind), keeping shared helpers in a _common module. 4. Re-export moved public names from validate.py so import paths stay stable. 5. Run the full validate test suite (stays green with only module-path reference edits). 6. Bump version + CHANGELOG, run all gates, open the PR alone.
+1. Baseline: capture golden validator output over all examples/templates. 2. Add checks/ package (parsing, resources, kind, charts, checklist, highlighting, layer) - keep cmhval/ as the optional content-syntax package so test_validate_failclosed (blocks cmhval import) still passes. 3. Extract bottom-up (parsing first, layer last), moving symbols verbatim. 4. Thin validate.py to _read/_parse/validate/validate_charts/main + cmhval fail-closed bootstrap + a re-export block covering the full test/tool surface (validate.validate, validate_charts, check_charts, check_checklists, check_mermaid_syntax, _parse, _PARSE_FAIL, REQUIRED_IDS, _DOC_KINDS, _is_nonportable, _nonportable_css_refs/js_refs/meta_versions). 5. Run full pytest after each move; confirm golden baseline unchanged. 6. Update SPEC source-pointers (not test refs) for moved functions. 7. Bump to 1.51.0 + CHANGELOG Development entry, rebuild_all, open PR alone.
 <!-- SECTION:PLAN:END -->
