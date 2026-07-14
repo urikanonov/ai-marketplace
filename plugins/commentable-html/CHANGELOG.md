@@ -32,6 +32,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (`ValidateMainTests`), and refreshed the `CMH-VAL-11` / `CMH-CONTENT-16` spec source pointers to the
   new module paths.
 
+
 ## [1.52.0] - 2026-07-14
 
 ### Changed
