@@ -349,7 +349,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
             </ul>
             <div class="group-label">Development</div>
             <ul>
-              <li>A repo-side real-parser oracle (<code>dev/tools/validate_render.mjs</code>, never shipped) validates every mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker&#x27;s zero-false-positive guarantee is gated by the authoritative parser in CI.</li>
+              <li>A repo-side real-parser oracle (<code>dev/tools/validate_render.mjs</code>, never shipped) validates every mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker&#x27;s zero-false-positive guarantee is gated by the authoritative parser in CI. The oracle also flags an empty/whitespace-only <code>&lt;pre class=&quot;mermaid&quot;&gt;</code> host (which the real parser rejects as &quot;No diagram type detected&quot;) rather than silently skipping it.</li>
+              <li>If the sibling <code>tools/cmhval/</code> package cannot be imported (a broken/partial install), <code>tools/validate.py</code> now fails CLOSED for content it would have inspected - a mermaid block or a non-layer JSON data block makes validation error instead of silently passing - while a document with no such content still validates and <code>--charts-only</code> is unaffected.</li>
             </ul>
           </div>
           <div class="release">

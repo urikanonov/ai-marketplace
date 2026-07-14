@@ -58,6 +58,24 @@ test("CMH-SYN-04: the oracle extracts diagrams robustly (nested div, unquoted at
   expect(output).toContain("mermaid diagram #4"); // the broken one was caught
 });
 
+test("CMH-SYN-04: the oracle flags an empty mermaid host instead of silently skipping it", () => {
+  test.setTimeout(60000);
+  // An empty/whitespace-only <pre class="mermaid"> renders as mermaid's "No diagram
+  // type detected" error, so the oracle must extract and flag it (a naive
+  // .filter(Boolean) would drop it and let the broken host ship).
+  const fixture = path.join(DEV, "tests", "fixtures", "oracle-empty-mermaid.html");
+  let output = "";
+  try {
+    runNode([path.join(DEV, "tools", "validate_render.mjs"), fixture], 50000);
+    throw new Error("oracle should have exited non-zero on the empty diagram host");
+  } catch (e) {
+    output = e.message;
+  }
+  expect(output).toContain("(2 mermaid"); // valid host + empty host both extracted
+  expect(output).toContain("mermaid diagram #2"); // the empty one was caught
+  expect(output).toContain("No diagram type detected");
+});
+
 test("CMH-SYN-05: the differential corpus is in sync with the real parser and Python checker (no false positives)", () => {
   test.setTimeout(180000);
   // Regenerates every label from the REAL mermaid parser and the REAL Python

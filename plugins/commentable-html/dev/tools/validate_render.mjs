@@ -91,8 +91,10 @@ async function attachValidator(page) {
         const doc = new DOMParser().parseFromString(h, "text/html");
         const mermaids = [...doc.querySelectorAll("pre.mermaid, div.mermaid")]
           .filter((el) => !el.querySelector("svg"))
-          .map((el) => (el.textContent || "").trim())
-          .filter(Boolean);
+          // Keep empty/whitespace-only hosts: mermaid.parse("") throws
+          // "No diagram type detected", so an empty <pre class="mermaid"> is a real
+          // error that must be flagged, not silently dropped.
+          .map((el) => (el.textContent || "").trim());
         const charts = [...doc.querySelectorAll("script")]
           .filter((s) => (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase() === "application/json")
           .filter((s) => !LAYER.has(s.id))

@@ -32,7 +32,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and
   Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo
   cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker's
-  zero-false-positive guarantee is gated by the authoritative parser in CI.
+  zero-false-positive guarantee is gated by the authoritative parser in CI. The oracle also flags
+  an empty/whitespace-only `<pre class="mermaid">` host (which the real parser rejects as "No
+  diagram type detected") rather than silently skipping it.
+- If the sibling `tools/cmhval/` package cannot be imported (a broken/partial install),
+  `tools/validate.py` now fails CLOSED for content it would have inspected - a mermaid block or a
+  non-layer JSON data block makes validation error instead of silently passing - while a document
+  with no such content still validates and `--charts-only` is unaffected.
 
 ## [1.44.0] - 2026-07-14
 

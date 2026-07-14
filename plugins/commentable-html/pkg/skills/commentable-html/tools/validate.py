@@ -47,17 +47,43 @@ if _HERE not in sys.path:
 try:
     from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
     from cmhval.jsonblocks import check_json_blocks  # noqa: E402
+    _CMHVAL_AVAILABLE = True
 except ImportError:
-    # The content-syntax checks live in the sibling cmhval/ package. If it cannot be
-    # imported (a broken/partial install), degrade to no-ops so the rest of the
-    # validator - including --charts-only - still runs instead of crashing.
+    # The content-syntax checks live in the sibling cmhval/ package, which ships in
+    # this same tools/ directory. If it cannot be imported (a broken/partial
+    # install), fail CLOSED for any content it WOULD have inspected: a validator
+    # that silently passes because its checks vanished is worse than one that
+    # reports it cannot check. A document with no such content still passes, and
+    # these stubs run only on the layer path, so --charts-only (which uses
+    # check_charts here, not cmhval) is unaffected.
+    _CMHVAL_AVAILABLE = False
+    _CMHVAL_MISSING = (
+        "the cmhval package could not be imported (broken/partial install of "
+        "tools/cmhval/); repair the install to validate this content"
+    )
+    _LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", "commentableHtmlLayer"}
+
     def check_mermaid_syntax(parser):  # noqa: E402
+        if getattr(parser, "mermaid_blocks", None):
+            return ["mermaid syntax validation unavailable: " + _CMHVAL_MISSING], []
         return [], []
 
     def check_mermaid_source(src):  # noqa: E402
+        if (src or "").strip():
+            return ["mermaid syntax validation unavailable: " + _CMHVAL_MISSING]
         return []
 
     def check_json_blocks(parser, chart_checks_run=True):  # noqa: E402
+        # Mirror the real check's deferral: when a canvas is present and the chart
+        # checks run, the chart path (check_charts, unaffected by cmhval) owns JSON
+        # validity, so there is nothing this would have inspected.
+        if chart_checks_run and (getattr(parser, "canvases", []) or []):
+            return [], []
+        for s in getattr(parser, "scripts", []) or []:
+            attrs = s.get("attrs", {}) if isinstance(s, dict) else {}
+            stype = (attrs.get("type") or "").split(";")[0].strip().lower()
+            if stype == "application/json" and (attrs.get("id") or None) not in _LAYER_JSON_IDS:
+                return ["embedded-JSON validation unavailable: " + _CMHVAL_MISSING], []
         return [], []
 
 
