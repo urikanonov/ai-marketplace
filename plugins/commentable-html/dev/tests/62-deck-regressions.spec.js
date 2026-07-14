@@ -87,6 +87,35 @@ async function dragCardToSlot(page, cardSelector, slotSelector) {
   await settle(page);
 }
 
+async function effectiveContrast(page, selector) {
+  const colors = await page.locator(selector).first().evaluate((el) => {
+    function rgba(value) {
+      const match = String(value || "").match(/rgba?\(([^)]+)\)/);
+      if (!match) return { r: 0, g: 0, b: 0, a: 0 };
+      const parts = match[1].split(",").map((part) => Number(part.trim()));
+      return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+    }
+    function over(top, bottom) {
+      const a = top.a + bottom.a * (1 - top.a);
+      if (a <= 0) return { r: 0, g: 0, b: 0, a: 0 };
+      return {
+        r: (top.r * top.a + bottom.r * bottom.a * (1 - top.a)) / a,
+        g: (top.g * top.a + bottom.g * bottom.a * (1 - top.a)) / a,
+        b: (top.b * top.a + bottom.b * bottom.a * (1 - top.a)) / a,
+        a,
+      };
+    }
+    let background = { r: 0, g: 0, b: 0, a: 0 };
+    for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+      const color = rgba(getComputedStyle(node).backgroundColor);
+      if (color.a > 0) background = over(background, color);
+      if (background.a >= 0.99) break;
+    }
+    return { color: rgba(getComputedStyle(el).color), background };
+  });
+  return contrast(colors.color, colors.background);
+}
+
 test("CMH-DECK-08: showcase deck triage cards drag between columns", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
@@ -159,6 +188,26 @@ test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({
     const bg = composite(parseRgb(colors.background), parseRgb(colors.slideBg));
     const fg = parseRgb(colors.color);
     expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-12: showcase deck code, KQL, and diff blocks keep dark-slide contrast", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".slide pre code.language-markdown");
+    await expect(page.locator(".slide.active pre code.language-markdown")).toBeVisible();
+    expect(await effectiveContrast(page, ".slide.active pre code.language-markdown")).toBeGreaterThanOrEqual(4.5);
+
+    await showSlideWith(page, ".slide pre code.language-kusto");
+    await expect(page.locator(".slide.active pre code.language-kusto")).toBeVisible();
+    expect(await effectiveContrast(page, ".slide.active pre code.language-kusto")).toBeGreaterThanOrEqual(4.5);
+
+    await showSlideWith(page, ".showcase-diff-slide .cmh-diff-view");
+    await expect(page.locator(".slide.active .cmh-dl-add .cmh-dl-code").first()).toBeVisible();
+    expect(await effectiveContrast(page, ".slide.active .cmh-dl-add .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
+    expect(await effectiveContrast(page, ".slide.active .cmh-dl-del .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
   } finally {
     await server.close();
   }
