@@ -29,6 +29,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `26-highlight.js` | CMH-DIFF, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`). |
 | `30-images.js` | CMH-IMG, CMH-CHART | Image and chart-canvas comment layer. |
 | `35-widgets.js` | CMH-WIDGET | Commentable widgets / SVG nodes; `widgetStateChanges` infra. |
+| `36-checklist.js` | CMH-CHECK | Layered checklist: four-state items, aggregation, minimal persistence, per-list state card, export bake. |
 | `40-doc-comments.js` | CMH-DOCCMT | Document-wide comments. |
 | `41-selection.js` | CMH-SEL, CMH-CORE | Selection handling and the add-comment popup. |
 | `45-composer.js` | CMH-A11Y, CMH-CORE | Per-instance comment composer (parallel-safe). |

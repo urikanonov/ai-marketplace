@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Inline comments on any static HTML report that round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=5947f4998c07" />
+  <link rel="stylesheet" href="../assets/styles.css?v=2de9a44082ad" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -59,6 +59,7 @@
       <div class="nav-links">
         <a href="#features">Features</a>
         <a href="#demo">Try it</a>
+        <a href="#privacy" class="hide-sm">Privacy</a>
         <a href="tutorial/">Tutorial</a>
         <a href="#changelog" class="hide-sm">Changelog</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">GitHub</a>
@@ -78,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.42.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.48.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -188,13 +189,15 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <h2 class="section-title">What you get</h2>
         <p class="section-sub">A full code-review layer that travels with the document; export to one portable HTML file when you want to share.</p>
         <div class="grid">
-          <div class="card feature"><h3>Comment on anything</h3><p>Prose, table cells, code blocks, KQL queries, charts, images, and mermaid diagram nodes are all selectable and commentable.</p></div>
-          <div class="card feature"><h3>Self-contained when you share</h3><p>By default the layer loads from small companion files for cheap iteration. One click inlines the CSS, review UI, and every comment into a single HTML file you can email, archive, or reopen anywhere - no server and no build step.</p></div>
-          <div class="card feature"><h3>Round-trip to the agent</h3><p>Copy all emits a Markdown bundle plus a machine-readable id list, so the agent acts on your notes and marks them handled.</p></div>
-          <div class="card feature"><h3>Export as Portable or Offline</h3><p>Export as Portable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
-          <div class="card feature"><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
-          <div class="card feature"><h3>Deterministic tools</h3><p>Ships stdlib-only Python tools and a strict validator so generated documents are correct by construction, not by luck.</p></div>
-          <div class="card feature"><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p><p class="feature-credit">Deck engine: a curated, vendored subset of <a href="https://github.com/zarazhangrui/frontend-slides" target="_blank" rel="noopener noreferrer">frontend-slides</a> by Zara Zhang (MIT). See <a href="#credits">Credits</a>.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg></span><h3>Comment on anything</h3><p>Prose, table cells, code blocks, KQL queries, charts, images, and mermaid diagram nodes are all selectable and commentable.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><rect x="5" y="10" width="3" height="8" rx="0.5"/><rect x="10.5" y="5" width="3" height="13" rx="0.5"/><rect x="16" y="13" width="3" height="5" rx="0.5"/></svg></span><h3>Rich content, not just prose</h3><p>Author Chart.js charts, Mermaid diagrams, drag-and-drop triage boards, rendered code diffs (inline or side-by-side), and syntax-highlighted code and KQL snippets - all first-class, and every one of them individually commentable.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></span><h3>Self-contained when you share</h3><p>By default the layer loads from small companion files for cheap iteration. One click inlines the CSS, review UI, and every comment into a single HTML file you can email, archive, or reopen anywhere - no server and no build step.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.6-5.6L20 8"/><path d="M20 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6L4 16"/><path d="M4 21v-5h5"/></svg></span><h3>Round-trip to the agent</h3><p>Copy all emits a Markdown bundle plus a machine-readable id list, so the agent acts on your notes and marks them handled.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg></span><h3>Export as Portable or Offline</h3><p>Export as Portable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></span><h3>Handled comments stay gone</h3><p>Once the agent marks a comment handled, it is pruned on reload. The HTML file is the single source of truth, not the browser cache.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><h3>Deterministic tools</h3><p>Ships stdlib-only Python tools and a strict validator so generated documents are correct by construction, not by luck.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></svg></span><h3>Commentable decks</h3><p>Turn a request into an animation-rich, fixed 16:9 slide deck that is also a commentable document: present it full-screen, toggle comment mode to leave notes on the live slides, navigate with the slide bar or arrow keys, and Export Offline for a network-silent handoff.</p><p class="feature-credit">Deck engine: a curated, vendored subset of <a href="https://github.com/zarazhangrui/frontend-slides" target="_blank" rel="noopener noreferrer">frontend-slides</a> by Zara Zhang (MIT). See <a href="#credits">Credits</a>.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg></span><h3>Navigate long documents</h3><p>A live table of contents, collapsible sections, and one-click jump from any comment straight to its highlight keep even a long report easy to move through.</p></div>
         </div>
       </div>
     </section>
@@ -253,6 +256,19 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
           <span class="title" id="demo-title">NYC Taxi Report</span>
         </div>
         <iframe id="demo-iframe" src="demo/report-taxi.html" title="Live Commentable HTML demo report" loading="lazy" allow="clipboard-write"></iframe>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <div class="wrap">
+        <h2 class="section-title">Private by design</h2>
+        <p class="section-sub">Your document and every comment stay on your machine. There is no server, no account, no sign-in, and no telemetry - the review layer runs entirely in your browser as a static file.</p>
+        <div class="grid">
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 20h20"/></svg></span><h3>Your data stays local</h3><p>Comments live in one of two places only: your browser's <code>localStorage</code>, scoped to that file, while you iterate, or embedded inside the HTML file itself once you Export. Your document text and your notes are never uploaded or transmitted.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 3 7.4 7 8.5 4-1.1 7-4.3 7-8.5V6z"/></svg></span><h3>Nothing is sent externally</h3><p>Your content and comments are never sent to us or to any service. They travel only when you choose to - when you share the exported file, or paste the Copy all bundle to your agent yourself.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8"/><path d="M16 7l2.5 2.5"/><path d="M19 4l2.5 2.5"/></svg></span><h3>You own every copy</h3><p>The HTML file is the single source of truth, not a cloud account. Keep it, archive it, or delete it and the data is gone - no residual copy lives anywhere else.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span><h3>Offline and compliance-ready</h3><p>The only optional network use is loading the Mermaid and Chart.js rendering libraries from a public CDN (library code, not your data). Export Offline snapshots those visuals and strips every remote loader, so the file opens with zero network - fit for air-gapped, sensitive, or regulated material.</p></div>
+        </div>
       </div>
     </section>
 
@@ -325,7 +341,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.42.0] - 2026-07-14</h3></div>
+            <div class="rel-head"><h3>[1.48.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Content-syntax validation in <code>tools/validate.py</code>, so a document with a broken mermaid diagram or invalid embedded JSON now FAILS validation instead of shipping and rendering as mermaid&#x27;s &quot;Syntax error in text&quot; bomb: - Mermaid: a <code>sequenceDiagram</code> message that a <code>;</code> splits into a dangling statement (the text after the <code>;</code> carries a message arrow but no <code>:</code> message) is an error. The check is calibrated to zero false positives against a broad, real-parser-labeled corpus - a valid multi-signal (<code>A-&gt;&gt;B: x; C-&gt;&gt;D: y</code>), an arrow inside message text, a <code>participant ... as &quot;a-&gt;b&quot;</code> alias, an <code>accTitle:</code>/<code>accDescr:</code> directive, and an inline <code>%%{init}%%</code> directive or <code>%%</code> comment are never flagged. Only <code>sequenceDiagram</code> is deep-checked in Python; every other diagram family (flowchart, class, state, ...) is delegated to the repo-side real-parser oracle, so a flowchart label with a <code>%%</code> or a literal quote is never a false positive. - Embedded JSON: an empty or invalid <code>&lt;script type=&quot;application/json&quot;&gt;</code> data block (whose <code>JSON.parse()</code> would throw at runtime, including a <code>NaN</code>/<code>Infinity</code> literal or a raw <code>&lt;/script&gt;</code> that truncates the block) is an error when no chart canvas owns it; the chart checks continue to own chart-data JSON when a canvas is present.</li>
@@ -337,6 +353,33 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
             </ul>
           </div>
           <div class="release">
+            <div class="rel-head"><h3>[1.44.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Layered checklists. A <code>data-cmh-checklist</code> container turns a nested list (or a table) into interactive four-state item checkboxes (blank / check / cross / question) drawn with inline-SVG icons. A branch item aggregates over its direct children (all-same shows that state, any disagreement shows a neutral mixed marker), and clicking a branch propagates its next state to every descendant leaf. Item labels stay ordinary commentable content; only the injected icon control is <code>cm-skip</code>. Hierarchy comes from DOM nesting for lists, or an explicit <code>data-cmh-parent</code> reference for tables, which cannot nest rows and may be sorted.</li>
+              <li>Minimal checklist persistence. Only leaves whose state differs from their authored <code>data-cmh-state</code> baseline are stored, as one-character codes under <code>COMMENT_KEY + &quot;::cl&quot;</code>; returning a leaf to its baseline prunes its entry, so a large checklist with a few edits costs a few bytes.</li>
+              <li>Per-list checklist change card. The sidebar renders one non-comment card per checklist with changes, placed by document order, with a jump button and a Reset button that reverts that checklist to its authored state. Copy all gains a <code>## Checklist &quot;&lt;id&gt;&quot;</code> section plus a machine-readable <code>CHECKLIST_STATE_JSON</code> line, an unsaved change flips the badge to Not portable, and every export bakes the current states into <code>data-cmh-state</code>. A checklist that loads with a persisted change opens the sidebar so the card is seen.</li>
+              <li>Two checklist tools. <code>tools/checklist_scaffold.py</code> generates list or table markup with stable ids from an indented outline, and <code>tools/checklist_apply.py</code> cements the reviewer&#x27;s states from a Copy-all bundle (or <code>--state-json</code>) back into the source HTML. <code>validate.py</code> gains checklist checks (duplicate ids, invalid tokens, empty lists, unresolved parents) that a checklist-free document ignores. See the bundled <code>references/checklist-contract.md</code> for the authoring contract.</li>
+              <li>A shipped demo report <code>examples/report-checklist.html</code> (Release readiness review) that showcases both checklist shapes - a nested-list sign-off checklist and a sortable-table component audit linked by <code>data-cmh-parent</code> - with its companion authoring prompt <code>examples/prompt-checklist.md</code>.</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
+            <div class="rel-head"><h3>[1.43.0] - 2026-07-14</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Clarify the README privacy wording: the document and comments are &quot;never uploaded, transmitted, or sent to any external service - not to us, and not to anyone else&quot;, dropping the confusing &quot;not to the agent&quot; (you do paste the Copy all bundle to your agent yourself, so listing the agent among the never-sent destinations read as contradictory).</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.40.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>A &quot;Privacy and compliance&quot; section in the packaged README and a &quot;Private by design&quot; section on the plugin site page (linked from the nav), emphasizing that the document and every comment stay local - in the browser&#x27;s <code>localStorage</code> or embedded in your own HTML file - are never uploaded or sent to any external service, and that only the Mermaid/Chart.js rendering libraries load from a CDN (not your data) while Export Offline strips even that for air-gapped, sensitive, or regulated use.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.39.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -344,8 +387,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Help panel text now names the triage board&#x27;s <code>Reset moves</code> button and the board-moves comment card&#x27;s <code>Reset changes</code> button, and refers to the Help toggle by its exact on-screen label, <code>Help &amp; About</code>, instead of the shorthand <code>Help</code>.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.38.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -365,38 +406,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Commentable code blocks, including KQL query blocks, now show per-line numbers in a <code>.cmh-code-gutter</code> overlay via CSS-generated counters. The numbers are visible in the UI but excluded from text selection and clipboard output, including each block&#x27;s Copy button.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.36.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The <code>cmh</code> shorthand now discovers the skill: it is a <code>plugin.json</code> and marketplace keyword, and the <code>SKILL.md</code> front-matter discovery description ends with an explicit <code>Also triggers on the shorthand cmh.</code> clause, so typing <code>cmh</code> auto-triggers the skill and matches it in marketplace search.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.35.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Triage-board (and any <code>[data-cm-widget][data-cm-draggable]</code> widget) Reset controls. A moved board now grows a runtime-injected &quot;Reset moves&quot; button in its corner whenever its layout differs from the load-time baseline; clicking it returns every card to its original slot and order, and the button disappears once there are no moves. Static (non-draggable) widgets never get the button.</li>
-              <li>Per-widget layout-change state cards. The sidebar now renders one &quot;Layout change&quot; card per widget that has moves, each with a jump button that scrolls to and flashes that board and a &quot;Reset changes&quot; button that restores only that widget. Each card mirrors a regular comment card&#x27;s shape: an <code>in: &lt;board&gt;</code> title (the widget aria-label, else its name) and a meta line showing the first-change datetime, alongside the existing explanatory note.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A chart caption sitting directly below a tall <code>cm-skip</code> chart is now commentable. The desktop <code>mouseup</code> handler evaluates the selection before bailing on a <code>cm-skip</code> target, so selecting a short caption still offers Add Comment even when the pointer releases over the adjacent chart canvas.</li>
-              <li>The runtime footer no longer spans wider than the content column. Its box now aligns to the <code>#commentRoot</code> content width in both the normal and the sidebar-open layout.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.34.0] - 2026-07-13</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The shipped example reports (<code>examples/report-*.html</code>) are now pure build artifacts assembled from an independent content source in <code>dev/examples-src/</code>. <code>build.py --check</code> compares each shipped example to a fresh assembly, so a hand-edit or a stale/clobbered example - of its content as well as its layer - now fails the build instead of comparing equal to itself. Edit demo content in <code>dev/examples-src/</code>, not in the shipped file.</li>
-            </ul>
-            <div class="group-label">Accessibility</div>
-            <ul>
-              <li>The comments-panel toggle and the overflow-menu trigger now declare the element they control with <code>aria-controls</code> (<code>#sidebar</code> and <code>#toolbarMenu</code>), so assistive technology can associate each toggle with its target.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">43 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">46 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

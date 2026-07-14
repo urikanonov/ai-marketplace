@@ -271,6 +271,9 @@ main > section:nth-of-type(even) {
   grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 18px;
 }
+/* The privacy section has four cards; lay them out 2x2 so there is no orphan third-row card. */
+#privacy .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 680px) { #privacy .grid { grid-template-columns: 1fr; } }
 .card {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);
@@ -364,6 +367,12 @@ main > section:nth-of-type(even) {
 .feature h3 { font-size: 1.02rem; margin-bottom: 6px; }
 .feature h3::before { content: "> "; color: var(--cp-accent); }
 .feature p { color: var(--cp-text-muted); font-size: 0.93rem; }
+.card.feature:not(.mode-card) { display: grid; grid-template-columns: auto 1fr; column-gap: 9px; row-gap: 5px; align-items: center; }
+.card.feature:not(.mode-card) > h3 { grid-column: 2; margin: 0; }
+.card.feature:not(.mode-card) > p,
+.card.feature:not(.mode-card) > .feature-credit { grid-column: 1 / -1; }
+.feature-icon { width: 20px; height: 20px; margin: 0; color: var(--cp-accent); }
+.feature-icon svg { width: 100%; height: 100%; display: block; }
 /* Attribution line inside a feature card (for example the vendored deck engine credit). */
 .feature-credit { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--cp-border); color: var(--cp-text-soft); font-size: 0.8rem; }
 .feature-credit a { color: inherit; text-decoration: underline; }

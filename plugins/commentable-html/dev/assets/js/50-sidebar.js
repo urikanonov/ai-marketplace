@@ -52,7 +52,8 @@ function renderComments() {
   updateSortUi();
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
-  if (!comments.length && !stateChanges.length) {
+  const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
+  if (!comments.length && !stateChanges.length && !clPieces.length) {
     const deckHint = IS_DECK
       ? "<p><strong>On this deck:</strong> in comment mode, select text on the current slide and choose <em>Add Comment</em>, or right-click empty slide space for a whole-slide comment. Move between slides with Prev / Next or the arrow keys.</p>"
       : "";
@@ -80,7 +81,7 @@ function renderComments() {
     : (commentSort === "time-desc")
     ? [...comments].sort((a, b) => (commentTimeValue(b) - commentTimeValue(a)) || (sortKey(a) - sortKey(b)))
     : [...comments].sort((a, b) => sortKey(a) - sortKey(b));
-  listEl.innerHTML = stateHtml + sorted.map((c, i) => {
+  const commentHtml = sorted.map((c, i) => {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
@@ -153,7 +154,19 @@ function renderComments() {
         </span>
       </div>
     </article>`;
-  }).join("");
+  });
+  const commentPieces = commentHtml.map((html, i) => ({ pos: sortKey(sorted[i]), html }));
+  // Insert each checklist card by document position while preserving the comments' current
+  // (position or time) sort order, so a time sort is not overridden and no card is dropped.
+  const cls = clPieces.slice().sort((a, b) => a.pos - b.pos);
+  const parts = [];
+  let ci = 0;
+  commentPieces.forEach((cp) => {
+    while (ci < cls.length && cls[ci].pos <= cp.pos) parts.push(cls[ci++].html);
+    parts.push(cp.html);
+  });
+  while (ci < cls.length) parts.push(cls[ci++].html);
+  listEl.innerHTML = stateHtml + parts.join("");
 }
 function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
@@ -245,6 +258,15 @@ function expandCollapsedAncestors(el) {
   }
 }
 listEl.addEventListener("click", (e) => {
+  // Checklist change cards are not comments: jump focuses the checklist, Reset reverts it to
+  // the authored state. Handle before the .cm-card comment path (a checklist card is a .cm-card).
+  const clCard = e.target.closest(".cm-card-checklist");
+  if (clCard) {
+    const cid = e.target.getAttribute("data-cmh-checklist-name") || clCard.getAttribute("data-cmh-checklist-name");
+    if (e.target.dataset.act === "cl-reset") { if (typeof resetChecklist === "function") resetChecklist(cid); }
+    else if (typeof jumpToChecklist === "function") jumpToChecklist(cid);
+    return;
+  }
   // Widget state cards are not comments: their jump focuses the board and their Reset
   // restores that board's layout. Handle them before the comment-id path below.
   const stateCard = e.target.closest(".cm-card-state");

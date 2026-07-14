@@ -96,6 +96,7 @@ Add `class="cm-skip"` only to host floating panels, modals, sticky headers, or t
 - Table of contents + heading ids: `tools/generate_toc.py --in-place`.
 - Mermaid `cm-skip`: `tools/fix_skip.py`.
 - Local images in a standalone doc: `tools/inline_images.py --strict`.
+- Layered checklist markup: `tools/checklist_scaffold.py` (see [Layered checklist contract](references/checklist-contract.md)).
 - Full deterministic finalization and strict validation:
 
 ```

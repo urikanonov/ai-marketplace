@@ -2,6 +2,17 @@
 
 `commentable-html` turns standalone HTML reports into inline-comment review surfaces. A reviewer can select text, code, diff lines, Mermaid nodes, images, or charts, leave comments in the page, copy a compact Markdown bundle back to an agent, and export a portable file with comments embedded. It drastically shortens the AI planning and iteration loop: you review the artifact in place and hand the agent structured notes instead of narrating changes in chat.
 
+## Privacy and compliance
+
+Your content stays with you. Commentable HTML runs entirely in your browser as a static file - there is no server, no account, no sign-in, and no telemetry. The document you review and every comment you leave live in one of two places only:
+
+- **In your browser's `localStorage`**, scoped to that file, while you iterate; or
+- **Embedded inside the HTML file itself** once you Export as Portable (or Offline).
+
+Your document text and your comments are never uploaded, transmitted, or sent to any external service - not to us, and not to anyone else. They travel only when you choose to share the exported file or paste the `Copy all` bundle yourself. The HTML file is the single source of truth; keep it, archive it, or delete it and the data is gone.
+
+The only optional network activity is loading the Mermaid and Chart.js rendering libraries from a public CDN in the Non-portable and Portable modes (library code only - no document data is sent). **Export Offline** snapshots those visuals and strips every remote loader, so the file opens with zero network, suitable for air-gapped, sensitive, or regulated material.
+
 ## Why not just plan in chat, Markdown, or plain HTML?
 
 Your agent can draft a plan in seconds; the real bottleneck is everything after - reading it, reacting to it, and getting your changes back into the model. Where that review happens decides how fast you move.

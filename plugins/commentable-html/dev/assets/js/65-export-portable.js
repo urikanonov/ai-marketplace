@@ -196,6 +196,7 @@ async function saveHtml() {
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
+  baseHtml = _applyChecklistStateToHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildSavedHtml(baseHtml, exportComments); }

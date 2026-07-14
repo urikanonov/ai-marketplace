@@ -270,6 +270,56 @@ test("the plugin page credits the vendored frontend-slides deck engine (SITE-PLU
   expect(changelogFollowsCredits).toBe(true);
 });
 
+test("the plugin page has a Private by design section emphasizing local-only data (SITE-PLUGIN-14)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const privacy = page.locator("#privacy");
+  await expect(privacy).toBeVisible();
+  await expect(privacy).toContainText(/Private by design/i);
+  await expect(privacy).toContainText(/localStorage/);
+  await expect(privacy).toContainText(/never (uploaded|transmitted|sent)/i);
+  await expect(privacy).toContainText(/no server|no account|no telemetry/i);
+  await expect(privacy).toContainText(/Export Offline|zero network|air-gapped/i);
+  // The nav offers a link to the privacy section.
+  await expect(page.locator('.nav-links a[href="#privacy"]')).toHaveCount(1);
+  // Four privacy cards laid out 2x2 (no orphan third-row card) on a desktop-width viewport.
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(page.locator("#privacy .grid > .card.feature")).toHaveCount(4);
+  const privacyCols = await page
+    .locator("#privacy .grid")
+    .evaluate((el) => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length);
+  expect(privacyCols).toBe(2);
+});
+
+test("each feature card leads with an inline SVG icon beside the title (SITE-PLUGIN-15)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  for (const sectionId of ["#features", "#privacy"]) {
+    const cards = page.locator(`${sectionId} .grid > .card.feature`);
+    const n = await cards.count();
+    expect(n).toBeGreaterThan(0);
+    const icons = page.locator(`${sectionId} .grid > .card.feature > .feature-icon > svg`);
+    expect(await icons.count()).toBe(n);
+    // The icon sits on the same row as the title (beside it), not stacked on a row above it.
+    const first = cards.first();
+    const iconBox = await first.locator(".feature-icon").boundingBox();
+    const titleBox = await first.locator("h3").boundingBox();
+    expect(iconBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(iconBox.y).toBeLessThan(titleBox.y + titleBox.height);
+    expect(iconBox.y + iconBox.height).toBeGreaterThan(titleBox.y);
+    expect(iconBox.x + iconBox.width).toBeLessThanOrEqual(titleBox.x + 2);
+  }
+});
+
+test("the What you get section has a Rich content card covering charts, diagrams, boards, diffs, and code (SITE-PLUGIN-16)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const features = page.locator("#features");
+  await expect(features).toContainText(/Rich content/i);
+  await expect(features).toContainText(/triage board/i);
+  await expect(features).toContainText(/diff/i);
+  await expect(features).toContainText(/side-by-side/i);
+  await expect(features).toContainText(/snippet/i);
+});
+
 test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
