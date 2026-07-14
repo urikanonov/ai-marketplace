@@ -11,22 +11,28 @@ A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users 
 
 ## Non-negotiables (read this first)
 
-These three rules are the ones most often forgotten. They are a MUST on every change, no exceptions:
+These rules are the ones most often forgotten. They are a MUST on every change, no exceptions:
 
-1. **Start every workstream in a fresh worktree off the latest `main`.** Before you touch anything,
+1. **Create the Backlog.md task before you start any work (backlog-first).** Before you touch anything -
+   before the worktree, before any code - search the backlog and create or update a Backlog.md task for the
+   work, set it `In Progress`, and assign it to yourself. NEVER start work that is not tracked by a backlog
+   task, and capture any follow-up or newly discovered work as its own task the moment it comes up so
+   nothing lives only in the chat session. Drive everything through the `backlog` CLI; never hand-edit task
+   files. See "Backlog-first task tracking (Backlog.md)" for the workflow.
+2. **Start every workstream in a fresh worktree off the latest `main`.** Before you touch anything,
    `git fetch origin` and `git worktree add -b <branch> .worktrees/<name> origin/main`. This applies to
    EVERY new piece of work (a fix, a feature, a doc edit, a test-only change) - not only when work runs in
    parallel. Never develop on a stale branch or edit the primary working tree in place. See
    "Parallel work: use git worktrees under the repo root" for the full mechanics.
-2. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
+3. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
    covering automated test in the SAME pull request, and for bug fixes the test is written FIRST, run, and
    confirmed RED before the fix makes it green. A change whose test never failed on the old code is not
    test-driven and is not done. See "Spec-and-test discipline" for how tests map to spec rows.
-3. **Follow the testing guidelines.** Read [docs/testing-guidelines.md](docs/testing-guidelines.md) before
+4. **Follow the testing guidelines.** Read [docs/testing-guidelines.md](docs/testing-guidelines.md) before
    writing or changing any test. It captures the conventions and past pitfalls (hermetic tests, pinning the
    new behavior so a test is genuinely red first, rebuilding generated output before asserting, feature-id
    discipline) so they are not relearned the hard way.
-4. **Edit the split source partials, never a monolith.** The commentable-html runtime and layer CSS live
+5. **Edit the split source partials, never a monolith.** The commentable-html runtime and layer CSS live
    ONLY as numbered topic partials under `plugins/commentable-html/dev/assets/js/NN-topic.js` and
    `dev/assets/css/NN-topic.css` (and the site CSS as `site-src/css/NN-topic.css`); `build.py` /
    `build_site_data.py` assemble each directory by directory sort - there is no order list in the build
@@ -587,3 +593,57 @@ request description), not in `.plans/`.
   plugin version (see "Resolving plugin conflicts when rebasing onto main" above), run the plugin's
   build script (`tools/build.py`) to regenerate dist files with the new version, run
   `build_site_data.py`, then continue the rebase. Never hand-merge generated dist or site files.
+
+## Backlog-first task tracking (Backlog.md)
+
+This repo tracks work with [Backlog.md](https://backlog.md): git-tracked markdown task files under
+`backlog/tasks/`, driven by the `backlog` CLI. The backlog is COMMITTED, so its `.md` files go through the
+same `validate_markdown.py` hygiene gate as every other doc (plain ASCII, no em/en dashes, no absolute
+local paths). Keep task text ASCII.
+
+**Backlog-first is non-negotiable rule 1.** Do not start any work - not the worktree, not a line of code -
+until the work is tracked by a Backlog.md task that is `In Progress` and assigned to you.
+
+Every session, before acting:
+
+1. SEARCH first, to consolidate rather than duplicate: `backlog search "<topic>" --plain` and
+   `backlog task list --status "To Do" --plain`. If a task already covers the work, use it. Fold closely
+   related loose follow-ups into one task, or link separate tasks with `--dep`.
+2. If nothing covers it, CREATE one (title = one-liner, `-d` = the why, `--ac` = testable what):
+   `backlog task create "Title" -d "Why" --ac "Observable outcome" --ac "..."`.
+3. Take it: `backlog task edit <id> -s "In Progress" -a @me`.
+4. PLAN it, then share the plan and get approval before coding:
+   `backlog task edit <id> --plan "1. ...\n2. ..."`.
+5. Implement, checking acceptance criteria as you finish each: `backlog task edit <id> --check-ac 1`.
+6. FINALIZE: `backlog task edit <id> --final-summary "PR-style summary"`, then `backlog task edit <id> -s Done`.
+
+CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, create a task for it
+immediately (`backlog task create ...`) so it never lives only in the chat transcript. That is the whole
+point of backlog-first - it is how work stops getting forgotten between sessions.
+
+Never hand-edit task, draft, doc, decision, or milestone files; the CLI keeps metadata, ids, and history
+consistent. Use `--plain` for AI-readable output, and read `backlog instructions overview` (and
+`task-creation` / `task-execution` / `task-finalization`) for the full contract.
+
+<!-- BACKLOG.MD GUIDELINES START -->
+<CRITICAL_INSTRUCTION>
+
+## Backlog.md Workflow
+
+This project uses Backlog.md for task and project management.
+
+**For every user request in this project, run `backlog instructions overview` before answering or taking action.**
+
+Use the overview to decide whether to search, read, create, or update Backlog tasks.
+
+Use the detailed guides when needed:
+- `backlog instructions task-creation` for creating or splitting tasks
+- `backlog instructions task-execution` for planning and implementation workflow
+- `backlog instructions task-finalization` for completion and handoff
+
+Use `backlog <command> --help` before running unfamiliar commands. Help shows options, fields, and examples.
+
+Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use the `backlog` CLI so metadata, relationships, and history stay consistent.
+
+</CRITICAL_INSTRUCTION>
+<!-- BACKLOG.MD GUIDELINES END -->
