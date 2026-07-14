@@ -1179,7 +1179,9 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 <nav class="cm-toc" aria-label="Contents">
   <ol>
     <li><a href="#purpose">Purpose</a></li>
+    <li><a href="#autonomy">Autonomy</a></li>
     <li><a href="#aspects">Audit aspects</a></li>
+    <li><a href="#lanes">Focus lanes</a></li>
     <li><a href="#pipeline">The multi-model pipeline</a>
       <ol>
         <li><a href="#discover">1. Discovery panel</a></li>
@@ -1192,6 +1194,7 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
     </li>
     <li><a href="#discipline">Spec-and-test discipline</a></li>
     <li><a href="#worktrees">Parallel worktrees and PR order</a></li>
+    <li><a href="#deliverable">Deliverable: the change report</a></li>
     <li><a href="#guardrails">Guardrails</a></li>
     <li><a href="#reuse">How to reuse this playbook</a></li>
   </ol>
@@ -1210,6 +1213,17 @@ you want to adjust, and send the notes back to the agent to refine the process.<
   model's blind spot survives, consolidates their findings through judge rounds, implements the agreed fixes in
   parallel, verifies the implementation through further review rounds, and drives the change to a green,
   merge-ready state.</p>
+</section>
+
+<section>
+  <h2 id="autonomy">Autonomy</h2>
+  <p>Run the entire pipeline fully autonomously: assemble the context, convene the reviewers, judge and decide
+  scope, implement the fixes, verify them, and drive every pull request to a merged state - making the
+  intermediate decisions without pausing for approval unless explicitly instructed otherwise. Autonomy is the
+  default operating mode for this playbook: stop only for a genuine, outcome-changing ambiguity, or when the user
+  has asked to be consulted. Everything else - choosing which confirmed bugs to fix, how to split the work,
+  re-laning versions, rebasing, rebuilding generated files, running the review panels, and resolving review
+  threads - is decided and executed by the agent.</p>
 </section>
 
 <section>
@@ -1236,6 +1250,37 @@ you want to adjust, and send the notes back to the agent to refine the process.<
 </section>
 
 <section>
+  <h2 id="lanes">Focus lanes</h2>
+  <p>Beyond the aspects above, every audit explicitly pursues these five lanes. They target the skill's context
+  footprint and its long-term maintainability - the costs a customer and the maintainer pay on every load and
+  every change.</p>
+  <table>
+    <thead><tr><th>Lane</th><th>Goal</th><th>What good looks like</th></tr></thead>
+    <tbody>
+      <tr><td>Shrink the skill files</td><td>Cut the context tokens the skill costs on every load, especially
+        commentable-html.</td><td>The SKILL.md entry point and always-loaded prose are as small as they can be;
+        nothing a customer pays for on every load is redundant, verbose, or restating what a tool or the code
+        already enforces.</td></tr>
+      <tr><td>Automate the prose</td><td>Turn instructions into deterministic tools and validators, so the skill
+        is both smaller and less ambiguous.</td><td>Prose that describes a procedure is replaced by a script or a
+        gate that performs or checks it; determinism replaces narration, so the skill shrinks and behaves the same
+        every time instead of relying on the agent reading and following prose.</td></tr>
+      <tr><td>Split into on-demand references</td><td>Break the skill into small reference docs loaded only when
+        needed.</td><td>The base context stays small; detailed contracts, examples, and edge-case guidance live in
+        focused reference files pulled in on demand (progressive disclosure) rather than always resident.</td></tr>
+      <tr><td>Break up code monoliths</td><td>Split large, hard-to-edit source files into small parts the build
+        assembles.</td><td>Runtime, CSS, docs, and validators live as small topic-scoped parts composed by the
+        build, so an edit is surgical and two concurrent changes touch different files instead of colliding or
+        clobbering the same monolith.</td></tr>
+      <tr><td>Anti-regression tests for past fixes</td><td>Ensure every past bug fix cannot silently
+        return.</td><td>Each fixed bug is pinned by a test that fails on the pre-fix code (red-first) and passes
+        after the fix; missing guards are backfilled, and each is confirmed to genuinely reproduce the original
+        defect so it is a real regression guard, not a rubber stamp.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
   <h2 id="pipeline">The multi-model pipeline</h2>
   <pre class="mermaid cm-skip">
 flowchart TD
@@ -1245,6 +1290,7 @@ flowchart TD
   D --> E["4. Parallel implementation (worktrees, one or more PRs)"]
   E --> F["5. Verification rounds (>=3, on the diff, fix between rounds)"]
   F --> G["6. Validate with repo gates + drive PRs to green"]
+  G --> H["7. Publish the commentable-html change report"]
   </pre>
 
   <h3 id="discover">1. Discovery panel</h3>
@@ -1277,7 +1323,8 @@ flowchart TD
   <h3 id="ship">6. Validate and ship</h3>
   <p>Run the repo's own gates locally, then open the PRs and drive each to a fully green, merge-ready state: fix CI
   failures, address review comments, and resolve conversations. Rebase onto the latest main and rebuild generated
-  files rather than hand-merging them.</p>
+  files rather than hand-merging them. Finish the run by publishing the commentable-html change report (see the
+  Deliverable section below).</p>
 </section>
 
 <section>
@@ -1300,12 +1347,22 @@ flowchart TD
 </section>
 
 <section>
+  <h2 id="deliverable">Deliverable: the change report</h2>
+  <p>Every audit run ends by producing a commentable-html report that captures all of the changes made during the
+  audit - the findings that were taken, the fixes shipped and their PRs, the focus lanes advanced, and the
+  verification that backs them - authored with the commentable-html skill itself so the maintainer can comment
+  inline and the whole record travels in one portable file. Build it from the merged results, link each change to
+  its PR and its spec-and-test coverage, and open it in the browser for review at the end of the run.</p>
+</section>
+
+<section>
   <h2 id="guardrails">Guardrails</h2>
   <ul>
     <li>Reviewers are read-only; all edits happen in the implementation phase under safe-fix criteria.</li>
     <li>Plain ASCII only; minimal comments; fix root causes rather than masking symptoms.</li>
     <li>Do not weaken branch protection or drop a required check. Never commit secrets or non-public data.</li>
     <li>Never rewrite already-released changelog history.</li>
+    <li>Operate autonomously by default (see Autonomy); escalate only for a genuine, outcome-changing ambiguity or when the user asked to be consulted.</li>
   </ul>
 </section>
 
