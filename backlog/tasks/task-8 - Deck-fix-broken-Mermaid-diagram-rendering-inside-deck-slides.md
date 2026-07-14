@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:38'
+updated_date: '2026-07-14 19:08'
 labels: []
 dependencies: []
 ordinal: 7000
@@ -29,10 +29,7 @@ In the sample deck, the diagram on the Proposed architecture shift slide renders
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add a Playwright deck regression test that loads a Mermaid diagram on a deck slide and confirms rendered nodes, edges, and contrast, then confirm it fails on current built output.
-2. Inspect Mermaid initialization, deck lifecycle, and deck dark-theme CSS for sizing or color conflicts.
-3. Fix the owning Mermaid runtime or CSS partials, rebuild generated assets, and rerun the regression.
-4. Update SPEC, version, changelog, generated artifacts, validators, and backlog acceptance criteria.
+1. Re-bump the deck fixes PR to a distinct commentable-html version lane after CI reported a duplicate.\n2. Rebuild generated artifacts from sources.\n3. Re-run required validation and push the updated branch.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -44,5 +41,5 @@ Added red-first CMH-DECK-09 Playwright coverage and deck Mermaid CSS overrides f
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Fixed dark-slide Mermaid rendering by adding deck theme overrides for node fills, labels, clusters, edges, and edge labels, then verified CMH-DECK-09 and the affected deck specs. PR: https://github.com/urikanonov/ai-marketplace/pull/131
+Fixed Mermaid rendering on dark deck slides with deck-level contrast overrides, covered it with the CMH-DECK-09 Playwright regression, and re-bumped the PR to version 1.56.0 after the CI version-lane collision.
 <!-- SECTION:FINAL_SUMMARY:END -->

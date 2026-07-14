@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:38'
+updated_date: '2026-07-14 19:08'
 labels: []
 dependencies: []
 ordinal: 6000
@@ -28,10 +28,7 @@ In the current sample deck, the drag-and-drop triage board on slide 5 does not l
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add a Playwright deck regression test that drags a triage card between columns and confirm it fails on current built output.
-2. Inspect deck startup and triage widget drag wiring to find why deck mode suppresses the drag path.
-3. Fix the owning runtime partial, rebuild generated assets, and rerun the deck regression.
-4. Update SPEC, version, changelog, generated artifacts, validators, and backlog acceptance criteria.
+1. Re-bump the deck fixes PR to a distinct commentable-html version lane after CI reported a duplicate.\n2. Rebuild generated artifacts from sources.\n3. Re-run required validation and push the updated branch.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -43,5 +40,5 @@ Added red-first CMH-DECK-08 Playwright coverage, opted the roadmap deck risk boa
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Fixed the roadmap deck risk board by adding the missing widget drag opt-in to the source deck, regenerated the shipped deck and site demos, and verified CMH-DECK-08 plus widget/deck regression specs. PR: https://github.com/urikanonov/ai-marketplace/pull/131
+Fixed the deck roadmap risk board by making it opt in to the draggable widget contract, covered it with the CMH-DECK-08 Playwright regression, and re-bumped the PR to version 1.56.0 after the CI version-lane collision.
 <!-- SECTION:FINAL_SUMMARY:END -->

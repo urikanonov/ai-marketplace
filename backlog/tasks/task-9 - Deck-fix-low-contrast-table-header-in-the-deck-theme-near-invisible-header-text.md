@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:38'
+updated_date: '2026-07-14 19:08'
 labels: []
 dependencies: []
 ordinal: 8000
@@ -30,10 +30,7 @@ On a dark deck slide, a tables header row renders with a near-white background a
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add a Playwright deck regression test that measures dark-slide table header text contrast and confirm it fails on current built output.
-2. Inspect deck and content table CSS to locate the low-contrast cascade.
-3. Fix the deck theme CSS partial so authored deck table headers are high contrast and rerun the regression.
-4. Update SPEC, version, changelog, generated artifacts, validators, and backlog acceptance criteria.
+1. Re-bump the deck fixes PR to a distinct commentable-html version lane after CI reported a duplicate.\n2. Rebuild generated artifacts from sources.\n3. Re-run required validation and push the updated branch.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
@@ -45,5 +42,5 @@ Added red-first CMH-DECK-10 Playwright coverage and deck table-header CSS for hi
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Fixed dark-slide table-header contrast in the deck theme CSS and verified CMH-DECK-10 with the generated roadmap deck. PR: https://github.com/urikanonov/ai-marketplace/pull/131
+Fixed deck table-header contrast with deck-theme CSS, covered it with the CMH-DECK-10 Playwright regression, and re-bumped the PR to version 1.56.0 after the CI version-lane collision.
 <!-- SECTION:FINAL_SUMMARY:END -->
