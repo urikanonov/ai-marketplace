@@ -164,7 +164,11 @@ test("the state card is not a comment: no id, no actions, count stays 0, not in 
   const card = page.locator(".cm-card-state");
   await expect(card).toHaveCount(1);
   expect(await card.getAttribute("data-cid")).toBeNull();
-  await expect(card.locator("[data-act]")).toHaveCount(0);
+  // The state card is not a comment: it carries no comment id and none of the comment
+  // actions (edit/delete/comment-jump), only the board-scoped state controls.
+  await expect(card.locator('[data-act="edit"]')).toHaveCount(0);
+  await expect(card.locator('[data-act="del"]')).toHaveCount(0);
+  await expect(card.locator('[data-act="jump"]')).toHaveCount(0);
   await expect(page.locator("#sidebarCount")).toHaveText("0");
   await page.click("#btnCopyAll");
   const bundle = await page.evaluate(() => window.__copied.at(-1));

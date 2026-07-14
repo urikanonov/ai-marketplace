@@ -1,7 +1,9 @@
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
-   active, and is correctly absent from a Plain HTML export where the layer is removed. */
+   active, and is correctly absent from a Plain HTML export where the layer is removed.
+   Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side
+   padding) so the footer never sticks out past the content sections above it. */
 .cm-footer {
-  margin: 0.5rem auto 1.25rem; max-width: 1480px; padding: 0.6rem 1rem;
+  margin: 0.5rem auto 1.25rem; max-width: calc(1480px - 3rem); padding: 0.6rem 1rem;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem;
   font-size: 0.72rem; color: var(--cp-text-soft);
   border: 1px solid var(--cp-border); border-radius: 0.6rem; background: var(--cp-surface);
@@ -15,10 +17,23 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-footer-help:hover { text-decoration: underline; }
 .cm-footer-ver { font-weight: 600; color: var(--cp-text); }
 .cm-footer-sep { opacity: 0.5; }
-/* When the comments panel is open, span the visible (non-sidebar) area so the centered
-   flex content reads as centralized in that region rather than hidden behind the panel. */
-body.sidebar-open .cm-footer { margin-left: 1rem; margin-right: calc(var(--cm-sidebar-w, 400px) + 1rem); max-width: none; }
-@media (max-width: 700px) { body.sidebar-open .cm-footer { margin-right: auto; max-width: 1240px; } }
+/* When the comments panel is open, track the .app content column exactly: the layout recipe
+   (10-layout.css) insets .app by 2rem left / sidebar+2rem right from 1100px, and by a centered
+   gutter from 1700px. Mirror those insets so the footer stays flush with the content sections
+   in the sidebar-open layout too. Below 1100px the base centered rule already matches .app. */
+@media (min-width: 1100px) {
+  body.sidebar-open .cm-footer {
+    max-width: none;
+    margin-left: 2rem;
+    margin-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
+  }
+}
+@media (min-width: 1700px) {
+  body.sidebar-open .cm-footer {
+    margin-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
+    margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
+  }
+}
 /* TOC section numbers. */
 .cm-side-toc-list .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
 .cm-side-toc-list a.is-active .cm-toc-num { color: var(--cp-accent); }
