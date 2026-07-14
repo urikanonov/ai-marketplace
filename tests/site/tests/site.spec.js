@@ -1039,6 +1039,18 @@ test("the og:image cover asset is served as a PNG", async ({ request }) => {
   expect(r.headers()["content-type"]).toContain("image/png");
 });
 
+test("the commentable-html plugin and tutorial pages use a dedicated branded social cover (SITE-SEO-10)", async ({ page, request }) => {
+  const branded = PROD + "assets/og-commentable-html.png";
+  for (const p of ["/commentable-html/", "/commentable-html/tutorial/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", branded);
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute("content", branded);
+  }
+  const r = await request.get("/assets/og-commentable-html.png");
+  expect(r.status()).toBeLessThan(400);
+  expect(r.headers()["content-type"]).toContain("image/png");
+});
+
 test("the hub H1 reads as continuous text with correct word spacing", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const text = (await page.locator("h1").first().textContent()).replace(/\s+/g, " ").trim();
