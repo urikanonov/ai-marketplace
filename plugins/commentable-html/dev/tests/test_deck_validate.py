@@ -186,6 +186,18 @@ class DeckValidateTests(unittest.TestCase):
         errs = _errors(bad)
         self.assertTrue(any("--slide-fg/--slide-bg" in e for e in errs), errs)
 
+    def test_cmh_deck_08_non_finite_rgb_does_not_crash(self):
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#000; background:rgb(inf 0 0)">Bad color</p>')), [])
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#000; background:rgb(1e309 0 0)">Bad color</p>')), [])
+
+    def test_cmh_deck_08_semi_transparent_background_is_skipped(self):
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#000; background:rgba(255,255,255,0.2)">Readable</p>')), [])
+        self.assertEqual(_errors(_inject(
+            self.html, '<p style="color:#fff; background:rgba(255,255,255,0.2)">Unknown backdrop</p>')), [])
+
     def test_cmh_deck_08_good_contrast_inline_pair_passes(self):
         self.assertEqual(
             _errors(_inject(self.html, '<p style="color: #fff; background-color: #000">Readable</p>')),

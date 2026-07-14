@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:19'
-updated_date: '2026-07-14 18:44'
+updated_date: '2026-07-14 21:02'
 labels: []
 dependencies: []
 ordinal: 9000
@@ -31,11 +31,11 @@ Add an author-time check that flags color pairs whose foreground and background 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Add a shipped stdlib contrast utility under tools/ that parses CSS colors, resolves local custom properties, computes WCAG contrast ratios, and reports inline or style-rule text/background pairs below 4.5.\n2. Wire deck_validate.py to run the utility against the deck content region and include clear deck diagnostics for low contrast.\n3. Add red-first Python tests for the contrast math and deck low/good fixtures, then update SPEC.md and deck-contract.md with the scoped validator behavior.\n4. Bump commentable-html to 1.55.0, add the changelog entry, rebuild generated artifacts, run targeted tests and repository validators, then commit, push, open the PR, and finalize TASK-10.
+1. Add regression tests for the six review findings first, including non-finite rgb handling, transparent backgrounds, declaration-order background precedence, url() masking, malformed rgb arity, and equal-color ratio.\n2. Update tools/validate/cmhval/contrast.py to reject non-finite values, skip semi-transparent backgrounds, preserve declaration order, ignore url()/quoted content during color fallback extraction, and enforce rgb()/rgba() arity.\n3. Update the CMH-DECK-08 spec row test list, rebuild without changing the 1.55.0 version, run targeted pytest and shipped deck validation, then run rebuild_all, rebuild_all --check, validate_marketplace, and validate_markdown.\n4. Commit the review fixes and force-push tooling/contrast-check, then finalize TASK-10 again.
 <!-- SECTION:PLAN:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented a stdlib WCAG contrast helper in tools/validate/cmhval/contrast.py, wired deck_validate.py to fail explicit inline, same-rule CSS, and deck theme variable pairs below 4.5:1, added CMH-DECK-08 tests/spec/docs, bumped commentable-html to 1.55.0, rebuilt generated artifacts, validated with targeted pytest, rebuild_all --check, validate_marketplace, validate_markdown, and the pre-push hook, and opened PR #134.
+Addressed review findings for the contrast checker: non-finite and malformed rgb/rgba values are skipped without crashing, semi-transparent backgrounds are skipped, background shorthand follows declaration order, url() and quoted text are ignored during fallback color extraction, equal-color ratio coverage was added, CMH-DECK-08 docs/spec were updated, generated site output was rebuilt, and validation passed with targeted pytest, deck_validate on examples/deck-roadmap.html, rebuild_all, rebuild_all --check, validate_marketplace, and validate_markdown.
 <!-- SECTION:FINAL_SUMMARY:END -->

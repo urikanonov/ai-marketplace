@@ -2,6 +2,7 @@
 """WCAG contrast checks for author-time HTML tooling."""
 from dataclasses import dataclass
 from html.parser import HTMLParser
+import math
 import re
 
 DEFAULT_MIN_CONTRAST_RATIO = 4.5
@@ -110,11 +111,14 @@ def _resolve_vars(value, variables=None):
 def _parse_channel(token):
     token = token.strip()
     try:
+        raw = float(token[:-1]) if token.endswith("%") else float(token)
+        if not math.isfinite(raw):
+            return None
         if token.endswith("%"):
-            value = round(float(token[:-1]) * 255 / 100)
+            value = round(raw * 255 / 100)
         else:
-            value = round(float(token))
-    except ValueError:
+            value = round(raw)
+    except (OverflowError, ValueError):
         return None
     if 0 <= value <= 255:
         return int(value)
@@ -124,8 +128,11 @@ def _parse_channel(token):
 def _parse_alpha(token):
     token = token.strip()
     try:
-        value = float(token[:-1]) / 100 if token.endswith("%") else float(token)
-    except ValueError:
+        raw = float(token[:-1]) if token.endswith("%") else float(token)
+        if not math.isfinite(raw):
+            return None
+        value = raw / 100 if token.endswith("%") else raw
+    except (OverflowError, ValueError):
         return None
     if 0 <= value <= 1:
         return value
@@ -133,31 +140,42 @@ def _parse_alpha(token):
 
 
 def _parse_rgb_function(value):
-    m = re.fullmatch(r"rgba?\((.*)\)", value, re.IGNORECASE)
-    if not m:
+    try:
+        m = re.fullmatch(r"rgba?\((.*)\)", value, re.IGNORECASE)
+        if not m:
+            return None
+        body = m.group(1).strip()
+        if "," in body:
+            parts = _split_top_level(body, ",")
+            if len(parts) not in (3, 4):
+                return None
+            channels = parts[:3]
+            alpha_part = parts[3] if len(parts) == 4 else None
+        else:
+            raw = body.replace("/", " / ").split()
+            alpha_part = None
+            if raw.count("/") > 1:
+                return None
+            if "/" in raw:
+                slash = raw.index("/")
+                if slash != 3 or len(raw) != 5:
+                    return None
+                alpha_part = raw[slash + 1]
+                raw = raw[:slash]
+            elif len(raw) != 3:
+                return None
+            channels = raw
+        if len(channels) != 3:
+            return None
+        rgb = [_parse_channel(part) for part in channels]
+        if any(part is None for part in rgb):
+            return None
+        alpha = 1.0 if alpha_part is None else _parse_alpha(alpha_part)
+        if alpha is None:
+            return None
+        return rgb[0], rgb[1], rgb[2], alpha
+    except (OverflowError, ValueError):
         return None
-    body = m.group(1).strip()
-    if "," in body:
-        parts = _split_top_level(body, ",")
-        channels = parts[:3]
-        alpha_part = parts[3] if len(parts) >= 4 else None
-    else:
-        raw = body.replace("/", " / ").split()
-        alpha_part = None
-        if "/" in raw:
-            slash = raw.index("/")
-            alpha_part = raw[slash + 1] if slash + 1 < len(raw) else None
-            raw = raw[:slash]
-        channels = raw[:3]
-    if len(channels) != 3:
-        return None
-    rgb = [_parse_channel(part) for part in channels]
-    if any(part is None for part in rgb):
-        return None
-    alpha = 1.0 if alpha_part is None else _parse_alpha(alpha_part)
-    if alpha is None:
-        return None
-    return rgb[0], rgb[1], rgb[2], alpha
 
 
 def parse_css_color(value, variables=None):
@@ -193,7 +211,7 @@ def _composite(foreground, background):
 def contrast_ratio(foreground, background, variables=None):
     fg = parse_css_color(foreground, variables)
     bg = parse_css_color(background, variables)
-    if fg is None or bg is None or bg[3] <= 0:
+    if fg is None or bg is None or bg[3] < 1:
         raise ValueError("both colors must resolve to concrete foreground/background colors")
     if fg[3] < 1:
         fg = _composite(fg, bg)
@@ -249,8 +267,8 @@ def _iter_css_rules(css, skip_keyframes=False):
         pos = close + 1
 
 
-def _parse_declarations(style):
-    declarations = {}
+def _parse_declaration_items(style):
+    items = []
     for item in _split_top_level(style, ";"):
         if ":" not in item:
             continue
@@ -258,8 +276,40 @@ def _parse_declarations(style):
         name = name.strip().lower()
         value = value.strip()
         if name:
-            declarations[name] = value
+            items.append((name, value))
+    return items
+
+
+def _parse_declarations(style):
+    declarations = {}
+    for name, value in _parse_declaration_items(style):
+        declarations[name] = value
     return declarations
+
+
+def _strip_ignored_color_text(value):
+    out = []
+    i = 0
+    while i < len(value):
+        lower = value[i:].lower()
+        if lower.startswith("url("):
+            close = _matching_paren(value, i + 3)
+            if close >= 0:
+                out.append(" ")
+                i = close + 1
+                continue
+        ch = value[i]
+        if ch in ("'", '"'):
+            quote = ch
+            i += 1
+            while i < len(value) and value[i] != quote:
+                i += 1
+            i += 1 if i < len(value) else 0
+            out.append(" ")
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _extract_css_color(value, variables=None):
@@ -269,10 +319,11 @@ def _extract_css_color(value, variables=None):
     direct = parse_css_color(resolved, variables)
     if direct:
         return resolved
-    for m in _HEX_RE.finditer(resolved):
+    searchable = _strip_ignored_color_text(resolved)
+    for m in _HEX_RE.finditer(searchable):
         if parse_css_color(m.group(0), variables):
             return m.group(0)
-    for m in _RGB_FUNC_RE.finditer(resolved):
+    for m in _RGB_FUNC_RE.finditer(searchable):
         if parse_css_color(m.group(0), variables):
             return m.group(0)
     m = _VAR_FUNC_RE.search(value or "")
@@ -282,13 +333,17 @@ def _extract_css_color(value, variables=None):
             candidate = value[m.start():close + 1]
             if parse_css_color(candidate, variables):
                 return candidate
-    for token in re.findall(r"\b[a-zA-Z]+\b", resolved):
+    for token in re.findall(r"\b[a-zA-Z]+\b", searchable):
         if token.lower() in _NAMED_COLORS:
             return token
     return None
 
 
-def _background_decl(declarations):
+def _background_decl(declarations, items=None):
+    if items is not None:
+        for name, value in reversed(items):
+            if name in ("background", "background-color"):
+                return value
     return declarations.get("background-color") or declarations.get("background")
 
 
@@ -373,10 +428,11 @@ def find_low_contrast_pairs(html, threshold=DEFAULT_MIN_CONTRAST_RATIO, variable
 
     for css in scanner.style_blocks:
         for selector, body in _iter_css_rules(css):
-            declarations = _parse_declarations(body)
+            items = _parse_declaration_items(body)
+            declarations = dict(items)
             local_vars = dict(variables)
             local_vars.update({k: v for k, v in declarations.items() if k.startswith("--")})
-            bg_value = _background_decl(declarations)
+            bg_value = _background_decl(declarations, items)
             if "color" in declarations and bg_value:
                 issue = _issue_for_pair(f"selector {selector}", declarations["color"], bg_value,
                                         local_vars, threshold)
@@ -392,8 +448,9 @@ def find_low_contrast_pairs(html, threshold=DEFAULT_MIN_CONTRAST_RATIO, variable
                 issues.append(issue)
 
     for tag, attrs, style in scanner.inline_styles:
-        declarations = _parse_declarations(style)
-        bg_value = _background_decl(declarations)
+        items = _parse_declaration_items(style)
+        declarations = dict(items)
+        bg_value = _background_decl(declarations, items)
         if "color" not in declarations or not bg_value:
             continue
         local_vars = dict(variables)

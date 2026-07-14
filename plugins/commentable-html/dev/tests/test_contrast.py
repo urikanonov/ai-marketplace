@@ -16,12 +16,23 @@ class ContrastUtilityTests(unittest.TestCase):
         self.assertAlmostEqual(contrast.contrast_ratio("#000", "#fff"), 21.0, places=2)
         self.assertAlmostEqual(contrast.contrast_ratio("white", "black"), 21.0, places=2)
 
+    def test_cmh_deck_08_equal_colors_ratio_is_1_to_1(self):
+        self.assertAlmostEqual(contrast.contrast_ratio("#123456", "#123456"), 1.0, places=2)
+
     def test_cmh_deck_08_parser_supports_hex_rgb_rgba_and_vars(self):
         variables = {"--fg": "#abc", "--bg": "rgb(0, 0, 0)"}
         self.assertEqual(contrast.parse_css_color("var(--fg)", variables), (170, 187, 204, 1.0))
         self.assertEqual(contrast.parse_css_color("rgba(255, 255, 255, 0.5)", variables),
                          (255, 255, 255, 0.5))
         self.assertGreater(contrast.contrast_ratio("var(--fg)", "var(--bg)", variables), 9.0)
+
+    def test_cmh_deck_08_parser_rejects_non_finite_rgb_channels(self):
+        self.assertIsNone(contrast.parse_css_color("rgb(inf 0 0)"))
+        self.assertIsNone(contrast.parse_css_color("rgb(1e309 0 0)"))
+
+    def test_cmh_deck_08_parser_rejects_malformed_rgb_arity(self):
+        self.assertIsNone(contrast.parse_css_color("rgba(255,255,255,.5,.2)"))
+        self.assertIsNone(contrast.parse_css_color("rgb(1 2 3 4)"))
 
     def test_cmh_deck_08_finds_low_and_good_pairs(self):
         html = """
@@ -43,6 +54,34 @@ class ContrastUtilityTests(unittest.TestCase):
             html, variable_pairs=(("--fg", "--bg", "theme variables --fg/--bg"),))
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].source, "theme variables --fg/--bg")
+
+    def test_cmh_deck_08_skips_semi_transparent_backgrounds(self):
+        html = """
+        <p style="color:#000; background:rgba(255,255,255,0.2)">Readable</p>
+        <p style="color:#fff; background:rgba(255,255,255,0.2)">Unknown backdrop</p>
+        """
+        self.assertEqual(contrast.find_low_contrast_pairs(html), [])
+
+    def test_cmh_deck_08_background_shorthand_uses_declaration_order(self):
+        html = "<style>.ordered { color:#fff; background-color:#000; background:#eee; }</style>"
+        issues = contrast.find_low_contrast_pairs(html)
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].background, "#eee")
+
+    def test_cmh_deck_08_background_url_text_is_not_a_color(self):
+        html = """
+        <style>
+        .url-word { color:#fff; background:url(assets/white-banner.png); }
+        .url-hex { color:#fff; background:url("assets/#ffffff/banner.png"); }
+        </style>
+        """
+        self.assertEqual(contrast.find_low_contrast_pairs(html), [])
+
+    def test_cmh_deck_08_background_url_fallback_color_is_detected(self):
+        html = '<style>.fallback { color:#fff; background:url("assets/banner.png") #eee; }</style>'
+        issues = contrast.find_low_contrast_pairs(html)
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].background, "#eee")
 
 
 if __name__ == "__main__":
