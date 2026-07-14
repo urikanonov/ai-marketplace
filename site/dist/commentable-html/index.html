@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.49.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.50.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -341,12 +341,27 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.50.0] - 2026-07-14</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Content-syntax validation in <code>tools/validate.py</code>, so a document with a broken mermaid diagram or invalid embedded JSON now FAILS validation instead of shipping and rendering as mermaid&#x27;s &quot;Syntax error in text&quot; bomb: - Mermaid: a <code>sequenceDiagram</code> message that a <code>;</code> splits into a dangling statement (the text after the <code>;</code> carries a message arrow but no <code>:</code> message) is an error. The check is calibrated to zero false positives against a broad, real-parser-labeled corpus - a valid multi-signal (<code>A-&gt;&gt;B: x; C-&gt;&gt;D: y</code>), an arrow inside message text, a <code>participant ... as &quot;a-&gt;b&quot;</code> alias, an <code>accTitle:</code>/<code>accDescr:</code> directive, and an inline <code>%%{init}%%</code> directive or a <code>%%</code>, single <code>%</code>, or <code>#</code> comment are never flagged (all confirmed against the real mermaid v11 parser). Only <code>sequenceDiagram</code> is deep-checked in Python; every other diagram family (flowchart, class, state, ...) is delegated to the repo-side real-parser oracle, so a flowchart label with a <code>%%</code> or a literal quote is never a false positive. An empty mermaid block (which renders as mermaid&#x27;s &quot;No diagram type detected&quot; error) is also flagged. - Embedded JSON: an empty or invalid <code>&lt;script type=&quot;application/json&quot;&gt;</code> data block (whose <code>JSON.parse()</code> would throw at runtime, including a <code>NaN</code>/<code>Infinity</code> literal or a raw <code>&lt;/script&gt;</code> that truncates the block) is an error when no chart canvas owns it; the chart checks continue to own chart-data JSON when a canvas is present.</li>
+              <li>The new checks live in a <code>tools/cmhval/</code> package (<code>mermaid.py</code>, <code>jsonblocks.py</code>) so the validator does not grow into one giant script; <code>tools/validate.py</code> stays the entry point.</li>
+            </ul>
+            <div class="group-label">Development</div>
+            <ul>
+              <li>A repo-side real-parser oracle (<code>dev/tools/validate_render.mjs</code>, never shipped) validates every mermaid diagram and Chart.js config in the shipped example reports with the real mermaid and Chart.js in a headless browser, and re-verifies the differential corpus labels, so the repo cannot ship a diagram or chart that renders as a syntax-error bomb and the Python checker&#x27;s zero-false-positive guarantee is gated by the authoritative parser in CI. The oracle also flags an empty/whitespace-only <code>&lt;pre class=&quot;mermaid&quot;&gt;</code> host (which the real parser rejects as &quot;No diagram type detected&quot;) rather than silently skipping it.</li>
+              <li>If the sibling <code>tools/cmhval/</code> package cannot be imported (a broken/partial install), <code>tools/validate.py</code> now fails CLOSED for content it would have inspected - a mermaid block or a non-layer JSON data block makes validation error instead of silently passing - while a document with no such content still validates and <code>--charts-only</code> is unaffected.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.49.0] - 2026-07-14</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Consolidated the skill&#x27;s docs assets: the review-loop diagram and the tutorial screenshots now live together under <code>docs/assets/</code> (previously split across <code>docs/images/</code> and <code>docs/tutorial-images/</code>). Shipped references in <code>SKILL.md</code>, <code>README.md</code>, <code>TUTORIAL.md</code>, and the file inventory point at the new location; there is no runtime behavior change.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.48.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -354,8 +369,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Prevent code blocks from shipping without syntax highlighting, in three layers: - Runtime fallback: the runtime now highlights any commentable <code>&lt;pre&gt;&lt;code class=&quot;language-XXX&quot;&gt;</code> block that shipped without highlight spans, on load, so a labelled block never renders as plain monochrome text even when highlighting was never baked. It is idempotent, only fires for a language the tokenizer knows, and keeps line numbers and comment anchoring consistent. - <code>tools/highlight_document.py</code>: bakes highlighting into every raw, language-labelled code block of a file in one pass (with a <code>--check</code> mode). <code>tools/finalize.py</code> runs it by default (opt out with <code>--no-highlight</code>), so the standard finalization bakes highlighting.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.47.0] - 2026-07-14</h3></div>
             <div class="group-label">Added</div>
@@ -392,14 +405,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>A shipped demo report <code>examples/report-checklist.html</code> (Release readiness review) that showcases both checklist shapes - a nested-list sign-off checklist and a sortable-table component audit linked by <code>data-cmh-parent</code> - with its companion authoring prompt <code>examples/prompt-checklist.md</code>.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.43.0] - 2026-07-14</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Clarify the README privacy wording: the document and comments are &quot;never uploaded, transmitted, or sent to any external service - not to us, and not to anyone else&quot;, dropping the confusing &quot;not to the agent&quot; (you do paste the Copy all bundle to your agent yourself, so listing the agent among the never-sent destinations read as contradictory).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">50 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">51 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

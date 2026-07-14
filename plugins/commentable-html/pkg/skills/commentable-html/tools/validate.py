@@ -38,6 +38,61 @@ from html.parser import HTMLParser
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
+# The focused check modules live in the sibling cmhval/ package. Guarantee this
+# tools dir is importable so `from cmhval...` resolves under any invocation
+# (mirrors the sys.path guard the other tools use).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+try:
+    from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
+    from cmhval.jsonblocks import check_json_blocks  # noqa: E402
+    _CMHVAL_AVAILABLE = True
+except ImportError:
+    # The content-syntax checks live in the sibling cmhval/ package, which ships in
+    # this same tools/ directory. If it cannot be imported (a broken/partial
+    # install), fail CLOSED for any content it WOULD have inspected: a validator
+    # that silently passes because its checks vanished is worse than one that
+    # reports it cannot check. A document with no such content still passes, and
+    # these stubs run only on the layer path, so --charts-only (which uses
+    # check_charts here, not cmhval) is unaffected.
+    _CMHVAL_AVAILABLE = False
+    _CMHVAL_MISSING = (
+        "the cmhval package could not be imported (broken/partial install of "
+        "tools/cmhval/); repair the install to validate this content"
+    )
+    _LAYER_JSON_IDS = {"handledCommentIds", "embeddedComments", "commentableHtmlLayer"}
+
+    def check_mermaid_syntax(parser):  # noqa: E402
+        if getattr(parser, "mermaid_blocks", None):
+            return ["mermaid syntax validation unavailable: " + _CMHVAL_MISSING], []
+        return [], []
+
+    def check_mermaid_source(src):  # noqa: E402
+        if (src or "").strip():
+            return ["mermaid syntax validation unavailable: " + _CMHVAL_MISSING]
+        return []
+
+    def check_json_blocks(parser, chart_checks_run=True):  # noqa: E402
+        # Mirror the real check's deferral: when a canvas is present and the chart
+        # checks run, the chart path (check_charts, unaffected by cmhval) owns JSON
+        # validity, so there is nothing this would have inspected.
+        if chart_checks_run and (getattr(parser, "canvases", []) or []):
+            return [], []
+        for s in getattr(parser, "scripts", []) or []:
+            attrs = s.get("attrs", {}) if isinstance(s, dict) else {}
+            stype = (attrs.get("type") or "").split(";")[0].strip().lower()
+            if stype == "application/json" and (attrs.get("id") or None) not in _LAYER_JSON_IDS:
+                return ["embedded-JSON validation unavailable: " + _CMHVAL_MISSING], []
+        return [], []
+
+
+def _reject_json_constant(name):
+    # Python's json.loads accepts NaN / Infinity / -Infinity by default, but the
+    # browser's JSON.parse rejects them, so a chart-data block using one would throw
+    # at init. Reject them here too.
+    raise ValueError("invalid JSON constant %s (JSON.parse rejects it)" % name)
+
 # --------------------------------------------------------------------------- #
 # Layer contract
 # --------------------------------------------------------------------------- #
@@ -462,6 +517,12 @@ class _DocParser(HTMLParser):
         self._record(tag, ad, own_skip)
 
     def handle_data(self, data):
+        # Capture the raw source text of the current mermaid block (entities are already
+        # decoded because convert_charrefs=True), so the mermaid syntax checker can read it.
+        # Only meaningful before the diagram renders to <svg>; a rendered block's has_svg
+        # flag lets the checker skip it.
+        if self._mermaid_stack and self._mermaid_stack[-1] is not None:
+            self.mermaid_blocks[self._mermaid_stack[-1]].setdefault("src_parts", []).append(data)
         if self._cur_script is not None:
             self._cur_body.append(data)
             return
@@ -1521,10 +1582,11 @@ def check_charts(html, parser):
                           f'JSON.parse() will throw at chart init; emit valid JSON (e.g. [] or {{}})')
             continue
         try:
-            json.loads(stripped)
-        except json.JSONDecodeError:
+            json.loads(stripped, parse_constant=_reject_json_constant)
+        except (json.JSONDecodeError, ValueError):
             errors.append(f'chart-data <script type="application/json"> {where} is not valid JSON - a raw '
-                          f'"</script>" likely truncated it; serialize with an encoder and escape "<" as \\u003C')
+                          f'"</script>" or a NaN/Infinity literal that JSON.parse rejects; serialize with '
+                          f'an encoder and escape "<" as \\u003C')
 
     # E5) Chart init must come AFTER the JS END marker comment (Save-as-plain
     # keeps it) AND after the Chart.js loader (or Chart is undefined when it runs).
@@ -1783,6 +1845,15 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
     if layer:
         bd = os.path.dirname(os.path.abspath(path)) if base_dir is _BASE_DIR_UNSET else base_dir
         e, w = check_layer(html, parser, base_dir=bd)
+        errors += e
+        warnings += w
+        # Content-syntax checks (mermaid diagrams, embedded JSON, and later
+        # diff/kql) are document-content invariants, so they run with the layer
+        # checks, not the chart-only path.
+        e, w = check_mermaid_syntax(parser)
+        errors += e
+        warnings += w
+        e, w = check_json_blocks(parser, chart_checks_run=charts)
         errors += e
         warnings += w
     if charts:

@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>oracle extraction edge cases</title></head>
+<body>
+<!-- Diagrams that a naive regex extractor mis-handles: a mermaid <pre> nested in a
+     wrapper <div>, an unquoted class attribute, and a <pre> whose text contains an
+     HTML comment with a fake </pre>. The oracle uses the browser's DOMParser, so it
+     must extract all four and flag the one broken diagram (#4). -->
+<div class="visual-grid">
+  <pre class="mermaid cm-skip">flowchart LR
+  A[Signal] --> B{Known?}
+  B -->|yes| C[Runbook]</pre>
+</div>
+
+<pre class=mermaid>sequenceDiagram
+  A->>B: hi; C->>D: bye</pre>
+
+<pre class="mermaid">sequenceDiagram
+  A->>B: one<!-- </pre> -->
+  B->>A: two; C->>D: three</pre>
+
+<pre class="mermaid cm-skip">sequenceDiagram
+  A->>B: validate; map X -> Y here</pre>
+</body>
+</html>
