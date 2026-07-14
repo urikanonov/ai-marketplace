@@ -365,7 +365,6 @@ main > section:nth-of-type(even) {
 
 /* Feature list */
 .feature h3 { font-size: 1.02rem; margin-bottom: 6px; }
-.feature h3::before { content: "> "; color: var(--cp-accent); }
 .feature p { color: var(--cp-text-muted); font-size: 0.93rem; }
 .card.feature:not(.mode-card) { display: grid; grid-template-columns: auto 1fr; column-gap: 9px; row-gap: 5px; align-items: center; }
 .card.feature:not(.mode-card) > h3 { grid-column: 2; margin: 0; }

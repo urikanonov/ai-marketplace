@@ -5,12 +5,13 @@
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
 
-// The substantive, reader-facing text of a comment card: the reviewer's note plus the quoted
-// content, section path, and pin. Action-button labels (jump/edit/delete) and the meta line
-// are excluded so a query never matches chrome.
+// The reviewer's own note text - what THEY wrote - is the only thing the search filters on. The
+// quoted anchor content, section path, and pin are deliberately excluded so a query matches by the
+// comment text, not the surrounding quote; chrome (action-button labels, the meta line) is likewise
+// never matched.
 function _commentCardHaystack(card) {
   let text = "";
-  card.querySelectorAll(".note, .quote, .section, .pin").forEach((el) => {
+  card.querySelectorAll(".note").forEach((el) => {
     text += " " + (el.textContent || "");
   });
   return text.toLowerCase();

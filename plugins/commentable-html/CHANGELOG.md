@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.52.0] - 2026-07-14
+## [1.53.0] - 2026-07-14
 
 ### Changed
 
@@ -24,7 +24,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (`ValidateMainTests`), and refreshed the `CMH-VAL-11` / `CMH-CONTENT-16` spec source pointers to the
   new module paths.
 
+## [1.52.0] - 2026-07-14
 
+### Changed
+
+- Comment search now filters by the comment note text only. A query that appears solely in the
+  quoted anchor content (or the section path / pin) no longer keeps a card visible, so reviewers
+  filter by what they wrote rather than by the surrounding quote. A query present in the note still
+  matches, and the case-insensitive substring, shown/total count, clear button, and no-results
+  behaviors are unchanged.
+
+## [1.51.0] - 2026-07-14
+
+### Changed
+
+- Grouped the shipped runtime tools into per-topic buckets under `tools/<topic>/` (`deck`, `kusto`,
   `checklist`, `blocks`, `authoring`, `validate`), moving the former top-level `deck/` under
   `tools/deck/`. A shared `tools/_toolpath.py` bootstrap puts the tools root and every topic
   subdirectory on `sys.path` and exposes `SKILL_ROOT`, so a tool imports its siblings and resolves
@@ -32,6 +46,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `SKILL.md` and the references move to `tools/<topic>/<tool>.py`; there is no runtime behavior change.
 
 ## [1.50.0] - 2026-07-14
+
 
 ### Added
 
