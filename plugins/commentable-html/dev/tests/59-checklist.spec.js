@@ -242,6 +242,23 @@ test("CMH-CHECK-17: a checklist that loads with a persisted change opens the sid
   await expect(card).toBeVisible();
 });
 
+test("CMH-CHECK-18: Clear restores checklist state changes to the authored baseline", async ({ page }) => {
+  await open(page, LIST, "cmh-check-18");
+  await ctrl(page, "rel").click();
+  await expect(page.locator(".cm-card-checklist")).toHaveCount(1);
+  expect(await stateOf(page, "rel")).toBe("check");
+
+  await page.click("#btnClearAll");
+  await page.locator(".cm-modal .danger").click();
+  await expect(page.locator(".cm-card-checklist")).toHaveCount(0);
+  expect(await stateOf(page, "rel")).toBe("blank");
+  const stored = await page.evaluate(() => {
+    const k = document.getElementById("commentRoot").dataset.commentKey + "::cl";
+    return localStorage.getItem(k);
+  });
+  expect(stored).toBeNull();
+});
+
 test("CMH-DEMO-04: the shipped checklist demo renders both shapes, aggregates, and persists a toggle", async ({ page }) => {
   await installClipboardCapture(page);
   await page.goto(fileUrl(CHECKLIST_DEMO));

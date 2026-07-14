@@ -221,6 +221,19 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }
 .cm-brand-link:hover { text-decoration: underline; }
 .cm-brand-link:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.cm-help-about .cm-brand-link { color: var(--cp-accent); text-decoration: underline; text-underline-offset: 2px; }
+.cm-help-about .cm-brand-link:hover { color: var(--cp-accent-hover); }
+.cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; }
+.cm-toolbar-menu-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--cp-accent); }
+.cm-toolbar-menu-brand .cm-brand-icon { width: 20px; height: 20px; margin: 0; }
+.cm-toolbar #btnCopyAllTop[aria-disabled="true"],
+.cm-sidebar .head-top #btnCopyAll[aria-disabled="true"] {
+  opacity: 0.58; cursor: not-allowed; box-shadow: none;
+}
+.cm-toolbar #btnCopyAllTop[aria-disabled="true"]:hover,
+.cm-sidebar .head-top #btnCopyAll[aria-disabled="true"]:hover {
+  background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-text-soft);
+}
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
 .cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .cm-help-btn {
@@ -321,7 +334,6 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 .cm-side-toc.is-collapsed .cm-side-toc-list,
 .cm-side-toc.is-collapsed .cm-side-toc-scroll,
 .cm-side-toc.is-collapsed .cm-side-toc-top { display: none; }
-
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
    active, and is correctly absent from a Plain HTML export where the layer is removed.
    Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side

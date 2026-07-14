@@ -232,6 +232,12 @@ function resetChecklist(cid) {
   delete _clOverrides[cid];
   _clAfterChange();
 }
+function resetAllChecklists() {
+  if (!checklistChanges().length) return false;
+  _clOverrides = {};
+  _clAfterChange();
+  return true;
+}
 function jumpToChecklist(cid) {
   const cl = checklists.find((c) => c.id === cid);
   if (!cl || !cl.container) return;
@@ -309,4 +315,3 @@ function setupChecklistLayer() {
   if (checklists.length) _clRefresh();
   _clHadChanges = checklistChanges().length > 0;
 }
-

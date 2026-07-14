@@ -22,6 +22,19 @@ test.describe("Help About links the author to their GitHub profile", () => {
     await expect(authorLink).toHaveAttribute("rel", /noreferrer/);
     await expect(about).toContainText("authored by");
   });
+
+  test("the About section gives the author link a visible affordance and links the changelog (CMH-HELP-AUTHOR-02, CMH-HELP-SITE-02)", async ({ page }) => {
+    await openHelp(page);
+    const about = page.locator(".cm-help-about");
+    const authorLink = about.locator("a", { hasText: "Uri Kanonov" });
+    await expect(authorLink).toHaveCSS("text-decoration-line", /underline/);
+    const changelog = about.locator("a", { hasText: "Changelog" });
+    await expect(changelog).toHaveCount(1);
+    await expect(changelog).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md");
+    await expect(changelog).toHaveAttribute("target", "_blank");
+    await expect(changelog).toHaveAttribute("rel", /noopener/);
+    await expect(changelog).toHaveAttribute("rel", /noreferrer/);
+  });
 });
 
 test.describe("Help terminology matches the current button labels", () => {

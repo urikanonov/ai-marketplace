@@ -82,6 +82,21 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     }
   });
 
+  test("the overflow menu header shows a decorative brand icon without adding a tab stop (CMH-MENU-ICON-02)", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    const menu = page.locator("#toolbarMenu");
+    const icon = menu.locator(".cm-toolbar-menu-brand svg.cm-brand-icon");
+    await expect(icon).toHaveCount(1);
+    await expect(icon).toHaveAttribute("aria-hidden", "true");
+    await expect(icon).toHaveAttribute("focusable", "false");
+    expect(await icon.getAttribute("tabindex")).toBeNull();
+    const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
+      .filter((node) => node.tabIndex >= 0)
+      .map((node) => node.id));
+    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnHelpTop"]);
+  });
+
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel

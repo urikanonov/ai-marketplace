@@ -186,11 +186,41 @@ function buildCopyText() {
   lines.push("HANDLED_IDS_JSON: " + JSON.stringify(sorted.map(c => c.id)));
   return lines.join("\n").trim() + "\n";
 }
-async function copyAll() {
+const CMH_COPY_ALL_TITLES = {
+  btnCopyAll: "Copy all comments to the clipboard as a Markdown bundle for pasting back to the agent",
+  btnCopyAllTop: "Copy all comments to the clipboard for pasting back to the agent",
+};
+function _copyAllState() {
   const live = withoutHandled(comments);
   const changes = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clCh = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  if (!live.length && !changes.length && !clCh.length) { showToast("No comments to copy."); return; }
+  return { live, changes, clCh, hasContent: !!(live.length || changes.length || clCh.length) };
+}
+function _setCopyAllTip(btn, text) {
+  if (btn.hasAttribute("title") || !btn.hasAttribute("data-cmh-tip")) btn.setAttribute("title", text);
+  else btn.setAttribute("data-cmh-tip", text);
+}
+function updateCopyAllState() {
+  const disabled = !_copyAllState().hasContent;
+  Object.keys(CMH_COPY_ALL_TITLES).forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.setAttribute("aria-disabled", disabled ? "true" : "false");
+    btn.classList.toggle("cm-copy-disabled", disabled);
+    _setCopyAllTip(btn, disabled ? "No comments to copy" : CMH_COPY_ALL_TITLES[id]);
+  });
+}
+const _cmRenderCommentsForCopyAll = renderComments;
+renderComments = function () {
+  const result = _cmRenderCommentsForCopyAll.apply(this, arguments);
+  updateCopyAllState();
+  return result;
+};
+async function copyAll() {
+  const state = _copyAllState();
+  if (!state.hasContent) { updateCopyAllState(); return; }
+  const live = state.live;
+  const changes = state.changes;
   const n = live.length;
   const text = buildCopyText();
   let copied = false;
@@ -216,4 +246,3 @@ async function copyAll() {
 }
 document.getElementById("btnCopyAll").addEventListener("click", copyAll);
 document.getElementById("btnCopyAllTop").addEventListener("click", copyAll);
-

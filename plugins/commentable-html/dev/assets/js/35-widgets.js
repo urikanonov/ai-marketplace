@@ -265,6 +265,15 @@ function resetWidgetMoves(widgetEl) {
   });
   _onWidgetMutation();
 }
+function resetAllWidgetMoves() {
+  if (!_widgetDomBaseline || !widgetStateChanges().length) return false;
+  _widgetDomBaseline.forEach((rec) => {
+    if (!rec.part || !rec.parent) return;
+    rec.parent.appendChild(rec.part);
+  });
+  _onWidgetMutation();
+  return true;
+}
 // Show a "Reset moves" button on each draggable widget that currently differs from its load
 // baseline, and remove it once the widget is clean again. The button is cm-skip and is not a
 // data-cm-part, so it never enters the layout signature and cannot loop the MutationObserver.
@@ -384,4 +393,3 @@ function setupWidgetLayer() {
   }
   _syncWidgetResetButtons();
 }
-
