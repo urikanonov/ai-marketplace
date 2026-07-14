@@ -3,9 +3,11 @@ id: TASK-16
 title: >-
   Deck: author a proper in-depth pitch/showcase deck demo and a reusable
   one-shot authoring prompt
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@me'
 created_date: '2026-07-14 17:21'
+updated_date: '2026-07-14 20:18'
 labels: []
 dependencies:
   - TASK-7
@@ -22,9 +24,29 @@ The current sample/demo deck is low quality and has no proper theme. Deliver two
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A reusable one-shot authoring prompt is committed (e.g. under the plugins examples) that, given to an agent, produces a good full showcase deck in one pass; the prompt enumerates the features to cover and the required slide structure
-- [ ] #2 A properly themed showcase/pitch deck is generated and wired in as the deck demo on the site (replacing the current weak deck), with legible theme, working drag-and-drop triage slide, and correctly rendered Mermaid
-- [ ] #3 The deck demonstrates the breadth of commentable-html features listed in the description and is itself commentable (present and comment modes both work)
-- [ ] #4 Example/source lives under dev/ (examples-src or examples) and the shipped/site copies are rebuilt via python scripts/rebuild_all.py with --check clean
-- [ ] #5 Add feature-id rows in plugins/commentable-html/dev/SPEC.md and tests/site/SPEC.md naming covering tests (deck renders/mounts; demo tab loads it); bump plugin version and update CHANGELOG.md
+- [x] #1 A reusable one-shot authoring prompt is committed (e.g. under the plugins examples) that, given to an agent, produces a good full showcase deck in one pass; the prompt enumerates the features to cover and the required slide structure
+- [x] #2 A properly themed showcase/pitch deck is generated and wired in as the deck demo on the site (replacing the current weak deck), with legible theme, working drag-and-drop triage slide, and correctly rendered Mermaid
+- [x] #3 The deck demonstrates the breadth of commentable-html features listed in the description and is itself commentable (present and comment modes both work)
+- [x] #4 Example/source lives under dev/ (examples-src or examples) and the shipped/site copies are rebuilt via python scripts/rebuild_all.py with --check clean
+- [x] #5 Add feature-id rows in plugins/commentable-html/dev/SPEC.md and tests/site/SPEC.md naming covering tests (deck renders/mounts; demo tab loads it); bump plugin version and update CHANGELOG.md
 <!-- AC:END -->
+
+
+
+
+
+
+
+
+
+
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Replace the weak roadmap deck with a new showcase deck source at dev/examples/src/deck-showcase.html, scaffolded through the deck tools and rebuilt into shipped examples and site demos.
+2. Add examples/prompt-showcase.md as a reusable one-shot prompt. Required slide outline: 1 title promise, 2 broken review loop/problem, 3 comment-on-anything map, 4 rich content matrix, 5 live chart/table/media surface, 6 Mermaid architecture, 7 diff/code/KQL review, 8 drag-and-drop triage board, 9 layered checklist, 10 Copy all to agent, 11 handled pruning/reload, 12 export modes, 13 privacy/offline, 14 deck mode/navigation/tooling, 15 close/ask.
+3. Wire deck-showcase.html into build_site_data.py and the plugin page live-demo tab list, removing deck-roadmap.html as the deck demo.
+4. Add or update CMH-DECK-SHOWCASE and SITE-DEMO spec rows plus tests proving the shipped showcase deck validates, mounts in deck mode, is commentable, has working board/Mermaid/chart/diff/checklist content, and the site tab loads it.
+5. Set commentable-html version lane to 1.57.0, add the changelog entry, rebuild all generated artifacts, run deck validation, targeted tests, rebuild_all --check, validate_marketplace.py, and validate_markdown.py.
+<!-- SECTION:PLAN:END -->

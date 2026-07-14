@@ -7,7 +7,7 @@
 <meta name="commentable-html-kind" content="slides" />
 <script type="application/json" id="commentableHtmlLayer">{"version":"1.57.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
-<title>Autumn Roadmap Review</title>
+<title>Commentable HTML Showcase</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
 <script>
@@ -1628,14 +1628,14 @@ body.cmh-deck-present #menuComment {
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="deck-96ce3ca593" data-doc-label="Autumn Roadmap Review" data-doc-source="deck-roadmap.html" data-generated="2026-07-14" data-cmh-mode="deck">
+<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-07-14" data-cmh-mode="deck">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <style id="cmh-deck-stage">
 /* ===========================================
    FIXED 16:9 STAGE: MANDATORY BASE STYLES
    Include this ENTIRE file in every presentation.
-   Slides are authored at 1920×1080 and scaled as a whole.
+   Slides are authored at 1920x1080 and scaled as a whole.
    =========================================== */
 
 /* 1. Lock the browser viewport */
@@ -1670,7 +1670,7 @@ body {
 }
 
 /* 4. Slides stack inside the fixed stage.
-   Content must be laid out at 1920×1080, not reflowed per device. */
+   Content must be laid out at 1920x1080, not reflowed per device. */
 .slide {
     position: absolute;
     inset: 0;
@@ -1782,113 +1782,381 @@ svg {
 </style>
 <div class="deck-viewport">
 <div class="deck-stage">
-<style id="cmh-roadmap-slides">
-/* Roadmap deck: presentation-scale overrides. All rules stay inside the fixed 1920x1080 stage
-   and use only local resources - no remote fonts, no remote assets. */
-#commentRoot[data-cmh-mode="deck"] .slide.rd-title { padding: 180px 120px; }
-#commentRoot[data-cmh-mode="deck"] .slide.rd-title h1 { font-size: 96px; line-height: 1.05; margin: 0 0 24px; color: #f8fafc; }
-#commentRoot[data-cmh-mode="deck"] .slide.rd-title p.rd-sub { font-size: 38px; color: #cbd5f5; margin: 0; }
-#commentRoot[data-cmh-mode="deck"] .slide.rd-title p.rd-byline { font-size: 26px; color: #94a3b8; margin: 60px 0 0; }
-#commentRoot[data-cmh-mode="deck"] .rd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 40px; }
-#commentRoot[data-cmh-mode="deck"] .rd-stat { border: 1px solid rgba(255,255,255,0.22); border-radius: 16px; padding: 32px 28px; background: rgba(15,23,42,0.55); }
-#commentRoot[data-cmh-mode="deck"] .rd-stat .rd-num { font-size: 72px; line-height: 1; font-weight: 700; color: #93c5fd; }
-#commentRoot[data-cmh-mode="deck"] .rd-stat .rd-lbl { font-size: 24px; color: #e2e8f0; margin-top: 12px; display: block; }
-#commentRoot[data-cmh-mode="deck"] .rd-risk-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 32px; }
-#commentRoot[data-cmh-mode="deck"] .rd-risk-col { border: 1px solid rgba(255,255,255,0.22); border-radius: 14px; padding: 20px 22px; background: rgba(30,41,59,0.6); min-height: 640px; }
-#commentRoot[data-cmh-mode="deck"] .rd-risk-col h3 { margin: 0 0 18px; font-size: 30px; }
-#commentRoot[data-cmh-mode="deck"] .rd-risk-card { border: 1px solid rgba(148,163,184,0.35); border-radius: 10px; padding: 14px 16px; margin: 12px 0; background: rgba(15,23,42,0.7); }
-#commentRoot[data-cmh-mode="deck"] .rd-risk-card strong { display: block; font-size: 24px; margin-bottom: 6px; }
-#commentRoot[data-cmh-mode="deck"] .rd-risk-card .rd-meta { font-size: 20px; color: #cbd5f5; }
-#commentRoot[data-cmh-mode="deck"] .rd-diagram { display: flex; justify-content: center; margin-top: 24px; }
-#commentRoot[data-cmh-mode="deck"] pre.mermaid { background: rgba(15,23,42,0.55); border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 24px; margin: 0; font-size: 22px; line-height: 1.35; max-width: 1620px; text-align: center; }
-#commentRoot[data-cmh-mode="deck"] .rd-ask { max-width: 1400px; margin: 60px auto 0; text-align: center; }
-#commentRoot[data-cmh-mode="deck"] .rd-ask ul { list-style: none; padding: 0; margin: 32px 0 0; }
-#commentRoot[data-cmh-mode="deck"] .rd-ask li { font-size: 34px; margin: 18px 0; }
+<style id="cmh-showcase-slides">
+#commentRoot[data-cmh-mode="deck"] .slide {
+  --show-bg: #07111f;
+  --show-panel: rgba(12, 24, 43, 0.78);
+  --show-panel-2: rgba(18, 35, 62, 0.86);
+  --show-line: rgba(148, 163, 184, 0.36);
+  --show-text: #f8fafc;
+  --show-muted: #cbd5e1;
+  --show-accent: #38bdf8;
+  --show-accent-2: #f472b6;
+  --show-good: #86efac;
+  --show-warn: #facc15;
+  --slide-bg: var(--show-bg);
+  --slide-fg: var(--show-text);
+  background:
+    radial-gradient(circle at 18% 16%, rgba(56, 189, 248, 0.28), transparent 28%),
+    radial-gradient(circle at 86% 18%, rgba(244, 114, 182, 0.22), transparent 26%),
+    linear-gradient(135deg, #07111f 0%, #0f172a 48%, #111827 100%);
+  padding: 64px 78px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide h1,
+#commentRoot[data-cmh-mode="deck"] .slide h2,
+#commentRoot[data-cmh-mode="deck"] .slide h3 { letter-spacing: -0.02em; }
+#commentRoot[data-cmh-mode="deck"] .slide h1 { max-width: 1400px; font-size: 88px; }
+#commentRoot[data-cmh-mode="deck"] .slide h2 { font-size: 54px; margin-bottom: 22px; }
+#commentRoot[data-cmh-mode="deck"] .slide p,
+#commentRoot[data-cmh-mode="deck"] .slide li { color: var(--show-muted); font-size: 26px; }
+#commentRoot[data-cmh-mode="deck"] .slide strong { color: var(--show-text); }
+#commentRoot[data-cmh-mode="deck"] .show-kicker { color: var(--show-accent); font-size: 24px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 18px; }
+#commentRoot[data-cmh-mode="deck"] .show-title { padding: 145px 112px; }
+#commentRoot[data-cmh-mode="deck"] .show-title h1 { font-size: 104px; line-height: 1.02; margin-bottom: 30px; }
+#commentRoot[data-cmh-mode="deck"] .show-title .showcase-comment-target { max-width: 1180px; font-size: 38px; line-height: 1.34; color: #e0f2fe; }
+#commentRoot[data-cmh-mode="deck"] .show-byline { margin-top: 64px; display: flex; gap: 18px; flex-wrap: wrap; }
+#commentRoot[data-cmh-mode="deck"] .show-pill { border: 1px solid var(--show-line); border-radius: 999px; padding: 10px 18px; background: rgba(15, 23, 42, 0.68); color: #e2e8f0; font-size: 22px; font-weight: 700; }
+#commentRoot[data-cmh-mode="deck"] .show-two { display: grid; grid-template-columns: 0.95fr 1.05fr; gap: 34px; align-items: stretch; }
+#commentRoot[data-cmh-mode="deck"] .show-three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+#commentRoot[data-cmh-mode="deck"] .show-four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+#commentRoot[data-cmh-mode="deck"] .show-card,
+#commentRoot[data-cmh-mode="deck"] .show-panel { border: 1px solid var(--show-line); border-radius: 24px; background: var(--show-panel); box-shadow: 0 20px 60px rgba(0,0,0,0.28); }
+#commentRoot[data-cmh-mode="deck"] .show-card { padding: 26px 28px; min-height: 178px; }
+#commentRoot[data-cmh-mode="deck"] .show-card h3 { font-size: 31px; margin-bottom: 10px; }
+#commentRoot[data-cmh-mode="deck"] .show-card p,
+#commentRoot[data-cmh-mode="deck"] .show-card li { font-size: 23px; line-height: 1.35; }
+#commentRoot[data-cmh-mode="deck"] .show-problem { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 24px; align-items: center; margin-top: 40px; }
+#commentRoot[data-cmh-mode="deck"] .show-arrow { color: var(--show-accent); font-size: 58px; text-align: center; font-weight: 900; }
+#commentRoot[data-cmh-mode="deck"] .show-ladder { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; margin-top: 34px; }
+#commentRoot[data-cmh-mode="deck"] .show-step { min-height: 170px; padding: 20px; border-radius: 20px; background: rgba(15, 23, 42, 0.72); border: 1px solid var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-step b { display: block; color: var(--show-accent); font-size: 22px; margin-bottom: 8px; }
+#commentRoot[data-cmh-mode="deck"] .show-step span { color: var(--show-muted); font-size: 21px; line-height: 1.28; }
+#commentRoot[data-cmh-mode="deck"] table.show-table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border-radius: 20px; border: 1px solid var(--show-line); background: rgba(15, 23, 42, 0.66); }
+#commentRoot[data-cmh-mode="deck"] table.show-table th { background: #1e3a5f; color: #ffffff; font-weight: 800; font-size: 23px; text-align: left; }
+#commentRoot[data-cmh-mode="deck"] table.show-table td { color: #e2e8f0; font-size: 22px; line-height: 1.3; background: rgba(15, 23, 42, 0.56); }
+#commentRoot[data-cmh-mode="deck"] table.show-table tr:nth-child(even) td { background: rgba(30, 41, 59, 0.64); }
+#commentRoot[data-cmh-mode="deck"] .show-tag { display: inline-flex; align-items: center; border-radius: 999px; padding: 6px 11px; background: rgba(56, 189, 248, 0.18); color: #bae6fd; border: 1px solid rgba(125, 211, 252, 0.38); font-size: 19px; font-weight: 800; margin: 3px 4px 3px 0; }
+#commentRoot[data-cmh-mode="deck"] .show-chart-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px; align-items: start; }
+#commentRoot[data-cmh-mode="deck"] figure.chart.show-chart { margin: 0; padding: 22px; background: rgba(248, 250, 252, 0.94); border: 1px solid rgba(255,255,255,0.48); border-radius: 22px; }
+#commentRoot[data-cmh-mode="deck"] figure.chart.show-chart figcaption { color: #1f2937; font-size: 20px; margin-top: 10px; }
+#commentRoot[data-cmh-mode="deck"] .show-chart .chart-wrap { height: 340px; max-height: 340px; position: relative; overflow: hidden; }
+#commentRoot[data-cmh-mode="deck"] .show-image { width: 100%; border-radius: 20px; border: 1px solid var(--show-line); background: #e2e8f0; }
+#commentRoot[data-cmh-mode="deck"] pre.mermaid { margin: 20px auto 0; max-width: 1540px; min-height: 560px; padding: 28px; border-radius: 22px; background: rgba(15, 23, 42, 0.68); border: 1px solid var(--show-line); font-size: 23px; line-height: 1.35; text-align: center; }
+#commentRoot[data-cmh-mode="deck"] .show-code-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px; align-items: start; }
+#commentRoot[data-cmh-mode="deck"] .show-code-grid pre { max-height: 660px; overflow: hidden; border-radius: 18px; font-size: 20px; line-height: 1.35; }
+#commentRoot[data-cmh-mode="deck"] .show-diff-slide .cmh-diff-host { font-size: 18px; line-height: 1.26; }
+#commentRoot[data-cmh-mode="deck"] .show-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 22px; }
+#commentRoot[data-cmh-mode="deck"] .show-col { min-height: 560px; padding: 18px; border-radius: 20px; background: rgba(15, 23, 42, 0.70); border: 1px solid var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-col h3 { font-size: 28px; margin-bottom: 14px; }
+#commentRoot[data-cmh-mode="deck"] .show-ticket { border-radius: 16px; padding: 16px; margin: 12px 0; background: rgba(30, 58, 95, 0.86); border: 1px solid rgba(125, 211, 252, 0.28); }
+#commentRoot[data-cmh-mode="deck"] .show-ticket strong { display: block; font-size: 23px; margin-bottom: 5px; }
+#commentRoot[data-cmh-mode="deck"] .show-ticket span { color: #cbd5e1; font-size: 19px; }
+#commentRoot[data-cmh-mode="deck"] .show-checklist-slide .cmh-checklist { padding: 26px 34px; border-radius: 22px; background: rgba(15, 23, 42, 0.72); border: 1px solid var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-checklist-slide li { font-size: 24px; margin: 13px 0; }
+#commentRoot[data-cmh-mode="deck"] .show-export-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; margin-top: 36px; }
+#commentRoot[data-cmh-mode="deck"] .show-export { min-height: 260px; padding: 28px; border-radius: 22px; background: rgba(15, 23, 42, 0.74); border: 1px solid var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-export h3 { color: var(--show-accent); font-size: 30px; }
+#commentRoot[data-cmh-mode="deck"] .show-export p { font-size: 22px; line-height: 1.34; }
+#commentRoot[data-cmh-mode="deck"] .show-close { text-align: center; padding: 155px 150px; }
+#commentRoot[data-cmh-mode="deck"] .show-close h2 { font-size: 82px; max-width: 1320px; margin: 0 auto 32px; }
+#commentRoot[data-cmh-mode="deck"] .show-close p { max-width: 1080px; margin: 0 auto; font-size: 34px; color: #e0f2fe; }
 </style>
 
-<section class="slide rd-title active" data-cm-widget="deck-title-slide" data-cm-part-label="Title slide" data-slide-id="slide-1a3a7c60">
-  <h1>Autumn Roadmap Review</h1>
-  <p class="rd-sub">Where the review-tool line lands next quarter, and the two calls we need from you.</p>
-  <p class="rd-byline">Prepared for the Q3 planning circle - draft, comments welcome.</p>
-</section>
-
-<section class="slide" data-slide-id="slide-83e125af">
-  <h2>Where we stand today</h2>
-  <p>Three numbers set the scene. The rest of the deck is about what has to change to move each one.</p>
-  <div class="rd-grid">
-    <div class="rd-stat" data-cm-part="stat-adoption" data-cm-part-label="Adoption stat">
-      <div class="rd-num">62%</div>
-      <span class="rd-lbl">of internal reviews now use the commentable HTML flow</span>
-    </div>
-    <div class="rd-stat" data-cm-part="stat-cycle" data-cm-part-label="Cycle-time stat">
-      <div class="rd-num">2.1d</div>
-      <span class="rd-lbl">median review round-trip, down from 5.4 days a year ago</span>
-    </div>
-    <div class="rd-stat" data-cm-part="stat-support" data-cm-part-label="Support load stat">
-      <div class="rd-num">1.4x</div>
-      <span class="rd-lbl">growth in export-and-share load; the exporter is the current bottleneck</span>
-    </div>
+<section class="slide show-title active" data-cm-widget="showcase-title" data-cm-part-label="Title slide" data-slide-id="slide-76b2501c">
+  <div class="show-kicker">Commentable HTML showcase</div>
+  <h1>Turn AI-made HTML into a review room.</h1>
+  <p class="showcase-comment-target">The review loop gets fast when the artifact itself is commentable: point at the exact text, cell, chart, diagram node, image, code line, diff row, or slide and hand the agent structured feedback in one pass.</p>
+  <div class="show-byline">
+    <span class="show-pill">Fixed 16:9 deck</span>
+    <span class="show-pill">Present mode + comment mode</span>
+    <span class="show-pill">Local-only review state</span>
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-6440fe2b">
-  <h2>Themes we plan to invest in</h2>
-  <table>
-    <thead><tr><th>Theme</th><th>What ships</th><th>Owner</th><th>Risk</th></tr></thead>
+<section class="slide" data-slide-id="slide-10bf834b">
+  <div class="show-kicker">Problem</div>
+  <h2>HTML made the artifact better. Review still stayed out-of-band.</h2>
+  <div class="show-problem">
+    <div class="show-card">
+      <h3>Before</h3>
+      <p>Read a rich HTML plan in the browser, switch back to chat, describe locations in prose, then hope the agent edits the right thing.</p>
+    </div>
+    <div class="show-arrow">&gt;</div>
+    <div class="show-card">
+      <h3>After</h3>
+      <p>Review inside the artifact, collect every note with stable anchors, copy one bundle, and let the agent apply each item precisely.</p>
+    </div>
+  </div>
+  <div class="show-ladder">
+    <div class="show-step"><b>1. Generate</b><span>The agent writes a report, plan, dashboard, or deck.</span></div>
+    <div class="show-step"><b>2. Review</b><span>You comment in place on the exact surface.</span></div>
+    <div class="show-step"><b>3. Copy all</b><span>Markdown bundle plus ids goes back to the agent.</span></div>
+    <div class="show-step"><b>4. Apply</b><span>The agent edits and marks handled ids.</span></div>
+    <div class="show-step"><b>5. Reload</b><span>Handled comments prune away. Open work stays visible.</span></div>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-bdd3b1b5">
+  <div class="show-kicker">Anchor coverage</div>
+  <h2>Comment on the actual thing, not a screenshot of it.</h2>
+  <table class="show-table">
+    <thead><tr><th>Surface</th><th>What reviewers can point at</th><th>What the agent receives</th></tr></thead>
     <tbody>
-      <tr><td>Deck reviews</td><td>Fixed-stage slide deck as a first-class comment target</td><td>Layer team</td><td>Medium</td></tr>
-      <tr><td>Faster exports</td><td>Streaming Export Offline; kills the 3s freeze on large reports</td><td>Runtime team</td><td>Low</td></tr>
-      <tr><td>Cross-doc bundles</td><td>One review bundle spanning several linked documents</td><td>Tools team</td><td>High</td></tr>
-      <tr><td>Author guardrails</td><td>Static validator catches unhandled comment ids before publish</td><td>Tools team</td><td>Low</td></tr>
+      <tr><td>Prose and tables</td><td>Paragraph text, headings, list items, and individual table cells</td><td>Quote, context, section path, and stable comment id</td></tr>
+      <tr><td>Code and KQL</td><td>Specific code ranges, copied without generated line numbers</td><td>Fenced code block with language and exact selected text</td></tr>
+      <tr><td>Mermaid</td><td>Nodes, clusters, labels, task bars, or the whole diagram</td><td>Diagram order, node key, label, and heading context</td></tr>
+      <tr><td>Charts and images</td><td>A canvas chart or image as a visual object</td><td>Chart or image anchor with alt text and position metadata</td></tr>
+      <tr><td>Widgets and slides</td><td>Drag-board cards, checklist items, and slide-local content</td><td>Widget labels, layout changes, checklist deltas, and slide-aware jumps</td></tr>
     </tbody>
   </table>
 </section>
 
-<section class="slide" data-slide-id="slide-fc4dabb7">
-  <h2>Proposed architecture shift</h2>
-  <p>Push the deck profile and the export pipeline behind one runtime contract so a document, a deck, and a bundle all reach the same review surface.</p>
-  <div class="rd-diagram">
-    <pre class="mermaid cm-skip">
+<section class="slide" data-slide-id="slide-c9c66adb">
+  <div class="show-kicker">Rich content</div>
+  <h2>The layer keeps interactive HTML alive.</h2>
+  <div class="show-four">
+    <div class="show-card"><h3>Charts</h3><p><span class="show-tag">Chart.js</span><span class="show-tag">canvas</span><br />Comment on the visual, export snapshots for Offline.</p></div>
+    <div class="show-card"><h3>Diagrams</h3><p><span class="show-tag">Mermaid</span><span class="show-tag">nodes</span><br />Rendered diagram pieces are individual anchors.</p></div>
+    <div class="show-card"><h3>Review code</h3><p><span class="show-tag">diffs</span><span class="show-tag">KQL</span><br />Side-by-side diffs, syntax highlighting, line copies.</p></div>
+    <div class="show-card"><h3>Workflows</h3><p><span class="show-tag">drag board</span><span class="show-tag">checklist</span><br />State changes become Copy all bundle entries.</p></div>
+  </div>
+  <p style="margin-top:34px;max-width:1360px;">A standalone HTML can be a real review app: no hosted backend, no account, no callback service, and no agent guessing where the feedback belongs.</p>
+</section>
+
+<section class="slide showcase-chart-slide" data-slide-id="slide-d7119544">
+  <div class="show-kicker">Live example</div>
+  <h2>Charts, images, and table cells are all review targets.</h2>
+  <div class="show-chart-grid">
+    <figure class="chart show-chart" aria-labelledby="show-chart-cap">
+      <div class="chart-wrap cm-skip">
+        <canvas id="showcaseChart" class="cmh-chart" width="760" height="340" role="img" aria-label="Review cycle reduction chart"></canvas>
+        <script>
+        (function () {
+          var el = document.getElementById("showcaseChart");
+          if (!el || typeof el.getContext !== "function") return;
+          var ctx = el.getContext("2d");
+          var labels = ["Chat", "Markdown", "Plain HTML", "Commentable"];
+          var values = [6.2, 4.8, 3.9, 1.6];
+          ctx.clearRect(0, 0, el.width, el.height);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillRect(0, 0, el.width, el.height);
+          ctx.strokeStyle = "#cbd5e1";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(72, 24); ctx.lineTo(72, 286); ctx.lineTo(730, 286); ctx.stroke();
+          for (var i = 0; i < values.length; i++) {
+            var x = 104 + i * 158;
+            var h = values[i] * 34;
+            ctx.fillStyle = i === 3 ? "#0ea5e9" : "#64748b";
+            ctx.fillRect(x, 286 - h, 92, h);
+            ctx.fillStyle = "#0f172a";
+            ctx.font = "bold 22px Segoe UI, sans-serif";
+            ctx.fillText(values[i].toFixed(1) + "d", x + 16, 276 - h);
+            ctx.font = "18px Segoe UI, sans-serif";
+            ctx.fillText(labels[i], x - 10, 318);
+          }
+        })();
+        </script>
+      </div>
+      <figcaption id="show-chart-cap">A Chart.js-style canvas chart. Reviewers can comment on the chart as a whole and Offline export snapshots it.</figcaption>
+    </figure>
+    <div>
+      <img class="show-image" alt="Mock commentable report with highlighted table, image, chart, and code regions" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='760'%20height='430'%20viewBox='0%200%20760%20430'%3E%3Crect%20width='760'%20height='430'%20rx='24'%20fill='%23f8fafc'/%3E%3Crect%20x='38'%20y='42'%20width='684'%20height='54'%20rx='12'%20fill='%230f172a'/%3E%3Ctext%20x='64'%20y='77'%20font-family='Segoe%20UI,sans-serif'%20font-size='24'%20fill='%23ffffff'%3EReviewable%20artifact%3C/text%3E%3Crect%20x='48'%20y='126'%20width='300'%20height='90'%20rx='12'%20fill='%23dbeafe'/%3E%3Crect%20x='380'%20y='126'%20width='300'%20height='90'%20rx='12'%20fill='%23fce7f3'/%3E%3Crect%20x='48'%20y='246'%20width='632'%20height='126'%20rx='12'%20fill='%23e2e8f0'/%3E%3Cpath%20d='M76%20330h560'%20stroke='%230ea5e9'%20stroke-width='18'/%3E%3Ccircle%20cx='640'%20cy='330'%20r='22'%20fill='%23facc15'/%3E%3Ctext%20x='72'%20y='176'%20font-family='Segoe%20UI,sans-serif'%20font-size='22'%20fill='%230f172a'%3ETable%20cell%20note%3C/text%3E%3Ctext%20x='404'%20y='176'%20font-family='Segoe%20UI,sans-serif'%20font-size='22'%20fill='%230f172a'%3EImage%20or%20chart%20note%3C/text%3E%3C/svg%3E" />
+      <p>Hover the chart or image in comment mode: the same Add Comment flow works for visual anchors.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-efe04d9f">
+  <div class="show-kicker">Mermaid</div>
+  <h2>Diagram nodes become review targets.</h2>
+  <pre class="mermaid cm-skip">
 flowchart LR
-  A[Authoring tools] --> B[Commentable HTML runtime]
-  D[Deck scaffold] --> B
-  B --> R[Review surface]
-  R --> E[Export pipeline]
-  E --> S[Shareable bundle]
-  R -.-> C[Agent copy bundle]
-    </pre>
+  A[AI agent] --> B[Commentable HTML file]
+  B --> C[Reviewer comments inline]
+  C --> D[Copy all Markdown bundle]
+  D --> E[Agent applies edits]
+  E --> F[Handled ids embedded]
+  F --> B
+  B --> G[Portable export]
+  B --> H[Offline export]
+  C -. comment on node .-> B
+  </pre>
+</section>
+
+<section class="slide showcase-diff-slide" data-slide-id="slide-748ae4e1">
+  <div class="show-kicker">Code, KQL, and diffs</div>
+  <h2>Review exact lines without losing syntax or layout.</h2>
+  <div class="show-code-grid">
+    <div>
+      <pre class="cmh-diff" data-diff-label="src/review-loop.ts">@@ -7,9 +7,12 @@ export function applyReview(bundle) {
+-  for (const note of bundle.comments) {
+-    applyNote(note.text);
+-  }
++  for (const note of bundle.comments) {
++    applyAnchoredNote(note.id, note.anchor, note.text);
++    markHandled(note.id);
++  }
++  pruneHandledComments(bundle.handledIds);
+   return writeHtml();
+ }</pre>
+    </div>
+    <div>
+      <pre><code class="language-kusto">ReviewEvents
+| where Timestamp &gt; ago(24h)
+| summarize Comments=count(), Handled=countif(State == "handled") by ArtifactKind
+| extend HandleRate = round(Handled * 100.0 / Comments, 1)
+| order by HandleRate asc</code></pre>
+      <p>The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
+    </div>
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-56c4080c">
-  <h2>Risks we are watching</h2>
-  <div class="rd-risk-board cm-skip" data-cm-widget="roadmap-risk-board" data-cm-draggable aria-label="Roadmap risk board">
-    <div class="rd-risk-col" data-cm-slot="Now" data-cm-part="risk-col-now" data-cm-part-label="Now risks">
-      <h3>Now</h3>
-      <article class="rd-risk-card" data-cm-part="risk-exporter-perf" data-cm-part-label="Exporter freeze"><strong>Exporter freeze on large reports</strong><div class="rd-meta">Sev 2 - owner: runtime - visible on shared demos</div></article>
-      <article class="rd-risk-card" data-cm-part="risk-deck-authoring" data-cm-part-label="Deck authoring"><strong>Deck authoring is CLI-only</strong><div class="rd-meta">Sev 3 - owner: tools - agent flow OK, human flow rough</div></article>
+<section class="slide" data-slide-id="slide-a74f331a">
+  <div class="show-kicker">Stateful widgets</div>
+  <h2>A drag-and-drop triage board can be reviewed and changed.</h2>
+  <div class="show-board cm-skip" data-cm-widget="showcase-triage-board" data-cm-draggable aria-label="Showcase triage board">
+    <div class="show-col" data-cm-slot="Watch live" data-cm-part="slot-watch" data-cm-part-label="Watch live column">
+      <h3>Watch live</h3>
+      <article class="show-ticket" data-cm-part="risk-demo-weak" data-cm-part-label="Weak demo deck"><strong>Weak demo deck</strong><span>Flagship story lacks theme, depth, and real examples.</span></article>
+      <article class="show-ticket" data-cm-part="risk-chart-proof" data-cm-part-label="Chart proof"><strong>Chart proof</strong><span>Need visible canvas and Offline snapshot path.</span></article>
     </div>
-    <div class="rd-risk-col" data-cm-slot="Next" data-cm-part="risk-col-next" data-cm-part-label="Next risks">
-      <h3>Next</h3>
-      <article class="rd-risk-card" data-cm-part="risk-bundle-scale" data-cm-part-label="Bundle scale"><strong>Bundle scale beyond ten docs</strong><div class="rd-meta">Sev 2 - owner: tools - needs a chunked copy format</div></article>
-      <article class="rd-risk-card" data-cm-part="risk-review-drift" data-cm-part-label="Review drift"><strong>Review drift after edits</strong><div class="rd-meta">Sev 3 - owner: layer - anchor rescue works, not silent</div></article>
+    <div class="show-col" data-cm-slot="Fix next" data-cm-part="slot-fix" data-cm-part-label="Fix next column">
+      <h3>Fix next</h3>
+      <article class="show-ticket" data-cm-part="risk-copy-bundle" data-cm-part-label="Copy all proof"><strong>Copy all proof</strong><span>Show id list, Markdown bundle, and handled prune.</span></article>
     </div>
-    <div class="rd-risk-col" data-cm-slot="Watch" data-cm-part="risk-col-watch" data-cm-part-label="Watch risks">
-      <h3>Watch</h3>
-      <article class="rd-risk-card" data-cm-part="risk-corp-cdn" data-cm-part-label="Corporate CDN"><strong>Corporate CDN policy changes</strong><div class="rd-meta">Sev 3 - owner: runtime - Export Offline covers most</div></article>
-      <article class="rd-risk-card" data-cm-part="risk-mobile" data-cm-part-label="Mobile review"><strong>Mobile review parity</strong><div class="rd-meta">Sev 4 - owner: layer - touch selection is in; deck TBD</div></article>
+    <div class="show-col" data-cm-slot="Done" data-cm-part="slot-done" data-cm-part-label="Done column">
+      <h3>Done</h3>
+      <article class="show-ticket" data-cm-part="risk-theme" data-cm-part-label="Deck theme"><strong>Deck theme</strong><span>Dark slides keep readable table and Mermaid contrast.</span></article>
     </div>
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-f6b650f2">
-  <h2>The ask</h2>
-  <div class="rd-ask">
-    <p>Two decisions this week unblock the whole quarter.</p>
-    <ul>
-      <li>1. Confirm deck reviews as a Q3 headline (or push to Q4).</li>
-      <li>2. Approve one loaned engineer for the export streaming spike.</li>
-    </ul>
+<section class="slide showcase-checklist-slide" data-slide-id="slide-b8394524">
+  <div class="show-kicker">Layered checklist</div>
+  <h2>Checklist deltas are structured feedback too.</h2>
+  <div class="show-two">
+    <div class="cmh-checklist" data-cmh-checklist="showcase-readiness" data-cmh-checklist-label="Showcase readiness">
+      <ul>
+        <li data-cmh-item="story" data-cmh-state="blank">Narrative
+          <ul>
+            <li data-cmh-item="opening" data-cmh-state="check">Opening pitch lands in one slide</li>
+            <li data-cmh-item="problem" data-cmh-state="check">Problem and workflow are explicit</li>
+            <li data-cmh-item="close" data-cmh-state="question">Close has a crisp ask</li>
+          </ul>
+        </li>
+        <li data-cmh-item="surfaces" data-cmh-state="blank">Feature surfaces
+          <ul>
+            <li data-cmh-item="chart" data-cmh-state="check">Chart and image are visible</li>
+            <li data-cmh-item="diff" data-cmh-state="check">Diff, KQL, and code blocks render</li>
+            <li data-cmh-item="board" data-cmh-state="question">Triage board is draggable</li>
+          </ul>
+        </li>
+        <li data-cmh-item="validator" data-cmh-state="check">Deck validator passes</li>
+      </ul>
+    </div>
+    <div class="show-card">
+      <h3>Why it matters</h3>
+      <p>A reviewer can toggle checklist states during review. Copy all then includes the changed items so the agent can cement them into the source with <code>tools/checklist_apply.py</code>.</p>
+      <p>It is still local state until exported, so the panel labels the file Not portable until the updated HTML is saved.</p>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-12668385">
+  <div class="show-kicker">Round-trip</div>
+  <h2>Copy all is the handoff contract.</h2>
+  <div class="show-two">
+    <div class="show-panel" style="padding:28px;">
+      <h3>What the agent receives</h3>
+      <pre><code class="language-markdown">## Comment cmh-20260714-01
+Anchor: table cell, Export mode row
+Quote: Export Offline snapshots charts and diagrams
+Note: Add the zero-network reason to the privacy slide.
+
+Handled ids:
+- cmh-20260714-01
+- cmh-20260714-02</code></pre>
+    </div>
+    <div class="show-card">
+      <h3>Why it works</h3>
+      <ul>
+        <li>Markdown is readable to the human and the model.</li>
+        <li>Ids let the agent mark completed comments as handled.</li>
+        <li>On reload, handled-comment pruning removes resolved notes while keeping unresolved ones.</li>
+        <li>Widget moves and checklist changes ride in the same bundle.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-7e37216a">
+  <div class="show-kicker">Export story</div>
+  <h2>Four outputs cover every handoff.</h2>
+  <div class="show-export-row">
+    <div class="show-export"><h3>Portable</h3><p>One HTML file with the layer, comments, and current state embedded. Best for peer review and archival.</p></div>
+    <div class="show-export"><h3>Offline</h3><p>Portable plus rendered Mermaid diagrams and chart snapshots, with remote loaders stripped for zero-network review.</p></div>
+    <div class="show-export"><h3>Plain HTML</h3><p>Clean copy for publishing when the review layer should not ship with the final artifact.</p></div>
+    <div class="show-export"><h3>Markdown</h3><p>Readable review bundle for chat, tickets, PR descriptions, or another agent pass.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-e3c5d641">
+  <div class="show-kicker">Privacy</div>
+  <h2>Local-only by default, offline when required.</h2>
+  <div class="show-three">
+    <div class="show-card"><h3>No service</h3><p>The document runs as a static file. There is no account, backend, telemetry, or upload path.</p></div>
+    <div class="show-card"><h3>State you own</h3><p>Comments stay in browser storage while you iterate, then inside your exported HTML when you choose.</p></div>
+    <div class="show-card"><h3>Air-gap ready</h3><p>Export Offline captures charts and diagrams and removes optional loaders so sensitive reviews can travel with no network.</p></div>
+  </div>
+  <p style="margin-top:38px;">The only network use in normal Portable reports is optional library code for rendering Mermaid or charts, never user content. Offline removes that too.</p>
+</section>
+
+<section class="slide" data-slide-id="slide-63f73d21">
+  <div class="show-kicker">Deck mode</div>
+  <h2>The deck is a commentable document, not a screenshot export.</h2>
+  <div class="show-three">
+    <div class="show-card"><h3>Fixed 16:9 slides</h3><p>Each slide is authored at 1920x1080 and scaled as one stage, so layout stays deterministic.</p></div>
+    <div class="show-card"><h3>Present vs comment</h3><p>Present mode hides review chrome. Comment mode opens the sidebar and reveals comment tools on live slides.</p></div>
+    <div class="show-card"><h3>Navigation</h3><p>Slide bar, arrows, keyboard shortcuts, slide-aware comment jumps, and the split-screen slide-overview navigator keep large decks reviewable.</p></div>
+  </div>
+  <div class="show-card" style="margin-top:26px;min-height:0;">
+    <h3>Review affordance</h3>
+    <p>The comment-mode brand-icon toggle is the visible switch from presentation to review. A note on a hidden slide jumps back to that slide before flashing the anchor.</p>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-f2d0c0bc">
+  <div class="show-kicker">Tooling</div>
+  <h2>Authoring is deterministic, strict, and stdlib-only.</h2>
+  <div class="show-two">
+    <div class="show-card"><h3>Scaffold</h3><p><code>deck_scaffold.py</code> creates the fixed-stage wrapper, mints stable slide ids, refuses accidental overwrite, injects deck mode, and validates before writing.</p></div>
+    <div class="show-card"><h3>Validate</h3><p><code>deck_validate.py</code> checks deck contract, active-content safety, no remote media, unique slide ids, reduced-motion CSS, Mermaid syntax, Chart/canvas rules, and the base layer invariants.</p></div>
+  </div>
+  <div class="show-panel" style="margin-top:28px;padding:26px;">
+    <pre><code>python tools/deck/deck_scaffold.py --content slides.html --label "Showcase" --out deck-showcase.html
+python tools/deck/deck_validate.py examples/deck-showcase.html</code></pre>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-f1599f66">
+  <div class="show-kicker">One-shot authoring</div>
+  <h2>The prompt gives the agent a complete deck shape up front.</h2>
+  <div class="show-two">
+    <div class="show-card"><h3>Enumerate coverage</h3><p>List every feature the deck must demonstrate: anchors, rich content, round-trip, exports, privacy, deck mode, and validator tooling.</p></div>
+    <div class="show-card"><h3>Prescribe structure</h3><p>Demand a concrete slide outline, proof elements on each slide, theme constraints, and validation commands before the agent writes.</p></div>
+  </div>
+  <p style="margin-top:34px;">That is the difference between a weak generic deck and a flagship demo that can be generated in one pass.</p>
+</section>
+
+<section class="slide show-close" data-slide-id="slide-9a891595">
+  <div class="show-kicker">Close</div>
+  <h2>Ship the review loop with the artifact.</h2>
+  <p>Commentable HTML turns plans, dashboards, code reviews, and decks into local-first review surfaces that agents can act on precisely.</p>
+  <div class="show-byline" style="justify-content:center;margin-top:58px;">
+    <span class="show-pill">Install the plugin</span>
+    <span class="show-pill">Generate the artifact</span>
+    <span class="show-pill">Review in place</span>
+    <span class="show-pill">Copy all back</span>
   </div>
 </section>
 

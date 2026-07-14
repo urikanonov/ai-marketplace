@@ -448,16 +448,16 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
   await expect(page.locator("#demo iframe")).toHaveAttribute("src", /demo\/report-taxi\.html/);
 });
 
-test("demo has one safe full-screen button and a five-option slider", async ({ page }) => {
+test("demo has one safe full-screen button and a six-option slider", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const fs = page.locator("#demo-fullscreen");
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
   await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
-  await expect(page.locator(".demo-tab")).toHaveCount(5);
+  await expect(page.locator(".demo-tab")).toHaveCount(6);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
-  for (const id of ["#demo-tab-taxi", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-checklist"]) {
+  for (const id of ["#demo-tab-taxi", "#demo-tab-showcase", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-checklist"]) {
     await expect(page.locator(id)).toBeVisible();
   }
 });
@@ -491,6 +491,22 @@ test("demo slider exposes and loads the Checklist report (SITE-DEMO-09)", async 
   await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-checklist");
   const frame = page.frameLocator("#demo-iframe");
   await expect(frame.locator("[data-cmh-checklist]")).toHaveCount(2, { timeout: 15000 });
+});
+
+test("demo slider exposes and loads the Showcase deck (SITE-DEMO-10)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const showcase = page.locator("#demo-tab-showcase");
+  await expect(showcase).toBeVisible();
+  await expect(showcase).toHaveAttribute("role", "tab");
+  await expect(showcase).toHaveAttribute("aria-controls", "demo-panel");
+  await showcase.click();
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /deck-showcase\.html/);
+  await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /deck-showcase\.html/);
+  await expect(page.locator("#demo-title")).toHaveText("Showcase Deck");
+  await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-showcase");
+  const frame = page.frameLocator("#demo-iframe");
+  await expect(frame.locator("#commentRoot[data-cmh-mode='deck']")).toHaveCount(1, { timeout: 15000 });
+  await expect(frame.locator(".cmh-deck-mode-toggle")).toBeVisible();
 });
 
 test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }) => {

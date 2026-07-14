@@ -27,7 +27,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PLUGIN_PAGES = {"commentable-html": "./commentable-html/"}
 CHANGELOG_PLUGIN = "commentable-html"
-DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-roadmap.html"]
+DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-showcase.html"]
 EXAMPLES_REL = os.path.join(
     "plugins", "commentable-html", "pkg", "skills", "commentable-html", "examples")
 # Site layout (all under site/): sources and the generated publishable output live together.

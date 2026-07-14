@@ -44,13 +44,19 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-async function openRoadmapDeck(page, { mermaid = false } = {}) {
+async function openShowcaseDeck(page, { mermaid = false } = {}) {
   await installClipboardCapture(page);
   if (mermaid) await routeMermaidLocal(page);
   const server = await startStaticServer(EXAMPLES);
-  await page.goto(server.url + "/deck-roadmap.html");
+  await page.goto(server.url + "/deck-showcase.html");
   await ready(page);
   return server;
+}
+
+async function showSlideWith(page, selector) {
+  const slideId = await page.locator(selector).first().evaluate((el) => el.closest(".slide").dataset.slideId);
+  await page.evaluate((id) => window.__cmhDeck.showSlideById(id), slideId);
+  return slideId;
 }
 
 async function settle(page) {
@@ -81,12 +87,12 @@ async function dragCardToSlot(page, cardSelector, slotSelector) {
   await settle(page);
 }
 
-test("CMH-DECK-08: roadmap deck risk cards drag between columns", async ({ page }) => {
-  const server = await openRoadmapDeck(page);
+test("CMH-DECK-08: showcase deck triage cards drag between columns", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
   try {
-    await page.evaluate(() => window.__cmhDeck.showSlideById("slide-56c4080c"));
-    const card = '[data-cm-part="risk-exporter-perf"]';
-    const target = '[data-cm-slot="Next"]';
+    await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
+    const card = '[data-cm-part="risk-demo-weak"]';
+    const target = '[data-cm-slot="Fix next"]';
     await expect(page.locator(target).locator(card)).toHaveCount(0);
 
     await dragCardToSlot(page, card, target);
@@ -96,16 +102,16 @@ test("CMH-DECK-08: roadmap deck risk cards drag between columns", async ({ page 
     const bundle = await copiedBundle(page);
     await page.evaluate(() => document.getElementById("btnCopyAll").click());
     expect(await copiedBundle(page)).not.toBe(bundle);
-    expect(await copiedBundle(page)).toContain('"Exporter freeze" moved from Now to Next');
+    expect(await copiedBundle(page)).toContain('"Weak demo deck" moved from Watch live to Fix next');
   } finally {
     await server.close();
   }
 });
 
-test("CMH-DECK-09: roadmap deck Mermaid diagram renders with dark-slide contrast", async ({ page }) => {
-  const server = await openRoadmapDeck(page, { mermaid: true });
+test("CMH-DECK-09: showcase deck Mermaid diagram renders with dark-slide contrast", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
   try {
-    await page.evaluate(() => window.__cmhDeck.showSlideById("slide-fc4dabb7"));
+    await showSlideWith(page, ".slide pre.mermaid");
     await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
 
     const metrics = await page.evaluate(() => {
@@ -137,10 +143,10 @@ test("CMH-DECK-09: roadmap deck Mermaid diagram renders with dark-slide contrast
   }
 });
 
-test("CMH-DECK-10: roadmap deck table headers have readable contrast", async ({ page }) => {
-  const server = await openRoadmapDeck(page);
+test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
   try {
-    await page.evaluate(() => window.__cmhDeck.showSlideById("slide-6440fe2b"));
+    await showSlideWith(page, ".slide table thead th");
     const colors = await page.locator(".slide.active table thead th").first().evaluate((th) => {
       const slide = th.closest(".slide");
       const thStyle = getComputedStyle(th);
@@ -153,6 +159,48 @@ test("CMH-DECK-10: roadmap deck table headers have readable contrast", async ({ 
     const bg = composite(parseRgb(colors.background), parseRgb(colors.slideBg));
     const fg = parseRgb(colors.color);
     expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-02: showcase deck mounts in deck mode and is commentable", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await expect(page).toHaveTitle(/Commentable HTML Showcase/);
+    expect(await page.evaluate(() => window.__cmhDeck.slideCount())).toBeGreaterThanOrEqual(14);
+    await expect(page.locator(".slide.active .showcase-comment-target")).toContainText(/review loop/i);
+    await expect(page.locator(".cmh-deck-mode-toggle")).toBeVisible();
+    await expect(page.locator(".cmh-deck-nav")).toBeVisible();
+
+    await page.locator(".cmh-deck-mode-toggle").click();
+    await expect(page.locator("#sidebar")).toBeVisible();
+    await page.evaluate(() => {
+      const el = document.querySelector(".slide.active .showcase-comment-target");
+      const range = document.createRange();
+      const text = el.firstChild;
+      range.setStart(text, 0);
+      range.setEnd(text, Math.min(text.textContent.length, 42));
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 220, clientY: 420 }));
+    });
+    await page.locator("#menuComment").click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("Tighten the opening proof point.");
+    await composer.locator('[data-act="save"]').click();
+    await expect(page.locator(".cm-card")).toContainText("Tighten the opening proof point.");
+
+    await showSlideWith(page, ".showcase-chart-slide");
+    await expect(page.locator(".slide.active figure.chart canvas.cmh-chart")).toHaveCount(1);
+    await showSlideWith(page, ".showcase-diff-slide");
+    await expect(page.locator(".slide.active .cmh-diff-host")).toBeVisible();
+    await expect(page.locator(".slide.active .cmh-code-line").first()).toBeVisible();
+    await showSlideWith(page, ".showcase-checklist-slide");
+    await expect(page.locator(".slide.active [data-cmh-checklist].cmh-checklist-ready")).toHaveCount(1);
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
   } finally {
     await server.close();
   }
