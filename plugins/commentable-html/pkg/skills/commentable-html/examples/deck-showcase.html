@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.57.0" />
+<meta name="commentable-html-version" content="1.58.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.57.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.58.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -1267,12 +1267,18 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-label {
   color: var(--cmh-deck-code-text);
 }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-kw, .cmh-kql-kw) { color: #d8b4fe; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-fn, .cmh-kql-fn) { color: #93c5fd; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-str, .cmh-kql-str) { color: #86efac; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-num, .cmh-kql-num) { color: #fbbf24; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-com, .cmh-kql-com) { color: #94a3b8; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-op, .cmh-kql-op) { color: #cbd5e1; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-fn { color: #93c5fd; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-str,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-str { color: #86efac; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-num,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-num { color: #fbbf24; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-com,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-com { color: #94a3b8; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-op,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-op { color: #cbd5e1; }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line::before,
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
   color: var(--cmh-deck-code-soft);
@@ -1289,7 +1295,10 @@ body.cmh-deck-present #menuComment {
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-body,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view :where(pre, code, span, button) {
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view pre,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view code,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view span:not([class*="cmh-code-"]):not([class*="cmh-kql-"]),
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view button {
   color: var(--cmh-deck-code-text);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,
@@ -1938,6 +1947,9 @@ svg {
 #commentRoot[data-cmh-mode="deck"] pre.mermaid { margin: 20px auto 0; max-width: 1540px; min-height: 560px; padding: 28px; border-radius: 22px; background: rgba(15, 23, 42, 0.68); border: 1px solid var(--show-line); font-size: 23px; line-height: 1.35; text-align: center; }
 #commentRoot[data-cmh-mode="deck"] .show-code-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px; align-items: start; }
 #commentRoot[data-cmh-mode="deck"] .show-code-grid pre { max-height: 660px; overflow: hidden; border-radius: 18px; font-size: 20px; line-height: 1.35; }
+#commentRoot[data-cmh-mode="deck"] .show-code-stack { display: grid; gap: 14px; }
+#commentRoot[data-cmh-mode="deck"] .show-code-stack pre { max-height: 310px; font-size: 18px; }
+#commentRoot[data-cmh-mode="deck"] .show-code-stack p { margin-top: 0; }
 #commentRoot[data-cmh-mode="deck"] .show-diff-slide .cmh-diff-host { font-size: 18px; line-height: 1.26; }
 #commentRoot[data-cmh-mode="deck"] .show-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 22px; }
 #commentRoot[data-cmh-mode="deck"] .show-col { min-height: 560px; padding: 18px; border-radius: 20px; background: rgba(15, 23, 42, 0.70); border: 1px solid var(--show-line); }
@@ -2088,19 +2100,24 @@ flowchart LR
 -  }
 +  for (const note of bundle.comments) {
 +    applyAnchoredNote(note.id, note.anchor, note.text);
-+    markHandled(note.id);
++    markHandled(note.id, "handled");
++    trackReviewMetric("handled_comments", 1);
 +  }
 +  pruneHandledComments(bundle.handledIds);
    return writeHtml();
  }</pre>
     </div>
     <div>
-      <pre><code class="language-kusto">ReviewEvents
-| where Timestamp &gt; ago(24h)
-| summarize Comments=count(), Handled=countif(State == "handled") by ArtifactKind
-| extend HandleRate = round(Handled * 100.0 / Comments, 1)
-| order by HandleRate asc</code></pre>
-      <p>The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
+      <div class="show-code-stack">
+        <pre><code class="language-typescript"><span class="cmh-code-kw">const</span> anchor <span class="cmh-code-op">=</span> comments<span class="cmh-code-op">.</span><span class="cmh-code-fn">find</span><span class="cmh-code-op">((</span>note<span class="cmh-code-op">)</span> <span class="cmh-code-op">=&gt;</span> note<span class="cmh-code-op">.</span>id <span class="cmh-code-op">===</span> targetId<span class="cmh-code-op">);</span>
+<span class="cmh-code-kw">if</span> <span class="cmh-code-op">(</span>anchor<span class="cmh-code-op">)</span> <span class="cmh-code-fn">applyAnchoredNote</span><span class="cmh-code-op">(</span>anchor<span class="cmh-code-op">.</span>id<span class="cmh-code-op">,</span> <span class="cmh-code-str">"handled"</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">);</span></code></pre>
+        <pre><code class="language-kusto">ReviewEvents
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> Timestamp <span class="cmh-kql-op">&gt;</span> <span class="cmh-kql-fn">ago</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">24h</span><span class="cmh-kql-op">)</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Comments<span class="cmh-kql-op">=</span><span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Handled<span class="cmh-kql-op">=</span><span class="cmh-kql-fn">countif</span><span class="cmh-kql-op">(</span>State <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"handled"</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> ArtifactKind
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">extend</span> HandleRate <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span>Handled <span class="cmh-kql-op">*</span> <span class="cmh-kql-num">100.0</span> <span class="cmh-kql-op">/</span> Comments<span class="cmh-kql-op">,</span> <span class="cmh-kql-num">1</span><span class="cmh-kql-op">)</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> HandleRate <span class="cmh-kql-kw">asc</span></code></pre>
+        <p>The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -2308,7 +2325,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.57.0";
+const CMH_VERSION = "1.58.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

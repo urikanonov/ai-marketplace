@@ -45,12 +45,18 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-label {
   color: var(--cmh-deck-code-text);
 }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-kw, .cmh-kql-kw) { color: #d8b4fe; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-fn, .cmh-kql-fn) { color: #93c5fd; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-str, .cmh-kql-str) { color: #86efac; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-num, .cmh-kql-num) { color: #fbbf24; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-com, .cmh-kql-com) { color: #94a3b8; }
-#commentRoot[data-cmh-mode="deck"] .slide :where(.cmh-code-op, .cmh-kql-op) { color: #cbd5e1; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-fn { color: #93c5fd; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-str,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-str { color: #86efac; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-num,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-num { color: #fbbf24; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-com,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-com { color: #94a3b8; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-op,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-op { color: #cbd5e1; }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line::before,
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
   color: var(--cmh-deck-code-soft);
@@ -67,7 +73,10 @@ body.cmh-deck-present #menuComment {
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-body,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view :where(pre, code, span, button) {
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view pre,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view code,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view span:not([class*="cmh-code-"]):not([class*="cmh-kql-"]),
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view button {
   color: var(--cmh-deck-code-text);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,

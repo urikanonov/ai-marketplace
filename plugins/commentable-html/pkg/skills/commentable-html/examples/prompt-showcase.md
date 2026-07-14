@@ -52,7 +52,7 @@ commentable-html document, not a flat report.
 >    commentable, with accessible labels.
 > 6. Mermaid architecture - render a flowchart of agent -> commentable HTML -> reviewer -> Copy all
 >    -> agent -> handled ids -> export.
-> 7. Diff, code, and KQL slide - include a real `pre.cmh-diff` diff plus syntax-highlighted code or
+> 7. Diff, code, and KQL slide - include a real `pre.cmh-diff` diff plus syntax-highlighted code and
 >    KQL block.
 > 8. Drag-and-drop triage board - include a real `[data-cm-widget][data-cm-draggable]` board with
 >    three slots and movable cards.

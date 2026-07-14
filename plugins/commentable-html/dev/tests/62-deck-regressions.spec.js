@@ -193,21 +193,53 @@ test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({
   }
 });
 
-test("CMH-DECK-12: showcase deck code, KQL, and diff blocks keep dark-slide contrast", async ({ page }) => {
+test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep dark-slide contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    await showSlideWith(page, ".slide pre code.language-markdown");
-    await expect(page.locator(".slide.active pre code.language-markdown")).toBeVisible();
-    expect(await effectiveContrast(page, ".slide.active pre code.language-markdown")).toBeGreaterThanOrEqual(4.5);
-
-    await showSlideWith(page, ".slide pre code.language-kusto");
-    await expect(page.locator(".slide.active pre code.language-kusto")).toBeVisible();
-    expect(await effectiveContrast(page, ".slide.active pre code.language-kusto")).toBeGreaterThanOrEqual(4.5);
-
     await showSlideWith(page, ".showcase-diff-slide .cmh-diff-view");
+    const diffTokenSelectors = [
+      ".slide.active .cmh-diff-view .cmh-code-kw",
+      ".slide.active .cmh-diff-view .cmh-code-str",
+      ".slide.active .cmh-diff-view .cmh-code-num",
+    ];
+    const diffTokenColors = [];
+    for (const selector of diffTokenSelectors) {
+      await expect(page.locator(selector).first()).toBeVisible();
+      diffTokenColors.push(await page.locator(selector).first().evaluate((el) => getComputedStyle(el).color));
+      expect(await effectiveContrast(page, selector)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(new Set(diffTokenColors).size).toBe(diffTokenColors.length);
     await expect(page.locator(".slide.active .cmh-dl-add .cmh-dl-code").first()).toBeVisible();
     expect(await effectiveContrast(page, ".slide.active .cmh-dl-add .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
     expect(await effectiveContrast(page, ".slide.active .cmh-dl-del .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
+
+    await showSlideWith(page, ".slide pre code.language-typescript");
+    const codeTokenSelectors = [
+      ".slide.active code.language-typescript .cmh-code-kw",
+      ".slide.active code.language-typescript .cmh-code-str",
+      ".slide.active code.language-typescript .cmh-code-num",
+    ];
+    const codeTokenColors = [];
+    for (const selector of codeTokenSelectors) {
+      await expect(page.locator(selector).first()).toBeVisible();
+      codeTokenColors.push(await page.locator(selector).first().evaluate((el) => getComputedStyle(el).color));
+      expect(await effectiveContrast(page, selector)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(new Set(codeTokenColors).size).toBe(codeTokenColors.length);
+
+    await showSlideWith(page, ".slide pre code.language-kusto");
+    const kqlTokenSelectors = [
+      ".slide.active code.language-kusto .cmh-kql-kw",
+      ".slide.active code.language-kusto .cmh-kql-str",
+      ".slide.active code.language-kusto .cmh-kql-num",
+    ];
+    const kqlTokenColors = [];
+    for (const selector of kqlTokenSelectors) {
+      await expect(page.locator(selector).first()).toBeVisible();
+      kqlTokenColors.push(await page.locator(selector).first().evaluate((el) => getComputedStyle(el).color));
+      expect(await effectiveContrast(page, selector)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(new Set(kqlTokenColors).size).toBe(kqlTokenColors.length);
   } finally {
     await server.close();
   }

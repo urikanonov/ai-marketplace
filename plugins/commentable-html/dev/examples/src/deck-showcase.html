@@ -1844,6 +1844,9 @@ svg {
 #commentRoot[data-cmh-mode="deck"] pre.mermaid { margin: 20px auto 0; max-width: 1540px; min-height: 560px; padding: 28px; border-radius: 22px; background: rgba(15, 23, 42, 0.68); border: 1px solid var(--show-line); font-size: 23px; line-height: 1.35; text-align: center; }
 #commentRoot[data-cmh-mode="deck"] .show-code-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px; align-items: start; }
 #commentRoot[data-cmh-mode="deck"] .show-code-grid pre { max-height: 660px; overflow: hidden; border-radius: 18px; font-size: 20px; line-height: 1.35; }
+#commentRoot[data-cmh-mode="deck"] .show-code-stack { display: grid; gap: 14px; }
+#commentRoot[data-cmh-mode="deck"] .show-code-stack pre { max-height: 310px; font-size: 18px; }
+#commentRoot[data-cmh-mode="deck"] .show-code-stack p { margin-top: 0; }
 #commentRoot[data-cmh-mode="deck"] .show-diff-slide .cmh-diff-host { font-size: 18px; line-height: 1.26; }
 #commentRoot[data-cmh-mode="deck"] .show-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 22px; }
 #commentRoot[data-cmh-mode="deck"] .show-col { min-height: 560px; padding: 18px; border-radius: 20px; background: rgba(15, 23, 42, 0.70); border: 1px solid var(--show-line); }
@@ -1994,19 +1997,24 @@ flowchart LR
 -  }
 +  for (const note of bundle.comments) {
 +    applyAnchoredNote(note.id, note.anchor, note.text);
-+    markHandled(note.id);
++    markHandled(note.id, "handled");
++    trackReviewMetric("handled_comments", 1);
 +  }
 +  pruneHandledComments(bundle.handledIds);
    return writeHtml();
  }</pre>
     </div>
     <div>
-      <pre><code class="language-kusto">ReviewEvents
-| where Timestamp &gt; ago(24h)
-| summarize Comments=count(), Handled=countif(State == "handled") by ArtifactKind
-| extend HandleRate = round(Handled * 100.0 / Comments, 1)
-| order by HandleRate asc</code></pre>
-      <p>The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
+      <div class="show-code-stack">
+        <pre><code class="language-typescript"><span class="cmh-code-kw">const</span> anchor <span class="cmh-code-op">=</span> comments<span class="cmh-code-op">.</span><span class="cmh-code-fn">find</span><span class="cmh-code-op">((</span>note<span class="cmh-code-op">)</span> <span class="cmh-code-op">=&gt;</span> note<span class="cmh-code-op">.</span>id <span class="cmh-code-op">===</span> targetId<span class="cmh-code-op">);</span>
+<span class="cmh-code-kw">if</span> <span class="cmh-code-op">(</span>anchor<span class="cmh-code-op">)</span> <span class="cmh-code-fn">applyAnchoredNote</span><span class="cmh-code-op">(</span>anchor<span class="cmh-code-op">.</span>id<span class="cmh-code-op">,</span> <span class="cmh-code-str">"handled"</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">);</span></code></pre>
+        <pre><code class="language-kusto">ReviewEvents
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> Timestamp <span class="cmh-kql-op">&gt;</span> <span class="cmh-kql-fn">ago</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">24h</span><span class="cmh-kql-op">)</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Comments<span class="cmh-kql-op">=</span><span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Handled<span class="cmh-kql-op">=</span><span class="cmh-kql-fn">countif</span><span class="cmh-kql-op">(</span>State <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"handled"</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> ArtifactKind
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">extend</span> HandleRate <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span>Handled <span class="cmh-kql-op">*</span> <span class="cmh-kql-num">100.0</span> <span class="cmh-kql-op">/</span> Comments<span class="cmh-kql-op">,</span> <span class="cmh-kql-num">1</span><span class="cmh-kql-op">)</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> HandleRate <span class="cmh-kql-kw">asc</span></code></pre>
+        <p>The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
+      </div>
     </div>
   </div>
 </section>

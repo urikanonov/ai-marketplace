@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@me'
 created_date: '2026-07-14 17:21'
-updated_date: '2026-07-14 20:22'
+updated_date: '2026-07-14 22:09'
 labels: []
 dependencies:
   - TASK-7
@@ -35,14 +35,14 @@ The current sample/demo deck is low quality and has no proper theme. Deliver two
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Replace the weak roadmap deck with a new showcase deck source at dev/examples/src/deck-showcase.html, scaffolded through the deck tools and rebuilt into shipped examples and site demos.
-2. Add examples/prompt-showcase.md as a reusable one-shot prompt. Required slide outline: 1 title promise, 2 broken review loop/problem, 3 comment-on-anything map, 4 rich content matrix, 5 live chart/table/media surface, 6 Mermaid architecture, 7 diff/code/KQL review, 8 drag-and-drop triage board, 9 layered checklist, 10 Copy all to agent, 11 handled pruning/reload, 12 export modes, 13 privacy/offline, 14 deck mode/navigation/tooling, 15 close/ask.
+2. Add examples/prompt-showcase.md as a reusable one-shot prompt. Required slide outline: 1 title promise, 2 broken review loop/problem, 3 comment-on-anything map, 4 rich content matrix, 5 live chart/table/media surface, 6 Mermaid architecture, 7 diff/code/KQL review, 8 drag-and-drop triage board, 9 layered checklist, 10 Copy all to agent, 11 handled pruning/reload, 12 export modes, 13 privacy/offline, 14 deck mode/navigation, 15 tooling and validator, 16 close/ask.
 3. Wire deck-showcase.html into build_site_data.py and the plugin page live-demo tab list, removing deck-roadmap.html as the deck demo.
-4. Add or update CMH-DECK-SHOWCASE and SITE-DEMO spec rows plus tests proving the shipped showcase deck validates, mounts in deck mode, is commentable, has working board/Mermaid/chart/diff/checklist content, and the site tab loads it.
-5. Set commentable-html version lane to 1.57.0, add the changelog entry, rebuild all generated artifacts, run deck validation, targeted tests, rebuild_all --check, validate_marketplace.py, and validate_markdown.py.
+4. Add CMH-DECK-SHOWCASE, SITE-DEMO, and CMH-DECK-13 spec rows plus tests proving the shipped showcase deck validates, mounts in deck mode, is commentable, has working board/Mermaid/chart/diff/checklist content, keeps dark-slide code/KQL/diff token contrast, and the site tab loads it.
+5. Set commentable-html version lane to 1.58.0, add the changelog entry, rebuild all generated artifacts, run deck validation, targeted tests, rebuild_all --check, validate_marketplace.py, and validate_markdown.py.
 <!-- SECTION:PLAN:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Implemented the showcase deck, one-shot prompt, site demo wiring, specs, tests, version bump, changelog, and regenerated artifacts. PR: https://github.com/urikanonov/ai-marketplace/pull/140. Verified with rebuild_all --check, marketplace and Markdown validators, deck_validate --strict, site generator tests, targeted deck and site Playwright tests, and the pre-push hook.
+Implemented the showcase deck, one-shot prompt, site demo wiring, specs, tests, 1.58.0 re-lane, changelog, and regenerated artifacts. Folded in the deck-theme fix so dark-slide code, KQL, and diff blocks use dark surfaces, distinct AA-contrast syntax tokens, and readable diff row tints. Verified with rebuild_all, rebuild_all --check, validate_marketplace.py, validate_markdown.py, deck_validate --strict, python plugins/commentable-html/dev/tests/test_deck_example.py, and npx playwright test 62-deck-regressions.spec.js.
 <!-- SECTION:FINAL_SUMMARY:END -->
