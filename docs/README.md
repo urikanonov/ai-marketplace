@@ -21,3 +21,13 @@ findings, so the same rigor can be re-run whenever the skill or site changes mat
 
 Open the file in a browser to read it, comment inline on any step you want to tune, and send the notes back
 to your agent to refine the process. It is built with the repository's own `commentable-html` skill.
+
+## Adding a feature
+
+[`adding-a-feature.md`](./adding-a-feature.md) is the end-to-end checklist for adding a new feature to a
+plugin (most often a new `commentable-html` behavior): backlog-first tracking, a fresh worktree, the
+test-first (TDD) and spec-row discipline, editing the owning split partial and wiring the shared layers,
+the scaffold + apply tool pattern with a validator guardrail and an on-demand reference doc, the coverage
+gates (MODULES.md and the tools-layout map), adding or extending a demo and running the E2E audit on it,
+and the version / changelog / rebuild / validate steps. Follow it so a feature ships complete on the first
+pass. It uses the editable notes field as its worked example.
