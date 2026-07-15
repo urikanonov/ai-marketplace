@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.75.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.76.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -353,6 +353,18 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.76.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Reworked the showcase deck (<code>examples/deck-showcase.html</code>) into a light &quot;Parchment and Amber&quot; five-act pitch (pinned <code>data-theme=&quot;light&quot;</code>, raspberry accent, amber decorative highlight on key title words, indigo ink body) that threads a single community-garden plan as its one running example instead of unrelated feature samples. Acts 1 to 3 speak to a non-technical viewer and end on the primary call to action, Act 4 is the engineers-only deep dive (chart, diff, code, KQL, triage board, checklist), and Act 5 is a room-wide close. Retitled the slides to outcome-focused headings and rebuilt the shipped and site copies. (CMH-DECK-SHOWCASE-01, CMH-DECK-SHOWCASE-02)</li>
+              <li>Rethemed the deck&#x27;s rich content for the light parchment slides: the chart, Mermaid diagram, code diff, syntax-highlighted code and KQL, drag-and-drop triage board, table headers, and layered checklist all stay legible and pass the strict contrast validator on the new theme. (CMH-DECK-08, CMH-DECK-09, CMH-DECK-10, CMH-DECK-13)</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Early install call to action: the deck now surfaces both agents&#x27; exact install commands (Copilot and Claude <code>plugin marketplace add</code> plus <code>plugin install commentable-html@urikan-ai-marketplace</code>) as code blocks on an Act 2 slide well before the close, alongside the live-demo, GitHub, and tutorial links, and again as the primary CTA and the closing slide - so a viewer can act within the first few minutes rather than only at the end. (CMH-DECK-SHOWCASE-03)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.75.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -363,6 +375,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>build.py</code> now re-stamps the version into the Claude Code manifests (<code>.claude-plugin/plugin.json</code> and <code>.claude-plugin/marketplace.json</code>) alongside the Copilot ones, so a version bump no longer leaves the Claude mirror behind (which previously required a manual bump and could fail the claude-manifest / version-bump guards). (CMH-TOOL-06)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.74.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -370,8 +384,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Validator warning (non-fatal) when a report/plan/generic document has two or more top-level <code>&lt;h2&gt;</code> headings with no <code>&lt;section&gt;</code> wrapper, so authors restore the boxed section-card layout (<code>#commentRoot &gt; section</code>). Sectioned content, single-heading docs, and slides/boards do not warn. (CMH-VAL-14)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.73.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -400,14 +412,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>A visible, human-readable version line in the shipped <code>SKILL.md</code> and <code>dist/README.md</code>, so a reader who opens the skill or its <code>dist/</code> folder can see which version they have without decoding <code>manifest.json</code>. The line (<code>**Version:** </code> + a code span) is single-sourced from <code>dev/VERSION</code>: <code>build.py</code> re-stamps it and <code>--check</code> fails when either file is stale.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.66.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Provenance stamps and a runtime fallback banner so a document that skipped validation is visible. The document-producing tools stamp <code>commentable-html-created</code>, and <code>validate.py</code> / <code>finalize.py</code> stamp <code>commentable-html-validated</code> only on a strict-clean pass (<code>--no-stamp</code> keeps a run read-only). On load, the runtime shows a small dismissible amber banner when a document carries a created stamp but no current validated stamp - a produced-but-never-strict-validated document. A strict-validated document (and any document with no created stamp) shows nothing. This is a last-resort signal; the skill MUST always finalize and strict-validate before handoff.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">73 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">74 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

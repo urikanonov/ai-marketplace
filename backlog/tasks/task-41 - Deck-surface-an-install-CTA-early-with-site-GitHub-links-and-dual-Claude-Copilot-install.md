@@ -3,11 +3,14 @@ id: TASK-41
 title: >-
   Deck: surface an install CTA early with site + GitHub links and dual
   Claude/Copilot install
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@urikanonov'
 created_date: '2026-07-15 09:53'
+updated_date: '2026-07-15 14:35'
 labels: []
-dependencies: []
+dependencies:
+  - TASK-42
 ordinal: 34000
 ---
 
@@ -19,7 +22,13 @@ Per plan review comment (refinement of task-16, the deck showcase): the shipped 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An install/CTA with site + GitHub links appears early in the deck (not only on the final slide)
-- [ ] #2 Install instructions cover both Claude and Copilot
-- [ ] #3 Deck example rebuilt and validated (deck_validate + build); SPEC row + covering test added; validators green
+- [x] #1 An install/CTA with site + GitHub links appears early in the deck (not only on the final slide)
+- [x] #2 Install instructions cover both Claude and Copilot
+- [x] #3 Deck example rebuilt and validated (deck_validate + build); SPEC row + covering test added; validators green
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Folded into the deck rework (task-42): early install CTA on slide 9 (Act 2, non-final) plus primary CTA slide 12 and close slide 17, each with both copilot and claude install commands as code blocks and site/GitHub/tutorial links. Covered by CMH-DECK-SHOWCASE-03 (asserts both agents appear before the final slide).
+<!-- SECTION:FINAL_SUMMARY:END -->
