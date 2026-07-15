@@ -174,6 +174,7 @@ const prunedCount = pruneHandled();
 // the offset coordinate system. Running it before backfillContext/restoreHighlights
 // keeps text-comment offsets consistent between save time and reload.
 setupDiffLayer();
+setupNotesLayer();
 applyPersistedTableSorts();
 backfillContext();
 restoreHighlights();
@@ -568,7 +569,7 @@ renderComments();
 if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
-if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length)) openSidebar();
+if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length) || (typeof notesChanges === "function" && notesChanges().length)) openSidebar();
 else closeSidebar();
 // Signals the nonportable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.

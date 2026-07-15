@@ -16,6 +16,7 @@ EXPECTED = {
     "deck": ["deck_common", "deck_scaffold", "deck_validate", "pptx_to_fragment"],
     "kusto": ["kql_highlight", "kusto_link"],
     "checklist": ["checklist_apply", "checklist_scaffold"],
+    "notes": ["notes_apply", "notes_scaffold"],
     "blocks": ["chart_block", "diff_block", "highlight_code", "highlight_document"],
     "authoring": ["new_document", "generate_toc", "inline_images", "finalize",
                   "fix_skip", "mark_handled", "upgrade", "retrofit"],

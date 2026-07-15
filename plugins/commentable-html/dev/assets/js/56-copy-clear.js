@@ -3,7 +3,8 @@ function buildCopyText() {
   const liveComments = withoutHandled(comments);
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  if (!liveComments.length && !stateChanges.length && !clChanges.length) return "";
+  const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
+  if (!liveComments.length && !stateChanges.length && !clChanges.length && !noteChanges.length) return "";
   const sortKey = (c) => (c.anchorType === "document")
     ? -1
     : (c.anchorType === "mermaid")
@@ -173,6 +174,19 @@ function buildCopyText() {
     });
     lines.push("CHECKLIST_STATE_JSON: " + JSON.stringify(stateMap));
   }
+  if (noteChanges.length) {
+    const stateMap = {};
+    noteChanges.forEach((ch) => {
+      const label = (ch.label && ch.label !== ch.id) ? ` (${oneLine(ch.label)})` : "";
+      lines.push(`## Note "${oneLine(ch.id)}"${label}`);
+      lines.push("Apply with tools/notes/notes_apply.py, or edit the data-cmh-note element's text.");
+      lines.push("- from: " + oneLine(ch.from));
+      lines.push("- to:   " + oneLine(ch.to));
+      lines.push("");
+      stateMap[ch.id] = ch.to;
+    });
+    lines.push("NOTES_STATE_JSON: " + JSON.stringify(stateMap));
+  }
   lines.push("");
   lines.push("---");
   lines.push("");
@@ -194,7 +208,8 @@ function _copyAllState() {
   const live = withoutHandled(comments);
   const changes = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clCh = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  return { live, changes, clCh, hasContent: !!(live.length || changes.length || clCh.length) };
+  const noteCh = (typeof notesChanges === "function") ? notesChanges() : [];
+  return { live, changes, clCh, noteCh, hasContent: !!(live.length || changes.length || clCh.length || noteCh.length) };
 }
 function _setCopyAllTip(btn, text) {
   if (btn.hasAttribute("title") || !btn.hasAttribute("data-cmh-tip")) btn.setAttribute("title", text);

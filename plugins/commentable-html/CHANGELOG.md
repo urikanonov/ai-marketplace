@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.65.0] - 2026-07-15
+
+### Added
+
+- Editable notes fields: an authored `data-cmh-note` element becomes an editable plain-text
+  `<textarea>` (with a single/multi-line toggle) whose baseline is its authored text. A reviewer's
+  edit is tracked as a minimal `localStorage` delta, surfaces as a per-note change card (jump +
+  reset, searchable), flips the badge to Not portable, is written into the Copy-all bundle as
+  `NOTES_STATE_JSON`, and is baked into the source on export. `tools/notes/notes_scaffold.py`
+  generates the markup and `tools/notes/notes_apply.py` deterministically cements an edit back into
+  the source HTML, so the reviewer-edit round-trip is closed and covered end to end. The global
+  Clear all comments also reverts note edits. Ships a `report-notes.html` demo. See the editable
+  notes-field contract reference (`references/notes-contract.md`) in the skill. Notes can be marked
+  foldable (`data-cmh-note-foldable`) to render as a `+`/`-` disclosure that reveals the field on the
+  line below.
+
 ## [1.64.0] - 2026-07-15
 
 ### Changed

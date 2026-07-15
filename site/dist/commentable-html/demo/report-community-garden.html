@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.64.0" />
+<meta name="commentable-html-version" content="1.65.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.64.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.65.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>Planning a Community Garden</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -1227,6 +1227,112 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
 .cm-card-checklist .cmh-cl-mini { display: inline-flex; line-height: 0; }
 .cm-card-checklist .cmh-cl-arrow { color: var(--cp-text-soft); }
 .cm-card-checklist .cm-card-state-title { font-weight: 600; margin-top: 0.15rem; }
+/* Editable notes fields: a clearly-editable textarea with a label chip and a single/multi-line
+   toggle, plus the per-note change card. The card reuses the comment card shape and its .acts
+   buttons, so its jump/reset match the other comment cards' theme. */
+#commentRoot .cmh-note.cmh-note-ready {
+  display: block;
+  margin: 0.6rem 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--cp-border, #d8dee9);
+  border-radius: 10px;
+  background: var(--cp-surface, #fbfcfe);
+}
+#commentRoot .cmh-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+#commentRoot .cmh-note-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--cp-accent, #2f6f4f);
+  background: var(--cp-accent-soft, #e7f4ec);
+  border: 1px solid var(--cp-accent-soft, #bfe0cd);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+#commentRoot .cmh-note-label::before { content: "\270E\00a0"; }
+#commentRoot .cmh-note-toggle {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--cp-text-soft, #4a5568);
+  background: var(--cp-surface-2, #eef1f6);
+  border: 1px solid var(--cp-border, #d3d9e3);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+}
+#commentRoot .cmh-note-toggle:hover { background: var(--cp-accent-soft); }
+#commentRoot .cmh-note-toggle:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+#commentRoot .cmh-note-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--cp-text, inherit);
+  background: var(--cp-bg, #fff);
+  border: 1px solid var(--cp-border, #c7ced9);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  white-space: pre-wrap;
+}
+#commentRoot .cmh-note.cmh-note-single .cmh-note-input {
+  resize: none;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+#commentRoot .cmh-note-input:hover { border-color: var(--cp-accent, #93a4bd); }
+#commentRoot .cmh-note-input:focus {
+  outline: none;
+  border-color: var(--cp-accent, #3b82f6);
+  box-shadow: 0 0 0 3px var(--cp-accent-soft, rgba(59, 130, 246, 0.18));
+}
+
+/* Jump-flash when a change card's jump button targets a note. */
+@keyframes cmh-note-flash-kf { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px var(--cp-accent-soft); } }
+#commentRoot .cmh-note-flash { animation: cmh-note-flash-kf 0.7s ease-in-out 2; }
+
+/* Foldable notes: a +/- disclosure button reveals or hides the field on the line below. Collapse is
+   session-only presentation. The collapsed rules are #commentRoot-scoped so they outrank the base
+   `#commentRoot .cmh-note-input { display: block }` rule above. */
+#commentRoot .cmh-note-fold {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.4rem; height: 1.4rem; padding: 0; margin-right: 0.15rem;
+  font: 700 1rem/1 var(--cp-font, inherit);
+  color: var(--cp-accent, #1d4ed8);
+  background: var(--cp-accent-soft, #e6efff);
+  border: 1px solid var(--cp-border, #bcd2ff); border-radius: 6px;
+  cursor: pointer;
+}
+#commentRoot .cmh-note-fold::before { content: "\2212"; }          /* minus: expanded */
+#commentRoot .cmh-note-collapsed .cmh-note-fold::before { content: "+"; }
+#commentRoot .cmh-note-fold:hover { background: var(--cp-accent, #d7e4ff); }
+#commentRoot .cmh-note-fold:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
+#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-toggle { display: none; }
+#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head { margin-bottom: 0; }
+/* A badge on a collapsed note that still holds content, so hidden text is discoverable. */
+#commentRoot .cmh-note-label::after {
+  content: "\25CF"; display: none;
+  margin-left: 0.4rem; font-size: 0.7rem; color: var(--cp-accent, #1d4ed8);
+}
+#commentRoot .cmh-note.cmh-note-has-content .cmh-note-label::after { display: inline; }
+
+/* Per-note change card in the sidebar (shaped like a comment card, not counted as one). */
+.cm-card-note .cmh-note-diff {
+  display: block;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.cm-card-note .cmh-note-arrow { color: var(--cp-text-soft); }
 /* Deck profile (data-cmh-mode="deck"): comment-mode force-reveal and slide chrome. */
 body.cmh-deck-present .cm-toolbar,
 body.cmh-deck-present #sidebar {
@@ -2112,7 +2218,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.64.0";
+const CMH_VERSION = "1.65.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4533,6 +4639,259 @@ function setupChecklistLayer() {
   if (checklists.length) _clRefresh();
   _clHadChanges = checklistChanges().length > 0;
 }
+/* ---------- Editable notes fields (one free-text field per data-cmh-note) ----------
+   A [data-cmh-note] element becomes an editable plain-text field (a <textarea>) whose baseline
+   is its authored, normalized textContent. Edits are stored as a minimal per-document delta under
+   COMMENT_KEY + "::note" ({id:text}) - only notes whose current text differs from baseline - and
+   surface as one per-note change card (jump + reset) in the sidebar, a Copy-all NOTES_STATE_JSON
+   line, and an export bake into the element's text. The field is cm-skip so editing never creates a
+   highlight, and it is set up before offset restoration so its (excluded) text does not shift
+   existing comment offsets. A single/multi-line toggle switches the field height. The normalizer is
+   defined identically in tools/notes/notes_apply.py so the browser and the cementing tool agree. */
+const CMH_NOTE_KEY = COMMENT_KEY + "::note";
+const notes = [];
+let _noteOverrides = {};   // { [noteId]: currentText } loaded from storage before setup
+let _noteHadChanges = false;
+let _noteSeq = 0;
+
+// The one canonical text model, shared with notes_apply.py: normalize newlines to LF and trim the
+// outer whitespace; internal newlines and spaces are preserved.
+function normalizeNote(s) {
+  return String(s == null ? "" : s).replace(/\r\n?/g, "\n").trim();
+}
+function _noteCurrent(note) {
+  return normalizeNote(note.textarea.value);
+}
+function _noteLoad() {
+  _noteOverrides = {};
+  let raw = null;
+  try { raw = localStorage.getItem(CMH_NOTE_KEY); } catch (e) { raw = null; }
+  let data = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
+  if (!data || typeof data !== "object") return;
+  Object.keys(data).forEach((id) => { if (typeof data[id] === "string") _noteOverrides[id] = data[id]; });
+}
+function _noteSave() {
+  const out = {};
+  notes.forEach((note) => {
+    const cur = _noteCurrent(note);
+    if (cur !== note.baseline) out[note.id] = cur;
+  });
+  try {
+    if (Object.keys(out).length) localStorage.setItem(CMH_NOTE_KEY, JSON.stringify(out));
+    else localStorage.removeItem(CMH_NOTE_KEY);
+    return true;
+  } catch (e) {
+    showToast("Note edits NOT saved to this browser (storage full or blocked) - they will be lost on reload.",
+      { alert: true, duration: 8000 });
+    return false;
+  }
+}
+// Changed notes only, one record per note (mirrors checklistChanges()).
+function notesChanges() {
+  const out = [];
+  notes.forEach((note) => {
+    const cur = _noteCurrent(note);
+    if (cur !== note.baseline) out.push({ id: note.id, label: note.label, from: note.baseline, to: cur });
+  });
+  return out;
+}
+function _noteApplyMode(note) {
+  const ta = note.textarea;
+  ta.rows = note.multiline ? 4 : 1;
+  note.container.classList.toggle("cmh-note-multiline", note.multiline);
+  note.container.classList.toggle("cmh-note-single", !note.multiline);
+  if (note.toggleBtn) {
+    note.toggleBtn.textContent = note.multiline ? "single line" : "multi line";
+    note.toggleBtn.title = note.multiline ? "Switch to a single-line field" : "Switch to a multi-line field";
+    note.toggleBtn.setAttribute("aria-pressed", note.multiline ? "true" : "false");
+  }
+}
+// A foldable note collapses to just its header line (the +/- toggle and label); expanding reveals the
+// field on the line below. Collapse is session-only presentation, never persisted or exported. A badge
+// marks a collapsed note that still holds content, so hidden text is discoverable.
+function _noteApplyFold(note) {
+  if (!note.foldable || !note.foldBtn) return;
+  const collapsed = !!note.collapsed;
+  const hasContent = normalizeNote(note.textarea.value) !== "";
+  note.container.classList.toggle("cmh-note-collapsed", collapsed);
+  note.container.classList.toggle("cmh-note-has-content", collapsed && hasContent);
+  note.foldBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  note.foldBtn.setAttribute("aria-label", (collapsed ? "Expand note: " : "Collapse note: ") + note.label);
+  note.foldBtn.title = collapsed ? "Show the note field" : "Hide the note field";
+}
+function _noteAfterChange() {
+  _noteSave();
+  if (typeof renderComments === "function") renderComments();
+  if (typeof updateDocTypeUi === "function") updateDocTypeUi();
+  const has = notesChanges().length > 0;
+  if (has && !_noteHadChanges && typeof openSidebar === "function") openSidebar();
+  _noteHadChanges = has;
+}
+function _noteOnInput(note) {
+  _noteAfterChange();
+}
+function _notePreview(t) {
+  const s = (t == null ? "" : String(t)).replace(/\s+/g, " ").trim();
+  return s === "" ? "(empty)" : s;
+}
+// One card per changed note, shaped like a comment card (same .acts/data-act buttons and theme).
+function _renderOneNoteCard(ch) {
+  return `
+    <article class="cm-card cm-card-note" data-cmh-note-name="${escapeHtml(ch.id)}">
+      <div class="section">note: <strong>${escapeHtml(ch.label)}</strong></div>
+      <div class="note cmh-note-diff">${escapeHtml(_notePreview(ch.from))} <span class="cmh-note-arrow">&rarr;</span> ${escapeHtml(_notePreview(ch.to))}</div>
+      <div class="cmh-note-search" hidden>${escapeHtml(ch.label)} ${escapeHtml(ch.from)} ${escapeHtml(ch.to)}</div>
+      <div class="note">Auto-tracked from the current note text. Included in Copy all so the agent can cement it into the source; the file stays Not portable until re-exported.</div>
+      <div class="meta">
+        <span></span>
+        <span class="acts">
+          <button type="button" data-act="note-jump" data-cmh-note-name="${escapeHtml(ch.id)}" title="Scroll to this note">jump</button>
+          <button type="button" data-act="note-reset" data-cmh-note-name="${escapeHtml(ch.id)}" title="Revert this note to its authored text">reset</button>
+        </span>
+      </div>
+    </article>`;
+}
+// Sidebar pieces for changed notes, tagged with a document-order position so the sidebar can
+// interleave them with the comment cards (and the checklist cards) instead of pinning them on top.
+function notesCardPieces() {
+  const changes = notesChanges();
+  if (!changes.length) return [];
+  const byId = new Map();
+  changes.forEach((ch) => byId.set(ch.id, ch));
+  const pieces = [];
+  notes.forEach((note) => {
+    const ch = byId.get(note.id);
+    if (!ch) return;
+    let pos = 1e15;
+    try { const o = offsetWithin(note.container, 0); if (typeof o === "number" && o >= 0) pos = o; } catch (e) { /* no text position */ }
+    pieces.push({ pos, html: _renderOneNoteCard(ch) });
+  });
+  return pieces;
+}
+function resetNote(id) {
+  const note = notes.find((n) => n.id === id);
+  if (!note) return;
+  note.textarea.value = note.baseline;
+  _noteApplyFold(note);
+  _noteAfterChange();
+}
+// Revert every changed note to its authored baseline (used by the global Clear all comments).
+function resetAllNotes() {
+  let any = false;
+  notes.forEach((note) => {
+    if (_noteCurrent(note) !== note.baseline) { note.textarea.value = note.baseline; _noteApplyFold(note); any = true; }
+  });
+  if (any) _noteAfterChange();
+}
+function jumpToNote(id) {
+  const note = notes.find((n) => n.id === id);
+  if (!note || !note.container) return;
+  if (note.foldable && note.collapsed) { note.collapsed = false; _noteApplyFold(note); }
+  if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(note.container);
+  note.container.scrollIntoView({ behavior: "smooth", block: "center" });
+  note.container.classList.add("cmh-note-flash");
+  setTimeout(() => note.container.classList.remove("cmh-note-flash"), 2200);
+  try { note.textarea.focus(); } catch (e) { /* focus is best-effort */ }
+}
+// Bake each note's current text into its element so an exported file reflects the edits and opens
+// with no pending change (mirrors _applyChecklistStateToHtml). textContent is used, never innerHTML,
+// so reviewer text can never inject markup.
+function _applyNoteStateToHtml(html) {
+  if (!notes.length || !notesChanges().length) return html;
+  const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+  notes.forEach((note) => {
+    const cur = _noteCurrent(note);
+    if (cur === note.baseline) return;
+    let el = null;
+    try { el = doc.querySelector('[data-cmh-note="' + _cssEsc(note.id) + '"]'); } catch (e) { el = null; }
+    if (el) {
+      el.textContent = cur;
+      el.removeAttribute("contenteditable");
+      el.classList.remove("cmh-note-ready", "cm-skip", "cmh-note-single", "cmh-note-multiline",
+        "cmh-note-collapsed", "cmh-note-has-content");
+      if (!el.getAttribute("class")) el.removeAttribute("class");
+    }
+  });
+  const doctype = /^\s*<!doctype/i.test(String(html || "")) ? "<!DOCTYPE html>\n" : "";
+  return doctype + doc.documentElement.outerHTML;
+}
+function setupNotesLayer() {
+  notes.length = 0;
+  _noteLoad();
+  root.querySelectorAll("[data-cmh-note]").forEach((el) => {
+    const id = el.getAttribute("data-cmh-note") || "";
+    if (!id) return;
+    const baseline = normalizeNote(el.textContent);
+    const label = el.getAttribute("data-cmh-note-label") || id;
+    const multiline = String(el.getAttribute("data-cmh-note-multiline") || "").toLowerCase() === "true";
+    const foldable = String(el.getAttribute("data-cmh-note-foldable") || "").toLowerCase() === "true";
+    let ov = _noteOverrides[id];
+    if (ov != null && normalizeNote(ov) === baseline) ov = null;   // reconcile a stale post-apply override
+    const current = (ov != null) ? normalizeNote(ov) : baseline;
+
+    el.classList.add("cm-skip", "cmh-note-ready");
+    el.setAttribute("data-cmh-note-role", "field");
+    el.textContent = "";
+
+    const ta = document.createElement("textarea");
+    ta.className = "cmh-note-input cm-skip";
+    ta.id = "cmh-note-input-" + (++_noteSeq);
+    ta.value = current;
+    ta.spellcheck = false;
+    ta.setAttribute("aria-label", label + " (editable note)");
+
+    // A foldable note starts collapsed only when it is empty; a note with content (authored or a
+    // persisted edit) starts expanded so the text is visible. Fold state is evaluated once here;
+    // afterwards only user clicks and jumpToNote change it, so a manual collapse always sticks.
+    const note = { id, label, container: el, textarea: ta, baseline, multiline, foldable,
+                   collapsed: foldable && current === "", toggleBtn: null, foldBtn: null };
+
+    const header = document.createElement("div");
+    header.className = "cmh-note-head cm-skip";
+    const chip = document.createElement("span");
+    chip.className = "cmh-note-label";
+    chip.textContent = label;
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "cmh-note-toggle cm-skip";
+    toggle.setAttribute("data-cmh-note-toggle", "");
+    toggle.addEventListener("click", (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      note.multiline = !note.multiline;
+      _noteApplyMode(note);
+      try { ta.focus(); } catch (e) { /* best-effort */ }
+    });
+    note.toggleBtn = toggle;
+    if (foldable) {
+      const fold = document.createElement("button");
+      fold.type = "button";
+      fold.className = "cmh-note-fold cm-skip";
+      fold.setAttribute("data-cmh-note-fold", "");
+      fold.setAttribute("aria-controls", ta.id);
+      fold.addEventListener("click", (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        note.collapsed = !note.collapsed;
+        _noteApplyFold(note);
+        if (!note.collapsed) { try { ta.focus(); } catch (e) { /* best-effort */ } }
+      });
+      note.foldBtn = fold;
+      header.appendChild(fold);
+    }
+    header.appendChild(chip);
+    header.appendChild(toggle);
+
+    ta.addEventListener("input", () => _noteOnInput(note));
+
+    el.appendChild(header);
+    el.appendChild(ta);
+    notes.push(note);
+    _noteApplyMode(note);
+    _noteApplyFold(note);
+  });
+  if (notes.length) _noteSave();   // prune any stale post-apply overrides that now equal baseline
+  _noteHadChanges = notesChanges().length > 0;
+}
 /* ---------- Document-wide comments ---------- */
 // A comment not tied to any element (raised by right-clicking empty space). It has no
 // highlight and no offsets; it just carries a note about the whole document.
@@ -5215,7 +5574,8 @@ function renderComments() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
   const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
-  if (!comments.length && !stateChanges.length && !clPieces.length) {
+  const notePieces = (typeof notesCardPieces === "function") ? notesCardPieces() : [];
+  if (!comments.length && !stateChanges.length && !clPieces.length && !notePieces.length) {
     const deckHint = IS_DECK
       ? "<p><strong>On this deck:</strong> in comment mode, select text on the current slide and choose <em>Add Comment</em>, or right-click empty slide space for a whole-slide comment. Move between slides with Prev / Next or the arrow keys.</p>"
       : "";
@@ -5319,9 +5679,10 @@ function renderComments() {
     </article>`;
   });
   const commentPieces = commentHtml.map((html, i) => ({ pos: sortKey(sorted[i]), html }));
-  // Insert each checklist card by document position while preserving the comments' current
-  // (position or time) sort order, so a time sort is not overridden and no card is dropped.
-  const cls = clPieces.slice().sort((a, b) => a.pos - b.pos);
+  // Insert each checklist and note change card by document position while preserving the
+  // comments' current (position or time) sort order, so a time sort is not overridden and no
+  // card is dropped.
+  const cls = clPieces.concat(notePieces).sort((a, b) => a.pos - b.pos);
   const parts = [];
   let ci = 0;
   commentPieces.forEach((cp) => {
@@ -5431,6 +5792,15 @@ listEl.addEventListener("click", (e) => {
     else if (typeof jumpToChecklist === "function") jumpToChecklist(cid);
     return;
   }
+  // Note change cards are not comments: jump focuses the note field, reset reverts it to the
+  // authored text. Handle before the .cm-card comment path (a note card is a .cm-card).
+  const noteCard = e.target.closest(".cm-card-note");
+  if (noteCard) {
+    const nid = e.target.getAttribute("data-cmh-note-name") || noteCard.getAttribute("data-cmh-note-name");
+    if (e.target.dataset.act === "note-reset") { if (typeof resetNote === "function") resetNote(nid); }
+    else if (typeof jumpToNote === "function") jumpToNote(nid);
+    return;
+  }
   // Widget state cards are not comments: their jump focuses the board and their Reset
   // restores that board's layout. Handle them before the comment-id path below.
   const stateCard = e.target.closest(".cm-card-state");
@@ -5534,8 +5904,9 @@ function applyCommentSearch() {
   const countEl = document.getElementById("cmSearchCount");
   const clearBtn = document.getElementById("cmSearchClear");
   const total = Array.isArray(comments) ? comments.length : 0;
-  if (row) row.hidden = total === 0;
-  if (total === 0) {
+  const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
+  if (row) row.hidden = total === 0 && noteCards.length === 0;
+  if (total === 0 && noteCards.length === 0) {
     _toggleSearchEmptyNote(false);
     return;
   }
@@ -5549,17 +5920,26 @@ function applyCommentSearch() {
     if (match) shown++;
   });
   // A widget layout-change card and a checklist card are not comments; while a search is
-  // active they would be noise, so hide them. An empty query restores them.
+  // active they would be noise, so hide them. An empty query restores them. Notes ARE
+  // searchable: a note card filters by its label and text like a comment card.
+  let noteShown = 0;
   if (listEl) {
     listEl.querySelectorAll(".cm-card-state, .cm-card-checklist").forEach((c) => {
       c.classList.toggle("cm-hidden", q !== "");
     });
+    noteCards.forEach((c) => {
+      const hay = ((c.querySelector(".cmh-note-search") || {}).textContent || "").toLowerCase();
+      const match = q === "" || hay.indexOf(q) !== -1;
+      c.classList.toggle("cm-hidden", !match);
+      if (q !== "" && match) noteShown++;
+    });
   }
   if (countEl) {
-    countEl.textContent = shown + " / " + total;
+    const totalItems = total + noteCards.length;
+    countEl.textContent = (q === "" ? totalItems : (shown + noteShown)) + " / " + totalItems;
     countEl.hidden = false;
   }
-  _toggleSearchEmptyNote(q !== "" && shown === 0);
+  _toggleSearchEmptyNote(q !== "" && shown === 0 && noteShown === 0);
 }
 
 function setupCommentSearch() {
@@ -5904,7 +6284,8 @@ function buildCopyText() {
   const liveComments = withoutHandled(comments);
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  if (!liveComments.length && !stateChanges.length && !clChanges.length) return "";
+  const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
+  if (!liveComments.length && !stateChanges.length && !clChanges.length && !noteChanges.length) return "";
   const sortKey = (c) => (c.anchorType === "document")
     ? -1
     : (c.anchorType === "mermaid")
@@ -6074,6 +6455,19 @@ function buildCopyText() {
     });
     lines.push("CHECKLIST_STATE_JSON: " + JSON.stringify(stateMap));
   }
+  if (noteChanges.length) {
+    const stateMap = {};
+    noteChanges.forEach((ch) => {
+      const label = (ch.label && ch.label !== ch.id) ? ` (${oneLine(ch.label)})` : "";
+      lines.push(`## Note "${oneLine(ch.id)}"${label}`);
+      lines.push("Apply with tools/notes/notes_apply.py, or edit the data-cmh-note element's text.");
+      lines.push("- from: " + oneLine(ch.from));
+      lines.push("- to:   " + oneLine(ch.to));
+      lines.push("");
+      stateMap[ch.id] = ch.to;
+    });
+    lines.push("NOTES_STATE_JSON: " + JSON.stringify(stateMap));
+  }
   lines.push("");
   lines.push("---");
   lines.push("");
@@ -6095,7 +6489,8 @@ function _copyAllState() {
   const live = withoutHandled(comments);
   const changes = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clCh = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  return { live, changes, clCh, hasContent: !!(live.length || changes.length || clCh.length) };
+  const noteCh = (typeof notesChanges === "function") ? notesChanges() : [];
+  return { live, changes, clCh, noteCh, hasContent: !!(live.length || changes.length || clCh.length || noteCh.length) };
 }
 function _setCopyAllTip(btn, text) {
   if (btn.hasAttribute("title") || !btn.hasAttribute("data-cmh-tip")) btn.setAttribute("title", text);
@@ -6876,6 +7271,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
     saveComments();
     if (typeof resetAllChecklists === "function") resetAllChecklists();
     if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
+    if (typeof resetAllNotes === "function") resetAllNotes();
     renderComments();
   } finally {
     _clearAllBusy = false;
@@ -7080,6 +7476,7 @@ async function saveHtml() {
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
+  baseHtml = _applyNoteStateToHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildSavedHtml(baseHtml, exportComments); }
@@ -7151,6 +7548,7 @@ async function saveAsPlain() {
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyChecklistStateToHtml(baseHtml);
+  baseHtml = _applyNoteStateToHtml(baseHtml);
   let text;
   try { text = _buildPlainHtml(baseHtml); }
   catch (e) { showToast(e.message); return; }
@@ -7351,6 +7749,7 @@ async function saveStandalone() {
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
+  baseHtml = _applyNoteStateToHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildStandaloneHtml(baseHtml, exportComments); }
@@ -7596,6 +7995,7 @@ async function saveOffline() {
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
+  baseHtml = _applyNoteStateToHtml(baseHtml);
   const exportComments = _exportableComments();
   let portable;
   try {
@@ -7727,6 +8127,9 @@ function currentDocState() {
   }
   if (typeof checklistChanges === "function" && checklistChanges().length > 0) {
     reasons.push("a checklist's state was changed in this session and is not saved into the file");
+  }
+  if (typeof notesChanges === "function" && notesChanges().length > 0) {
+    reasons.push("a notes field was edited in this session and is not saved into the file");
   }
   const emb = _embeddedCommentSig();
   if (comments.length > 0) {
@@ -8570,6 +8973,7 @@ const prunedCount = pruneHandled();
 // the offset coordinate system. Running it before backfillContext/restoreHighlights
 // keeps text-comment offsets consistent between save time and reload.
 setupDiffLayer();
+setupNotesLayer();
 applyPersistedTableSorts();
 backfillContext();
 restoreHighlights();
@@ -8964,7 +9368,7 @@ renderComments();
 if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
-if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length)) openSidebar();
+if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length) || (typeof notesChanges === "function" && notesChanges().length)) openSidebar();
 else closeSidebar();
 // Signals the nonportable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.

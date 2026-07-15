@@ -95,6 +95,7 @@ Use the tools rather than manual region editing. If manual fallback is unavoidab
 - Mermaid `cm-skip`: `tools/authoring/fix_skip.py`.
 - Local images in a standalone doc: `tools/authoring/inline_images.py --strict`.
 - Layered checklist markup: `tools/checklist/checklist_scaffold.py`.
+- Editable notes-field markup: `tools/notes/notes_scaffold.py`.
 - Full deterministic finalization and strict validation:
 
 ```bash
@@ -115,6 +116,7 @@ Use the conditional lookup table below when a document needs a richer feature:
 | Commentable widgets, SVG parts, draggable slots (`data-cm-draggable`), and document-wide comments | [Commentable widgets](references/commentable-widgets.md) |
 | Images and chart-canvas comments | [Images](references/images-commentable.md) |
 | Layered checklists | [Layered checklist contract](references/checklist-contract.md) |
+| Editable notes fields | [Editable notes-field contract](references/notes-contract.md) |
 | Comment gestures and sidebar lifecycle | [Interaction model](references/interaction-model.md) |
 | ADO links, cross-references, prose shape, and design-token mapping | [Content conventions](references/content-conventions.md) |
 

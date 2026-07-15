@@ -291,5 +291,35 @@ class ChecklistExampleTests(unittest.TestCase):
         self.assertIn('const CMH_VERSION = "%s"' % _read_version(), html)
 
 
+class NotesExampleTests(unittest.TestCase):
+    """CMH-DEMO-05: the editable-notes demo report ships, validates clean, carries a single-line
+    and a multi-line note, and uses a unique comment key at the current version."""
+
+    _EX = os.path.join(SKILL, "examples", "report-notes.html")
+
+    def test_notes_example_ships_and_validates_strict(self):
+        self.assertTrue(os.path.isfile(self._EX), "report-notes.html is missing")
+        r = subprocess.run(
+            [sys.executable, os.path.join(SKILL, "tools", "validate", "validate.py"), "--strict", self._EX],
+            capture_output=True, text=True, cwd=SKILL)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_notes_example_has_single_and_multiline_notes(self):
+        html = _read(self._EX)
+        self.assertIn('data-cmh-note="verdict"', html)
+        self.assertIn('data-cmh-note="reviewer-notes"', html)
+        self.assertIn('data-cmh-note-multiline="true"', html)
+        self.assertIn('data-cmh-note-foldable="true"', html)
+
+    def test_notes_example_key_is_unique_and_versioned(self):
+        html = _read(self._EX)
+        key = _active_root_attr(html, "data-comment-key")
+        self.assertIsNotNone(key, "notes example is missing data-comment-key")
+        checklist = os.path.join(SKILL, "examples", "report-checklist.html")
+        others = [_active_root_attr(_read(p), "data-comment-key") for p in list(EXAMPLES) + [checklist]]
+        self.assertNotIn(key, others, "notes example reuses another example's comment key")
+        self.assertIn('const CMH_VERSION = "%s"' % _read_version(), html)
+
+
 if __name__ == "__main__":
     unittest.main()
