@@ -77,6 +77,9 @@ FIXTURES_GEN = os.path.join(HERE, "tests", "fixtures", "generate.mjs")
 # hand-edit or a stale/clobbered committed example - closing the self-sourced hole that the site
 # pages had before #91. The layer regions inside a source file are ignored (build.py overwrites
 # them), kept only so the source is itself a valid, openable commentable-html document.
+# A dev/examples/src/prompt-*.md (a one-shot authoring prompt) is plain Markdown with no layer to
+# swap, so build.py copies it VERBATIM to the shipped examples/<same-name>.md and --check flags any
+# drift the same way.
 EXAMPLES_SRC = os.path.join(HERE, "examples", "src")
 
 
@@ -564,6 +567,11 @@ def _region_inner(text, name, where):
 _LAYER_REGIONS = ("CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS")
 _EXAMPLE_SWAP_REGIONS = ("CSS", "COMMENT UI", "JS")
 _EXAMPLE_NAME_RE = re.compile(r"^(?:report|deck)-.*\.html$")
+# A shipped one-shot authoring prompt (examples/prompt-*.md) is plain Markdown with no layer,
+# version, or mermaid pin to stamp, so its dev/examples/src source is copied VERBATIM to the
+# shipped file. Assembling from an independent source is what lets --check catch a stale or
+# hand-edited shipped prompt instead of comparing it to itself.
+_PROMPT_NAME_RE = re.compile(r"^prompt-.*\.md$")
 _META_VERSION_RE = re.compile(
     r'(<meta name="commentable-html-version" content=")[0-9]+\.[0-9]+\.[0-9]+(")')
 _LAYER_DESCRIPTOR_RE = re.compile(
@@ -652,6 +660,25 @@ def build_examples(portable_html, version, mermaid_version, out_dir):
     return result
 
 
+def build_prompt_examples(out_dir):
+    """Copy every dev/examples/src/prompt-*.md VERBATIM to the shipped examples/<same-name>.md.
+    A one-shot prompt is plain Markdown with no layer/version/mermaid to stamp, so its 'assembly'
+    is a byte copy from its independent source; --check then catches a stale or hand-edited shipped
+    prompt. Only prompts that HAVE a source are written, so hand-maintained prompts without one are
+    left untouched. Returns {out_path: text}; an absent examples or source dir yields no entries."""
+    examples_dir = os.path.join(out_dir, "examples")
+    result = {}
+    if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
+        return result
+    for name in sorted(os.listdir(EXAMPLES_SRC)):
+        if not _PROMPT_NAME_RE.match(name):
+            continue
+        src_path = os.path.join(EXAMPLES_SRC, name)
+        out_path = os.path.join(examples_dir, name)
+        result[out_path] = read(src_path)
+    return result
+
+
 def _orphan_examples(out_dir):
     """Shipped examples/report-*.html or examples/deck-*.html that have NO dev/examples/src source.
     build_examples only assembles examples that have a source, so an orphan shipped example would
@@ -693,6 +720,7 @@ def build_all(assets_dir=None, out_dir=None):
         os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version),
     }
     outputs.update(build_examples(portable, version, mermaid_version, out_dir))
+    outputs.update(build_prompt_examples(out_dir))
     return outputs, version
 
 
