@@ -177,6 +177,57 @@ class FinalizeTests(unittest.TestCase):
         with open(path, "r", encoding="utf-8") as fh:
             self.assertNotIn("commentable-html-validated", fh.read())
 
+    def _report_doc(self, kind="report"):
+        # A minimal full document with a #commentRoot whose report/plan content sits under
+        # two bare top-level <h2> headings and no <section> - the flat-card case.
+        return (
+            "<html><head>\n"
+            '<meta name="commentable-html-kind" content="%s">\n' % kind
+            + "</head><body>\n"
+            '<main id="commentRoot" data-cmh-content-root data-comment-key="k">\n'
+            "  <h1>Title</h1>\n"
+            '  <h2 id="a">One</h2>\n  <p>a</p>\n'
+            '  <h2 id="b">Two</h2>\n  <p>b</p>\n'
+            "</main>\n</body></html>\n")
+
+    def test_wraps_sections_for_report_kind_by_default(self):
+        # CMH-TOOL-17: finalize wraps bare top-level <h2> blocks in <section> for a report.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, self._report_doc(kind="report"))
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, out, err = self._run_main(["finalize.py", path, "--no-highlight"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            result = fh.read()
+        self.assertEqual(result.count("<section"), 2)
+        self.assertIn('<section aria-labelledby="a">', result)
+        self.assertIn("wrap-sections", out)
+
+    def test_no_wrap_sections_flag_skips_wrapping(self):
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        original = self._report_doc(kind="report")
+        self._write(path, original)
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(
+                ["finalize.py", path, "--no-highlight", "--no-wrap-sections", "--no-stamp"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), original)  # unchanged
+
+    def test_wrap_sections_skips_non_card_kind(self):
+        # A generic document has its own layout; finalize must not wrap its <h2> blocks.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        original = self._report_doc(kind="generic")
+        self._write(path, original)
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(["finalize.py", path, "--no-highlight", "--no-stamp"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertNotIn("<section", fh.read())
+
     def test_clean_template_finalizes_to_exit_zero(self):
         directory = self._tmpdir()
         path = os.path.join(directory, "doc.html")

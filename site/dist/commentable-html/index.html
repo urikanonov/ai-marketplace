@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.74.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.75.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -353,12 +353,25 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.75.0] - 2026-07-15</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Section-card auto-wrap for report/plan documents - the deterministic fix for the CMH-VAL-14 flat-section warning. <code>tools/authoring/wrap_sections.py</code> wraps each bare top-level <code>&lt;h2&gt;</code> block (the heading plus the siblings up to the next top-level <code>&lt;h2&gt;</code>) in <code>&lt;section aria-labelledby=&quot;the-h2-id&quot;&gt;</code> so a <code>report</code>/<code>plan</code> renders as boxed section cards (<code>#commentRoot &gt; section</code>), leaving the title/lede above the cards. It is idempotent, a no-op when a top-level <code>&lt;section&gt;</code> already exists, and scopes to the <code>#commentRoot</code> element for a full document or the fragment root for a bare fragment. <code>new_document.py</code> (report/plan fragments) and <code>finalize.py</code> (full docs, gated on the kind meta) run it by default; opt out with <code>--no-wrap-sections</code>. (CMH-TOOL-17)</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>build.py</code> now re-stamps the version into the Claude Code manifests (<code>.claude-plugin/plugin.json</code> and <code>.claude-plugin/marketplace.json</code>) alongside the Copilot ones, so a version bump no longer leaves the Claude mirror behind (which previously required a manual bump and could fail the claude-manifest / version-bump guards). (CMH-TOOL-06)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.74.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Validator warning (non-fatal) when a report/plan/generic document has two or more top-level <code>&lt;h2&gt;</code> headings with no <code>&lt;section&gt;</code> wrapper, so authors restore the boxed section-card layout (<code>#commentRoot &gt; section</code>). Sectioned content, single-heading docs, and slides/boards do not warn. (CMH-VAL-14)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.73.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -366,8 +379,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deck authoring: the SKILL.md deck section now routes deck planning (not only the fill step) to the vendored frontend-slides design system - shortlist templates from <code>selection-index.json</code> and read <code>STYLE_PRESETS.md</code> / <code>html-template.md</code> / <code>animation-patterns.md</code> to choose the outline and theme before scaffolding. (CMH-DECK-14)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.72.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -396,14 +407,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Provenance stamps and a runtime fallback banner so a document that skipped validation is visible. The document-producing tools stamp <code>commentable-html-created</code>, and <code>validate.py</code> / <code>finalize.py</code> stamp <code>commentable-html-validated</code> only on a strict-clean pass (<code>--no-stamp</code> keeps a run read-only). On load, the runtime shows a small dismissible amber banner when a document carries a created stamp but no current validated stamp - a produced-but-never-strict-validated document. A strict-validated document (and any document with no created stamp) shows nothing. This is a last-resort signal; the skill MUST always finalize and strict-validate before handoff.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.65.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Editable notes fields: an authored <code>data-cmh-note</code> element becomes an editable plain-text <code>&lt;textarea&gt;</code> (with a single/multi-line toggle) whose baseline is its authored text. A reviewer&#x27;s edit is tracked as a minimal <code>localStorage</code> delta, surfaces as a per-note change card (jump + reset, searchable), flips the badge to Not portable, is written into the Copy-all bundle as <code>NOTES_STATE_JSON</code>, and is baked into the source on export. <code>tools/notes/notes_scaffold.py</code> generates the markup and <code>tools/notes/notes_apply.py</code> deterministically cements an edit back into the source HTML, so the reviewer-edit round-trip is closed and covered end to end. The global Clear all comments also reverts note edits. Ships a <code>report-notes.html</code> demo. See the editable notes-field contract reference (<code>references/notes-contract.md</code>) in the skill. Notes can be marked foldable (<code>data-cmh-note-foldable</code>) to render as a <code>+</code>/<code>-</code> disclosure that reveals the field on the line below.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">72 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">73 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

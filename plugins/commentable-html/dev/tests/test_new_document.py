@@ -744,6 +744,26 @@ class KindTests(unittest.TestCase):
         out = new_document.make_document(_template(), CONTENT, "mk-v1", "L", kind="board")
         self.assertIn('<meta name="commentable-html-kind" content="board"', out)
 
+    def test_report_fragment_is_section_wrapped_by_default(self):
+        # CMH-TOOL-17: a report fragment with bare top-level <h2> blocks is wrapped in
+        # <section> cards at create time (so the document never renders flat).
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
+             "--kind", "report", "--portable"],
+            stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
+        self.assertEqual(code, 0, err)
+        self.assertIn('<section aria-labelledby="a">', out)
+        self.assertIn('<section aria-labelledby="b">', out)
+
+    def test_no_wrap_sections_flag_leaves_fragment_flat(self):
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
+             "--kind", "report", "--portable", "--no-wrap-sections"],
+            stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
+        self.assertEqual(code, 0, err)
+        self.assertNotIn('aria-labelledby="a"', out)
+        self.assertNotIn('aria-labelledby="b"', out)
+
 
 if __name__ == "__main__":
     unittest.main()
