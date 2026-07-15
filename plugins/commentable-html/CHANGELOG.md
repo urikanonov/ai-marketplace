@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.77.0] - 2026-07-15
+
+### Changed
+
+- SKILL.md now states the plugin installs into both Claude Code and the GitHub Copilot CLI and is
+  invokable from each agent's CLI and Desktop app, so the dual-agent support is visible in the
+  shipped skill doc (its output was always a portable, agent-agnostic HTML file). (CMH-DOC-12)
+
 ## [1.76.0] - 2026-07-15
 
 ### Changed

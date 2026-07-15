@@ -1,7 +1,7 @@
 {
   "name": "urikan-ai-marketplace",
   "metadata": {
-    "description": "A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name.",
+    "description": "A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name.",
     "version": "1.0.0"
   },
   "owner": {
@@ -12,7 +12,7 @@
     {
       "name": "commentable-html",
       "description": "Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.",
-      "version": "1.76.0",
+      "version": "1.77.0",
       "source": "./plugins/commentable-html/pkg",
       "author": {
         "name": "Uri Kanonov",
