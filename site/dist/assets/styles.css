@@ -295,6 +295,61 @@ main > section:nth-of-type(even) {
   .install-updater-cue { display: none; }
 }
 
+/* Tabbed, split-row install block: one tab per agent (Copilot / Claude), with the marketplace-add
+   and plugin-install commands on separate rows, each row its own copyable .cmd box. */
+.install-block { margin-top: 2px; }
+.install-tablist {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--cp-border);
+  margin-bottom: 16px;
+}
+.install-tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--cp-text-muted);
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+}
+.install-tab:hover { color: var(--cp-text); background: var(--cp-accent-soft); }
+.install-tab[aria-selected="true"] { color: var(--cp-accent); border-bottom-color: var(--cp-accent); }
+.install-tab:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+.install-panel[hidden] { display: none; }
+.install-panel,
+.install-solo { display: flex; flex-direction: column; gap: 14px; }
+.install-row { display: flex; align-items: flex-start; gap: 14px; }
+.install-step {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--cp-accent);
+  color: var(--cp-accent-fg);
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.install-cmd { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.install-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cp-text-muted);
+}
+@media (max-width: 560px) {
+  .install-step { display: none; }
+}
+
 /* Card grids */
 .grid {
   display: grid;
