@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.62.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.63.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -343,6 +343,14 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.63.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The document-producing tools now bake syntax highlighting by default and surface validator warnings instead of discarding them, so a freshly created document is never raw. Previously baking lived only in the separate, manual <code>finalize.py</code> step, so a document that skipped finalize shipped with monochrome code. <code>new_document.py</code>, <code>retrofit.py</code>, and <code>deck_scaffold.py</code> all bake highlighting by default (opt out with <code>--no-highlight</code>); <code>new_document.py</code> and <code>deck_scaffold.py</code> print validator warnings, and <code>retrofit.py</code> continues to fail closed on any warning so it never writes a raw document.</li>
+              <li><code>SKILL.md</code> now states as a MUST that every produced HTML is finalized and strict-validated before handoff, since the runtime and validator both depend on that final pass.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.62.0] - 2026-07-15</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -353,6 +361,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>A drift guard test asserts the runtime tokenizer knows every language the author-time highlighter supports, so a supported language can never again ship without runtime highlighting.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.61.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -361,8 +371,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Widened the comment search field by trimming its side padding and the shown/total count reserve, so the full <code>Search comments</code> placeholder fits even at the minimum panel width.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.60.0] - 2026-07-15</h3></div>
             <div class="group-label">Fixed</div>
@@ -401,16 +409,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Hardened the contrast helper so malformed or non-finite <code>rgb()</code>/<code>rgba()</code> values are skipped instead of crashing, semi-transparent backgrounds are skipped, background shorthand follows declaration order, and colors embedded only inside <code>url(...)</code> or quoted strings do not create false positives.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.56.0] - 2026-07-14</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Added a deck slide-overview navigator with a split-screen thumbnail grid, slide-title tooltips, click-to-jump navigation, and keyboard open, close, and select support in present and comment modes.</li>
-              <li>Replaced the deck comment-mode text toggle with the commentable-html brand icon while preserving the Comment Mode tooltip, accessible name, and aria-pressed toggle behavior.</li>
-              <li>Hardened the overview so thumbnail clones stay out of the tab order, preserve nested highlight markup, do not receive background deck navigation keys, and are stripped from offline exports.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">63 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">64 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

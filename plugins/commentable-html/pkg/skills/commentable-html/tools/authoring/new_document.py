@@ -40,8 +40,11 @@ Usage (run from the skill root):
 
 --kind declares the document type (report, plan, slides, board, or generic). report and
 plan require a top-level <h1> title (one is auto-added from --label when the fragment has
-none); slides and board do not. The result is self-validated with validate.py before it is
-written; validation errors print to stderr and exit 1. Output goes to stdout unless --out is given.
+none); slides and board do not. Syntax highlighting is baked into raw language-labelled code
+blocks by default (opt out with --no-highlight) so a created document is never raw. The result
+is self-validated with validate.py before it is written; validation errors print to stderr and
+exit 1, and validator warnings print to stderr (the document is still not finished - it MUST be
+finalized and strict-validated before it is shared). Output goes to stdout unless --out is given.
 """
 import argparse
 import hashlib
@@ -312,15 +315,15 @@ def _set_kind_meta(html, kind):
 
 
 def _self_validate(html_out, base_dir=None):
-    """Validate `html_out` with validate.py. Returns a list of error strings, or
-    None only when the validator module is genuinely unavailable (degrade gracefully).
+    """Validate `html_out` with validate.py. Returns (errors, warnings) lists, or
+    (None, None) only when the validator module is genuinely unavailable (degrade gracefully).
     base_dir is where NonPortable companion refs resolve for the existence check (the
     file's final directory), or None to check structure only and defer companion
     resolution to when the placed file is validated."""
     try:
         import validate as _validate
     except ImportError:
-        return None
+        return None, None
     # The temp file location does not affect validation: base_dir is passed explicitly,
     # so companion refs never resolve against the temp file's directory. Use the system
     # temp dir (not os.getcwd(), which may be read-only, e.g. C:\Windows\System32).
@@ -328,8 +331,8 @@ def _self_validate(html_out, base_dir=None):
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(html_out)
-        errors, _warnings = _validate.validate(tmp, base_dir=base_dir)
-        return errors
+        errors, warnings = _validate.validate(tmp, base_dir=base_dir)
+        return errors, warnings
     finally:
         try:
             os.remove(tmp)
@@ -515,6 +518,9 @@ def main(argv):
     parser.add_argument("--no-title", action="store_true",
                         help="do not prepend a document title header (by default a visible "
                              "<h1> from --label is added when the fragment has none)")
+    parser.add_argument("--no-highlight", action="store_true",
+                        help="do not bake syntax highlighting into raw language-labelled code "
+                             "blocks (baking is ON by default so a created document is never raw)")
     args = parser.parse_args(argv[1:])
 
     nonportable = not args.portable
@@ -571,12 +577,27 @@ def main(argv):
     if nonportable and not args.template:
         out_html = _repoint_companions(out_html, prefix)
 
-    errors = _self_validate(out_html, base_dir=validate_base)
+    # Bake syntax highlighting into raw language-labelled code blocks so a created document is never
+    # raw. Baking used to live only in the separate, manual finalize step, so a document that skipped
+    # finalize shipped with monochrome code (the notes-feature-plan.html defect). Opt out with
+    # --no-highlight for parity with finalize.py.
+    if not args.no_highlight:
+        try:
+            import highlight_document
+            out_html, _highlighted = highlight_document.highlight_document(out_html)
+        except ImportError:
+            pass  # degrade gracefully if the highlighter is unavailable
+
+    errors, warnings = _self_validate(out_html, base_dir=validate_base)
     if errors:
         sys.stderr.write("new_document: the generated document does not validate:\n")
         for e in errors:
             sys.stderr.write("  - %s\n" % e)
         return 1
+    # Surface validator warnings (they used to be discarded). A warning here means the document is
+    # valid but not finished - it MUST still be finalized and strict-validated before it is shared.
+    for w in (warnings or []):
+        sys.stderr.write("new_document: warning: %s\n" % w)
 
     if args.out:
         # Copy companions BEFORE writing the HTML, so a copy failure never leaves a

@@ -79,6 +79,31 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIsNotNone(match)
         return match.group(1)
 
+    _RAW_CODE_HOST = ('<!doctype html><html><head><title>H</title></head><body>'
+                      '<h1>Doc</h1><pre><code class="language-python">def f(): return 1</code></pre>'
+                      '</body></html>')
+
+    def test_bakes_syntax_highlighting_by_default(self):
+        # CMH-HL-04: retrofit bakes highlighting so a retrofitted document is never raw.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", self._RAW_CODE_HOST)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "H", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        self.assertIn('<span class="cmh-code-kw">def</span>', _read_text(out))
+
+    def test_no_highlight_with_raw_code_is_blocked_by_validation(self):
+        # CMH-HL-04: with --no-highlight the raw block stays raw, and retrofit fails closed on the
+        # resulting "not syntax-highlighted" warning, so it never writes a raw document.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", self._RAW_CODE_HOST)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "H", "--out", out, "--no-highlight"])
+        self.assertEqual(code, 1)
+        self.assertIn("not syntax-highlighted", stderr)
+        self.assertFalse(os.path.exists(out), "a raw document must not be written")
+
     def test_wraps_body_children_and_strict_validates(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)

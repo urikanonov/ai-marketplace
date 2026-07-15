@@ -13,6 +13,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import contextlib
+import io
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
@@ -32,6 +35,38 @@ def _read(path):
 def _read_version():
     with open(os.path.join(_paths.DEV, "VERSION"), encoding="utf-8") as fh:
         return fh.read().strip()
+
+
+class DeckScaffoldHighlightTests(unittest.TestCase):
+    """CMH-HL-04: deck_scaffold bakes syntax highlighting by default (opt out with --no-highlight)
+    and surfaces validator warnings, so a scaffolded deck is never raw."""
+
+    _SLIDE = ('<section class="slide"><h2>S</h2>'
+              '<pre><code class="language-python">def f(): return 1</code></pre></section>')
+
+    def _scaffold(self, fragment, extra=None):
+        import deck_scaffold  # noqa: E402
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        out = os.path.join(d, "deck.html")
+        argv = ["--content", "-", "--label", "Deck", "--out", out] + (extra or [])
+        err = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(fragment)), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = deck_scaffold.main(argv)
+        return code, out, err.getvalue()
+
+    def test_scaffold_bakes_highlighting_by_default(self):
+        code, out, err = self._scaffold(self._SLIDE)
+        self.assertEqual(code, 0, err)
+        self.assertIn('<span class="cmh-code-kw">def</span>', _read(out))
+
+    def test_scaffold_no_highlight_leaves_raw_and_warns(self):
+        code, out, err = self._scaffold(self._SLIDE, extra=["--no-highlight"])
+        self.assertEqual(code, 0, err)
+        html = _read(out)
+        self.assertNotIn('<span class="cmh-code-kw">def</span>', html)
+        self.assertIn("warning", err.lower())
 
 
 class DeckExampleTests(unittest.TestCase):

@@ -19,6 +19,10 @@ _toolpath.ensure()
 
 import new_document  # noqa: E402
 import upgrade  # noqa: E402
+try:
+    import highlight_document as _highlight_document  # noqa: E402
+except ImportError:  # pragma: no cover
+    _highlight_document = None
 
 
 VOID = frozenset((
@@ -593,6 +597,9 @@ def main(argv):
     parser.add_argument("--assets-relative", action="store_true", help="NonPortable only: reference companions by a relative path to skill dist/")
     parser.add_argument("--copy-assets", action="store_true", help="NonPortable only: copy companions next to the output")
     parser.add_argument("--assets-href", default=None, help="NonPortable only: companion path prefix")
+    parser.add_argument("--no-highlight", action="store_true",
+                        help="do not bake syntax highlighting into raw language-labelled code "
+                             "blocks (baking is ON by default so a retrofitted document is never raw)")
     args = parser.parse_args(argv[1:])
 
     out_path = args.out or args.file
@@ -620,6 +627,10 @@ def main(argv):
             )
         html = _read_utf8(args.file)
         result, warnings = build_retrofit(html, args, out_path)
+        # Bake syntax highlighting into raw language-labelled code blocks so a retrofitted document
+        # is never raw (opt out with --no-highlight).
+        if not args.no_highlight and _highlight_document is not None:
+            result, _ = _highlight_document.highlight_document(result)
         errors, val_warnings = _validate_candidate(result, out_path, validate_base)
     except RetrofitError as exc:
         sys.stderr.write("retrofit: %s\n" % exc)

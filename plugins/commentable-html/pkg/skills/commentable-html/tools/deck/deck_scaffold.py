@@ -42,6 +42,10 @@ try:
     import validate as _validate  # noqa: E402
 except ImportError:  # pragma: no cover
     _validate = None
+try:
+    import highlight_document as _highlight_document  # noqa: E402
+except ImportError:  # pragma: no cover
+    _highlight_document = None
 
 SECTION_RE = re.compile(r'<section\b([^>]*)>(.*?)</section>', re.S | re.I)
 CLASS_RE = re.compile(r'class\s*=\s*"([^"]*)"', re.I)
@@ -166,6 +170,9 @@ def main(argv=None):
     ap.add_argument("--generated", help="ISO-8601 Generated-on stamp")
     ap.add_argument("--out", required=True, help="output file (create-only unless --force)")
     ap.add_argument("--force", action="store_true", help="overwrite an existing --out")
+    ap.add_argument("--no-highlight", action="store_true",
+                    help="do not bake syntax highlighting into raw language-labelled code blocks "
+                         "(baking is ON by default so a scaffolded deck is never raw)")
     args = ap.parse_args(argv)
 
     out = Path(args.out)
@@ -199,13 +206,19 @@ def main(argv=None):
         return 1
     html = _inject_deck_mode(html, key)
 
+    # Bake syntax highlighting into raw language-labelled code blocks so a scaffolded deck is never
+    # raw (opt out with --no-highlight).
+    if not args.no_highlight and _highlight_document is not None:
+        html, _ = _highlight_document.highlight_document(html)
+
     problems = []
+    warnings = []
     if _validate is not None:
         with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tf:
             tf.write(html)
             tmp = tf.name
         try:
-            errors, _ = _validate.validate(tmp)
+            errors, warnings = _validate.validate(tmp)
         finally:
             os.unlink(tmp)
         problems.extend(errors)
@@ -217,6 +230,11 @@ def main(argv=None):
         for e in problems:
             print(f"  {e}", file=sys.stderr)
         return 1
+
+    # Surface validator warnings (previously discarded): a warning means the deck is valid but not
+    # finished - it MUST still be finalized and strict-validated before it is shared.
+    for w in warnings:
+        print(f"deck_scaffold: warning: {w}", file=sys.stderr)
 
     out.write_text(html, encoding="utf-8")
     print(f"deck_scaffold: wrote {out} ({len(_ids)} slide(s))")

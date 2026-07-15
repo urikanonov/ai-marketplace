@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.63.0] - 2026-07-15
+
+### Changed
+
+- The document-producing tools now bake syntax highlighting by default and surface validator
+  warnings instead of discarding them, so a freshly created document is never raw. Previously baking
+  lived only in the separate, manual `finalize.py` step, so a document that skipped finalize shipped
+  with monochrome code. `new_document.py`, `retrofit.py`, and `deck_scaffold.py` all bake highlighting
+  by default (opt out with `--no-highlight`); `new_document.py` and `deck_scaffold.py` print validator
+  warnings, and `retrofit.py` continues to fail closed on any warning so it never writes a raw document.
+- `SKILL.md` now states as a MUST that every produced HTML is finalized and strict-validated before
+  handoff, since the runtime and validator both depend on that final pass.
+
 ## [1.62.0] - 2026-07-15
 
 ### Fixed
