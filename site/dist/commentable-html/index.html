@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.79.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.80.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -404,12 +404,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.80.0] - 2026-07-15</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The wide-screen side navigation menu now has a filter box that searches AS a filter over the document: typing hides every section (and its menu entry) whose heading and body text does not match, Escape clears it, and following a link to a filtered-out section reveals it instead of scrolling to nothing. Filtered sections are hidden with <code>display:none</code> (comment offsets are unaffected) and are skipped by the scroll-spy. (CMH-TOC-09)</li>
+              <li>The side-navigation scroll-spy now marks the current section&#x27;s link with <code>aria-current=&quot;location&quot;</code> (kept unique and cleared from the others), so screen readers announce the reader&#x27;s location instead of relying on the visual highlight alone. (CMH-TOC-08)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.79.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The shipped plugin <code>README.md</code> now documents the dual-agent install story (both Claude Code and the GitHub Copilot CLI, with the marketplace-add and install commands for each), matching the SKILL.md, the marketplace manifests, and the site.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.78.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -418,8 +428,6 @@
               <li>The split-screen slide overview is easier to read and use. Its panel now has a light accent-tinted (red-ish) background, the Close button uses the regular accent fill, and the slide count appears next to the &quot;Slide overview&quot; title. Clicking the main deck area (outside the panel) closes the overview, the grid scrolls reliably when the slides overflow the viewport height, and thumbnails force-reveal animated slide content so each one previews the slide&#x27;s final rendered state. (CMH-DECK-16)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.77.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -457,14 +465,7 @@
               <li>Validator warning (non-fatal) when a report/plan/generic document has two or more top-level <code>&lt;h2&gt;</code> headings with no <code>&lt;section&gt;</code> wrapper, so authors restore the boxed section-card layout (<code>#commentRoot &gt; section</code>). Sectioned content, single-heading docs, and slides/boards do not warn. (CMH-VAL-14)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.73.0] - 2026-07-15</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Deck authoring: the SKILL.md deck section now routes deck planning (not only the fill step) to the vendored frontend-slides design system - shortlist templates from <code>selection-index.json</code> and read <code>STYLE_PRESETS.md</code> / <code>html-template.md</code> / <code>animation-patterns.md</code> to choose the outline and theme before scaffolding. (CMH-DECK-14)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">77 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">78 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -36,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.79.0";
+const CMH_VERSION = "1.80.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6513,6 +6513,12 @@ function setupSideToc() {
   toggle.setAttribute("aria-label", "Collapse section menu");
   toggle.innerHTML = "&laquo;";
   head.append(title, toggle);
+  // A11: search-as-filter over the sections (not just the list); runtime chrome, cm-skip.
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "cm-side-toc-search cm-skip";
+  search.setAttribute("placeholder", "Filter sections...");
+  search.setAttribute("aria-label", "Filter sections");
   const list = document.createElement("ul");
   list.className = "cm-side-toc-list";
   const links = [];
@@ -6538,6 +6544,33 @@ function setupSideToc() {
     li.appendChild(a);
     list.appendChild(li);
     links.push(a);
+  });
+  // A11: filter the visible sections (and their menu entries) by heading + body text.
+  function _cmTocSectionOf(it) { return (it.el && it.el.closest) ? it.el.closest("section") : null; }
+  function applyTocFilter(q) {
+    const query = String(q || "").trim().toLowerCase();
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const sec = _cmTocSectionOf(it);
+      const hay = ((it.label || "") + " " + (sec ? sec.textContent : (it.el.textContent || ""))).toLowerCase();
+      const match = !query || hay.indexOf(query) !== -1;
+      const li = links[i].closest("li");
+      if (li) li.classList.toggle("cm-toc-li-hidden", !match);
+      if (sec) sec.classList.toggle("cm-toc-filtered", !match);
+    }
+  }
+  function clearTocFilter() { if (search.value) search.value = ""; applyTocFilter(""); }
+  search.addEventListener("input", function () { applyTocFilter(search.value); });
+  search.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { e.preventDefault(); clearTocFilter(); search.blur(); }
+  });
+  // Reveal a filtered-out section when a deep link targets it, rather than scrolling to nothing.
+  window.addEventListener("hashchange", function () {
+    let id = (location.hash || "").slice(1);
+    try { id = decodeURIComponent(id); } catch (e) { /* keep the raw id */ }
+    const el = id && document.getElementById(id);
+    const sec = el && el.closest && el.closest("section");
+    if (sec && sec.classList.contains("cm-toc-filtered")) { clearTocFilter(); el.scrollIntoView({ block: "start" }); }
   });
   const scrollBtns = document.createElement("div");
   scrollBtns.className = "cm-side-toc-scroll";
@@ -6570,8 +6603,8 @@ function setupSideToc() {
   bottom.title = "Scroll to the bottom of the document";
   bottom.innerHTML = _cmIco("bottom") + "<span>Scroll to Bottom</span>";
   scrollBtns.append(top, bottom);
-  if (expandGrp) nav.append(head, list, expandGrp, scrollBtns);
-  else nav.append(head, list, scrollBtns);
+  if (expandGrp) nav.append(head, search, list, expandGrp, scrollBtns);
+  else nav.append(head, search, list, scrollBtns);
   document.body.appendChild(nav);
   document.body.classList.add("cm-side-toc-on");
   toggle.addEventListener("click", function () {
@@ -6595,6 +6628,8 @@ function setupSideToc() {
     let activeIdx = 0;
     let bestTop = -Infinity;
     for (let i = 0; i < items.length; i++) {
+      const sec = _cmTocSectionOf(items[i]);
+      if (sec && sec.classList.contains("cm-toc-filtered")) continue; // ignore filtered-out sections
       const top = items[i].el.getBoundingClientRect().top;
       if (top <= 120 && top > bestTop) { bestTop = top; activeIdx = i; }
     }
@@ -6602,7 +6637,13 @@ function setupSideToc() {
     // final item would never light up. Force it active once the document is fully scrolled.
     const doc = document.documentElement;
     if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) activeIdx = items.length - 1;
-    for (let i = 0; i < links.length; i++) links[i].classList.toggle("is-active", i === activeIdx);
+    for (let i = 0; i < links.length; i++) {
+      const on = i === activeIdx;
+      links[i].classList.toggle("is-active", on);
+      // aria-current marks the reader's location for assistive tech, not just visually.
+      if (on) links[i].setAttribute("aria-current", "location");
+      else links[i].removeAttribute("aria-current");
+    }
   }
   let raf = 0;
   function schedule() {

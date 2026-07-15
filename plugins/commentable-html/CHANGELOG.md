@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.80.0] - 2026-07-15
+
+### Added
+
+- The wide-screen side navigation menu now has a filter box that searches AS a filter over the
+  document: typing hides every section (and its menu entry) whose heading and body text does not
+  match, Escape clears it, and following a link to a filtered-out section reveals it instead of
+  scrolling to nothing. Filtered sections are hidden with `display:none` (comment offsets are
+  unaffected) and are skipped by the scroll-spy. (CMH-TOC-09)
+- The side-navigation scroll-spy now marks the current section's link with
+  `aria-current="location"` (kept unique and cleared from the others), so screen readers announce
+  the reader's location instead of relying on the visual highlight alone. (CMH-TOC-08)
+
 ## [1.79.0] - 2026-07-15
 
 ### Changed

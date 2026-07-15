@@ -373,6 +373,15 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 /* TOC section numbers. */
 .cm-side-toc-list .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
 .cm-side-toc-list a.is-active .cm-toc-num { color: var(--cp-accent); }
+/* Side-TOC filter box (search-as-filter) and the hide rules it toggles. */
+.cm-side-toc-search {
+  width: 100%; box-sizing: border-box; margin: 0.25rem 0 0.5rem; padding: 0.3rem 0.5rem;
+  font: inherit; font-size: 0.82rem; color: var(--cp-text); background: var(--cp-surface);
+  border: 1px solid var(--cp-border); border-radius: 0.4rem;
+}
+.cm-side-toc-search:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 1px; }
+.cm-side-toc-list li.cm-toc-li-hidden { display: none; }
+#commentRoot section.cm-toc-filtered { display: none; }
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and
    mermaid blocks keep their own whitespace handling. */
 #commentRoot pre:not(.cmh-diff):not(.cmh-diff-raw):not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }

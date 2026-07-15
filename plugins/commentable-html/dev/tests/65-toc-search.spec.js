@@ -1,0 +1,78 @@
+import { test, expect } from "@playwright/test";
+import { stageContent, fileUrl, ready } from "./helpers.js";
+
+// Three tall, distinctly-worded sections so the side TOC renders (>= 2 items), scroll-spy
+// moves between them, and a query matches exactly one section's body text.
+const CONTENT = `
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2>
+  <p>Apple content describing the first area.</p>
+  <p style="display:block;height:1400px">alpha filler</p></section>
+<section aria-labelledby="beta"><h2 id="beta">Beta details</h2>
+  <p>Banana content describing the second area.</p>
+  <p style="display:block;height:1400px">beta filler</p></section>
+<section aria-labelledby="gamma"><h2 id="gamma">Gamma appendix</h2>
+  <p>Cherry content mentioning the unique word zebra.</p>
+  <p style="display:block;height:1400px">gamma filler</p></section>
+`;
+
+// The sections carry no id (only their headings do), so address each by its heading.
+const sec = (page, hid) => page.locator(`#commentRoot section:has(#${hid})`);
+
+async function openDoc(page) {
+  const { html } = stageContent(CONTENT, { key: "cmh-toc-search-test", source: "toc-search.html" });
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  const toc = page.locator("#cmSideToc");
+  await expect(toc).toBeVisible();
+  return toc;
+}
+
+test.describe("side-TOC search and aria-current", () => {
+  test("the active section link carries aria-current=location and it tracks scroll (CMH-TOC-08)", async ({ page }) => {
+    const toc = await openDoc(page);
+    const current = toc.locator('.cm-side-toc-list a[aria-current="location"]');
+    // Exactly one link is marked current, and at the top it is the first section.
+    await expect(current).toHaveCount(1);
+    await expect(current).toContainText("Alpha overview");
+    // Scrolling a later section to the top moves the marker (and it stays unique).
+    await page.evaluate(() => document.getElementById("gamma").scrollIntoView());
+    await expect(toc.locator('.cm-side-toc-list a[aria-current="location"]')).toHaveCount(1);
+    await expect(toc.locator('.cm-side-toc-list a[aria-current="location"]')).toContainText("Gamma appendix");
+  });
+
+  test("the search box filters visible sections by heading and body text, Escape clears (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openDoc(page);
+    const search = toc.locator(".cm-side-toc-search");
+    await expect(search).toBeVisible();
+
+    // A body-only word (in Gamma) hides the other sections and their TOC entries.
+    await search.fill("zebra");
+    await expect(sec(page, "gamma")).toBeVisible();
+    await expect(sec(page, "alpha")).toBeHidden();
+    await expect(sec(page, "beta")).toBeHidden();
+    await expect(toc.locator('.cm-side-toc-list a[href="#gamma"]')).toBeVisible();
+    await expect(toc.locator('.cm-side-toc-list a[href="#alpha"]')).toBeHidden();
+
+    // A heading word matches too.
+    await search.fill("Beta");
+    await expect(sec(page, "beta")).toBeVisible();
+    await expect(sec(page, "alpha")).toBeHidden();
+
+    // Escape clears the filter and restores every section.
+    await search.press("Escape");
+    await expect(search).toHaveValue("");
+    await expect(sec(page, "alpha")).toBeVisible();
+    await expect(sec(page, "beta")).toBeVisible();
+    await expect(sec(page, "gamma")).toBeVisible();
+  });
+
+  test("navigating to a filtered-out section reveals it (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openDoc(page);
+    await toc.locator(".cm-side-toc-search").fill("zebra");
+    await expect(sec(page, "alpha")).toBeHidden();
+    // A deep-link to a hidden section must reveal it rather than scroll to nothing.
+    await page.evaluate(() => { location.hash = "#alpha"; });
+    await expect(sec(page, "alpha")).toBeVisible();
+  });
+});
