@@ -63,7 +63,7 @@ test("hub head exposes canonical, Open Graph, and Twitter Card tags", async ({ p
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", PROD);
   await expect(page.locator('meta[property="og:type"]')).toHaveAttribute("content", "website");
-  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /ai-marketplace/);
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /AI Marketplace/);
   await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", PROD);
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", PROD + "assets/og-cover.png");
   await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
@@ -160,7 +160,7 @@ test("llms.txt is served and links each plugin and the tutorial", async ({ reque
   const r = await request.get("/llms.txt");
   expect(r.status()).toBeLessThan(400);
   const body = await r.text();
-  expect(body).toContain("# ai-marketplace");
+  expect(body).toContain("# AI Marketplace");
   expect(body).toContain("(" + PROD + "commentable-html/)");
   expect(body).toContain("(" + PROD + "urikan-ai-marketplace-auto-updater/)");
   expect(body).toContain("commentable-html/tutorial/");
@@ -184,6 +184,37 @@ test("the commentable-html plugin and tutorial pages use a dedicated branded soc
   const r = await request.get("/assets/og-commentable-html.png");
   expect(r.status()).toBeLessThan(400);
   expect(r.headers()["content-type"]).toContain("image/png");
+});
+
+
+test("the marketplace brand and site name display as 'AI Marketplace' while identifiers keep the ai-marketplace slug (SITE-SEO-11)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".brand span")).toHaveText("AI Marketplace");
+  await expect(page.locator(".brand img")).toHaveAttribute("alt", "AI Marketplace logo");
+  await expect(page).toHaveTitle(/^AI Marketplace\b/);
+  await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute("content", "AI Marketplace");
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", /^AI Marketplace\b/);
+  await expect(page.locator('meta[name="twitter:title"]')).toHaveAttribute("content", /^AI Marketplace\b/);
+
+  const raw = await page.locator('script[type="application/ld+json"]').first().textContent();
+  const website = JSON.parse(raw)["@graph"].find((n) => n["@type"] === "WebSite");
+  expect(website.name).toBe("AI Marketplace");
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", PROD);
+  await expect(page.locator("nav.navbar a.gh")).toHaveAttribute(
+    "href", "https://github.com/urikanonov/ai-marketplace");
+
+  for (const p of ["/commentable-html/", "/urikan-ai-marketplace-auto-updater/", "/commentable-html/tutorial/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    await expect(page.locator('meta[property="og:site_name"]')).toHaveAttribute("content", "AI Marketplace");
+  }
+
+  for (const p of ["/commentable-html/", "/urikan-ai-marketplace-auto-updater/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const rawLd = await page.locator('script[type="application/ld+json"]').first().textContent();
+    const crumbs = JSON.parse(rawLd)["@graph"].find((n) => n["@type"] === "BreadcrumbList").itemListElement;
+    expect(crumbs[0].name).toBe("AI Marketplace");
+    expect(crumbs[0].item).toBe(PROD);
+  }
 });
 
 

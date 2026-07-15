@@ -269,6 +269,7 @@ class JsonLdTests(unittest.TestCase):
         graph = self._parse(bsd.render_jsonld(manifest))["@graph"]
         self.assertEqual([n["@type"] for n in graph], ["WebSite", "Person", "ItemList"])
         website, person, itemlist = graph
+        self.assertEqual(website["name"], "AI Marketplace")
         self.assertEqual(website["author"]["@id"], person["@id"])
         self.assertIn(bsd.OWNER_LINKEDIN_URL, person["sameAs"])
         apps = [li["item"] for li in itemlist["itemListElement"]]
@@ -328,7 +329,7 @@ class LlmsTests(unittest.TestCase):
         # REPO_ROOT has the tutorial source, so the Documentation link is emitted (gating verified
         # separately in CheckDriftTests.test_removing_tutorial_source_drops_its_llms_link).
         text = bsd.render_llms(bsd.REPO_ROOT, manifest, {"commentable-html"})
-        self.assertTrue(text.startswith("# ai-marketplace"))
+        self.assertTrue(text.startswith("# AI Marketplace"))
         self.assertIn("> Marketplace summary.", text)
         self.assertIn("copilot plugin install <name>@urikan-ai-marketplace", text)
         self.assertIn("[commentable-html](%scommentable-html/) (Claude Code and the GitHub Copilot CLI): d1"

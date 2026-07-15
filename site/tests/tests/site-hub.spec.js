@@ -6,7 +6,7 @@ installNetworkBlock(test);
 test("hub renders with plugins, install command, and logo", async ({ page }) => {
   const resp = await page.goto("/", { waitUntil: "domcontentloaded" });
   expect(resp.status()).toBeLessThan(400);
-  await expect(page).toHaveTitle(/ai-marketplace/i);
+  await expect(page).toHaveTitle(/AI Marketplace/);
   await expect(page.locator(".brand img")).toHaveCount(1);
   const cards = page.locator(".plugin-card");
   expect(await cards.count()).toBeGreaterThanOrEqual(2);

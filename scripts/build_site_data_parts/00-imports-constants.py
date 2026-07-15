@@ -121,6 +121,6 @@ DESKTOP_SKILLS = {
 # the JSON-LD graph, sitemap, and llms.txt generated below. The site is served from this fixed
 # project sub-path on github.io, so these never vary per environment.
 SITE_BASE_URL = "https://urikanonov.github.io/ai-marketplace/"
-SITE_NAME = "ai-marketplace"
+SITE_NAME = "AI Marketplace"
 OWNER_GITHUB_URL = "https://github.com/urikanonov"
 OWNER_LINKEDIN_URL = "https://www.linkedin.com/in/uri-kanonov-946761119"
