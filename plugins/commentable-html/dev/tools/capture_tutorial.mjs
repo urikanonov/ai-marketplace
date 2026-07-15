@@ -4,10 +4,11 @@
 // positional overrides let it capture any example:
 //   node capture_tutorial.mjs [example.html] [outDir] [prefix]
 // Defaults: example = pkg/.../examples/report-community-garden.html, outDir = pkg/.../docs/assets,
-// prefix = "garden". From dev/, run it as `npm run shots`. Animations, transitions, and the text
-// caret are disabled and reduced motion is emulated, so the capture is reproducible: the full-page
-// shots (top, composer, help, copy-all) are byte-identical across runs on the same environment.
-// (Figure crops and the dark-theme/comment shots can vary by antialiasing or capture-time content.)
+// prefix = "garden". From dev/, run it as `npm run shots`. It pins the capture clock and disables CSS
+// animations and transitions (and emulates reduced motion), so the capture is reproducible: the
+// full-page shots are byte-identical across runs on the same environment. (The element-cropped figure
+// shots (kql/chart/diff) and the dark-theme shot can vary by sub-pixel antialiasing - visually
+// equivalent, not byte-stable.)
 import { chromium } from "@playwright/test";
 import path from "path";
 import fs from "fs";
@@ -15,9 +16,19 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..", "..", "pkg", "skills", "commentable-html");
-const htmlArg = process.argv[2] || path.join(SKILL, "examples", "report-community-garden.html");
-const outDir = process.argv[3] || path.join(SKILL, "docs", "assets");
-const prefix = path.basename(process.argv[4] || "garden");
+const argv = process.argv.slice(2);
+const printPaths = argv.includes("--print-paths");
+const positional = argv.filter((a) => !a.startsWith("--"));
+const htmlArg = positional[0] || path.join(SKILL, "examples", "report-community-garden.html");
+const outDir = positional[1] || path.join(SKILL, "docs", "assets");
+const prefix = path.basename(positional[2] || "garden");
+
+// --print-paths resolves and prints the defaults without launching a browser or writing any files,
+// so the no-argument (npm run shots) contract can be tested hermetically.
+if (printPaths) {
+  console.log(JSON.stringify({ example: htmlArg, outDir, prefix }));
+  process.exit(0);
+}
 
 if (!fs.existsSync(htmlArg)) {
   console.error("capture_tutorial: example not found:", htmlArg);
@@ -33,14 +44,33 @@ async function ready(page) {
   await page.waitForTimeout(300);
 }
 
-// Kill anything that varies frame to frame - CSS animations/transitions and the blinking text
-// caret - so the full-page shots render identically run to run. Best-effort: if a document CSP
-// forbids the injected inline style it is reported (degraded mode) rather than silently ignored.
+// Disable CSS animations and transitions so a shot taken while a panel, toast, or theme is settling
+// is stable (the timed waits below already let them finish; this is belt-and-suspenders). The caret
+// rule is redundant with Playwright's default caret:"hide" on screenshots but is harmless. Best-effort:
+// a document CSP that forbids the injected style is reported (degraded mode), not silently swallowed.
 async function freezeMotion(page) {
   await page.addStyleTag({ content:
     "*,*::before,*::after{animation-duration:0s !important;animation-delay:0s !important;"
     + "transition-duration:0s !important;transition-delay:0s !important;caret-color:transparent !important;}"
   }).catch((e) => console.warn("capture_tutorial: freezeMotion blocked (degraded determinism):", e.message));
+}
+
+// Pin the clock so any wall-clock content (a saved comment's timestamp, the "Generated on / Last
+// comment" meta line) renders the same on every run - otherwise a capture that straddles a minute
+// boundary would differ. Explicit-argument Date construction and parsing are preserved.
+async function freezeClock(context) {
+  await context.addInitScript(() => {
+    const OriginalDate = Date;
+    const FIXED = OriginalDate.parse("2024-01-01T12:00:00.000Z");
+    function FrozenDate(...args) {
+      return args.length === 0 ? new OriginalDate(FIXED) : new OriginalDate(...args);
+    }
+    FrozenDate.now = () => FIXED;
+    FrozenDate.parse = OriginalDate.parse.bind(OriginalDate);
+    FrozenDate.UTC = OriginalDate.UTC.bind(OriginalDate);
+    FrozenDate.prototype = OriginalDate.prototype;
+    window.Date = FrozenDate;
+  });
 }
 
 const run = async () => {
@@ -52,6 +82,7 @@ const run = async () => {
     permissions: ["clipboard-read", "clipboard-write"],
   });
   const page = await context.newPage();
+  await freezeClock(context);
   await page.goto(url);
   await ready(page);
   await freezeMotion(page);
@@ -86,13 +117,19 @@ const run = async () => {
   await page.waitForTimeout(300);
   const addBtn = page.locator(".cm-add-comment, [data-cm-add], button:has-text('Add comment')").first();
   if (await addBtn.count()) {
-    await addBtn.click().catch(() => {});
+    // Fail loudly if the compose/save flow does not actually happen: otherwise 05/06 would be
+    // captured in the wrong state yet still look "successful" (and would even be byte-stable across
+    // two equally-broken runs). The outer count() guard still skips examples without the add flow.
+    await addBtn.click();
+    const composer = page.locator(".cm-composer").first();
+    await composer.waitFor({ state: "visible", timeout: 5000 });
     await page.waitForTimeout(300);
     await page.screenshot({ path: shotPath("05-composer"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
-    const ta = page.locator(".cm-composer textarea, textarea.cm-comment-input").first();
-    if (await ta.count()) { await ta.fill("Does this section read clearly? Consider adding one more example."); await page.waitForTimeout(150); }
-    const save = page.locator(".cm-composer button:has-text('Comment'), .cm-composer button:has-text('Save'), button.cm-save").first();
-    if (await save.count()) { await save.click().catch(() => {}); await page.waitForTimeout(400); }
+    await composer.locator("textarea").first().fill("Does this section read clearly? Consider adding one more example.");
+    await page.waitForTimeout(150);
+    await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
+    await page.locator("#commentRoot mark.cm-hl").first().waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForTimeout(400);
   }
 
   // 6. The comments panel with a saved comment.

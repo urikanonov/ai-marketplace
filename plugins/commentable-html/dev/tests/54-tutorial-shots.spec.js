@@ -11,12 +11,12 @@ const SHOTS = [
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
 ];
 
-// The full-page shots that are reproducible byte-for-byte on a given environment. The composer shot
-// pins the caret freeze (without it the blinking caret would differ across runs); help and copy-all
-// exercise later dynamic UI. Excluded from byte-equality: the figure crops (02/03/04) can vary by
-// sub-pixel antialiasing, the dark-theme shot (08) re-renders, and the comment-saved shot (06)
-// embeds the capture-time comment timestamp - all environment/timing sensitive by nature.
-const STABLE = ["01-top-light", "05-composer", "07-help", "09-copyall"];
+// The full-page shots that are reproducible byte-for-byte on a given environment. With the capture
+// clock pinned and CSS motion frozen these are stable run to run (verified across repeated pairs).
+// Excluded: the figure crops (02/03/04) can vary by sub-pixel antialiasing on an element screenshot,
+// and the dark-theme shot (08) varies for a non-clock reason - both are visually equivalent, not
+// byte-stable, so they are not asserted.
+const STABLE = ["01-top-light", "05-composer", "06-comment-saved", "07-help", "09-copyall"];
 
 const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
 
@@ -31,6 +31,17 @@ function capture(outDir) {
 // and do it reproducibly, so refreshing the tutorial images is deterministic and reviewable.
 test("CMH-TUT-SHOTS-01: one command regenerates all tutorial screenshots, deterministically", async () => {
   test.setTimeout(180000);
+
+  // The no-argument invocation (what `npm run shots` runs) resolves to the shipped tutorial defaults.
+  const dry = spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--print-paths"],
+    { encoding: "utf8" });
+  expect(dry.error, String(dry.error)).toBeFalsy();
+  expect(dry.status, dry.stderr).toBe(0);
+  const defaults = JSON.parse(dry.stdout);
+  expect(defaults.example.replace(/\\/g, "/")).toMatch(/pkg\/skills\/commentable-html\/examples\/report-community-garden\.html$/);
+  expect(defaults.outDir.replace(/\\/g, "/")).toMatch(/pkg\/skills\/commentable-html\/docs\/assets$/);
+  expect(defaults.prefix).toBe("garden");
+
   // A nonexistent NESTED output dir also exercises recursive out-dir creation.
   const outA = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_shots_a_")), "nested", "assets");
   const r1 = capture(outA);

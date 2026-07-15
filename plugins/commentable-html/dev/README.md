@@ -135,13 +135,12 @@ npm run shots
 `npm run shots` runs `tools/capture_tutorial.mjs` with no arguments: it drives
 `../pkg/skills/commentable-html/examples/report-community-garden.html` and writes
 `garden-01-top-light.png` through `garden-09-copyall.png` into
-`../pkg/skills/commentable-html/docs/assets/` at a fixed 1320x900 viewport (2x scale). It disables
-CSS animations, transitions, and the text caret and emulates reduced motion, so the capture is
-reproducible: the full-page shots (top-of-document, composer, help, copy-all) are byte-identical
-across runs on the same environment. The figure crops (kql/chart/diff) can vary by sub-pixel
-antialiasing, and the dark-theme and comment-saved shots vary with re-render or capture-time content,
-so treat those as visually equivalent rather than byte-stable. To capture a different example, pass
-overrides:
+`../pkg/skills/commentable-html/docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
+capture clock and disables CSS animations and transitions (and emulates reduced motion), so the
+capture is reproducible: the full-page shots (top-of-document, composer, comment-saved, help,
+copy-all) are byte-identical across runs on the same environment. The element-cropped figure shots
+(kql/chart/diff) and the dark-theme shot can vary by sub-pixel antialiasing, so treat those as
+visually equivalent rather than byte-stable. To capture a different example, pass overrides:
 
 ```powershell
 node tools\capture_tutorial.mjs <example.html> <outDir> <prefix>
