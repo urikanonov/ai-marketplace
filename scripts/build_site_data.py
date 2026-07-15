@@ -78,6 +78,19 @@ CHANGELOG_GITHUB_URL = (
     "https://github.com/urikanonov/ai-marketplace/blob/main/plugins/"
     + CHANGELOG_PLUGIN + "/CHANGELOG.md")
 
+# The plugins here install into BOTH Claude Code and the GitHub Copilot CLI. The install block is
+# tabbed by agent: each agent shares the same marketplace name and git URL and differs only in the
+# leading CLI binary. INSTALL_AGENTS is (key, tab label, CLI binary); Copilot is first (the default
+# tab). The repo-root .claude-plugin/marketplace.json lists which plugins are Claude-installable, so
+# the Claude tab is offered only for those (the auto-updater, Claude support tracked separately, is
+# Copilot-only). Both CLIs and their Desktop apps invoke the same installed skill.
+MARKETPLACE_GIT_URL = "https://github.com/urikanonov/ai-marketplace"
+CLAUDE_MARKETPLACE_REL = os.path.join(".claude-plugin", "marketplace.json")
+INSTALL_AGENTS = [
+    ("copilot", "GitHub Copilot", "copilot"),
+    ("claude", "Claude Code", "claude"),
+]
+
 # Absolute production URLs, used for canonical/OG links (hand-authored in the page heads) and for
 # the JSON-LD graph, sitemap, and llms.txt generated below. The site is served from this fixed
 # project sub-path on github.io, so these never vary per environment.
@@ -300,7 +313,116 @@ def replace_region_inline(text, name, inner):
     return new_text
 
 
-def render_plugins(manifest):
+def claude_plugin_names(root):
+    """Names of the plugins that are installable in Claude Code, read from the repo-root
+    .claude-plugin/marketplace.json. The install block offers a Claude tab only for these, so a
+    plugin whose Claude support is not yet shipped (the auto-updater) never advertises a Claude
+    install path. Returns an empty set when the file is absent, unreadable, or structurally
+    malformed (a non-object root, a non-list `plugins`, or non-object entries), so a broken mirror
+    fails closed to Copilot-only rather than crashing the build."""
+    path = os.path.join(root, CLAUDE_MARKETPLACE_REL)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    plugins = data.get("plugins")
+    if not isinstance(plugins, list):
+        return set()
+    return {p["name"] for p in plugins
+            if isinstance(p, dict) and isinstance(p.get("name"), str) and p["name"]}
+
+
+def _slug_id(text):
+    """A safe HTML id fragment for an element id or ARIA target: keep only letters, digits, hyphen,
+    and underscore, mapping every other character to '-'. Ids are derived from repo-controlled
+    plugin names, but the manifest schema does not restrict the name to a slug, so this guarantees
+    the generated id is a valid, injection-proof attribute value regardless of the name."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", text)
+
+
+
+def _install_command(binary, kind, name, suffix):
+    if kind == "marketplace":
+        return "%s plugin marketplace add %s" % (binary, MARKETPLACE_GIT_URL)
+    return "%s plugin install %s@%s" % (binary, name, suffix)
+
+
+def _install_row(step, label, command):
+    """One labelled, copyable install command row: an optional step badge, a label, and the
+    reused .cmd command box with its own copy button (so every command is copyable on its own)."""
+    badge = ('<span class="install-step" aria-hidden="true">%d</span>\n          ' % step
+             if step else "")
+    return (
+        '<div class="install-row">\n'
+        '          %s<div class="install-cmd">\n'
+        '            <span class="install-label">%s</span>\n'
+        '            <div class="cmd">\n'
+        '              <span class="prompt">$</span>\n'
+        '              <pre>%s</pre>\n'
+        '              <button class="copy-btn" type="button" data-copy="%s">copy</button>\n'
+        '            </div>\n'
+        '          </div>\n'
+        '        </div>'
+    ) % (badge, esc(label), esc(command), esc(command))
+
+
+def _install_rows(binary, name, suffix, marketplace_only):
+    rows = [("marketplace", "Install marketplace")]
+    if not marketplace_only:
+        rows.append(("plugin", "Install plugin"))
+    show_steps = len(rows) > 1
+    return "\n        ".join(
+        _install_row(i if show_steps else None, label,
+                     _install_command(binary, kind, name, suffix))
+        for i, (kind, label) in enumerate(rows, start=1))
+
+
+def render_install(name, suffix, claude, idbase, marketplace_only=False):
+    """A tabbed install block: one tab per supported agent (Copilot always, Claude when `claude`),
+    each panel splitting the marketplace-add and plugin-install commands into separate rows with
+    their own copy buttons. When only one agent is supported the tab chrome is dropped and the rows
+    render on their own, so a Copilot-only plugin never shows an empty or misleading Claude tab.
+    `idbase` is slugged so an id/ARIA attribute derived from a plugin name is always valid and safe.
+    Tab/panel visibility is driven by the `hidden` attribute (mirrored by the JS); `aria-selected`
+    marks the active tab. No cosmetic state class is emitted - the CSS keys off `aria-selected`/
+    `hidden`."""
+    idbase = _slug_id(idbase)
+    agents = [a for a in INSTALL_AGENTS if a[0] == "copilot" or claude]
+    if len(agents) == 1:
+        binary = agents[0][2]
+        return ('<div class="install-block install-solo">\n        %s\n      </div>'
+                % _install_rows(binary, name, suffix, marketplace_only))
+    tabs = []
+    panels = []
+    for idx, (key, label, binary) in enumerate(agents):
+        active = idx == 0
+        tab_id = "%s-%s-tab" % (idbase, key)
+        panel_id = "%s-%s" % (idbase, key)
+        tabs.append(
+            '<button class="install-tab" role="tab" type="button" id="%s" '
+            'data-install-target="%s" aria-selected="%s" aria-controls="%s" tabindex="%s">%s</button>'
+            % (tab_id, panel_id, "true" if active else "false", panel_id,
+               "0" if active else "-1", esc(label)))
+        panels.append(
+            '<div class="install-panel" role="tabpanel" id="%s" aria-labelledby="%s"%s>\n'
+            '        %s\n      </div>'
+            % (panel_id, tab_id, "" if active else " hidden",
+               _install_rows(binary, name, suffix, marketplace_only)))
+    return (
+        '<div class="install-block install-tabs" data-install-tabs>\n'
+        '      <div class="install-tablist" role="tablist" aria-label="Install with">\n'
+        '        %s\n'
+        '      </div>\n'
+        '      %s\n'
+        '    </div>'
+    ) % ("\n        ".join(tabs), "\n      ".join(panels))
+
+
+def render_plugins(manifest, claude_names=None):
+    claude_names = claude_names or set()
     suffix = manifest.get("name", "")
     cards = []
     for plugin in manifest.get("plugins", []):
@@ -311,7 +433,8 @@ def render_plugins(manifest):
         keywords = plugin.get("keywords", []) or []
         homepage = plugin.get("homepage", "")
         page = PLUGIN_PAGES.get(name)
-        install = "copilot plugin install %s@%s" % (name, suffix)
+        install_block = render_install(name, suffix, name in claude_names,
+                                       "install-card-" + name)
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
         title = '<span class="name">%s</span>' % esc(name)
@@ -328,15 +451,13 @@ def render_plugins(manifest):
             '  </div>\n'
             '  <p class="desc">%s</p>\n'
             '  <div class="keywords">%s</div>\n'
-            '  <div class="cmd">\n'
-            '    <span class="prompt">$</span>\n'
-            '    <pre>%s</pre>\n'
-            '    <button class="copy-btn" type="button" data-copy="%s">copy</button>\n'
+            '  <div class="install">\n'
+            '    %s\n'
             '  </div>\n'
             '  <div class="foot">%s</div>\n'
             '</article>'
         ) % (title, esc(version), category_badge, esc(description), chips,
-             esc(install), esc(install), foot)
+             install_block, foot)
         cards.append(card)
     return "\n".join(cards)
 
@@ -359,14 +480,19 @@ def _jsonld_script(data):
     return '<script type="application/ld+json">\n%s\n</script>' % payload
 
 
-def render_jsonld(manifest):
+def render_jsonld(manifest, claude_names=None):
     """The hub's structured-data graph: the WebSite, its author (Person), and an ItemList of the
     published plugins as SoftwareApplication entries, all built from the manifest so it stays in
-    sync as plugins are added or changed."""
+    sync as plugins are added or changed. `operatingSystem` is set per plugin from `claude_names`
+    so a Copilot-only plugin (the auto-updater) is not advertised as Claude-installable."""
+    claude_names = claude_names or set()
     description = manifest.get("metadata", {}).get("description", "")
     owner = manifest.get("owner", {}).get("name", "")
     items = []
     for position, plugin in enumerate(manifest.get("plugins", []), start=1):
+        os_label = ("Cross-platform (Claude Code, GitHub Copilot CLI)"
+                    if plugin.get("name", "") in claude_names
+                    else "Cross-platform (GitHub Copilot CLI)")
         items.append({
             "@type": "ListItem",
             "position": position,
@@ -374,7 +500,7 @@ def render_jsonld(manifest):
                 "@type": "SoftwareApplication",
                 "name": plugin.get("name", ""),
                 "applicationCategory": "DeveloperApplication",
-                "operatingSystem": "Cross-platform (GitHub Copilot CLI)",
+                "operatingSystem": os_label,
                 "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
                 "description": plugin.get("description", ""),
                 "url": _plugin_app_url(plugin),
@@ -433,21 +559,28 @@ def render_sitemap(root):
             "%s\n</urlset>\n") % locs
 
 
-def render_llms(root, manifest):
+def render_llms(root, manifest, claude_names=None):
     """An llms.txt (Markdown) front door for LLM crawlers: the marketplace summary, how to install,
     a list of plugins with links and descriptions, and the tutorial link (only when the tutorial
-    source exists), all from the manifest."""
+    source exists), all from the manifest. Per-plugin agent support comes from `claude_names` so a
+    Copilot-only plugin (the auto-updater) is not listed as Claude-installable."""
+    claude_names = claude_names or set()
     description = manifest.get("metadata", {}).get("description", "")
     suffix = manifest.get("name", "")
     lines = ["# " + SITE_NAME, "", "> " + description, ""]
     lines.append(
-        "Add the marketplace once with "
-        "`copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace`, then install "
-        "any plugin with `copilot plugin install <name>@%s`." % suffix)
+        "This marketplace works with both Claude Code and the GitHub Copilot CLI, and its skills "
+        "are invokable from each agent's CLI and Desktop app. Add the marketplace once with "
+        "`copilot plugin marketplace add %s` (or `claude plugin marketplace add %s`), then install a "
+        "plugin with `copilot plugin install <name>@%s`; a Claude-installable plugin also supports "
+        "`claude plugin install <name>@%s` (per-plugin support is noted below)."
+        % (MARKETPLACE_GIT_URL, MARKETPLACE_GIT_URL, suffix, suffix))
     lines.extend(["", "## Plugins"])
     for plugin in manifest.get("plugins", []):
-        lines.append("- [%s](%s): %s" % (
-            plugin.get("name", ""), _plugin_app_url(plugin), plugin.get("description", "")))
+        agents = ("Claude Code and the GitHub Copilot CLI"
+                  if plugin.get("name", "") in claude_names else "the GitHub Copilot CLI")
+        lines.append("- [%s](%s) (%s): %s" % (
+            plugin.get("name", ""), _plugin_app_url(plugin), agents, plugin.get("description", "")))
     if _tutorial_source_exists(root):
         lines.extend(["", "## Documentation",
                       "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
@@ -862,7 +995,9 @@ def main(argv):
         write_text(styles_path, styles_text)
     static_drift = sync_static_assets(root, args.check)
 
-    plugins_html = render_plugins(manifest)
+    suffix = manifest.get("name", "")
+    claude_names = claude_plugin_names(root)
+    plugins_html = render_plugins(manifest, claude_names)
     changelog_html = render_changelog([])
     for path, filter_plugin in changelog_candidates(root, args.changelog):
         if not os.path.exists(path):
@@ -881,15 +1016,21 @@ def main(argv):
 
     hub_out = build_page(root, HUB_SRC, [
         ("block", "plugins", plugins_html),
-        ("block", "jsonld", render_jsonld(manifest)),
+        ("block", "install", render_install(
+            "", suffix, bool(claude_names), "install-hub", marketplace_only=True)),
+        ("block", "jsonld", render_jsonld(manifest, claude_names)),
     ])
     plugin_out = build_page(root, PLUGIN_SRC, [
         ("inline", "version", "v" + esc(version)),
+        ("block", "install", render_install(
+            CHANGELOG_PLUGIN, suffix, CHANGELOG_PLUGIN in claude_names, "install-cmh")),
         ("block", "changelog", changelog_html),
         ("inline", "demo-fullscreen", render_demo_fullscreen_link()),
     ])
     updater_out = build_page(root, UPDATER_SRC, [
         ("inline", "version", "v" + esc(updater_version)),
+        ("block", "install", render_install(
+            UPDATER_PLUGIN, suffix, UPDATER_PLUGIN in claude_names, "install-updater")),
         ("block", "changelog", render_plugin_changelog(root, UPDATER_PLUGIN)),
     ])
     hub_out_path = os.path.join(root, HUB_OUT)
@@ -919,7 +1060,7 @@ def main(argv):
     sitemap_drift = write_or_check(
         os.path.join(root, SITE_OUT, "sitemap.xml"), render_sitemap(root), args.check)
     llms_drift = write_or_check(
-        os.path.join(root, SITE_OUT, "llms.txt"), render_llms(root, manifest), args.check)
+        os.path.join(root, SITE_OUT, "llms.txt"), render_llms(root, manifest, claude_names), args.check)
 
     if args.check:
         problems = []

@@ -5,9 +5,11 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.75.0`
+**Version:** `1.77.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
+
+This plugin installs into both Claude Code and the GitHub Copilot CLI (add the marketplace, then `claude plugin install commentable-html@urikan-ai-marketplace` or `copilot plugin install commentable-html@urikan-ai-marketplace`), and the skill is invokable from each agent's CLI and Desktop app. The output is a portable HTML file that works with any agent.
 
 ## Review loops
 

@@ -143,7 +143,7 @@
           return;
         }
         var target = e.target;
-        if (target && target.closest && target.closest(".cmd, .foot, a, button, input, select, textarea, summary")) {
+        if (target && target.closest && target.closest(".install, .cmd, .foot, a, button, input, select, textarea, summary")) {
           return;
         }
         e.preventDefault();
@@ -276,6 +276,59 @@
     });
   }
 
+  function initInstallTabs() {
+    var groups = document.querySelectorAll("[data-install-tabs]");
+    groups.forEach(function (group) {
+      var tabs = Array.prototype.slice.call(group.querySelectorAll(".install-tab"));
+      if (!tabs.length) {
+        return;
+      }
+
+      function activate(tab, focusIt) {
+        tabs.forEach(function (t) {
+          var active = t === tab;
+          t.setAttribute("aria-selected", active ? "true" : "false");
+          t.setAttribute("tabindex", active ? "0" : "-1");
+          var panel = document.getElementById(t.getAttribute("data-install-target"));
+          if (panel) {
+            if (active) {
+              panel.removeAttribute("hidden");
+            } else {
+              panel.setAttribute("hidden", "");
+            }
+          }
+        });
+        if (focusIt) {
+          tab.focus();
+        }
+      }
+
+      tabs.forEach(function (tab, i) {
+        tab.addEventListener("click", function () {
+          activate(tab, false);
+        });
+        tab.addEventListener("keydown", function (e) {
+          var last = tabs.length - 1;
+          var next = null;
+          if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+            next = i >= last ? 0 : i + 1;
+          } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+            next = i <= 0 ? last : i - 1;
+          } else if (e.key === "Home") {
+            next = 0;
+          } else if (e.key === "End") {
+            next = last;
+          }
+          if (next === null) {
+            return;
+          }
+          e.preventDefault();
+          activate(tabs[next], true);
+        });
+      });
+    });
+  }
+
   function ready(fn) {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", fn);
@@ -289,6 +342,7 @@
     initYear();
     initHeaderAnchors();
     initPluginCards();
+    initInstallTabs();
     initDemoSwitch();
     initLightbox();
   });

@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Tighten the planning loop. Inline comment on any HTML report and round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-commentable-html.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=e0747cfda2d7" />
+  <link rel="stylesheet" href="../assets/styles.css?v=6fdfde742a28" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -31,7 +31,7 @@
         "@type": "SoftwareApplication",
         "name": "commentable-html",
         "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Cross-platform (GitHub Copilot CLI)",
+        "operatingSystem": "Cross-platform (Claude Code, GitHub Copilot CLI)",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "description": "Make any static HTML report reviewable: readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to an agent.",
         "url": "https://urikanonov.github.io/ai-marketplace/commentable-html/",
@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.75.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.77.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -174,14 +174,63 @@
     <section id="install">
       <div class="wrap">
         <h2 class="section-title">Install</h2>
-        <p class="section-sub">Add the marketplace, then install the plugin.</p>
-        <div class="cmd">
-          <span class="prompt">$</span>
-          <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
-copilot plugin install commentable-html@urikan-ai-marketplace</pre>
-          <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
-copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
-        </div>
+        <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI, and is invokable from each agent's CLI and Desktop app. Pick your agent, add the marketplace, then install the plugin.</p>
+        <!-- BEGIN:install -->
+        <div class="install-block install-tabs" data-install-tabs>
+              <div class="install-tablist" role="tablist" aria-label="Install with">
+                <button class="install-tab" role="tab" type="button" id="install-cmh-copilot-tab" data-install-target="install-cmh-copilot" aria-selected="true" aria-controls="install-cmh-copilot" tabindex="0">GitHub Copilot</button>
+                <button class="install-tab" role="tab" type="button" id="install-cmh-claude-tab" data-install-target="install-cmh-claude" aria-selected="false" aria-controls="install-cmh-claude" tabindex="-1">Claude Code</button>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-cmh-copilot" aria-labelledby="install-cmh-copilot-tab">
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">1</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install marketplace</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">2</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install plugin</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>copilot plugin install commentable-html@urikan-ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-cmh-claude" aria-labelledby="install-cmh-claude-tab" hidden>
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">1</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install marketplace</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">2</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install plugin</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>claude plugin install commentable-html@urikan-ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="claude plugin install commentable-html@urikan-ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+        <!-- END:install -->
         <a class="install-updater-cta install-note" href="../urikan-ai-marketplace-auto-updater/">
           <img class="install-updater-icon" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" />
           <span class="install-updater-body">
@@ -353,6 +402,27 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.77.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>SKILL.md now states the plugin installs into both Claude Code and the GitHub Copilot CLI and is invokable from each agent&#x27;s CLI and Desktop app, so the dual-agent support is visible in the shipped skill doc (its output was always a portable, agent-agnostic HTML file). (CMH-DOC-12)</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.76.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Reworked the showcase deck (<code>examples/deck-showcase.html</code>) into a light &quot;Parchment and Amber&quot; five-act pitch (pinned <code>data-theme=&quot;light&quot;</code>, raspberry accent, amber decorative highlight on key title words, indigo ink body) that threads a single community-garden plan as its one running example instead of unrelated feature samples. Acts 1 to 3 speak to a non-technical viewer and end on the primary call to action, Act 4 is the engineers-only deep dive (chart, diff, code, KQL, triage board, checklist), and Act 5 is a room-wide close. Retitled the slides to outcome-focused headings and rebuilt the shipped and site copies. (CMH-DECK-SHOWCASE-01, CMH-DECK-SHOWCASE-02)</li>
+              <li>Rethemed the deck&#x27;s rich content for the light parchment slides: the chart, Mermaid diagram, code diff, syntax-highlighted code and KQL, drag-and-drop triage board, table headers, and layered checklist all stay legible and pass the strict contrast validator on the new theme. (CMH-DECK-08, CMH-DECK-09, CMH-DECK-10, CMH-DECK-13)</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Early install call to action: the deck now surfaces both agents&#x27; exact install commands (Copilot and Claude <code>plugin marketplace add</code> plus <code>plugin install commentable-html@urikan-ai-marketplace</code>) as code blocks on an Act 2 slide well before the close, alongside the live-demo, GitHub, and tutorial links, and again as the primary CTA and the closing slide - so a viewer can act within the first few minutes rather than only at the end. (CMH-DECK-SHOWCASE-03)</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
             <div class="rel-head"><h3>[1.75.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -370,8 +440,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Validator warning (non-fatal) when a report/plan/generic document has two or more top-level <code>&lt;h2&gt;</code> headings with no <code>&lt;section&gt;</code> wrapper, so authors restore the boxed section-card layout (<code>#commentRoot &gt; section</code>). Sectioned content, single-heading docs, and slides/boards do not warn. (CMH-VAL-14)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.73.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -393,21 +461,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Pitch: the plugin <code>README.md</code> and the site plugin page now surface two value props of the existing review flow. First, comments persist in the browser&#x27;s <code>localStorage</code> and survive a browser restart or a machine reboot while you iterate, so in-progress review work is not lost (a new &quot;Comments survive a restart&quot; card in &quot;What you get&quot;). Second, one <code>Copy all</code> returns every comment at once, so the agent makes a single coordinated, coherent edit across all your notes instead of a fragile one-at-a-time pass (the README <code>Copy all</code> bullet and the site &quot;Round-trip to the agent&quot; card now say so). No runtime behavior changed; this is documentation and pitch copy for behavior that already ships.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.70.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>A visible, human-readable version line in the shipped <code>SKILL.md</code> and <code>dist/README.md</code>, so a reader who opens the skill or its <code>dist/</code> folder can see which version they have without decoding <code>manifest.json</code>. The line (<code>**Version:** </code> + a code span) is single-sourced from <code>dev/VERSION</code>: <code>build.py</code> re-stamps it and <code>--check</code> fails when either file is stale.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.66.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Provenance stamps and a runtime fallback banner so a document that skipped validation is visible. The document-producing tools stamp <code>commentable-html-created</code>, and <code>validate.py</code> / <code>finalize.py</code> stamp <code>commentable-html-validated</code> only on a strict-clean pass (<code>--no-stamp</code> keeps a run read-only). On load, the runtime shows a small dismissible amber banner when a document carries a created stamp but no current validated stamp - a produced-but-never-strict-validated document. A strict-validated document (and any document with no created stamp) shows nothing. This is a last-resort signal; the skill MUST always finalize and strict-validate before handoff.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">73 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">75 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
@@ -422,6 +476,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
     </div>
   </footer>
 
-  <script src="../assets/site.js?v=502eb12862ac"></script>
+  <script src="../assets/site.js?v=0a271f72308e"></script>
 </body>
 </html>
