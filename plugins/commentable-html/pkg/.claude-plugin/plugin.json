@@ -5,5 +5,5 @@
   "author": { "name": "Uri Kanonov", "email": "urikanonov@gmail.com" },
   "keywords": ["commentable", "cmh", "html", "code-review", "comments", "documentation", "kusto", "charts", "analysis", "plan", "report"],
   "license": "MIT",
-  "skills": "skills/"
+  "skills": "./skills/"
 }

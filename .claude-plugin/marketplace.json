@@ -1,7 +1,7 @@
 {
   "name": "urikan-ai-marketplace",
   "metadata": {
-    "description": "A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name.",
+    "description": "A personal marketplace of AI-oriented plugins. Install reusable skills by name in Claude Code or the GitHub Copilot CLI.",
     "version": "1.0.0"
   },
   "owner": {
@@ -21,7 +21,6 @@
       "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/pkg",
       "repository": "https://github.com/urikanonov/ai-marketplace",
       "license": "MIT",
-      "category": "planning and analysis",
       "keywords": [
         "commentable",
         "cmh",
@@ -34,29 +33,7 @@
         "analysis",
         "plan",
         "report"
-      ],
-      "strict": false
-    },
-    {
-      "name": "urikan-ai-marketplace-auto-updater",
-      "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
-      "version": "1.1.0",
-      "source": "./plugins/urikan-ai-marketplace-auto-updater/pkg",
-      "author": {
-        "name": "Uri Kanonov",
-        "email": "urikanonov@gmail.com"
-      },
-      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater",
-      "repository": "https://github.com/urikanonov/ai-marketplace",
-      "license": "MIT",
-      "category": "infrastructure",
-      "keywords": [
-        "auto-update",
-        "marketplace",
-        "hooks",
-        "session-start"
-      ],
-      "strict": false
+      ]
     }
   ]
 }
