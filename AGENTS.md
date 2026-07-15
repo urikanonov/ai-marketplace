@@ -14,21 +14,22 @@ A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users 
 These rules are the ones most often forgotten. They are a MUST on every change, no exceptions:
 
 1. **Never work in the primary tree - do EVERYTHING in a fresh worktree off the latest `main`.** The very
-   FIRST action for ANY piece of work (a fix, a feature, a doc edit, a test-only change - and the backlog
-   task itself) is `git fetch origin` then `git worktree add -b <branch> .worktrees/<name> origin/main`;
-   then `cd` into that worktree and do all work there. The primary checkout at the repo root is OFF-LIMITS:
-   never create, edit, or commit any file in it - not code, not docs, not generated artifacts, and NOT
-   backlog task files. Never develop on a stale branch or edit the primary tree in place. See "Parallel
-   work: use git worktrees under the repo root" for the full mechanics.
-2. **Create the Backlog.md task INSIDE that worktree, before any code (backlog-first).** Immediately after
-   creating the worktree (rule 1) and before touching any code, run the `backlog` CLI FROM the worktree to
-   search the backlog and create or update the task, set it `In Progress`, and assign it to yourself; the
-   task `.md` file is then created and committed inside the worktree alongside the work. NEVER start work
-   that is not tracked by a backlog task, NEVER create a task in the primary tree, and capture any follow-up
-   or newly discovered work as its own task the moment it comes up so nothing lives only in the chat
-   session. Drive everything through the `backlog` CLI (run from the worktree); never hand-edit task files.
-   Backlog-item creation ships in its OWN pull request, separate from the implementation PR (see
-   "Backlog-first task tracking (Backlog.md)" for the workflow).
+   FIRST action for ANY code or file change (a fix, a feature, a doc edit, a test-only change) is
+   `git fetch origin` then `git worktree add -b <branch> .worktrees/<name> origin/main`; then `cd` into
+   that worktree and do all work there. (Tracking the work as a GitHub Issue happens first, per rule 2,
+   but an issue is not a file in the tree, so you file it with `gh` from anywhere - before or without a
+   worktree.) The primary checkout at the repo root is OFF-LIMITS: never create, edit, or commit any file
+   in it - not code, not docs, not generated artifacts. Never develop on a stale branch or edit the
+   primary tree in place. See "Parallel work: use git worktrees under the repo root" for the full mechanics.
+2. **Track the work as a GitHub Issue before any code (issue-first).** Before touching code, use the `gh`
+   CLI to search existing issues and create or claim one, label it `task`, set it `In Progress`, and
+   assign it to yourself. An issue exists on GitHub the moment you file it - decoupled from any branch,
+   worktree, or PR - so, unlike the old committed Backlog.md task files, work can never be lost if a
+   worktree is discarded or a PR is abandoned, and filing it is a single `gh` command with no separate
+   creation PR. NEVER start work that is not tracked by an issue, and capture any follow-up or newly
+   discovered work as its own issue the moment it comes up so nothing lives only in the chat session.
+   Prefer the in-repo task-management skill, which wraps these `gh` calls. See "GitHub Issues workflow"
+   for the full workflow.
 3. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
    covering automated test in the SAME pull request, and for bug fixes the test is written FIRST, run, and
    confirmed RED before the fix makes it green. A change whose test never failed on the old code is not
@@ -185,9 +186,9 @@ git worktree remove .worktrees/<name>                        # once the PR is me
 ```
 
 Rules: always branch from the latest `origin/main` (fetch first); NEVER create, edit, or commit anything in
-the primary tree (not code, not docs, not backlog task files - run the `backlog` CLI from inside the
-worktree so tasks land there); do each workstream in its own `.worktrees/<name>`; and resolve any conflict
-on generated files by REBUILDING (rerun `python scripts/build_site_data.py` and, for the commentable-html
+the primary tree (not code, not docs, not generated artifacts); do each workstream in its own
+`.worktrees/<name>`; and resolve any conflict on generated files by REBUILDING (rerun
+`python scripts/build_site_data.py` and, for the commentable-html
 layer, `plugins/commentable-html/dev/tools/build.py`) rather than hand-merging.
 
 ### Maximizing concurrency: choosing parallel-safe workstreams
@@ -497,11 +498,12 @@ check out or run PR-supplied code.
   Either way the PR code runs with nothing to steal and no write access; the residual risk is
   compute/runner abuse (a PR opened purely to run arbitrary code), which the read-only, no-secrets
   execution contains.
-- The privileged workflows run in the trusted base-repo context: `request-copilot-review.yml` on
-  `pull_request_target`, and `require-owner-approval.yml` on `pull_request_target` plus
-  `pull_request_review`. They DO have a write-capable token and secrets even for fork PRs - but they
-  never check out or run PR code; they only call the REST API with the PR number and publish a commit
-  status. That is what keeps them safe.
+- The privileged workflows run in the trusted base-repo context: `request-copilot-review.yml` and
+  `require-owner-approval.yml` (on `pull_request_target`, the latter also on `pull_request_review`), and
+  `issue-status-sync.yml` (on `pull_request_target`). They DO have a write-capable token and secrets even
+  for fork PRs - but they never check out or run PR code; they only read PR metadata via the API (the PR
+  number and its parsed closing-issue links) and then publish a commit status or add an issue label. That
+  is what keeps them safe.
 - Merge protection is independent of who runs CI: `main` stays protected and `require-owner-approval`
   still blocks external PRs until `@urikanonov` approves, so auto-running CI never lets anyone merge.
 
@@ -609,67 +611,49 @@ request description), not in `.plans/`.
   build script (`tools/build.py`) to regenerate dist files with the new version, run
   `build_site_data.py`, then continue the rebase. Never hand-merge generated dist or site files.
 
-## Backlog-first task tracking (Backlog.md)
+## GitHub Issues workflow (issue-first)
 
-This repo tracks work with [Backlog.md](https://backlog.md): git-tracked markdown task files under
-`backlog/tasks/`, driven by the `backlog` CLI. The backlog is COMMITTED, so its `.md` files go through the
-same `validate_markdown.py` hygiene gate as every other doc (plain ASCII, no em/en dashes, no absolute
-local paths). Keep task text ASCII.
+This repo tracks work as GitHub Issues, driven by the `gh` CLI. An issue exists on GitHub the moment you
+create it, decoupled from git, so - unlike the old committed Backlog.md task files - work cannot be lost
+when a worktree is discarded or a PR is abandoned, and filing a task is a single `gh` command with no
+separate creation PR. Maintainer work items carry the `task` label and use the "Task (maintainer work
+item)" issue form (`.github/ISSUE_TEMPLATE/task.yml`); external contributors use the feature/plugin forms.
+Keep issue text plain ASCII (no em/en dashes or ellipsis), matching the repo house style.
 
-**Backlog-first is a non-negotiable (see rules 1 and 2).** The task is created INSIDE your worktree, never
-in the primary tree: first `git worktree add ... origin/main` and `cd` into it (rule 1), then - before a
-line of code - run the `backlog` CLI FROM the worktree to track the work as a Backlog.md task that is
-`In Progress` and assigned to you, so the task `.md` file lives and is committed there alongside the work.
-Do not start any work, and do not create or edit a task file in the primary tree.
+**Issue-first is a non-negotiable (see rule 2).** Track the work as a `task`-labeled issue that is
+`In Progress` and assigned to you BEFORE writing any code. You can (and should) file the issue before the
+worktree exists, since it is not a file in the tree.
 
-Every session, before acting:
+Prefer the in-repo task-management skill, which wraps these `gh` calls with the right parameters. The raw
+commands are:
 
-1. SEARCH first, to consolidate rather than duplicate: `backlog search "<topic>" --plain` and
-   `backlog task list --status "To Do" --plain`. If a task already covers the work, use it. Fold closely
-   related loose follow-ups into one task, or link separate tasks with `--dep`.
-2. If nothing covers it, CREATE one (title = one-liner, `-d` = the why, `--ac` = testable what):
-   `backlog task create "Title" -d "Why" --ac "Observable outcome" --ac "..."`.
-3. Take it: `backlog task edit <id> -s "In Progress" -a @me`.
-4. PLAN it, then share the plan and get approval before coding:
-   `backlog task edit <id> --plan "1. ...\n2. ..."`.
-5. Implement, checking acceptance criteria as you finish each: `backlog task edit <id> --check-ac 1`.
-6. FINALIZE: `backlog task edit <id> --final-summary "PR-style summary"`, then `backlog task edit <id> -s Done`.
+1. SEARCH first, to consolidate rather than duplicate: `gh issue list --search "<topic>"` (add
+   `--state all` to include closed history). If an issue already covers the work, use it; fold closely
+   related follow-ups in, or link them with "Blocked by #N" or native sub-issues.
+2. If nothing covers it, CREATE one, labeled `task`, filling the form's sections (Description, Acceptance
+   criteria as a checklist, optional Implementation plan):
+   `gh issue create --label task --title "Title" --body "..."`.
+3. CLAIM it: `gh issue edit <n> --add-assignee @me --add-label "status: in progress"` (and, once the
+   Project board is configured, move its board Status to In Progress).
+4. PLAN it, then share the plan and get approval before coding: post the implementation plan as a comment
+   with `gh issue comment <n> --body "1. ...  2. ..."`.
+5. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it.
+6. FINISH: open the PR with `Closes #<n>` in its body. The `issue-status-sync` workflow marks the issue
+   In Progress when the PR opens; merging the PR closes the issue (and, once the Project board is
+   configured, its built-in workflow moves the card to Done). Record the final summary in the PR
+   description or a closing comment.
 
-CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, create a task for it
-immediately (`backlog task create ...`) so it never lives only in the chat transcript. That is the whole
-point of backlog-first - it is how work stops getting forgotten between sessions.
+CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, file an issue for it
+immediately (`gh issue create --label task ...`) so it never lives only in the chat transcript. That is
+the whole point of issue-first - it is how work stops getting forgotten between sessions.
 
-**Backlog-item creation is its own PR, separate from the implementation PR.** Submit the task file(s) in a
-creation-only pull request FIRST and merge it, so the task is persisted on `main` and cannot be lost if the
-implementation is delayed or abandoned; then do the implementation in a SEPARATE PR that references the
-task. Batching several backlog-item creations into one creation PR is fine - and encouraged - because
-capturing a batch of tasks in a single small PR is exactly how they stop getting lost; just never bundle
-task creation with the code that implements it. A creation-only PR touches only `backlog/tasks/**` (plus any
-backlog docs/decisions), so it needs no version bump and no test and merges quickly.
-
-Never hand-edit task, draft, doc, decision, or milestone files; the CLI keeps metadata, ids, and history
-consistent. Use `--plain` for AI-readable output, and read `backlog instructions overview` (and
-`task-creation` / `task-execution` / `task-finalization`) for the full contract.
-
-<!-- BACKLOG.MD GUIDELINES START -->
 <CRITICAL_INSTRUCTION>
 
-## Backlog.md Workflow
+## Task tracking
 
-This project uses Backlog.md for task and project management.
-
-**For every user request in this project, run `backlog instructions overview` before answering or taking action.**
-
-Use the overview to decide whether to search, read, create, or update Backlog tasks.
-
-Use the detailed guides when needed:
-- `backlog instructions task-creation` for creating or splitting tasks
-- `backlog instructions task-execution` for planning and implementation workflow
-- `backlog instructions task-finalization` for completion and handoff
-
-Use `backlog <command> --help` before running unfamiliar commands. Help shows options, fields, and examples.
-
-Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use the `backlog` CLI so metadata, relationships, and history stay consistent.
+This project tracks work as GitHub Issues. Before acting on any request, follow the "GitHub Issues
+workflow" section above (search first, then track a `task`-labeled issue that is In Progress and
+assigned to you before writing code). Issue-first is a non-negotiable (rule 2); prefer the in-repo
+task-management skill, which wraps the `gh` calls.
 
 </CRITICAL_INSTRUCTION>
-<!-- BACKLOG.MD GUIDELINES END -->

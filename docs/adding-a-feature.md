@@ -12,9 +12,10 @@ with a tool. It touched every surface below, so it is a good template.
 
 ## 0. Before any code: track it and branch it
 
-1. **Backlog first (non-negotiable).** Search the backlog, then create or reuse a Backlog.md task, set
-   it `In Progress`, and assign it to yourself. Drive it through the `backlog` CLI; never hand-edit a task
-   file. Capture any follow-up you discover as its own task the moment it comes up.
+1. **Issue first (non-negotiable).** Search existing issues (`gh issue list --search "<topic>"`, add
+   `--state all` for closed history), then create or reuse a `task`-labeled GitHub Issue, set it
+   `In Progress`, and assign it to yourself. Prefer the in-repo task-management skill, which wraps the
+   `gh` calls. Capture any follow-up you discover as its own issue the moment it comes up.
 2. **Fresh worktree off the latest `origin/main`.** `git fetch origin`, then
    `git worktree add -b <branch> .worktrees/<name> origin/main`. Never edit the primary tree in place.
    Enable the hooks once per worktree: `git config core.hooksPath .githooks`.
@@ -123,7 +124,7 @@ in the PR title; describe the change.
 
 ## Checklist
 
-- [ ] Backlog task `In Progress` and assigned, fresh worktree off `origin/main`, hooks enabled.
+- [ ] `task`-labeled issue `In Progress` and assigned, fresh worktree off `origin/main`, hooks enabled.
 - [ ] Failing test written first and confirmed red; `AREA-NN` spec row names it.
 - [ ] Behavior implemented in the owning split partial (no monolith) and wired into every shared layer it
       needs.
