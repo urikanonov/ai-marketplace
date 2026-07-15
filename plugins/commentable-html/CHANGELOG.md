@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.72.0] - 2026-07-15
+
+### Added
+
+- Claude Code compatibility. The plugin now ships a `.claude-plugin/plugin.json` alongside the
+  Copilot `plugin.json`, and the repo publishes a `.claude-plugin/marketplace.json`, so
+  commentable-html installs in Claude Code (`claude plugin marketplace add ...` then
+  `claude plugin install commentable-html@urikan-ai-marketplace`) as well as the GitHub Copilot
+  CLI. A new `scripts/validate_claude_compat.py` validates the Claude manifests structurally and,
+  when the `claude` CLI is on PATH, runs `claude plugin validate --strict` on the marketplace and
+  each plugin. (CMH-CLAUDE-01)
+
 ## [1.71.0] - 2026-07-15
 
 ### Changed
