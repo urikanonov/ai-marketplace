@@ -316,6 +316,20 @@ try {
     Assert-True (Test-Path (Join-Path (Join-Path $pkgRoot "hooks") "hooks.json")) "UPD-14: the standard hooks/hooks.json still ships for auto-load"
 } catch { $script:failures += "UPD-14 threw: $_" }
 
+Write-Host "== UPD-15 Claude bash hook handler no-ops on Windows to avoid a double run =="
+try {
+    $claudeHooks = Join-Path (Join-Path $pkgRoot "hooks") "hooks.json"
+    $ch = Get-Content -Path $claudeHooks -Raw | ConvertFrom-Json
+    $handlers = $ch.hooks.SessionStart[0].hooks
+    $bash = $handlers | Where-Object { $_.shell -eq "bash" } | Select-Object -First 1
+    $ps = $handlers | Where-Object { $_.command -eq "powershell" } | Select-Object -First 1
+    Assert-True ($null -ne $bash) "UPD-15: a bash handler exists (macOS/Linux)"
+    Assert-True ($null -ne $ps) "UPD-15: a powershell handler exists (Windows)"
+    # The bash handler must skip on Windows (MINGW/MSYS/CYGWIN) so it does not double-run alongside
+    # the powershell handler; on macOS/Linux the powershell handler no-ops (no powershell.exe).
+    Assert-True ($bash.command -match "MINGW|MSYS|CYGWIN") "UPD-15: bash handler guards on uname to skip on Windows"
+} catch { $script:failures += "UPD-15 threw: $_" }
+
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue
 

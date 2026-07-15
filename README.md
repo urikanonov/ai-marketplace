@@ -10,8 +10,8 @@ Every plugin here is designed to make AI-assisted development workflows faster a
 
 | Plugin | Description | Install |
 |--------|-------------|---------|
-| `commentable-html` | Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface: reviewers select any paragraph, table cell, code block, KQL query, chart, image, or Mermaid diagram, leave inline comments, and export the whole thread back to the agent. Drastically shortens the AI planning and iteration loop by reviewing the artifact in place | `copilot plugin install commentable-html@urikan-ai-marketplace` |
-| `urikan-ai-marketplace-auto-updater` | Automatically updates all installed plugins from this marketplace on session start (opt-in) | `copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace` |
+| `commentable-html` | Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface: reviewers select any paragraph, table cell, code block, KQL query, chart, image, or Mermaid diagram, leave inline comments, and export the whole thread back to the agent. Drastically shortens the AI planning and iteration loop by reviewing the artifact in place | `copilot plugin install commentable-html@urikan-ai-marketplace`<br>or `claude plugin install commentable-html@urikan-ai-marketplace` |
+| `urikan-ai-marketplace-auto-updater` | Automatically updates all installed plugins from this marketplace on session start (opt-in) | `copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace`<br>or `claude plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace` |
 
 ## Getting Started
 
@@ -101,7 +101,7 @@ Plugins here can ship skills, MCP servers, and session hooks that run code on yo
 
 Every change to `main` goes through a pull request and must pass the required CI checks: `validate` (the marketplace manifest, each `plugin.json`, and each `SKILL.md` against JSON Schemas and for consistent `source` paths and versions, plus the Markdown validator, the script unit tests, and changelog sync), `version-bump` (a shipped-source change needs a version bump), `dist-in-sync` (a plugin's committed build output matches its `dev/` source), `actionlint` (every GitHub Actions workflow lints clean), `site` (the Pages site regenerates cleanly and its Playwright suite passes), and `plugin-tests` (the plugin Playwright gate). Run the validators locally with `python scripts/validate_marketplace.py` and `python scripts/validate_markdown.py`, or enable the git hooks (a `pre-commit` validator and a `pre-push` gate) with `git config core.hooksPath .githooks`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full gate.
 
-**Auto-updater note:** installing `urikan-ai-marketplace-auto-updater` is a standing grant - on every session start it runs `copilot plugin update` for your installed plugins, so it silently applies whatever the maintainer later merges. If you prefer to review each update, do not install it and run `copilot plugin update <name>` yourself. See [SECURITY.md](SECURITY.md).
+**Auto-updater note:** installing `urikan-ai-marketplace-auto-updater` is a standing grant - on every session start it runs `copilot plugin update` (or `claude plugin update` under Claude Code) for your installed plugins, so it silently applies whatever the maintainer later merges. If you prefer to review each update, do not install it and run `copilot plugin update <name>` (or `claude plugin update <name>`) yourself. See [SECURITY.md](SECURITY.md).
 
 ## Reporting issues and requesting features
 

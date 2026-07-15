@@ -82,8 +82,9 @@ CHANGELOG_GITHUB_URL = (
 # tabbed by agent: each agent shares the same marketplace name and git URL and differs only in the
 # leading CLI binary. INSTALL_AGENTS is (key, tab label, CLI binary); Copilot is first (the default
 # tab). The repo-root .claude-plugin/marketplace.json lists which plugins are Claude-installable, so
-# the Claude tab is offered only for those (the auto-updater, Claude support tracked separately, is
-# Copilot-only). Both CLIs and their Desktop apps invoke the same installed skill.
+# the Claude tab is offered only for those (both currently shipped plugins are dual-agent; the
+# carve-out remains for any future Copilot-only plugin). Both CLIs and their Desktop apps invoke the
+# same installed skill.
 MARKETPLACE_GIT_URL = "https://github.com/urikanonov/ai-marketplace"
 CLAUDE_MARKETPLACE_REL = os.path.join(".claude-plugin", "marketplace.json")
 INSTALL_AGENTS = [
@@ -316,8 +317,9 @@ def replace_region_inline(text, name, inner):
 def claude_plugin_names(root):
     """Names of the plugins that are installable in Claude Code, read from the repo-root
     .claude-plugin/marketplace.json. The install block offers a Claude tab only for these, so a
-    plugin whose Claude support is not yet shipped (the auto-updater) never advertises a Claude
-    install path. Returns an empty set when the file is absent, unreadable, or structurally
+    plugin whose Claude support is not shipped never advertises a Claude install path (both
+    currently shipped plugins are dual-agent; the carve-out remains for any future Copilot-only
+    plugin). Returns an empty set when the file is absent, unreadable, or structurally
     malformed (a non-object root, a non-list `plugins`, or non-object entries), so a broken mirror
     fails closed to Copilot-only rather than crashing the build."""
     path = os.path.join(root, CLAUDE_MARKETPLACE_REL)
@@ -484,7 +486,7 @@ def render_jsonld(manifest, claude_names=None):
     """The hub's structured-data graph: the WebSite, its author (Person), and an ItemList of the
     published plugins as SoftwareApplication entries, all built from the manifest so it stays in
     sync as plugins are added or changed. `operatingSystem` is set per plugin from `claude_names`
-    so a Copilot-only plugin (the auto-updater) is not advertised as Claude-installable."""
+    so a Copilot-only plugin (should one ever ship) is not advertised as Claude-installable."""
     claude_names = claude_names or set()
     description = manifest.get("metadata", {}).get("description", "")
     owner = manifest.get("owner", {}).get("name", "")
@@ -563,7 +565,7 @@ def render_llms(root, manifest, claude_names=None):
     """An llms.txt (Markdown) front door for LLM crawlers: the marketplace summary, how to install,
     a list of plugins with links and descriptions, and the tutorial link (only when the tutorial
     source exists), all from the manifest. Per-plugin agent support comes from `claude_names` so a
-    Copilot-only plugin (the auto-updater) is not listed as Claude-installable."""
+    Copilot-only plugin (should one ever ship) is not listed as Claude-installable."""
     claude_names = claude_names or set()
     description = manifest.get("metadata", {}).get("description", "")
     suffix = manifest.get("name", "")

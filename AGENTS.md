@@ -4,9 +4,11 @@ Guidance for AI coding agents (and humans) developing in this repository. Read t
 
 ## What this repo is
 
-A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users add the marketplace with
-`copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace` and install plugins with
-`copilot plugin install <name>@urikan-ai-marketplace`. The marketplace name (used after `@`) is
+A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Users add the
+marketplace with `copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace` (or
+`/plugin marketplace add urikanonov/ai-marketplace` in Claude Code) and install plugins with
+`copilot plugin install <name>@urikan-ai-marketplace` (or `/plugin install <name>@urikan-ai-marketplace`
+in Claude Code). The marketplace name (used after `@`) is
 `urikan-ai-marketplace`, defined in the manifest below.
 
 ## Non-negotiables (read this first)

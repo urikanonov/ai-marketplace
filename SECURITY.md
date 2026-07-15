@@ -3,7 +3,8 @@
 ## Supported versions
 
 Only the current `main` branch is supported. Fixes ship by updating the affected plugin in place; run
-`copilot plugin update <name>@urikan-ai-marketplace` to pick them up.
+`copilot plugin update <name>@urikan-ai-marketplace` (or `claude plugin update <name>@urikan-ai-marketplace`
+under Claude Code) to pick them up.
 
 ## What you are installing
 
@@ -14,14 +15,16 @@ Review a plugin's contents before installing it, exactly as you would any other 
 ## Auto-updater trust model
 
 `urikan-ai-marketplace-auto-updater` is opt-in, but once installed it runs a PowerShell hook on every
-Copilot session start that calls `copilot plugin update` for each installed plugin from this marketplace.
+Copilot or Claude Code session start that calls `copilot plugin update` (or `claude plugin update` under
+Claude Code) for each installed plugin from this marketplace.
 That means:
 
 - Installing it is a persistent grant to execute future versions of your installed plugins - a new or
   changed session hook, MCP server, or script merged to `main` runs on your next session without a prompt.
 - The trust anchor is the `@urikanonov` GitHub account and the branch protection on `main`.
 - If you want to review each update yourself, do not install the auto-updater; run
-  `copilot plugin update <name>@urikan-ai-marketplace` manually instead.
+  `copilot plugin update <name>@urikan-ai-marketplace` (or `claude plugin update <name>@urikan-ai-marketplace`
+  under Claude Code) manually instead.
 
 ## Reporting a vulnerability
 
