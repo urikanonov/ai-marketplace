@@ -122,3 +122,25 @@ def check_mermaid_renders(parser):
                 "so the diagrams will NOT render by default - remove the query-param gate so "
                 "mermaid renders when the file is opened normally"]
     return []
+
+
+def check_section_wrapping(parser):
+    """Warn when top-level #commentRoot content is not wrapped in <section> elements.
+
+    A report/plan/generic document renders each top-level <section> as a boxed card
+    (#commentRoot > section). Content authored as bare top-level <h2> headings passes
+    validation but renders flat and off-brand. A sectioned document keeps its <h2>s inside
+    <section> wrappers, so they are not direct children of #commentRoot; a flat document has
+    multiple top-level <h2>s. Slides and boards do not use section cards, so they are exempt.
+    """
+    kind = (parser.metas.get(_KIND_META_NAME) or "").strip().lower()
+    if kind in ("slides", "board"):
+        return []
+    top_level_h2 = sum(1 for h in parser.headings
+                       if h.get("tag") == "h2" and h.get("top_level"))
+    if top_level_h2 >= 2:
+        return ['%d top-level <h2> sections are not wrapped in <section> - wrap each in '
+                '<section aria-labelledby="..."> so it renders as a boxed card '
+                "(#commentRoot > section); see references/content-conventions.md"
+                % top_level_h2]
+    return []

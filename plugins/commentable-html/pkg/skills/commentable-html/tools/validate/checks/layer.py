@@ -7,7 +7,7 @@ import json
 from collections import Counter
 from .parsing import CONTENT_BEGIN, CONTENT_END, DEMO_KEYS, DOC_EXAMPLE_COMMENT_KEY, FORBIDDEN_IDS, LAYER_DESCRIPTOR_ID, LAYER_JSON_IDS, REGIONS, REQUIRED_IDS, SAFE_ID_RE, _COMMENT_ROOT_ATTR_RE, _DATA_KEY_RE, _HTML_COMMENT_RE, _PRE_TAG_RE, _SCRIPT_STYLE_RE, _TITLE_RE, _TRANSIENT_BODY_CLASSES, _attrs_have_class, _find_tag_attrs, _is_executable_js, _is_json_attrs, _js_scan, _parser_script, _region_marker_matches
 from .resources import CHARTJS_SRC_RE, CSS_NETWORK_URL_RE, META_REFRESH_NETWORK_RE, NONPORTABLE_REGIONS, _check_nonportable, _is_adx_run_href, _is_nonportable, _link_loads, _offline_csp_errors
-from .kind import check_document_kind, check_mermaid_renders, check_section_reference_links
+from .kind import check_document_kind, check_mermaid_renders, check_section_reference_links, check_section_wrapping
 
 
 def _layer_descriptor_data(parser):
@@ -597,6 +597,7 @@ def check_layer(html, parser, base_dir=None):
     # 11a) Section cross-references in prose should be in-page anchor links (deterministic
     #      detection; only UNLINKED references reach commentroot_prose).
     warnings.extend(check_section_reference_links(parser))
+    warnings.extend(check_section_wrapping(parser))
 
     # 11a1) Document kind: the doc must declare a known kind, and title-bearing kinds
     #       (report/plan) must carry a top-level <h1> in #commentRoot.

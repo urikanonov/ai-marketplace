@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.73.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.74.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -353,12 +353,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.74.0] - 2026-07-15</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Validator warning (non-fatal) when a report/plan/generic document has two or more top-level <code>&lt;h2&gt;</code> headings with no <code>&lt;section&gt;</code> wrapper, so authors restore the boxed section-card layout (<code>#commentRoot &gt; section</code>). Sectioned content, single-heading docs, and slides/boards do not warn. (CMH-VAL-14)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.73.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Deck authoring: the SKILL.md deck section now routes deck planning (not only the fill step) to the vendored frontend-slides design system - shortlist templates from <code>selection-index.json</code> and read <code>STYLE_PRESETS.md</code> / <code>html-template.md</code> / <code>animation-patterns.md</code> to choose the outline and theme before scaffolding. (CMH-DECK-14)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.72.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -366,8 +375,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Claude Code compatibility. The plugin now ships a <code>.claude-plugin/plugin.json</code> alongside the Copilot <code>plugin.json</code>, and the repo publishes a <code>.claude-plugin/marketplace.json</code>, so commentable-html installs in Claude Code (<code>claude plugin marketplace add ...</code> then <code>claude plugin install commentable-html@urikan-ai-marketplace</code>) as well as the GitHub Copilot CLI. A new <code>scripts/validate_claude_compat.py</code> validates the Claude manifests structurally and, when the <code>claude</code> CLI is on PATH, runs <code>claude plugin validate --strict</code> on the marketplace and each plugin. (CMH-CLAUDE-01)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.71.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -396,15 +403,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Editable notes fields: an authored <code>data-cmh-note</code> element becomes an editable plain-text <code>&lt;textarea&gt;</code> (with a single/multi-line toggle) whose baseline is its authored text. A reviewer&#x27;s edit is tracked as a minimal <code>localStorage</code> delta, surfaces as a per-note change card (jump + reset, searchable), flips the badge to Not portable, is written into the Copy-all bundle as <code>NOTES_STATE_JSON</code>, and is baked into the source on export. <code>tools/notes/notes_scaffold.py</code> generates the markup and <code>tools/notes/notes_apply.py</code> deterministically cements an edit back into the source HTML, so the reviewer-edit round-trip is closed and covered end to end. The global Clear all comments also reverts note edits. Ships a <code>report-notes.html</code> demo. See the editable notes-field contract reference (<code>references/notes-contract.md</code>) in the skill. Notes can be marked foldable (<code>data-cmh-note-foldable</code>) to render as a <code>+</code>/<code>-</code> disclosure that reveals the field on the line below.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.64.0] - 2026-07-15</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>KQL code blocks must now be runnable or explicitly marked clusterless. A bare <code>&lt;pre&gt;&lt;code class=&quot;language-kusto&quot;&gt;</code> block that is not framed in a <code>figure.cmh-kql</code> with a Run in Azure Data Explorer link is now a hard validation error unless the <code>&lt;pre&gt;</code> carries an explicit <code>data-cmh-kql-no-cluster</code> marker (declaring there is genuinely no cluster to run it on). Previously a bare KQL block was silently exempt, so a query could ship with no way to run it and no cluster. Prefer providing a real cluster; <code>kql_highlight.py --code-only</code> now stamps the <code>data-cmh-kql-no-cluster</code> marker for the rare clusterless case.</li>
-              <li>The showcase deck&#x27;s KQL slide now uses a full runnable figure on the public <code>help.kusto.windows.net</code> cluster instead of a bare highlighted block.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">71 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">72 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

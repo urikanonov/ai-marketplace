@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.74.0] - 2026-07-15
+
+### Added
+
+- Validator warning (non-fatal) when a report/plan/generic document has two or more top-level
+  `<h2>` headings with no `<section>` wrapper, so authors restore the boxed section-card
+  layout (`#commentRoot > section`). Sectioned content, single-heading docs, and slides/boards
+  do not warn. (CMH-VAL-14)
+
 ## [1.73.0] - 2026-07-15
 
 ### Changed
