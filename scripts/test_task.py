@@ -100,6 +100,22 @@ class TickCheckboxTests(unittest.TestCase):
         self.assertIn("- [ ] plan step", out)
         self.assertIn("- [x] real one", out)
 
+    def test_scoped_to_acceptance_section_h3_form(self):
+        # GitHub issue forms render each field label as a level-3 heading.
+        body = ("### Description\n\nwhy\n\n### Acceptance criteria\n\n"
+                "- [ ] real one\n- [ ] real two\n\n### Before starting\n\n"
+                "- [ ] I searched issues\n- [ ] I wrote a test\n")
+        out = task.tick_checkbox(body, 2)
+        self.assertIn("- [x] real two", out)
+        self.assertIn("- [ ] I searched issues", out)
+        with self.assertRaises(IndexError):
+            task.tick_checkbox(body, 3)
+
+    def test_ignores_checkboxes_after_next_heading(self):
+        body = "## Acceptance criteria\n\n- [ ] a\n- [ ] b\n\n## Other\n\n- [ ] c\n"
+        with self.assertRaises(IndexError):
+            task.tick_checkbox(body, 3)
+
 
 class ParserTests(unittest.TestCase):
     def test_new_parses_repeatable_ac(self):

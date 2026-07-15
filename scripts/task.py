@@ -75,9 +75,9 @@ def _acceptance_bounds(lines):
     region under a '## Acceptance criteria' heading (case-insensitive) until the next '## '
     heading, or the whole body if that heading is absent."""
     for i, line in enumerate(lines):
-        if re.match(r"^\s*##\s+acceptance criteria\b", line, re.I):
+        if re.match(r"^\s*#{2,}\s+acceptance criteria\b", line, re.I):
             for j in range(i + 1, len(lines)):
-                if re.match(r"^\s*##\s+\S", lines[j]):
+                if re.match(r"^\s*#{2,}\s+\S", lines[j]):
                     return i + 1, j
             return i + 1, len(lines)
     return 0, len(lines)
@@ -99,7 +99,7 @@ def tick_checkbox(body, k):
     seen = 0
     for i in range(start, end):
         stripped = lines[i].lstrip()
-        if stripped[:5] in ("- [ ]", "- [x]", "- [X]"):
+        if stripped.startswith(("- [ ] ", "- [x] ", "- [X] ")) or stripped in ("- [ ]", "- [x]", "- [X]"):
             seen += 1
             if seen == k:
                 if stripped.startswith("- [ ]"):
