@@ -1,7 +1,7 @@
 {
   "name": "urikan-ai-marketplace",
   "metadata": {
-    "description": "A personal marketplace of AI-oriented plugins. Install reusable skills by name in Claude Code or the GitHub Copilot CLI.",
+    "description": "A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Install reusable skills by name.",
     "version": "1.0.0"
   },
   "owner": {
@@ -38,7 +38,7 @@
     {
       "name": "urikan-ai-marketplace-auto-updater",
       "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "source": "./plugins/urikan-ai-marketplace-auto-updater/pkg",
       "author": {
         "name": "Uri Kanonov",

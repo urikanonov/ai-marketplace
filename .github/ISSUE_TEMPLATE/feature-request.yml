@@ -13,7 +13,7 @@ body:
     id: plugin-name
     attributes:
       label: Plugin name
-      description: Which plugin should this improve? Use the exact name shown by `copilot plugin list`.
+      description: Which plugin should this improve? Use the exact name shown by `copilot plugin list` (or `claude plugin list`).
       placeholder: e.g. commentable-html
     validations:
       required: true
@@ -21,7 +21,7 @@ body:
     id: plugin-version
     attributes:
       label: Plugin version
-      description: The version you are on. Find it with `copilot plugin list` or in the plugin's plugin.json.
+      description: The version you are on. Find it with `copilot plugin list` (or `claude plugin list`) or in the plugin's plugin.json.
       placeholder: e.g. 1.3.0
     validations:
       required: false
@@ -60,5 +60,5 @@ body:
       options:
         - label: I searched existing issues and this has not already been requested.
           required: true
-        - label: I am on the latest version of the plugin (`copilot plugin update <name>`).
+        - label: I am on the latest version of the plugin (`copilot plugin update <name>` or `claude plugin update <name>`).
           required: false

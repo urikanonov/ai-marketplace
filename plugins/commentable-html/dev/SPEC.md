@@ -404,7 +404,7 @@ endings, trimmed outer whitespace) is implemented identically in the runtime and
 
 ## Claude Code compatibility
 
-commentable-html output is a portable HTML artifact that works with any agent, and the plugin is installable in Claude Code as well as the GitHub Copilot CLI. It ships a `.claude-plugin/plugin.json` beside the Copilot `plugin.json` and is listed in the repo-root `.claude-plugin/marketplace.json` (a subset mirror of `.github/plugin/marketplace.json`). The auto-updater's Claude support is tracked separately.
+commentable-html output is a portable HTML artifact that works with any agent, and the plugin is installable in Claude Code as well as the GitHub Copilot CLI. It ships a `.claude-plugin/plugin.json` beside the Copilot `plugin.json` and is listed in the repo-root `.claude-plugin/marketplace.json` (a subset mirror of `.github/plugin/marketplace.json`). The auto-updater is dual-agent too (its own `.claude-plugin/plugin.json` and Claude `hooks/hooks.json`), so both published plugins install in either agent.
 
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |

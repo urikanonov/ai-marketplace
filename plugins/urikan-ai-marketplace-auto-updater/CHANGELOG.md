@@ -4,6 +4,22 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-07-15
+
+### Changed
+
+- Dual-agent audit follow-ups: the shipped `pkg/README.md` now documents both agents (Copilot and
+  Claude Code hooks, both config-home log/throttle paths, and the on-demand skill) instead of being
+  framed as a GitHub Copilot CLI plugin.
+
+### Fixed
+
+- The Claude `SessionStart` hook could run the update twice on Windows when both Git Bash and a
+  PowerShell were present (the bash and powershell handlers both fired). The bash handler now no-ops
+  on Windows (`uname` MINGW/MSYS/CYGWIN), so exactly one handler runs per platform: powershell on
+  Windows, bash+pwsh on macOS/Linux. Updates are idempotent and throttled, so this was harmless but
+  is now clean. (UPD-15)
+
 ## [1.2.1] - 2026-07-15
 
 ### Fixed
