@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { stageContent, fileUrl, ready } from "./helpers.js";
+import { stageContent, fileUrl, ready, addTextComment } from "./helpers.js";
 
 // Three tall, distinctly-worded sections so the side TOC renders (>= 2 items), scroll-spy
 // moves between them, and a query matches exactly one section's body text.
@@ -11,7 +11,7 @@ const CONTENT = `
   <p>Banana content describing the second area.</p>
   <p style="display:block;height:1400px">beta filler</p></section>
 <section aria-labelledby="gamma"><h2 id="gamma">Gamma appendix</h2>
-  <p>Cherry content mentioning the unique word zebra.</p>
+  <p id="gp">Cherry content mentioning the unique word zebra.</p>
   <p style="display:block;height:1400px">gamma filler</p></section>
 `;
 
@@ -74,5 +74,24 @@ test.describe("side-TOC search and aria-current", () => {
     // A deep-link to a hidden section must reveal it rather than scroll to nothing.
     await page.evaluate(() => { location.hash = "#alpha"; });
     await expect(sec(page, "alpha")).toBeVisible();
+  });
+
+  test("the filter box hides when the side menu is collapsed (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openDoc(page);
+    await expect(toc.locator(".cm-side-toc-search")).toBeVisible();
+    await toc.locator(".cm-side-toc-toggle").click();
+    await expect(toc.locator(".cm-side-toc-search")).toBeHidden();
+  });
+
+  test("jumping to a comment inside a filtered-out section reveals it (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openDoc(page);
+    // Comment on text in Gamma, then filter to a query that matches only Alpha (hiding Gamma).
+    await addTextComment(page, "#gp", "note on cherry");
+    await toc.locator(".cm-side-toc-search").fill("Apple");
+    await expect(sec(page, "gamma")).toBeHidden();
+    // Activating the comment card must clear the filter so the highlight is laid out and reachable.
+    await page.locator(".cm-card").first().click();
+    await expect(sec(page, "gamma")).toBeVisible();
+    await expect(toc.locator(".cm-side-toc-search")).toHaveValue("");
   });
 });

@@ -250,6 +250,7 @@ function setupSideToc() {
       if (li) li.classList.toggle("cm-toc-li-hidden", !match);
       if (sec) sec.classList.toggle("cm-toc-filtered", !match);
     }
+    if (typeof schedule === "function") schedule(); // re-run scroll-spy so aria-current follows the filter
   }
   function clearTocFilter() { if (search.value) search.value = ""; applyTocFilter(""); }
   search.addEventListener("input", function () { applyTocFilter(search.value); });
@@ -263,6 +264,11 @@ function setupSideToc() {
     const el = id && document.getElementById(id);
     const sec = el && el.closest && el.closest("section");
     if (sec && sec.classList.contains("cm-toc-filtered")) { clearTocFilter(); el.scrollIntoView({ block: "start" }); }
+  });
+  // If the viewport narrows below the side-menu breakpoint the filter box is hidden, so drop any
+  // active filter to avoid stranding sections hidden with no visible control to restore them.
+  window.addEventListener("resize", function () {
+    if (search.value && nav && getComputedStyle(nav).display === "none") clearTocFilter();
   });
   const scrollBtns = document.createElement("div");
   scrollBtns.className = "cm-side-toc-scroll";
@@ -315,20 +321,28 @@ function setupSideToc() {
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
   });
   function onScroll() {
-    // Activate the section nearest above the threshold by GEOMETRY (greatest top that is
-    // still <= 120), so it is correct even if the author TOC links are not in document order.
-    let activeIdx = 0;
+    // Activate the visible section nearest above the threshold by GEOMETRY (greatest top still
+    // <= 120), skipping any section hidden by the filter so aria-current never lands on it.
+    let activeIdx = -1;
     let bestTop = -Infinity;
+    let firstVisible = -1;
     for (let i = 0; i < items.length; i++) {
       const sec = _cmTocSectionOf(items[i]);
-      if (sec && sec.classList.contains("cm-toc-filtered")) continue; // ignore filtered-out sections
+      if (sec && sec.classList.contains("cm-toc-filtered")) continue;
+      if (firstVisible === -1) firstVisible = i;
       const top = items[i].el.getBoundingClientRect().top;
       if (top <= 120 && top > bestTop) { bestTop = top; activeIdx = i; }
     }
-    // At the page bottom a short trailing section never reaches the 120px threshold, so the
-    // final item would never light up. Force it active once the document is fully scrolled.
+    if (activeIdx === -1) activeIdx = firstVisible; // above the first visible section (or none visible)
+    // At the page bottom a short trailing section never reaches the 120px threshold, so force the
+    // LAST visible item active once the document is fully scrolled.
     const doc = document.documentElement;
-    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) activeIdx = items.length - 1;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) {
+      for (let i = items.length - 1; i >= 0; i--) {
+        const sec = _cmTocSectionOf(items[i]);
+        if (!sec || !sec.classList.contains("cm-toc-filtered")) { activeIdx = i; break; }
+      }
+    }
     for (let i = 0; i < links.length; i++) {
       const on = i === activeIdx;
       links[i].classList.toggle("is-active", on);

@@ -380,6 +380,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   border: 1px solid var(--cp-border); border-radius: 0.4rem;
 }
 .cm-side-toc-search:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 1px; }
+.cm-side-toc.is-collapsed .cm-side-toc-search { display: none; }
 .cm-side-toc-list li.cm-toc-li-hidden { display: none; }
 #commentRoot section.cm-toc-filtered { display: none; }
 /* Long content <pre> (logs, code) wrap instead of overflowing horizontally. Diff and

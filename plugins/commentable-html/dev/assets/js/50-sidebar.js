@@ -253,6 +253,12 @@ function scrollToAnchor(c) {
 // A comment can live inside a collapsed section (display:none = no layout box), so
 // expand every collapsed ancestor section before scrolling to it.
 function expandCollapsedAncestors(el) {
+  // A comment can also live inside a section hidden by the side-TOC filter; clear the filter so the
+  // jump target gets a layout box (scrollIntoView is a no-op on a display:none element).
+  if (el && el.closest && el.closest("section.cm-toc-filtered")) {
+    const _s = document.querySelector(".cm-side-toc-search");
+    if (_s && _s.value) { _s.value = ""; _s.dispatchEvent(new Event("input")); }
+  }
   let sec = el && el.closest && el.closest("section.cmh-section-collapsed");
   while (sec) {
     sec.classList.remove("cmh-section-collapsed");
