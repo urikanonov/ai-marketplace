@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.75.0] - 2026-07-15
+
+### Added
+
+- Section-card auto-wrap for report/plan documents - the deterministic fix for the CMH-VAL-14
+  flat-section warning. `tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block
+  (the heading plus the siblings up to the next top-level `<h2>`) in
+  `<section aria-labelledby="the-h2-id">` so a `report`/`plan` renders as boxed section cards
+  (`#commentRoot > section`), leaving the title/lede above the cards. It is idempotent, a no-op when
+  a top-level `<section>` already exists, and scopes to the `#commentRoot` element for a full
+  document or the fragment root for a bare fragment. `new_document.py` (report/plan fragments) and
+  `finalize.py` (full docs, gated on the kind meta) run it by default; opt out with
+  `--no-wrap-sections`. (CMH-TOOL-17)
+
+### Fixed
+
+- `build.py` now re-stamps the version into the Claude Code manifests (`.claude-plugin/plugin.json`
+  and `.claude-plugin/marketplace.json`) alongside the Copilot ones, so a version bump no longer
+  leaves the Claude mirror behind (which previously required a manual bump and could fail the
+  claude-manifest / version-bump guards). (CMH-TOOL-06)
+
 ## [1.74.0] - 2026-07-15
 
 ### Added

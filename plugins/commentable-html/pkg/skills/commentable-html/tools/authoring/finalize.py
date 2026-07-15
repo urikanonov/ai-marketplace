@@ -9,13 +9,15 @@ Usage (run from the skill root):
 
 Order is always:
   1) generate_toc (when --toc)
-  2) fix_skip (when --fix-skip)
-  3) inline_images (when --inline-images)
-  4) highlight_document (on by default; skip with --no-highlight)
-  5) validate
+  2) wrap_sections (report/plan only; on by default, skip with --no-wrap-sections)
+  3) fix_skip (when --fix-skip)
+  4) inline_images (when --inline-images)
+  5) highlight_document (on by default; skip with --no-highlight)
+  6) validate
 """
 import argparse
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
@@ -27,6 +29,12 @@ import generate_toc  # noqa: E402
 import highlight_document  # noqa: E402
 import inline_images  # noqa: E402
 import validate  # noqa: E402
+import wrap_sections  # noqa: E402
+
+# Kinds that render as boxed section cards; only these get auto section-wrapping.
+_SECTION_CARD_KINDS = frozenset({"report", "plan"})
+_KIND_META_RE = re.compile(
+    r'<meta\s+name="commentable-html-kind"\s+content="([^"]*)"', re.IGNORECASE)
 
 
 def _read(path):
@@ -57,6 +65,19 @@ def _run_fix_skip(path):
     return changed, count
 
 
+def _run_wrap_sections(path):
+    source = _read(path)
+    m = _KIND_META_RE.search(source)
+    kind = (m.group(1) if m else "").strip().lower()
+    if kind not in _SECTION_CARD_KINDS:
+        return False, 0
+    rewritten, count = wrap_sections.fix(source)
+    changed = rewritten != source
+    if changed:
+        _write(path, rewritten)
+    return changed, count
+
+
 def _run_inline_images(path, base_dir):
     source = _read(path)
     rewritten, inlined, missing = inline_images.inline_images(source, base_dir)
@@ -76,11 +97,15 @@ def _run_highlight(path):
 
 
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
-             run_highlight=True):
+             run_highlight=True, run_wrap_sections=True):
     steps = []
     if run_toc:
         changed = _run_toc(path)
         steps.append(("toc", "updated" if changed else "unchanged"))
+    if run_wrap_sections:
+        changed, count = _run_wrap_sections(path)
+        status = "wrapped %d section(s)" % count if changed else "unchanged"
+        steps.append(("wrap-sections", status))
     if run_fix_skip:
         changed, count = _run_fix_skip(path)
         status = "fixed %d block(s)" % count if changed else "unchanged"
@@ -113,6 +138,9 @@ def main(argv):
     parser.add_argument("--no-highlight", action="store_true",
                         help="skip baking syntax highlighting into raw language-labelled code blocks "
                              "(on by default)")
+    parser.add_argument("--no-wrap-sections", action="store_true",
+                        help="skip wrapping bare top-level <h2> blocks in <section> for report/plan "
+                             "documents (on by default)")
     parser.add_argument("--strict", action="store_true",
                         help="treat validator warnings as failures (errors already fail)")
     parser.add_argument("--no-stamp", action="store_true",
@@ -131,6 +159,7 @@ def main(argv):
             run_inline=args.inline_images,
             images_base=args.images_base,
             run_highlight=not args.no_highlight,
+            run_wrap_sections=not args.no_wrap_sections,
         )
     except (OSError, ValueError) as exc:
         sys.stderr.write("finalize: %s\n" % exc)

@@ -238,20 +238,32 @@ def _find_marketplace(start):
 
 def source_stamps(version, assets_dir, out_dir):
     """Return {path: stamped_text} for the hand-maintained files that carry the
-    version: the layer const, plugin.json, the marketplace entry, and the visible
-    `**Version:**` line in SKILL.md and dist/README.md. Only files that exist are
-    included, so non-standard layouts degrade gracefully. Examples are NOT stamped
-    here - they embed the whole layer and are regenerated from dist, which already
-    carries the version."""
+    version: the layer const, plugin.json (Copilot and Claude), the marketplace entry
+    (Copilot and Claude), and the visible `**Version:**` line in SKILL.md and dist/README.md.
+    Only files that exist are included, so non-standard layouts degrade gracefully. Examples
+    are NOT stamped here - they embed the whole layer and are regenerated from dist, which
+    already carries the version."""
     stamps = {}
     js_path = _js_version_part(assets_dir)
     stamps[js_path] = _stamp_const(read(js_path), version, os.path.basename(js_path))
     plugin_json = os.path.join(os.path.dirname(os.path.dirname(out_dir)), "plugin.json")
     if os.path.exists(plugin_json):
         stamps[plugin_json] = _stamp_plugin_json(read(plugin_json), version)
+    # The Claude Code manifest mirrors the Copilot plugin.json (identity fields incl. version),
+    # so it is a version spot too - stamp it the same way to keep the mirror in sync on every bump.
+    claude_plugin_json = os.path.join(
+        os.path.dirname(os.path.dirname(out_dir)), ".claude-plugin", "plugin.json")
+    if os.path.exists(claude_plugin_json):
+        stamps[claude_plugin_json] = _stamp_plugin_json(read(claude_plugin_json), version)
     marketplace = _find_marketplace(out_dir)
     if marketplace:
         stamps[marketplace] = _stamp_marketplace(read(marketplace), version)
+        # The Claude marketplace (repo-root .claude-plugin/marketplace.json) mirrors the Copilot
+        # marketplace entry, so stamp its commentable-html entry version alongside.
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(marketplace)))
+        claude_marketplace = os.path.join(repo_root, ".claude-plugin", "marketplace.json")
+        if os.path.exists(claude_marketplace):
+            stamps[claude_marketplace] = _stamp_marketplace(read(claude_marketplace), version)
     # Human-readable version lines: the shipped SKILL.md and dist/README.md so a reader can see
     # which version they have. Only stamped when present (a bare --assets-dir build has neither).
     skill = os.path.join(out_dir, "SKILL.md")
