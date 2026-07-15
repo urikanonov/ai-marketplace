@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.70.0] - 2026-07-15
+
+### Added
+
+- A visible, human-readable version line in the shipped `SKILL.md` and `dist/README.md`, so a reader
+  who opens the skill or its `dist/` folder can see which version they have without decoding
+  `manifest.json`. The line (`**Version:** ` + a code span) is single-sourced from `dev/VERSION`:
+  `build.py` re-stamps it and `--check` fails when either file is stale.
+
 ## [1.66.0] - 2026-07-15
 
 ### Added
