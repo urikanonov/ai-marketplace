@@ -144,6 +144,119 @@ class RenderPluginsTests(unittest.TestCase):
         for chip in ("cmh", "analysis", "plan", "report"):
             self.assertIn('<span class="chip">%s</span>' % chip, out)
 
+    def test_card_install_shows_claude_tab_only_for_claude_plugins(self):
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "plugins": [
+                {"name": "commentable-html", "version": "1.0.0", "description": "d"},
+                {"name": "auto-updater", "version": "1.0.0", "description": "d"},
+            ],
+        }
+        out = bsd.render_plugins(manifest, claude_names={"commentable-html"})
+        # The Claude-supported plugin's card offers a Claude tab and the claude install command...
+        self.assertIn('id="install-card-commentable-html-claude-tab"', out)
+        self.assertIn("claude plugin install commentable-html@urikan-ai-marketplace", out)
+        # ...while the Copilot-only plugin's card has no Claude tab and no claude command.
+        self.assertNotIn("install-card-auto-updater-claude", out)
+        self.assertNotIn("claude plugin install auto-updater", out)
+
+
+class RenderInstallTests(unittest.TestCase):
+    URL = "https://github.com/urikanonov/ai-marketplace"
+
+    def test_dual_agent_tabs_with_split_rows_and_per_row_copy(self):
+        out = bsd.render_install("commentable-html", "urikan-ai-marketplace", True, "install-x")
+        # A tab per agent, Copilot first and selected by default.
+        self.assertIn("data-install-tabs", out)
+        self.assertIn(">GitHub Copilot</button>", out)
+        self.assertIn(">Claude Code</button>", out)
+        self.assertIn('aria-selected="true"', out)
+        # The marketplace-add and plugin-install commands are on SEPARATE, labelled rows.
+        self.assertIn('<span class="install-label">Install marketplace</span>', out)
+        self.assertIn('<span class="install-label">Install plugin</span>', out)
+        # Each agent's rows use that agent's CLI binary.
+        self.assertIn("copilot plugin marketplace add " + self.URL, out)
+        self.assertIn("copilot plugin install commentable-html@urikan-ai-marketplace", out)
+        self.assertIn("claude plugin marketplace add " + self.URL, out)
+        self.assertIn("claude plugin install commentable-html@urikan-ai-marketplace", out)
+        # Every command row carries its own copy button with the exact command (2 agents x 2 rows).
+        self.assertEqual(out.count('class="copy-btn"'), 4)
+        self.assertIn('data-copy="claude plugin install commentable-html@urikan-ai-marketplace"', out)
+
+    def test_copilot_only_plugin_has_no_claude_tab_or_command(self):
+        out = bsd.render_install("auto-updater", "urikan-ai-marketplace", False, "install-y")
+        self.assertIn("install-solo", out)
+        self.assertNotIn("install-tab", out)
+        self.assertNotIn("data-install-tabs", out)
+        self.assertNotIn("claude plugin", out)
+        # Still split into a marketplace row and a plugin row, each independently copyable.
+        self.assertIn('<span class="install-label">Install marketplace</span>', out)
+        self.assertIn('<span class="install-label">Install plugin</span>', out)
+        self.assertEqual(out.count('class="copy-btn"'), 2)
+
+    def test_marketplace_only_block_omits_the_plugin_row_but_keeps_both_tabs(self):
+        out = bsd.render_install("", "urikan-ai-marketplace", True, "install-hub",
+                                 marketplace_only=True)
+        self.assertIn('<span class="install-label">Install marketplace</span>', out)
+        self.assertNotIn("Install plugin", out)
+        self.assertIn(">GitHub Copilot</button>", out)
+        self.assertIn(">Claude Code</button>", out)
+        # A single-row block shows no step badges (they only number a multi-step flow).
+        self.assertNotIn("install-step", out)
+
+    def test_ids_are_unique_per_block_for_aria_wiring(self):
+        out = bsd.render_install("commentable-html", "urikan-ai-marketplace", True,
+                                 "install-card-commentable-html")
+        self.assertIn('id="install-card-commentable-html-claude-tab"', out)
+        self.assertIn('aria-controls="install-card-commentable-html-claude"', out)
+        self.assertIn('data-install-target="install-card-commentable-html-claude"', out)
+
+    def test_idbase_is_slugged_so_a_name_cannot_inject_into_id_attributes(self):
+        # A plugin name is only schema-constrained to minLength, so a name with HTML-significant
+        # characters must not break out of the id/aria attributes it derives.
+        hostile = 'x" onmouseover="alert(1)'
+        idbase = "install-card-" + hostile
+        out = bsd.render_install("commentable-html", "urikan-ai-marketplace", True, idbase)
+        # No attribute breakout: the hostile quote/space/parens are slugged, so no event-handler
+        # attribute and no executable payload survive (the word "onmouseover" may remain only as an
+        # inert id fragment, never as `onmouseover="..."`).
+        self.assertNotIn('onmouseover="', out)
+        self.assertNotIn("alert(1)", out)
+        self.assertNotIn('"x"', out)
+        expected_tab = bsd._slug_id(idbase) + "-copilot-tab"
+        self.assertIn('id="%s"' % expected_tab, out)
+        self.assertRegex(expected_tab, r"^[A-Za-z0-9_-]+$")
+
+
+class ClaudePluginNamesTests(unittest.TestCase):
+    def _write(self, tmp, obj):
+        import os as _os
+        d = _os.path.join(tmp, ".claude-plugin")
+        _os.makedirs(d, exist_ok=True)
+        with open(_os.path.join(d, "marketplace.json"), "w", encoding="utf-8") as fh:
+            fh.write(obj if isinstance(obj, str) else json.dumps(obj))
+
+    def test_reads_plugin_names(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write(tmp, {"plugins": [{"name": "a"}, {"name": "b"}, {"noname": 1}]})
+            self.assertEqual(bsd.claude_plugin_names(tmp), {"a", "b"})
+
+    def test_missing_file_returns_empty(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(bsd.claude_plugin_names(tmp), set())
+
+    def test_malformed_shapes_fail_closed_to_empty(self):
+        import tempfile
+        for bad in ("not json", "null", "[]", '{"plugins": null}',
+                    '{"plugins": ["scalar", 3]}', '{"plugins": {}}',
+                    '{"plugins": [{"name": []}]}', '{"plugins": [{"name": 3}]}'):
+            with tempfile.TemporaryDirectory() as tmp:
+                self._write(tmp, bad)
+                self.assertEqual(bsd.claude_plugin_names(tmp), set(),
+                                 "expected empty set for malformed input: %r" % bad)
+
 
 class DemoFullscreenTests(unittest.TestCase):
     def test_link_accessible_name_announces_new_tab(self):
@@ -554,6 +667,19 @@ class JsonLdTests(unittest.TestCase):
         self.assertIn("commentable-html", names)
         self.assertIn("urikan-ai-marketplace-auto-updater", names)
 
+    def test_operating_system_names_both_agents(self):
+        # Per-plugin: a Claude-installable plugin names both agents; a Copilot-only plugin
+        # (not in claude_names) must NOT be advertised as Claude-installable.
+        manifest = {"name": "m", "metadata": {"description": "d"}, "owner": {"name": "O"},
+                    "plugins": [{"name": "commentable-html", "description": "d1"},
+                                {"name": "auto-updater", "description": "d2"}]}
+        apps = [li["item"] for li in
+                self._parse(bsd.render_jsonld(manifest, {"commentable-html"}))["@graph"][2]["itemListElement"]]
+        self.assertEqual(apps[0]["operatingSystem"],
+                         "Cross-platform (Claude Code, GitHub Copilot CLI)")
+        self.assertEqual(apps[1]["operatingSystem"],
+                         "Cross-platform (GitHub Copilot CLI)")
+
 
 class SitemapTests(unittest.TestCase):
     def test_lists_hub_plugin_and_tutorial(self):
@@ -575,12 +701,28 @@ class LlmsTests(unittest.TestCase):
         }
         # REPO_ROOT has the tutorial source, so the Documentation link is emitted (gating verified
         # separately in CheckDriftTests.test_removing_tutorial_source_drops_its_llms_link).
-        text = bsd.render_llms(bsd.REPO_ROOT, manifest)
+        text = bsd.render_llms(bsd.REPO_ROOT, manifest, {"commentable-html"})
         self.assertTrue(text.startswith("# ai-marketplace"))
         self.assertIn("> Marketplace summary.", text)
         self.assertIn("copilot plugin install <name>@urikan-ai-marketplace", text)
-        self.assertIn("[commentable-html](%scommentable-html/): d1" % bsd.SITE_BASE_URL, text)
+        self.assertIn("[commentable-html](%scommentable-html/) (Claude Code and the GitHub Copilot CLI): d1"
+                      % bsd.SITE_BASE_URL, text)
         self.assertIn("commentable-html/tutorial/)", text)
+
+    def test_states_both_agents_and_their_install_commands(self):
+        manifest = {"name": "urikan-ai-marketplace", "metadata": {"description": "d"},
+                    "plugins": [{"name": "commentable-html", "description": "d1"},
+                                {"name": "auto-updater", "description": "d2"}]}
+        text = bsd.render_llms(bsd.REPO_ROOT, manifest, {"commentable-html"})
+        self.assertIn("Claude Code and the GitHub Copilot CLI", text)
+        self.assertIn("claude plugin marketplace add", text)
+        self.assertIn("claude plugin install <name>@urikan-ai-marketplace", text)
+        self.assertIn("copilot plugin install <name>@urikan-ai-marketplace", text)
+        # Per-plugin agent labels: the Claude-installable plugin names both agents; the
+        # Copilot-only plugin is labelled Copilot-only (not advertised for Claude).
+        self.assertIn("[commentable-html](%scommentable-html/) (Claude Code and the GitHub Copilot CLI)"
+                      % bsd.SITE_BASE_URL, text)
+        self.assertRegex(text, r"\[auto-updater\]\([^)]+\) \(the GitHub Copilot CLI\)")
 
 
 class AutoUpdaterPageTests(unittest.TestCase):

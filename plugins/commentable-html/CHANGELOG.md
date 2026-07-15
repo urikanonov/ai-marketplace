@@ -4,6 +4,59 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.77.0] - 2026-07-15
+
+### Changed
+
+- SKILL.md now states the plugin installs into both Claude Code and the GitHub Copilot CLI and is
+  invokable from each agent's CLI and Desktop app, so the dual-agent support is visible in the
+  shipped skill doc (its output was always a portable, agent-agnostic HTML file). (CMH-DOC-12)
+
+## [1.76.0] - 2026-07-15
+
+### Changed
+
+- Reworked the showcase deck (`examples/deck-showcase.html`) into a light "Parchment and Amber"
+  five-act pitch (pinned `data-theme="light"`, raspberry accent, amber decorative highlight on key
+  title words, indigo ink body) that threads a single community-garden plan as its one running
+  example instead of unrelated feature samples. Acts 1 to 3 speak to a non-technical viewer and end
+  on the primary call to action, Act 4 is the engineers-only deep dive (chart, diff, code, KQL,
+  triage board, checklist), and Act 5 is a room-wide close. Retitled the slides to outcome-focused
+  headings and rebuilt the shipped and site copies. (CMH-DECK-SHOWCASE-01, CMH-DECK-SHOWCASE-02)
+- Rethemed the deck's rich content for the light parchment slides: the chart, Mermaid diagram, code
+  diff, syntax-highlighted code and KQL, drag-and-drop triage board, table headers, and layered
+  checklist all stay legible and pass the strict contrast validator on the new theme.
+  (CMH-DECK-08, CMH-DECK-09, CMH-DECK-10, CMH-DECK-13)
+
+### Added
+
+- Early install call to action: the deck now surfaces both agents' exact install commands (Copilot
+  and Claude `plugin marketplace add` plus `plugin install commentable-html@urikan-ai-marketplace`)
+  as code blocks on an Act 2 slide well before the close, alongside the live-demo, GitHub, and
+  tutorial links, and again as the primary CTA and the closing slide - so a viewer can act within
+  the first few minutes rather than only at the end. (CMH-DECK-SHOWCASE-03)
+
+## [1.75.0] - 2026-07-15
+
+### Added
+
+- Section-card auto-wrap for report/plan documents - the deterministic fix for the CMH-VAL-14
+  flat-section warning. `tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block
+  (the heading plus the siblings up to the next top-level `<h2>`) in
+  `<section aria-labelledby="the-h2-id">` so a `report`/`plan` renders as boxed section cards
+  (`#commentRoot > section`), leaving the title/lede above the cards. It is idempotent, a no-op when
+  a top-level `<section>` already exists, and scopes to the `#commentRoot` element for a full
+  document or the fragment root for a bare fragment. `new_document.py` (report/plan fragments) and
+  `finalize.py` (full docs, gated on the kind meta) run it by default; opt out with
+  `--no-wrap-sections`. (CMH-TOOL-17)
+
+### Fixed
+
+- `build.py` now re-stamps the version into the Claude Code manifests (`.claude-plugin/plugin.json`
+  and `.claude-plugin/marketplace.json`) alongside the Copilot ones, so a version bump no longer
+  leaves the Claude mirror behind (which previously required a manual bump and could fail the
+  claude-manifest / version-bump guards). (CMH-TOOL-06)
+
 ## [1.74.0] - 2026-07-15
 
 ### Added

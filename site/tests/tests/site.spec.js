@@ -103,7 +103,8 @@ test("hub renders with plugins, install command, and logo", async ({ page }) => 
   const cards = page.locator(".plugin-card");
   expect(await cards.count()).toBeGreaterThanOrEqual(2);
   await expect(page.locator(".plugin-card .name", { hasText: "commentable-html" })).toBeVisible();
-  await expect(page.locator("#install .cmd pre")).toContainText("marketplace add");
+  await expect(page.locator("#install .install-tab", { hasText: "GitHub Copilot" })).toBeVisible();
+  await expect(page.locator("#install .cmd pre").first()).toContainText("marketplace add");
 });
 
 test("a plugin card is clickable across its body, navigating to the plugin page (SITE-HUB-06)", async ({ page }) => {
@@ -119,7 +120,7 @@ test("a plugin card is clickable across its body, navigating to the plugin page 
 test("the card copy button and Learn more stay independently clickable over the card link (SITE-HUB-06)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
-  await card.locator(".copy-btn").click();
+  await card.locator(".copy-btn").first().click();
   await expect(page).toHaveURL(/\/$/);
 });
 
@@ -130,7 +131,7 @@ test("the plugin card body shows a pointer cursor so it reads as clickable (SITE
   expect(await card.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
   expect(await card.locator(".desc").evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
   // The install command block stays a text surface (it does not navigate), not a pointer.
-  expect(await card.locator(".cmd").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("pointer");
+  expect(await card.locator(".cmd").first().evaluate((el) => getComputedStyle(el).cursor)).not.toBe("pointer");
 });
 
 test("the auto-updater card navigates to its plugin page (SITE-HUB-06)", async ({ page }) => {
@@ -578,6 +579,79 @@ test("install command copy button copies the command and shows feedback", async 
   expect(clip).toBe(command);
 });
 
+test("the hub install block tabs between Copilot and Claude commands (SITE-INSTALL-01)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const block = page.locator("#install .install-tabs");
+  await expect(block).toHaveCount(1);
+  const copilotTab = block.locator(".install-tab", { hasText: "GitHub Copilot" });
+  const claudeTab = block.locator(".install-tab", { hasText: "Claude Code" });
+  await expect(copilotTab).toHaveAttribute("aria-selected", "true");
+  const copilotPanel = block.locator(".install-panel", { hasText: "copilot plugin marketplace add" });
+  const claudePanel = block.locator(".install-panel", { hasText: "claude plugin marketplace add" });
+  await expect(copilotPanel).toBeVisible();
+  await expect(claudePanel).toBeHidden();
+  // The inactive panel is removed from the a11y tree via the hidden attribute (not just CSS).
+  await expect(claudePanel).toHaveAttribute("hidden", "");
+  await expect(copilotPanel).not.toHaveAttribute("hidden", "");
+  await claudeTab.click();
+  await expect(claudeTab).toHaveAttribute("aria-selected", "true");
+  await expect(copilotTab).toHaveAttribute("aria-selected", "false");
+  await expect(claudePanel).toBeVisible();
+  await expect(copilotPanel).toBeHidden();
+  await expect(copilotPanel).toHaveAttribute("hidden", "");
+  await expect(claudePanel).not.toHaveAttribute("hidden", "");
+});
+
+test("the commentable-html install splits marketplace and plugin into copyable rows per agent (SITE-INSTALL-02)", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const block = page.locator("#install .install-tabs");
+  const copilotPanel = block.locator(".install-panel").first();
+  // Two labelled rows (marketplace, plugin), each with its own copy button.
+  await expect(copilotPanel.locator(".install-label")).toHaveText(["Install marketplace", "Install plugin"]);
+  await expect(copilotPanel.locator(".install-row .copy-btn")).toHaveCount(2);
+  const pluginRow = copilotPanel.locator(".install-row", { hasText: "Install plugin" });
+  const btn = pluginRow.locator(".copy-btn");
+  const command = await btn.getAttribute("data-copy");
+  expect(command).toBe("copilot plugin install commentable-html@urikan-ai-marketplace");
+  await btn.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
+  // The Claude tab exposes the claude plugin-install command for the same plugin.
+  await block.locator(".install-tab", { hasText: "Claude Code" }).click();
+  await expect(page.locator("#install")).toContainText("claude plugin install commentable-html@urikan-ai-marketplace");
+});
+
+test("install tabs support arrow-key navigation (SITE-INSTALL-03)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const block = page.locator("#install .install-tabs");
+  const copilotTab = block.locator(".install-tab", { hasText: "GitHub Copilot" });
+  const claudeTab = block.locator(".install-tab", { hasText: "Claude Code" });
+  await copilotTab.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(claudeTab).toHaveAttribute("aria-selected", "true");
+  await expect(claudeTab).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(copilotTab).toHaveAttribute("aria-selected", "true");
+  await expect(copilotTab).toBeFocused();
+  // Home/End jump to the first/last tab.
+  await page.keyboard.press("End");
+  await expect(claudeTab).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Home");
+  await expect(copilotTab).toHaveAttribute("aria-selected", "true");
+});
+
+test("the pages state dual-agent invocation from each agent's CLI and Desktop app (SITE-DUAL-01)", async ({ page }) => {
+  // Hub: the hero lead names both agents and the CLI+Desktop invocation.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".hero .lead")).toContainText("CLI and Desktop app");
+  await expect(page.locator(".hero .lead")).toContainText("Claude Code");
+  await expect(page.locator("#install .install-tab", { hasText: "Claude Code" })).toBeVisible();
+  // Plugin page: the install section states it and names both agents.
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#install .section-sub")).toContainText("CLI and Desktop app");
+  await expect(page.locator("#install .section-sub")).toContainText("Claude Code");
+});
+
 test("copy failure gives a platform-neutral manual hint", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -613,7 +687,7 @@ test("plugin card keeps keyboard links plus the stretched overlay and independen
   await expect(learn).toHaveAttribute("href", "./commentable-html/");
   const descInLink = await card.locator(".desc").evaluate((el) => !!el.closest("a"));
   expect(descInLink, "description must not be inside a card-wide link").toBe(false);
-  await expect(card.locator(".copy-btn")).toBeVisible();
+  await expect(card.locator(".copy-btn").first()).toBeVisible();
   await expect(card.locator(".foot a.btn:not(.learn-more)")).toHaveCount(1);
   await titleLink.click();
   await expect(page).toHaveURL(/\/commentable-html\/$/);
@@ -866,10 +940,14 @@ test("the auto-updater page renders its pitch: hero logo, version badge, feature
   await expect(logo).toHaveCount(1);
   await expect(logo).toHaveAttribute("alt", /auto-updater/i);
   await expect(page.locator(".hero .badge.version")).toHaveText(/^v\d+\.\d+\.\d+$/);
-  // A full pitch: at least four feature cards and the two-line install command.
+  // A full pitch: at least four feature cards and the split marketplace + plugin install rows.
   expect(await page.locator("#features .card.feature").count()).toBeGreaterThanOrEqual(4);
-  await expect(page.locator("#install .cmd pre")).toContainText(
-    "copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
+  await expect(page.locator("#install .cmd pre", {
+    hasText: "copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace",
+  })).toHaveCount(1);
+  // The auto-updater is Copilot-only (Claude support is tracked separately), so no Claude tab.
+  await expect(page.locator("#install .install-tab")).toHaveCount(0);
+  await expect(page.locator("#install")).not.toContainText("claude plugin");
 });
 
 test("the auto-updater page keeps the user on the page and links back to the marketplace (SITE-UPDATER-05)", async ({ page }) => {
@@ -1210,7 +1288,7 @@ test("the commentable-html plugin and tutorial pages use a dedicated branded soc
 test("the hub H1 reads as continuous text with correct word spacing", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const text = (await page.locator("h1").first().textContent()).replace(/\s+/g, " ").trim();
-  expect(text).toBe("A marketplace of AI plugins for the Copilot CLI");
+  expect(text).toBe("A marketplace of AI plugins for Claude Code and Copilot");
 });
 
 test("plugin card text can be selected without navigation and plain body clicks still navigate (SITE-HUB-08)", async ({ page }) => {

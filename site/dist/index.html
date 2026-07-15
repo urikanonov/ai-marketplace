@@ -5,24 +5,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://buttons.github.io; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; frame-src 'self' https://buttons.github.io; base-uri 'self'; form-action 'self'" />
-  <title>ai-marketplace - AI plugins for the GitHub Copilot CLI</title>
-  <meta name="description" content="A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name." />
+  <title>ai-marketplace - AI plugins for Claude Code and the GitHub Copilot CLI</title>
+  <meta name="description" content="A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name, and invoke them from each agent's CLI and Desktop app." />
   <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="ai-marketplace" />
-  <meta property="og:title" content="ai-marketplace - AI plugins for the GitHub Copilot CLI" />
-  <meta property="og:description" content="A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name." />
+  <meta property="og:title" content="ai-marketplace - AI plugins for Claude Code and the GitHub Copilot CLI" />
+  <meta property="og:description" content="A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name, and invoke them from each agent's CLI and Desktop app." />
   <meta property="og:url" content="https://urikanonov.github.io/ai-marketplace/" />
   <meta property="og:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="ai-marketplace - AI plugins for the GitHub Copilot CLI" />
+  <meta property="og:image:alt" content="ai-marketplace - AI plugins for Claude Code and the GitHub Copilot CLI" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="ai-marketplace - AI plugins for the GitHub Copilot CLI" />
-  <meta name="twitter:description" content="Install reusable Copilot CLI skills, session hooks, and MCP servers by name." />
+  <meta name="twitter:title" content="ai-marketplace - AI plugins for Claude Code and the GitHub Copilot CLI" />
+  <meta name="twitter:description" content="Install reusable skills, session hooks, and MCP servers by name in Claude Code or the GitHub Copilot CLI." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
-  <link rel="stylesheet" href="assets/styles.css?v=e0747cfda2d7" />
+  <link rel="stylesheet" href="assets/styles.css?v=6fdfde742a28" />
   <!-- BEGIN:jsonld -->
   <script type="application/ld+json">
   {
@@ -33,7 +33,7 @@
         "@id": "https://urikanonov.github.io/ai-marketplace/#website",
         "url": "https://urikanonov.github.io/ai-marketplace/",
         "name": "ai-marketplace",
-        "description": "A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name.",
+        "description": "A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name.",
         "author": {
           "@id": "https://urikanonov.github.io/ai-marketplace/#person"
         }
@@ -59,7 +59,7 @@
               "@type": "SoftwareApplication",
               "name": "commentable-html",
               "applicationCategory": "DeveloperApplication",
-              "operatingSystem": "Cross-platform (GitHub Copilot CLI)",
+              "operatingSystem": "Cross-platform (Claude Code, GitHub Copilot CLI)",
               "offers": {
                 "@type": "Offer",
                 "price": "0",
@@ -113,9 +113,9 @@
   <main id="main">
     <header class="hero">
       <div class="wrap">
-        <span class="eyebrow">GitHub Copilot CLI</span>
-        <h1>A marketplace of <span class="accent">AI plugins</span> <br />for the Copilot CLI</h1>
-        <p class="lead">Install reusable skills, session hooks, and MCP servers by name. One command adds the marketplace; another installs any plugin.</p>
+        <span class="eyebrow">Claude Code + GitHub Copilot CLI</span>
+        <h1>A marketplace of <span class="accent">AI plugins</span> <br />for Claude Code and Copilot</h1>
+        <p class="lead">Install reusable skills, session hooks, and MCP servers by name in both Claude Code and the GitHub Copilot CLI, then invoke them from each agent's CLI and Desktop app. One command adds the marketplace; another installs any plugin.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#plugins">Browse plugins</a>
           <span class="gh-star">
@@ -128,12 +128,39 @@
     <section id="install">
       <div class="wrap">
         <h2 class="section-title">Add the marketplace</h2>
-        <p class="section-sub">Run this once in the Copilot CLI. Then install any plugin below.</p>
-        <div class="cmd">
-          <span class="prompt">$</span>
-          <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
-          <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
-        </div>
+        <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI. Pick your agent, run this once, then install any plugin below.</p>
+        <!-- BEGIN:install -->
+        <div class="install-block install-tabs" data-install-tabs>
+              <div class="install-tablist" role="tablist" aria-label="Install with">
+                <button class="install-tab" role="tab" type="button" id="install-hub-copilot-tab" data-install-target="install-hub-copilot" aria-selected="true" aria-controls="install-hub-copilot" tabindex="0">GitHub Copilot</button>
+                <button class="install-tab" role="tab" type="button" id="install-hub-claude-tab" data-install-target="install-hub-claude" aria-selected="false" aria-controls="install-hub-claude" tabindex="-1">Claude Code</button>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-hub-copilot" aria-labelledby="install-hub-copilot-tab">
+                <div class="install-row">
+                  <div class="install-cmd">
+                    <span class="install-label">Install marketplace</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-hub-claude" aria-labelledby="install-hub-claude-tab" hidden>
+                <div class="install-row">
+                  <div class="install-cmd">
+                    <span class="install-label">Install marketplace</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+        <!-- END:install -->
       </div>
     </section>
 
@@ -146,15 +173,66 @@
           <article class="card plugin-card">
             <div class="head">
               <span class="name"><a href="./commentable-html/">commentable-html</a></span>
-              <span class="badge version">v1.74.0</span>
+              <span class="badge version">v1.77.0</span>
               <span class="badge">planning and analysis</span>
             </div>
             <p class="desc">Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.</p>
             <div class="keywords"><span class="chip">commentable</span><span class="chip">cmh</span><span class="chip">html</span><span class="chip">code-review</span><span class="chip">comments</span><span class="chip">documentation</span><span class="chip">kusto</span><span class="chip">charts</span><span class="chip">analysis</span><span class="chip">plan</span><span class="chip">report</span></div>
-            <div class="cmd">
-              <span class="prompt">$</span>
-              <pre>copilot plugin install commentable-html@urikan-ai-marketplace</pre>
-              <button class="copy-btn" type="button" data-copy="copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
+            <div class="install">
+              <div class="install-block install-tabs" data-install-tabs>
+                <div class="install-tablist" role="tablist" aria-label="Install with">
+                  <button class="install-tab" role="tab" type="button" id="install-card-commentable-html-copilot-tab" data-install-target="install-card-commentable-html-copilot" aria-selected="true" aria-controls="install-card-commentable-html-copilot" tabindex="0">GitHub Copilot</button>
+                  <button class="install-tab" role="tab" type="button" id="install-card-commentable-html-claude-tab" data-install-target="install-card-commentable-html-claude" aria-selected="false" aria-controls="install-card-commentable-html-claude" tabindex="-1">Claude Code</button>
+                </div>
+                <div class="install-panel" role="tabpanel" id="install-card-commentable-html-copilot" aria-labelledby="install-card-commentable-html-copilot-tab">
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">1</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install marketplace</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">2</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install plugin</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin install commentable-html@urikan-ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="install-panel" role="tabpanel" id="install-card-commentable-html-claude" aria-labelledby="install-card-commentable-html-claude-tab" hidden>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">1</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install marketplace</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">2</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install plugin</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>claude plugin install commentable-html@urikan-ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="claude plugin install commentable-html@urikan-ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="foot"><a class="btn learn-more" href="./commentable-html/">Learn more</a><a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/pkg">Source</a></div>
           </article>
@@ -166,10 +244,31 @@
             </div>
             <p class="desc">Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.</p>
             <div class="keywords"><span class="chip">auto-update</span><span class="chip">marketplace</span><span class="chip">hooks</span><span class="chip">session-start</span></div>
-            <div class="cmd">
-              <span class="prompt">$</span>
-              <pre>copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</pre>
-              <button class="copy-btn" type="button" data-copy="copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace">copy</button>
+            <div class="install">
+              <div class="install-block install-solo">
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">1</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install marketplace</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">2</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install plugin</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
             </div>
             <div class="foot"><a class="btn learn-more" href="./urikan-ai-marketplace-auto-updater/">Learn more</a><a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">Source</a></div>
           </article>
@@ -185,7 +284,7 @@
         <div class="steps">
           <div class="step">
             <h3>Add the marketplace</h3>
-            <p>Point the Copilot CLI at this repository with a single command.</p>
+            <p>Point Claude Code or the GitHub Copilot CLI at this repository with a single command.</p>
           </div>
           <div class="step">
             <h3>Install a plugin</h3>
@@ -193,7 +292,7 @@
           </div>
           <div class="step">
             <h3>Use it</h3>
-            <p>The skill loads on demand inside the CLI. Updates arrive from the marketplace.</p>
+            <p>The skill loads on demand and is invokable from each agent's CLI and Desktop app. Updates arrive from the marketplace.</p>
           </div>
         </div>
       </div>
@@ -208,6 +307,6 @@
   </footer>
 
   <script async defer src="https://buttons.github.io/buttons.js"></script>
-  <script src="assets/site.js?v=502eb12862ac"></script>
+  <script src="assets/site.js?v=0a271f72308e"></script>
 </body>
 </html>

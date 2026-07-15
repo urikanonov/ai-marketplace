@@ -159,6 +159,23 @@ class BuildTests(unittest.TestCase):
         self.assertIn("**Version:** `%s`" % v, stamps[skill])
         self.assertIn("**Version:** `%s`" % v, stamps[readme])
 
+    def test_source_stamps_include_claude_manifests(self):
+        # CMH-TOOL-06: the Claude Code manifests mirror the Copilot ones, so build stamps their
+        # version too - otherwise a version bump leaves the Claude plugin.json behind and the
+        # claude-manifest/version-bump guards fail on the next release.
+        v = build.read_version()
+        stamps = build.source_stamps(v, build.ASSETS, ROOT)
+        claude_pj = [p for p in stamps
+                     if p.replace("\\", "/").endswith(".claude-plugin/plugin.json")]
+        claude_mkt = [p for p in stamps
+                      if p.replace("\\", "/").endswith(".claude-plugin/marketplace.json")]
+        # Present in this repo layout; assert they are stamped when present.
+        for p in claude_pj + claude_mkt:
+            self.assertIn('"version": "%s"' % v, stamps[p],
+                          "%s not stamped to %s" % (p, v))
+        self.assertTrue(claude_pj, "Claude plugin.json was not stamped by build")
+        self.assertTrue(claude_mkt, "Claude marketplace.json was not stamped by build")
+
     def test_mermaid_version_is_single_sourced(self):
         mv = build.read_mermaid_version()
         self.assertRegex(mv, r"^\d+\.\d+\.\d+$")
