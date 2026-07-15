@@ -200,16 +200,21 @@ test("the comparison table's Markdown-file verdict reads 'OK / need viewer' (SIT
 });
 
 test("the comparison table breaks a bit out of the section padding for more width (SITE-WHY-09)", async ({ page }) => {
-  await page.setViewportSize({ width: 1000, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const table = page.locator("table.compare");
   const intro = page.locator(".why-mediums > p").first();
+  // Desktop/tablet: the table pulls into the section-block side padding by a meaningful amount (the
+  // -16px rule), so it is wider than the prose column on both sides - not just a decorative 1px.
+  await page.setViewportSize({ width: 1000, height: 900 });
   const t = await table.boundingBox();
   const p = await intro.boundingBox();
-  // The table pulls into the section-block side padding so it is wider than the prose column:
-  // its left edge sits left of the paragraph and its right edge sits right of it.
-  expect(t.x).toBeLessThan(p.x);
-  expect(t.x + t.width).toBeGreaterThan(p.x + p.width);
+  expect(p.x - t.x).toBeGreaterThanOrEqual(12);
+  expect((t.x + t.width) - (p.x + p.width)).toBeGreaterThanOrEqual(12);
+  // Mobile: the pull-out is scoped to min-width:641px, so the stacked card layout is not pulled out.
+  await page.setViewportSize({ width: 380, height: 900 });
+  const tm = await table.boundingBox();
+  const pm = await intro.boundingBox();
+  expect(tm.x).toBeGreaterThanOrEqual(pm.x - 1);
 });
 
 test("mobile comparison cards color only the verdicts and show a good/total score (SITE-WHY-05)", async ({ page }) => {
@@ -1084,10 +1089,13 @@ test("tutorial brand keeps the user in the commentable-html section", async ({ p
 test("the tutorial page footer matches the commentable-html footer links (SITE-TUT-06)", async ({ page }) => {
   await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
   const footer = page.locator("footer.footer");
-  await expect(footer.getByRole("link", { name: "Contribute", exact: true })).toHaveCount(1);
-  await expect(footer.getByRole("link", { name: "Request a feature", exact: true })).toHaveCount(1);
-  await expect(footer.getByRole("link", { name: "File an issue", exact: true })).toHaveCount(1);
-  await expect(footer.getByRole("link", { name: "Plugin source", exact: true })).toHaveCount(1);
+  const link = (name) => footer.getByRole("link", { name, exact: true });
+  // Assert the exact hrefs (not just the link text) so a wrong repo/plugin target or a root-relative
+  // regression is caught; these must match the commentable-html page footer.
+  await expect(link("Contribute")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md");
+  await expect(link("Request a feature")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml");
+  await expect(link("File an issue")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/issues/new/choose");
+  await expect(link("Plugin source")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html");
 });
 
 test("tutorial example links open the live demo, not a GitHub blob", async ({ page }) => {
