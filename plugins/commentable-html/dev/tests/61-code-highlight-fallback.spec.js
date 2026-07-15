@@ -34,6 +34,28 @@ test.describe("runtime code-highlight fallback (CMH-HL-01)", () => {
     await expect(txt.locator("span.cmh-code-str, span.cmh-code-num, span.cmh-code-op, span.cmh-code-com")).toHaveCount(0);
   });
 
+  test("an unbaked language-html and language-xml block is highlighted on load (markup family) (CMH-HL-01)", async ({ page }) => {
+    await open(page,
+      "<h1>Markup</h1>"
+      + '<pre><code class="language-html">&lt;div class="cmh-note" id="x"&gt;&lt;!-- c --&gt;hi&lt;/div&gt;</code></pre>'
+      + '<pre><code class="language-xml">&lt;item name="a"&gt;&lt;!-- x --&gt;&lt;/item&gt;</code></pre>',
+      "cmh-hl-fallback-markup");
+
+    // HTML: tag name -> keyword, attribute value -> string, <!-- --> -> comment.
+    const htmlCode = page.locator("#commentRoot pre code.language-html");
+    await expect(htmlCode.locator('span.cmh-code-kw', { hasText: "div" }).first()).toBeVisible();
+    await expect(htmlCode.locator("span.cmh-code-str").first()).toBeVisible();
+    await expect(htmlCode.locator("span.cmh-code-com").first()).toBeVisible();
+    // Highlighting must not change the block's text.
+    expect((await htmlCode.textContent())).toContain('<div class="cmh-note" id="x">');
+
+    // XML gets the same markup treatment.
+    const xmlCode = page.locator("#commentRoot pre code.language-xml");
+    await expect(xmlCode.locator('span.cmh-code-kw', { hasText: "item" }).first()).toBeVisible();
+    await expect(xmlCode.locator("span.cmh-code-str").first()).toBeVisible();
+    await expect(xmlCode.locator("span.cmh-code-com").first()).toBeVisible();
+  });
+
   test("an already-highlighted (baked) block is not re-highlighted", async ({ page }) => {
     await open(page,
       "<h1>Baked</h1>"

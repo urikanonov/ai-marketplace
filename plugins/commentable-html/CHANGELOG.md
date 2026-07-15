@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.62.0] - 2026-07-15
+
+### Fixed
+
+- Raw `language-html` and `language-xml` code blocks that shipped without baked highlighting now
+  self-highlight at runtime like every other supported language. The runtime fallback tokenizer only
+  fired for languages it knew, and the markup family (html/xml) was missing from that set, so an
+  unbaked markup block rendered as plain monochrome text (css/js blocks already self-healed). The
+  runtime now colors tag names, attribute-value strings, and `<!-- -->` comments for markup.
+
+### Added
+
+- A drift guard test asserts the runtime tokenizer knows every language the author-time highlighter
+  supports, so a supported language can never again ship without runtime highlighting.
+
 ## [1.61.0] - 2026-07-15
 
 ### Changed

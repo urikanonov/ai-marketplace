@@ -274,6 +274,15 @@ class ValidateUnitTests(unittest.TestCase):
         doc = self._doc_with_code('<pre><code class="language-cs">var x = 1;</code></pre>')
         self.assertWarn(doc, "is not syntax-highlighted")
 
+    def test_unhighlighted_markup_language_code_block_warns(self):
+        # CMH-VAL-11: markup (html/xml) is a highlightable language, so a raw language-html/xml
+        # block with no cmh-code-* spans must be flagged - this is exactly the notes-feature-plan.html
+        # defect (a language-html block shipped without baked highlighting).
+        for lang in ("html", "xml"):
+            doc = self._doc_with_code(
+                '<pre><code class="language-%s">&lt;div class="x"&gt;hi&lt;/div&gt;</code></pre>' % lang)
+            self.assertWarn(doc, "is not syntax-highlighted")
+
     def test_highlighted_code_block_is_clean(self):
         doc = self._doc_with_code(
             '<pre><code class="language-python">'
