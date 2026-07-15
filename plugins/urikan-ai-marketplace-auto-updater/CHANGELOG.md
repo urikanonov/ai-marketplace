@@ -4,6 +4,22 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-15
+
+### Added
+
+- Claude Code support: the plugin now ships a `.claude-plugin/plugin.json` and a Claude-format
+  `hooks/hooks.json` (a `SessionStart` matcher group), so it installs AND auto-updates under Claude
+  Code as well as the GitHub Copilot CLI, and it is listed in the repo-root
+  `.claude-plugin/marketplace.json`. The single `hooks/marketplace-update.ps1` is now agent-aware via
+  a `-Agent copilot|claude` switch: under Claude it reads `~/.claude/settings.json` `enabledPlugins`
+  and runs `claude plugin update`, throttling and logging under `~/.claude/plugin-data`. (UPD-09,
+  UPD-10, UPD-11)
+- On-demand manual update: a bundled `marketplace-update` skill (agent-agnostic) lets you force an
+  update in free text - for example "update cmh", "update commentable html", "update the marketplace
+  plugins", or "force update" - and the agent runs the plugin update for the current CLI without
+  waiting for the throttled session-start pass. (UPD-12)
+
 ## [1.1.0] - 2026-07-15
 
 ### Changed

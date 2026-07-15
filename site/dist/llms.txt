@@ -6,7 +6,7 @@ This marketplace works with both Claude Code and the GitHub Copilot CLI, and its
 
 ## Plugins
 - [commentable-html](https://urikanonov.github.io/ai-marketplace/commentable-html/) (Claude Code and the GitHub Copilot CLI): Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.
-- [urikan-ai-marketplace-auto-updater](https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/) (the GitHub Copilot CLI): Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.
+- [urikan-ai-marketplace-auto-updater](https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/) (Claude Code and the GitHub Copilot CLI): Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.
 
 ## Documentation
 - [Commentable HTML tutorial](https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/)

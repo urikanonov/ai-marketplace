@@ -67,6 +67,43 @@ function Get-Throttle([string]$copilotHome) {
     return Join-Path (Join-Path $copilotHome "plugin-data") "$self.last-run"
 }
 
+# --- Claude-branch helpers (Agent=claude reads settings.json enabledPlugins under CLAUDE_CONFIG_DIR) ---
+
+function New-ClaudeSandbox([hashtable]$enabledPlugins) {
+    $root = Join-Path ([IO.Path]::GetTempPath()) ("cl-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
+    (@{ enabledPlugins = $enabledPlugins } | ConvertTo-Json -Depth 5) |
+        Set-Content -Path (Join-Path $root "settings.json") -Encoding utf8
+    return $root
+}
+
+function Reset-ClaudeMock {
+    $global:ClaudeCalls = @()
+    Set-Item -Path Function:global:claude -Value {
+        $global:ClaudeCalls += , ([string]::Join(" ", $args))
+        $global:LASTEXITCODE = 0
+        Write-Output ("updated " + ($args | Select-Object -Last 1))
+    }
+}
+
+function Invoke-ClaudeHook([string]$claudeHome) {
+    $savedPath = $env:PATH
+    $savedHome = $env:CLAUDE_CONFIG_DIR
+    try {
+        $env:PATH = ""
+        $env:CLAUDE_CONFIG_DIR = $claudeHome
+        & $hookScript -Agent claude
+    } finally {
+        $env:PATH = $savedPath
+        if ($null -eq $savedHome) { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue } else { $env:CLAUDE_CONFIG_DIR = $savedHome }
+    }
+}
+
+function Get-ClaudeLog([string]$claudeHome) {
+    $log = Join-Path (Join-Path $claudeHome "plugin-data") "$self.log"
+    if (Test-Path $log) { return (Get-Content -Path $log -Raw) } else { return "" }
+}
+
 Write-Host "== UPD-01 self-exclusion =="
 try {
     Reset-Mock
@@ -199,7 +236,74 @@ try {
     Remove-Item -Recurse -Force $home8, $home8b
 } catch { $script:failures += "UPD-08 threw: $_" }
 
+Write-Host "== UPD-09 Claude enumerates enabledPlugins and excludes self =="
+try {
+    Reset-ClaudeMock
+    $c9 = New-ClaudeSandbox @{ "commentable-html@$marketplace" = $true; "$self@$marketplace" = $true }
+    Invoke-ClaudeHook $c9
+    Assert-True (($global:ClaudeCalls -join "|") -like "*commentable-html@$marketplace*") "UPD-09: commentable-html updated under Claude"
+    Assert-True (-not (($global:ClaudeCalls -join "|") -like "*$self@*")) "UPD-09: self excluded under Claude"
+    Assert-True ($global:ClaudeCalls.Count -eq 1) "UPD-09: exactly one Claude update (self skipped)"
+    Remove-Item -Recurse -Force $c9
+} catch { $script:failures += "UPD-09 threw: $_" }
+
+Write-Host "== UPD-10 Claude skips disabled and other-marketplace plugins =="
+try {
+    Reset-ClaudeMock
+    $c10 = New-ClaudeSandbox @{ "commentable-html@$marketplace" = $true; "beta@$marketplace" = $false; "other@some-other-marketplace" = $true }
+    Invoke-ClaudeHook $c10
+    $joined = ($global:ClaudeCalls -join "|")
+    Assert-True ($joined -like "*commentable-html@$marketplace*") "UPD-10: enabled marketplace plugin updated"
+    Assert-True (-not ($joined -like "*beta@*")) "UPD-10: disabled plugin skipped"
+    Assert-True (-not ($joined -like "*other@*")) "UPD-10: other-marketplace plugin skipped"
+    Assert-True ($global:ClaudeCalls.Count -eq 1) "UPD-10: exactly one update"
+    Remove-Item -Recurse -Force $c10
+} catch { $script:failures += "UPD-10 threw: $_" }
+
+Write-Host "== UPD-11 Claude SessionStart hook config =="
+try {
+    $claudeHooks = Join-Path (Join-Path $pkgRoot "hooks") "hooks.json"
+    Assert-True (Test-Path $claudeHooks) "UPD-11: Claude hooks/hooks.json ships"
+    $ch = Get-Content -Path $claudeHooks -Raw | ConvertFrom-Json
+    Assert-True ($null -ne $ch.hooks.SessionStart) "UPD-11: Claude hooks declares a SessionStart event"
+    $raw = Get-Content -Path $claudeHooks -Raw
+    Assert-True ($raw -like "*-Agent*claude*") "UPD-11: Claude hook invokes the shared script with -Agent claude"
+    Assert-True ($raw -like "*`${CLAUDE_PLUGIN_ROOT}*") "UPD-11: Claude hook uses the CLAUDE_PLUGIN_ROOT placeholder"
+    Assert-True ($raw -like "*marketplace-update.ps1*") "UPD-11: Claude hook runs the shared marketplace-update.ps1"
+} catch { $script:failures += "UPD-11 threw: $_" }
+
+Write-Host "== UPD-12 on-demand manual-update skill =="
+try {
+    $skillMd = Join-Path (Join-Path (Join-Path $pkgRoot "skills") "marketplace-update") "SKILL.md"
+    Assert-True (Test-Path $skillMd) "UPD-12: marketplace-update SKILL.md ships"
+    $skill = Get-Content -Path $skillMd -Raw
+    Assert-True ($skill -match "(?m)^name:\s*marketplace-update\s*$") "UPD-12: SKILL.md front matter name is marketplace-update"
+    Assert-True ($skill -match "(?m)^description:\s*\S") "UPD-12: SKILL.md front matter has a non-empty description"
+    Assert-True ($skill -like "*update cmh*") "UPD-12: skill triggers on the 'update cmh' phrasing"
+    Assert-True ($skill -like "*plugin update*") "UPD-12: skill instructs running the plugin update command"
+} catch { $script:failures += "UPD-12 threw: $_" }
+
+Write-Host "== UPD-13 Claude throttle and empty/missing config are no-ops =="
+try {
+    Reset-ClaudeMock
+    $c13 = New-ClaudeSandbox @{ "commentable-html@$marketplace" = $true }
+    $stamp = Join-Path (Join-Path $c13 "plugin-data") "$self.claude.last-run"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stamp) | Out-Null
+    ([datetimeoffset]::Now).ToString("o") | Set-Content -Path $stamp -Encoding utf8
+    Invoke-ClaudeHook $c13
+    Assert-True ($global:ClaudeCalls.Count -eq 0) "UPD-13: recent Claude stamp throttles the pass"
+    Assert-True ((Get-ClaudeLog $c13) -like "*skipping auto-update*") "UPD-13: Claude throttle is logged"
+    Remove-Item -Recurse -Force $c13
+
+    Reset-ClaudeMock
+    $c13b = New-ClaudeSandbox @{ "other@some-other-marketplace" = $true }
+    Invoke-ClaudeHook $c13b
+    Assert-True ($global:ClaudeCalls.Count -eq 0) "UPD-13: no enabled marketplace plugins is a clean no-op"
+    Remove-Item -Recurse -Force $c13b
+} catch { $script:failures += "UPD-13 threw: $_" }
+
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
+Remove-Item Function:claude -ErrorAction SilentlyContinue
 
 Write-Host ""
 if ($script:failures.Count -gt 0) {
