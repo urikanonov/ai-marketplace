@@ -68,7 +68,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class
    because .cm-card sets display:flex, which would otherwise win over the UA [hidden] rule. */
-.head-search { display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem clamp(0.75rem, 3vw, 1.1rem) 0.5rem; }
+.head-search { display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem 0.35rem 0.5rem; }
 .head-search[hidden] { display: none; }
 .cm-search-ico { flex: none; color: var(--cp-text-soft); }
 .cm-search-input {
@@ -83,7 +83,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-search-clear:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 .cm-search-clear[hidden] { display: none; }
-.cm-search-count { flex: none; font-size: 0.68rem; color: var(--cp-text-soft); min-width: 2.6rem; text-align: right; font-variant-numeric: tabular-nums; }
+.cm-search-count { flex: none; font-size: 0.68rem; color: var(--cp-text-soft); min-width: 2.2rem; text-align: right; font-variant-numeric: tabular-nums; }
 .cm-search-count[hidden] { display: none; }
 .cm-card.cm-hidden { display: none !important; }
 .cm-search-empty[hidden] { display: none; }

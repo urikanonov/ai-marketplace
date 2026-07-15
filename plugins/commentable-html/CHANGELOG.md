@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.61.0] - 2026-07-15
+
+### Changed
+
+- The comments panel can no longer be dragged so narrow that its controls clip. The resize floor
+  is now 256px (was 192px on wide screens and 144px on narrow), the empirically measured minimum at
+  which the two-per-row export button labels (`Portable`, `Offline`, `Markdown`, `Plain HTML`) and
+  the `Search comments` placeholder stay fully legible; the CSS `min-width` floor matches so the pane
+  never renders narrower.
+- Widened the comment search field by trimming its side padding and the shown/total count reserve, so
+  the full `Search comments` placeholder fits even at the minimum panel width.
+
 ## [1.60.0] - 2026-07-15
 
 ### Fixed
