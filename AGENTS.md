@@ -27,7 +27,8 @@ These rules are the ones most often forgotten. They are a MUST on every change, 
    that is not tracked by a backlog task, NEVER create a task in the primary tree, and capture any follow-up
    or newly discovered work as its own task the moment it comes up so nothing lives only in the chat
    session. Drive everything through the `backlog` CLI (run from the worktree); never hand-edit task files.
-   See "Backlog-first task tracking (Backlog.md)" for the workflow.
+   Backlog-item creation ships in its OWN pull request, separate from the implementation PR (see
+   "Backlog-first task tracking (Backlog.md)" for the workflow).
 3. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
    covering automated test in the SAME pull request, and for bug fixes the test is written FIRST, run, and
    confirmed RED before the fix makes it green. A change whose test never failed on the old code is not
@@ -637,6 +638,14 @@ Every session, before acting:
 CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, create a task for it
 immediately (`backlog task create ...`) so it never lives only in the chat transcript. That is the whole
 point of backlog-first - it is how work stops getting forgotten between sessions.
+
+**Backlog-item creation is its own PR, separate from the implementation PR.** Submit the task file(s) in a
+creation-only pull request FIRST and merge it, so the task is persisted on `main` and cannot be lost if the
+implementation is delayed or abandoned; then do the implementation in a SEPARATE PR that references the
+task. Batching several backlog-item creations into one creation PR is fine - and encouraged - because
+capturing a batch of tasks in a single small PR is exactly how they stop getting lost; just never bundle
+task creation with the code that implements it. A creation-only PR touches only `backlog/tasks/**` (plus any
+backlog docs/decisions), so it needs no version bump and no test and merges quickly.
 
 Never hand-edit task, draft, doc, decision, or milestone files; the CLI keeps metadata, ids, and history
 consistent. Use `--plain` for AI-readable output, and read `backlog instructions overview` (and
