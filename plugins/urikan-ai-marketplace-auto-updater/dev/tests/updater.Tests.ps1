@@ -302,6 +302,20 @@ try {
     Remove-Item -Recurse -Force $c13b
 } catch { $script:failures += "UPD-13 threw: $_" }
 
+Write-Host "== UPD-14 Claude plugin.json does not redundantly reference the standard hooks file =="
+try {
+    $claudePj = Join-Path (Join-Path $pkgRoot ".claude-plugin") "plugin.json"
+    Assert-True (Test-Path $claudePj) "UPD-14: .claude-plugin/plugin.json ships"
+    $pj = Get-Content -Path $claudePj -Raw | ConvertFrom-Json
+    $hooksField = $pj.PSObject.Properties['hooks']
+    # Claude Code auto-loads the standard hooks/hooks.json; a manifest reference to it causes a
+    # "Duplicate hooks file detected" load failure at install time. The field must be absent (or
+    # not point at that standard location).
+    $refsStandard = ($null -ne $hooksField) -and ($hooksField.Value -match 'hooks/hooks\.json')
+    Assert-True (-not $refsStandard) "UPD-14: Claude plugin.json must not reference the auto-loaded ./hooks/hooks.json"
+    Assert-True (Test-Path (Join-Path (Join-Path $pkgRoot "hooks") "hooks.json")) "UPD-14: the standard hooks/hooks.json still ships for auto-load"
+} catch { $script:failures += "UPD-14 threw: $_" }
+
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue
 

@@ -29,6 +29,7 @@ with stubbed `copilot` / `claude` commands, so no real updates and no network ca
 | UPD-11 | The plugin ships a Claude-format `hooks/hooks.json` (a `SessionStart` matcher group) that invokes the shared `marketplace-update.ps1` with `-Agent claude` via the `${CLAUDE_PLUGIN_ROOT}` placeholder, so the auto-update runs on Claude Code session start. | `updater.Tests.ps1` -> "UPD-11 Claude SessionStart hook config" |
 | UPD-12 | The plugin ships a bundled, agent-agnostic `marketplace-update` skill whose front matter names it and whose description triggers on on-demand update phrasings (e.g. "update cmh"), instructing the agent to run the plugin update command for the current CLI. | `updater.Tests.ps1` -> "UPD-12 on-demand manual-update skill" |
 | UPD-13 | Under `-Agent claude` a recent per-agent throttle stamp (`<self>.claude.last-run`) skips and logs the pass, and a config with no enabled `@urikan-ai-marketplace` plugins is a clean no-op (no crash, no update). | `updater.Tests.ps1` -> "UPD-13 Claude throttle and empty/missing config are no-ops" |
+| UPD-14 | The Claude `.claude-plugin/plugin.json` does NOT set a `hooks` field pointing at the standard `./hooks/hooks.json`, which Claude Code auto-loads - a redundant reference causes a "Duplicate hooks file detected" load failure at install time (which `claude plugin validate --strict` does not catch); the standard `hooks/hooks.json` still ships for auto-load. | `updater.Tests.ps1` -> "UPD-14 Claude plugin.json does not redundantly reference the standard hooks file" |
 
 ## Coverage gaps
 
