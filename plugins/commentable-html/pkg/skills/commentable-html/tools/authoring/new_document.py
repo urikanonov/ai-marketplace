@@ -588,6 +588,15 @@ def main(argv):
         except ImportError:
             pass  # degrade gracefully if the highlighter is unavailable
 
+    # Stamp the creation time so the runtime can tell a produced-but-never-validated document apart
+    # from one that was strict-validated (validate.py stamps commentable-html-validated on a clean
+    # pass). Use --generated when supplied so metadata stays deterministic.
+    try:
+        import doc_stamp
+        out_html = doc_stamp.stamp_created(out_html, when=args.generated)
+    except ImportError:
+        pass
+
     errors, warnings = _self_validate(out_html, base_dir=validate_base)
     if errors:
         sys.stderr.write("new_document: the generated document does not validate:\n")

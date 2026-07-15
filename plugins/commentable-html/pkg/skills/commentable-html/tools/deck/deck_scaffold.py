@@ -211,6 +211,14 @@ def main(argv=None):
     if not args.no_highlight and _highlight_document is not None:
         html, _ = _highlight_document.highlight_document(html)
 
+    # Stamp the creation time so the runtime can tell a produced-but-never-validated deck apart from
+    # a strict-validated one.
+    try:
+        import doc_stamp
+        html = doc_stamp.stamp_created(html, when=args.generated)
+    except ImportError:
+        pass
+
     problems = []
     warnings = []
     if _validate is not None:

@@ -150,10 +150,32 @@ class FinalizeTests(unittest.TestCase):
                     "def f():\n    return 1</code></pre></body></html>")
         self._write(path, original)
         with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
-            code, _out, err = self._run_main(["finalize.py", path, "--no-highlight"])
+            code, _out, err = self._run_main(["finalize.py", path, "--no-highlight", "--no-stamp"])
         self.assertEqual(code, 0, err)
         with open(path, "r", encoding="utf-8") as fh:
             self.assertEqual(fh.read(), original)  # unchanged
+
+    def test_stamps_validated_on_a_strict_clean_finalize(self):
+        # CMH-STAMP-02: a strict-clean finalize writes the commentable-html-validated stamp.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, "<html><head></head><body>x</body></html>")
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(["finalize.py", path])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertIn("commentable-html-validated", fh.read())
+
+    def test_no_stamp_flag_skips_the_validated_stamp(self):
+        # CMH-STAMP-02: --no-stamp keeps a finalize run from writing the validated stamp.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, "<html><head></head><body>x</body></html>")
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(["finalize.py", path, "--no-stamp"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertNotIn("commentable-html-validated", fh.read())
 
     def test_clean_template_finalizes_to_exit_zero(self):
         directory = self._tmpdir()

@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.66.0] - 2026-07-15
+
+### Added
+
+- Provenance stamps and a runtime fallback banner so a document that skipped validation is visible.
+  The document-producing tools stamp `commentable-html-created`, and `validate.py` / `finalize.py`
+  stamp `commentable-html-validated` only on a strict-clean pass (`--no-stamp` keeps a run read-only).
+  On load, the runtime shows a small dismissible amber banner when a document carries a created stamp
+  but no current validated stamp - a produced-but-never-strict-validated document. A strict-validated
+  document (and any document with no created stamp) shows nothing. This is a last-resort signal; the
+  skill MUST always finalize and strict-validate before handoff.
+
 ## [1.65.0] - 2026-07-15
 
 ### Added

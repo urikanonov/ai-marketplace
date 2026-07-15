@@ -31,6 +31,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `35-widgets.js` | CMH-WIDGET | Commentable widgets / SVG nodes; `widgetStateChanges` infra. |
 | `36-checklist.js` | CMH-CHECK | Layered checklist: four-state items, aggregation, minimal persistence, per-list state card, export bake. |
 | `37-notes.js` | CMH-NOTE | Editable notes fields: textarea upgrade, canonical delta persistence, per-note change card, single/multi-line toggle, export bake. |
+| `38-validation-banner.js` | CMH-STAMP | Unvalidated-document fallback banner: shown when a document carries a created stamp but no current validated stamp. |
 | `40-doc-comments.js` | CMH-DOCCMT | Document-wide comments. |
 | `41-selection.js` | CMH-SEL, CMH-CORE | Selection handling and the add-comment popup. |
 | `45-composer.js` | CMH-A11Y, CMH-CORE | Per-instance comment composer (parallel-safe). |
