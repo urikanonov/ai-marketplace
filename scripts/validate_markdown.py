@@ -409,8 +409,8 @@ def check_blank_after_heading(content):
             continue
         if HEADING_RE.match(line):
             nxt = lines[idx + 1] if idx + 1 < len(lines) else ""
-            # An HTML comment right after a heading is a structural marker, not prose (Backlog.md
-            # generates "## Section\n<!-- SECTION:...:BEGIN -->"), so it does not need a blank line.
+            # An HTML comment right after a heading is a structural/region marker, not prose, so it
+            # does not need a blank line before it.
             if nxt.strip() != "" and not nxt.lstrip().startswith("<!--"):
                 findings.append(Finding(
                     WARNING, idx + 1, "blank-heading",
