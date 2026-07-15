@@ -4,6 +4,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.60.0] - 2026-07-15
+
+### Fixed
+
+- Validator now warns when normal `<pre>` or `<pre><code>` blocks carry `cm-skip`, which would make their code content non-commentable.
+- Validator now rejects a live `#commentRoot` that still uses the documentation example key `my-doc`, while allowing the commented-out example.
+
 ## [1.59.0] - 2026-07-15
 
 ### Changed
