@@ -583,6 +583,46 @@ class LlmsTests(unittest.TestCase):
         self.assertIn("commentable-html/tutorial/)", text)
 
 
+class AutoUpdaterPageTests(unittest.TestCase):
+    """The auto-updater plugin has its own generated site page (SITE-UPDATER-01..04): its hub card
+    links to that page and the page is wired into the sitemap, llms.txt, and hub JSON-LD."""
+
+    UPDATER = "urikan-ai-marketplace-auto-updater"
+    PAGE = "./urikan-ai-marketplace-auto-updater/"
+
+    def _real_manifest(self):
+        with open(os.path.join(bsd.REPO_ROOT, ".github", "plugin", "marketplace.json"),
+                  encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def _jsonld_graph(self, script):
+        inner = script[script.index(">") + 1: script.rindex("</script>")]
+        return json.loads(inner)["@graph"]
+
+    def test_plugin_pages_includes_the_auto_updater(self):
+        self.assertEqual(bsd.PLUGIN_PAGES.get(self.UPDATER), self.PAGE)
+
+    def test_render_plugins_links_the_auto_updater_card_to_its_page(self):
+        out = bsd.render_plugins(self._real_manifest())
+        self.assertIn(
+            '<span class="name"><a href="%s">%s</a></span>' % (self.PAGE, self.UPDATER), out)
+        self.assertIn('<a class="btn learn-more" href="%s">Learn more</a>' % self.PAGE, out)
+
+    def test_sitemap_lists_the_auto_updater_page(self):
+        xml = bsd.render_sitemap(bsd.REPO_ROOT)
+        self.assertIn("<loc>%s%s/</loc>" % (bsd.SITE_BASE_URL, self.UPDATER), xml)
+
+    def test_llms_links_the_auto_updater_page(self):
+        text = bsd.render_llms(bsd.REPO_ROOT, self._real_manifest())
+        self.assertIn("[%s](%s%s/)" % (self.UPDATER, bsd.SITE_BASE_URL, self.UPDATER), text)
+
+    def test_jsonld_uses_the_auto_updater_site_page_url(self):
+        graph = self._jsonld_graph(bsd.render_jsonld(self._real_manifest()))
+        itemlist = next(n for n in graph if n["@type"] == "ItemList")
+        urls = {li["item"]["name"]: li["item"]["url"] for li in itemlist["itemListElement"]}
+        self.assertEqual(urls[self.UPDATER], bsd.SITE_BASE_URL + self.UPDATER + "/")
+
+
 class WriteOrCheckTests(unittest.TestCase):
     def test_writes_then_reports_drift_only_on_change(self):
         import shutil
@@ -800,6 +840,42 @@ class CheckDriftTests(unittest.TestCase):
         _os.remove(_os.path.join(root, bsd.PLUGIN_SRC))
         with self.assertRaises(SystemExit):
             bsd.main(["build_site_data.py", "--check", "--root", root])
+
+    def test_missing_required_auto_updater_page_source_errors_clearly(self):
+        # The auto-updater page is a REQUIRED page like the hub/plugin: removing its source must
+        # raise a clear SystemExit, not a bare traceback (SITE-UPDATER-01).
+        import os as _os
+        root = self._clone_repo()
+        _os.remove(_os.path.join(root, bsd.UPDATER_SRC))
+        with self.assertRaises(SystemExit):
+            bsd.main(["build_site_data.py", "--check", "--root", root])
+
+    def test_check_flags_a_hand_edited_built_auto_updater_page(self):
+        # The auto-updater page is a pure artifact built from its independent site/pages source, so a
+        # hand-edit to its static content must fail --check (SITE-UPDATER-01, same guard as the hub).
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        page = _os.path.join(root, bsd.UPDATER_OUT)
+        html = bsd.read_text(page)
+        with open(page, "w", encoding="utf-8", newline="") as fh:
+            fh.write(html.replace("</body>", "<p>HAND EDITED</p></body>", 1))
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+    def test_auto_updater_page_version_badge_matches_manifest(self):
+        # The hero version badge is filled from the manifest at build time (SITE-UPDATER-02), so it
+        # never drifts from the shipped plugin version.
+        import json as _json
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        with open(_os.path.join(root, ".github", "plugin", "marketplace.json"), encoding="utf-8") as fh:
+            manifest = _json.load(fh)
+        version = bsd.plugin_version(manifest, "urikan-ai-marketplace-auto-updater")
+        self.assertTrue(version)
+        html = bsd.read_text(_os.path.join(root, bsd.UPDATER_OUT))
+        self.assertIn("v" + version, html)
 
     def test_missing_manifest_errors_clearly(self):
         # A missing marketplace manifest must raise a clear SystemExit, not a raw FileNotFoundError.
