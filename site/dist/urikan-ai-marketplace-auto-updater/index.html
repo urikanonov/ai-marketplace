@@ -78,7 +78,7 @@
           <a class="btn" href="#how">How it works</a>
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">View source</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.2.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.2.1<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -203,6 +203,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.2.1] - 2026-07-15</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The plugin failed to load in Claude Code with &quot;Duplicate hooks file detected&quot; because <code>.claude-plugin/plugin.json</code> redundantly referenced <code>./hooks/hooks.json</code>, which Claude Code already auto-loads from the standard <code>hooks/hooks.json</code> location. Removed the redundant <code>hooks</code> manifest field so the plugin loads cleanly; <code>claude plugin validate --strict</code> accepted the manifest either way, so this was caught only by a real <code>claude plugin install</code>. (UPD-14)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.2.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -210,6 +217,8 @@
               <li>On-demand manual update: a bundled <code>marketplace-update</code> skill (agent-agnostic) lets you force an update in free text - for example &quot;update cmh&quot;, &quot;update commentable html&quot;, &quot;update the marketplace plugins&quot;, or &quot;force update&quot; - and the agent runs the plugin update for the current CLI without waiting for the throttled session-start pass. (UPD-12)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.1.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -217,8 +226,6 @@
               <li>Moved <code>CHANGELOG.md</code> out of the shipped <code>pkg/</code> to the plugin root so it is no longer distributed with the plugin, mirroring the <code>commentable-html</code> layout, and added a minimal root <code>README.md</code> describing the <code>pkg/</code> (shipped) and <code>dev/</code> (not shipped) split. The changelog is now also surfaced on the plugin&#x27;s website page.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 4 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.0.3] - 2026-07-12</h3></div>
             <div class="group-label">Fixed</div>

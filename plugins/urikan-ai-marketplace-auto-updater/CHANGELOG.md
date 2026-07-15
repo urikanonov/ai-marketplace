@@ -4,6 +4,16 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-07-15
+
+### Fixed
+
+- The plugin failed to load in Claude Code with "Duplicate hooks file detected" because
+  `.claude-plugin/plugin.json` redundantly referenced `./hooks/hooks.json`, which Claude Code already
+  auto-loads from the standard `hooks/hooks.json` location. Removed the redundant `hooks` manifest
+  field so the plugin loads cleanly; `claude plugin validate --strict` accepted the manifest either
+  way, so this was caught only by a real `claude plugin install`. (UPD-14)
+
 ## [1.2.0] - 2026-07-15
 
 ### Added
