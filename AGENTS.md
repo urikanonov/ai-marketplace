@@ -6,10 +6,10 @@ Guidance for AI coding agents (and humans) developing in this repository. Read t
 
 A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Users add the
 marketplace with `copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace` (or
-`/plugin marketplace add urikanonov/ai-marketplace` in Claude Code) and install plugins with
-`copilot plugin install <name>@urikan-ai-marketplace` (or `/plugin install <name>@urikan-ai-marketplace`
-in Claude Code). The marketplace name (used after `@`) is
-`urikan-ai-marketplace`, defined in the manifest below.
+`claude plugin marketplace add https://github.com/urikanonov/ai-marketplace` in Claude Code) and install
+plugins with `copilot plugin install <name>@urikan-ai-marketplace` (or
+`claude plugin install <name>@urikan-ai-marketplace` in Claude Code). The marketplace name (used after
+`@`) is `urikan-ai-marketplace`, defined in the manifest below.
 
 ## Non-negotiables (read this first)
 
@@ -88,7 +88,8 @@ A `SKILL.md` begins with YAML front matter that must have a non-empty `name` and
 
 ## Shipped vs development files (what gets distributed)
 
-`copilot plugin install` copies ONLY the marketplace entry's `source` subtree onto the user's machine.
+Both `copilot plugin install` and `claude plugin install` copy ONLY the marketplace entry's `source`
+subtree onto the user's machine.
 Anything else in the repo is never distributed. Use this to keep tests, build tooling, canonical sources,
 and specs in the repo without shipping them.
 

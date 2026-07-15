@@ -316,19 +316,29 @@ try {
     Assert-True (Test-Path (Join-Path (Join-Path $pkgRoot "hooks") "hooks.json")) "UPD-14: the standard hooks/hooks.json still ships for auto-load"
 } catch { $script:failures += "UPD-14 threw: $_" }
 
-Write-Host "== UPD-15 Claude bash hook handler no-ops on Windows to avoid a double run =="
+Write-Host "== UPD-15 Claude SessionStart hook is a single per-platform bash dispatcher (no cross-platform spawn failure) =="
 try {
     $claudeHooks = Join-Path (Join-Path $pkgRoot "hooks") "hooks.json"
     $ch = Get-Content -Path $claudeHooks -Raw | ConvertFrom-Json
-    $handlers = $ch.hooks.SessionStart[0].hooks
-    $bash = $handlers | Where-Object { $_.shell -eq "bash" } | Select-Object -First 1
-    $ps = $handlers | Where-Object { $_.command -eq "powershell" } | Select-Object -First 1
-    Assert-True ($null -ne $bash) "UPD-15: a bash handler exists (macOS/Linux)"
-    Assert-True ($null -ne $ps) "UPD-15: a powershell handler exists (Windows)"
-    # The bash handler must skip on Windows (MINGW/MSYS/CYGWIN) so it does not double-run alongside
-    # the powershell handler; on macOS/Linux the powershell handler no-ops (no powershell.exe).
-    Assert-True ($bash.command -match "MINGW|MSYS|CYGWIN") "UPD-15: bash handler guards on uname to skip on Windows"
+    $handlers = @($ch.hooks.SessionStart[0].hooks)
+    # Exactly one handler: Claude runs every handler in a matched group, so a second exec-form
+    # `powershell` handler would spawn-fail on macOS/Linux (no `powershell` binary) and surface a
+    # `hook error` notice. A single bash handler that dispatches by uname avoids that entirely.
+    Assert-True ($handlers.Count -eq 1) "UPD-15: exactly one SessionStart handler (no second handler to spawn-fail cross-platform)"
+    $h = $handlers[0]
+    Assert-True ($h.shell -eq "bash") "UPD-15: the single handler is a bash handler"
+    Assert-True ($null -eq ($handlers | Where-Object { $_.command -eq "powershell" })) "UPD-15: no exec-form powershell handler (would spawn-fail on macOS/Linux)"
+    Assert-True (($h.command -match "MINGW") -and ($h.command -match "MSYS") -and ($h.command -match "CYGWIN")) "UPD-15: handler branches on uname for Windows (MINGW/MSYS/CYGWIN)"
+    Assert-True ($h.command -match "pwsh") "UPD-15: handler runs pwsh on macOS/Linux"
+    Assert-True ($h.command -match "powershell") "UPD-15: handler runs Windows PowerShell on Windows"
 } catch { $script:failures += "UPD-15 threw: $_" }
+
+Write-Host "== UPD-16 The update script logs a completed pass =="
+try {
+    $ps1 = Join-Path (Join-Path $pkgRoot "hooks") "marketplace-update.ps1"
+    $body = Get-Content -Path $ps1 -Raw
+    Assert-True ($body -match "pass complete") "UPD-16: a completed pass is written to the log (not only failures/skips)"
+} catch { $script:failures += "UPD-16 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue

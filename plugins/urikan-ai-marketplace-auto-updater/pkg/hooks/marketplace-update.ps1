@@ -109,6 +109,8 @@ try {
         }
     }
 
+    Write-UpdaterLog ("auto-update pass complete: {0} plugin(s) checked." -f @($plugins).Count)
+
     # Record the pass so the next session can throttle. Failure here is non-fatal.
     try {
         if (-Not (Test-Path $pluginData)) { New-Item -ItemType Directory -Force -Path $pluginData | Out-Null }

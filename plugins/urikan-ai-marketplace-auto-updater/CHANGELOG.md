@@ -4,6 +4,23 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-07-15
+
+### Fixed
+
+- The Claude `SessionStart` hook surfaced a `hook error` notice on every macOS/Linux session start.
+  Claude runs every handler in a matched group, so the exec-form `powershell` handler (kept for
+  Windows without Git Bash) tried to spawn a `powershell` binary that does not exist on macOS/Linux
+  and failed. The two handlers are now collapsed into a single `bash` handler that dispatches by
+  `uname`: `pwsh` on macOS/Linux, Windows PowerShell (or `pwsh`) on Windows. Exactly one clean
+  invocation runs per platform, with no cross-platform spawn failure. (UPD-15)
+
+### Changed
+
+- The update pass now logs a `pass complete: N plugin(s) checked` line so a completed pass is visible
+  in the log (previously only failures and skips were logged), matching the documented logging
+  behavior. (UPD-16)
+
 ## [1.2.2] - 2026-07-15
 
 ### Changed
