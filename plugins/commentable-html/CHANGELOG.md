@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.71.0] - 2026-07-15
+
+### Changed
+
+- Pitch: the plugin `README.md` and the site plugin page now surface two value props of the existing
+  review flow. First, comments persist in the browser's `localStorage` and survive a browser restart
+  or a machine reboot while you iterate, so in-progress review work is not lost (a new "Comments
+  survive a restart" card in "What you get"). Second, one `Copy all` returns every comment at once,
+  so the agent makes a single coordinated, coherent edit across all your notes instead of a fragile
+  one-at-a-time pass (the README `Copy all` bullet and the site "Round-trip to the agent" card now
+  say so). No runtime behavior changed; this is documentation and pitch copy for behavior that
+  already ships.
+
 ## [1.70.0] - 2026-07-15
 
 ### Added

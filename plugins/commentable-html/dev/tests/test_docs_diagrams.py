@@ -83,6 +83,23 @@ class MotivationDocsTests(unittest.TestCase):
         self.assertIn(BLOG_URL, _read(SKILL_MD))
 
 
+class PitchPersistenceAndBatchDocsTests(unittest.TestCase):
+    """CMH-DOC-11: the shipped README pitch surfaces two value props of existing behavior - that
+    comments persist in localStorage and survive a browser restart or reboot while iterating, and
+    that Copy all returns every comment at once so the agent makes one coordinated, coherent edit
+    instead of a fragile one-at-a-time pass."""
+
+    def test_readme_states_comments_survive_a_restart(self):
+        text = _read(PLUGIN_README)
+        self.assertIn("survive a browser restart", text)
+        self.assertIn("localStorage", text)
+
+    def test_readme_states_copy_all_returns_every_comment_at_once(self):
+        text = _read(PLUGIN_README)
+        self.assertIn("every comment at once", text)
+        self.assertIn("coordinated", text)
+
+
 class NewFeatureDocsTests(unittest.TestCase):
     """CMH-DOC-02: the shipped guidance covers widget drag opt-in, Offline state, and Export Offline."""
 

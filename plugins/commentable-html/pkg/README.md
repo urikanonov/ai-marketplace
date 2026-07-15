@@ -6,7 +6,7 @@
 
 Your content stays with you. Commentable HTML runs entirely in your browser as a static file - there is no server, no account, no sign-in, and no telemetry. The document you review and every comment you leave live in one of two places only:
 
-- **In your browser's `localStorage`**, scoped to that file, while you iterate; or
+- **In your browser's `localStorage`**, scoped to that file, while you iterate - so your comments survive a browser restart or a machine reboot and are still there when you reopen the file; or
 - **Embedded inside the HTML file itself** once you Export as Portable (or Offline).
 
 Your document text and your comments are never uploaded, transmitted, or sent to any external service - not to us, and not to anyone else. They travel only when you choose to share the exported file or paste the `Copy all` bundle yourself. The HTML file is the single source of truth; keep it, archive it, or delete it and the data is gone.
@@ -36,7 +36,8 @@ Your agent can draft a plan in seconds; the real bottleneck is everything after 
 - Line and region comments on rendered unified diffs, with inline and side-by-side views.
 - Mermaid, image, and Chart.js canvas comments with structural anchors.
 - Sidebar and floating toolbar for adding, editing, deleting, jumping to, and copying comments.
-- `Copy all` output with pinpoint metadata and a machine-readable `HANDLED_IDS_JSON` line.
+- Comments persist in `localStorage` under a per-document key, so they survive a browser restart or reboot and restore when you reopen the file - no server or account needed - until you Export them into the HTML.
+- `Copy all` returns every comment at once with pinpoint metadata and a machine-readable `HANDLED_IDS_JSON` line, so the agent makes one coordinated, coherent edit across all your notes instead of a fragile one-at-a-time pass.
 - `Export as Portable` for a single shareable file with current comments embedded.
 - `Export to Plain HTML` for a clean report without the review layer.
 - Standalone and NonPortable output modes, both built from the same runtime.
