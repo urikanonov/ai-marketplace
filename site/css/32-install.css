@@ -40,3 +40,33 @@
   border: 0;
 }
 
+/* A note or callout below the install command block; the margin keeps it off the box. */
+.install-note { margin-top: 18px; }
+
+/* Auto-updater cross-sell callout: a clearly-visible, whole-card link with the plugin icon. */
+.install-updater-cta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 18px;
+  background: var(--cp-accent-soft);
+  border: 1px solid var(--cp-accent);
+  border-radius: var(--cp-radius);
+  text-decoration: none;
+  color: var(--cp-text);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.install-updater-cta:hover { box-shadow: var(--cp-shadow); transform: translateY(-1px); }
+.install-updater-cta:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
+.install-updater-icon { width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; }
+.install-updater-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.install-updater-title { font-weight: 700; color: var(--cp-accent); font-size: 1.02rem; }
+.install-updater-desc { color: var(--cp-text-muted); font-size: 0.9rem; line-height: 1.5; }
+.install-updater-desc code { font-family: var(--cp-mono); font-size: 0.85em; }
+.install-updater-cue { flex-shrink: 0; color: var(--cp-accent); font-size: 1.4rem; transition: transform 0.15s ease; }
+.install-updater-cta:hover .install-updater-cue { transform: translateX(3px); }
+@media (max-width: 560px) {
+  .install-updater-cta { flex-wrap: wrap; gap: 12px; }
+  .install-updater-cue { display: none; }
+}
+

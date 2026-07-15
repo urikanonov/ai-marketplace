@@ -59,6 +59,7 @@
         <a href="#features">Features</a>
         <a href="#how" class="hide-sm">How it works</a>
         <a href="#install">Install</a>
+        <a href="#changelog" class="hide-sm">Changelog</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">GitHub</a>
         <a href="../">Marketplace</a>
       </div>
@@ -85,7 +86,7 @@
         <div class="section-block prose">
           <h2 class="section-title">Why auto-update</h2>
           <p>Plugins move fast. New commentable-html releases ship fixes, new content types, and safer defaults on a regular cadence - but a plugin only helps you if the copy on your machine is current. Updating by hand means remembering to run <code>copilot plugin update</code> for each plugin, on each machine, and noticing when a new version even exists.</p>
-          <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <code>urikan-ai-marketplace</code>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
+          <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <a href="../"><code>urikan-ai-marketplace</code></a>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
         </div>
       </div>
     </section>
@@ -141,6 +142,18 @@ copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace"
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 3 7.4 7 8.5 4-1.1 7-4.3 7-8.5V6z"/></svg></span><h3>Never breaks your session</h3><p>The hook can only ever succeed or log a failure. It never throws, never blocks startup, and never surfaces an error into your session.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.6-5.6L20 8"/><path d="M20 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6L4 16"/><path d="M4 21v-5h5"/></svg></span><h3>Scoped to this marketplace</h3><p>It only updates plugins installed from <code>urikan-ai-marketplace</code>. Plugins from other marketplaces are untouched.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><h3>You stay in control</h3><p>It is opt-in and self-excluding. Uninstall it any time and every other plugin keeps working exactly as before - you just go back to updating them yourself.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="changelog">
+      <div class="wrap">
+        <h2 class="section-title">Changelog</h2>
+        <p class="section-sub">Changes to the auto-updater. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
+        <div class="changelog">
+          <!-- BEGIN:changelog -->
+          <div class="release"><div class="rel-head"><h3>Changelog</h3></div></div>
+          <!-- END:changelog -->
         </div>
       </div>
     </section>

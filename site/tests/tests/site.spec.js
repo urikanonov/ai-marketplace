@@ -880,8 +880,57 @@ test("the commentable-html Install section links to the auto-updater page (SITE-
   await expect(link).toHaveText(/auto-updater/i);
   // The note explains the auto-updater keeps commentable-html up to date on session start.
   await expect(page.locator("#install .install-note")).toContainText(/session start/i);
+  // It is a clearly-visible card (not plain muted text) that shows the auto-updater plugin icon.
+  const icon = link.locator("img.install-updater-icon");
+  await expect(icon).toHaveAttribute("src", /urikan-ai-marketplace-auto-updater\.svg$/);
+  await expect(icon).toHaveAttribute("alt", /auto-updater/i);
   await link.click();
   await expect(page).toHaveURL(/\/urikan-ai-marketplace-auto-updater\/$/);
+});
+
+test("the commentable-html nav has an Install link to the install section (SITE-PLUGIN-18)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const install = page.locator(".nav-links a", { hasText: "Install" }).first();
+  await expect(install).toHaveAttribute("href", "#install");
+  // It stays visible on small screens (unlike Privacy/Changelog, which carry hide-sm).
+  await expect(install).not.toHaveClass(/hide-sm/);
+  await install.click();
+  await expect(page).toHaveURL(/#install$/);
+});
+
+test("the auto-updater page Why section links the marketplace name to the hub (SITE-UPDATER-07)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  const link = page.locator('#why a[href="../"]');
+  await expect(link).toHaveCount(1);
+  await expect(link).toContainText("urikan-ai-marketplace");
+  await link.click();
+  expect(new URL(page.url()).pathname).toBe("/");
+});
+
+test("the auto-updater install note is clearly spaced below the command box (SITE-UPDATER-08)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  const note = page.locator("#install .install-note");
+  await expect(note).toContainText(/PowerShell/i);
+  // A visible vertical gap between the command box and the PowerShell note (not cramped against it).
+  const gap = await page.evaluate(() => {
+    const cmd = document.querySelector("#install .cmd").getBoundingClientRect();
+    const note = document.querySelector("#install .install-note").getBoundingClientRect();
+    return note.top - cmd.bottom;
+  });
+  expect(gap).toBeGreaterThanOrEqual(12);
+});
+
+test("the auto-updater page renders a changelog section built from its CHANGELOG (SITE-UPDATER-09)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  // A nav Changelog link and a #changelog section with at least one rendered release.
+  await expect(page.locator('.nav-links a[href="#changelog"]')).toHaveCount(1);
+  const changelog = page.locator("#changelog .changelog");
+  await expect(changelog).toHaveCount(1);
+  await expect(changelog.locator(".release").first()).toBeVisible();
+  // The section links to the auto-updater's full changelog in source.
+  expect(
+    await page.locator('#changelog a[href$="urikan-ai-marketplace-auto-updater/CHANGELOG.md"]').count()
+  ).toBeGreaterThan(0);
 });
 
 test("the full-screen button has a light-red (accent-tinted) background", async ({ page }) => {
