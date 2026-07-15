@@ -1,25 +1,28 @@
-# When a PR that closes an issue is opened, mark that issue In Progress.
+# When a PR that closes an issue is opened (or edited), mark that issue In Progress.
 #
 # Trust boundary (see scripts/check_workflow_policy.py, RULE A): this runs on
 # pull_request_target with a write-capable token, so it MUST NOT check out or run
-# PR-authored code. It only reads the PR body (passed through an env var, never
-# interpolated into the shell to avoid script injection) and calls the issues API.
+# PR-authored code. It reads ONLY the PR number from the trusted event payload and
+# calls the GitHub API; it never parses the untrusted PR body in the shell.
 #
-# Merging the PR closes the linked issue via the "Closes #N" keyword; a GitHub
-# Project board's built-in "issue closed -> Done" workflow then moves the card to
-# Done, so no merge trigger is needed here.
+# It uses GitHub's own parsed closing-issue links (closingIssuesReferences), not a
+# regex over the PR body, so only issues this PR actually closes are considered, and
+# it only relabels OPEN issues that carry the `task` label, bounding the blast radius
+# of the privileged token. Merging the PR closes the linked issue via the "Closes #N"
+# keyword; a Project board built-in "issue closed -> Done" workflow then moves it to Done.
 name: issue-status-sync
 
 on:
   # zizmor: ignore[dangerous-triggers] audited-safe: never checks out or runs PR code
-  # (only reads the PR body via an env var and calls the issues API); the no-checkout
-  # invariant is enforced by scripts/check_workflow_policy.py RULE A.
+  # (it reads only the PR number from the event payload and calls the GitHub API); the
+  # no-checkout invariant is enforced by scripts/check_workflow_policy.py RULE A.
   pull_request_target:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, reopened, ready_for_review, edited]
 
 permissions:
   contents: read
   issues: write
+  pull-requests: read
 
 concurrency:
   group: issue-status-sync-${{ github.event.pull_request.number }}
@@ -29,22 +32,31 @@ jobs:
   mark-in-progress:
     runs-on: ubuntu-latest
     steps:
-      - name: Mark linked issues In Progress
+      - name: Mark linked task issues In Progress
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          nums=$(printf '%s' "${PR_BODY:-}" \
-            | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' \
-            | grep -oE '[0-9]+' | sort -u || true)
+          # GitHub's parsed closing links (not a body regex), so only issues this PR
+          # actually closes are considered - no body injection and no false matches.
+          nums=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+            --json closingIssuesReferences \
+            --jq '.closingIssuesReferences[].number' || true)
           if [ -z "$nums" ]; then
-            echo "No closing-keyword issue references in the PR body."
+            echo "No linked closing-issue references."
             exit 0
           fi
           for n in $nums; do
-            echo "Marking issue #$n as In Progress"
-            gh issue edit "$n" --repo "$REPO" --add-label "status: in progress" || \
-              echo "Could not label #$n (it may be a PR number or already closed)."
+            # Only relabel OPEN issues that carry the `task` label, so a PR can never
+            # move arbitrary or non-task issues (bounds the privileged token's reach).
+            if gh issue view "$n" --repo "$REPO" --json state,labels \
+                 --jq 'select(.state=="OPEN") | .labels[].name' 2>/dev/null \
+                 | grep -qx "task"; then
+              echo "Marking task issue #$n In Progress"
+              gh issue edit "$n" --repo "$REPO" --add-label "status: in progress"
+            else
+              echo "Skipping #$n (not an open task issue)."
+            fi
           done
