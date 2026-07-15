@@ -98,7 +98,7 @@ ai-marketplace/
   AGENTS.md  CONTRIBUTING.md  SECURITY.md  MAINTAINING.md  LICENSE  README.md
 ```
 
-The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry points at a plugin directory (or a single skill directory) via its `source` field. **Only a plugin's registered `source` is distributed on install** - a `dev/` folder beside it (tests, build tooling, sources) stays in the repo and is never shipped. See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
+The marketplace manifest lives at `.github/plugin/marketplace.json` (mirrored for Claude Code at `.claude-plugin/marketplace.json`). Each entry points at a plugin directory (or a single skill directory) via its `source` field. **Only a plugin's registered `source` is distributed on install** - a `dev/` folder beside it (tests, build tooling, sources) stays in the repo and is never shipped. See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
 ## Trust and safety
 

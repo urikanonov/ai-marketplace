@@ -1078,6 +1078,16 @@ test("the auto-updater hero gives a complete self-update command for both agents
   expect(heroText).toContain("claude plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
 });
 
+test("the auto-updater hero states the accurate Claude update-apply timing (SITE-UPDATER-12)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  // The hook FETCHES updates on session start; Claude Code applies a plugin update on the next
+  // restart (see the marketplace-update SKILL.md). The hero must not overstate this as updates being
+  // instantly "already there next time you open" - it must note the next-restart apply timing.
+  const heroText = await page.locator(".hero").innerText();
+  expect(heroText).toContain("next restart");
+  expect(heroText).not.toContain("already there next time you open");
+});
+
 test("the full-screen button has a light-red (accent-tinted) background", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const bg = await page.locator("#demo-fullscreen").evaluate(
