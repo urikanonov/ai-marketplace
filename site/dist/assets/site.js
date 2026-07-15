@@ -77,34 +77,40 @@
     }
   }
 
+  function wrapHeadingAsAnchor(title, targetId) {
+    if (!title || !targetId || title.querySelector(".header-anchor")) {
+      return;
+    }
+    // Skip a heading that already holds an interactive element: wrapping it would nest an <a> in an <a>.
+    if (title.querySelector("a, button")) {
+      return;
+    }
+    var link = document.createElement("a");
+    link.className = "header-anchor";
+    link.setAttribute("href", "#" + targetId);
+    // Wrap the heading's own text so the whole header is clickable.
+    while (title.firstChild) {
+      link.appendChild(title.firstChild);
+    }
+    title.appendChild(link);
+    link.addEventListener("click", function () {
+      // Native navigation sets the fragment; also copy the full URL for sharing.
+      // Use the anchor's resolved href so the URL is valid for any protocol/base (file:// included)
+      // and keeps the current query string.
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link.href).catch(function () {});
+      }
+    });
+  }
+
   function initHeaderAnchors() {
-    var sections = document.querySelectorAll("section[id]");
-    sections.forEach(function (section) {
-      var id = section.getAttribute("id");
-      var title = section.querySelector(".section-title");
-      if (!id || !title || title.querySelector(".header-anchor")) {
-        return;
-      }
-      // Skip a heading that already holds an interactive element: wrapping it would nest an <a> in an <a>.
-      if (title.querySelector("a, button")) {
-        return;
-      }
-      var link = document.createElement("a");
-      link.className = "header-anchor";
-      link.setAttribute("href", "#" + id);
-      // Wrap the heading's own text so the whole header is clickable.
-      while (title.firstChild) {
-        link.appendChild(title.firstChild);
-      }
-      title.appendChild(link);
-      link.addEventListener("click", function () {
-        // Native navigation sets the fragment; also copy the full section URL for sharing.
-        // Use the anchor's resolved href so the URL is valid for any protocol/base (file:// included)
-        // and keeps the current query string.
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(link.href).catch(function () {});
-        }
-      });
+    // Section headings link to their own section (SITE-NAV-01).
+    document.querySelectorAll("section[id]").forEach(function (section) {
+      wrapHeadingAsAnchor(section.querySelector(".section-title"), section.getAttribute("id"));
+    });
+    // Standalone sub-headings opt in with data-anchor and link to their own id (SITE-NAV-02).
+    document.querySelectorAll("[data-anchor][id]").forEach(function (heading) {
+      wrapHeadingAsAnchor(heading, heading.getAttribute("id"));
     });
   }
 

@@ -1214,3 +1214,21 @@ test("initHeaderAnchors leaves a section whose title already holds a link untouc
   // The original link stays a direct child of the heading, intact.
   await expect(injected.locator(".section-title > a[href='/y']")).toHaveCount(1);
 });
+
+test("a standalone data-anchor sub-heading is a linkable anchor to its own id (SITE-NAV-02)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "networkidle" });
+  // The "Chat, Markdown, HTML - or a tight loop?" sub-heading opts in with data-anchor and its own id.
+  const heading = page.locator("h3.why-sub#mediums[data-anchor]");
+  await expect(heading).toHaveCount(1);
+  const anchor = heading.locator("a.header-anchor");
+  await expect(anchor).toHaveCount(1);
+  await expect(anchor).toHaveAttribute("href", "#mediums");
+  // The whole heading text is the clickable link (no separate marker glyph).
+  expect((await anchor.textContent()).trim()).toBe((await heading.textContent()).trim());
+  // The anchor resolves to an absolute URL ending in the heading's own fragment.
+  const resolved = await anchor.evaluate((a) => a.href);
+  expect(resolved).toMatch(/^https?:\/\/.+#mediums$/);
+  // Clicking the sub-heading anchor moves the URL fragment to it.
+  await anchor.click();
+  await expect(page).toHaveURL(/#mediums$/);
+});
