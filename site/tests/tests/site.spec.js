@@ -336,6 +336,21 @@ test("the What you get section has a Rich content card covering charts, diagrams
   await expect(features).toContainText(/snippet/i);
 });
 
+test("the What you get section highlights that comments survive a browser restart (SITE-PLUGIN-19)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const features = page.locator("#features");
+  await expect(features).toContainText(/survive a restart/i);
+  await expect(features).toContainText(/localStorage/);
+  await expect(features).toContainText(/reboot/i);
+});
+
+test("the What you get Round-trip card explains Copy all returns every comment at once for one coordinated edit (SITE-PLUGIN-20)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const features = page.locator("#features");
+  await expect(features).toContainText(/every comment at once/i);
+  await expect(features).toContainText(/coordinated/i);
+});
+
 test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05)", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
