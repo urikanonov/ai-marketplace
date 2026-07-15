@@ -498,11 +498,12 @@ check out or run PR-supplied code.
   Either way the PR code runs with nothing to steal and no write access; the residual risk is
   compute/runner abuse (a PR opened purely to run arbitrary code), which the read-only, no-secrets
   execution contains.
-- The privileged workflows run in the trusted base-repo context: `request-copilot-review.yml` on
-  `pull_request_target`, and `require-owner-approval.yml` on `pull_request_target` plus
-  `pull_request_review`. They DO have a write-capable token and secrets even for fork PRs - but they
-  never check out or run PR code; they only call the REST API with the PR number and publish a commit
-  status. That is what keeps them safe.
+- The privileged workflows run in the trusted base-repo context: `request-copilot-review.yml` and
+  `require-owner-approval.yml` (on `pull_request_target`, the latter also on `pull_request_review`), and
+  `issue-status-sync.yml` (on `pull_request_target`). They DO have a write-capable token and secrets even
+  for fork PRs - but they never check out or run PR code; they only read PR metadata via the API (the PR
+  number and its parsed closing-issue links) and then publish a commit status or add an issue label. That
+  is what keeps them safe.
 - Merge protection is independent of who runs CI: `main` stays protected and `require-owner-approval`
   still blocks external PRs until `@urikanonov` approves, so auto-running CI never lets anyone merge.
 
@@ -632,14 +633,15 @@ commands are:
 2. If nothing covers it, CREATE one, labeled `task`, filling the form's sections (Description, Acceptance
    criteria as a checklist, optional Implementation plan):
    `gh issue create --label task --title "Title" --body "..."`.
-3. CLAIM it: `gh issue edit <n> --add-assignee @me --add-label "status: in progress"`, and move it to
-   In Progress on the Project board.
+3. CLAIM it: `gh issue edit <n> --add-assignee @me --add-label "status: in progress"` (and, once the
+   Project board is configured, move its board Status to In Progress).
 4. PLAN it, then share the plan and get approval before coding: post the implementation plan as a comment
    with `gh issue comment <n> --body "1. ...  2. ..."`.
 5. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it.
 6. FINISH: open the PR with `Closes #<n>` in its body. The `issue-status-sync` workflow marks the issue
-   In Progress when the PR opens; merging the PR closes the issue, and a Project board built-in workflow
-   moves it to Done. Record the final summary in the PR description or a closing comment.
+   In Progress when the PR opens; merging the PR closes the issue (and, once the Project board is
+   configured, its built-in workflow moves the card to Done). Record the final summary in the PR
+   description or a closing comment.
 
 CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, file an issue for it
 immediately (`gh issue create --label task ...`) so it never lives only in the chat transcript. That is
@@ -649,10 +651,9 @@ the whole point of issue-first - it is how work stops getting forgotten between 
 
 ## Task tracking
 
-This project tracks work as GitHub Issues (see "GitHub Issues workflow" above). For every request, first
-search existing issues (`gh issue list --search "<topic>"`, add `--state all` for closed history) to
-decide whether to reuse, create, or update an issue, then track the work as a `task`-labeled issue that is
-In Progress and assigned to you BEFORE writing code. Prefer the in-repo task-management skill, which wraps
-these `gh` calls.
+This project tracks work as GitHub Issues. Before acting on any request, follow the "GitHub Issues
+workflow" section above (search first, then track a `task`-labeled issue that is In Progress and
+assigned to you before writing code). Issue-first is a non-negotiable (rule 2); prefer the in-repo
+task-management skill, which wraps the `gh` calls.
 
 </CRITICAL_INSTRUCTION>
