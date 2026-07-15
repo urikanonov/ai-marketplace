@@ -1,11 +1,11 @@
 ---
 id: TASK-40
 title: Surface the commentable-html version visibly in dist/README.md and SKILL.md
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-15 09:33'
-updated_date: '2026-07-15 09:46'
+updated_date: '2026-07-15 10:11'
 labels: []
 dependencies: []
 ordinal: 33000
@@ -25,8 +25,6 @@ The CHM skill version currently lives only in machine-readable spots (dev/VERSIO
 - [x] #4 A SPEC row names covering automated tests and the plugin test/validators pass
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -37,3 +35,9 @@ The CHM skill version currently lives only in machine-readable spots (dev/VERSIO
 5. Bump dev/VERSION, run rebuild_all.py, update CHANGELOG.
 6. Validate: pytest build+docs, validate_marketplace, validate_markdown, rebuild_all --check.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added a visible '**Version:** <x.y.z>' line to the shipped SKILL.md and dist/README.md, single-sourced from dev/VERSION and stamped by build.py (_stamp_md_version wired into source_stamps); build --check gates drift. Covered by CMH-DOC-10 (VisibleVersionDocsTests + build stamp tests), written test-first. Bumped to 1.70.0, regenerated dist/fixtures/site. Shipped as PR #159.
+<!-- SECTION:FINAL_SUMMARY:END -->
