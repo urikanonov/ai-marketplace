@@ -291,9 +291,10 @@ class ValidateUnitTests(unittest.TestCase):
         self.assertOkNoWarn(doc)
 
     def test_non_highlightable_language_code_block_is_clean(self):
-        # language-text / an unknown label (e.g. kusto) is not a highlightable language, so a
-        # monochrome block is expected, not a defect.
-        for cls in ("language-text", "language-kusto"):
+        # language-text / an unknown label (e.g. console) is not a highlightable language, so a
+        # monochrome block is expected, not a defect. (KQL - language-kusto - has its own runnable
+        # rule, CMH-KQL-08, so it is not used here as a plain non-highlightable example.)
+        for cls in ("language-text", "language-console"):
             doc = self._doc_with_code('<pre><code class="%s">plain content 123</code></pre>' % cls)
             errors, warnings = _validate_text(doc)
             self.assertEqual(errors, [], "expected no errors for %s, got: %r" % (cls, errors))
@@ -502,11 +503,45 @@ class ValidateUnitTests(unittest.TestCase):
         self.assertWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
                         'without rel="noopener"')
 
-    def test_plain_kusto_code_block_no_runlink_is_clean(self):
-        # A KQL code block WITHOUT a run link must NOT warn (the check is gated on
-        # the explicit cmh-kql-run class, so syntax examples are never flagged).
+    def test_bare_kusto_without_no_cluster_marker_errors(self):
+        # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in
+        # Azure Data Explorer link) nor explicitly marked data-cmh-kql-no-cluster is a hard error -
+        # a KQL block must either run on a cluster or be a deliberate no-cluster snippet. Prefer
+        # providing a cluster; the marker is the rare escape hatch.
         block = '<pre><code class="language-kusto">T | take 1</code></pre>'
         main = MAIN.replace("<p>content</p>", "<p>content</p>" + block)
+        self.assertError(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]),
+                         "not runnable")
+
+    def test_bare_kusto_with_no_cluster_marker_is_clean(self):
+        # CMH-KQL-08: the explicit data-cmh-kql-no-cluster override marks a deliberate highlight-only
+        # snippet (no known cluster to run it on), so it is validator-clean.
+        block = '<pre data-cmh-kql-no-cluster><code class="language-kusto">T | take 1</code></pre>'
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + block)
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
+    def test_bare_kusto_inside_kql_figure_is_not_double_flagged(self):
+        # CMH-KQL-08: the <pre><code class="language-kusto"> that lives inside a figure.cmh-kql is
+        # covered by the figure run-link rule (11d), so it must NOT also be flagged as a bare block.
+        fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
+               '<button class="cmh-kql-title" type="button">cluster</button>'
+               '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+               'target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer</a></figcaption>'
+               '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + fig)
+        self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
+
+    def test_bare_kusto_mention_in_style_is_not_a_false_positive(self):
+        # CMH-KQL-08 must not scan <style>/<script>/comment bodies: a `<pre>` mentioned in a CSS
+        # comment must not start a spurious match that swallows a later real KQL block (which broke
+        # the report-taxi example the naive scan flagged).
+        style = '<style>/* the mark lives inside <pre>/<code> language-kusto */ .x{color:red}</style>'
+        fig = ('<figure class="cmh-kql"><figcaption class="cm-skip">'
+               '<button class="cmh-kql-title" type="button">cluster</button>'
+               '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+               'target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer</a></figcaption>'
+               '<pre><code class="language-kusto">T | take 1</code></pre></figure>')
+        main = MAIN.replace("<p>content</p>", "<p>content</p>" + style + fig)
         self.assertOkNoWarn(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
 
     def test_kql_figure_without_run_link_errors(self):

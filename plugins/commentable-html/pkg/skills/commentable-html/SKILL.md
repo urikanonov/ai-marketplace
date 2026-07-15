@@ -87,7 +87,7 @@ Use the tools rather than manual region editing. If manual fallback is unavoidab
 
 **MUST**, when Python is available, use these helpers instead of hand-authoring fragile markup:
 
-- KQL block + Run in Azure Data Explorer link: `tools/kusto/kql_highlight.py`; bare link only: `tools/kusto/kusto_link.py`.
+- KQL block + Run in Azure Data Explorer link: `tools/kusto/kql_highlight.py`; bare link only: `tools/kusto/kusto_link.py`. Every KQL block MUST be runnable (a `figure.cmh-kql` with a cluster + run link) - prefer a real cluster (example reports and decks use the public `help.kusto.windows.net`); a bare highlight-only block MUST be explicitly marked `data-cmh-kql-no-cluster` (via `--code-only`) or the validator errors (CMH-KQL-08).
 - Unified code diff: `tools/blocks/diff_block.py`.
 - Highlighted source code: `tools/blocks/highlight_code.py` or the document pass in `tools/blocks/highlight_document.py`.
 - Chart: `tools/blocks/chart_block.py`.

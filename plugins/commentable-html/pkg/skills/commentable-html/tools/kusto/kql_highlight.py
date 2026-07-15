@@ -115,9 +115,15 @@ def highlight_inner(query):
     return "".join(out)
 
 
-def render_code(query):
-    """Return a highlighted `<pre><code class="language-kusto">...</code></pre>` block."""
-    return '<pre><code class="language-kusto">%s</code></pre>' % highlight_inner(query)
+def render_code(query, no_cluster=False):
+    """Return a highlighted `<pre><code class="language-kusto">...</code></pre>` block.
+
+    Pass no_cluster=True to stamp the `data-cmh-kql-no-cluster` marker on the `<pre>` - the explicit
+    metadata override the validator requires for a bare (unframed, non-runnable) KQL block. Prefer a
+    full runnable figure (render_block) with a real cluster; use this only when there is genuinely no
+    cluster to run the query on."""
+    pre_attrs = " data-cmh-kql-no-cluster" if no_cluster else ""
+    return '<pre%s><code class="language-kusto">%s</code></pre>' % (pre_attrs, highlight_inner(query))
 
 
 def render_block(cluster, database, title, query):
@@ -189,7 +195,7 @@ def main(argv):
         if not query.strip():
             sys.stderr.write("kql_highlight: empty query\n")
             return 2
-        print(render_code(query))
+        print(render_code(query, no_cluster=True))
         return 0
     if len(args) < 3 or len(args) > 4:
         return _usage()

@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.63.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.64.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -343,6 +343,14 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.64.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>KQL code blocks must now be runnable or explicitly marked clusterless. A bare <code>&lt;pre&gt;&lt;code class=&quot;language-kusto&quot;&gt;</code> block that is not framed in a <code>figure.cmh-kql</code> with a Run in Azure Data Explorer link is now a hard validation error unless the <code>&lt;pre&gt;</code> carries an explicit <code>data-cmh-kql-no-cluster</code> marker (declaring there is genuinely no cluster to run it on). Previously a bare KQL block was silently exempt, so a query could ship with no way to run it and no cluster. Prefer providing a real cluster; <code>kql_highlight.py --code-only</code> now stamps the <code>data-cmh-kql-no-cluster</code> marker for the rare clusterless case.</li>
+              <li>The showcase deck&#x27;s KQL slide now uses a full runnable figure on the public <code>help.kusto.windows.net</code> cluster instead of a bare highlighted block.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.63.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -350,6 +358,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>SKILL.md</code> now states as a MUST that every produced HTML is finalized and strict-validated before handoff, since the runtime and validator both depend on that final pass.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.62.0] - 2026-07-15</h3></div>
             <div class="group-label">Fixed</div>
@@ -361,8 +371,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>A drift guard test asserts the runtime tokenizer knows every language the author-time highlighter supports, so a supported language can never again ship without runtime highlighting.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.61.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -398,18 +406,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Deck code, KQL, and diff blocks now use dark, readable surfaces, distinct syntax token colors, and readable add/delete row tints on dark deck slides.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.57.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Added a shipped <code>tools/validate/cmhval/contrast.py</code> WCAG contrast helper and wired <code>deck_validate.py</code> to fail decks whose explicit inline or same-rule CSS text/background color pairs fall below the configurable 4.5:1 default threshold, with diagnostics that name the selector or element and both colors.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Hardened the contrast helper so malformed or non-finite <code>rgb()</code>/<code>rgba()</code> values are skipped instead of crashing, semi-transparent backgrounds are skipped, background shorthand follows declaration order, and colors embedded only inside <code>url(...)</code> or quoted strings do not create false positives.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">64 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">65 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

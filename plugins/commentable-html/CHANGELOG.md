@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.64.0] - 2026-07-15
+
+### Changed
+
+- KQL code blocks must now be runnable or explicitly marked clusterless. A bare
+  `<pre><code class="language-kusto">` block that is not framed in a `figure.cmh-kql` with a
+  Run in Azure Data Explorer link is now a hard validation error unless the `<pre>` carries an
+  explicit `data-cmh-kql-no-cluster` marker (declaring there is genuinely no cluster to run it on).
+  Previously a bare KQL block was silently exempt, so a query could ship with no way to run it and
+  no cluster. Prefer providing a real cluster; `kql_highlight.py --code-only` now stamps the
+  `data-cmh-kql-no-cluster` marker for the rare clusterless case.
+- The showcase deck's KQL slide now uses a full runnable figure on the public
+  `help.kusto.windows.net` cluster instead of a bare highlighted block.
+
 ## [1.63.0] - 2026-07-15
 
 ### Changed

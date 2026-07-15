@@ -5,7 +5,7 @@
 
 Whenever a report embeds a Kusto (KQL) query, render the query as a normal commentable code block **and place a "Run in Azure Data Explorer" deep link right next to it**. The report is static and self-contained, so the link is the reader's one-click path from "here is the query" to opening it, pre-loaded and ready to run, in the Azure Data Explorer web UX. This is a required convention: a framed KQL figure (`figure.cmh-kql`) **MUST** carry a run link built with `tools/kusto/kusto_link.py`. `validate.py` enforces this - a framed KQL figure with no `cmh-kql-run` link is a hard validation **error** (not a warning), so the document does not pass validation until the link is added.
 
-**Escape hatch for illustrative queries.** The rule applies only to framed `figure.cmh-kql` cards. If a query is purely illustrative - a syntax example with no real cluster/database to run against - render it as a plain `<pre><code class="language-kusto">...</code></pre>` code block instead of a framed figure. A bare `<pre>` is not a `figure.cmh-kql`, so it is exempt from the run-link rule (still HTML-escape the query text). Reserve the framed figure for queries that target a reachable cluster/database.
+**Prefer a runnable figure; explicitly mark the rare clusterless query.** Give every KQL query a real cluster and a run link (a framed `figure.cmh-kql`) whenever there is a cluster to run it on - this is the strongly preferred form, and example reports and decks **must** use the public `help.kusto.windows.net` cluster rather than the escape hatch below. `validate.py` now flags a bare `<pre><code class="language-kusto">` block that is neither framed in a run-linked figure nor explicitly marked as a hard **error** (CMH-KQL-08), so a missing cluster is a deliberate choice rather than an accidental omission. Only when a query is purely illustrative and there is genuinely no cluster to run it on, mark the block with the `data-cmh-kql-no-cluster` metadata attribute on the `<pre>` (still HTML-escape the query text): `<pre data-cmh-kql-no-cluster><code class="language-kusto">...</code></pre>`. The `--code-only` mode of `kql_highlight.py` stamps this marker for you.
 
 > **Data safety:** the query text round-trips inside the URL (gzip + base64 is compression, **not** encryption - it is trivially reversible). Anyone with the link recovers the full query, and following it sends that text to a live Microsoft site and into browser history. **Never embed secrets, tokens, connection strings, or customer PII as literals** in a query that gets a run link - parameterize or redact them first, or omit the run link for that query.
 
@@ -29,7 +29,7 @@ The easiest path is the one-call helper, which emits the complete figure - capti
 ```bash
 python tools/kusto/kql_highlight.py <cluster> <database> "<title>" "<query>" # full figure
 python tools/kusto/kql_highlight.py <cluster> <database> "<title>" < query.kql # query on stdin
-python tools/kusto/kql_highlight.py --code-only "<query>" # just the <pre><code>
+python tools/kusto/kql_highlight.py --code-only "<query>" # bare <pre>, stamps data-cmh-kql-no-cluster
 ```
 
 ### Markup
@@ -51,7 +51,7 @@ python tools/kusto/kql_highlight.py --code-only "<query>" # just the <pre><code>
 - **Syntax highlighting** is applied at author time (baked-in spans), not by a runtime script, so it never has to coexist with the comment layer. Token classes: `cmh-kql-kw` (keyword), `cmh-kql-fn` (function), `cmh-kql-str` (string), `cmh-kql-num` (number), `cmh-kql-com` (comment), `cmh-kql-op` (operator / pipe).
 - The **caption and the run link are `cm-skip` chrome** (the `<figcaption>` carries `cm-skip`), so the "Run in Azure Data Explorer" affordance is not itself selectable or commentable.
 - The **caption title is the cluster-copy affordance**. It carries `data-cmh-copy` with the cluster name and copies it on click. Do not add a separate cluster chip.
-- Always set `target="_blank" rel="noopener noreferrer"` on the link. `validate.py` warns if a `cmh-kql-run` link is not an `https://dataexplorer.azure.com/` origin or is missing `rel="noopener"`, and it **errors** if a framed `figure.cmh-kql` has no `cmh-kql-run` link at all (the run link is mandatory on a framed figure; use a plain `<pre>` for an illustrative query with no real cluster).
+- Always set `target="_blank" rel="noopener noreferrer"` on the link. `validate.py` warns if a `cmh-kql-run` link is not an `https://dataexplorer.azure.com/` origin or is missing `rel="noopener"`, and it **errors** if a framed `figure.cmh-kql` has no `cmh-kql-run` link at all (the run link is mandatory on a framed figure). A bare `<pre>` KQL block that is not framed must carry `data-cmh-kql-no-cluster` when there is no cluster to run it on, or it is a hard error too (CMH-KQL-08) - prefer providing a cluster.
 - The link is a plain external `href`: it needs no runtime JS and degrades gracefully when connectivity is unavailable (it simply cannot be followed), so it does not affect the review layer itself.
 
 ### Styling
