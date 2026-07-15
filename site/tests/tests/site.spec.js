@@ -133,13 +133,17 @@ test("the plugin card body shows a pointer cursor so it reads as clickable (SITE
   expect(await card.locator(".cmd").evaluate((el) => getComputedStyle(el).cursor)).not.toBe("pointer");
 });
 
-test("a linkless plugin card (no plugin page) shows no pointer cursor (SITE-HUB-06)", async ({ page }) => {
+test("the auto-updater card navigates to its plugin page (SITE-HUB-06)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  // The auto-updater has no generated plugin page, so its card title has no link and the
-  // whole card does not navigate; it must not advertise a misleading pointer cursor.
+  // The auto-updater now has its own generated page, so (like commentable-html) its card title is
+  // a link and the whole card navigates to that page with a pointer cursor. The linkless-card
+  // rendering path (a plugin with no page) stays covered by the generator test
+  // RenderPluginsTests.test_card_without_page_has_no_learn_more.
   const card = page.locator(".plugin-card", { hasText: "urikan-ai-marketplace-auto-updater" }).first();
-  expect(await card.locator(".name a").count()).toBe(0);
-  expect(await card.evaluate((el) => getComputedStyle(el).cursor)).not.toBe("pointer");
+  await expect(card.locator(".name a")).toHaveAttribute("href", "./urikan-ai-marketplace-auto-updater/");
+  expect(await card.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
+  await card.locator(".desc").click();
+  await expect(page).toHaveURL(/\/urikan-ai-marketplace-auto-updater\/$/);
 });
 
 test("the hub Learn more button uses the brand accent color, not yellow (SITE-HUB-07)", async ({ page }) => {
@@ -345,7 +349,7 @@ test("portability source chips keep AA contrast in the light theme (SITE-A11Y-05
 });
 
 test("every page exposes a skip-to-content link that targets the main region", async ({ page }) => {
-  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/", "/urikan-ai-marketplace-auto-updater/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
     const skip = page.locator("a.skip-link");
     await expect(skip).toHaveCount(1);
@@ -524,7 +528,7 @@ test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }
 });
 
 test("plugin and tutorial pages keep a tight CSP (no widget relaxations)", async ({ page }) => {
-  for (const p of ["/commentable-html/", "/commentable-html/tutorial/"]) {
+  for (const p of ["/commentable-html/", "/commentable-html/tutorial/", "/urikan-ai-marketplace-auto-updater/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
     const csp = await page
       .locator('meta[http-equiv="Content-Security-Policy"]')
@@ -808,7 +812,7 @@ test("plugin page links to the tutorial", async ({ page }) => {
 });
 
 test("every image on every page has non-empty alt text", async ({ page }) => {
-  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/", "/urikan-ai-marketplace-auto-updater/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
     const missing = await page.evaluate(() =>
       Array.prototype.filter
@@ -838,6 +842,46 @@ test("commentable-html hero shows the plugin logo", async ({ page }) => {
   const logo = page.locator(".hero-logo");
   await expect(logo).toHaveCount(1);
   await expect(logo).toHaveAttribute("alt", /commentable html/i);
+});
+
+test("the auto-updater page renders its pitch: hero logo, version badge, features, and install (SITE-UPDATER-04)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  // Hero identity: the dedicated brand logo with descriptive alt text and a semver version badge.
+  const logo = page.locator(".hero-logo");
+  await expect(logo).toHaveCount(1);
+  await expect(logo).toHaveAttribute("alt", /auto-updater/i);
+  await expect(page.locator(".hero .badge.version")).toHaveText(/^v\d+\.\d+\.\d+$/);
+  // A full pitch: at least four feature cards and the two-line install command.
+  expect(await page.locator("#features .card.feature").count()).toBeGreaterThanOrEqual(4);
+  await expect(page.locator("#install .cmd pre")).toContainText(
+    "copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
+});
+
+test("the auto-updater page keeps the user on the page and links back to the marketplace (SITE-UPDATER-05)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  // The brand link stays on the auto-updater page (does not jump to the hub).
+  await expect(page.locator(".brand")).toHaveAttribute("href", "./");
+  // A Marketplace link sits immediately after GitHub and returns to the hub.
+  await expect(page.locator(".nav-links a", { hasText: "Marketplace" })).toHaveAttribute("href", "../");
+  const links = page.locator(".nav-links a");
+  const count = await links.count();
+  const texts = [];
+  for (let i = 0; i < count; i++) texts.push((await links.nth(i).textContent()).trim());
+  expect(texts.indexOf("Marketplace")).toBe(texts.indexOf("GitHub") + 1);
+  // The footer points at the plugin's own source tree.
+  await expect(page.locator("footer.footer a", { hasText: "Plugin source" }))
+    .toHaveAttribute("href", /\/plugins\/urikan-ai-marketplace-auto-updater$/);
+});
+
+test("the commentable-html Install section links to the auto-updater page (SITE-UPDATER-06)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const link = page.locator('#install a[href="../urikan-ai-marketplace-auto-updater/"]');
+  await expect(link).toHaveCount(1);
+  await expect(link).toHaveText(/auto-updater/i);
+  // The note explains the auto-updater keeps commentable-html up to date on session start.
+  await expect(page.locator("#install .install-note")).toContainText(/session start/i);
+  await link.click();
+  await expect(page).toHaveURL(/\/urikan-ai-marketplace-auto-updater\/$/);
 });
 
 test("the full-screen button has a light-red (accent-tinted) background", async ({ page }) => {
@@ -927,7 +971,7 @@ test("the plugin page footer links to contribute, feature request, issues, sourc
 });
 
 test("no internal link or asset uses a root-relative path (would break the project sub-path)", async ({ page }) => {
-  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/"]) {
+  for (const p of ["/", "/commentable-html/", "/commentable-html/tutorial/", "/urikan-ai-marketplace-auto-updater/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
     const bad = await page.evaluate(() => {
       const out = [];
@@ -948,7 +992,7 @@ test("no internal link or asset uses a root-relative path (would break the proje
 });
 
 test("no broken internal links or assets", async ({ page, request }) => {
-  const pagesToCrawl = ["/", "/commentable-html/", "/commentable-html/tutorial/"];
+  const pagesToCrawl = ["/", "/commentable-html/", "/commentable-html/tutorial/", "/urikan-ai-marketplace-auto-updater/"];
   const checked = new Set();
   for (const p of pagesToCrawl) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
@@ -994,6 +1038,7 @@ test("plugin and tutorial pages carry a self-referencing canonical and Open Grap
   const cases = [
     ["/commentable-html/", PROD + "commentable-html/"],
     ["/commentable-html/tutorial/", PROD + "commentable-html/tutorial/"],
+    ["/urikan-ai-marketplace-auto-updater/", PROD + "urikan-ai-marketplace-auto-updater/"],
   ];
   for (const [p, canonical] of cases) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
@@ -1064,7 +1109,8 @@ test("sitemap.xml is served and lists the hub, plugin, and tutorial pages", asyn
   expect(r.status()).toBeLessThan(400);
   const body = await r.text();
   expect(body).toContain("<urlset");
-  for (const u of [PROD, PROD + "commentable-html/", PROD + "commentable-html/tutorial/"]) {
+  for (const u of [PROD, PROD + "commentable-html/", PROD + "commentable-html/tutorial/",
+                   PROD + "urikan-ai-marketplace-auto-updater/"]) {
     expect(body).toContain("<loc>" + u + "</loc>");
   }
 });
@@ -1075,6 +1121,7 @@ test("llms.txt is served and links each plugin and the tutorial", async ({ reque
   const body = await r.text();
   expect(body).toContain("# ai-marketplace");
   expect(body).toContain("(" + PROD + "commentable-html/)");
+  expect(body).toContain("(" + PROD + "urikan-ai-marketplace-auto-updater/)");
   expect(body).toContain("commentable-html/tutorial/");
 });
 

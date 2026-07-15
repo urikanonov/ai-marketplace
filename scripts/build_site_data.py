@@ -25,7 +25,11 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-PLUGIN_PAGES = {"commentable-html": "./commentable-html/"}
+UPDATER_PLUGIN = "urikan-ai-marketplace-auto-updater"
+PLUGIN_PAGES = {
+    "commentable-html": "./commentable-html/",
+    UPDATER_PLUGIN: "./" + UPDATER_PLUGIN + "/",
+}
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-showcase.html"]
 EXAMPLES_REL = os.path.join(
@@ -55,6 +59,11 @@ HUB_SRC = os.path.join(SITE_PAGES, "index.html")
 HUB_OUT = os.path.join(SITE_OUT, "index.html")
 PLUGIN_SRC = os.path.join(SITE_PAGES, "commentable-html", "index.html")
 PLUGIN_OUT = os.path.join(SITE_OUT, "commentable-html", "index.html")
+# The auto-updater plugin page: a REQUIRED page like the hub and the commentable-html page (its
+# source must exist), built from its own site/pages source with only the version badge filled from
+# the manifest so it never drifts from the shipped plugin version.
+UPDATER_SRC = os.path.join(SITE_PAGES, UPDATER_PLUGIN, "index.html")
+UPDATER_OUT = os.path.join(SITE_OUT, UPDATER_PLUGIN, "index.html")
 TUTORIAL_PAGE_SRC = os.path.join(SITE_PAGES, "commentable-html", "tutorial", "index.html")
 
 # The commentable-html skill root. The tutorial references example files with
@@ -844,8 +853,9 @@ def main(argv):
             changelog_html = render_changelog(releases)
             break
     version = plugin_version(manifest, CHANGELOG_PLUGIN)
+    updater_version = plugin_version(manifest, UPDATER_PLUGIN)
 
-    for src_rel in (HUB_SRC, PLUGIN_SRC):
+    for src_rel in (HUB_SRC, PLUGIN_SRC, UPDATER_SRC):
         if not os.path.isfile(os.path.join(root, src_rel)):
             raise SystemExit("page source missing: %s (a built page under site/dist/ has no source "
                              "to rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
@@ -859,8 +869,12 @@ def main(argv):
         ("block", "changelog", changelog_html),
         ("inline", "demo-fullscreen", render_demo_fullscreen_link()),
     ])
+    updater_out = build_page(root, UPDATER_SRC, [
+        ("inline", "version", "v" + esc(updater_version)),
+    ])
     hub_out_path = os.path.join(root, HUB_OUT)
     plugin_out_path = os.path.join(root, PLUGIN_OUT)
+    updater_out_path = os.path.join(root, UPDATER_OUT)
 
     tutorial_src_page = os.path.join(root, TUTORIAL_PAGE_SRC)
     tutorial_out_path = os.path.join(root, TUTORIAL_PAGE)
@@ -900,6 +914,11 @@ def main(argv):
             problems.append("site/dist/commentable-html/index.html is stale vs its "
                             "site/pages/commentable-html/index.html source "
                             "(do not hand-edit the built page; edit the source and rebuild)")
+        if updater_out != _read_artifact(updater_out_path):
+            problems.append("site/dist/%s/index.html is stale vs its "
+                            "site/pages/%s/index.html source "
+                            "(do not hand-edit the built page; edit the source and rebuild)"
+                            % (UPDATER_PLUGIN, UPDATER_PLUGIN))
         if tutorial_out is not None and tutorial_out != _read_artifact(tutorial_out_path):
             problems.append("site/dist/commentable-html/tutorial/index.html is stale vs its "
                             "site/pages/commentable-html/tutorial/index.html source and "
@@ -926,6 +945,7 @@ def main(argv):
 
     write_text(hub_out_path, hub_out)
     write_text(plugin_out_path, plugin_out)
+    write_text(updater_out_path, updater_out)
     if tutorial_out is not None:
         write_text(tutorial_out_path, tutorial_out)
     elif tutorial_orphaned:

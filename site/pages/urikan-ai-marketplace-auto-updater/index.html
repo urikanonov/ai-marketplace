@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
+  <title>Auto-updater - keep your urikan-ai-marketplace plugins current</title>
+  <meta name="description" content="An opt-in GitHub Copilot CLI plugin that checks for and installs updates to your urikan-ai-marketplace plugins on every session start. Non-blocking, throttled, and cross-platform." />
+  <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ai-marketplace" />
+  <meta property="og:title" content="Auto-updater - keep your urikan-ai-marketplace plugins current" />
+  <meta property="og:description" content="An opt-in GitHub Copilot CLI plugin that checks for and installs updates to your urikan-ai-marketplace plugins on every session start. Non-blocking, throttled, and cross-platform." />
+  <meta property="og:url" content="https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/" />
+  <meta property="og:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="ai-marketplace auto-updater" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Auto-updater - keep your urikan-ai-marketplace plugins current" />
+  <meta name="twitter:description" content="Opt-in session-start updates for your urikan-ai-marketplace plugins. Non-blocking, throttled, and cross-platform." />
+  <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
+  <link rel="icon" type="image/svg+xml" href="../assets/urikan-ai-marketplace-auto-updater.svg" />
+  <link rel="stylesheet" href="../assets/styles.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "urikan-ai-marketplace-auto-updater",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Cross-platform (GitHub Copilot CLI)",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "description": "An opt-in GitHub Copilot CLI plugin that checks for and installs updates to your urikan-ai-marketplace plugins on every session start.",
+        "url": "https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/",
+        "author": { "@type": "Person", "name": "Uri Kanonov", "url": "https://github.com/urikanonov" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "ai-marketplace", "item": "https://urikanonov.github.io/ai-marketplace/" },
+          { "@type": "ListItem", "position": 2, "name": "urikan-ai-marketplace-auto-updater", "item": "https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <nav class="navbar">
+    <div class="wrap">
+      <a class="brand" href="./">
+        <img src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" />
+        <span>Auto-updater</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#how" class="hide-sm">How it works</a>
+        <a href="#install">Install</a>
+        <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">GitHub</a>
+        <a href="../">Marketplace</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <header class="hero">
+      <div class="wrap">
+        <a class="back-link" href="../">&larr; All plugins</a>
+        <h1>Keep your marketplace plugins <span class="accent">up to date</span>, automatically</h1>
+        <p class="lead">An opt-in session-start hook that checks for and installs updates to every plugin you use from this marketplace. Install it once and stop thinking about updates - the newest fixes and features are already there next time you open the Copilot CLI.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#install">Install</a>
+          <a class="btn" href="#how">How it works</a>
+          <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">View source</a>
+        </div>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.0.3<!-- END:version --></span></a>
+      </div>
+    </header>
+
+    <section id="why">
+      <div class="wrap">
+        <div class="section-block prose">
+          <h2 class="section-title">Why auto-update</h2>
+          <p>Plugins move fast. New commentable-html releases ship fixes, new content types, and safer defaults on a regular cadence - but a plugin only helps you if the copy on your machine is current. Updating by hand means remembering to run <code>copilot plugin update</code> for each plugin, on each machine, and noticing when a new version even exists.</p>
+          <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <code>urikan-ai-marketplace</code>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2 class="section-title">What you get</h2>
+        <p class="section-sub">A tiny, well-behaved hook that does one job well and stays out of your way.</p>
+        <div class="grid">
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.36-2.64L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.36 2.64L21 8"/><path d="M21 3v5h-5"/></svg></span><h3>Updates on session start</h3><p>A <code>sessionStart</code> hook runs each time you open the Copilot CLI and updates every plugin you have from this marketplace, in name-sorted order for a deterministic log.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 3 7.4 7 8.5 4-1.1 7-4.3 7-8.5V6z"/><path d="m9 12 2 2 4-4"/></svg></span><h3>Non-blocking by design</h3><p>All work is wrapped in <code>try/catch</code>. A failure is logged and never surfaced to your session, and each plugin updates in isolation so one failing update never stops the rest.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><h3>Throttled, not chatty</h3><p>A last-run throttle skips the whole pass when the previous one ran less than about 20 hours ago, so opening several sessions a day costs at most one update check.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="8" width="20" height="8" rx="4"/><circle cx="16" cy="12" r="3"/></svg></span><h3>Opt-in, always</h3><p>Automatic updates are a separate plugin you choose to install. Do not want them on a given machine? Do not install it there - nothing about the other plugins changes.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h10"/></svg></span><h3>A readable activity log</h3><p>Every pass, skip, and failure is written to a log under <code>plugin-data</code>, and a completed pass is stamped so a skipped run is discoverable rather than silent.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M8 21h8M12 17v4"/></svg></span><h3>Cross-platform</h3><p>On Windows it runs under Windows PowerShell 5.1; on macOS and Linux it runs the same script under PowerShell 7 (<code>pwsh</code>), and logs a clear note when <code>pwsh</code> is not installed.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <h2 class="section-title">How it works</h2>
+        <p class="section-sub">One hook, one job, and nothing to babysit.</p>
+        <div class="steps steps-vertical">
+          <div class="step"><h3>Register a session-start hook</h3><p>Installing the plugin adds a <code>sessionStart</code> hook (<code>hooks.json</code>). No configuration and no scheduler to set up.</p></div>
+          <div class="step"><h3>Check the throttle</h3><p>On each session start the hook checks the last-run stamp. If the previous pass ran within the last ~20 hours it logs a skip and does nothing else.</p></div>
+          <div class="step"><h3>Update every marketplace plugin</h3><p>Otherwise it lists your installed plugins, sorts them by name, and runs <code>copilot plugin update</code> for each - checking the exit code and logging any failure. It excludes itself, since a plugin cannot update itself while its own hook is running.</p></div>
+          <div class="step"><h3>Stamp and log</h3><p>A completed pass records a fresh last-run stamp and writes activity to the plugin-data log, so you can always see what happened and when.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2 class="section-title">Install</h2>
+        <p class="section-sub">Add the marketplace, then install the auto-updater. That is the whole setup.</p>
+        <div class="cmd">
+          <span class="prompt">$</span>
+          <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
+copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</pre>
+          <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
+copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace">copy</button>
+        </div>
+        <p class="section-sub install-note">On macOS and Linux the updater needs <a href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell" target="_blank" rel="noopener noreferrer">PowerShell 7 (<code>pwsh</code>)</a> on your <code>PATH</code>; on Windows nothing extra is needed. When <code>pwsh</code> is missing the hook logs a dated skip note instead of failing.</p>
+      </div>
+    </section>
+
+    <section id="safety">
+      <div class="wrap">
+        <h2 class="section-title">Quiet and safe by default</h2>
+        <p class="section-sub">The updater is built to be invisible until you go looking for it.</p>
+        <div class="grid">
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 3 7.4 7 8.5 4-1.1 7-4.3 7-8.5V6z"/></svg></span><h3>Never breaks your session</h3><p>The hook can only ever succeed or log a failure. It never throws, never blocks startup, and never surfaces an error into your session.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.6-5.6L20 8"/><path d="M20 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6L4 16"/><path d="M4 21v-5h5"/></svg></span><h3>Scoped to this marketplace</h3><p>It only updates plugins installed from <code>urikan-ai-marketplace</code>. Plugins from other marketplaces are untouched.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><h3>You stay in control</h3><p>It is opt-in and self-excluding. Uninstall it any time and every other plugin keeps working exactly as before - you just go back to updating them yourself.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>MIT License &middot; &copy; <span id="year">2026</span> <a href="https://www.linkedin.com/in/uri-kanonov-946761119">Uri Kanonov</a></span>
+      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md">Contribute</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml">Request a feature</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new/choose">File an issue</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">Plugin source</a></span>
+    </div>
+  </footer>
+
+  <script src="../assets/site.js"></script>
+</body>
+</html>
