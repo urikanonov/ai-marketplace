@@ -4,6 +4,15 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-15
+
+### Changed
+
+- Moved `CHANGELOG.md` out of the shipped `pkg/` to the plugin root so it is no longer distributed with the
+  plugin, mirroring the `commentable-html` layout, and added a minimal root `README.md` describing the
+  `pkg/` (shipped) and `dev/` (not shipped) split. The changelog is now also surfaced on the plugin's
+  website page.
+
 ## [1.0.3] - 2026-07-12
 
 ### Fixed

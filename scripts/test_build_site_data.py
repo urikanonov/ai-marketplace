@@ -622,6 +622,12 @@ class AutoUpdaterPageTests(unittest.TestCase):
         urls = {li["item"]["name"]: li["item"]["url"] for li in itemlist["itemListElement"]}
         self.assertEqual(urls[self.UPDATER], bsd.SITE_BASE_URL + self.UPDATER + "/")
 
+    def test_render_plugin_changelog_renders_updater_releases(self):
+        # The auto-updater CHANGELOG.md now lives at the plugin root and is rendered on its page.
+        html = bsd.render_plugin_changelog(bsd.REPO_ROOT, self.UPDATER)
+        self.assertIn('class="release"', html)
+        self.assertIn("[1.1.0]", html)
+
 
 class WriteOrCheckTests(unittest.TestCase):
     def test_writes_then_reports_drift_only_on_change(self):

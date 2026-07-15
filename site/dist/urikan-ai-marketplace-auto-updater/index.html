@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Opt-in session-start updates for your urikan-ai-marketplace plugins. Non-blocking, throttled, and cross-platform." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/urikan-ai-marketplace-auto-updater.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=92dc19823800" />
+  <link rel="stylesheet" href="../assets/styles.css?v=e0747cfda2d7" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -60,6 +60,7 @@
         <a href="#features">Features</a>
         <a href="#how" class="hide-sm">How it works</a>
         <a href="#install">Install</a>
+        <a href="#changelog" class="hide-sm">Changelog</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">GitHub</a>
         <a href="../">Marketplace</a>
       </div>
@@ -77,7 +78,7 @@
           <a class="btn" href="#how">How it works</a>
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">View source</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.0.3<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.1.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -86,7 +87,7 @@
         <div class="section-block prose">
           <h2 class="section-title">Why auto-update</h2>
           <p>Plugins move fast. New commentable-html releases ship fixes, new content types, and safer defaults on a regular cadence - but a plugin only helps you if the copy on your machine is current. Updating by hand means remembering to run <code>copilot plugin update</code> for each plugin, on each machine, and noticing when a new version even exists.</p>
-          <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <code>urikan-ai-marketplace</code>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
+          <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <a href="../"><code>urikan-ai-marketplace</code></a>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
         </div>
       </div>
     </section>
@@ -142,6 +143,65 @@ copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace"
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 3 7.4 7 8.5 4-1.1 7-4.3 7-8.5V6z"/></svg></span><h3>Never breaks your session</h3><p>The hook can only ever succeed or log a failure. It never throws, never blocks startup, and never surfaces an error into your session.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.6-5.6L20 8"/><path d="M20 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6L4 16"/><path d="M4 21v-5h5"/></svg></span><h3>Scoped to this marketplace</h3><p>It only updates plugins installed from <code>urikan-ai-marketplace</code>. Plugins from other marketplaces are untouched.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><h3>You stay in control</h3><p>It is opt-in and self-excluding. Uninstall it any time and every other plugin keeps working exactly as before - you just go back to updating them yourself.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="changelog">
+      <div class="wrap">
+        <h2 class="section-title">Changelog</h2>
+        <p class="section-sub">Changes to the auto-updater. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
+        <div class="changelog">
+          <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.1.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Moved <code>CHANGELOG.md</code> out of the shipped <code>pkg/</code> to the plugin root so it is no longer distributed with the plugin, mirroring the <code>commentable-html</code> layout, and added a minimal root <code>README.md</code> describing the <code>pkg/</code> (shipped) and <code>dev/</code> (not shipped) split. The changelog is now also surfaced on the plugin&#x27;s website page.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.0.3] - 2026-07-12</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Aligned the shipped plugin description with the marketplace manifest so the validator can enforce metadata parity.</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 3 older releases</summary>
+          <div class="release">
+            <div class="rel-head"><h3>[1.0.2] - 2026-07-11</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Windows session-start invocation now runs <code>powershell -NoProfile -ExecutionPolicy Bypass -File</code>. A bare <code>.ps1</code> path was silently blocked by the default <code>Restricted</code> execution policy, so the updater never ran on a default Windows setup.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>On macOS/Linux, when <code>pwsh</code> (PowerShell 7) is missing the bash hook now appends a dated skip note to the plugin-data log instead of silently no-opping, so the skip is discoverable. Added a README documenting the PowerShell 7 prerequisite.</li>
+              <li>A last-run throttle: the update pass is skipped (and logged) when the previous pass ran less than about 20 hours ago, and a completed pass stamps <code>urikan-ai-marketplace-auto-updater.last-run</code>.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Installed plugins are now iterated in name-sorted order (<code>Sort-Object Name</code>) for a deterministic log.</li>
+              <li>The plugin now uses the <code>pkg/</code> shipped-source layout with a sibling <code>dev/</code> folder holding the feature spec and an automated pwsh test suite (not distributed).</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.0.1] - 2026-07-10</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The updater now checks <code>$LASTEXITCODE</code> after each <code>copilot plugin update</code> and logs failures. Native-command failures were previously swallowed by the <code>catch</code>.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.0.0] - 2026-07-10</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Session-start hook that checks for and installs plugin updates from this marketplace. Opt-in: install only if you want automatic updates.</li>
+            </ul>
+          </div>
+          </details>
+          <!-- END:changelog -->
         </div>
       </div>
     </section>

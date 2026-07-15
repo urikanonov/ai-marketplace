@@ -554,12 +554,14 @@ def _render_release(release):
     return "\n".join(parts)
 
 
-def render_changelog(releases, expanded_count=2, older_count=5):
+def render_changelog(releases, expanded_count=2, older_count=5, github_url=None):
     """Show the latest `expanded_count` releases (counted in number of releases, default
     2) inline; fold the next `older_count` releases (default 5) into a single <details>
     that stays collapsed by default so the page stays short. Any releases beyond that are
     not rendered - a link to the full changelog in source is shown instead, so the page
     never grows without bound."""
+    if github_url is None:
+        github_url = CHANGELOG_GITHUB_URL
     if not releases:
         return ('<p class="empty">No changelog entries yet. '
                 'See the full marketplace changelog on GitHub.</p>')
@@ -576,10 +578,27 @@ def render_changelog(releases, expanded_count=2, older_count=5):
             details.append(
                 '  <p class="changelog-more">{n} earlier release{s} in the '
                 '<a href="{url}">full changelog on GitHub</a>.</p>'.format(
-                    n=remaining, s="" if remaining == 1 else "s", url=esc(CHANGELOG_GITHUB_URL)))
+                    n=remaining, s="" if remaining == 1 else "s", url=esc(github_url)))
         details.append('</details>')
         blocks.append("\n".join(details))
     return "\n".join(blocks)
+
+
+def plugin_changelog_github_url(plugin_name):
+    return ("https://github.com/urikanonov/ai-marketplace/blob/main/plugins/"
+            + plugin_name + "/CHANGELOG.md")
+
+
+def render_plugin_changelog(root, plugin_name):
+    """Render a plugin's CHANGELOG.md (at plugins/<plugin>/CHANGELOG.md) into the page changelog HTML,
+    folding older releases behind a link to the full changelog on GitHub. Used for plugin pages whose
+    changelog needs no root-changelog filtering (the whole file is that plugin's history)."""
+    path = os.path.join(root, "plugins", plugin_name, "CHANGELOG.md")
+    github_url = plugin_changelog_github_url(plugin_name)
+    if not os.path.exists(path):
+        return render_changelog([], github_url=github_url)
+    releases = parse_changelog(read_text(path), None)
+    return render_changelog(releases, github_url=github_url)
 
 
 def _read_normalized(path):
@@ -871,6 +890,7 @@ def main(argv):
     ])
     updater_out = build_page(root, UPDATER_SRC, [
         ("inline", "version", "v" + esc(updater_version)),
+        ("block", "changelog", render_plugin_changelog(root, UPDATER_PLUGIN)),
     ])
     hub_out_path = os.path.join(root, HUB_OUT)
     plugin_out_path = os.path.join(root, PLUGIN_OUT)
