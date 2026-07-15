@@ -23,6 +23,27 @@ import highlight_code as H  # noqa: E402
 
 PARITY_FIXTURE = os.path.join(HERE, "fixtures", "highlight_parity.json")
 SPAN_RE = re.compile(r'<span class="cmh-code-([a-z]+)">(.*?)</span>', re.S)
+HIGHLIGHT_JS = os.path.join(_paths.ASSETS, "js", "26-highlight.js")
+# A key inside the _HL_FAMILY object literal: a bareword (javascript) or a quoted token ("c++")
+# immediately before a colon. Values ("c", "hash") never precede a colon, so they are not captured.
+_HL_FAMILY_KEY_RE = re.compile(r'("[^"]+"|[A-Za-z_$][A-Za-z0-9_$+.#-]*)\s*:')
+
+
+def runtime_known_languages():
+    """The set of language labels the runtime tokenizer knows (keys of _HL_FAMILY in
+    assets/js/26-highlight.js). diffLangKnown() gates both the diff highlighter and the
+    runtime fallback on membership in this set."""
+    with open(HIGHLIGHT_JS, "r", encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r"const _HL_FAMILY\s*=\s*\{(.*?)\};", src, re.S)
+    assert m, "could not locate the _HL_FAMILY object literal in 26-highlight.js"
+    keys = set()
+    for km in _HL_FAMILY_KEY_RE.finditer(m.group(1)):
+        key = km.group(1)
+        if key.startswith('"'):
+            key = key[1:-1]
+        keys.add(key.lower())
+    return keys
 
 
 def classes_to_text(inner_html):
@@ -57,6 +78,20 @@ class HighlightParityPythonTests(unittest.TestCase):
                 for tok in case.get("notStr", []):
                     self.assertNotIn(tok, spans.get("str", ""),
                                      "%s: %r must NOT be swallowed as a string" % (lang, tok))
+
+
+class RuntimeLanguageCoverageTests(unittest.TestCase):
+    def test_runtime_knows_every_author_time_language(self):
+        # CMH-HL-03: the runtime tokenizer (diffLangKnown / _HL_FAMILY) must know every language the
+        # author-time highlighter supports (highlight_code.LANGUAGE_CONFIGS). Otherwise a supported
+        # language that was authored raw renders monochrome at runtime, because the runtime fallback
+        # (highlightCodeBlocks, CMH-HL-01) and the diff highlighter only fire for a known language.
+        # This guard fails the moment an author-time language is added without runtime coverage.
+        known = runtime_known_languages()
+        missing = sorted(set(H.LANGUAGE_CONFIGS) - known)
+        self.assertEqual(missing, [],
+                         "runtime _HL_FAMILY must cover every author-time language; missing: %r "
+                         "(add them to _HL_FAMILY in assets/js/26-highlight.js)" % missing)
 
 
 if __name__ == "__main__":

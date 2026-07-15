@@ -28,6 +28,7 @@ const _HL_FAMILY = {
   css: "css", lua: "lua", haskell: "haskell", hs: "haskell",
   powershell: "powershell", ps1: "powershell", ps: "powershell",
   batch: "batch", bat: "batch", cmd: "batch",
+  html: "markup", xml: "markup",
 };
 const _EXT_LANG = {
   py: "python", js: "javascript", jsx: "javascript", mjs: "javascript", ts: "typescript", tsx: "typescript",
@@ -51,6 +52,12 @@ const _HL_KW_SET = new Set(("abstract as async await base bool boolean break byt
   + "ref return self short static struct super switch synchronized template this throw throws trait try type typedef "
   + "typeof union unsafe use using var virtual void volatile when where while with yield true false and "
   + "cond defmacro defmodule defp defstruct deriving elseif newtype quote unquote receive rescue repeat until").split(" "));
+// Markup (html/xml) tag/keyword set - mirrors the author-time highlighter's html+xml keyword lists
+// (tools/blocks/highlight_code.py) so a runtime-highlighted markup block colors tag names the same
+// way a baked one does, instead of using the C-family keyword set (where words like `class` collide).
+const _HL_MARKUP_KW = new Set(("a article body button code div footer h1 h2 h3 head header html img "
+  + "input label li link main meta nav ol option p pre script section select span style table tbody "
+  + "td template textarea th thead title tr ul xml version encoding root item node element").split(" "));
 const _hlCache = {};
 function _hlTokenRe(fam) {
   if (_hlCache[fam]) { _hlCache[fam].lastIndex = 0; return _hlCache[fam]; }
@@ -69,6 +76,7 @@ function _hlTokenRe(fam) {
   else if (fam === "haskell") { com = "\\{-[\\s\\S]*?(?:-\\}|$)|--[^\\n]*"; str = dq; }
   else if (fam === "powershell") { com = "<#[\\s\\S]*?(?:#>|$)|#[^\\n]*"; str = dq + "|" + sq; flags = "gi"; }
   else if (fam === "batch") { com = "(?:rem\\b|::)[^\\n]*"; str = dq; flags = "gi"; }
+  else if (fam === "markup") { com = "<!--[\\s\\S]*?(?:-->|$)"; str = dq + "|" + sq; flags = "gi"; }
   else { com = "/\\*[\\s\\S]*?(?:\\*/|$)|//[^\\n]*"; str = dq + "|" + sq + "|" + bt; }
   const num = "0[xX][0-9a-fA-F]+|\\d[\\d_]*(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
   const id = "[A-Za-z_$][A-Za-z0-9_$]*";
@@ -88,7 +96,7 @@ function cmhHighlightCode(text, lang) {
     if (g.com) cls = "com";
     else if (g.str) cls = "str";
     else if (g.num) cls = "num";
-    else if (g.id) cls = _HL_KW_SET.has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
+    else if (g.id) cls = (fam === "markup" ? _HL_MARKUP_KW : _HL_KW_SET).has(re.ignoreCase ? t.toLowerCase() : t) ? "kw" : (text[re.lastIndex] === "(" ? "fn" : null);
     else if (g.op) cls = "op";
     out += cls ? ('<span class="cmh-code-' + cls + '">' + escapeHtml(t) + "</span>") : escapeHtml(t);
     last = re.lastIndex;

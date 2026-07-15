@@ -57,6 +57,22 @@
       "lang": "powershell",
       "code": "FUNCTION Get-Thing { RETURN $Name }",
       "kw": ["FUNCTION", "RETURN"]
+    },
+    {
+      "lang": "html",
+      "code": "<div class=\"cmh-note\" id=\"x\"> <!-- c --> hi</div>",
+      "str": ["\"cmh-note\"", "\"x\""],
+      "com": ["<!-- c -->"],
+      "kw": ["div"],
+      "notKw": ["class", "id"]
+    },
+    {
+      "lang": "xml",
+      "code": "<item name=\"a\"> <!-- x --> </item>",
+      "str": ["\"a\""],
+      "com": ["<!-- x -->"],
+      "kw": ["item"],
+      "notKw": ["name"]
     }
   ]
 }
