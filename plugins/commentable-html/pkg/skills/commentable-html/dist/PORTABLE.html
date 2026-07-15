@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.65.0" />
+<meta name="commentable-html-version" content="1.66.0" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.65.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.66.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - Demo</title>
 
@@ -1326,6 +1326,45 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
   -webkit-box-orient: vertical;
 }
 .cm-card-note .cmh-note-arrow { color: var(--cp-text-soft); }
+/* Unvalidated-document fallback banner (CMH-STAMP-03): a small, dismissible amber strip shown when a
+   document carries a created stamp but no current validated stamp. It is cm-skip chrome and never
+   bakes into an export. A high z-index keeps it visible on a fixed-stage deck too. */
+.cmh-unvalidated-banner {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 100003;
+  max-width: min(520px, calc(100vw - 24px));
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 11px;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #78350f;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+.cmh-unvalidated-banner .cmh-unvalidated-msg { flex: 1 1 auto; }
+.cmh-unvalidated-banner .cmh-unvalidated-dismiss {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: #78350f;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.cmh-unvalidated-banner .cmh-unvalidated-dismiss:hover { color: #92400e; }
+html[data-theme="dark"] .cmh-unvalidated-banner {
+  border-color: #b45309;
+  background: #3a2a0a;
+  color: #fde68a;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+html[data-theme="dark"] .cmh-unvalidated-banner .cmh-unvalidated-dismiss { color: #fde68a; }
 /* Deck profile (data-cmh-mode="deck"): comment-mode force-reveal and slide chrome. */
 body.cmh-deck-present .cm-toolbar,
 body.cmh-deck-present #sidebar {
@@ -2052,7 +2091,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.65.0";
+const CMH_VERSION = "1.66.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4725,6 +4764,46 @@ function setupNotesLayer() {
   });
   if (notes.length) _noteSave();   // prune any stale post-apply overrides that now equal baseline
   _noteHadChanges = notesChanges().length > 0;
+}
+/* ---------- Unvalidated-document fallback banner (CMH-STAMP-03, default ON) ----------
+   A last-resort visible signal. If a document carries a `commentable-html-created` stamp (it was
+   produced by the tooling) but no current `commentable-html-validated` stamp (validate.py writes
+   that only on a strict-clean pass), show a small dismissible amber banner. The skill MUST always
+   finalize and strict-validate before handoff, so this should NEVER appear; when it does, the
+   document was shipped without validation and may be incomplete. The banner is `cm-skip` chrome and
+   is added to CMH_INJECTED_CHROME so it never bakes into a Save/Export snapshot - it is re-derived
+   on load, so an exported-but-unvalidated document still shows it. */
+function _cmhMetaContent(name) {
+  const m = document.querySelector('meta[name="' + name + '"]');
+  return m ? (m.getAttribute("content") || "") : "";
+}
+function _cmhValidationStale(validated, created) {
+  const v = Date.parse(validated), c = Date.parse(created);
+  if (isNaN(v) || isNaN(c)) return false; // an unparseable stamp is not treated as stale (no nag)
+  return v < c;
+}
+function setupValidationBanner() {
+  const created = _cmhMetaContent("commentable-html-created");
+  if (!created) return; // only a tooling-produced document is expected to carry a validation stamp
+  const validated = _cmhMetaContent("commentable-html-validated");
+  if (validated && !_cmhValidationStale(validated, created)) return; // strict-validated: show nothing
+  const banner = document.createElement("div");
+  banner.className = "cm-skip cmh-unvalidated-banner";
+  banner.setAttribute("role", "status");
+  const msg = document.createElement("span");
+  msg.className = "cmh-unvalidated-msg";
+  msg.textContent = "This document was not validated and may be incomplete. Run "
+    + "tools/authoring/finalize.py <file> --strict, then tools/validate/validate.py --strict <file>.";
+  const dismiss = document.createElement("button");
+  dismiss.type = "button";
+  dismiss.className = "cmh-unvalidated-dismiss";
+  dismiss.setAttribute("aria-label", "Dismiss the not-validated notice");
+  dismiss.textContent = "\u00d7";
+  dismiss.addEventListener("click", () => { banner.remove(); });
+  banner.appendChild(msg);
+  banner.appendChild(dismiss);
+  document.body.appendChild(banner);
+  CMH_INJECTED_CHROME.add(banner);
 }
 /* ---------- Document-wide comments ---------- */
 // A comment not tied to any element (raised by right-clicking empty space). It has no
@@ -9190,6 +9269,7 @@ if (IS_DECK) {
   setupScrollProgress();
 }
 setupTooltips();
+setupValidationBanner();
 // Capture the layer chrome injected above while the host content that follows the layer
 // <script> is still unparsed, so an export tail can exclude it (see _snapshotWithTail).
 for (let cur = CMH_LAYER_SCRIPT; cur && cur.parentNode; cur = cur.parentNode) {

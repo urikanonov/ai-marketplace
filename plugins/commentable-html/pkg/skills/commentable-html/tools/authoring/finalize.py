@@ -115,6 +115,8 @@ def main(argv):
                              "(on by default)")
     parser.add_argument("--strict", action="store_true",
                         help="treat validator warnings as failures (errors already fail)")
+    parser.add_argument("--no-stamp", action="store_true",
+                        help="do not write the commentable-html-validated stamp on a strict-clean pass")
     args = parser.parse_args(argv[1:])
 
     if not os.path.exists(args.file):
@@ -151,6 +153,10 @@ def main(argv):
         return 1
     if args.strict and warnings:
         return 1
+    # Strict-clean: stamp the document as validated so the runtime fallback banner clears. --no-stamp
+    # keeps a read-only run from writing.
+    if not args.no_stamp and not errors and not warnings:
+        validate._stamp_validated_file(args.file)
     return 0
 
 

@@ -279,7 +279,22 @@ def validate_charts(path):
     return check_charts(html, parser)
 
 
-_USAGE = "usage: python tools/validate.py [--charts-only|--layer-only] [--strict] <file.html> [more.html ...]"
+_USAGE = "usage: python tools/validate.py [--charts-only|--layer-only] [--strict] [--no-stamp] <file.html> [more.html ...]"
+
+
+def _stamp_validated_file(path):
+    """Write the commentable-html-validated provenance stamp into a strict-clean file. Never let a
+    stamp failure affect validation reporting (best-effort)."""
+    try:
+        import doc_stamp
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            html = fh.read()
+        stamped = doc_stamp.stamp_validated_html(html)
+        if stamped != html:
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(stamped)
+    except (OSError, ImportError):
+        pass
 
 
 def _wants_help(tokens):
@@ -300,6 +315,7 @@ def main(argv):
         print("  --charts-only  run only the Chart.js checks")
         print("  --layer-only   run only the commentable-html layer checks")
         print("  --strict       exit non-zero if any warning remains")
+        print("  --no-stamp     do not write the commentable-html-validated stamp on a clean pass")
         return 0
     # A bare "--" ends options: everything after it is a positional path, even if it
     # begins with a dash. Flags are only recognized before the separator.
@@ -310,7 +326,7 @@ def main(argv):
         before, after = raw, []
     args = [a for a in before if not a.startswith("--")] + after
     flags = {a for a in before if a.startswith("--")}
-    known_flags = {"--charts-only", "--layer-only", "--strict"}
+    known_flags = {"--charts-only", "--layer-only", "--strict", "--no-stamp"}
     unknown = sorted(flags - known_flags)
     if unknown:
         sys.stderr.write("unknown flag(s): %s\n" % ", ".join(unknown))
@@ -319,6 +335,7 @@ def main(argv):
     layer = "--charts-only" not in flags
     charts = "--layer-only" not in flags
     strict = "--strict" in flags
+    stamp = "--no-stamp" not in flags
     if not args or (not layer and not charts):
         sys.stderr.write(_USAGE + "\n")
         return 2
@@ -344,6 +361,11 @@ def main(argv):
             print(f"  FAILED (strict): {len(warnings)} warning(s) - resolve every warning before handoff")
         else:
             print(f"  OK ({len(warnings)} warning(s))")
+            # Stamp commentable-html-validated ONLY on a strict-clean pass (no errors AND no
+            # warnings), so the runtime banner clears only for a genuinely finished document.
+            # --no-stamp keeps a pure --check/CI run read-only.
+            if stamp and not errors and not warnings:
+                _stamp_validated_file(path)
     if any_errors:
         return 1
     if strict and any_warnings:

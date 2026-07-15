@@ -557,6 +557,7 @@ if (IS_DECK) {
   setupScrollProgress();
 }
 setupTooltips();
+setupValidationBanner();
 // Capture the layer chrome injected above while the host content that follows the layer
 // <script> is still unparsed, so an export tail can exclude it (see _snapshotWithTail).
 for (let cur = CMH_LAYER_SCRIPT; cur && cur.parentNode; cur = cur.parentNode) {

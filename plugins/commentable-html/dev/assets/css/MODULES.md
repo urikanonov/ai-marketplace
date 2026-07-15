@@ -19,4 +19,5 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `80-focus.css` | CMH-A11Y | Shared themed focus ring for interactive controls. |
 | `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
+| `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
 | `90-deck.css` | CMH-DECK | Deck profile (`data-cmh-mode="deck"`) overrides. |

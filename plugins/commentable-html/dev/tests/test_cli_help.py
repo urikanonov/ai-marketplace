@@ -16,9 +16,9 @@ TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
 
 # Discover every shipped CLI tool directly under a topic bucket (tools/<topic>/<name>.py).
-# deck_common is a shared library (no CLI) and nested helper packages (validate/cmhval/) are not
-# standalone tools, so neither is included in the --help contract.
-_NO_CLI = {"deck_common.py"}
+# deck_common and doc_stamp are shared libraries (no CLI) and nested helper packages
+# (validate/cmhval/) are not standalone tools, so none is included in the --help contract.
+_NO_CLI = {"deck_common.py", "doc_stamp.py"}
 SHIPPED_TOOLS = sorted(
     os.path.join(TOOLS, topic, name)
     for topic in os.listdir(TOOLS)
