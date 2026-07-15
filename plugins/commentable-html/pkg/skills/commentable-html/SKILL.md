@@ -5,9 +5,11 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.74.0`
+**Version:** `1.77.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
+
+This plugin installs into both Claude Code and the GitHub Copilot CLI (add the marketplace, then `claude plugin install commentable-html@urikan-ai-marketplace` or `copilot plugin install commentable-html@urikan-ai-marketplace`), and the skill is invokable from each agent's CLI and Desktop app. The output is a portable HTML file that works with any agent.
 
 ## Review loops
 
@@ -95,6 +97,7 @@ Use the tools rather than manual region editing. If manual fallback is unavoidab
 - Chart: `tools/blocks/chart_block.py`.
 - Table of contents + heading ids: `tools/authoring/generate_toc.py --in-place`.
 - Mermaid `cm-skip`: `tools/authoring/fix_skip.py`.
+- Section cards for a report/plan: `tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block in `<section>` so the document renders as boxed cards (`#commentRoot > section`); `new_document.py` (report/plan fragments) and `finalize.py` run it by default, so hand-wrapping is only needed for externally produced HTML. The validator warns (CMH-VAL-14) when top-level content is not sectioned.
 - Local images in a standalone doc: `tools/authoring/inline_images.py --strict`.
 - Layered checklist markup: `tools/checklist/checklist_scaffold.py`.
 - Editable notes-field markup: `tools/notes/notes_scaffold.py`.

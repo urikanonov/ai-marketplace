@@ -67,6 +67,28 @@ class VisibleVersionDocsTests(unittest.TestCase):
         self.assertIn("**Version:** `%s`" % self._shipped_version(), _read(DIST_README))
 
 
+class DualAgentDocsTests(unittest.TestCase):
+    """CMH-DOC-12: the shipped SKILL.md states the plugin installs into both Claude Code and the
+    GitHub Copilot CLI and is invokable from each agent's CLI and Desktop app, so the dual-agent
+    support is visible in the discovery doc the agent reads."""
+
+    def test_skill_states_dual_agent_install_and_cli_and_desktop(self):
+        text = _read(SKILL_MD)
+        self.assertIn("Claude Code", text)
+        self.assertIn("GitHub Copilot CLI", text)
+        self.assertIn("claude plugin install commentable-html@urikan-ai-marketplace", text)
+        self.assertIn("copilot plugin install commentable-html@urikan-ai-marketplace", text)
+        self.assertIn("CLI and Desktop app", text)
+
+    def test_skill_frontmatter_description_avoids_reserved_words(self):
+        # The dual-agent note lives in the BODY; CMH-DOC-06 still forbids the reserved words in the
+        # discovery front-matter description, so keep them out of the YAML scalar.
+        text = _read(SKILL_MD)
+        front = text.split("---", 2)[1]
+        self.assertNotIn("claude", front.lower())
+        self.assertNotIn("anthropic", front.lower())
+
+
 class MotivationDocsTests(unittest.TestCase):
     """CMH-DOC-01: the shipped README and SKILL.md carry the medium-comparison motivation
     and cite the "unreasonable effectiveness of HTML" blog post."""

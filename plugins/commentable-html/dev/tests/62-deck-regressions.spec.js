@@ -120,8 +120,8 @@ test("CMH-DECK-08: showcase deck triage cards drag between columns", async ({ pa
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
-    const card = '[data-cm-part="risk-demo-weak"]';
-    const target = '[data-cm-slot="Fix next"]';
+    const card = '[data-cm-part="bed8-crop"]';
+    const target = '[data-cm-slot="Decide now"]';
     await expect(page.locator(target).locator(card)).toHaveCount(0);
 
     await dragCardToSlot(page, card, target);
@@ -131,13 +131,13 @@ test("CMH-DECK-08: showcase deck triage cards drag between columns", async ({ pa
     const bundle = await copiedBundle(page);
     await page.evaluate(() => document.getElementById("btnCopyAll").click());
     expect(await copiedBundle(page)).not.toBe(bundle);
-    expect(await copiedBundle(page)).toContain('"Weak demo deck" moved from Watch live to Fix next');
+    expect(await copiedBundle(page)).toContain('"Bed 8 crop choice" moved from Open to Decide now');
   } finally {
     await server.close();
   }
 });
 
-test("CMH-DECK-09: showcase deck Mermaid diagram renders with dark-slide contrast", async ({ page }) => {
+test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page, { mermaid: true });
   try {
     await showSlideWith(page, ".slide pre.mermaid");
@@ -193,7 +193,7 @@ test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({
   }
 });
 
-test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep dark-slide contrast", async ({ page }) => {
+test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep readable contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".showcase-diff-slide .cmh-diff-view");
@@ -213,11 +213,11 @@ test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep dark-slide cont
     expect(await effectiveContrast(page, ".slide.active .cmh-dl-add .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
     expect(await effectiveContrast(page, ".slide.active .cmh-dl-del .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
 
-    await showSlideWith(page, ".slide pre code.language-typescript");
+    await showSlideWith(page, ".slide pre code.language-python");
     const codeTokenSelectors = [
-      ".slide.active code.language-typescript .cmh-code-kw",
-      ".slide.active code.language-typescript .cmh-code-str",
-      ".slide.active code.language-typescript .cmh-code-num",
+      ".slide.active code.language-python .cmh-code-kw",
+      ".slide.active code.language-python .cmh-code-str",
+      ".slide.active code.language-python .cmh-code-num",
     ];
     const codeTokenColors = [];
     for (const selector of codeTokenSelectors) {
@@ -282,6 +282,33 @@ test("CMH-DECK-SHOWCASE-02: showcase deck mounts in deck mode and is commentable
     await expect(page.locator(".slide.active [data-cmh-checklist].cmh-checklist-ready")).toHaveCount(1);
     await showSlideWith(page, ".slide pre.mermaid");
     await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-03: an early install CTA shows both agents before the final slide", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const total = await page.evaluate(() => window.__cmhDeck.slideCount());
+    const ids = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".slide")).map((slide) => slide.dataset.slideId),
+    );
+    const ctaId = "slide-12668385";
+    const ctaIndex = ids.indexOf(ctaId);
+    expect(ctaIndex).toBeGreaterThan(0);
+    expect(ctaIndex).toBeLessThan(total - 1);
+
+    const cta = page.locator(`[data-slide-id="${ctaId}"]`);
+    const text = await cta.evaluate((el) => el.textContent);
+    expect(text).toContain("copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace");
+    expect(text).toContain("copilot plugin install commentable-html@urikan-ai-marketplace");
+    expect(text).toContain("claude plugin marketplace add https://github.com/urikanonov/ai-marketplace");
+    expect(text).toContain("claude plugin install commentable-html@urikan-ai-marketplace");
+
+    await expect(cta.locator('a[href="https://github.com/urikanonov/ai-marketplace"]')).toHaveCount(1);
+    await expect(cta.locator('a[href="https://urikanonov.github.io/ai-marketplace/"]')).toHaveCount(1);
+    await expect(cta.locator('a[href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/"]')).toHaveCount(1);
   } finally {
     await server.close();
   }

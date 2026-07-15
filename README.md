@@ -1,8 +1,8 @@
 # AI Marketplace
 
-A personal marketplace of AI-oriented plugins for the [GitHub Copilot CLI](https://github.com/github/copilot-cli). It bundles reusable skills, hooks, and MCP servers that you can install into any Copilot session with a single command.
+A personal marketplace of AI-oriented plugins for both [Claude Code](https://www.anthropic.com/claude-code) and the [GitHub Copilot CLI](https://github.com/github/copilot-cli). It bundles reusable skills, hooks, and MCP servers that you install into either agent with a single command and invoke from its CLI or Desktop app.
 
-Every plugin here is designed to make AI-assisted development workflows faster and more repeatable. Install what you need by name, or add the whole marketplace and browse.
+Every plugin here is designed to make AI-assisted development workflows faster and more repeatable. Install what you need by name, or add the whole marketplace and browse. The marketplace name (`urikan-ai-marketplace`) and plugin names are the same for both agents.
 
 **Website:** [urikanonov.github.io/ai-marketplace](https://urikanonov.github.io/ai-marketplace/) - browse the plugins and try the commentable-html review surface live in your browser.
 
@@ -15,7 +15,9 @@ Every plugin here is designed to make AI-assisted development workflows faster a
 
 ## Getting Started
 
-### From your terminal
+The plugins install into both Claude Code and the GitHub Copilot CLI, and are invokable from each agent's CLI and Desktop app. Use whichever agent you have - for a plugin that supports both, only the leading CLI binary (`copilot` or `claude`) changes.
+
+### GitHub Copilot CLI
 
 **1. Add the marketplace**
 ```bash
@@ -24,7 +26,7 @@ copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
 
 **2. Install a plugin**
 ```bash
-copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace
+copilot plugin install commentable-html@urikan-ai-marketplace
 ```
 
 **3. Verify**
@@ -32,9 +34,23 @@ copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace
 copilot plugin list
 ```
 
-### From inside a Copilot session
+### Claude Code
 
-You can manage plugins without leaving your session using the built-in `/plugin` slash command:
+**1. Add the marketplace**
+```bash
+claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
+```
+
+**2. Install a plugin**
+```bash
+claude plugin install commentable-html@urikan-ai-marketplace
+```
+
+> The `urikan-ai-marketplace-auto-updater` is a GitHub Copilot CLI session-start hook; its Claude Code support is tracked separately, so install it from the Copilot CLI.
+
+### From inside an agent session
+
+You can manage plugins without leaving your session using the built-in `/plugin` slash command in either Claude Code or the GitHub Copilot CLI:
 
 ```
 /plugin marketplace add https://github.com/urikanonov/ai-marketplace
@@ -47,13 +63,13 @@ You can manage plugins without leaving your session using the built-in `/plugin`
 
 ## Updating
 
-When new plugins or updates are pushed to this repo:
+When new plugins or updates are pushed to this repo, update from whichever agent you use:
 
 ```bash
-copilot plugin update <PLUGIN_NAME>
+copilot plugin update <PLUGIN_NAME>   # or: claude plugin update <PLUGIN_NAME>
 ```
 
-Or install `urikan-ai-marketplace-auto-updater` to update every installed plugin from this marketplace automatically on session start.
+Or install `urikan-ai-marketplace-auto-updater` to update every installed plugin from this marketplace automatically on session start (a GitHub Copilot CLI session-start hook; Claude Code support is tracked separately).
 
 > The auto-updater runs a PowerShell session-start hook. On macOS and Linux it needs PowerShell 7 (`pwsh`) on your PATH; if `pwsh` is not installed the hook simply does nothing (it never blocks session startup). Install it with `brew install --cask powershell` or your distro's package (`apt install -y powershell`).
 
@@ -81,7 +97,7 @@ The marketplace manifest lives at `.github/plugin/marketplace.json`. Each entry 
 
 ## Trust and safety
 
-Plugins here can ship skills, MCP servers, and session hooks that run code on your machine (for example, the auto-updater runs a PowerShell hook on session start). Review a plugin's contents before installing it. To report a security issue privately, see [SECURITY.md](SECURITY.md). Uninstall anything with `copilot plugin uninstall <name>`.
+Plugins here can ship skills, MCP servers, and session hooks that run code on your machine (for example, the auto-updater runs a PowerShell hook on session start). Review a plugin's contents before installing it. To report a security issue privately, see [SECURITY.md](SECURITY.md). Uninstall anything with `copilot plugin uninstall <name>` (or `claude plugin uninstall <name>`).
 
 Every change to `main` goes through a pull request and must pass the required CI checks: `validate` (the marketplace manifest, each `plugin.json`, and each `SKILL.md` against JSON Schemas and for consistent `source` paths and versions, plus the Markdown validator, the script unit tests, and changelog sync), `version-bump` (a shipped-source change needs a version bump), `dist-in-sync` (a plugin's committed build output matches its `dev/` source), `actionlint` (every GitHub Actions workflow lints clean), `site` (the Pages site regenerates cleanly and its Playwright suite passes), and `plugin-tests` (the plugin Playwright gate). Run the validators locally with `python scripts/validate_marketplace.py` and `python scripts/validate_markdown.py`, or enable the git hooks (a `pre-commit` validator and a `pre-push` gate) with `git config core.hooksPath .githooks`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full gate.
 

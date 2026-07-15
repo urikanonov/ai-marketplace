@@ -3,9 +3,11 @@ id: TASK-42
 title: >-
   Author the pitch/showcase deck per the duck-reviewed plan (replace the
   pre-plan deck)
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@urikanonov'
 created_date: '2026-07-15 10:11'
+updated_date: '2026-07-15 14:35'
 labels: []
 dependencies: []
 ordinal: 35000
@@ -19,8 +21,14 @@ The shipped deck-showcase.html (v1.58.0) predates the duck-reviewed plan. Author
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 17-slide Parchment and Amber deck authored at dev/examples/src/deck-showcase.html per the plan outline; light-only (pins data-theme=light); rebuilt to the shipped examples + site demo
-- [ ] #2 One running example threaded through slides 2-8; about five disciplined live interactions
-- [ ] #3 CMH-DECK-SHOWCASE spec rows updated to describe the new deck; deck mounts + present/comment modes tested
-- [ ] #4 rebuild_all --check clean; version bump + CHANGELOG
+- [x] #1 17-slide Parchment and Amber deck authored at dev/examples/src/deck-showcase.html per the plan outline; light-only (pins data-theme=light); rebuilt to the shipped examples + site demo
+- [x] #2 One running example threaded through slides 2-8; about five disciplined live interactions
+- [x] #3 CMH-DECK-SHOWCASE spec rows updated to describe the new deck; deck mounts + present/comment modes tested
+- [x] #4 rebuild_all --check clean; version bump + CHANGELOG
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Reworked deck-showcase.html into the plan's 17-slide light-only Parchment and Amber deck: 5-act narrative, one community-garden running example threaded through Act 2, disciplined interactions, all rich content rethemed for light slides (chart, Mermaid, triage board, checklist, diff, KQL). CMH-DECK-SHOWCASE-01/02 rewritten, -03 added. v1.76.0. Deck build v2.
+<!-- SECTION:FINAL_SUMMARY:END -->

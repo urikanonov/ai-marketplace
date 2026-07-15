@@ -93,6 +93,11 @@ _KIND_META_RE = re.compile(
 DOC_KINDS = ("report", "plan", "slides", "board", "generic")
 # Kinds for which no document <h1> is auto-added: a slide deck or a board has no title.
 _NO_AUTO_TITLE_KINDS = frozenset({"slides", "board"})
+# Kinds that render as boxed section cards: their top-level <h2> blocks are auto-wrapped
+# in <section> so a created document is never a flat, off-brand page (validate.py's
+# check_section_wrapping (CMH-VAL-14) warns on the unwrapped case). Only report/plan are
+# auto-wrapped; a generic document is left as authored (its author still gets the warning).
+_SECTION_CARD_KINDS = frozenset({"report", "plan"})
 # HTML void elements never open a nesting level, so they must not shift the top-level depth
 # used to decide whether the fragment already carries its own document title.
 _VOID_ELEMENTS = frozenset((
@@ -521,6 +526,10 @@ def main(argv):
     parser.add_argument("--no-highlight", action="store_true",
                         help="do not bake syntax highlighting into raw language-labelled code "
                              "blocks (baking is ON by default so a created document is never raw)")
+    parser.add_argument("--no-wrap-sections", action="store_true",
+                        help="do not wrap bare top-level <h2> blocks in <section> for report/plan "
+                             "documents (wrapping is ON by default so cards render; ignored for "
+                             "other kinds)")
     args = parser.parse_args(argv[1:])
 
     nonportable = not args.portable
@@ -540,6 +549,15 @@ def main(argv):
         return 1
     if not args.no_title and args.kind not in _NO_AUTO_TITLE_KINDS:
         content = ensure_doc_title(content, args.label)
+    # Wrap bare top-level <h2> blocks in <section> for the card-rendering kinds, so a
+    # created report/plan is never a flat page. Wrapping runs after the title is prepended
+    # (the title stays above the cards) and before injection. Opt out with --no-wrap-sections.
+    if args.kind in _SECTION_CARD_KINDS and not args.no_wrap_sections:
+        try:
+            import wrap_sections
+            content, _wrapped = wrap_sections.wrap_fragment(content)
+        except ImportError:
+            pass  # degrade gracefully if the wrapper is unavailable
 
     prefix = ""
     copy_here = False
