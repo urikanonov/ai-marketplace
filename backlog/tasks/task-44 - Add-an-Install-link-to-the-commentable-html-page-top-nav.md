@@ -1,5 +1,5 @@
 ---
-id: TASK-41
+id: TASK-44
 title: Add an Install link to the commentable-html page top nav
 status: Done
 assignee:
@@ -24,7 +24,7 @@ The commentable-html plugin page has an #install section but the top navbar (Fea
 - [x] #3 build_site_data.py --check is clean and the site suite + generator tests pass
 - [x] #4 The auto-updater callout in the CMH Install section is a clearly-visible card (not plain muted text) that shows the auto-updater plugin icon
 - [x] #5 On the auto-updater page Why section, the urikan-ai-marketplace text links to the marketplace hub page (../)
-- [ ] #6 On the auto-updater page Install section, the PowerShell prerequisite note is visibly spaced below the command box (not cramped against it)
+- [x] #6 On the auto-updater page Install section, the PowerShell prerequisite note is visibly spaced below the command box (not cramped against it)
 <!-- AC:END -->
 
 ## Implementation Plan
