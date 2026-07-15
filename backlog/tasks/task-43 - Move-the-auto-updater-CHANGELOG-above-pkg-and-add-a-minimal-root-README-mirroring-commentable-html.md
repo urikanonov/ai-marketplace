@@ -3,11 +3,11 @@ id: TASK-43
 title: >-
   Move the auto-updater CHANGELOG above pkg and add a minimal root README,
   mirroring commentable-html
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-15 10:00'
-updated_date: '2026-07-15 10:01'
+updated_date: '2026-07-15 10:25'
 labels: []
 dependencies: []
 ordinal: 36000
@@ -21,7 +21,13 @@ The auto-updater ships its CHANGELOG.md inside pkg/ (distributed to users). comm
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md lives at the plugin root (not inside pkg/), and check_changelog_sync still enforces it
-- [ ] #2 A minimal plugins/urikan-ai-marketplace-auto-updater/README.md exists at the root, mirroring commentable-html's root README (describes pkg/ and dev/)
-- [ ] #3 The auto-updater plugin version is bumped in pkg/plugin.json and the manifest with a matching CHANGELOG entry; validators pass
+- [x] #1 plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md lives at the plugin root (not inside pkg/), and check_changelog_sync still enforces it
+- [x] #2 A minimal plugins/urikan-ai-marketplace-auto-updater/README.md exists at the root, mirroring commentable-html's root README (describes pkg/ and dev/)
+- [x] #3 The auto-updater plugin version is bumped in pkg/plugin.json and the manifest with a matching CHANGELOG entry; validators pass
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Moved plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md out of the shipped pkg/ to the plugin root, added a minimal root README.md describing the pkg/dev split (mirroring commentable-html), and bumped the plugin to 1.1.0 in pkg/plugin.json and the manifest with a changelog entry. check_changelog_sync and check_version_bump both pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

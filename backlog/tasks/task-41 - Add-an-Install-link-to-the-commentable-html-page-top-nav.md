@@ -1,11 +1,11 @@
 ---
 id: TASK-41
 title: Add an Install link to the commentable-html page top nav
-status: In Progress
+status: Done
 assignee:
   - '@me'
 created_date: '2026-07-15 09:52'
-updated_date: '2026-07-15 09:56'
+updated_date: '2026-07-15 10:25'
 labels: []
 dependencies: []
 ordinal: 34000
@@ -19,18 +19,22 @@ The commentable-html plugin page has an #install section but the top navbar (Fea
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The commentable-html page top nav includes an Install link that targets #install and is always visible (not hidden on small screens)
-- [ ] #2 A SITE-PLUGIN spec row and a covering Playwright test assert the nav Install link exists and points to #install
-- [ ] #3 build_site_data.py --check is clean and the site suite + generator tests pass
-- [ ] #4 The auto-updater callout in the CMH Install section is a clearly-visible card (not plain muted text) that shows the auto-updater plugin icon
-- [ ] #5 On the auto-updater page Why section, the urikan-ai-marketplace text links to the marketplace hub page (../)
+- [x] #1 The commentable-html page top nav includes an Install link that targets #install and is always visible (not hidden on small screens)
+- [x] #2 A SITE-PLUGIN spec row and a covering Playwright test assert the nav Install link exists and points to #install
+- [x] #3 build_site_data.py --check is clean and the site suite + generator tests pass
+- [x] #4 The auto-updater callout in the CMH Install section is a clearly-visible card (not plain muted text) that shows the auto-updater plugin icon
+- [x] #5 On the auto-updater page Why section, the urikan-ai-marketplace text links to the marketplace hub page (../)
 - [ ] #6 On the auto-updater page Install section, the PowerShell prerequisite note is visibly spaced below the command box (not cramped against it)
 <!-- AC:END -->
-
-
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. CMH page: add an Install nav link to #install (always visible). 2. CMH Install section: replace the plain install-note paragraph with a clearly-visible callout card (whole-card link to ../urikan-ai-marketplace-auto-updater/) showing the updater icon + title + description; add .install-updater-cta CSS to site/css/32-install.css. 3. Auto-updater page Why section: link the urikan-ai-marketplace code text to ../ (hub). 4. Tests first (RED): add SITE-PLUGIN-17 nav Install test; extend SITE-UPDATER-06 to assert the callout icon; add SITE-UPDATER-07 for the updater-page marketplace link; update SPEC.md rows. 5. Rebuild site, run site suite + generator tests + validators + --check.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added an Install link to the commentable-html top nav; redesigned the auto-updater install callout into a clearly-visible accent card showing the plugin icon; linked the urikan-ai-marketplace name on the updater page Why section to the hub; and spaced the updater install PowerShell note below the command box. Covered by SITE-PLUGIN-18 and SITE-UPDATER-06/07/08. Shipped with TASK-42/43.
+<!-- SECTION:FINAL_SUMMARY:END -->
