@@ -1,5 +1,5 @@
 name: Task (maintainer work item)
-description: Track a unit of maintainer work - a fix, feature, or chore. This replaces a Backlog.md task file.
+description: Track a unit of maintainer work - a fix, feature, or chore.
 title: "[Task]: "
 labels: ["task"]
 body:

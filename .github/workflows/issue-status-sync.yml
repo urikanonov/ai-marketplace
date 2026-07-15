@@ -6,10 +6,11 @@
 # calls the GitHub API; it never parses the untrusted PR body in the shell.
 #
 # It uses GitHub's own parsed closing-issue links (closingIssuesReferences), not a
-# regex over the PR body, so only issues this PR actually closes are considered, and
-# it only relabels OPEN issues that carry the `task` label, bounding the blast radius
-# of the privileged token. Merging the PR closes the linked issue via the "Closes #N"
-# keyword; a Project board built-in "issue closed -> Done" workflow then moves it to Done.
+# regex over the PR body, so only issues this PR actually closes are considered. It
+# runs only for trusted authors (owner/member/collaborator) and only relabels OPEN
+# issues that carry the `task` label, bounding the privileged token's reach. Merging
+# the PR closes the linked issue via the "Closes #N" keyword; a Project board built-in
+# "issue closed -> Done" workflow then moves it to Done.
 name: issue-status-sync
 
 on:
@@ -36,14 +37,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_ASSOC: ${{ github.event.pull_request.author_association }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Only a trusted author (owner/member/collaborator) may auto-move issue state,
+          # so a fork contributor cannot bulk-relabel task issues via closing links.
+          # External PRs are moved to In Progress by the maintainer instead.
+          case "${PR_ASSOC:-NONE}" in
+            OWNER|MEMBER|COLLABORATOR) ;;
+            *) echo "PR author association ${PR_ASSOC:-NONE} is untrusted; skipping."; exit 0 ;;
+          esac
           # GitHub's parsed closing links (not a body regex), so only issues this PR
           # actually closes are considered - no body injection and no false matches.
-          nums=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-            --json closingIssuesReferences \
-            --jq '.closingIssuesReferences[].number' || true)
+          # A genuine API failure fails the run rather than silently skipping the sync.
+          if ! nums=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+              --json closingIssuesReferences \
+              --jq '.closingIssuesReferences[].number'); then
+            echo "gh pr view failed" >&2
+            exit 1
+          fi
           if [ -z "$nums" ]; then
             echo "No linked closing-issue references."
             exit 0
