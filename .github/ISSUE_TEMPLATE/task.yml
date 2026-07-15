@@ -1,0 +1,45 @@
+name: Task (maintainer work item)
+description: Track a unit of maintainer work - a fix, feature, or chore.
+title: "[Task]: "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Internal work item for maintainers and agents. External contributors should use the
+        "Feature request", "Plugin issue", or "New plugin or skill idea" forms instead.
+
+        Keep the text plain ASCII (no em/en dashes or ellipsis), matching the repo house style.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is the work and why? Enough context to act on without the chat transcript.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable outcomes that mean this is done. Use a checklist so progress is visible.
+      value: |
+        - [ ] 
+        - [ ] 
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: Implementation plan
+      description: Optional. You can also post the plan as a comment for approval before coding.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before starting
+      options:
+        - label: I searched existing issues and this is not already tracked.
+          required: true
+        - label: For a bug fix, I will write the reproducing test first (TDD, confirmed red) per the repo rules.
+          required: false
