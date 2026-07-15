@@ -18,6 +18,11 @@ class AsciiGuardTests(unittest.TestCase):
     def test_allows_plain_ascii(self):
         task.assert_ascii("plain - ascii ... only", "description")  # must not raise
 
+    def test_rejects_any_non_ascii(self):
+        for bad in ["caf\u00e9", "check \u2713", "emoji \U0001F600", "nbsp\u00a0here"]:
+            with self.assertRaises(ValueError):
+                task.assert_ascii(bad, "description")
+
 
 class BuildBodyTests(unittest.TestCase):
     def test_sections_and_checkboxes(self):
@@ -74,10 +79,26 @@ class TickCheckboxTests(unittest.TestCase):
         with self.assertRaises(IndexError):
             task.tick_checkbox(self.BODY, 0)
 
-    def test_already_checked_items_are_skipped(self):
+    def test_already_checked_target_is_idempotent(self):
+        # k is a stable ordinal, so item 1 being already checked makes ticking 1 a no-op.
         body = "- [x] done\n- [ ] pending\n"
+        self.assertEqual(task.tick_checkbox(body, 1), "- [x] done\n- [ ] pending")
+        # Ticking 2 checks the real second criterion, not a shifted one.
+        self.assertEqual(task.tick_checkbox(body, 2), "- [x] done\n- [x] pending")
+
+    def test_index_stable_as_items_are_checked(self):
+        after1 = task.tick_checkbox(self.BODY, 1)
+        after2 = task.tick_checkbox(after1, 2)
+        self.assertIn("- [x] one", after2)
+        self.assertIn("- [x] two", after2)
+        self.assertIn("- [ ] three", after2)
+
+    def test_scoped_to_acceptance_section(self):
+        body = ("Desc\n\n## Implementation plan\n\n- [ ] plan step\n\n"
+                "## Acceptance criteria\n\n- [ ] real one\n- [ ] real two\n")
         out = task.tick_checkbox(body, 1)
-        self.assertEqual(out, "- [x] done\n- [x] pending")
+        self.assertIn("- [ ] plan step", out)
+        self.assertIn("- [x] real one", out)
 
 
 class ParserTests(unittest.TestCase):

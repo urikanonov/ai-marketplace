@@ -18,6 +18,8 @@ Usage:
   python scripts/task.py finish 188 "Short PR-style summary"
 """
 import argparse
+import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -34,11 +36,13 @@ SMART = {
 
 
 def assert_ascii(text, field):
-    """Raise ValueError if text carries smart punctuation the house style forbids."""
-    bad = sorted({c for c in text if c in SMART})
-    if bad:
-        hint = ", ".join(f"{c!r} -> {SMART[c]!r}" for c in bad)
-        raise ValueError(f"{field} contains non-ASCII smart characters ({hint}); use plain ASCII.")
+    """Raise ValueError if text has any non-ASCII character (the house style is plain ASCII)."""
+    try:
+        text.encode("ascii")
+    except UnicodeEncodeError:
+        bad = sorted({c for c in text if ord(c) > 127})
+        hint = ", ".join(f"{c!r} -> {SMART[c]!r}" if c in SMART else repr(c) for c in bad)
+        raise ValueError(f"{field} contains non-ASCII characters ({hint}); use plain ASCII.")
 
 
 def build_body(description, acceptance, plan=None):
@@ -66,41 +70,57 @@ def create_args(title, body_file, labels):
     return args
 
 
-def tick_checkbox(body, k):
-    """Return body with the k-th (1-based) unchecked `- [ ]` item checked.
+def _acceptance_bounds(lines):
+    """Return [start, end) line indices to search for acceptance-criteria checkboxes: the
+    region under a '## Acceptance criteria' heading (case-insensitive) until the next '## '
+    heading, or the whole body if that heading is absent."""
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*##\s+acceptance criteria\b", line, re.I):
+            for j in range(i + 1, len(lines)):
+                if re.match(r"^\s*##\s+\S", lines[j]):
+                    return i + 1, j
+            return i + 1, len(lines)
+    return 0, len(lines)
 
-    Raises IndexError if there is no k-th unchecked item, so a wrong index fails
-    loudly instead of silently checking the wrong box.
+
+def tick_checkbox(body, k):
+    """Return body with the k-th (1-based) acceptance-criterion checkbox checked.
+
+    Counts every checkbox in the '## Acceptance criteria' section by stable ordinal, so the
+    index does not shift as items are checked; a box outside that section is never counted.
+    If the k-th criterion is already checked, the body is returned unchanged (idempotent).
+    Raises IndexError if k is below 1 or exceeds the number of criteria, so a wrong index
+    fails loudly instead of silently checking the wrong box.
     """
     if k < 1:
         raise IndexError(f"acceptance-criterion index must be >= 1, got {k}")
+    lines = body.splitlines()
+    start, end = _acceptance_bounds(lines)
     seen = 0
-    out = []
-    done = False
-    for line in body.splitlines():
-        stripped = line.lstrip()
-        if not done and stripped.startswith("- [ ]"):
+    for i in range(start, end):
+        stripped = lines[i].lstrip()
+        if stripped[:5] in ("- [ ]", "- [x]", "- [X]"):
             seen += 1
             if seen == k:
-                indent = line[: len(line) - len(stripped)]
-                out.append(indent + "- [x]" + stripped[len("- [ ]"):])
-                done = True
-                continue
-        out.append(line)
-    if not done:
-        raise IndexError(f"no unchecked acceptance criterion #{k} in the issue body")
-    return "\n".join(out)
+                if stripped.startswith("- [ ]"):
+                    indent = lines[i][: len(lines[i]) - len(stripped)]
+                    lines[i] = indent + "- [x]" + stripped[5:]
+                return "\n".join(lines)
+    raise IndexError(f"no acceptance criterion #{k} (found {seen}) in the issue body")
 
 
-def _run(args, capture=False):
-    """Shell out to `gh` (or another command). Thin, so tests mock this boundary."""
-    if capture:
-        res = subprocess.run(args, capture_output=True, text=True)
-        if res.returncode != 0:
-            sys.stderr.write(res.stderr)
-            sys.exit(res.returncode)
-        return res.stdout
-    sys.exit(subprocess.run(args).returncode)
+def _run(args):
+    """Run a command inheriting stdio; return its exit code."""
+    return subprocess.run(args).returncode
+
+
+def _capture(args):
+    """Run a command and return its stdout; exit non-zero (surfacing stderr) on failure."""
+    res = subprocess.run(args, capture_output=True, text=True)
+    if res.returncode != 0:
+        sys.stderr.write(res.stderr)
+        raise SystemExit(res.returncode)
+    return res.stdout
 
 
 def _write_temp(text):
@@ -114,36 +134,46 @@ def cmd_search(a):
     args = ["gh", "issue", "list", "--repo", REPO, "--search", a.topic]
     if a.all:
         args += ["--state", "all"]
-    _run(args)
+    raise SystemExit(_run(args))
 
 
 def cmd_new(a):
     body = build_body(a.description, a.ac, a.plan)
     labels = [TASK_LABEL] + list(a.label or [])
-    _run(create_args(a.title, _write_temp(body), labels))
+    path = _write_temp(body)
+    try:
+        code = _run(create_args(a.title, path, labels))
+    finally:
+        os.unlink(path)
+    raise SystemExit(code)
 
 
 def cmd_claim(a):
-    _run(["gh", "issue", "edit", str(a.number), "--repo", REPO,
-          "--add-assignee", "@me", "--add-label", IN_PROGRESS_LABEL])
+    raise SystemExit(_run(["gh", "issue", "edit", str(a.number), "--repo", REPO,
+                           "--add-assignee", "@me", "--add-label", IN_PROGRESS_LABEL]))
 
 
 def cmd_plan(a):
     assert_ascii(a.text, "plan")
-    _run(["gh", "issue", "comment", str(a.number), "--repo", REPO, "--body", a.text])
+    raise SystemExit(_run(["gh", "issue", "comment", str(a.number), "--repo", REPO,
+                           "--body", a.text]))
 
 
 def cmd_check_ac(a):
-    body = _run(["gh", "issue", "view", str(a.number), "--repo", REPO,
-                 "--json", "body", "--jq", ".body"], capture=True)
-    _run(["gh", "issue", "edit", str(a.number), "--repo", REPO,
-          "--body-file", _write_temp(tick_checkbox(body, a.index))])
+    body = _capture(["gh", "issue", "view", str(a.number), "--repo", REPO,
+                     "--json", "body", "--jq", ".body"])
+    path = _write_temp(tick_checkbox(body, a.index))
+    try:
+        code = _run(["gh", "issue", "edit", str(a.number), "--repo", REPO, "--body-file", path])
+    finally:
+        os.unlink(path)
+    raise SystemExit(code)
 
 
 def cmd_finish(a):
     assert_ascii(a.summary, "summary")
-    _run(["gh", "issue", "comment", str(a.number), "--repo", REPO,
-          "--body", "Final summary: " + a.summary])
+    raise SystemExit(_run(["gh", "issue", "comment", str(a.number), "--repo", REPO,
+                           "--body", "Final summary: " + a.summary]))
 
 
 def build_parser():

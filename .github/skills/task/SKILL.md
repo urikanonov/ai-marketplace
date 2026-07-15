@@ -55,7 +55,9 @@ python scripts/task.py finish 188 "Enforced a CSS min-width and covered it with 
 
 - Every new issue gets the `task` label; pass `--label <area>` for area labels (deck, site, ui, runtime,
   tooling, audit, documentation).
-- Bodies must be plain ASCII: the wrapper rejects em/en dashes and ellipsis so the house style holds.
+- Bodies must be plain ASCII: the wrapper rejects any non-ASCII character (em/en dashes, ellipsis,
+  smart quotes, non-breaking spaces, emoji) so the house style holds. Use the wrapper (not raw
+  `gh issue create`) for any operation that writes an issue body, so this guard always runs.
 - `claim` adds the `status: in progress` label; the `issue-status-sync` workflow also adds it when a PR
   that says `Closes #N` opens, and merging that PR closes the issue.
 
