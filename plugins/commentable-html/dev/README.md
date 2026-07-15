@@ -136,9 +136,12 @@ npm run shots
 `../pkg/skills/commentable-html/examples/report-community-garden.html` and writes
 `garden-01-top-light.png` through `garden-09-copyall.png` into
 `../pkg/skills/commentable-html/docs/assets/` at a fixed 1320x900 viewport (2x scale). It disables
-CSS animations, transitions, and the text caret and emulates reduced motion, so re-capturing the
-same UI is deterministic (byte-identical on the same environment). To capture a different example,
-pass overrides:
+CSS animations, transitions, and the text caret and emulates reduced motion, so the capture is
+reproducible: the full-page shots (top-of-document, composer, help, copy-all) are byte-identical
+across runs on the same environment. The figure crops (kql/chart/diff) can vary by sub-pixel
+antialiasing, and the dark-theme and comment-saved shots vary with re-render or capture-time content,
+so treat those as visually equivalent rather than byte-stable. To capture a different example, pass
+overrides:
 
 ```powershell
 node tools\capture_tutorial.mjs <example.html> <outDir> <prefix>

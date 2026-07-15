@@ -11,31 +11,43 @@ const SHOTS = [
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
 ];
 
+// The full-page shots that are reproducible byte-for-byte on a given environment. The composer shot
+// pins the caret freeze (without it the blinking caret would differ across runs); help and copy-all
+// exercise later dynamic UI. Excluded from byte-equality: the figure crops (02/03/04) can vary by
+// sub-pixel antialiasing, the dark-theme shot (08) re-renders, and the comment-saved shot (06)
+// embeds the capture-time comment timestamp - all environment/timing sensitive by nature.
+const STABLE = ["01-top-light", "05-composer", "07-help", "09-copyall"];
+
 const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
 
 // Run the capture tool with only the example + output dir (no prefix): the tool defaults the
 // prefix to "garden", so regenerating the tutorial screenshots is a single, argument-light command.
 function capture(outDir) {
   return spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), EXAMPLE, outDir],
-    { encoding: "utf8" });
+    { encoding: "utf8", timeout: 150000, killSignal: "SIGKILL" });
 }
 
 // dev/tools/capture_tutorial.mjs must regenerate every tutorial screenshot with one easy command
-// and do it deterministically, so refreshing the tutorial images is reproducible and reviewable.
+// and do it reproducibly, so refreshing the tutorial images is deterministic and reviewable.
 test("CMH-TUT-SHOTS-01: one command regenerates all tutorial screenshots, deterministically", async () => {
   test.setTimeout(180000);
-  const outA = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_shots_a_"));
+  // A nonexistent NESTED output dir also exercises recursive out-dir creation.
+  const outA = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_shots_a_")), "nested", "assets");
   const r1 = capture(outA);
+  expect(r1.error, String(r1.error)).toBeFalsy();
   expect(r1.status, r1.stderr).toBe(0);
   for (const name of SHOTS) {
     expect(fs.existsSync(path.join(outA, `garden-${name}.png`)), `missing garden-${name}.png`).toBe(true);
   }
 
-  // Deterministic: a second run produces a byte-identical static top-of-document shot.
-  const outB = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_shots_b_"));
+  // Deterministic: a second run produces byte-identical output for the stable full-page shots.
+  const outB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_shots_b_")), "nested", "assets");
   const r2 = capture(outB);
+  expect(r2.error, String(r2.error)).toBeFalsy();
   expect(r2.status, r2.stderr).toBe(0);
-  const first = fs.readFileSync(path.join(outA, "garden-01-top-light.png"));
-  const second = fs.readFileSync(path.join(outB, "garden-01-top-light.png"));
-  expect(Buffer.compare(first, second), "the top-of-document shot is not byte-identical across runs").toBe(0);
+  for (const name of STABLE) {
+    const a = fs.readFileSync(path.join(outA, `garden-${name}.png`));
+    const b = fs.readFileSync(path.join(outB, `garden-${name}.png`));
+    expect(Buffer.compare(a, b), `garden-${name}.png is not byte-identical across runs`).toBe(0);
+  }
 });

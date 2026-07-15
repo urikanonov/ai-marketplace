@@ -5,7 +5,9 @@
 //   node capture_tutorial.mjs [example.html] [outDir] [prefix]
 // Defaults: example = pkg/.../examples/report-community-garden.html, outDir = pkg/.../docs/assets,
 // prefix = "garden". From dev/, run it as `npm run shots`. Animations, transitions, and the text
-// caret are disabled and reduced motion is emulated, so re-running produces byte-identical images.
+// caret are disabled and reduced motion is emulated, so the capture is reproducible: the full-page
+// shots (top, composer, help, copy-all) are byte-identical across runs on the same environment.
+// (Figure crops and the dark-theme/comment shots can vary by antialiasing or capture-time content.)
 import { chromium } from "@playwright/test";
 import path from "path";
 import fs from "fs";
@@ -15,7 +17,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..", "..", "pkg", "skills", "commentable-html");
 const htmlArg = process.argv[2] || path.join(SKILL, "examples", "report-community-garden.html");
 const outDir = process.argv[3] || path.join(SKILL, "docs", "assets");
-const prefix = process.argv[4] || "garden";
+const prefix = path.basename(process.argv[4] || "garden");
 
 if (!fs.existsSync(htmlArg)) {
   console.error("capture_tutorial: example not found:", htmlArg);
@@ -32,13 +34,13 @@ async function ready(page) {
 }
 
 // Kill anything that varies frame to frame - CSS animations/transitions and the blinking text
-// caret - so two runs render identically. Best-effort: a document CSP that forbids inline styles
-// just ignores it, and the static shots stay deterministic regardless.
+// caret - so the full-page shots render identically run to run. Best-effort: if a document CSP
+// forbids the injected inline style it is reported (degraded mode) rather than silently ignored.
 async function freezeMotion(page) {
   await page.addStyleTag({ content:
     "*,*::before,*::after{animation-duration:0s !important;animation-delay:0s !important;"
     + "transition-duration:0s !important;transition-delay:0s !important;caret-color:transparent !important;}"
-  }).catch(() => {});
+  }).catch((e) => console.warn("capture_tutorial: freezeMotion blocked (degraded determinism):", e.message));
 }
 
 const run = async () => {
