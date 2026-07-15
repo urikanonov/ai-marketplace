@@ -1,0 +1,47 @@
+# When a PR that closes an issue is opened, mark that issue In Progress.
+#
+# Trust boundary (see scripts/check_workflow_policy.py, RULE A): this runs on
+# pull_request_target with a write-capable token, so it MUST NOT check out or run
+# PR-authored code. It only reads the PR body (passed through an env var, never
+# interpolated into the shell to avoid script injection) and calls the issues API.
+#
+# Merging the PR closes the linked issue via the "Closes #N" keyword; a GitHub
+# Project board's built-in "issue closed -> Done" workflow then moves the card to
+# Done, so no merge trigger is needed here.
+name: issue-status-sync
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-status-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  mark-in-progress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark linked issues In Progress
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          nums=$(printf '%s' "${PR_BODY:-}" \
+            | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' \
+            | grep -oE '[0-9]+' | sort -u || true)
+          if [ -z "$nums" ]; then
+            echo "No closing-keyword issue references in the PR body."
+            exit 0
+          fi
+          for n in $nums; do
+            echo "Marking issue #$n as In Progress"
+            gh issue edit "$n" --repo "$REPO" --add-label "status: in progress" || \
+              echo "Could not label #$n (it may be a PR number or already closed)."
+          done
