@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.78.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.79.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -404,6 +404,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.79.0] - 2026-07-15</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The shipped plugin <code>README.md</code> now documents the dual-agent install story (both Claude Code and the GitHub Copilot CLI, with the marketplace-add and install commands for each), matching the SKILL.md, the marketplace manifests, and the site.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.78.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -411,6 +418,8 @@
               <li>The split-screen slide overview is easier to read and use. Its panel now has a light accent-tinted (red-ish) background, the Close button uses the regular accent fill, and the slide count appears next to the &quot;Slide overview&quot; title. Clicking the main deck area (outside the panel) closes the overview, the grid scrolls reliably when the slides overflow the viewport height, and thumbnails force-reveal animated slide content so each one previews the slide&#x27;s final rendered state. (CMH-DECK-16)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.77.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -418,8 +427,6 @@
               <li>SKILL.md now states the plugin installs into both Claude Code and the GitHub Copilot CLI and is invokable from each agent&#x27;s CLI and Desktop app, so the dual-agent support is visible in the shipped skill doc (its output was always a portable, agent-agnostic HTML file). (CMH-DOC-12)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.76.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -457,14 +464,7 @@
               <li>Deck authoring: the SKILL.md deck section now routes deck planning (not only the fill step) to the vendored frontend-slides design system - shortlist templates from <code>selection-index.json</code> and read <code>STYLE_PRESETS.md</code> / <code>html-template.md</code> / <code>animation-patterns.md</code> to choose the outline and theme before scaffolding. (CMH-DECK-14)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.72.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Claude Code compatibility. The plugin now ships a <code>.claude-plugin/plugin.json</code> alongside the Copilot <code>plugin.json</code>, and the repo publishes a <code>.claude-plugin/marketplace.json</code>, so commentable-html installs in Claude Code (<code>claude plugin marketplace add ...</code> then <code>claude plugin install commentable-html@urikan-ai-marketplace</code>) as well as the GitHub Copilot CLI. A new <code>scripts/validate_claude_compat.py</code> validates the Claude manifests structurally and, when the <code>claude</code> CLI is on PATH, runs <code>claude plugin validate --strict</code> on the marketplace and each plugin. (CMH-CLAUDE-01)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">76 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">77 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

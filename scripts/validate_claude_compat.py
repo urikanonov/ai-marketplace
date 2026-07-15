@@ -26,6 +26,12 @@ import sys
 # Identity fields a Claude plugin.json must share with the Copilot plugin.json.
 _MIRROR_FIELDS = ("name", "version", "description", "author", "license", "keywords")
 
+# Marketplace-entry fields that are intentionally Copilot-marketplace-specific: Claude's marketplace
+# schema does not define them, so they are excluded from the Claude<->Copilot entry mirror. Every
+# OTHER shared field (description, author, homepage, repository, license, keywords, ...) must match so
+# the two manifests cannot drift silently.
+_COPILOT_ONLY_MARKETPLACE_FIELDS = ("category", "strict")
+
 
 def _load_json(path):
     with open(path, encoding="utf-8") as fh:
@@ -71,7 +77,9 @@ def structural_errors(repo_root):
         if copilot_entry is None:
             errors.append(f"{name}: in the Claude marketplace but not the Copilot marketplace")
             continue
-        for field in ("version", "source"):
+        for field in sorted(set(entry) | set(copilot_entry)):
+            if field in _COPILOT_ONLY_MARKETPLACE_FIELDS:
+                continue
             if entry.get(field) != copilot_entry.get(field):
                 errors.append(
                     f"{name}: Claude marketplace {field} {entry.get(field)!r} != "

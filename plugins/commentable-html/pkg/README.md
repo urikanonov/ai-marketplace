@@ -2,6 +2,22 @@
 
 `commentable-html` turns standalone HTML reports into inline-comment review surfaces. A reviewer can select text, code, diff lines, Mermaid nodes, images, or charts, leave comments in the page, copy a compact Markdown bundle back to an agent, and export a portable file with comments embedded. It drastically shortens the AI planning and iteration loop: you review the artifact in place and hand the agent structured notes instead of narrating changes in chat.
 
+## Install
+
+This plugin installs into both Claude Code and the GitHub Copilot CLI, and the skill is invokable from each agent's CLI and Desktop app. Add the marketplace once, then install the plugin:
+
+```bash
+# GitHub Copilot CLI
+copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
+copilot plugin install commentable-html@urikan-ai-marketplace
+
+# Claude Code
+claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
+claude plugin install commentable-html@urikan-ai-marketplace
+```
+
+The output is a portable HTML file that works with any agent.
+
 ## Privacy and compliance
 
 Your content stays with you. Commentable HTML runs entirely in your browser as a static file - there is no server, no account, no sign-in, and no telemetry. The document you review and every comment you leave live in one of two places only:

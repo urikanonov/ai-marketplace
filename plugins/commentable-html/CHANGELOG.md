@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.79.0] - 2026-07-15
+
+### Changed
+
+- The shipped plugin `README.md` now documents the dual-agent install story (both Claude Code and the
+  GitHub Copilot CLI, with the marketplace-add and install commands for each), matching the SKILL.md,
+  the marketplace manifests, and the site.
+
 ## [1.78.0] - 2026-07-15
 
 ### Changed
