@@ -94,6 +94,34 @@ class TestStructuralFailures(unittest.TestCase):
             errs = vcc.structural_errors(root)
             self.assertTrue(any("description" in e for e in errs))
 
+    def test_marketplace_field_drift_between_marketplaces(self):
+        # A shared marketplace-entry field (here description) that drifts between the two manifests
+        # must be caught, not only version/source. Guards the exact drift class the audit found.
+        with tempfile.TemporaryDirectory() as root:
+            _good_repo(root)
+            gh_path = os.path.join(root, ".github", "plugin", "marketplace.json")
+            gh = _read(gh_path)
+            gh["plugins"][0]["description"] = "copilot description"
+            _write(gh_path, gh)
+            cl_path = os.path.join(root, ".claude-plugin", "marketplace.json")
+            cl = _read(cl_path)
+            cl["plugins"][0]["description"] = "claude description"
+            _write(cl_path, cl)
+            errs = vcc.structural_errors(root)
+            self.assertTrue(any("description" in e for e in errs))
+
+    def test_category_and_strict_may_differ_between_marketplaces(self):
+        # `category` and `strict` are Copilot-marketplace-specific fields not defined by the Claude
+        # schema, so their presence only on the Copilot side must NOT be flagged as drift.
+        with tempfile.TemporaryDirectory() as root:
+            _good_repo(root)
+            gh_path = os.path.join(root, ".github", "plugin", "marketplace.json")
+            gh = _read(gh_path)
+            gh["plugins"][0]["category"] = "infrastructure"
+            gh["plugins"][0]["strict"] = False
+            _write(gh_path, gh)
+            self.assertEqual(vcc.structural_errors(root), [])
+
     def test_missing_claude_plugin_manifest(self):
         with tempfile.TemporaryDirectory() as root:
             _good_repo(root)

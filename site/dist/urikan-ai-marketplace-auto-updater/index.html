@@ -72,7 +72,7 @@
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
         <h1>Keep your marketplace plugins <span class="accent">up to date</span>, automatically</h1>
-        <p class="lead">An opt-in session-start hook that checks for and installs updates to every plugin you use from this marketplace. Install it once and stop thinking about updates - the newest fixes and features are already there next time you open Claude Code or the Copilot CLI.</p>
+        <p class="lead">An opt-in session-start hook that checks for and installs updates to every other plugin you use from this marketplace. Install it once and stop thinking about updates - the newest fixes and features are already there next time you open Claude Code or the Copilot CLI. (It updates every plugin but itself, since a plugin cannot update itself while its own hook runs; update the auto-updater with a plain `plugin update`.)</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#install">Install</a>
           <a class="btn" href="#how">How it works</a>
@@ -180,7 +180,7 @@
               </div>
             </div>
         <!-- END:install -->
-        <p class="section-sub install-note">On macOS and Linux the updater needs <a href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell" target="_blank" rel="noopener noreferrer">PowerShell 7 (<code>pwsh</code>)</a> on your <code>PATH</code>; on Windows nothing extra is needed. When <code>pwsh</code> is missing the hook logs a dated skip note instead of failing.</p>
+        <p class="section-sub install-note">On macOS and Linux the updater needs <a href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell" target="_blank" rel="noopener noreferrer">PowerShell 7 (<code>pwsh</code>)</a> on your <code>PATH</code>; on Windows the Copilot hook runs the script under Windows PowerShell with nothing extra to install, and the Claude hook dispatches it through the shell Claude Code provides. When PowerShell is missing the hook logs a dated skip note instead of failing.</p>
       </div>
     </section>
 

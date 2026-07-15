@@ -46,6 +46,11 @@ claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
 claude plugin install commentable-html@urikan-ai-marketplace
 ```
 
+**3. Verify**
+```bash
+claude plugin list
+```
+
 The `urikan-ai-marketplace-auto-updater` installs into both agents too - it runs a session-start hook that keeps your marketplace plugins current under Claude Code and the GitHub Copilot CLI alike.
 
 ### From inside an agent session

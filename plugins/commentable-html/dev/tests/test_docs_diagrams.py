@@ -89,6 +89,19 @@ class DualAgentDocsTests(unittest.TestCase):
         self.assertNotIn("anthropic", front.lower())
 
 
+class PluginReadmeDualAgentTests(unittest.TestCase):
+    """CMH-DOC-13: the shipped plugin README.md states the plugin installs into both Claude Code and
+    the GitHub Copilot CLI and shows each agent's install commands, so the shipped README does not lag
+    the SKILL.md, the marketplace manifests, and the site in presenting the dual-agent support."""
+
+    def test_plugin_readme_states_dual_agent_install(self):
+        text = _read(PLUGIN_README)
+        self.assertIn("Claude Code", text)
+        self.assertIn("GitHub Copilot CLI", text)
+        self.assertIn("claude plugin install commentable-html@urikan-ai-marketplace", text)
+        self.assertIn("copilot plugin install commentable-html@urikan-ai-marketplace", text)
+
+
 class MotivationDocsTests(unittest.TestCase):
     """CMH-DOC-01: the shipped README and SKILL.md carry the medium-comparison motivation
     and cite the "unreasonable effectiveness of HTML" blog post."""
