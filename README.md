@@ -46,7 +46,7 @@ claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
 claude plugin install commentable-html@urikan-ai-marketplace
 ```
 
-> The `urikan-ai-marketplace-auto-updater` is a GitHub Copilot CLI session-start hook; its Claude Code support is tracked separately, so install it from the Copilot CLI.
+The `urikan-ai-marketplace-auto-updater` installs into both agents too - it runs a session-start hook that keeps your marketplace plugins current under Claude Code and the GitHub Copilot CLI alike.
 
 ### From inside an agent session
 
@@ -69,7 +69,7 @@ When new plugins or updates are pushed to this repo, update from whichever agent
 copilot plugin update <PLUGIN_NAME>   # or: claude plugin update <PLUGIN_NAME>
 ```
 
-Or install `urikan-ai-marketplace-auto-updater` to update every installed plugin from this marketplace automatically on session start (a GitHub Copilot CLI session-start hook; Claude Code support is tracked separately).
+Or install `urikan-ai-marketplace-auto-updater` to update every installed plugin from this marketplace automatically on session start (a session-start hook that works in both Claude Code and the GitHub Copilot CLI). It also ships an on-demand `marketplace-update` skill, so you can force an update in free text - for example "update cmh" or "update the marketplace plugins".
 
 > The auto-updater runs a PowerShell session-start hook. On macOS and Linux it needs PowerShell 7 (`pwsh`) on your PATH; if `pwsh` is not installed the hook simply does nothing (it never blocks session startup). Install it with `brew install --cask powershell` or your distro's package (`apt install -y powershell`).
 

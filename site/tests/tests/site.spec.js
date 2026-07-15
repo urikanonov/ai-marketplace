@@ -972,9 +972,13 @@ test("the auto-updater page renders its pitch: hero logo, version badge, feature
   await expect(page.locator("#install .cmd pre", {
     hasText: "copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace",
   })).toHaveCount(1);
-  // The auto-updater is Copilot-only (Claude support is tracked separately), so no Claude tab.
-  await expect(page.locator("#install .install-tab")).toHaveCount(0);
-  await expect(page.locator("#install")).not.toContainText("claude plugin");
+  // The auto-updater is now dual-agent (Claude Code + GitHub Copilot CLI), so it has both tabs.
+  await expect(page.locator("#install .install-tab", { hasText: "GitHub Copilot" })).toBeVisible();
+  const updaterClaudeTab = page.locator("#install .install-tab", { hasText: "Claude Code" });
+  await expect(updaterClaudeTab).toBeVisible();
+  await updaterClaudeTab.click();
+  await expect(page.locator("#install")).toContainText(
+    "claude plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
 });
 
 test("the auto-updater page keeps the user on the page and links back to the marketplace (SITE-UPDATER-05)", async ({ page }) => {
