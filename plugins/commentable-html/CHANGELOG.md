@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.73.0] - 2026-07-15
+
+### Changed
+
+- Deck authoring: the SKILL.md deck section now routes deck planning (not only the fill step) to
+  the vendored frontend-slides design system - shortlist templates from `selection-index.json` and
+  read `STYLE_PRESETS.md` / `html-template.md` / `animation-patterns.md` to choose the outline
+  and theme before scaffolding. (CMH-DECK-14)
+
 ## [1.72.0] - 2026-07-15
 
 ### Added
