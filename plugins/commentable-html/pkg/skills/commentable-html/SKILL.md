@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.72.0`
+**Version:** `1.73.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -158,6 +158,8 @@ Once an id is in `<script id="handledCommentIds">`, it must never reappear. On l
 This skill can build a real animated slide **deck** that is also a commentable-html document. A real deck is fixed-stage, navigable, and validated by deck tools; a `--kind slides` flat document is not a deck.
 
 **Detect and confirm (CMH-DECK-01).** When the request is really a presentation (`slide deck`, `presentation`, `pitch deck`, `slides for a talk`, `convert this ppt`), do not silently produce a flat document. Confirm that the user wants a real deck; if they decline, fall back to a normal flat commentable HTML.
+
+**Plan first (frontend-slides).** When asked to plan or design a deck (not just scaffold one), consult the vendored `frontend-slides` design system before scaffolding: read `vendor/frontend-slides/bold-template-pack/selection-index.json` to shortlist templates by mood/tone/scheme/best_for, plus `vendor/frontend-slides/STYLE_PRESETS.md`, `html-template.md`, and `animation-patterns.md` for the style presets, the fixed-stage structure, and entrance animations. Decide the slide outline and theme, and offer a safe, a bold, and a wildcard title-slide option, before writing any slides.
 
 **Deck invariants:**
 
