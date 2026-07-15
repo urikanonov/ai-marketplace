@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.63.0" />
+<meta name="commentable-html-version" content="1.64.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.63.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.64.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -2111,11 +2111,14 @@ flowchart LR
       <div class="show-code-stack">
         <pre><code class="language-typescript"><span class="cmh-code-kw">const</span> anchor <span class="cmh-code-op">=</span> comments<span class="cmh-code-op">.</span><span class="cmh-code-fn">find</span><span class="cmh-code-op">((</span>note<span class="cmh-code-op">)</span> <span class="cmh-code-op">=&gt;</span> note<span class="cmh-code-op">.</span>id <span class="cmh-code-op">===</span> targetId<span class="cmh-code-op">);</span>
 <span class="cmh-code-kw">if</span> <span class="cmh-code-op">(</span>anchor<span class="cmh-code-op">)</span> <span class="cmh-code-fn">applyAnchoredNote</span><span class="cmh-code-op">(</span>anchor<span class="cmh-code-op">.</span>id<span class="cmh-code-op">,</span> <span class="cmh-code-str">"handled"</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">);</span></code></pre>
+        <figure class="cmh-kql">
+        <figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F02OQQrCMBBF957i4yqVoq24rSAiCO6qF4jNaAMmkWTaqnh4U1vE7Tze%2B1NSq6nbtWQ5TN7oavKEkzYUWJo71pBXJ5arOokwNMZIr1%2BErTOmN4rKNZZFkmIvrbqRGg76Io4smVAUmNYDmSY4P7HxEcqKD9qqWKQHk1WjXH4N%2BFhQYuxhhjzL5hkWv80Uef%2BM84p8n%2FyTZag%2BKFNHTNAAAAA%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
         <pre><code class="language-kusto">ReviewEvents
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> Timestamp <span class="cmh-kql-op">&gt;</span> <span class="cmh-kql-fn">ago</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">24h</span><span class="cmh-kql-op">)</span>
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Comments<span class="cmh-kql-op">=</span><span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Handled<span class="cmh-kql-op">=</span><span class="cmh-kql-fn">countif</span><span class="cmh-kql-op">(</span>State <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"handled"</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> ArtifactKind
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">extend</span> HandleRate <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">round</span><span class="cmh-kql-op">(</span>Handled <span class="cmh-kql-op">*</span> <span class="cmh-kql-num">100.0</span> <span class="cmh-kql-op">/</span> Comments<span class="cmh-kql-op">,</span> <span class="cmh-kql-num">1</span><span class="cmh-kql-op">)</span>
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> HandleRate <span class="cmh-kql-kw">asc</span></code></pre>
+        </figure>
         <p>The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
       </div>
     </div>
@@ -2325,7 +2328,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.63.0";
+const CMH_VERSION = "1.64.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

@@ -82,6 +82,15 @@ class KqlHighlightTests(unittest.TestCase):
         self.assertTrue(block.endswith("</code></pre>"))
         self.assertEqual(_text_content(block), QUERY)
 
+    def test_render_code_no_cluster_marks_pre(self):
+        # CMH-KQL-08: render_code(no_cluster=True) stamps data-cmh-kql-no-cluster on the <pre> (the
+        # explicit override for a bare, non-runnable KQL block); the default (used by the runnable
+        # figure) does NOT stamp it.
+        self.assertNotIn("data-cmh-kql-no-cluster", K.render_code(QUERY))
+        marked = K.render_code(QUERY, no_cluster=True)
+        self.assertTrue(marked.startswith('<pre data-cmh-kql-no-cluster><code class="language-kusto">'))
+        self.assertEqual(_text_content(marked), QUERY)
+
     def test_render_block_is_full_figure(self):
         block = K.render_block("help.kusto.windows.net", "Samples", "My & <title>", QUERY)
         self.assertIn('<figure class="cmh-kql">', block)
@@ -120,7 +129,9 @@ class KqlHighlightTests(unittest.TestCase):
         r = subprocess.run([sys.executable, KQL_PY, "--code-only"], input=QUERY,
                            capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(r.stdout.strip().startswith('<pre><code class="language-kusto">'))
+        # CMH-KQL-08: --code-only stamps the explicit no-cluster marker so the bare block is clean.
+        self.assertTrue(r.stdout.strip().startswith(
+            '<pre data-cmh-kql-no-cluster><code class="language-kusto">'))
         self.assertEqual(_text_content(r.stdout.strip()), QUERY)
 
     def test_cli_full_block(self):
@@ -168,6 +179,7 @@ class KqlHighlightTests(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             code = K.main(["kql_highlight.py", "--code-only", "T | take 1"])
         self.assertEqual(code, 0)
+        self.assertIn("data-cmh-kql-no-cluster", out.getvalue())
         self.assertEqual(_text_content(out.getvalue().strip()), "T | take 1")
 
     def test_main_double_dash_separator_allows_flag_like_positional(self):
