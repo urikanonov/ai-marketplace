@@ -13,17 +13,21 @@ A personal marketplace of AI-oriented plugins for the GitHub Copilot CLI. Users 
 
 These rules are the ones most often forgotten. They are a MUST on every change, no exceptions:
 
-1. **Create the Backlog.md task before you start any work (backlog-first).** Before you touch anything -
-   before the worktree, before any code - search the backlog and create or update a Backlog.md task for the
-   work, set it `In Progress`, and assign it to yourself. NEVER start work that is not tracked by a backlog
-   task, and capture any follow-up or newly discovered work as its own task the moment it comes up so
-   nothing lives only in the chat session. Drive everything through the `backlog` CLI; never hand-edit task
-   files. See "Backlog-first task tracking (Backlog.md)" for the workflow.
-2. **Start every workstream in a fresh worktree off the latest `main`.** Before you touch anything,
-   `git fetch origin` and `git worktree add -b <branch> .worktrees/<name> origin/main`. This applies to
-   EVERY new piece of work (a fix, a feature, a doc edit, a test-only change) - not only when work runs in
-   parallel. Never develop on a stale branch or edit the primary working tree in place. See
-   "Parallel work: use git worktrees under the repo root" for the full mechanics.
+1. **Never work in the primary tree - do EVERYTHING in a fresh worktree off the latest `main`.** The very
+   FIRST action for ANY piece of work (a fix, a feature, a doc edit, a test-only change - and the backlog
+   task itself) is `git fetch origin` then `git worktree add -b <branch> .worktrees/<name> origin/main`;
+   then `cd` into that worktree and do all work there. The primary checkout at the repo root is OFF-LIMITS:
+   never create, edit, or commit any file in it - not code, not docs, not generated artifacts, and NOT
+   backlog task files. Never develop on a stale branch or edit the primary tree in place. See "Parallel
+   work: use git worktrees under the repo root" for the full mechanics.
+2. **Create the Backlog.md task INSIDE that worktree, before any code (backlog-first).** Immediately after
+   creating the worktree (rule 1) and before touching any code, run the `backlog` CLI FROM the worktree to
+   search the backlog and create or update the task, set it `In Progress`, and assign it to yourself; the
+   task `.md` file is then created and committed inside the worktree alongside the work. NEVER start work
+   that is not tracked by a backlog task, NEVER create a task in the primary tree, and capture any follow-up
+   or newly discovered work as its own task the moment it comes up so nothing lives only in the chat
+   session. Drive everything through the `backlog` CLI (run from the worktree); never hand-edit task files.
+   See "Backlog-first task tracking (Backlog.md)" for the workflow.
 3. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
    covering automated test in the SAME pull request, and for bug fixes the test is written FIRST, run, and
    confirmed RED before the fix makes it green. A change whose test never failed on the old code is not
@@ -179,10 +183,11 @@ git worktree add -b <branch> .worktrees/<name> origin/main   # branch from the l
 git worktree remove .worktrees/<name>                        # once the PR is merged
 ```
 
-Rules: always branch from the latest `origin/main` (fetch first); keep the primary tree clean and
-do each workstream in its own `.worktrees/<name>`; and resolve any conflict on generated files by
-REBUILDING (rerun `python scripts/build_site_data.py` and, for the commentable-html layer,
-`plugins/commentable-html/dev/tools/build.py`) rather than hand-merging.
+Rules: always branch from the latest `origin/main` (fetch first); NEVER create, edit, or commit anything in
+the primary tree (not code, not docs, not backlog task files - run the `backlog` CLI from inside the
+worktree so tasks land there); do each workstream in its own `.worktrees/<name>`; and resolve any conflict
+on generated files by REBUILDING (rerun `python scripts/build_site_data.py` and, for the commentable-html
+layer, `plugins/commentable-html/dev/tools/build.py`) rather than hand-merging.
 
 ### Maximizing concurrency: choosing parallel-safe workstreams
 
@@ -610,8 +615,11 @@ This repo tracks work with [Backlog.md](https://backlog.md): git-tracked markdow
 same `validate_markdown.py` hygiene gate as every other doc (plain ASCII, no em/en dashes, no absolute
 local paths). Keep task text ASCII.
 
-**Backlog-first is non-negotiable rule 1.** Do not start any work - not the worktree, not a line of code -
-until the work is tracked by a Backlog.md task that is `In Progress` and assigned to you.
+**Backlog-first is a non-negotiable (see rules 1 and 2).** The task is created INSIDE your worktree, never
+in the primary tree: first `git worktree add ... origin/main` and `cd` into it (rule 1), then - before a
+line of code - run the `backlog` CLI FROM the worktree to track the work as a Backlog.md task that is
+`In Progress` and assigned to you, so the task `.md` file lives and is committed there alongside the work.
+Do not start any work, and do not create or edit a task file in the primary tree.
 
 Every session, before acting:
 
