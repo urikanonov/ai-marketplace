@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.78.0] - 2026-07-15
+
+### Changed
+
+- Deck presentation chrome is cleaner and stays out of the way. The corner comment-mode toggle now
+  hides at every width while the comment side panel is open (its accent colour read poorly over a
+  slide, and the panel has its own header controls); hiding the panel brings it back so present mode
+  stays reachable. The comments action toolbar (Copy all / Show / ...) no longer appears in a deck at
+  all: only the single corner icon and the slide nav bar show. When the panel is hidden in comment
+  mode the slide stage spans the full screen width again instead of leaving a reserved black bar.
+  (CMH-DECK-15)
+- The split-screen slide overview is easier to read and use. Its panel now has a light accent-tinted
+  (red-ish) background, the Close button uses the regular accent fill, and the slide count appears
+  next to the "Slide overview" title. Clicking the main deck area (outside the panel) closes the
+  overview, the grid scrolls reliably when the slides overflow the viewport height, and thumbnails
+  force-reveal animated slide content so each one previews the slide's final rendered state.
+  (CMH-DECK-16)
+
 ## [1.77.0] - 2026-07-15
 
 ### Changed

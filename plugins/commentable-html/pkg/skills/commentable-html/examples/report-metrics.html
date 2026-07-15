@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.77.0" />
+<meta name="commentable-html-version" content="1.78.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.77.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.78.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -1366,6 +1366,18 @@ body.cmh-deck-present .cm-toolbar,
 body.cmh-deck-present #sidebar {
   display: none !important;
 }
+/* The comments action toolbar (Copy all / Show / ...) is redundant in a deck: the single corner
+   comment toggle plus the panel's own header controls cover it. Keep it out of decks entirely, in
+   present AND comment mode, so only the one corner icon and the nav bar show. */
+body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
+  display: none !important;
+}
+/* Hide the comment-mode toggle whenever the side panel is open: it would sit poorly-coloured over
+   the slide, and the panel's own header controls replace it. Applies at every width; hiding the
+   panel brings the toggle back so returning to present mode stays reachable. */
+body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle {
+  display: none !important;
+}
 /* In present mode, suppress the text-selection popup so a selection is not a dead end
    (the composer/sidebar are hidden; the user enters comment mode to review). */
 body.cmh-deck-present #menuComment {
@@ -1504,20 +1516,17 @@ body.cmh-deck-present #menuComment {
   background: #111827 !important;
   color: #f8fafc !important;
 }
-/* In comment mode on a wide screen, narrow the stage so the sidebar does not overlap it
+/* In comment mode on a wide screen, narrow the stage so the OPEN sidebar does not overlap it
    (the deck runtime refits the stage to the reduced viewport width via a ResizeObserver), and
-   shift the centered nav bar left by half the sidebar width so it stays centered on the stage. */
+   shift the centered nav bar left by half the sidebar width so it stays centered on the stage.
+   Gated on the sidebar being open: when the panel is hidden the stage spans the full width again
+   (no reserved black bar), and the toggle - hidden while the panel is open - needs no reposition. */
 @media (min-width: 900px) {
-  #commentRoot.cmh-deck-comment-mode .deck-viewport {
+  body.sidebar-open #commentRoot.cmh-deck-comment-mode .deck-viewport {
     right: 400px;
   }
-  body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-nav {
+  body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-nav {
     left: calc(50% - 200px);
-  }
-  /* Keep the comment-mode toggle clear of the open sidebar (top-right) so it does not cover the
-     sidebar's own header controls. */
-  body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle {
-    right: 414px;
   }
 }
 #commentRoot.cmh-deck-comment-mode .slide .reveal,
@@ -1605,7 +1614,7 @@ body.cmh-deck-present #menuComment {
   padding: 20px;
   gap: 16px;
   color: var(--cp-text, #fff);
-  background: color-mix(in srgb, var(--cp-surface, #222) 94%, #000);
+  background: color-mix(in srgb, var(--cp-accent, #b11f4b) 12%, var(--cp-surface, #fff));
   border-right: 1px solid var(--cp-border, #444);
   box-shadow: 12px 0 28px rgba(0, 0, 0, 0.38);
   overflow: hidden;
@@ -1625,7 +1634,19 @@ body.cmh-deck-present #menuComment {
   font-size: 18px;
   font-weight: 700;
 }
-.cmh-deck-overview-close,
+.cmh-deck-overview-titlewrap {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.cmh-deck-overview-count {
+  font: inherit;
+  font-size: 13px;
+  color: var(--cp-text-soft, #64748b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .cmh-deck-overview-card {
   border: 1px solid var(--cp-border, #444);
   background: var(--cp-surface-soft, #333);
@@ -1636,11 +1657,22 @@ body.cmh-deck-present #menuComment {
 .cmh-deck-overview-close {
   padding: 6px 12px;
   border-radius: 999px;
+  border: 1px solid var(--cp-accent, #b11f4b);
+  background: var(--cp-accent, #b11f4b);
+  color: var(--cp-accent-fg, #fff);
+  font: inherit;
+  cursor: pointer;
+}
+.cmh-deck-overview-close:hover {
+  background: var(--cp-accent-hover, #8f1a3d);
+  border-color: var(--cp-accent-hover, #8f1a3d);
 }
 .cmh-deck-overview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 2px 2px 10px;
 }
@@ -1693,6 +1725,15 @@ body.cmh-deck-present #menuComment {
   pointer-events: none !important;
   transform: none !important;
 }
+/* Thumbnails should show each slide's FINAL rendered state, not the pre-animation state: force
+   any reveal/animated content visible in the clone (mirrors the comment-mode force-reveal) so a
+   thumbnail is a real preview instead of a near-blank dark slide. */
+.cmh-deck-overview-scale .slide .reveal,
+.cmh-deck-overview-scale .slide [class*="reveal"] {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+}
 .cmh-deck-overview-card-label {
   display: block;
   overflow: hidden;
@@ -1715,12 +1756,11 @@ body.cmh-deck-present #menuComment {
     width: 100vw;
   }
 }
-/* On a narrow screen the sidebar opens as a near-full-width overlay, so the fixed deck controls
-   (high z-index) would float on top of it. Hide them only while the sidebar is actually open in
-   comment mode; when the user hides the sidebar they reappear, so returning to present mode and
-   navigating stay reachable. */
+/* On a narrow screen the sidebar opens as a near-full-width overlay, so the fixed nav bar (high
+   z-index) would float on top of it. Hide it only while the sidebar is actually open in comment
+   mode; hiding the sidebar brings it back so navigating stays reachable. (The comment-mode toggle
+   is already hidden at every width while the panel is open, above.) */
 @media (max-width: 899px) {
-  body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle,
   body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-nav {
     display: none;
   }
@@ -2080,7 +2120,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.77.0";
+const CMH_VERSION = "1.78.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8900,7 +8940,7 @@ function setupDeck() {
   if (current < 0) current = 0;
   let commentMode = false;
   let counter = null, prevBtn = null, nextBtn = null;
-  let overview = null, overviewGrid = null, overviewBtn = null;
+  let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
   const slideTitles = slides.map((slide, i) => slideTitle(slide, i));
   // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
   // the present-mode default applied below.
@@ -9013,17 +9053,24 @@ function setupDeck() {
 
     const head = document.createElement("div");
     head.className = "cmh-deck-overview-head";
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "cmh-deck-overview-titlewrap";
     const title = document.createElement("h2");
     title.id = "cmhDeckOverviewTitle";
     title.className = "cmh-deck-overview-title";
     title.textContent = "Slide overview";
+    const count = document.createElement("span");
+    count.className = "cmh-deck-overview-count";
+    count.textContent = slides.length + (slides.length === 1 ? " slide" : " slides");
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(count);
     const close = document.createElement("button");
     close.type = "button";
     close.className = "cmh-deck-overview-close";
     close.textContent = "Close";
     close.setAttribute("aria-label", "Close slide overview");
     close.addEventListener("click", () => closeOverview());
-    head.appendChild(title);
+    head.appendChild(titleWrap);
     head.appendChild(close);
 
     overviewGrid = document.createElement("div");
@@ -9099,6 +9146,16 @@ function setupDeck() {
       overviewBtn.setAttribute("aria-expanded", "true");
       overviewBtn.classList.add("cmh-deck-overview-on");
     }
+    // Dismiss on a click in the main deck area (a slide / the stage / the content root), but not
+    // on the overview panel, the nav bar, or the mode toggle (those live outside #commentRoot).
+    if (!overviewDismiss) {
+      overviewDismiss = (e) => {
+        if (!overview || overview.hidden) return;
+        const t = e.target;
+        if (t && t.closest && t.closest(".deck-viewport, #commentRoot")) closeOverview();
+      };
+    }
+    document.addEventListener("click", overviewDismiss);
     syncOverview();
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => focusOverviewCard(current));
     else focusOverviewCard(current);
@@ -9108,6 +9165,7 @@ function setupDeck() {
     if (!overview || overview.hidden) return;
     overview.hidden = true;
     document.body.classList.remove("cmh-deck-overview-open");
+    if (overviewDismiss) document.removeEventListener("click", overviewDismiss);
     if (overviewBtn) {
       overviewBtn.setAttribute("aria-expanded", "false");
       overviewBtn.classList.remove("cmh-deck-overview-on");

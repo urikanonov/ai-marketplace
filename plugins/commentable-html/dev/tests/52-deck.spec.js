@@ -323,12 +323,19 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await toggle.hover();
     await expect(page.locator(".cm-tooltip")).toHaveText("Comment Mode");
 
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    // Once comment mode opens the panel, the toggle is display:none (out of the a11y tree), so the
+    // role locator can no longer resolve it; drive the state checks through the CSS locator, which
+    // still matches a hidden element.
+    const toggleEl = page.locator(".cmh-deck-mode-toggle");
+    await toggleEl.click();
+    await expect(toggleEl).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(toggleEl).toBeHidden();                  // the toggle hides while the panel is open
 
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await page.locator("#btnCloseSidebar").click();       // hide the panel to bring the toggle back
+    await expect(toggleEl).toBeVisible();
+    await toggleEl.click();                               // click it to leave comment mode
+    await expect(toggleEl).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#sidebar")).toBeHidden();
   });
 
@@ -388,7 +395,10 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     // navigation keys do nothing while in comment mode
     await page.keyboard.press("ArrowRight");
     expect(await activeId(page)).toBe("slide-00000001");
-    // toggling back hides the UI and re-enables navigation
+    // the toggle hides while the panel is open; hide the panel to reveal it, then leave comment mode
+    await expect(toggle).toBeHidden();
+    await page.locator("#btnCloseSidebar").click();
+    await expect(toggle).toBeVisible();
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
     await expect(page.locator("#sidebar")).toBeHidden();
@@ -508,5 +518,102 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       await server.close();
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("CMH-DECK-15: the comment-mode toggle hides while the side panel is open (all widths)", async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await openDeck(page);
+    const toggle = page.locator(".cmh-deck-mode-toggle");
+    await expect(toggle).toBeVisible();
+    await toggle.click();                                 // enter comment mode -> the panel opens
+    await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(toggle).toBeHidden();                    // hidden while the panel is open, even wide
+    await page.locator("#btnCloseSidebar").click();       // hide the panel
+    await expect(toggle).toBeVisible();                   // reappears so present mode stays reachable
+  });
+
+  test("CMH-DECK-15: the comments action toolbar never appears in a deck", async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await openDeck(page);
+    const toolbar = page.locator(".cm-toolbar");
+    await expect(toolbar).toBeHidden();                   // present mode
+    await page.locator(".cmh-deck-mode-toggle").click();  // comment mode, panel open
+    await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(toolbar).toBeHidden();
+    await page.locator("#btnCloseSidebar").click();       // comment mode, panel hidden
+    await expect(toolbar).toBeHidden();                   // still hidden - only the corner icon shows
+  });
+
+  test("CMH-DECK-15: the slide stage spans the full width when the panel is hidden in comment mode", async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await openDeck(page);
+    const innerW = await page.evaluate(() => window.innerWidth);
+    const viewportRight = () => page.evaluate(() =>
+      Math.round(document.querySelector(".deck-viewport").getBoundingClientRect().right));
+    await page.locator(".cmh-deck-mode-toggle").click();  // comment mode, panel open -> stage inset
+    await expect(page.locator("#sidebar")).toBeVisible();
+    expect(await viewportRight()).toBeLessThanOrEqual(innerW - 300);   // room reserved for the panel
+    await page.locator("#btnCloseSidebar").click();       // hide the panel
+    await expect.poll(viewportRight).toBeGreaterThanOrEqual(innerW - 2);  // full width, no black bar
+  });
+
+  test("CMH-DECK-16: the overview is accent-tinted with a red Close button and shows the slide count", async ({ page }) => {
+    await openDeck(page);
+    await page.locator(".cmh-deck-nav").getByRole("button", { name: "Slide overview", exact: true }).click();
+    const overview = page.locator(".cmh-deck-overview");
+    await expect(overview).toBeVisible();
+    await expect(page.locator(".cmh-deck-overview-count")).toHaveText("3 slides");
+    const panelReddish = await overview.evaluate((el) => {
+      const [r, g, b] = getComputedStyle(el).backgroundColor.match(/[\d.]+/g).map(Number);
+      return r > g && r > b;                              // red is the dominant channel (any scale)
+    });
+    expect(panelReddish).toBe(true);
+    const closeRed = await page.locator(".cmh-deck-overview-close").evaluate((el) => {
+      const [r, g, b] = getComputedStyle(el).backgroundColor.match(/[\d.]+/g).map(Number);
+      return r > g + 40 && r > b + 40;                    // a saturated 0-255 red, not neutral gray
+    });
+    expect(closeRed).toBe(true);
+  });
+
+  test("CMH-DECK-16: clicking the main deck area closes the overview", async ({ page }) => {
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await openDeck(page);
+    const overview = page.locator(".cmh-deck-overview");
+    await page.locator(".cmh-deck-nav").getByRole("button", { name: "Slide overview", exact: true }).click();
+    await expect(overview).toBeVisible();
+    await page.mouse.click(1180, 400);                    // far-right deck area, outside the left panel
+    await expect(overview).toBeHidden();
+  });
+
+  test("CMH-DECK-16: the overview grid scrolls when the slides overflow the viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 1100, height: 480 });
+    await installClipboardCapture(page);
+    const many = Array.from({ length: 14 }, (_, i) =>
+      '<section class="slide' + (i === 0 ? " active" : "") + '" data-slide-id="slide-scroll-' + i + '">'
+      + "<h2>Slide " + (i + 1) + "</h2><p>Body " + (i + 1) + "</p></section>").join("");
+    const { html } = stageDeck(many, { key: "cmh-deck-scroll" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await page.keyboard.press("o");
+    const overview = page.locator(".cmh-deck-overview");
+    await expect(overview).toBeVisible();
+    const scrollable = await page.locator(".cmh-deck-overview-grid").evaluate((el) => el.scrollHeight - el.clientHeight > 4);
+    expect(scrollable).toBe(true);
+  });
+
+  test("CMH-DECK-16: overview thumbnails force-reveal animated slide content", async ({ page }) => {
+    const revealSlides =
+      '<section class="slide active" data-slide-id="slide-reveal-1"><h2>Reveal</h2>'
+      + '<div class="reveal" style="opacity:0" data-reveal-probe>Hidden until revealed</div></section>'
+      + '<section class="slide" data-slide-id="slide-reveal-2"><h2>Two</h2><p>Second</p></section>';
+    await installClipboardCapture(page);
+    const { html } = stageDeck(revealSlides, { key: "cmh-deck-reveal" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await page.keyboard.press("o");
+    await expect(page.locator(".cmh-deck-overview")).toBeVisible();
+    const cloneOpacity = await page.locator(".cmh-deck-overview-scale [data-reveal-probe]").first()
+      .evaluate((el) => getComputedStyle(el).opacity);
+    expect(cloneOpacity).toBe("1");
   });
 });

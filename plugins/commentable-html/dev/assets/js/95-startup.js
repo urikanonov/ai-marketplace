@@ -199,7 +199,7 @@ function setupDeck() {
   if (current < 0) current = 0;
   let commentMode = false;
   let counter = null, prevBtn = null, nextBtn = null;
-  let overview = null, overviewGrid = null, overviewBtn = null;
+  let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
   const slideTitles = slides.map((slide, i) => slideTitle(slide, i));
   // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
   // the present-mode default applied below.
@@ -312,17 +312,24 @@ function setupDeck() {
 
     const head = document.createElement("div");
     head.className = "cmh-deck-overview-head";
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "cmh-deck-overview-titlewrap";
     const title = document.createElement("h2");
     title.id = "cmhDeckOverviewTitle";
     title.className = "cmh-deck-overview-title";
     title.textContent = "Slide overview";
+    const count = document.createElement("span");
+    count.className = "cmh-deck-overview-count";
+    count.textContent = slides.length + (slides.length === 1 ? " slide" : " slides");
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(count);
     const close = document.createElement("button");
     close.type = "button";
     close.className = "cmh-deck-overview-close";
     close.textContent = "Close";
     close.setAttribute("aria-label", "Close slide overview");
     close.addEventListener("click", () => closeOverview());
-    head.appendChild(title);
+    head.appendChild(titleWrap);
     head.appendChild(close);
 
     overviewGrid = document.createElement("div");
@@ -398,6 +405,16 @@ function setupDeck() {
       overviewBtn.setAttribute("aria-expanded", "true");
       overviewBtn.classList.add("cmh-deck-overview-on");
     }
+    // Dismiss on a click in the main deck area (a slide / the stage / the content root), but not
+    // on the overview panel, the nav bar, or the mode toggle (those live outside #commentRoot).
+    if (!overviewDismiss) {
+      overviewDismiss = (e) => {
+        if (!overview || overview.hidden) return;
+        const t = e.target;
+        if (t && t.closest && t.closest(".deck-viewport, #commentRoot")) closeOverview();
+      };
+    }
+    document.addEventListener("click", overviewDismiss);
     syncOverview();
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => focusOverviewCard(current));
     else focusOverviewCard(current);
@@ -407,6 +424,7 @@ function setupDeck() {
     if (!overview || overview.hidden) return;
     overview.hidden = true;
     document.body.classList.remove("cmh-deck-overview-open");
+    if (overviewDismiss) document.removeEventListener("click", overviewDismiss);
     if (overviewBtn) {
       overviewBtn.setAttribute("aria-expanded", "false");
       overviewBtn.classList.remove("cmh-deck-overview-on");
