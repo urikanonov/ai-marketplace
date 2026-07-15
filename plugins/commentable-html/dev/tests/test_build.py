@@ -147,6 +147,18 @@ class BuildTests(unittest.TestCase):
             html = _read(os.path.join(DIST, name))
             self.assertIn('<meta name="commentable-html-version" content="%s"' % v, html)
 
+    def test_source_stamps_include_visible_version_in_skill_and_dist_readme(self):
+        # The human-readable version line in SKILL.md and dist/README.md is stamped from the
+        # single source (dev/VERSION), so `build.py` re-stamps it and `--check` catches drift.
+        v = build.read_version()
+        stamps = build.source_stamps(v, build.ASSETS, ROOT)
+        skill = os.path.join(ROOT, "SKILL.md")
+        readme = os.path.join(ROOT, "dist", "README.md")
+        self.assertIn(skill, stamps)
+        self.assertIn(readme, stamps)
+        self.assertIn("**Version:** `%s`" % v, stamps[skill])
+        self.assertIn("**Version:** `%s`" % v, stamps[readme])
+
     def test_mermaid_version_is_single_sourced(self):
         mv = build.read_mermaid_version()
         self.assertRegex(mv, r"^\d+\.\d+\.\d+$")
@@ -531,6 +543,19 @@ class StampHelperTests(unittest.TestCase):
             with open(vf, "w", encoding="utf-8") as fh:
                 fh.write("1.2.3\n")
             self.assertEqual(build.read_version(vf), "1.2.3")
+
+    def test_stamp_md_version_updates_the_single_marker(self):
+        text = "# dist\n\n**Version:** `1.0.0`\n\nbody\n"
+        out = build._stamp_md_version(text, "2.0.0", "x")
+        self.assertIn("**Version:** `2.0.0`", out)
+        self.assertNotIn("1.0.0", out)
+
+    def test_stamp_md_version_requires_exactly_one_marker(self):
+        with self.assertRaises(SystemExit):
+            build._stamp_md_version("no version marker here\n", "2.0.0", "x")
+        with self.assertRaises(SystemExit):
+            build._stamp_md_version("**Version:** `1.0.0` `2.0.0` not\n"
+                                    "**Version:** `1.0.0`\n", "3.0.0", "x")
 
     def test_stamp_plugin_json_preserves_format_and_sets_top_level(self):
         text = '{\n  "name": "x",\n  "version": "1.0.0",\n  "keywords": ["a", "b"]\n}\n'

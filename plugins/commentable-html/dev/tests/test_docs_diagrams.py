@@ -6,6 +6,7 @@ showing what is bundled in the file versus fetched from where, and SKILL.md must
 import os
 import re
 import unittest
+import json
 
 import _paths
 
@@ -46,6 +47,24 @@ class PortabilityDiagramsTests(unittest.TestCase):
 
 PLUGIN_README = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "README.md"))
 BLOG_URL = "https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html"
+
+DIST_README = os.path.join(_paths.PKG, "dist", "README.md")
+MANIFEST_JSON = os.path.join(_paths.PKG, "dist", "manifest.json")
+
+
+class VisibleVersionDocsTests(unittest.TestCase):
+    """CMH-DOC-10: the shipped SKILL.md and dist/README.md display the current version in a
+    clear, human-readable place, matching the shipped runtime version in dist/manifest.json."""
+
+    def _shipped_version(self):
+        with open(MANIFEST_JSON, encoding="utf-8") as fh:
+            return json.load(fh)["version"]
+
+    def test_skill_shows_current_version(self):
+        self.assertIn("**Version:** `%s`" % self._shipped_version(), _read(SKILL_MD))
+
+    def test_dist_readme_shows_current_version(self):
+        self.assertIn("**Version:** `%s`" % self._shipped_version(), _read(DIST_README))
 
 
 class MotivationDocsTests(unittest.TestCase):

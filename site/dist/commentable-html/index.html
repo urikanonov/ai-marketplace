@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.66.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.70.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -344,12 +344,21 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.70.0] - 2026-07-15</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>A visible, human-readable version line in the shipped <code>SKILL.md</code> and <code>dist/README.md</code>, so a reader who opens the skill or its <code>dist/</code> folder can see which version they have without decoding <code>manifest.json</code>. The line (<code>**Version:** </code> + a code span) is single-sourced from <code>dev/VERSION</code>: <code>build.py</code> re-stamps it and <code>--check</code> fails when either file is stale.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.66.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Provenance stamps and a runtime fallback banner so a document that skipped validation is visible. The document-producing tools stamp <code>commentable-html-created</code>, and <code>validate.py</code> / <code>finalize.py</code> stamp <code>commentable-html-validated</code> only on a strict-clean pass (<code>--no-stamp</code> keeps a run read-only). On load, the runtime shows a small dismissible amber banner when a document carries a created stamp but no current validated stamp - a produced-but-never-strict-validated document. A strict-validated document (and any document with no created stamp) shows nothing. This is a last-resort signal; the skill MUST always finalize and strict-validate before handoff.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.65.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -357,8 +366,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Editable notes fields: an authored <code>data-cmh-note</code> element becomes an editable plain-text <code>&lt;textarea&gt;</code> (with a single/multi-line toggle) whose baseline is its authored text. A reviewer&#x27;s edit is tracked as a minimal <code>localStorage</code> delta, surfaces as a per-note change card (jump + reset, searchable), flips the badge to Not portable, is written into the Copy-all bundle as <code>NOTES_STATE_JSON</code>, and is baked into the source on export. <code>tools/notes/notes_scaffold.py</code> generates the markup and <code>tools/notes/notes_apply.py</code> deterministically cements an edit back into the source HTML, so the reviewer-edit round-trip is closed and covered end to end. The global Clear all comments also reverts note edits. Ships a <code>report-notes.html</code> demo. See the editable notes-field contract reference (<code>references/notes-contract.md</code>) in the skill. Notes can be marked foldable (<code>data-cmh-note-foldable</code>) to render as a <code>+</code>/<code>-</code> disclosure that reveals the field on the line below.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.64.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -394,15 +401,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Widened the comment search field by trimming its side padding and the shown/total count reserve, so the full <code>Search comments</code> placeholder fits even at the minimum panel width.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.60.0] - 2026-07-15</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Validator now warns when normal <code>&lt;pre&gt;</code> or <code>&lt;pre&gt;&lt;code&gt;</code> blocks carry <code>cm-skip</code>, which would make their code content non-commentable.</li>
-              <li>Validator now rejects a live <code>#commentRoot</code> that still uses the documentation example key <code>my-doc</code>, while allowing the commented-out example.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">67 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">68 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

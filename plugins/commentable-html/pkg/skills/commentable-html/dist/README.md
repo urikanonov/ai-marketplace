@@ -1,5 +1,7 @@
 # dist
 
+**Version:** `1.70.0`
+
 Generated Commentable HTML bundle. Do not hand-edit these files.
 
 | File | Role |

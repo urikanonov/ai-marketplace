@@ -120,6 +120,8 @@ _CMH_CONST_RE = re.compile(r'(?m)^(\s*const\s+CMH_VERSION\s*=\s*")[0-9]+\.[0-9]+
 _JSON_VERSION_RE = re.compile(r'("version"\s*:\s*")([0-9]+\.[0-9]+\.[0-9]+)(")')
 _MARKETPLACE_VERSION_RE = re.compile(
     r'("name"\s*:\s*"commentable-html"[\s\S]*?"version"\s*:\s*")([0-9]+\.[0-9]+\.[0-9]+)(")')
+# The visible, human-readable version line stamped into SKILL.md and dist/README.md.
+_MD_VERSION_RE = re.compile(r'(\*\*Version:\*\* `)([0-9]+\.[0-9]+\.[0-9]+)(`)')
 
 
 def read_version(version_file=None):
@@ -209,6 +211,15 @@ def _stamp_marketplace(text, version):
     return new
 
 
+def _stamp_md_version(text, version, label):
+    # Re-stamp the single human-readable `**Version:** `x.y.z`` line so SKILL.md and
+    # dist/README.md show the current version and never drift from dev/VERSION.
+    new, n = _MD_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(3), text)
+    if n != 1:
+        raise SystemExit("build: expected exactly one '**Version:** `x.y.z`' line in %s, found %d" % (label, n))
+    return new
+
+
 def _find_marketplace(start):
     cur = os.path.abspath(start)
     while True:
@@ -227,10 +238,11 @@ def _find_marketplace(start):
 
 def source_stamps(version, assets_dir, out_dir):
     """Return {path: stamped_text} for the hand-maintained files that carry the
-    version: the layer const, plugin.json, and the marketplace entry. Only files
-    that exist are included, so non-standard layouts degrade gracefully. Examples
-    are NOT stamped here - they embed the whole layer and are regenerated from
-    dist, which already carries the version."""
+    version: the layer const, plugin.json, the marketplace entry, and the visible
+    `**Version:**` line in SKILL.md and dist/README.md. Only files that exist are
+    included, so non-standard layouts degrade gracefully. Examples are NOT stamped
+    here - they embed the whole layer and are regenerated from dist, which already
+    carries the version."""
     stamps = {}
     js_path = _js_version_part(assets_dir)
     stamps[js_path] = _stamp_const(read(js_path), version, os.path.basename(js_path))
@@ -240,6 +252,14 @@ def source_stamps(version, assets_dir, out_dir):
     marketplace = _find_marketplace(out_dir)
     if marketplace:
         stamps[marketplace] = _stamp_marketplace(read(marketplace), version)
+    # Human-readable version lines: the shipped SKILL.md and dist/README.md so a reader can see
+    # which version they have. Only stamped when present (a bare --assets-dir build has neither).
+    skill = os.path.join(out_dir, "SKILL.md")
+    if os.path.exists(skill):
+        stamps[skill] = _stamp_md_version(read(skill), version, "SKILL.md")
+    readme = os.path.join(out_dir, "dist", "README.md")
+    if os.path.exists(readme):
+        stamps[readme] = _stamp_md_version(read(readme), version, "dist/README.md")
     return stamps
 
 
