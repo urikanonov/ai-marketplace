@@ -1069,6 +1069,15 @@ test("the auto-updater page describes the session-start hook for both agents (SI
   expect(howText).toContain("SessionStart");
 });
 
+test("the auto-updater hero gives a complete self-update command for both agents (SITE-UPDATER-11)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  // The updater excludes itself, so the hero must show the FULL self-update command for each agent
+  // (binary + plugin name + marketplace), not a bare/invalid `plugin update`.
+  const heroText = await page.locator(".hero").innerText();
+  expect(heroText).toContain("copilot plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
+  expect(heroText).toContain("claude plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
+});
+
 test("the full-screen button has a light-red (accent-tinted) background", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const bg = await page.locator("#demo-fullscreen").evaluate(
