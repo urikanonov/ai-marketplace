@@ -287,6 +287,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
     saveComments();
     if (typeof resetAllChecklists === "function") resetAllChecklists();
     if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
+    if (typeof resetAllNotes === "function") resetAllNotes();
     renderComments();
   } finally {
     _clearAllBusy = false;

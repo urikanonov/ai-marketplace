@@ -59,6 +59,7 @@ async function saveAsPlain() {
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyChecklistStateToHtml(baseHtml);
+  baseHtml = _applyNoteStateToHtml(baseHtml);
   let text;
   try { text = _buildPlainHtml(baseHtml); }
   catch (e) { showToast(e.message); return; }

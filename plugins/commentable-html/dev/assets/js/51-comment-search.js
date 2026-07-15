@@ -40,8 +40,9 @@ function applyCommentSearch() {
   const countEl = document.getElementById("cmSearchCount");
   const clearBtn = document.getElementById("cmSearchClear");
   const total = Array.isArray(comments) ? comments.length : 0;
-  if (row) row.hidden = total === 0;
-  if (total === 0) {
+  const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
+  if (row) row.hidden = total === 0 && noteCards.length === 0;
+  if (total === 0 && noteCards.length === 0) {
     _toggleSearchEmptyNote(false);
     return;
   }
@@ -55,17 +56,26 @@ function applyCommentSearch() {
     if (match) shown++;
   });
   // A widget layout-change card and a checklist card are not comments; while a search is
-  // active they would be noise, so hide them. An empty query restores them.
+  // active they would be noise, so hide them. An empty query restores them. Notes ARE
+  // searchable: a note card filters by its label and text like a comment card.
+  let noteShown = 0;
   if (listEl) {
     listEl.querySelectorAll(".cm-card-state, .cm-card-checklist").forEach((c) => {
       c.classList.toggle("cm-hidden", q !== "");
     });
+    noteCards.forEach((c) => {
+      const hay = ((c.querySelector(".cmh-note-search") || {}).textContent || "").toLowerCase();
+      const match = q === "" || hay.indexOf(q) !== -1;
+      c.classList.toggle("cm-hidden", !match);
+      if (q !== "" && match) noteShown++;
+    });
   }
   if (countEl) {
-    countEl.textContent = shown + " / " + total;
+    const totalItems = total + noteCards.length;
+    countEl.textContent = (q === "" ? totalItems : (shown + noteShown)) + " / " + totalItems;
     countEl.hidden = false;
   }
-  _toggleSearchEmptyNote(q !== "" && shown === 0);
+  _toggleSearchEmptyNote(q !== "" && shown === 0 && noteShown === 0);
 }
 
 function setupCommentSearch() {

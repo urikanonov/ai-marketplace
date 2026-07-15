@@ -79,7 +79,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.64.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.65.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -343,6 +343,13 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.65.0] - 2026-07-15</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Editable notes fields: an authored <code>data-cmh-note</code> element becomes an editable plain-text <code>&lt;textarea&gt;</code> (with a single/multi-line toggle) whose baseline is its authored text. A reviewer&#x27;s edit is tracked as a minimal <code>localStorage</code> delta, surfaces as a per-note change card (jump + reset, searchable), flips the badge to Not portable, is written into the Copy-all bundle as <code>NOTES_STATE_JSON</code>, and is baked into the source on export. <code>tools/notes/notes_scaffold.py</code> generates the markup and <code>tools/notes/notes_apply.py</code> deterministically cements an edit back into the source HTML, so the reviewer-edit round-trip is closed and covered end to end. The global Clear all comments also reverts note edits. Ships a <code>report-notes.html</code> demo. See the editable notes-field contract reference (<code>references/notes-contract.md</code>) in the skill. Notes can be marked foldable (<code>data-cmh-note-foldable</code>) to render as a <code>+</code>/<code>-</code> disclosure that reveals the field on the line below.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.64.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -350,6 +357,8 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>The showcase deck&#x27;s KQL slide now uses a full runnable figure on the public <code>help.kusto.windows.net</code> cluster instead of a bare highlighted block.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.63.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -358,8 +367,6 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li><code>SKILL.md</code> now states as a MUST that every produced HTML is finalized and strict-validated before handoff, since the runtime and validator both depend on that final pass.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.62.0] - 2026-07-15</h3></div>
             <div class="group-label">Fixed</div>
@@ -394,19 +401,7 @@ copilot plugin install commentable-html@urikan-ai-marketplace">copy</button>
               <li>Reduced the always-loaded <code>SKILL.md</code> token footprint by replacing reference-duplicated guidance with concise pointers to the existing on-demand reference docs while keeping routing, validation, trust-boundary, iteration-loop, and deck invariants in the entry point.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.58.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Replaced the weak roadmap deck demo with a themed, in-depth Commentable HTML showcase deck and a reusable one-shot authoring prompt that prescribes the full slide outline and feature coverage.</li>
-              <li>Added the showcase deck to the live site demo tabs so visitors can open the deck-mode review experience directly.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Deck code, KQL, and diff blocks now use dark, readable surfaces, distinct syntax token colors, and readable add/delete row tints on dark deck slides.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">65 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">66 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

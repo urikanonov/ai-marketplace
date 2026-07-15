@@ -53,7 +53,8 @@ function renderComments() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
   const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
-  if (!comments.length && !stateChanges.length && !clPieces.length) {
+  const notePieces = (typeof notesCardPieces === "function") ? notesCardPieces() : [];
+  if (!comments.length && !stateChanges.length && !clPieces.length && !notePieces.length) {
     const deckHint = IS_DECK
       ? "<p><strong>On this deck:</strong> in comment mode, select text on the current slide and choose <em>Add Comment</em>, or right-click empty slide space for a whole-slide comment. Move between slides with Prev / Next or the arrow keys.</p>"
       : "";
@@ -157,9 +158,10 @@ function renderComments() {
     </article>`;
   });
   const commentPieces = commentHtml.map((html, i) => ({ pos: sortKey(sorted[i]), html }));
-  // Insert each checklist card by document position while preserving the comments' current
-  // (position or time) sort order, so a time sort is not overridden and no card is dropped.
-  const cls = clPieces.slice().sort((a, b) => a.pos - b.pos);
+  // Insert each checklist and note change card by document position while preserving the
+  // comments' current (position or time) sort order, so a time sort is not overridden and no
+  // card is dropped.
+  const cls = clPieces.concat(notePieces).sort((a, b) => a.pos - b.pos);
   const parts = [];
   let ci = 0;
   commentPieces.forEach((cp) => {
@@ -267,6 +269,15 @@ listEl.addEventListener("click", (e) => {
     const cid = e.target.getAttribute("data-cmh-checklist-name") || clCard.getAttribute("data-cmh-checklist-name");
     if (e.target.dataset.act === "cl-reset") { if (typeof resetChecklist === "function") resetChecklist(cid); }
     else if (typeof jumpToChecklist === "function") jumpToChecklist(cid);
+    return;
+  }
+  // Note change cards are not comments: jump focuses the note field, reset reverts it to the
+  // authored text. Handle before the .cm-card comment path (a note card is a .cm-card).
+  const noteCard = e.target.closest(".cm-card-note");
+  if (noteCard) {
+    const nid = e.target.getAttribute("data-cmh-note-name") || noteCard.getAttribute("data-cmh-note-name");
+    if (e.target.dataset.act === "note-reset") { if (typeof resetNote === "function") resetNote(nid); }
+    else if (typeof jumpToNote === "function") jumpToNote(nid);
     return;
   }
   // Widget state cards are not comments: their jump focuses the board and their Reset
