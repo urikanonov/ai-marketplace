@@ -78,7 +78,7 @@
           <a class="btn" href="#how">How it works</a>
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">View source</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.2.2<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.2.3<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -97,7 +97,7 @@
         <h2 class="section-title">What you get</h2>
         <p class="section-sub">A tiny, well-behaved hook that does one job well and stays out of your way.</p>
         <div class="grid">
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.36-2.64L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.36 2.64L21 8"/><path d="M21 3v5h-5"/></svg></span><h3>Updates on session start</h3><p>A <code>sessionStart</code> hook runs each time you open Claude Code or the Copilot CLI and updates every plugin you have from this marketplace, in name-sorted order for a deterministic log.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.36-2.64L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.36 2.64L21 8"/><path d="M21 3v5h-5"/></svg></span><h3>Updates on session start</h3><p>A session-start hook runs each time you open Claude Code or the Copilot CLI and updates every plugin you have from this marketplace, in name-sorted order for a deterministic log.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.2 3 7.4 7 8.5 4-1.1 7-4.3 7-8.5V6z"/><path d="m9 12 2 2 4-4"/></svg></span><h3>Non-blocking by design</h3><p>All work is wrapped in <code>try/catch</code>. A failure is logged and never surfaced to your session, and each plugin updates in isolation so one failing update never stops the rest.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><h3>Throttled, not chatty</h3><p>A last-run throttle skips the whole pass when the previous one ran less than about 20 hours ago, so opening several sessions a day costs at most one update check.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="8" width="20" height="8" rx="4"/><circle cx="16" cy="12" r="3"/></svg></span><h3>Opt-in, always</h3><p>Automatic updates are a separate plugin you choose to install. Do not want them on a given machine? Do not install it there - nothing about the other plugins changes.</p></div>
@@ -112,7 +112,7 @@
         <h2 class="section-title">How it works</h2>
         <p class="section-sub">One hook, one job, and nothing to babysit.</p>
         <div class="steps steps-vertical">
-          <div class="step"><h3>Register a session-start hook</h3><p>Installing the plugin adds a <code>sessionStart</code> hook (<code>hooks.json</code>). No configuration and no scheduler to set up.</p></div>
+          <div class="step"><h3>Register a session-start hook</h3><p>Installing the plugin registers a session-start hook with your agent (a Copilot <code>sessionStart</code> hook, or a Claude Code <code>SessionStart</code> hook). No configuration and no scheduler to set up.</p></div>
           <div class="step"><h3>Check the throttle</h3><p>On each session start the hook checks the last-run stamp. If the previous pass ran within the last ~20 hours it logs a skip and does nothing else.</p></div>
           <div class="step"><h3>Update every marketplace plugin</h3><p>Otherwise it lists your installed plugins, sorts them by name, and runs <code>copilot plugin update</code> (or <code>claude plugin update</code> under Claude Code) for each - checking the exit code and logging any failure. It excludes itself, since a plugin cannot update itself while its own hook is running.</p></div>
           <div class="step"><h3>Stamp and log</h3><p>A completed pass records a fresh last-run stamp and writes activity to the plugin-data log, so you can always see what happened and when.</p></div>
@@ -203,6 +203,17 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.2.3] - 2026-07-15</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The Claude <code>SessionStart</code> hook surfaced a <code>hook error</code> notice on every macOS/Linux session start. Claude runs every handler in a matched group, so the exec-form <code>powershell</code> handler (kept for Windows without Git Bash) tried to spawn a <code>powershell</code> binary that does not exist on macOS/Linux and failed. The two handlers are now collapsed into a single <code>bash</code> handler that dispatches by <code>uname</code>: <code>pwsh</code> on macOS/Linux, Windows PowerShell (or <code>pwsh</code>) on Windows. Exactly one clean invocation runs per platform, with no cross-platform spawn failure. (UPD-15)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The update pass now logs a <code>pass complete: N plugin(s) checked</code> line so a completed pass is visible in the log (previously only failures and skips were logged), matching the documented logging behavior. (UPD-16)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.2.2] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -213,6 +224,8 @@
               <li>The Claude <code>SessionStart</code> hook could run the update twice on Windows when both Git Bash and a PowerShell were present (the bash and powershell handlers both fired). The bash handler now no-ops on Windows (<code>uname</code> MINGW/MSYS/CYGWIN), so exactly one handler runs per platform: powershell on Windows, bash+pwsh on macOS/Linux. Updates are idempotent and throttled, so this was harmless but is now clean. (UPD-15)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.2.1] - 2026-07-15</h3></div>
             <div class="group-label">Fixed</div>
@@ -220,8 +233,6 @@
               <li>The plugin failed to load in Claude Code with &quot;Duplicate hooks file detected&quot; because <code>.claude-plugin/plugin.json</code> redundantly referenced <code>./hooks/hooks.json</code>, which Claude Code already auto-loads from the standard <code>hooks/hooks.json</code> location. Removed the redundant <code>hooks</code> manifest field so the plugin loads cleanly; <code>claude plugin validate --strict</code> accepted the manifest either way, so this was caught only by a real <code>claude plugin install</code>. (UPD-14)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.2.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -261,14 +272,7 @@
               <li>The plugin now uses the <code>pkg/</code> shipped-source layout with a sibling <code>dev/</code> folder holding the feature spec and an automated pwsh test suite (not distributed).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.0.1] - 2026-07-10</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The updater now checks <code>$LASTEXITCODE</code> after each <code>copilot plugin update</code> and logs failures. Native-command failures were previously swallowed by the <code>catch</code>.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">1 earlier release in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">2 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

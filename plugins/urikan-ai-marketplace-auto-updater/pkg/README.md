@@ -38,7 +38,7 @@ its per-agent log so the skip is discoverable rather than silent. On Windows no 
 
 ## Logs
 
-Activity and failures are logged per agent, and the last successful pass is stamped beside the log:
+Each pass, skip, and failure is logged per agent, and a completed pass is stamped beside the log:
 
 - GitHub Copilot CLI: `<COPILOT_HOME or ~/.copilot>/plugin-data/urikan-ai-marketplace-auto-updater.log`
   (stamp: `urikan-ai-marketplace-auto-updater.last-run`).

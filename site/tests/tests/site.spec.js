@@ -1057,6 +1057,18 @@ test("the auto-updater page renders a changelog section built from its CHANGELOG
   ).toBeGreaterThan(0);
 });
 
+test("the auto-updater page describes the session-start hook for both agents (SITE-UPDATER-10)", async ({ page }) => {
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  // The "How it works" hook-registration step must describe the hook in a dual-agent way, naming
+  // both the Copilot sessionStart hook and the Claude Code SessionStart hook, not a Copilot-only
+  // hooks.json. Pin the exact per-agent phrasing so it cannot regress to Copilot-only.
+  const howText = await page.locator("#how").innerText();
+  expect(howText).toContain("Copilot");
+  expect(howText).toContain("Claude Code");
+  expect(howText).toContain("sessionStart");
+  expect(howText).toContain("SessionStart");
+});
+
 test("the full-screen button has a light-red (accent-tinted) background", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const bg = await page.locator("#demo-fullscreen").evaluate(
