@@ -9,6 +9,7 @@
     "build:check": "python tools/build.py --assets-dir assets --out-dir ../pkg/skills/commentable-html --check",
     "fixtures": "node tests/fixtures/generate.mjs",
     "fixtures:check": "node tests/fixtures/generate.mjs --check",
+    "shots": "node tools/capture_tutorial.mjs",
     "test": "playwright test",
     "test:py": "python -m unittest discover -s tests -p \"test_*.py\"",
     "test:e2e": "playwright test",

@@ -122,6 +122,34 @@ python ..\pkg\skills\commentable-html\tools\validate.py <report>.html
 
 The taxi example has no images, so it needs no inlining - just validate it.
 
+## Regenerating tutorial screenshots
+
+The tutorial (`../pkg/skills/commentable-html/docs/TUTORIAL.md`) embeds nine `garden-*.png`
+screenshots captured from the community-garden example. Regenerate all of them with one command from
+`dev/`:
+
+```powershell
+npm run shots
+```
+
+`npm run shots` runs `tools/capture_tutorial.mjs` with no arguments: it drives
+`../pkg/skills/commentable-html/examples/report-community-garden.html` and writes
+`garden-01-top-light.png` through `garden-09-copyall.png` into
+`../pkg/skills/commentable-html/docs/assets/` at a fixed 1320x900 viewport (2x scale). It disables
+CSS animations, transitions, and the text caret and emulates reduced motion, so re-capturing the
+same UI is deterministic (byte-identical on the same environment). To capture a different example,
+pass overrides:
+
+```powershell
+node tools\capture_tutorial.mjs <example.html> <outDir> <prefix>
+```
+
+Screenshot rendering is environment-specific (fonts and anti-aliasing differ across operating
+systems), so regenerate on the canonical environment where the images are maintained. After
+regenerating, rebuild the site so its synced tutorial images stay current: run
+`python scripts/build_site_data.py` from the repo root. The determinism is covered by
+`tests/54-tutorial-shots.spec.js`.
+
 ## Fixtures workflow
 
 Interaction and fuzz tests use generated fixtures under `tests/fixtures/`, including the inline `kitchen-sink.html` and the NonPortable `nonportable/kitchen-sink.html`. They are derived from the current shipped `dist/PORTABLE.html`, `dist/`, and `tests/fixtures/sample-content.html`.

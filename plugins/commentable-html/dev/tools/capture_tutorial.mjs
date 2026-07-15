@@ -1,15 +1,27 @@
-// Reusable screenshot capture for the commentable-html examples.
-// Usage: node capture_shots.mjs <example.html> <outDir> <prefix>
-// Produces deterministic PNGs of the key visual states for tutorials and design review.
+// Deterministic tutorial screenshot capture for the commentable-html plugin (dev-only, not shipped).
+// With no arguments it regenerates every tutorial screenshot (the garden-*.png images that
+// docs/TUTORIAL.md embeds) from the shipped community-garden example into docs/assets. Optional
+// positional overrides let it capture any example:
+//   node capture_tutorial.mjs [example.html] [outDir] [prefix]
+// Defaults: example = pkg/.../examples/report-community-garden.html, outDir = pkg/.../docs/assets,
+// prefix = "garden". From dev/, run it as `npm run shots`. Animations, transitions, and the text
+// caret are disabled and reduced motion is emulated, so re-running produces byte-identical images.
 import { chromium } from "@playwright/test";
 import path from "path";
-import { pathToFileURL } from "url";
+import fs from "fs";
+import { fileURLToPath, pathToFileURL } from "url";
 
-const [, , htmlArg, outDir, prefix] = process.argv;
-if (!htmlArg || !outDir || !prefix) {
-  console.error("usage: node capture_shots.mjs <example.html> <outDir> <prefix>");
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SKILL = path.resolve(HERE, "..", "..", "pkg", "skills", "commentable-html");
+const htmlArg = process.argv[2] || path.join(SKILL, "examples", "report-community-garden.html");
+const outDir = process.argv[3] || path.join(SKILL, "docs", "assets");
+const prefix = process.argv[4] || "garden";
+
+if (!fs.existsSync(htmlArg)) {
+  console.error("capture_tutorial: example not found:", htmlArg);
   process.exit(2);
 }
+fs.mkdirSync(outDir, { recursive: true });
 const url = pathToFileURL(path.resolve(htmlArg)).href;
 
 function shotPath(name) { return path.join(outDir, `${prefix}-${name}.png`); }
@@ -19,16 +31,28 @@ async function ready(page) {
   await page.waitForTimeout(300);
 }
 
+// Kill anything that varies frame to frame - CSS animations/transitions and the blinking text
+// caret - so two runs render identically. Best-effort: a document CSP that forbids inline styles
+// just ignores it, and the static shots stay deterministic regardless.
+async function freezeMotion(page) {
+  await page.addStyleTag({ content:
+    "*,*::before,*::after{animation-duration:0s !important;animation-delay:0s !important;"
+    + "transition-duration:0s !important;transition-delay:0s !important;caret-color:transparent !important;}"
+  }).catch(() => {});
+}
+
 const run = async () => {
   const browser = await chromium.launch();
   const context = await browser.newContext({
     viewport: { width: 1320, height: 900 },
     deviceScaleFactor: 2,
+    reducedMotion: "reduce",
     permissions: ["clipboard-read", "clipboard-write"],
   });
   const page = await context.newPage();
   await page.goto(url);
   await ready(page);
+  await freezeMotion(page);
 
   // 1. Top of the document, light theme.
   await page.screenshot({ path: shotPath("01-top-light"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
