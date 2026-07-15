@@ -48,7 +48,7 @@ class MakeDocumentTests(unittest.TestCase):
 
     def test_output_validates_clean(self):
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report", "src.md")
-        errors = new_document._self_validate(out)
+        errors, warnings = new_document._self_validate(out)
         self.assertEqual(errors, [], "expected no validation errors, got: %r" % errors)
 
     def test_generated_document_does_not_bake_sidebar_open_body_class(self):
@@ -204,7 +204,7 @@ class MakeDocumentTests(unittest.TestCase):
 
     def test_self_validate_degrades_when_validator_missing(self):
         with mock.patch.dict(sys.modules, {"validate": None}):
-            self.assertIsNone(new_document._self_validate("<html></html>"))
+            self.assertEqual(new_document._self_validate("<html></html>"), (None, None))
 
 
 class NoTemplateDemoHeaderTests(unittest.TestCase):
@@ -276,6 +276,44 @@ class MainCliTests(unittest.TestCase):
             written = fh.read()
         self.assertIn('data-comment-key="file-v1"', written)
         self.assertIn('data-doc-source="body.html"', written)
+
+    def test_cli_bakes_syntax_highlighting_by_default(self):
+        # CMH-HL-04: new_document bakes highlighting so a created doc is never raw. This is the
+        # root-cause fix for the notes-feature-plan.html defect (a raw language block shipped
+        # unbaked because baking lived only in the separate, manual finalize step).
+        frag = ('<section><h2 id="a">Code</h2>'
+                '<pre><code class="language-python">def f(): return 1</code></pre></section>')
+        code, out, err = self._call_main(
+            ["new_document.py", "--content", "-", "--key", "hl-v1", "--label", "HL", "--portable"],
+            stdin=frag)
+        self.assertEqual(code, 0, err)
+        self.assertIn('<span class="cmh-code-kw">def</span>', out)
+        self.assertNotIn('<code class="language-python">def f(): return 1</code>', out)
+
+    def test_cli_no_highlight_flag_leaves_code_raw(self):
+        # CMH-HL-04: --no-highlight opts out of the default baking (parity with finalize.py).
+        frag = ('<section><h2 id="a">Code</h2>'
+                '<pre><code class="language-python">def f(): return 1</code></pre></section>')
+        code, out, err = self._call_main(
+            ["new_document.py", "--content", "-", "--key", "raw-v1", "--label", "Raw",
+             "--portable", "--no-highlight"],
+            stdin=frag)
+        self.assertEqual(code, 0, err)
+        self.assertNotIn('<span class="cmh-code-kw">def</span>', out)
+        self.assertIn('<code class="language-python">def f(): return 1</code>', out)
+
+    def test_cli_surfaces_validator_warnings(self):
+        # CMH-HL-04: self-validation warnings are PRINTED (previously silently discarded), so a
+        # non-commentable code block or an unbaked-highlight warning is visible at creation.
+        frag = ('<section><h2 id="a">Hi</h2>'
+                '<pre class="cm-skip"><code>plain code {}</code></pre></section>')
+        code, out, err = self._call_main(
+            ["new_document.py", "--content", "-", "--key", "warn-v1", "--label", "Warn",
+             "--portable"],
+            stdin=frag)
+        self.assertEqual(code, 0, err)
+        self.assertIn("warning", err.lower())
+        self.assertIn("will not be commentable", err)
 
     def test_demo_key_exits_2(self):
         code, _out, err = self._call_main(
@@ -399,7 +437,7 @@ class MainCliTests(unittest.TestCase):
         d = self._tmpdir()
         out_html = new_document.make_document(_template(), CONTENT, "x-v1", "X")
         with mock.patch.object(new_document, "make_document", return_value=out_html), \
-                mock.patch.object(new_document, "_self_validate", return_value=["boom"]):
+                mock.patch.object(new_document, "_self_validate", return_value=(["boom"], [])):
             code, _out, err = self._call_main(
                 ["new_document.py", "--content", "-", "--key", "x-v1", "--label", "X"],
                 stdin=CONTENT)

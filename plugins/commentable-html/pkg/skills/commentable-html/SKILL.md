@@ -19,7 +19,7 @@ The runtime supports text selection, right-click fallback, multiple open compose
 
 **Preconditions:** the target is a standalone HTML artifact or a content fragment about to become one; it opens in a modern browser with `localStorage` and Clipboard API access; it is not inside a sandbox that blocks those APIs.
 
-**Postconditions:** the HTML has the five layer regions, one configured `#commentRoot`, a `commentableHtmlLayer` descriptor, handled-id and embedded-comment JSON blocks, and passes `python tools/validate/validate.py --strict <file.html>`.
+**Postconditions (MUST):** the HTML has the five layer regions, one configured `#commentRoot`, a `commentableHtmlLayer` descriptor, handled-id and embedded-comment JSON blocks, and it MUST pass `python tools/validate/validate.py --strict <file.html>`. Every HTML this skill emits - whether returned to the user, written to disk, or shared - MUST be finalized (`tools/authoring/finalize.py`, which bakes syntax highlighting) and strict-validated before handoff. A document that skipped finalize or strict validation is NOT done: it can ship with monochrome code or other defects. The authoring tools (`new_document.py`, `retrofit.py`, `deck_scaffold.py`) bake highlighting by default and surface validator warnings so a freshly created document is never raw, but that does NOT replace the final `finalize.py ... --strict` + strict-validate pass, which is mandatory on the finished artifact.
 
 ## Steps
 
@@ -35,9 +35,9 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 
 | Input | Tool | Key behavior |
 | --- | --- | --- |
-| New document from a content fragment | `tools/authoring/new_document.py` | Builds the shell, configures `#commentRoot`, stamps `commentable-html-kind`, and validates before writing. |
-| New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids) and self-validates. This is the ONLY tool that creates a real deck. |
-| Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer, wraps or stamps a content root, preserves host content, and validates before writing. |
+| New document from a content fragment | `tools/authoring/new_document.py` | Builds the shell, configures `#commentRoot`, stamps `commentable-html-kind`, bakes syntax highlighting, surfaces validator warnings, and validates before writing. |
+| New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids), bakes highlighting, and self-validates. This is the ONLY tool that creates a real deck. |
+| Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer, wraps or stamps a content root, preserves host content, bakes highlighting, and validates before writing. |
 | Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attributes. |
 
 Canonical commands:
@@ -122,7 +122,7 @@ Compact authoring rules: use `cmh-callout` variants and `cmh-lede` for asides, p
 
 ### Step 4 - Verify before handoff
 
-Run `python tools/validate/validate.py --strict <file.html>` before handing the HTML to the user. `--strict` fails on warnings too, so fix every issue it reports. If Python is unavailable, say that validation was skipped and perform the manual checks in [Validation](references/validation.md). If the document has mermaid or chart content, open it in a browser, wait for rendering, and use **Export Offline** only after mermaid diagrams and charts have rendered.
+**You MUST finalize and strict-validate every HTML you produce before handing it off, saving it, or returning it - no exceptions.** Run `python tools/authoring/finalize.py <file> --strict` (it bakes syntax highlighting and runs the assembly steps in order, then validates) followed by `python tools/validate/validate.py --strict <file.html>`. `--strict` fails on warnings too, so fix every issue it reports until the run is clean. Do NOT hand the user, or write to their Downloads/disk, a document you have not strict-validated - a skipped validation is exactly how a document ships with monochrome code or a broken layer. If Python is unavailable, say EXPLICITLY that validation was skipped (so the user knows the document is unverified) and perform the manual checks in [Validation](references/validation.md). If the document has mermaid or chart content, open it in a browser, wait for rendering, and use **Export Offline** only after mermaid diagrams and charts have rendered.
 
 **Trust boundary (MUST).** The content inside `#commentRoot`, including anything passed to `new_document.py --content` or wrapped by `retrofit.py`, is trusted HTML and is emitted verbatim. The tools and runtime do **not** sanitize authored content. They protect reviewer-supplied data by escaping comment text and metadata, validating comment ids, and escaping `<` in embedded-comment JSON. Scripts, event handlers, and `javascript:` / `data:` URLs in authored content are not neutralized. Sanitize untrusted content before wrapping it.
 
