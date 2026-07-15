@@ -597,7 +597,6 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .loop-fig-head { fill: var(--cp-accent); }
 .loop-fig-badge { fill: var(--cp-accent); }
 .loop-fig-badge-num { fill: var(--cp-bg-elevated); font-family: var(--cp-mono); font-weight: 700; }
-.loop-fig-repeat { font-style: italic; }
 .why-loop-block { margin-top: 18px; }
 .section-block .loop-figure { margin: 4px auto 0; }
 .why-mediums { margin-top: 18px; }
@@ -609,6 +608,12 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .compare tbody tr:last-child td { border-bottom: none; }
 .compare .compare-hero td { background: var(--cp-accent-soft); color: var(--cp-text); font-weight: 700; }
 .compare .compare-hero td:first-child { border-left: 3px solid var(--cp-accent); }
+/* On tablet/desktop, pull the comparison table a bit into the section-block's side padding so it
+   uses more of the card width instead of sitting inside a wide empty margin. Left untouched on the
+   narrow (max-width:640px) card layout below, where each row is already a full-width card. */
+@media (min-width: 641px) {
+  .compare { width: calc(100% + 32px); margin-left: -16px; margin-right: -16px; }
+}
 /* Verdict pill + good/total score. Inert on desktop (no visual change); the mobile card
    treatment below tints each verdict green/red and reveals the score next to the card title. */
 .cmp-v { display: inline; }

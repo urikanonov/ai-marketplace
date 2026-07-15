@@ -181,13 +181,40 @@ test("the review-loop diagram swaps to a vertical, uncramped layout on a mobile 
   await expect(horizontal).toBeHidden();
   const box = await vertical.boundingBox();
   expect(box.height).toBeGreaterThan(box.width);
-  // The vertical variant numbers each transfer with a badge anchored to its directional arrow
-  // (agent-to-you down, you-to-agent up) so the flow direction is not lost on mobile (SITE-WHY-04).
-  await expect(vertical.locator(".loop-fig-badge")).toHaveCount(3);
+  // The vertical variant numbers ALL FOUR steps with a badge (SITE-WHY-04), including the
+  // "reload and repeat" loop-back, so on mobile step 4 reads like the other numbered actions
+  // instead of a plain italic caption. The old italic caption class is gone.
+  await expect(vertical.locator(".loop-fig-badge")).toHaveCount(4);
+  await expect(vertical.locator(".loop-fig-repeat")).toHaveCount(0);
   await expect(vertical).toContainText("Generates HTML");
   await expect(vertical).toContainText("Copy all back");
   await expect(vertical).toContainText("Comment inline");
   await expect(vertical).toContainText("reload and repeat");
+});
+
+test("the comparison table's Markdown-file verdict reads 'OK / need viewer' (SITE-WHY-08)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const markdownRow = page.locator("table.compare tbody tr", { hasText: "Markdown file" });
+  const bigPlan = markdownRow.locator('td[data-label="Handles a big plan"] .cmp-v');
+  await expect(bigPlan).toHaveText("OK / need viewer");
+});
+
+test("the comparison table breaks a bit out of the section padding for more width (SITE-WHY-09)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const table = page.locator("table.compare");
+  const intro = page.locator(".why-mediums > p").first();
+  // Desktop/tablet: the table pulls into the section-block side padding by a meaningful amount (the
+  // -16px rule), so it is wider than the prose column on both sides - not just a decorative 1px.
+  await page.setViewportSize({ width: 1000, height: 900 });
+  const t = await table.boundingBox();
+  const p = await intro.boundingBox();
+  expect(p.x - t.x).toBeGreaterThanOrEqual(12);
+  expect((t.x + t.width) - (p.x + p.width)).toBeGreaterThanOrEqual(12);
+  // Mobile: the pull-out is scoped to min-width:641px, so the stacked card layout is not pulled out.
+  await page.setViewportSize({ width: 380, height: 900 });
+  const tm = await table.boundingBox();
+  const pm = await intro.boundingBox();
+  expect(tm.x).toBeGreaterThanOrEqual(pm.x - 1);
 });
 
 test("mobile comparison cards color only the verdicts and show a good/total score (SITE-WHY-05)", async ({ page }) => {
@@ -1057,6 +1084,18 @@ test("tutorial brand keeps the user in the commentable-html section", async ({ p
   await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
   // The brand icon returns to the commentable-html plugin home, not the hub root.
   await expect(page.locator(".brand")).toHaveAttribute("href", "../");
+});
+
+test("the tutorial page footer matches the commentable-html footer links (SITE-TUT-06)", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const footer = page.locator("footer.footer");
+  const link = (name) => footer.getByRole("link", { name, exact: true });
+  // Assert the exact hrefs (not just the link text) so a wrong repo/plugin target or a root-relative
+  // regression is caught; these must match the commentable-html page footer.
+  await expect(link("Contribute")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md");
+  await expect(link("Request a feature")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml");
+  await expect(link("File an issue")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/issues/new/choose");
+  await expect(link("Plugin source")).toHaveAttribute("href", "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html");
 });
 
 test("tutorial example links open the live demo, not a GitHub blob", async ({ page }) => {
