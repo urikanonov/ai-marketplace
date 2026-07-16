@@ -640,7 +640,7 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
    uses more of the card width instead of sitting inside a wide empty margin. Left untouched on the
    narrow (max-width:640px) card layout below, where each row is already a full-width card. */
 @media (min-width: 641px) {
-  .compare { width: calc(100% + 32px); margin-left: -16px; margin-right: -16px; }
+  .compare { width: calc(100% + 48px); margin-left: -24px; margin-right: -24px; }
 }
 /* Verdict pill + good/total score. Inert on desktop (no visual change); the mobile card
    treatment below tints each verdict green/red and reveals the score next to the card title. */
@@ -673,7 +673,6 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .why-list { margin: 14px 0 0; padding-left: 20px; }
 .why-list li { margin-bottom: 10px; color: var(--cp-text); }
 .why-list li:last-child { margin-bottom: 0; }
-
 /* Tutorial page (content generated at build time from TUTORIAL.md) */
 .tutorial { max-width: 860px; margin: 0 auto; }
 .tutorial h2 { font-size: 1.5rem; margin: 28px 0 10px; letter-spacing: -0.4px; }

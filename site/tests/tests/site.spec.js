@@ -203,18 +203,45 @@ test("the comparison table breaks a bit out of the section padding for more widt
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const table = page.locator("table.compare");
   const intro = page.locator(".why-mediums > p").first();
-  // Desktop/tablet: the table pulls into the section-block side padding by a meaningful amount (the
-  // -16px rule), so it is wider than the prose column on both sides - not just a decorative 1px.
+  // Desktop/tablet: the table pulls into the section-block side padding by a meaningful amount, so it
+  // is wider than the prose column on both sides - not just a decorative 1px.
   await page.setViewportSize({ width: 1000, height: 900 });
   const t = await table.boundingBox();
   const p = await intro.boundingBox();
-  expect(p.x - t.x).toBeGreaterThanOrEqual(12);
-  expect((t.x + t.width) - (p.x + p.width)).toBeGreaterThanOrEqual(12);
+  expect(p.x - t.x).toBeGreaterThanOrEqual(20);
+  expect((t.x + t.width) - (p.x + p.width)).toBeGreaterThanOrEqual(20);
   // Mobile: the pull-out is scoped to min-width:641px, so the stacked card layout is not pulled out.
   await page.setViewportSize({ width: 380, height: 900 });
   const tm = await table.boundingBox();
   const pm = await intro.boundingBox();
   expect(tm.x).toBeGreaterThanOrEqual(pm.x - 1);
+});
+
+test("plugin, tutorial, and updater footers share the same link structure (SITE-FOOTER-01)", async ({ page }) => {
+  const common = [
+    ["Uri Kanonov", "https://www.linkedin.com/in/uri-kanonov-946761119"],
+    ["Contribute", "https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md"],
+    ["Request a feature", "https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml"],
+    ["File an issue", "https://github.com/urikanonov/ai-marketplace/issues/new/choose"],
+  ];
+  const pages = [
+    ["/commentable-html/", "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"],
+    ["/commentable-html/tutorial/", "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"],
+    ["/urikan-ai-marketplace-auto-updater/", "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"],
+  ];
+
+  const structures = [];
+  for (const [path, pluginSource] of pages) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    const links = await page.locator("footer.footer a").evaluateAll((anchors) =>
+      anchors.map((a) => [a.textContent.trim().replace(/\s+/g, " "), a.href])
+    );
+    expect(links).toEqual([...common, ["Plugin source", pluginSource]]);
+    structures.push(links.map(([label]) => label));
+  }
+
+  expect(structures[1]).toEqual(structures[0]);
+  expect(structures[2]).toEqual(structures[0]);
 });
 
 test("mobile comparison cards color only the verdicts and show a good/total score (SITE-WHY-05)", async ({ page }) => {
