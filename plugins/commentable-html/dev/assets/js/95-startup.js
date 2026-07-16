@@ -223,6 +223,41 @@ function setupDeck() {
     stage.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
   }
 
+  function slideIdAt(index) {
+    return slides[index] && slides[index].getAttribute("data-slide-id");
+  }
+
+  function hashSlideId() {
+    const raw = (location.hash || "").slice(1);
+    if (!raw) return "";
+    try { return decodeURIComponent(raw); } catch (e) { return raw; }
+  }
+
+  function hashForSlideId(id) {
+    return "#" + encodeURIComponent(id);
+  }
+
+  function indexBySlideId(id) {
+    if (!id) return -1;
+    return slides.findIndex((s) => s.getAttribute("data-slide-id") === id);
+  }
+
+  function syncSlideHash() {
+    const id = slideIdAt(current);
+    if (!id || hashSlideId() === id) return;
+    const nextHash = hashForSlideId(id);
+    if (window.history && history.replaceState) history.replaceState(null, "", nextHash);
+    else location.hash = nextHash;
+  }
+
+  function showFromHash() {
+    const index = indexBySlideId(hashSlideId());
+    return index >= 0 ? show(index) : false;
+  }
+
+  const hashIndex = indexBySlideId(hashSlideId());
+  if (hashIndex >= 0) current = hashIndex;
+
   function show(index) {
     if (!Number.isInteger(index) || index < 0 || index >= slides.length) return false;
     const changed = index !== current;
@@ -240,18 +275,18 @@ function setupDeck() {
     if (prevBtn) prevBtn.disabled = index === 0;
     if (nextBtn) nextBtn.disabled = index === slides.length - 1;
     syncOverview();
+    syncSlideHash();
     // Fire only on a real move (a changed active slide), never for the initial render or a
     // re-selection of the already-active slide.
     if (changed) {
       document.dispatchEvent(new CustomEvent("cmh:slidechange", {
-        detail: { slideId: slides[index].getAttribute("data-slide-id"), index },
+        detail: { slideId: slideIdAt(index), index },
       }));
     }
     return true;
   }
   function showById(id) {
-    if (!id) return false;
-    const i = slides.findIndex((s) => s.getAttribute("data-slide-id") === id);
+    const i = indexBySlideId(id);
     return i >= 0 ? show(i) : false;
   }
 
@@ -490,6 +525,7 @@ function setupDeck() {
       if (show(slides.length - 1)) e.preventDefault();
     }
   });
+  window.addEventListener("hashchange", showFromHash);
 
   // Deck-aware jump: activating a comment card navigates to its owning slide before the
   // layer's own scrollIntoView (which cannot reveal a hidden slide) runs.
