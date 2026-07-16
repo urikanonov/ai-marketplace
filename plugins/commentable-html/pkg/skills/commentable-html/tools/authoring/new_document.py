@@ -60,6 +60,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import recommend_kind  # noqa: E402
 
 BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
 END_MARKER = "<!-- END: commentable-html - CONTENT -->"
@@ -319,6 +320,18 @@ def _set_kind_meta(html, kind):
     return html
 
 
+def _kind_hint_filename(args):
+    if args.content != "-":
+        return args.content
+    return args.source or args.out
+
+
+def _warn_kind_mismatch(kind, content, filename=None):
+    warning = recommend_kind.warning_for_kind(kind, content, filename=filename)
+    if warning:
+        sys.stderr.write(warning + "\n")
+
+
 def _self_validate(html_out, base_dir=None):
     """Validate `html_out` with validate.py. Returns (errors, warnings) lists, or
     (None, None) only when the validator module is genuinely unavailable (degrade gracefully).
@@ -567,6 +580,7 @@ def main(argv):
     except OSError as exc:
         sys.stderr.write("new_document: cannot read content: %s\n" % exc)
         return 1
+    _warn_kind_mismatch(args.kind, content, filename=_kind_hint_filename(args))
     if not args.no_title and args.kind not in _NO_AUTO_TITLE_KINDS:
         content = ensure_doc_title(content, args.label)
     # Wrap bare top-level <h2> blocks in <section> for the card-rendering kinds, so a

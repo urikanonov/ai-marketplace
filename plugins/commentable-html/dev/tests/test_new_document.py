@@ -809,6 +809,15 @@ class KindTests(unittest.TestCase):
         out = new_document.make_document(_template(), CONTENT, "mk-v1", "L", kind="board")
         self.assertIn('<meta name="commentable-html-kind" content="board"', out)
 
+    def test_kind_mismatch_warning_is_advisory(self):
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Deck",
+             "--kind", "report", "--portable"],
+            stdin="<h1>One</h1><hr><h1>Two</h1><hr><h1>Three</h1>")
+        self.assertEqual(code, 0, err)
+        self.assertIn("recommend_kind: warning: --kind report differs from recommended --kind slides", err)
+        self.assertIn('<meta name="commentable-html-kind" content="report"', out)
+
     def test_report_fragment_is_section_wrapped_by_default(self):
         # CMH-TOOL-17: a report fragment with bare top-level <h2> blocks is wrapped in
         # <section> cards at create time (so the document never renders flat).

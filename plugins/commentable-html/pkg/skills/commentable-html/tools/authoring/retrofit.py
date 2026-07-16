@@ -18,6 +18,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 
 import new_document  # noqa: E402
+import recommend_kind  # noqa: E402
 import upgrade  # noqa: E402
 try:
     import highlight_document as _highlight_document  # noqa: E402
@@ -626,6 +627,9 @@ def main(argv):
                 assets_relative=args.assets_relative,
             )
         html = _read_utf8(args.file)
+        warning = recommend_kind.warning_for_kind(args.kind, html, filename=args.file)
+        if warning:
+            sys.stderr.write(warning + "\n")
         result, warnings = build_retrofit(html, args, out_path)
         # Bake syntax highlighting into raw language-labelled code blocks so a retrofitted document
         # is never raw (opt out with --no-highlight).
