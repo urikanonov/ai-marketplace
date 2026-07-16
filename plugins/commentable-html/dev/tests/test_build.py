@@ -69,6 +69,7 @@ class BuildTests(unittest.TestCase):
         os.makedirs(assets)
         shutil.copytree(os.path.join(build.ASSETS, "js"), os.path.join(assets, "js"))
         shutil.copytree(os.path.join(build.ASSETS, "css"), os.path.join(assets, "css"))
+        shutil.copytree(os.path.join(build.ASSETS, "vendor"), os.path.join(assets, "vendor"))
         shutil.copy2(os.path.join(build.ASSETS, "template.shell.html"),
                      os.path.join(assets, "template.shell.html"))
         outputs, version = build.build_all(assets, out_dir)
@@ -362,8 +363,8 @@ class BuildTests(unittest.TestCase):
     def test_nonportable_is_much_smaller_than_inline(self):
         inline = self.outputs[os.path.join(ROOT, "dist", "PORTABLE.html")]
         eco = self.outputs[os.path.join(DIST, "NONPORTABLE.html")]
-        self.assertLess(len(eco), len(inline) * 0.4,
-                        "nonportable template should be dramatically smaller than inline")
+        self.assertLess(len(eco), len(inline) * 0.8,
+                        "nonportable template should stay materially smaller than inline even with offline rich-content support")
 
     # -- both generated templates validate --------------------------------- #
     def test_both_templates_validate_clean(self):

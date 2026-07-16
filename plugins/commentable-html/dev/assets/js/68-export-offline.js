@@ -1,14 +1,9 @@
-/* ---------- Export Offline (portable + rendered rich-content snapshots) ---------- */
+/* ---------- Export Offline (portable + zero-network rich-content embedding) ---------- */
 function _offlineDocFromHtml(html) {
   return new DOMParser().parseFromString(String(html || ""), "text/html");
 }
 function _serializeOfflineDoc(doc) {
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
-}
-function _offlineTemplateNode(doc, html) {
-  const tpl = doc.createElement("template");
-  tpl.innerHTML = String(html || "").trim();
-  return tpl.content.firstElementChild;
 }
 function _offlineIsNetworkUrl(v) {
   return /^(?:https?:)?\/\//i.test(String(v || "").trim());
@@ -60,7 +55,7 @@ function _stripOfflineNetworkLoads(doc) {
   });
   doc.querySelectorAll("script").forEach(function (s) {
     const id = s.getAttribute("id") || "";
-    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer)$/.test(id)) return;
+    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|cmhVendoredRichLibs)$/.test(id)) return;
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
@@ -111,13 +106,6 @@ function _stripOfflineNetworkLoads(doc) {
   });
 }
 function _stripOfflineRichRenderers(doc) {
-  const offlineChartIds = Array.from(doc.querySelectorAll("[data-cm-offline-chart][id]"))
-    .map(function (el) { return el.getAttribute("id") || ""; })
-    .filter(Boolean);
-  const referencesOfflineChart = function (body) {
-    return /\b(?:cmh-chart|figure\.chart|data-cm-offline-chart)\b/i.test(body) ||
-      offlineChartIds.some(function (id) { return new RegExp(_cmhEscapeRegExp(id)).test(body); });
-  };
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
@@ -129,102 +117,125 @@ function _stripOfflineRichRenderers(doc) {
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
-    if (/\b__commentableHtmlReady\b/.test(body)) return;
+    if (/__commentableHtmlReady|const CMH_VERSION|COMMENT_KEY = /.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
       s.remove();
       return;
     }
-    if (/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) ||
-        (/\.getContext\s*\(/.test(body) && referencesOfflineChart(body))) {
+    if (!/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) &&
+        /chart(?:\.umd)?(?:\.min)?\.js|chart\.js@|window\.Chart\s*=\s*undefined/i.test(body)) {
       s.remove();
     }
   });
 }
-function _offlineMermaidSnapshots() {
-  return Array.from(root.querySelectorAll("pre.mermaid, div.mermaid")).map(function (host) {
-    if (!host.querySelector("svg")) {
-      throw new Error("Offline export needs mermaid diagrams to finish rendering first.");
-    }
-    const clone = host.cloneNode(true);
-    clone.classList.add("cm-skip");
-    clone.setAttribute("data-processed", "true");
-    const src = host.getAttribute("data-cmh-md-src");
-    if (src && !clone.hasAttribute("data-cmh-md-src")) clone.setAttribute("data-cmh-md-src", src);
-    return clone.outerHTML;
-  });
+let _offlineVendoredRichLibsPromise = null;
+function _offlineLiveDocNeedsRichLibs() {
+  return !!root.querySelector("pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart");
 }
-function _replaceOfflineMermaid(doc, snapshots) {
-  const docRoot = doc.getElementById("commentRoot") || doc.body;
-  const targets = Array.from(docRoot.querySelectorAll("pre.mermaid, div.mermaid"));
-  if (targets.length !== snapshots.length) {
-    throw new Error("Offline export could not match every mermaid diagram in the source HTML.");
-  }
-  targets.forEach(function (target, i) {
-    const next = _offlineTemplateNode(doc, snapshots[i]);
-    if (!next) throw new Error("Offline export could not serialize a rendered mermaid diagram.");
-    target.replaceWith(next);
-  });
-}
-function _offlineChartSnapshots() {
-  return Array.from(root.querySelectorAll("figure.chart canvas, canvas.cmh-chart")).map(function (canvas) {
-    let src = "";
-    try { src = canvas.toDataURL("image/png"); }
-    catch (e) { throw new Error("Offline export could not snapshot a chart canvas. It may contain cross-origin pixels."); }
-    if (!/^data:image\/png;base64,/i.test(src)) {
-      throw new Error("Offline export could not snapshot a chart canvas as PNG.");
-    }
-    const rect = canvas.getBoundingClientRect();
-    const rawClass = (canvas.getAttribute("class") || "").split(/\s+/)
-      .filter(function (c) { return c && !/^cm-img-/.test(c); });
-    if (!rawClass.includes("cmh-chart")) rawClass.push("cmh-chart");
+function _ensureOfflineVendoredRichLibsPromise() {
+  if (_offlineVendoredRichLibsPromise) return _offlineVendoredRichLibsPromise;
+  _offlineVendoredRichLibsPromise = (async function () {
+    const el = document.getElementById("cmhVendoredRichLibs");
+    if (!el) return {};
+    const payload = JSON.parse(el.textContent || "{}");
     return {
-      id: canvas.getAttribute("id") || "",
-      src,
-      alt: (canvas.getAttribute("aria-label") || canvas.getAttribute("alt") || "Chart snapshot").trim() || "Chart snapshot",
-      width: canvas.getAttribute("width") || String(canvas.width || Math.max(1, Math.round(rect.width))),
-      height: canvas.getAttribute("height") || String(canvas.height || Math.max(1, Math.round(rect.height))),
-      className: rawClass.join(" "),
+      mermaid: await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
+      chartjs: await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
     };
-  });
+  })();
+  return _offlineVendoredRichLibsPromise;
 }
-function _replaceOfflineCharts(doc, snapshots) {
-  const docRoot = doc.getElementById("commentRoot") || doc.body;
-  const targets = Array.from(docRoot.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
-  if (targets.length !== snapshots.length) {
-    throw new Error("Offline export could not match every chart canvas in the source HTML.");
+async function _offlineInflateVendoredScript(b64) {
+  const raw = String(b64 || "").trim();
+  if (!raw) return "";
+  if (typeof DecompressionStream !== "function") {
+    throw new Error("Offline export needs DecompressionStream support to unpack its vendored rich-content bundle.");
   }
-  targets.forEach(function (canvas, i) {
-    const s = snapshots[i];
-    const img = doc.createElement("img");
-    if (s.id) img.setAttribute("id", s.id);
-    img.setAttribute("class", s.className);
-    img.setAttribute("src", s.src);
-    img.setAttribute("alt", s.alt);
-    img.setAttribute("role", "img");
-    img.setAttribute("aria-label", s.alt);
-    img.setAttribute("width", s.width);
-    img.setAttribute("height", s.height);
-    img.setAttribute("data-cm-offline-chart", "true");
-    canvas.replaceWith(img);
-  });
+  const bytes = Uint8Array.from(atob(raw), function (ch) { return ch.charCodeAt(0); });
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
 }
-function _insertOfflineChartGuard(doc) {
-  const head = doc.head || doc.querySelector("head");
-  if (!head) return;
+async function _offlineVendoredRichLibs() {
+  try { return await _ensureOfflineVendoredRichLibsPromise(); }
+  catch (e) { throw new Error("Offline export could not parse the vendored rich-content bundle."); }
+}
+function _primeOfflineVendoredRichLibs() {
+  if (!_offlineLiveDocNeedsRichLibs()) return;
+  const warm = function () { _ensureOfflineVendoredRichLibsPromise().catch(function () {}); };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2000 });
+  else setTimeout(warm, 0);
+}
+function _offlineDocUsesMermaid(doc) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  return !!(docRoot && docRoot.querySelector("pre.mermaid, div.mermaid"));
+}
+function _offlineDocUsesCharts(doc) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  return !!(docRoot && docRoot.querySelector("figure.chart canvas, canvas.cmh-chart"));
+}
+function _offlineAppendInlineScript(doc, head, code, attrs) {
   const s = doc.createElement("script");
-  s.textContent = "window.Chart = undefined;";
+  Object.keys(attrs || {}).forEach(function (name) { s.setAttribute(name, attrs[name]); });
+  s.textContent = _escClose(String(code || ""));
   head.appendChild(s);
 }
-function _buildOfflineHtml(portableHtml) {
-  const mermaid = _offlineMermaidSnapshots();
-  const charts = _offlineChartSnapshots();
+function _offlineHoistChartScripts(doc) {
+  const body = doc.body || doc.querySelector("body");
+  if (!body) return;
+  const scripts = Array.from(doc.querySelectorAll("script")).filter(function (s) {
+    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
+    if (type && type !== "text/javascript" && type !== "application/javascript") return false;
+    return /\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(s.textContent || "");
+  });
+  scripts.forEach(function (s) { body.appendChild(s); });
+}
+function _offlineRemoveVendoredBundleScript(doc) {
+  const el = doc.getElementById("cmhVendoredRichLibs");
+  if (el) el.remove();
+}
+async function _offlineInlineRichLibs(doc) {
+  const head = doc.head || doc.querySelector("head");
+  if (!head) return;
+  const needMermaid = _offlineDocUsesMermaid(doc);
+  const needCharts = _offlineDocUsesCharts(doc);
+  if (!needMermaid && !needCharts) {
+    _offlineRemoveVendoredBundleScript(doc);
+    return;
+  }
+  const bundle = await _offlineVendoredRichLibs();
+  if (needCharts) {
+    if (!bundle.chartjs) throw new Error("Offline export is missing the vendored Chart.js bundle.");
+    _offlineAppendInlineScript(doc, head, bundle.chartjs, { "data-cmh-offline-lib": "chartjs" });
+  }
+  if (needMermaid) {
+    if (!bundle.mermaid) throw new Error("Offline export is missing the vendored mermaid bundle.");
+    _offlineAppendInlineScript(doc, head, bundle.mermaid, { "data-cmh-offline-lib": "mermaid" });
+    _offlineAppendInlineScript(doc, head,
+      "(function(){\n"
+      + "  if (!window.mermaid || !window.mermaid.initialize || !window.mermaid.run) return;\n"
+      + "  var run = function () {\n"
+      + "    var theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';\n"
+      + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', flowchart: { htmlLabels: true, curve: 'basis' } }); }\n"
+      + "    catch (e) { return; }\n"
+      + "    try {\n"
+      + "      var result = window.mermaid.run();\n"
+      + "      if (result && result.catch) result.catch(function () {});\n"
+      + "    } catch (e) {}\n"
+      + "  };\n"
+      + "  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });\n"
+      + "  else run();\n"
+      + "})();",
+      { "data-cmh-offline-lib-init": "mermaid" });
+  }
+  _offlineRemoveVendoredBundleScript(doc);
+}
+async function _buildOfflineHtml(portableHtml) {
   const doc = _offlineDocFromHtml(portableHtml);
-  _replaceOfflineMermaid(doc, mermaid);
-  _replaceOfflineCharts(doc, charts);
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
-  if (charts.length) _insertOfflineChartGuard(doc);
+  _offlineHoistChartScripts(doc);
+  await _offlineInlineRichLibs(doc);
   _ensureOfflineCsp(doc);
   return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }
@@ -243,13 +254,14 @@ async function saveOffline() {
       : _buildSavedHtml(baseHtml, exportComments);
   } catch (e) { showToast(e.message); return; }
   let text;
-  try { text = _buildOfflineHtml(portable); }
+  try { text = await _buildOfflineHtml(portable); }
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedOfflineFilename();
   _downloadHtml(text, filename);
-  showToast("Downloaded " + filename + " - offline HTML with rendered mermaid and chart snapshots.");
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.");
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);
   if (b) b.addEventListener("click", saveOffline);
 });
+_primeOfflineVendoredRichLibs();

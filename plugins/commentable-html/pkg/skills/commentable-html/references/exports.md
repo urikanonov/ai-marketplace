@@ -21,7 +21,7 @@
 
 **Portable** is one self-contained file with the CSS, runtime, and comments inlined. Use it for peer review, sharing, or long-term persistence. Create it with **Export as Portable**; from a nonportable source, the export inlines the companion assets and current comments into the downloaded file.
 
-**Offline** is a Portable file plus rendered rich-content snapshots. Use **Export Offline** after mermaid diagrams and charts have rendered in the browser. It embeds the current comments, saves rendered mermaid diagrams as inline SVG, saves chart canvases as PNG data images, and removes remote loaders so the result opens with no network.
+**Offline** is a Portable file plus vendored rich-content runtimes. Use **Export Offline** after mermaid diagrams and charts have rendered in the browser. It embeds the current comments, preserves live mermaid source blocks and live chart canvases, inlines vendored mermaid plus Chart.js only when needed, and removes remote loaders so the result opens with no network.
 
 
 ## Producing a NonPortable document
@@ -59,7 +59,7 @@ to the page/runtime contract require a major version bump.
 
 ## What is bundled in the file vs fetched from where
 
-Portable and NonPortable keep the plan **content** and the **comments** (HANDLED IDS + EMBEDDED COMMENTS) inline in the HTML. They differ only in where the layer CSS/JS come from, and both fetch optional mermaid / Chart.js from a CDN unless you vendor or inline those libraries for full offline fidelity. Offline starts from the Portable output, then snapshots rendered mermaid and charts so those CDN libraries are not needed by the exported file.
+Portable and NonPortable keep the plan **content** and the **comments** (HANDLED IDS + EMBEDDED COMMENTS) inline in the HTML. They differ only in where the layer CSS/JS come from, and both fetch optional mermaid / Chart.js from a CDN unless you vendor or inline those libraries for full offline fidelity. Offline starts from the Portable output, then strips those remote loaders and inlines vendored mermaid / Chart.js only when the exported document actually uses them.
 
 Portable - everything needed for the review layer travels inside the one file:
 
@@ -105,8 +105,8 @@ flowchart LR
     comments["Comments: HANDLED IDS + EMBEDDED COMMENTS (inline)"]
     css["Layer CSS (inlined)"]
     js["Layer JS + asset registry (inlined)"]
-    mmd["Rendered mermaid SVG snapshots"]
-    charts["Chart PNG data images"]
+    mmd["Vendored mermaid runtime (conditional)"]
+    charts["Vendored Chart.js runtime (conditional)"]
   end
 ```
 
@@ -117,8 +117,8 @@ The review layer itself is local: NonPortable references local companion files, 
 layer CSS, UI, state, and runtime into the HTML. Optional rich content can still depend on the network. Mermaid diagrams
 and Chart.js charts load from a CDN by default unless the author vendors, self-hosts, or inlines those libraries. A
 Portable file that still has CDN loaders is shareable as a review surface, but not guaranteed to render diagrams and
-charts with zero network. Offline export is the zero-network path because it snapshots rendered mermaid and chart output
-and removes remote loaders.
+charts with zero network. Offline export is the zero-network path because it strips remote loaders and
+inlines vetted local mermaid / Chart.js bundles only when the document needs them.
 
 
 ## Export as Portable
@@ -165,12 +165,12 @@ The overflow menu and sidebar expose an **Export Offline** button for handoff si
 Clicking it:
 
 1. Builds the same Portable HTML that **Export as Portable** would build, including current embedded comments and, in NonPortable mode, the inlined review-layer CSS/JS.
-2. Replaces each rendered mermaid block in the exported copy with the current inline SVG from the page and marks the block processed. The original mermaid source is kept in `data-cmh-md-src` so Markdown export still has source text, and mermaid node/comment anchors remain structural.
-3. Replaces each chart canvas with a PNG data-URI `<img class="cmh-chart">` snapshot. The image keeps the chart's accessible label and remains commentable as chart media.
-4. Removes automatic remote loaders such as the mermaid CDN module import, Chart.js CDN `<script src>`, external stylesheet/font preloads, and remote CSS `url(...)` references.
+2. Preserves each rendered mermaid block's source and processed state in the exported copy so the reopened file can re-render it locally from a vendored mermaid runtime. The original mermaid source stays in `data-cmh-md-src`, so Markdown export still has source text and mermaid node/comment anchors remain structural.
+3. Preserves each chart canvas and its bootstrap script in the exported copy so the reopened file can recreate live Chart.js charts locally from a vendored runtime. The canvas keeps its accessible label and remains commentable as chart media.
+4. Removes automatic remote loaders such as the mermaid CDN module import, Chart.js CDN `<script src>`, external stylesheet/font preloads, and remote CSS `url(...)` references, then inlines the vendored mermaid / Chart.js bundles only if the document uses those features.
 5. Downloads the file with a `<stem>-offline.html` suffix.
 
-Mermaid diagrams must already be rendered when you click the button. If a mermaid block is still source text, the export aborts with a toast rather than producing a file that would fail offline. A chart snapshot can fail only when the canvas is tainted by cross-origin pixels; in that case the export also aborts and leaves the open document unchanged.
+Mermaid diagrams must already be rendered when you click the button. If a mermaid block is still source text, the export aborts with a toast rather than producing a file that would fail offline. Because the exported file keeps the live chart bootstrap instead of rasterizing canvases, zero-network reopen still preserves Chart.js tooltips and other interactivity.
 
 The exported file still has the five Commentable HTML regions, embedded comments, and version metadata. It is intended to pass `tools/validate/validate.py --strict` and reopen with all external network blocked.
 

@@ -51,7 +51,10 @@ directory that receives dist/PORTABLE.html and dist/). --check compares the file
 present in --out-dir against a fresh build.
 """
 import argparse
+import base64
+import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -101,8 +104,24 @@ def write(path, text):
         fh.write(_lf(text))
 
 
+def read_vendor_script(path):
+    text = read(path)
+    return re.sub(r"\n?//# sourceMappingURL=.*$", "", text.strip(), flags=re.M)
+
+
 def sha256(text):
     return hashlib.sha256(_lf(text).encode("utf-8")).hexdigest()
+
+
+def deterministic_gzip(data, compresslevel=9):
+    raw = data if isinstance(data, (bytes, bytearray)) else bytes(data)
+    out = io.BytesIO()
+    with gzip.GzipFile(filename="", mode="wb", fileobj=out, compresslevel=compresslevel, mtime=0) as fh:
+        fh.write(raw)
+    blob = bytearray(out.getvalue())
+    if len(blob) >= 10:
+        blob[9] = 255
+    return bytes(blob)
 
 
 # --------------------------------------------------------------------------- #
@@ -112,6 +131,7 @@ def sha256(text):
 # --------------------------------------------------------------------------- #
 VERSION_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
 PACKAGE_JSON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "package.json")
+VENDOR_DIR = os.path.join(ASSETS, "vendor")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 # The mermaid CDN import in the shipped templates/examples, so build can stamp it
 # from the single source (package.json) and --check can catch drift. The version

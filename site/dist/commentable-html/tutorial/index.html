@@ -76,7 +76,7 @@
           <h3>2. Read the document-type bubble and version</h3>
           <ol>
           <li>In the sidebar header, look at the document-type bubble.</li>
-          <li>It reads <strong>Portable</strong> (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads <strong>Offline</strong> when the file is also ready for a zero-network handoff: rendered Mermaid diagrams and chart snapshots are embedded and remote loaders are stripped. It reads <strong>Not portable</strong> (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.</li>
+          <li>It reads <strong>Portable</strong> (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads <strong>Offline</strong> when the file is also ready for a zero-network handoff: any Mermaid diagrams or charts keep working from inlined vendored runtimes and remote loaders are stripped. It reads <strong>Not portable</strong> (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.</li>
           <li>Next to the bubble, the version indicator shows <code>v&lt;x.y.z&gt;</code>, telling you which Commentable HTML runtime produced the file.</li>
           </ol>
           <h3>3. Open Help &amp; About</h3>
@@ -156,7 +156,7 @@
           <h3>13. Refresh and repeat</h3>
           <p>Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.</p>
           <p>To share the review with another person instead, use <strong>Export as Portable</strong> to bake the comments into a single self-contained copy, or <strong>Export to Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
-          <p>Use <strong>Export Offline</strong> for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, inlines the rendered Mermaid SVG and Chart.js chart PNG snapshots, strips remote loaders, and reopens with the <strong>Offline</strong> badge.</p>
+          <p>Use <strong>Export Offline</strong> for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the <strong>Offline</strong> badge while keeping live diagrams and chart tooltips.</p>
           <h3>Dark theme</h3>
           <p>The layer follows your browser or OS theme and stays readable in both. Everything above works identically in dark mode.</p>
           <p><img src="assets/garden-08-top-dark.png" alt="The community garden plan in dark theme" loading="lazy" /></p>

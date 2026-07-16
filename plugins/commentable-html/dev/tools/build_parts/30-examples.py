@@ -11,6 +11,9 @@ _META_VERSION_RE = re.compile(
 _LAYER_DESCRIPTOR_RE = re.compile(
     r'<script\b[^>]*\sid\s*=\s*(["\'])commentableHtmlLayer\1[^>]*>[\s\S]*?</script>\s*',
     re.IGNORECASE)
+_VENDORED_RICH_LIBS_RE = re.compile(
+    r'<script\b[^>]*\sid\s*=\s*(["\'])cmhVendoredRichLibs\1[^>]*>[\s\S]*?</script>\s*',
+    re.IGNORECASE)
 _LAYER_DESCRIPTOR_INSERT_RE = re.compile(
     r'(<meta name="commentable-html-version" content="[0-9]+\.[0-9]+\.[0-9]+" />?\s*)',
     re.IGNORECASE)
@@ -38,6 +41,27 @@ def _stamp_layer_descriptor(text, version, mode):
     new, n = _LAYER_DESCRIPTOR_INSERT_RE.subn(lambda m: m.group(1) + desc, head, count=1)
     if n != 1:
         raise SystemExit("build: could not locate commentable-html-version <meta> to place the layer descriptor")
+    return new + tail
+
+
+def _vendored_rich_libs_script(portable_html):
+    m = _VENDORED_RICH_LIBS_RE.search(portable_html)
+    if not m:
+        raise SystemExit("build: could not locate the vendored rich-content script in dist/PORTABLE.html")
+    return m.group(0) if m.group(0).endswith("\n") else m.group(0) + "\n"
+
+
+def _stamp_vendored_rich_libs(text, portable_html):
+    script = _vendored_rich_libs_script(portable_html)
+    head_end = text.lower().find("</head>")
+    if head_end == -1:
+        raise SystemExit("build: could not locate </head> to place the vendored rich-content script")
+    head, tail = text[:head_end], text[head_end:]
+    if _VENDORED_RICH_LIBS_RE.search(head):
+        return _VENDORED_RICH_LIBS_RE.sub(script, head, count=1) + tail
+    new, n = _LAYER_DESCRIPTOR_INSERT_RE.subn(lambda m: m.group(1) + script, head, count=1)
+    if n != 1:
+        raise SystemExit("build: could not locate commentable-html-version <meta> to place the vendored rich-content script")
     return new + tail
 
 
@@ -69,6 +93,7 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
     out, n = _META_VERSION_RE.subn(lambda m: m.group(1) + version + m.group(2), out, count=1)
     if n != 1:
         raise SystemExit("build: %s has no commentable-html-version <meta> to stamp" % where)
+    out = _stamp_vendored_rich_libs(out, portable_html)
     out = _stamp_layer_descriptor(out, version, "portable")
     out = _stamp_content_root_hook(out)
     out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
@@ -132,6 +157,7 @@ def build_all(assets_dir=None, out_dir=None):
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
     mermaid_version = read_mermaid_version()
+    vendored_rich_libs_json = build_vendored_rich_libs_json(assets_dir or ASSETS)
     js = _stamp_const(js, version, "commentable-html.js")
     css_name, js_name, assets_name = _names()
     assets_js = build_assets_js(css, js, version)
@@ -144,14 +170,14 @@ def build_all(assets_dir=None, out_dir=None):
             assets_name: {"sha256": sha256(assets_js), "bytes": len(assets_js.encode("utf-8"))},
         },
     }
-    portable = build_inline(css, js, shell, version, mermaid_version)
+    portable = build_inline(css, js, shell, version, mermaid_version, vendored_rich_libs_json)
     outputs = {
         os.path.join(dist_dir, "PORTABLE.html"): portable,
         os.path.join(dist_dir, css_name): css_file,
         os.path.join(dist_dir, js_name): js_file,
         os.path.join(dist_dir, assets_name): assets_js,
         os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version),
+        os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json),
     }
     outputs.update(build_examples(portable, version, mermaid_version, out_dir))
     outputs.update(build_prompt_examples(out_dir))
