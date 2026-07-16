@@ -201,21 +201,26 @@ def _prune_nested_reparse(path):
     Python < 3.12 shutil.rmtree lacked this protection (bpo-31818), and os.walk's followlinks=False
     does not stop it descending into Windows junctions (os.path.islink is False for them), so we walk
     top-down and prune each junction from `dirs` IN PLACE (which stops os.walk descending into it)
-    after unlinking it. Best-effort: a lock here just leaves the junction for the retry/next run."""
-    try:
-        if _is_reparse(path):
-            return  # the caller handles a top-level reparse point itself
-        for root, dirs, files in os.walk(path, topdown=True):
-            keep = []
-            for d in dirs:
-                p = os.path.join(root, d)
-                if _is_reparse(p):
-                    _unlink_reparse(p)  # remove the junction; do NOT descend into its target
-                else:
-                    keep.append(d)
-            dirs[:] = keep
-    except OSError:
-        pass
+    after unlinking it.
+
+    Returns True only if the tree is now FREE of nested reparse points (safe to shutil.rmtree). If a
+    junction could not be unlinked (e.g. a transient lock), returns False - the caller MUST NOT call
+    shutil.rmtree, or it could traverse the surviving junction into its external target."""
+    if _is_reparse(path):
+        return True  # the caller handles a top-level reparse point itself; nothing nested to prune
+    clean = True
+    for root, dirs, files in os.walk(path, topdown=True):
+        keep = []
+        for d in dirs:
+            p = os.path.join(root, d)
+            if _is_reparse(p):
+                _unlink_reparse(p)  # remove the junction; do NOT descend into its target
+                if os.path.lexists(p):
+                    clean = False  # unlink failed (locked); leave it, and do not let rmtree follow it
+            else:
+                keep.append(d)
+        dirs[:] = keep
+    return clean
 
 
 def _make_writable(path):
@@ -255,10 +260,15 @@ def _rmtree_retry(path, retries, backoff, sleep, deadline):
     def _rm():
         if _is_reparse(path):
             _unlink_reparse(path)
+            if os.path.lexists(path):  # unlink failed (locked); raise so _retry retries it
+                raise OSError(errno.EBUSY, "reparse point still present after unlink", path)
         elif os.path.isfile(path):
             os.remove(path)
         else:
-            _prune_nested_reparse(path)  # unlink nested junctions so rmtree can't follow them (<3.12)
+            # Unlink nested junctions FIRST; only rmtree if none survived, else raise so _retry
+            # retries (never let shutil.rmtree traverse a surviving junction into its target).
+            if not _prune_nested_reparse(path):
+                raise OSError(errno.EBUSY, "nested reparse point could not be unlinked under", path)
             shutil.rmtree(path)
     try:
         _retry(_rm, retries, backoff, sleep, deadline)
@@ -286,8 +296,7 @@ def clear_markers(skill_dir):
                 # a same-named directory (or a reparse point) under the marker name
                 if _is_reparse(p):
                     _unlink_reparse(p)
-                else:
-                    _prune_nested_reparse(p)
+                elif _prune_nested_reparse(p):  # only rmtree if no nested junction survived
                     shutil.rmtree(p, ignore_errors=True)
 
 
@@ -453,8 +462,9 @@ def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=D
         _swapped = _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline)
         _prune_legacy(skill_dir, _swapped, retries, backoff, sleep, deadline)
     finally:
-        _prune_nested_reparse(staging)  # never let rmtree follow a nested junction out of staging
-        shutil.rmtree(staging, ignore_errors=True)
+        # Only rmtree staging if no nested junction survived pruning (never traverse one out of it).
+        if _prune_nested_reparse(staging):
+            shutil.rmtree(staging, ignore_errors=True)
     # The swap succeeded; give the marker write a fresh grace budget so a transient lock on its
     # rename does not waste the whole successful extraction (and re-extract needlessly next session).
     _write_marker(skill_dir, version, retries, backoff, sleep,

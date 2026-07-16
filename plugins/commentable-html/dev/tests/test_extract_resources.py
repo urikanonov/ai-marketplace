@@ -637,6 +637,30 @@ class ExtractResourcesTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(keep),
                         "a nested junction's external target must NOT be deleted by rmtree")
 
+    # CMH-PKG-08: if a nested junction CANNOT be unlinked (e.g. a transient lock), _prune_nested_reparse
+    # returns False and _rmtree_retry raises (retries) rather than calling shutil.rmtree, so rmtree can
+    # never traverse the surviving junction into its target. Cross-platform via mocks (no real junction).
+    def test_rmtree_refuses_when_a_nested_reparse_cannot_be_unlinked(self):
+        victim = os.path.join(self.tmp, "victim2")
+        junc = os.path.join(victim, "junc")
+        os.makedirs(junc)
+        external = os.path.join(junc, "external.txt")
+        with open(external, "w", encoding="utf-8") as fh:
+            fh.write("must survive\n")
+
+        def _fake_is_reparse(p):
+            return os.path.basename(p.rstrip("\\/")) == "junc"  # pretend `junc` is a stuck junction
+
+        with unittest.mock.patch.object(extract_resources, "_is_reparse", _fake_is_reparse), \
+             unittest.mock.patch.object(extract_resources, "_unlink_reparse", lambda p: None):
+            self.assertFalse(extract_resources._prune_nested_reparse(victim),
+                             "a surviving nested reparse must make prune report NOT clean")
+            with self.assertRaises(OSError):
+                extract_resources._rmtree_retry(victim, 1, 0.001, lambda *_: None,
+                                                time.monotonic() + 1)
+        self.assertTrue(os.path.isfile(external),
+                        "rmtree must not run (and traverse the junction) when unlink failed")
+
     # CMH-PKG-05: clear_markers sweeps a pid-suffixed .ok.<pid>.tmp leftover (not just .ok.tmp).
     def test_clear_markers_removes_pid_suffixed_tmp(self):
         tmp = self._marker("1.0.0") + ".98765.tmp"

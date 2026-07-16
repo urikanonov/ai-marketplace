@@ -65,6 +65,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `40-package.py` build part self-contained (explicit `os`/`re` imports); and added a plugin-level
   `.gitignore` so the extractor unpacking into the source tree during local testing can never stage a
   polluted (non-minimal) shipped skill dir.
+- Round-11 review hardening: made the nested-junction protection robust to an unlink FAILURE.
+  `_prune_nested_reparse` now returns whether the tree is truly free of nested reparse points, and its
+  three callers only proceed to `shutil.rmtree` when it is - so a junction that could not be unlinked
+  (e.g. a transient lock) makes the removal retry (or skip) instead of ever letting `shutil.rmtree`
+  traverse the survivor into its external target on Python < 3.12. A mock-based test pins the
+  unlink-failure path.
 
 ## [1.117.1] - 2026-07-16
 
