@@ -964,12 +964,14 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   position: absolute; inset-inline-start: 0.85rem; top: 0.75rem; font-weight: 700; font-style: normal;
   line-height: 1.55; color: var(--cp-text);
 }
-/* The " / \"\"" alt-text suffix hides the decorative glyph from the accessibility tree (screen
-   readers use the runtime aria-label instead); older browsers ignore it and still show the glyph. */
-#commentRoot .cmh-callout-info::before { content: "i" / ""; }
-#commentRoot .cmh-callout-success::before { content: "\2713\FE0E" / ""; }
-#commentRoot .cmh-callout-warning::before { content: "\26A0\FE0E" / ""; }
-#commentRoot .cmh-callout-danger::before { content: "\2716\FE0E" / ""; }
+/* Each variant declares a plain `content` first (the glyph, shown everywhere) then a
+   `content: ".." / ""` override that hides the glyph from the accessibility tree on browsers that
+   support alt-text (screen readers use the runtime aria-label instead). A browser that does not
+   parse the alt-text form drops only that second declaration and keeps the visible glyph. */
+#commentRoot .cmh-callout-info::before { content: "i"; content: "i" / ""; }
+#commentRoot .cmh-callout-success::before { content: "\2713\FE0E"; content: "\2713\FE0E" / ""; }
+#commentRoot .cmh-callout-warning::before { content: "\26A0\FE0E"; content: "\26A0\FE0E" / ""; }
+#commentRoot .cmh-callout-danger::before { content: "\2716\FE0E"; content: "\2716\FE0E" / ""; }
 
 #commentRoot .cm-toc { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
 #commentRoot .cm-toc-title { font-weight: 700; color: var(--cp-text); margin-bottom: 0.5rem; font-size: 1rem; }
