@@ -954,24 +954,31 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
    on the soft tinted backgrounds in both light and dark themes. Authors must use
    these classes (or the theme variables) instead of hardcoding colors. */
 #commentRoot .cmh-callout { border-radius: 8px; padding: 0.75rem 1rem; margin: 1rem 0; border: 1px solid var(--cp-border); background: var(--cp-surface-soft); color: var(--cp-text); line-height: 1.55; }
-#commentRoot .cmh-callout > :first-child { margin-top: 0; }
+#commentRoot .cmh-callout > :first-child { margin-top: 0; padding-top: 0; }
 #commentRoot .cmh-callout > :last-child { margin-bottom: 0; }
 #commentRoot .cmh-callout-danger { border-color: var(--cp-danger); background: var(--cp-danger-soft); }
 #commentRoot .cmh-callout-warning { border-color: var(--cp-warning); background: var(--cp-warning-soft); }
 #commentRoot .cmh-callout-success { border-color: var(--cp-success); background: var(--cp-success-soft); }
 #commentRoot .cmh-callout-info { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 /* Non-color affordance: a leading glyph per variant so the meaning survives grayscale printing
-   and color-blindness (color is not the only signal). The glyph sits in a cm-skip-free ::before
-   so it never enters text selection or comment offsets. */
-#commentRoot .cmh-callout { position: relative; padding-left: 2.4rem; }
+   and color-blindness (color is not the only signal). The glyph sits in a ::before pseudo-element
+   so it never enters text selection or comment offsets, is drawn in --cp-text so it stays legible
+   in both themes and in grayscale (shape, not color, carries the meaning), and forces text (not
+   emoji) presentation with the U+FE0E variation selector. Padding is scoped to the variant classes
+   so a bare .cmh-callout shows no empty gutter. */
+#commentRoot .cmh-callout { position: relative; }
+#commentRoot .cmh-callout-info,
+#commentRoot .cmh-callout-success,
+#commentRoot .cmh-callout-warning,
+#commentRoot .cmh-callout-danger { padding-left: 2.4rem; }
 #commentRoot .cmh-callout::before {
   position: absolute; left: 0.85rem; top: 0.75rem; font-weight: 700; font-style: normal;
-  line-height: 1.55; font-variant-emoji: text;
+  line-height: 1.55; color: var(--cp-text);
 }
-#commentRoot .cmh-callout-info::before { content: "i"; color: var(--cp-accent); }
-#commentRoot .cmh-callout-success::before { content: "\2713"; color: var(--cp-success); }
-#commentRoot .cmh-callout-warning::before { content: "\26A0"; color: var(--cp-warning); }
-#commentRoot .cmh-callout-danger::before { content: "\2716"; color: var(--cp-danger); }
+#commentRoot .cmh-callout-info::before { content: "i"; }
+#commentRoot .cmh-callout-success::before { content: "\2713\FE0E"; }
+#commentRoot .cmh-callout-warning::before { content: "\26A0\FE0E"; }
+#commentRoot .cmh-callout-danger::before { content: "\2716\FE0E"; }
 
 #commentRoot .cm-toc { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
 #commentRoot .cm-toc-title { font-weight: 700; color: var(--cp-text); margin-bottom: 0.5rem; font-size: 1rem; }
@@ -5043,6 +5050,22 @@ function setupValidationBanner() {
   const root = document.getElementById("commentRoot") || document.body;
   if (!root) return;
   const LABELS = { info: "Note", success: "Success", warning: "Warning", danger: "Important" };
+  // The first meaningful (non-whitespace) child node of a container, or null.
+  function firstMeaningfulChild(container) {
+    for (let n = container.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) { if ((n.textContent || "").trim() === "") continue; return n; }
+      if (n.nodeType === 1) return n;
+    }
+    return null;
+  }
+  // True only when the callout OPENS with a <strong> label (directly, or as the first thing in its
+  // first paragraph). Mid-sentence bold ("Watch out, <strong>Warning:</strong>") must NOT count,
+  // so we check the FIRST meaningful node, not merely the first <strong> element.
+  function startsWithStrongLabel(el) {
+    let node = firstMeaningfulChild(el);
+    if (node && node.nodeType === 1 && node.tagName === "P") node = firstMeaningfulChild(node);
+    return !!(node && node.nodeType === 1 && node.tagName === "STRONG" && (node.textContent || "").trim());
+  }
   root.querySelectorAll(".cmh-callout").forEach(function (el) {
     if (el.closest(".cm-skip")) return;
     if (!el.hasAttribute("role")) el.setAttribute("role", "note");
@@ -5050,9 +5073,7 @@ function setupValidationBanner() {
     let variant = null;
     for (const v in LABELS) { if (el.classList.contains("cmh-callout-" + v)) { variant = v; break; } }
     if (!variant) return;
-    // A leading <strong> is the authored visible label; keep it as the sole announcement.
-    const first = el.querySelector(":scope > p:first-child > strong:first-child, :scope > strong:first-child");
-    if (first && (first.textContent || "").trim()) return;
+    if (startsWithStrongLabel(el)) return; // authored visible label is the sole announcement
     el.setAttribute("aria-label", LABELS[variant]);
   });
 })();

@@ -12,6 +12,7 @@ const CONTENT = `
   <div class="cmh-callout cmh-callout-warning" id="c-warning"><p>A caution.</p></div>
   <div class="cmh-callout cmh-callout-danger" id="c-danger"><p>The key takeaway.</p></div>
   <div class="cmh-callout cmh-callout-danger" id="c-labelled"><p><strong>Bottom line.</strong> Authored label.</p></div>
+  <div class="cmh-callout cmh-callout-warning" id="c-midbold"><p>Heads up, <strong>not a leading label.</strong></p></div>
 </section>`;
 
 async function openDoc(page) {
@@ -49,8 +50,8 @@ test("each callout variant renders a distinct non-color glyph (CMH-CALLOUT-03)",
     expect(["none", "normal", '""', ""].includes(c), id + " glyph is not empty").toBeFalsy();
     glyphs[id] = c;
   }
-  // A grayscale reader tells variants apart by shape, so the glyphs are not all identical.
-  expect(new Set(Object.values(glyphs)).size, "glyphs differ across variants").toBeGreaterThan(1);
+  // A grayscale reader tells variants apart by shape, so EACH variant's glyph is distinct.
+  expect(new Set(Object.values(glyphs)).size, "each variant glyph is distinct").toBe(4);
 });
 
 test("an authored leading strong label suppresses the aria-label (CMH-CALLOUT-03)", async ({ page }) => {
@@ -59,4 +60,11 @@ test("an authored leading strong label suppresses the aria-label (CMH-CALLOUT-03
   // is not announced twice.
   await expect(page.locator("#c-labelled")).toHaveAttribute("role", "note");
   expect(await page.locator("#c-labelled").getAttribute("aria-label")).toBeNull();
+});
+
+test("mid-sentence bold does NOT suppress the aria-label (CMH-CALLOUT-03)", async ({ page }) => {
+  await openDoc(page);
+  // A <strong> that is not the leading label (text precedes it) must keep the variant label.
+  await expect(page.locator("#c-midbold")).toHaveAttribute("role", "note");
+  expect(await page.locator("#c-midbold").getAttribute("aria-label")).toBe("Warning");
 });
