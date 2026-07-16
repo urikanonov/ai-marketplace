@@ -351,6 +351,8 @@ class _StyleScanner(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.style_blocks = []
+        self.style_media = []
+        self.style_is_brand = []
         self.inline_styles = []
         self._style_attrs = None
         self._style_body = []
@@ -380,6 +382,8 @@ class _StyleScanner(HTMLParser):
     def handle_endtag(self, tag):
         if tag.lower() == "style" and self._style_attrs is not None:
             self.style_blocks.append("".join(self._style_body))
+            self.style_media.append((self._style_attrs or {}).get("media", ""))
+            self.style_is_brand.append("data-cmh-brand" in (self._style_attrs or {}))
             self._style_attrs = None
             self._style_body = []
 
@@ -468,3 +472,176 @@ def find_low_contrast_pairs(html, threshold=DEFAULT_MIN_CONTRAST_RATIO, variable
             seen.add(key)
             unique.append(issue)
     return unique
+
+
+_DARK_SELECTOR_RE = re.compile(r"data-theme\s*[~|^$*]?=\s*['\"]?\s*dark", re.IGNORECASE)
+_NOT_GROUP_RE = re.compile(r":not\([^)]*\)", re.IGNORECASE)
+
+
+def _selector_is_dark(selector):
+    # A selector scopes the dark theme when it targets [data-theme="dark"] OUTSIDE a :not(...)
+    # (so html:not([data-theme="dark"]) - an explicit light selector - stays in the light env).
+    stripped = _NOT_GROUP_RE.sub("", selector or "")
+    return bool(_DARK_SELECTOR_RE.search(stripped))
+
+
+def _media_query_applies_to_screen(query):
+    """True when a media query part CAN apply to a screen (so a screen palette resolver includes
+    it). 'screen' / 'all' / a bare feature query like '(min-width: 40em)' / 'not print' -> True;
+    'print' / 'speech' / 'not screen' / 'not all' -> False. A group that never applies on screen
+    (print, speech, or the negation of screen) must be excluded so it cannot masquerade as the
+    screen palette."""
+    p = (query or "").strip().lower()
+    negate = False
+    if p.startswith("not "):
+        negate = True
+        p = p[4:].strip()
+    m = re.match(r"(?:only\s+)?([a-z-]+)", p)
+    # No leading type token means a bare feature query, which applies to all media (incl. screen).
+    applies = True if m is None else m.group(1) in ("screen", "all")
+    return (not applies) if negate else applies
+
+
+_AT_KEYWORD_RE = re.compile(r"^@([a-z-]+)", re.IGNORECASE)
+
+
+def _at_group_recurses(prelude):
+    """Whether a block at-rule GROUPS ordinary style rules a screen palette should see. Conditional
+    groups (@media that may apply to screen, @supports, @layer{}, @container, @scope) recurse;
+    @keyframes, @font-face, @page, screen-inapplicable @media (print/speech/not screen), and
+    unknown at-rules are skipped. The keyword is parsed independently of whitespace so a compact
+    `@media(max-width:600px)` / `@supports(display:grid)` is still recognized."""
+    m = _AT_KEYWORD_RE.match((prelude or "").strip())
+    head = m.group(1).lower() if m else ""
+    if head in ("supports", "layer", "container", "scope"):
+        return True
+    if head == "media":
+        query = (prelude or "").strip()[m.end():].strip()
+        parts = [p.strip() for p in query.split(",")] or [""]
+        return any(_media_query_applies_to_screen(p) for p in parts)
+    return False
+
+
+def _next_top_delim(text, start):
+    """Index of the next top-level ';' or '{' from `start`, ignoring quotes and parentheses; None
+    if neither remains. Used to separate statement at-rules (@charset/@import/@layer a,b;) from
+    block rules without a fragile whole-string search."""
+    quote = None
+    depth = 0
+    for k in range(start, len(text)):
+        ch = text[k]
+        if quote:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and ch in (";", "{"):
+            return k
+    return None
+
+
+# Screen conditional groups can nest, but real palette CSS is 0-1 levels deep. Cap the recursion
+# so pathological input (thousands of nested at-rules) degrades gracefully instead of raising an
+# uncaught RecursionError that would abort the whole validate()/finalize run for every caller.
+_MAX_RULE_DEPTH = 40
+
+
+def _iter_style_rules(text, _depth=0):
+    """Yield (selector, declarations_body) for every SCREEN-applicable ordinary style rule in the
+    (comment-stripped) CSS `text`, recursing through screen conditional groups and skipping
+    screen-inapplicable media, keyframes/font-face, and statement at-rules. Tokenizing top-level by
+    both ';' and '{' means a leading `@charset "...";` / `@import ...;` never swallows the rule
+    after it, and a declaration value containing a literal '{' (e.g. `content: "{"`) never drops
+    its rule."""
+    if _depth > _MAX_RULE_DEPTH:
+        return
+    i, n = 0, len(text)
+    while i < n:
+        j = _next_top_delim(text, i)
+        if j is None:
+            return
+        if text[j] == ";":
+            i = j + 1  # a statement at-rule (@charset/@import/@layer a,b;) - consume and skip
+            continue
+        prelude = text[i:j].strip()
+        close = _matching_brace(text, j)
+        if close < 0:
+            return
+        body = text[j + 1:close]
+        if prelude.startswith("@"):
+            if _at_group_recurses(prelude):
+                yield from _iter_style_rules(body, _depth + 1)
+        elif prelude and ":" in body:
+            yield prelude, body
+        i = close + 1
+
+
+def theme_environments(html):
+    """Resolve the effective custom-property palette for each theme environment separately.
+
+    Returns {"light": {name: value, ...}, "dark": {...}}: the light map is built from the SCREEN
+    non-dark selectors (`:root`, `html`, ...) and the dark map is that light map overlaid with the
+    declarations from selectors scoped to `[data-theme="dark"]`, matching custom-property cascade,
+    so a token overridden only in the dark theme is evaluated against its dark value. Screen
+    conditional groups (`@media` that may apply to screen, `@supports`, `@layer`, ...) are traversed
+    so an override wherever the author placed it is seen, while screen-inapplicable media (an
+    `@media print`/`not screen` block or a `<style media="print">`) is excluded so a non-screen
+    palette never masquerades as the screen dark palette. Grouped selectors are split on top-level
+    commas and each part classified independently. Only custom properties (names starting with
+    `--`) are collected. Returns {} when the document declares no custom properties."""
+    scanner = _StyleScanner()
+    scanner.feed(html)
+    scanner.close()
+    base, dark_overlay = {}, {}
+    for css, media, is_brand in zip(scanner.style_blocks, scanner.style_media, scanner.style_is_brand):
+        if is_brand:
+            continue  # a <style data-cmh-brand> palette is validated by the --brand tooling (CMH-TOOL-19)
+        media_parts = [p.strip() for p in (media or "").split(",") if p.strip()]
+        if media_parts and not any(_media_query_applies_to_screen(p) for p in media_parts):
+            continue  # a screen-inapplicable <style media="print"> never defines the screen palette
+        for selector, body in _iter_style_rules(_strip_css_comments(css)):
+            decls = {k: v for k, v in _parse_declarations(body).items() if k.startswith("--")}
+            if not decls:
+                continue
+            for part in _split_top_level(selector, ","):
+                (dark_overlay if _selector_is_dark(part) else base).update(decls)
+    if not base and not dark_overlay:
+        return {}
+    dark = dict(base)
+    dark.update(dark_overlay)
+    return {"light": base, "dark": dark}
+
+
+def _to_hex(rgb):
+    return "#%02x%02x%02x" % (rgb[0], rgb[1], rgb[2])
+
+
+def nudge_to_ratio(foreground, background, target, variables=None):
+    """Return a hex color near `foreground` that meets `target` contrast against `background`,
+    walking the foreground toward black and toward white and preferring the smaller move. Returns
+    None when neither extreme reaches the target (a mid-tone background where the target is
+    unreachable) or when either color cannot be resolved to a concrete value."""
+    fg = parse_css_color(foreground, variables)
+    bg = parse_css_color(background, variables)
+    if fg is None or bg is None or bg[3] < 1:
+        return None
+    if fg[3] < 1:
+        fg = _composite(fg, bg)
+    fg_rgb, bg_hex = fg[:3], _to_hex(bg[:3])
+    candidates = []
+    for extreme in ((0, 0, 0), (255, 255, 255)):
+        for i in range(1, 257):
+            t = i / 256
+            trial = tuple(round(fg_rgb[k] + (extreme[k] - fg_rgb[k]) * t) for k in range(3))
+            if contrast_ratio(_to_hex(trial), bg_hex) >= target:
+                candidates.append((t, _to_hex(trial)))
+                break
+    if not candidates:
+        return None
+    candidates.sort(key=lambda c: c[0])
+    return candidates[0][1]

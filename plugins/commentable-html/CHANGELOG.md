@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.101.0] - 2026-07-16
+
+### Added
+
+- The flat-document validator now checks authored `--cp-*` theme overrides for WCAG contrast,
+  evaluating the light and dark theme environments separately so a token overridden only in one
+  theme is judged against that theme's value. It runs only on tokens changed from the shipped
+  defaults (the accepted defaults are never flagged): text and link pairs use a 4.5:1 target (a
+  3.0-4.49:1 near-miss is an advisory warning, below 3.0:1 is an error) and non-text UI pairs use
+  a 3.0:1 bar. An override that cannot be resolved to two concrete colors is reported as
+  'not evaluated' (a static check, no computed-style parity). A new `--suggest` flag prints a
+  compliant nudged value when one is reachable, and the near-miss/unresolved advisories stay out of
+  `retrofit.py`'s hard-fail path unless the contrast is actually bad. (CMH-THEME-02)
+
 ## [1.100.0] - 2026-07-16
 
 ### Added

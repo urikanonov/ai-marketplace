@@ -187,6 +187,11 @@ from checks.highlighting import (  # noqa: F401,E402
     _highlight_language_table,
     check_code_highlighting,
 )
+from checks.theme_contrast import (  # noqa: F401,E402
+    ADVISORY_PREFIX,
+    check_theme_contrast,
+    theme_contrast_findings,
+)
 from checks.layer import (  # noqa: F401,E402
     _check_layer_descriptor,
     _layer_descriptor_data,
@@ -263,6 +268,9 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
         e, w = check_code_highlighting(html)
         errors += e
         warnings += w
+        e, w = check_theme_contrast(html)
+        errors += e
+        warnings += w
     return errors, warnings
 
 
@@ -279,7 +287,26 @@ def validate_charts(path):
     return check_charts(html, parser)
 
 
-_USAGE = "usage: python tools/validate.py [--charts-only|--layer-only] [--strict] [--no-stamp] <file.html> [more.html ...]"
+_USAGE = "usage: python tools/validate.py [--charts-only|--layer-only] [--strict] [--suggest] [--no-stamp] <file.html> [more.html ...]"
+
+
+def _print_theme_suggestions(path):
+    """Print a compliant nudged value for each authored --cp-* override that misses its contrast
+    target. Best-effort: a read/parse failure here never affects the validation exit code."""
+    try:
+        html = _read(path)
+    except (OSError, UnicodeDecodeError):
+        return
+    for f in theme_contrast_findings(html):
+        if f.severity == "unresolved":
+            print(f"  SUGGEST: {f.env} theme {f.fg_token} on {f.bg_token} not evaluated "
+                  f"({f.fg_value!r} or {f.bg_value!r} did not resolve to a concrete color)")
+        elif f.suggestion:
+            print(f"  SUGGEST: {f.env} theme {f.fg_token} -> {f.suggestion} to reach "
+                  f"{f.target:.1f}:1 on {f.bg_token} ({f.fg_value} is {f.ratio:.2f}:1)")
+        else:
+            print(f"  SUGGEST: {f.env} theme {f.fg_token} on {f.bg_token} at {f.ratio:.2f}:1 has "
+                  f"no reachable fix by nudging the foreground; adjust {f.bg_token} instead")
 
 
 def _stamp_validated_file(path):
@@ -315,6 +342,7 @@ def main(argv):
         print("  --charts-only  run only the Chart.js checks")
         print("  --layer-only   run only the commentable-html layer checks")
         print("  --strict       exit non-zero if any warning remains")
+        print("  --suggest      print a compliant nudged value for each low-contrast --cp-* override")
         print("  --no-stamp     do not write the commentable-html-validated stamp on a clean pass")
         return 0
     # A bare "--" ends options: everything after it is a positional path, even if it
@@ -326,7 +354,7 @@ def main(argv):
         before, after = raw, []
     args = [a for a in before if not a.startswith("--")] + after
     flags = {a for a in before if a.startswith("--")}
-    known_flags = {"--charts-only", "--layer-only", "--strict", "--no-stamp"}
+    known_flags = {"--charts-only", "--layer-only", "--strict", "--suggest", "--no-stamp"}
     unknown = sorted(flags - known_flags)
     if unknown:
         sys.stderr.write("unknown flag(s): %s\n" % ", ".join(unknown))
@@ -335,6 +363,7 @@ def main(argv):
     layer = "--charts-only" not in flags
     charts = "--layer-only" not in flags
     strict = "--strict" in flags
+    suggest = "--suggest" in flags
     stamp = "--no-stamp" not in flags
     if not args or (not layer and not charts):
         sys.stderr.write(_USAGE + "\n")
@@ -352,6 +381,8 @@ def main(argv):
             print(f"  WARNING: {w}")
         for e in errors:
             print(f"  ERROR:   {e}")
+        if suggest:
+            _print_theme_suggestions(path)
         if warnings:
             any_warnings = True
         if errors:
