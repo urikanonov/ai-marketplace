@@ -58,6 +58,11 @@ DECK_CONTRAST_VARIABLE_PAIRS = (
     ("--slide-fg", "--slide-bg", "deck theme variables --slide-fg/--slide-bg"),
     ("--slide-fg", "--stage-bg", "deck theme variables --slide-fg/--stage-bg"),
 )
+DEFAULT_MAX_SLIDE_LINES = 24
+DEFAULT_MAX_SLIDE_ELEMENTS = 40
+DEFAULT_MAX_BOARD_CARD_LINES = 6
+DEFAULT_MAX_BOARD_CARD_ELEMENTS = 12
+DEFAULT_OVERLOAD_LINE_CHARS = 90
 
 # Active-content and egress checks run through an HTML parser rather than regex, so an attacker
 # cannot bypass them with a solidus attribute separator (<svg/onload=...>), an entity-encoded
@@ -80,6 +85,14 @@ _EGRESS_ANY_ATTRS = {"background", "lowsrc"}
 _DANGER_SCHEME_RE = re.compile(r"^\s*(?:javascript|vbscript|livescript|mocha)\s*:", re.I)
 _DATA_HTML_RE = re.compile(r"^\s*data\s*:\s*text/html", re.I)
 _REMOTE_URL_RE = re.compile(r"^\s*(?:https?:)?//", re.I)
+_SKIP_AUTHORED_CONTENT_TAGS = {"script", "style", "template", "noscript", "pre"}
+_AUTHORED_ELEMENT_TAGS = {
+    "article", "blockquote", "canvas", "dd", "dt", "figcaption", "figure",
+    "h1", "h2", "h3", "h4", "h5", "h6", "img", "li", "ol", "p", "pre",
+    "svg", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
+}
+_VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+              "meta", "param", "source", "track", "wbr"}
 
 
 def _srcset_urls(value):
@@ -160,6 +173,124 @@ def _active_content_errors(body: str):
     return out
 
 
+class _AuthoredContentRegion:
+    def __init__(self, kind, label, depth, elements=0):
+        self.kind = kind
+        self.label = label
+        self.depth = depth
+        self.lines = 0
+        self.elements = elements
+
+
+def _attr_map(attrs):
+    return {(n or "").lower(): (v or "") for n, v in attrs}
+
+
+def _classes(attrs):
+    return set((attrs.get("class") or "").split())
+
+
+def _authored_element_count(tag, attrs):
+    return tag in _AUTHORED_ELEMENT_TAGS or "data-cm-part" in attrs
+
+
+def _estimated_lines(text, line_chars):
+    total = 0
+    for line in text.splitlines() or [text]:
+        compact = " ".join(line.split())
+        if compact:
+            total += max(1, (len(compact) + line_chars - 1) // line_chars)
+    return total
+
+
+class _AuthoredContentScanner(HTMLParser):
+    def __init__(self, line_chars):
+        super().__init__(convert_charrefs=True)
+        self.line_chars = max(1, line_chars)
+        self.regions = []
+        self._active = []
+        self._skip_depth = 0
+        self._slide_count = 0
+        self._card_count = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        self._start(tag, attrs, self_closing=tag in _VOID_TAGS)
+
+    def handle_startendtag(self, tag, attrs):
+        self._start(tag.lower(), attrs, self_closing=True)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in _SKIP_AUTHORED_CONTENT_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+        closed = []
+        for region in self._active:
+            region.depth -= 1
+            if region.depth <= 0:
+                closed.append(region)
+        if closed:
+            self.regions.extend(closed)
+            self._active = [region for region in self._active if region.depth > 0]
+
+    def handle_data(self, data):
+        if self._skip_depth:
+            return
+        lines = _estimated_lines(data, self.line_chars)
+        if lines:
+            for region in self._active:
+                region.lines += lines
+
+    def _start(self, tag, attrs, self_closing):
+        attrs = _attr_map(attrs)
+        countable = not self._skip_depth and _authored_element_count(tag, attrs)
+        for region in self._active:
+            region.depth += 1
+            if countable:
+                region.elements += 1
+        if tag in _SKIP_AUTHORED_CONTENT_TAGS:
+            self._skip_depth += 1
+
+        is_slide = tag == "section" and "slide" in _classes(attrs)
+        is_card = "data-cm-part" in attrs
+        if is_slide:
+            self._slide_count += 1
+            label = attrs.get("data-slide-id") or f"#{self._slide_count}"
+            self._active.append(_AuthoredContentRegion("slide", label, 1))
+        if is_card:
+            self._card_count += 1
+            label = attrs.get("data-cm-part-label") or attrs.get("data-cm-part") or f"#{self._card_count}"
+            self._active.append(_AuthoredContentRegion("board card", label, 1, 1 if countable else 0))
+
+        if self_closing:
+            self.handle_endtag(tag)
+
+
+def _content_overload_warnings(body, max_slide_lines, max_slide_elements,
+                               max_board_card_lines, max_board_card_elements, line_chars):
+    scanner = _AuthoredContentScanner(line_chars)
+    try:
+        scanner.feed(body)
+        scanner.close()
+    except Exception:  # pragma: no cover - HTMLParser is lenient; advisory checks never fail closed
+        return []
+    warnings = []
+    for region in scanner.regions:
+        if region.kind == "slide":
+            max_lines, max_elements = max_slide_lines, max_slide_elements
+            advice = "split content across slides or move detail to speaker notes"
+        else:
+            max_lines, max_elements = max_board_card_lines, max_board_card_elements
+            advice = "split the card or move detail to a follow-up slide"
+        if region.lines > max_lines or region.elements > max_elements:
+            warnings.append(
+                "deck: content overload advisory: "
+                f"{region.kind} {region.label} has {region.lines} line(s) / "
+                f"{region.elements} element(s), above budget {max_lines} line(s) / "
+                f"{max_elements} element(s); {advice}")
+    return warnings
+
+
 def _content_region(html: str):
     bi = html.find(BEGIN_MARK)
     ei = html.rfind(END_MARK)
@@ -231,24 +362,62 @@ def deck_checks_with_options(html: str, contrast_threshold=contrast.DEFAULT_MIN_
     return errors
 
 
-def validate_deck(path, contrast_threshold=contrast.DEFAULT_MIN_CONTRAST_RATIO):
+def deck_warnings(html: str):
+    return deck_warnings_with_options(html)
+
+
+def deck_warnings_with_options(html: str, max_slide_lines=DEFAULT_MAX_SLIDE_LINES,
+                               max_slide_elements=DEFAULT_MAX_SLIDE_ELEMENTS,
+                               max_board_card_lines=DEFAULT_MAX_BOARD_CARD_LINES,
+                               max_board_card_elements=DEFAULT_MAX_BOARD_CARD_ELEMENTS,
+                               line_chars=DEFAULT_OVERLOAD_LINE_CHARS):
+    body = _content_region(html)
+    if body is None:
+        return []
+    return _content_overload_warnings(
+        body, max_slide_lines=max_slide_lines, max_slide_elements=max_slide_elements,
+        max_board_card_lines=max_board_card_lines, max_board_card_elements=max_board_card_elements,
+        line_chars=line_chars)
+
+
+def validate_deck(path, contrast_threshold=contrast.DEFAULT_MIN_CONTRAST_RATIO,
+                  max_slide_lines=DEFAULT_MAX_SLIDE_LINES,
+                  max_slide_elements=DEFAULT_MAX_SLIDE_ELEMENTS,
+                  max_board_card_lines=DEFAULT_MAX_BOARD_CARD_LINES,
+                  max_board_card_elements=DEFAULT_MAX_BOARD_CARD_ELEMENTS):
     html = Path(path).read_text(encoding="utf-8")
     base_errors = []
     base_warnings = []
     if _base is not None:  # pragma: no branch
         base_errors, base_warnings = _base.validate(path)
-    return base_errors, base_warnings, deck_checks_with_options(html, contrast_threshold=contrast_threshold)
+    deck_errors = deck_checks_with_options(html, contrast_threshold=contrast_threshold)
+    deck_warnings_found = deck_warnings_with_options(
+        html, max_slide_lines=max_slide_lines, max_slide_elements=max_slide_elements,
+        max_board_card_lines=max_board_card_lines, max_board_card_elements=max_board_card_elements)
+    return base_errors, base_warnings + deck_warnings_found, deck_errors
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Validate a commentable-html deck.")
     ap.add_argument("file")
-    ap.add_argument("--strict", action="store_true", help="treat base-validator warnings as errors too")
+    ap.add_argument("--strict", action="store_true", help="treat validator warnings as errors too")
     ap.add_argument("--contrast-threshold", type=float, default=contrast.DEFAULT_MIN_CONTRAST_RATIO,
                     help="minimum WCAG contrast ratio for explicit text/background color pairs")
+    ap.add_argument("--max-slide-lines", type=int, default=DEFAULT_MAX_SLIDE_LINES,
+                    help="warn when a slide exceeds this estimated authored line count")
+    ap.add_argument("--max-slide-elements", type=int, default=DEFAULT_MAX_SLIDE_ELEMENTS,
+                    help="warn when a slide exceeds this authored element count")
+    ap.add_argument("--max-board-card-lines", type=int, default=DEFAULT_MAX_BOARD_CARD_LINES,
+                    help="warn when a board card exceeds this estimated authored line count")
+    ap.add_argument("--max-board-card-elements", type=int, default=DEFAULT_MAX_BOARD_CARD_ELEMENTS,
+                    help="warn when a board card exceeds this authored element count")
     args = ap.parse_args(argv)
 
-    base_errors, base_warnings, deck_errors = validate_deck(args.file, contrast_threshold=args.contrast_threshold)
+    base_errors, base_warnings, deck_errors = validate_deck(
+        args.file, contrast_threshold=args.contrast_threshold,
+        max_slide_lines=args.max_slide_lines, max_slide_elements=args.max_slide_elements,
+        max_board_card_lines=args.max_board_card_lines,
+        max_board_card_elements=args.max_board_card_elements)
     print(f"deck_validate: {args.file}")
     for e in base_errors + deck_errors:
         print(f"  ERROR: {e}", file=sys.stderr)

@@ -40,6 +40,10 @@ def _errors(html):
     return deck_validate.deck_checks(html)
 
 
+def _warnings(html, **kwargs):
+    return deck_validate.deck_warnings_with_options(html, **kwargs)
+
+
 class DeckValidateTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -212,6 +216,34 @@ class DeckValidateTests(unittest.TestCase):
         self.assertEqual(
             _errors(_inject(self.html, '<p style="color: #fff; background-color: #000">Readable</p>')),
             [])
+
+    def test_cmh_deck_19_overloaded_slide_warns_without_error(self):
+        import contextlib
+        import io
+        extra = "".join(f"<p>Dense authored point {i}</p>" for i in range(1, 8))
+        overloaded = self.html.replace("</section>", extra + "</section>", 1)
+        self.assertEqual(_errors(overloaded), [])
+        warnings = _warnings(overloaded, max_slide_lines=4, max_slide_elements=4)
+        self.assertTrue(any("content overload advisory" in w and "slide " in w for w in warnings), warnings)
+        out = os.path.join(self.tmp, "overloaded.html")
+        Path(out).write_text(overloaded, encoding="utf-8")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            self.assertEqual(deck_validate.main([
+                "--max-slide-lines", "4", "--max-slide-elements", "4", out]), 0)
+        self.assertIn("WARNING: deck: content overload advisory", err.getvalue())
+
+    def test_cmh_deck_19_normal_slide_has_no_overload_warning(self):
+        self.assertEqual(_warnings(self.html), [])
+
+    def test_cmh_deck_19_overloaded_board_card_warns(self):
+        card = (
+            '<div data-cm-widget="board" data-cm-draggable><div data-cm-slot="todo">'
+            '<article data-cm-part="heavy-card" data-cm-part-label="Heavy card">'
+            + "".join(f"<p>Card detail {i}</p>" for i in range(1, 7)) +
+            "</article></div></div>")
+        warnings = _warnings(_inject(self.html, card), max_board_card_lines=3, max_board_card_elements=3)
+        self.assertTrue(any("board card Heavy card" in w for w in warnings), warnings)
 
     def test_local_media_and_data_uri_pass(self):
         # A local relative image and a data: URI are NOT egress and must not trip the media check.
