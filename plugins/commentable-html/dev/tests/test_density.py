@@ -81,10 +81,53 @@ class DensityAdvisoryTests(unittest.TestCase):
         self.assertTrue(density.check_density(doc, max_run=3)[1])
 
     def test_cmh_val_15_paragraphs_inside_layout_do_not_count(self):
-        # Long <p> nested inside a figure/list are layout content, not a prose wall.
-        inner = "<ul>%s</ul>" % ("<li>%s</li>" % _p(LONG)) * 6
+        # Long <p> inside a SINGLE list/figure are layout content, not a prose wall (this fixture
+        # is red without the layout_depth exclusion and green with it).
+        inner = "<ul>%s</ul>" % (("<li>%s</li>" % _p(LONG)) * 6)
         errors, warnings = density.check_density(_doc(inner))
         self.assertEqual(warnings, [])
+
+    def test_cmh_val_15_unclosed_paragraphs_still_warn(self):
+        # </p> is optional in HTML5; a wall written without closing tags must still be caught.
+        errors, warnings = density.check_density(_doc(("<p>%s" % LONG) * 4))
+        self.assertTrue(warnings, "expected a wall of unclosed paragraphs to warn")
+
+    def test_cmh_val_15_generic_and_missing_kind_are_exempt(self):
+        self.assertEqual(density.check_density(_doc(_p(LONG) * 6, kind="generic"))[1], [])
+        no_meta = (
+            '<!doctype html><html><head></head><body>'
+            '<main id="commentRoot" data-cmh-content-root><h1>t</h1><section><h2>s</h2>%s</section>'
+            "</main></body></html>" % (_p(LONG) * 6)
+        )
+        self.assertEqual(density.check_density(no_meta)[1], [])
+
+    def test_cmh_val_15_first_kind_meta_wins(self):
+        # A later duplicate/template kind meta must not flip the scope away from report.
+        doc = _doc(_p(LONG) * 6).replace(
+            "</head>", '<meta name="commentable-html-kind" content="slides" /></head>')
+        self.assertTrue(density.check_density(doc)[1], "first (report) kind meta should win")
+
+    def test_cmh_val_15_whitespace_does_not_inflate_length(self):
+        # Short prose padded with source newlines and inline markup collapses below the threshold.
+        para = "<p>\n  a <em>b</em>\n     c  <strong>d</strong>\n</p>"
+        self.assertEqual(density.check_density(_doc(para * 8))[1], [])
+
+    def test_cmh_val_15_short_paragraph_breaks_consecutiveness(self):
+        # Long paragraphs separated by short ones are not "consecutive long paragraphs".
+        self.assertEqual(density.check_density(_doc((_p(LONG) + _p(SHORT)) * 5))[1], [])
+
+    def test_cmh_val_15_wired_into_validate(self):
+        import tempfile
+        sys.path.insert(0, os.path.join(_paths.TOOLS, "validate"))
+        import validate  # noqa: E402
+        doc = _doc(_p(LONG) * 5)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "doc.html")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(doc)
+            _errors, warnings = validate.validate(path)
+        self.assertTrue(any("wall of" in w for w in warnings),
+                        msg="check_density must be wired into validate.validate")
 
 
 if __name__ == "__main__":

@@ -8,13 +8,16 @@ scoped to `#commentRoot`, ignores `cm-skip` subtrees, and is exempt for slides/b
 use section cards). All findings are non-fatal warnings, matching the section-wrapping advisory
 (CMH-VAL-14) precedent.
 """
+import re
 from html.parser import HTMLParser
 
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
 
 _KIND_META_NAME = "commentable-html-kind"
-_EXEMPT_KINDS = ("slides", "board")
+# The advisory is scoped to the title-bearing prose kinds; slides/board/generic and an unknown or
+# missing kind are exempt.
+_SCOPED_KINDS = ("report", "plan")
 
 _VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
@@ -67,25 +70,46 @@ class _DensityParser(HTMLParser):
         cls = self._classes(d)
         return any(c in cls for c in _LAYOUT_CLASSES)
 
+    def _flush_open_paragraph(self):
+        # Count an open prose paragraph before a boundary or EOF, so a paragraph whose </p> is
+        # omitted (optional in HTML5, and HTMLParser does not synthesize it) is not lost.
+        if self._p_prose:
+            self._close_paragraph()
+
     def _break_run(self):
+        # A boundary ends a consecutive prose run; flush any open paragraph into it first.
+        self._flush_open_paragraph()
         self.run = 0
+
+    def _note_kind(self, d):
+        # Keep the FIRST kind meta (matching the main parser), so a later duplicate or an inert
+        # template copy cannot flip the scope.
+        if not self.kind and (d.get("name") or "").lower() == _KIND_META_NAME:
+            self.kind = (d.get("content") or "").strip().lower()
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
         d = self._attrs(attrs)
-        if tag == "meta" and (d.get("name") or "").lower() == _KIND_META_NAME:
-            self.kind = (d.get("content") or "").strip().lower()
+        if tag == "meta":
+            self._note_kind(d)
         is_root = self._is_root(tag, d)
         is_skip = "cm-skip" in self._classes(d)
         is_layout = self.root_depth > 0 and self.skip_depth == 0 and self._is_layout(tag, d)
-        # A layout block, a heading, or a <section> boundary breaks a consecutive prose run.
-        if self.root_depth > 0 and self.skip_depth == 0 and (is_layout or tag in _HEADINGS or tag == "section"):
-            self._break_run()
-        if tag in _HEADINGS and self.root_depth > 0 and self.skip_depth == 0:
+        in_scope = self.root_depth > 0 and self.skip_depth == 0
+        is_boundary = in_scope and (is_layout or tag in _HEADINGS or tag == "section")
+        # A new paragraph or a boundary closes an open prose paragraph; a boundary also breaks the
+        # run (a new paragraph continues it).
+        if tag == "p" or is_boundary:
+            self._flush_open_paragraph()
+        if is_boundary:
+            self.run = 0
+        # Only a prose-level heading (not one buried in a layout block like a <figcaption>) names
+        # the current section.
+        if tag in _HEADINGS and in_scope and self.layout_depth == 0:
             self._heading_capture = True
             self._heading_text = []
         # Count a paragraph only when it sits at prose level (inside root, not skip, not layout).
-        if tag == "p" and self.root_depth > 0 and self.skip_depth == 0 and self.layout_depth == 0:
+        if tag == "p" and in_scope and self.layout_depth == 0:
             self._p_prose = True
             self._p_text = []
         if tag in _VOID:
@@ -98,12 +122,6 @@ class _DensityParser(HTMLParser):
         if is_layout:
             self.layout_depth += 1
 
-    def handle_startendtag(self, tag, attrs):
-        tag = tag.lower()
-        d = self._attrs(attrs)
-        if tag == "meta" and (d.get("name") or "").lower() == _KIND_META_NAME:
-            self.kind = (d.get("content") or "").strip().lower()
-
     def handle_data(self, data):
         if self._p_prose:
             self._p_text.append(data)
@@ -111,16 +129,19 @@ class _DensityParser(HTMLParser):
             self._heading_text.append(data)
 
     def _close_paragraph(self):
-        text = "".join(self._p_text).strip()
+        text = re.sub(r"\s+", " ", "".join(self._p_text)).strip()
         self._p_prose = False
         self._p_text = []
         if len(text) >= self.min_chars:
             self.run += 1
             if self.run == self.max_run:
-                self.findings.append(self.current_heading or "(untitled section)")
+                label = self.current_heading or "(untitled section)"
+                if label not in self.findings:
+                    self.findings.append(label)
         else:
-            # A short paragraph interrupts consecutiveness of long ones.
-            self._break_run()
+            # A short paragraph interrupts consecutiveness of long ones; reset without recursing
+            # back through _break_run (the paragraph is already closed).
+            self.run = 0
 
     def handle_endtag(self, tag):
         tag = tag.lower()
@@ -135,8 +156,8 @@ class _DensityParser(HTMLParser):
                 del self._stack[i:]
                 for _t, contrib in reversed(popped):
                     if contrib["root"]:
-                        self.root_depth -= 1
                         self._break_run()  # leaving the content root ends any open run
+                        self.root_depth -= 1
                     if contrib["skip"]:
                         self.skip_depth -= 1
                     if contrib["layout"]:
@@ -148,15 +169,17 @@ class _DensityParser(HTMLParser):
 
 def check_density(html, min_chars=MIN_LONG_PARAGRAPH_CHARS, max_run=MAX_CONSECUTIVE_LONG):
     """Return (errors, warnings). Warn once per report/plan section whose content is a run of
-    `max_run` or more consecutive long paragraphs with no layout-bearing block. slides/board are
-    exempt; a parse failure degrades to no findings. All findings are warnings."""
+    `max_run` or more consecutive long paragraphs with no layout-bearing block. Only report/plan
+    are checked (slides/board/generic/unknown are exempt); a parse failure degrades to no findings.
+    All findings are warnings."""
     p = _DensityParser(min_chars, max_run)
     try:
         p.feed(html)
         p.close()
+        p._flush_open_paragraph()  # count a paragraph whose </p> and enclosing tags are all omitted
     except Exception:
         return [], []
-    if p.kind in _EXEMPT_KINDS:
+    if p.kind not in _SCOPED_KINDS:
         return [], []
     warnings = []
     for label in p.findings:
