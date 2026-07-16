@@ -623,6 +623,12 @@ separate creation PR. Maintainer work items carry the `task` label and use the "
 item)" issue form (`.github/ISSUE_TEMPLATE/task.yml`); external contributors use the feature/plugin forms.
 Keep issue text plain ASCII (no em/en dashes or ellipsis), matching the repo house style.
 
+`task`-labeled issues are tracked on the maintainer's GitHub Project (v2) board,
+"AI Marketplace Tasks" (https://github.com/users/urikanonov/projects/1), which has a Status field
+(Todo / In Progress / Done). New `task`-labeled issues are auto-added to the board; its built-in
+workflows set a newly added item to Todo and move a card to Done when its issue closes or its linked
+PR merges, and you move a card to In Progress yourself when you claim it.
+
 **Issue-first is a non-negotiable (see rule 2).** Track the work as a `task`-labeled issue that is
 `In Progress` and assigned to you BEFORE writing any code. You can (and should) file the issue before the
 worktree exists, since it is not a file in the tree.
@@ -636,14 +642,14 @@ commands are:
 2. If nothing covers it, CREATE one, labeled `task`, filling the form's sections (Description, Acceptance
    criteria as a checklist, optional Implementation plan):
    `gh issue create --label task --title "Title" --body "..."`.
-3. CLAIM it: `gh issue edit <n> --add-assignee @me --add-label "status: in progress"` (and, once the
-   Project board is configured, move its board Status to In Progress).
+3. CLAIM it: `gh issue edit <n> --add-assignee @me --add-label "status: in progress"` (and move its
+   Status to In Progress on the Project board).
 4. PLAN it, then share the plan and get approval before coding: post the implementation plan as a comment
    with `gh issue comment <n> --body "1. ...  2. ..."`.
 5. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it.
 6. FINISH: open the PR with `Closes #<n>` in its body. The `issue-status-sync` workflow marks the issue
-   In Progress when the PR opens; merging the PR closes the issue (and, once the Project board is
-   configured, its built-in workflow moves the card to Done). Record the final summary in the PR
+   In Progress when the PR opens; merging the PR closes the issue (and the Project board's built-in
+   workflow moves the card to Done). Record the final summary in the PR
    description or a closing comment.
 
 CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, file an issue for it
