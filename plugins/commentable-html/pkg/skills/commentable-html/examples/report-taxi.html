@@ -8769,13 +8769,18 @@ function setupSideToc() {
   });
   // A11: filter the visible sections (and their menu entries) by heading + body text.
   function _cmTocSectionOf(it) { return (it.el && it.el.closest) ? it.el.closest("section") : null; }
+  // Cache each item's lowercase haystack (label + its section/heading text) once, so typing does
+  // not re-read textContent of every section on each keystroke.
+  items.forEach(function (it) {
+    const sec = _cmTocSectionOf(it);
+    it._cmHay = ((it.label || "") + " " + (sec ? sec.textContent : (it.el.textContent || ""))).toLowerCase();
+  });
   function applyTocFilter(q) {
     const query = String(q || "").trim().toLowerCase();
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       const sec = _cmTocSectionOf(it);
-      const hay = ((it.label || "") + " " + (sec ? sec.textContent : (it.el.textContent || ""))).toLowerCase();
-      const match = !query || hay.indexOf(query) !== -1;
+      const match = !query || it._cmHay.indexOf(query) !== -1;
       it._cmFiltered = !match; // scroll-spy reads this so it skips hidden entries (sectioned or not)
       const li = links[i].closest("li");
       if (li) li.classList.toggle("cm-toc-li-hidden", !match);
