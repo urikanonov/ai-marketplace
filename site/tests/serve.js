@@ -17,6 +17,7 @@ const TYPES = {
   ".txt": "text/plain; charset=utf-8",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".zip": "application/zip",
 };
 
 const server = http.createServer((req, res) => {

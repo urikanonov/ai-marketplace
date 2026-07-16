@@ -227,6 +227,127 @@ class RenderInstallTests(unittest.TestCase):
         self.assertIn('id="%s"' % expected_tab, out)
         self.assertRegex(expected_tab, r"^[A-Za-z0-9_-]+$")
 
+    def test_claude_desktop_tab_offers_a_zip_download_when_desktop_zip_set(self):
+        # A skill plugin gains a third "Claude Desktop" tab whose panel is a ZIP download plus
+        # import steps, alongside the two CLI tabs (SITE-INSTALL-05).
+        out = bsd.render_install("commentable-html", "urikan-ai-marketplace", True,
+                                 "install-cmh", desktop_zip="skills/commentable-html.zip",
+                                 desktop_skill="commentable-html")
+        self.assertIn("data-install-tabs", out)
+        self.assertIn(">GitHub Copilot</button>", out)
+        self.assertIn(">Claude Code</button>", out)
+        self.assertIn(">Claude Desktop</button>", out)
+        # The Desktop panel links to the skill ZIP as a download, not a CLI command row.
+        self.assertIn('href="skills/commentable-html.zip"', out)
+        self.assertIn("download", out)
+        self.assertIn("install-download", out)
+        # It tells the user where to import it (Settings > Features) without a CLI command.
+        self.assertIn("Settings", out)
+
+    def test_no_claude_desktop_tab_when_desktop_zip_is_absent(self):
+        out = bsd.render_install("commentable-html", "urikan-ai-marketplace", True, "install-x")
+        self.assertNotIn(">Claude Desktop</button>", out)
+        self.assertNotIn("install-download", out)
+
+    def test_marketplace_only_block_never_shows_a_desktop_tab(self):
+        # The hub hero "add the marketplace" block is generic (no specific skill), so even if a
+        # desktop_zip is passed it must not render a Desktop download tab.
+        out = bsd.render_install("", "urikan-ai-marketplace", True, "install-hub",
+                                 marketplace_only=True, desktop_zip="skills/commentable-html.zip",
+                                 desktop_skill="commentable-html")
+        self.assertNotIn(">Claude Desktop</button>", out)
+        self.assertNotIn("install-download", out)
+
+
+class SkillZipTests(unittest.TestCase):
+    """The Claude Desktop install tab downloads a ZIP of the shipped skill (SITE-INSTALL-06)."""
+
+    def _make_skill(self, root):
+        skill_rel = "plugins/demo/pkg/skills/demo"
+        skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+        os.makedirs(os.path.join(skill_dir, "tools"), exist_ok=True)
+        os.makedirs(os.path.join(skill_dir, "references"), exist_ok=True)
+        with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as fh:
+            fh.write("---\nname: demo\ndescription: d\n---\n# Demo\n")
+        with open(os.path.join(skill_dir, "tools", "x.py"), "w", encoding="utf-8") as fh:
+            fh.write("print('x')\n")
+        with open(os.path.join(skill_dir, "references", "a.md"), "w", encoding="utf-8") as fh:
+            fh.write("ref\n")
+        return skill_rel
+
+    def _descriptor(self, skill_rel):
+        return [{"skill_dir": skill_rel, "skill": "demo", "zip": "skills/demo.zip"}]
+
+    def test_members_have_top_level_skill_folder_with_skill_md(self):
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            members = bsd.build_skill_zip_members(root, skill_rel, "demo")
+            arcnames = [m[0] for m in members]
+            self.assertIn("demo/SKILL.md", arcnames)
+            self.assertIn("demo/tools/x.py", arcnames)
+            self.assertIn("demo/references/a.md", arcnames)
+            # Every member sits under the single top-level <skill-name>/ folder Claude Desktop expects.
+            for arc in arcnames:
+                self.assertTrue(arc.startswith("demo/"), arc)
+
+    def test_sync_writes_a_zip_and_check_is_clean(self):
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            self.assertEqual(bsd.sync_skill_zips(root, False, skills=skills), [])
+            zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+            self.assertTrue(os.path.isfile(zip_path))
+            import zipfile as _zip
+            with _zip.ZipFile(zip_path) as z:
+                self.assertIn("demo/SKILL.md", z.namelist())
+            self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
+
+    def test_check_flags_a_missing_zip(self):
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills))
+
+    def test_check_flags_content_drift_after_a_skill_edit(self):
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            bsd.sync_skill_zips(root, False, skills=skills)
+            self.assertEqual(bsd.sync_skill_zips(root, True, skills=skills), [])
+            # Edit a skill file without rebuilding the zip; check must catch the drift.
+            with open(os.path.join(root, skill_rel.replace("/", os.sep), "SKILL.md"),
+                      "a", encoding="utf-8") as fh:
+                fh.write("\nchanged\n")
+            self.assertTrue(bsd.sync_skill_zips(root, True, skills=skills))
+
+    def test_write_is_idempotent_and_avoids_churn(self):
+        # Re-running write with unchanged skill contents leaves the committed zip bytes untouched,
+        # so build_site_data.py does not produce spurious multi-MB diffs on every run.
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skills = self._descriptor(skill_rel)
+            bsd.sync_skill_zips(root, False, skills=skills)
+            zip_path = os.path.join(root, bsd.SITE_OUT, "skills", "demo.zip")
+            with open(zip_path, "rb") as fh:
+                first = fh.read()
+            bsd.sync_skill_zips(root, False, skills=skills)
+            with open(zip_path, "rb") as fh:
+                second = fh.read()
+            self.assertEqual(first, second)
+
+    def test_committed_commentable_html_zip_has_top_level_skill_folder(self):
+        # The real committed site zip must extract to a single commentable-html/ folder with SKILL.md
+        # at its root, matching what Claude Desktop's skill import expects.
+        import zipfile as _zip
+        zip_path = os.path.join(bsd.REPO_ROOT, bsd.SITE_OUT, "skills", "commentable-html.zip")
+        if not os.path.isfile(zip_path):
+            self.skipTest("committed skill zip not generated yet")
+        with _zip.ZipFile(zip_path) as z:
+            names = z.namelist()
+        self.assertIn("commentable-html/SKILL.md", names)
+        for n in names:
+            self.assertTrue(n.startswith("commentable-html/"), n)
+
 
 class ClaudePluginNamesTests(unittest.TestCase):
     def _write(self, tmp, obj):

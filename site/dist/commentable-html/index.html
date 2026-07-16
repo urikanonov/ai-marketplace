@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Tighten the planning loop. Inline comment on any HTML report and round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-commentable-html.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=92821dd06eec" />
+  <link rel="stylesheet" href="../assets/styles.css?v=84f50bbcc694" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -182,6 +182,7 @@
               <div class="install-tablist" role="tablist" aria-label="Install with">
                 <button class="install-tab" role="tab" type="button" id="install-cmh-copilot-tab" data-install-target="install-cmh-copilot" aria-selected="true" aria-controls="install-cmh-copilot" tabindex="0">GitHub Copilot</button>
                 <button class="install-tab" role="tab" type="button" id="install-cmh-claude-tab" data-install-target="install-cmh-claude" aria-selected="false" aria-controls="install-cmh-claude" tabindex="-1">Claude Code</button>
+                <button class="install-tab" role="tab" type="button" id="install-cmh-desktop-tab" data-install-target="install-cmh-desktop" aria-selected="false" aria-controls="install-cmh-desktop" tabindex="-1">Claude Desktop</button>
               </div>
               <div class="install-panel" role="tabpanel" id="install-cmh-copilot" aria-labelledby="install-cmh-copilot-tab">
                 <div class="install-row">
@@ -229,6 +230,16 @@
                       <button class="copy-btn" type="button" data-copy="claude plugin install commentable-html@urikan-ai-marketplace">copy</button>
                     </div>
                   </div>
+                </div>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-cmh-desktop" aria-labelledby="install-cmh-desktop-tab" hidden>
+                <div class="install-download">
+                  <a class="btn btn-primary install-download-btn" href="../skills/commentable-html.zip" download>Download the skill (ZIP)</a>
+                  <ol class="install-desktop-steps">
+                    <li>Download the ZIP above.</li>
+                    <li>In Claude (Desktop or claude.ai), open <strong>Settings &gt; Features</strong> and enable Skills (Pro, Max, Team, or Enterprise with code execution).</li>
+                    <li>Upload the ZIP to add the <code>commentable-html</code> skill, then invoke it in any chat.</li>
+                  </ol>
                 </div>
               </div>
             </div>

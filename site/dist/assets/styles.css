@@ -346,6 +346,20 @@ main > section:nth-of-type(even) {
   letter-spacing: 0.06em;
   color: var(--cp-text-muted);
 }
+/* Claude Desktop install panel: a ZIP download plus short import steps (no CLI command to copy). */
+.install-download { display: flex; flex-direction: column; gap: 14px; }
+.install-download-btn { align-self: flex-start; }
+.install-desktop-steps {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--cp-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+.install-desktop-steps code { font-family: var(--cp-mono); font-size: 0.85em; }
 @media (max-width: 560px) {
   .install-step { display: none; }
 }

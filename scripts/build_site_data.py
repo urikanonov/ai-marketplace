@@ -18,10 +18,12 @@ Usage:
 import argparse
 import hashlib
 import html
+import io
 import json
 import os
 import re
 import sys
+import zipfile
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -91,6 +93,21 @@ INSTALL_AGENTS = [
     ("copilot", "GitHub Copilot", "copilot"),
     ("claude", "Claude Code", "claude"),
 ]
+
+# Claude Desktop / claude.ai import a skill as a ZIP through Settings > Features (Pro/Max/Team/
+# Enterprise with code execution). The install block offers a third "Claude Desktop" tab for the
+# plugins listed here, linking to a downloadable ZIP of the shipped skill. The auto-updater is
+# intentionally absent: its value is the session-start hook, which a Desktop skill import cannot
+# provide, so it offers CLI tabs only. Each entry: skill_dir (repo-relative, the shipped skill
+# whose contents are zipped under a single top-level `skill/` folder), skill (the folder/skill
+# name), and zip (the site/dist-relative output path).
+DESKTOP_SKILLS = {
+    "commentable-html": {
+        "skill_dir": "plugins/commentable-html/pkg/skills/commentable-html",
+        "skill": "commentable-html",
+        "zip": "skills/commentable-html.zip",
+    },
+}
 
 # Absolute production URLs, used for canonical/OG links (hand-authored in the page heads) and for
 # the JSON-LD graph, sitemap, and llms.txt generated below. The site is served from this fixed
@@ -382,24 +399,50 @@ def _install_rows(binary, name, suffix, marketplace_only):
         for i, (kind, label) in enumerate(rows, start=1))
 
 
-def render_install(name, suffix, claude, idbase, marketplace_only=False):
-    """A tabbed install block: one tab per supported agent (Copilot always, Claude when `claude`),
+def _install_desktop_panel(zip_url, skill_name):
+    """The Claude Desktop install panel: a download link to the shipped skill ZIP plus short import
+    steps. Unlike the CLI panels, there is no command to run - the user uploads the ZIP in Claude's
+    Settings > Features (Pro/Max/Team/Enterprise with code execution)."""
+    href = esc(safe_url(zip_url))
+    return (
+        '<div class="install-download">\n'
+        '          <a class="btn btn-primary install-download-btn" href="%s" download>'
+        'Download the skill (ZIP)</a>\n'
+        '          <ol class="install-desktop-steps">\n'
+        '            <li>Download the ZIP above.</li>\n'
+        '            <li>In Claude (Desktop or claude.ai), open <strong>Settings &gt; Features</strong> '
+        'and enable Skills (Pro, Max, Team, or Enterprise with code execution).</li>\n'
+        '            <li>Upload the ZIP to add the <code>%s</code> skill, then invoke it in any chat.</li>\n'
+        '          </ol>\n'
+        '        </div>'
+    ) % (href, esc(skill_name))
+
+
+def render_install(name, suffix, claude, idbase, marketplace_only=False,
+                   desktop_zip=None, desktop_skill=None):
+    """A tabbed install block: one tab per supported agent (Copilot always, Claude when `claude`,
+    and a "Claude Desktop" ZIP-download tab when `desktop_zip` is set and this is a specific plugin),
     each panel splitting the marketplace-add and plugin-install commands into separate rows with
-    their own copy buttons. When only one agent is supported the tab chrome is dropped and the rows
-    render on their own, so a Copilot-only plugin never shows an empty or misleading Claude tab.
-    `idbase` is slugged so an id/ARIA attribute derived from a plugin name is always valid and safe.
-    Tab/panel visibility is driven by the `hidden` attribute (mirrored by the JS); `aria-selected`
-    marks the active tab. No cosmetic state class is emitted - the CSS keys off `aria-selected`/
-    `hidden`."""
+    their own copy buttons. When only one entry is supported the tab chrome is dropped and the panel
+    renders on its own, so a Copilot-only plugin never shows an empty or misleading tab. `idbase` is
+    slugged so an id/ARIA attribute derived from a plugin name is always valid and safe. Tab/panel
+    visibility is driven by the `hidden` attribute (mirrored by the JS); `aria-selected` marks the
+    active tab. No cosmetic state class is emitted - the CSS keys off `aria-selected`/`hidden`."""
     idbase = _slug_id(idbase)
     agents = [a for a in INSTALL_AGENTS if a[0] == "copilot" or claude]
-    if len(agents) == 1:
-        binary = agents[0][2]
+    entries = [(key, label, _install_rows(binary, name, suffix, marketplace_only))
+               for key, label, binary in agents]
+    # The Desktop ZIP tab is a per-plugin download, so it never appears on the generic hub hero
+    # (marketplace_only) block, only on a specific plugin's install block.
+    if desktop_zip and not marketplace_only:
+        entries.append(("desktop", "Claude Desktop",
+                        _install_desktop_panel(desktop_zip, desktop_skill or name)))
+    if len(entries) == 1:
         return ('<div class="install-block install-solo">\n        %s\n      </div>'
-                % _install_rows(binary, name, suffix, marketplace_only))
+                % entries[0][2])
     tabs = []
     panels = []
-    for idx, (key, label, binary) in enumerate(agents):
+    for idx, (key, label, panel_html) in enumerate(entries):
         active = idx == 0
         tab_id = "%s-%s-tab" % (idbase, key)
         panel_id = "%s-%s" % (idbase, key)
@@ -411,8 +454,7 @@ def render_install(name, suffix, claude, idbase, marketplace_only=False):
         panels.append(
             '<div class="install-panel" role="tabpanel" id="%s" aria-labelledby="%s"%s>\n'
             '        %s\n      </div>'
-            % (panel_id, tab_id, "" if active else " hidden",
-               _install_rows(binary, name, suffix, marketplace_only)))
+            % (panel_id, tab_id, "" if active else " hidden", panel_html))
     return (
         '<div class="install-block install-tabs" data-install-tabs>\n'
         '      <div class="install-tablist" role="tablist" aria-label="Install with">\n'
@@ -421,6 +463,16 @@ def render_install(name, suffix, claude, idbase, marketplace_only=False):
         '      %s\n'
         '    </div>'
     ) % ("\n        ".join(tabs), "\n      ".join(panels))
+
+
+def _desktop_install_args(plugin_name, rel_prefix=""):
+    """The (zip_url, skill_name) to pass render_install for a plugin's Claude Desktop tab, or
+    (None, None) when the plugin offers no Desktop skill ZIP. `rel_prefix` adjusts the ZIP URL for
+    the calling page's directory depth (empty for the hub, "../" for a plugin subpage)."""
+    d = DESKTOP_SKILLS.get(plugin_name)
+    if not d:
+        return (None, None)
+    return (rel_prefix + d["zip"], d["skill"])
 
 
 def render_plugins(manifest, claude_names=None):
@@ -435,8 +487,10 @@ def render_plugins(manifest, claude_names=None):
         keywords = plugin.get("keywords", []) or []
         homepage = plugin.get("homepage", "")
         page = PLUGIN_PAGES.get(name)
+        desktop_zip, desktop_skill = _desktop_install_args(name)
         install_block = render_install(name, suffix, name in claude_names,
-                                       "install-card-" + name)
+                                       "install-card-" + name,
+                                       desktop_zip=desktop_zip, desktop_skill=desktop_skill)
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
         title = '<span class="name">%s</span>' % esc(name)
@@ -969,6 +1023,77 @@ def sync_tutorial_images(root, check):
     return drift
 
 
+def build_skill_zip_members(root, skill_dir_rel, skill_name):
+    """The ordered [(arcname, bytes)] contents of a skill ZIP: every file under the shipped skill
+    directory, placed under a single top-level `<skill_name>/` folder (with SKILL.md at its root),
+    which is the structure Claude Desktop / claude.ai skill import expects. Sorted by arcname so the
+    archive is deterministic."""
+    skill_dir = os.path.join(root, skill_dir_rel.replace("/", os.sep))
+    members = []
+    for dirpath, dirs, names in os.walk(skill_dir):
+        dirs.sort()
+        for name in sorted(names):
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, skill_dir).replace(os.sep, "/")
+            with open(full, "rb") as fh:
+                members.append(("%s/%s" % (skill_name, rel), fh.read()))
+    members.sort(key=lambda m: m[0])
+    return members
+
+
+def _skill_zip_bytes(members):
+    """A deterministic ZIP of `members`: fixed timestamps and permissions and a stable member order,
+    so a rebuild from the same skill files is reproducible."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for arcname, data in members:
+            info = zipfile.ZipInfo(arcname, date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, data)
+    return buf.getvalue()
+
+
+def _zip_logical_members(path):
+    """The logical {arcname -> uncompressed bytes} of a committed ZIP, or None when it is missing or
+    unreadable. Comparing logical members (not raw archive bytes) makes the --check drift guard
+    immune to zlib/platform differences in the compressed container."""
+    if not os.path.isfile(path):
+        return None
+    try:
+        with zipfile.ZipFile(path, "r") as archive:
+            return {info.filename: archive.read(info.filename) for info in archive.infolist()}
+    except (OSError, zipfile.BadZipFile):
+        return None
+
+
+def sync_skill_zips(root, check, skills=None):
+    """Generate (or, in check mode, verify) a downloadable ZIP of each Claude-Desktop skill under
+    site/dist/skills/. In check mode a stale or missing ZIP is drift (compared by logical contents,
+    so compression/platform differences never cause a false failure). In write mode the ZIP is only
+    rewritten when its logical contents changed, so an unchanged skill never produces a spurious
+    multi-MB diff. An orphaned ZIP (its skill was removed) is flagged/deleted."""
+    skills = list(DESKTOP_SKILLS.values()) if skills is None else skills
+    dst_dir = os.path.join(root, SITE_OUT, "skills")
+    drift = []
+    written = []
+    for descriptor in skills:
+        zip_name = descriptor["zip"].split("/")[-1]
+        written.append(zip_name)
+        dst = os.path.join(dst_dir, zip_name)
+        members = build_skill_zip_members(root, descriptor["skill_dir"], descriptor["skill"])
+        expected = {arcname: data for arcname, data in members}
+        if check:
+            if _zip_logical_members(dst) != expected:
+                drift.append(zip_name)
+        elif _zip_logical_members(dst) != expected:
+            _safe_makedirs(dst_dir)
+            with open(dst, "wb") as fh:
+                fh.write(_skill_zip_bytes(members))
+    drift.extend(_orphans(dst_dir, set(written), check))
+    return drift
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description="Generate static site data.")
     parser.add_argument("--check", action="store_true",
@@ -1025,7 +1150,9 @@ def main(argv):
     plugin_out = build_page(root, PLUGIN_SRC, [
         ("inline", "version", "v" + esc(version)),
         ("block", "install", render_install(
-            CHANGELOG_PLUGIN, suffix, CHANGELOG_PLUGIN in claude_names, "install-cmh")),
+            CHANGELOG_PLUGIN, suffix, CHANGELOG_PLUGIN in claude_names, "install-cmh",
+            desktop_zip=_desktop_install_args(CHANGELOG_PLUGIN, "../")[0],
+            desktop_skill=_desktop_install_args(CHANGELOG_PLUGIN, "../")[1])),
         ("block", "changelog", changelog_html),
         ("inline", "demo-fullscreen", render_demo_fullscreen_link()),
     ])
@@ -1059,6 +1186,7 @@ def main(argv):
 
     demo_drift = sync_demos(root, args.check)
     tutorial_img_drift = sync_tutorial_images(root, args.check)
+    skill_zip_drift = sync_skill_zips(root, args.check)
     sitemap_drift = write_or_check(
         os.path.join(root, SITE_OUT, "sitemap.xml"), render_sitemap(root), args.check)
     llms_drift = write_or_check(
@@ -1094,6 +1222,9 @@ def main(argv):
             problems.append("demo reports differ from source: " + ", ".join(demo_drift))
         if tutorial_img_drift:
             problems.append("tutorial images differ from source: " + ", ".join(tutorial_img_drift))
+        if skill_zip_drift:
+            problems.append("Claude Desktop skill ZIP is stale or missing: "
+                            + ", ".join(skill_zip_drift))
         if sitemap_drift:
             problems.append("site/dist/sitemap.xml is stale")
         if llms_drift:

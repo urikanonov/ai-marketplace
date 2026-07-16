@@ -667,6 +667,31 @@ test("install tabs support arrow-key navigation (SITE-INSTALL-03)", async ({ pag
   await expect(copilotTab).toHaveAttribute("aria-selected", "true");
 });
 
+test("a skill plugin offers a Claude Desktop ZIP-download tab; the auto-updater does not (SITE-INSTALL-05)", async ({ page }) => {
+  // commentable-html is a pure importable skill, so its install block has a third "Claude Desktop"
+  // tab whose panel downloads the skill ZIP (no CLI command). The auto-updater's value is a session
+  // hook a Desktop import cannot provide, so it offers CLI tabs only.
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const block = page.locator("#install .install-tabs");
+  const desktopTab = block.locator(".install-tab", { hasText: "Claude Desktop" });
+  await expect(desktopTab).toBeVisible();
+  await desktopTab.click();
+  const download = page.locator("#install .install-download a[download]");
+  await expect(download).toBeVisible();
+  await expect(download).toHaveAttribute("href", /skills\/commentable-html\.zip$/);
+  // The auto-updater page keeps only the two CLI tabs.
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#install .install-tab", { hasText: "GitHub Copilot" })).toBeVisible();
+  await expect(page.locator("#install .install-tab", { hasText: "Claude Code" })).toBeVisible();
+  await expect(page.locator("#install .install-tab", { hasText: "Claude Desktop" })).toHaveCount(0);
+});
+
+test("the Claude Desktop skill ZIP is served for download (SITE-INSTALL-06)", async ({ request }) => {
+  const r = await request.get("/skills/commentable-html.zip");
+  expect(r.status()).toBeLessThan(400);
+  expect(r.headers()["content-type"]).toContain("application/zip");
+});
+
 test("the pages state dual-agent invocation from each agent's CLI and Desktop app (SITE-DUAL-01)", async ({ page }) => {
   // Hub: the hero lead names both agents and the CLI+Desktop invocation.
   await page.goto("/", { waitUntil: "domcontentloaded" });
