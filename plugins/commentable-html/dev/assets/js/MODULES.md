@@ -52,5 +52,6 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `75-help.js` | CMH-HELP, CMH-A11Y | Help dialog. |
 | `80-sort-comments.js` | CMH-SIDE | Sort comments by time. |
 | `82-toc.js` | CMH-TOC | Table-of-contents side menu. |
+| `83-print.js` | CMH-PRINT | Print/PDF comment appendix materializer for flat documents. |
 | `90-toast.js` | CMH-A11Y | Toast notifications. |
 | `95-startup.js` | CMH-HANDLED, CMH-EXP | Handled-id pruning; startup; closes the IIFE. |

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.87.0" />
+<meta name="commentable-html-version" content="1.88.0" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.87.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.88.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML - Demo</title>
 
@@ -1802,6 +1802,261 @@ body.cmh-deck-present #menuComment {
     display: none;
   }
 }
+.cmh-print-comments,
+.cmh-print-noscript {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 0.6in;
+  }
+
+  :root,
+  html[data-theme="dark"] {
+    --cp-bg: #fff;
+    --cp-bg-elevated: #fff;
+    --cp-surface: #fff;
+    --cp-surface-soft: #f8fafc;
+    --cp-panel-strong: #fff;
+    --cp-border: #cbd5e1;
+    --cp-text: #111827;
+    --cp-text-soft: #374151;
+    --cp-text-muted: #4b5563;
+    --cp-link: #1d4ed8;
+    --cp-accent: #1d4ed8;
+    --cp-accent-hover: #1e40af;
+    --cp-accent-soft: #eff6ff;
+    --cp-accent-fg: #fff;
+    --cp-warning: #92400e;
+    --cp-warning-soft: #fffbeb;
+    --cp-danger: #991b1b;
+    --cp-danger-soft: #fef2f2;
+    --cp-success: #166534;
+    --cp-success-soft: #f0fdf4;
+    --cp-shadow: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+  }
+
+  html,
+  body {
+    background: var(--cp-bg) !important;
+    color: var(--cp-text) !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: economy;
+    print-color-adjust: economy;
+  }
+
+  body,
+  .app,
+  body.sidebar-open .app,
+  body.cm-side-toc-on .app,
+  body.cm-has-footer .app {
+    max-width: none !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: var(--cp-bg) !important;
+    color: var(--cp-text) !important;
+    overflow: visible !important;
+  }
+
+  body > .cm-skip,
+  .cm-toolbar,
+  .cm-sidebar,
+  .cm-sidebar-resize,
+  .cm-side-toc,
+  .cm-scroll-progress,
+  .cm-footer,
+  .cm-menu,
+  .cm-composer,
+  .cm-tooltip,
+  .cm-toast,
+  .cm-modal-overlay,
+  .cm-mermaid-add,
+  .cm-diff-add,
+  .cm-image-add,
+  .cm-widget-add,
+  .cm-hl-bubble,
+  #commentRoot .cmh-sec-caret,
+  .cm-code-copy,
+  #commentRoot [data-cmh-copy],
+  #commentRoot [data-cmh-check-btn],
+  #commentRoot [data-cmh-note-toggle],
+  #commentRoot [data-cmh-note-fold] {
+    display: none !important;
+  }
+
+  #commentRoot,
+  #commentRoot * {
+    overflow: visible !important;
+  }
+
+  #commentRoot {
+    background: var(--cp-bg) !important;
+    color: var(--cp-text) !important;
+  }
+
+  #commentRoot section.cmh-section-collapsed > * {
+    display: revert !important;
+  }
+
+  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
+  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head {
+    display: revert !important;
+  }
+
+  #commentRoot section.cmh-section-collapsed > .cm-code-copy,
+  #commentRoot section.cmh-section-collapsed > [data-cmh-copy],
+  #commentRoot section.cmh-section-collapsed > [data-cmh-check-btn],
+  #commentRoot section.cmh-section-collapsed > [data-cmh-note-toggle],
+  #commentRoot section.cmh-section-collapsed > [data-cmh-note-fold] {
+    display: none !important;
+  }
+
+  #commentRoot > section,
+  #commentRoot .cmh-lede,
+  #commentRoot .cm-toc,
+  #commentRoot .cmh-callout,
+  #commentRoot figure.cmh-kql,
+  #commentRoot .cmh-diff-view,
+  .cmh-print-comments,
+  .cmh-print-noscript {
+    background: var(--cp-surface) !important;
+    color: var(--cp-text) !important;
+    border-color: var(--cp-border) !important;
+    box-shadow: none !important;
+  }
+
+  #commentRoot > section,
+  #commentRoot .cmh-lede,
+  #commentRoot .cm-toc,
+  #commentRoot figure,
+  #commentRoot pre,
+  #commentRoot blockquote,
+  #commentRoot table,
+  #commentRoot .cmh-callout,
+  .cmh-print-comment {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #commentRoot pre,
+  #commentRoot code,
+  #commentRoot .cmh-diff-view pre,
+  #commentRoot .cmh-diff-view code,
+  #commentRoot figure.cmh-kql pre,
+  #commentRoot figure.cmh-kql code {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  #commentRoot table {
+    display: table !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  #commentRoot img,
+  #commentRoot svg,
+  #commentRoot canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  a {
+    color: var(--cp-link) !important;
+  }
+
+  .cmh-print-comments,
+  .cmh-print-noscript {
+    display: block !important;
+    margin: 2rem 0 0 !important;
+    padding: 1rem 0 0 !important;
+    border-top: 2px solid var(--cp-border) !important;
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .cmh-print-comments h2,
+  .cmh-print-noscript h2 {
+    margin: 0 0 0.7rem !important;
+    color: var(--cp-text) !important;
+  }
+
+  .cmh-print-comment {
+    margin: 1rem 0 !important;
+    padding: 0.85rem 1rem !important;
+    border: 1px solid var(--cp-border) !important;
+    border-radius: 10px !important;
+    background: var(--cp-surface-soft) !important;
+  }
+
+  .cmh-print-comment h3 {
+    margin: 0 0 0.45rem !important;
+    color: var(--cp-text) !important;
+  }
+
+  .cmh-print-comment p {
+    margin: 0.35rem 0 !important;
+  }
+
+  .cmh-print-comment blockquote {
+    margin: 0.5rem 0 !important;
+    padding: 0.4rem 0.65rem !important;
+    border-left: 3px solid var(--cp-warning) !important;
+    color: var(--cp-text-muted) !important;
+    background: var(--cp-warning-soft) !important;
+    white-space: pre-wrap !important;
+  }
+
+  .cmh-print-meta {
+    color: var(--cp-text-muted) !important;
+    font-size: 0.82rem !important;
+  }
+
+  #commentRoot[data-cmh-mode="deck"] .deck-viewport,
+  #commentRoot[data-cmh-mode="deck"] .deck-stage {
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    height: auto !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+
+  #commentRoot[data-cmh-mode="deck"] .slide {
+    position: relative !important;
+    inset: auto !important;
+    display: block !important;
+    width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    overflow: visible !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #commentRoot[data-cmh-mode="deck"] .slide:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}
 /* ---------- Reduced motion (CMH-A11Y-07) ---------- */
 /* Honor the OS/browser "reduce motion" preference: clamp every non-essential animation and
    transition (including their delays) to near-instant so the composer flash, mermaid/diff pulses,
@@ -2132,6 +2387,10 @@ gantt
 
 <!-- END: commentable-html - CONTENT -->
 </main>
+<noscript id="cmhPrintNoScript" class="cmh-print-noscript" aria-label="Review comments print fallback">
+  <h2>Review comments</h2>
+  <p>JavaScript is disabled, so live comment data cannot be materialized into this printout. Enable JavaScript and print again to include current comments, or export to Markdown from a JavaScript-enabled session.</p>
+</noscript>
 </div>
 <!-- End of per-document content -->
 
@@ -2193,7 +2452,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.87.0";
+const CMH_VERSION = "1.88.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8908,6 +9167,87 @@ function setupScrollProgress() {
   update();
 }
 
+function _printHeadingPath(c) {
+  if (c && c.headingPath && c.headingPath.length) {
+    return c.headingPath.map(function (h) { return h && h.text; }).filter(Boolean).join(" > ");
+  }
+  return (c && c.section) || "";
+}
+function _printAnchorLabel(c) {
+  if (!c) return "Comment";
+  if (c.anchorType === "document") return "Document-wide comment";
+  if (c.anchorType === "mermaid") {
+    return c.nodeKey && c.nodeKey !== "__diagram__" ? "Mermaid node " + c.nodeKey : "Mermaid diagram";
+  }
+  if (c.anchorType === "diff") {
+    const line = (typeof diffLineLocator === "function") ? diffLineLocator(c) : "";
+    return "Diff" + (c.diffLabel ? " " + c.diffLabel : "") + (line ? " - " + line : "");
+  }
+  if (c.anchorType === "image") return (c.imageKind === "chart" ? "Chart" : "Image") + " " + ((Number(c.imageIndex) || 0) + 1);
+  if (c.anchorType === "widget") return "Widget " + (c.widget || "widget") + (c.partLabel || c.part ? " - " + (c.partLabel || c.part) : "");
+  if (c.isCode) return c.codeLanguage ? "Code block (" + c.codeLanguage + ")" : "Code block";
+  return "Text selection";
+}
+function _printQuote(c) {
+  if (!c) return "";
+  if (c.anchorType === "document") return "(document-wide comment)";
+  if (c.anchorType === "image") return c.imageAlt || c.quote || c.imageSrc || "";
+  if (c.anchorType === "widget") return c.partLabel || c.part || c.quote || "";
+  if (c.anchorType === "mermaid") return c.nodeLabel || c.nodeKey || c.quote || "";
+  return c.quote || "";
+}
+function _renderPrintComment(c, index) {
+  const path = _printHeadingPath(c);
+  const quote = _printQuote(c);
+  const time = formatTime((c && (c.updatedAt || c.createdAt)) || "");
+  return '<article class="cmh-print-comment" data-cid="' + escapeHtml(c.id || "") + '">'
+    + '<h3>Comment ' + (index + 1) + '</h3>'
+    + (path ? '<p class="cmh-print-path"><strong>In:</strong> ' + escapeHtml(path) + '</p>' : "")
+    + '<p class="cmh-print-anchor"><strong>Anchor:</strong> ' + escapeHtml(_printAnchorLabel(c)) + '</p>'
+    + (quote ? '<blockquote>' + escapeHtml(quote) + '</blockquote>' : "")
+    + '<p class="cmh-print-note">' + escapeHtml(c.note || "") + '</p>'
+    + '<p class="cmh-print-meta">#' + escapeHtml(c.id || "") + (time ? " - " + escapeHtml(time) : "") + '</p>'
+    + '</article>';
+}
+function materializePrintAppendix() {
+  if (IS_DECK) return;
+  let appendix = document.getElementById("cmhPrintComments");
+  if (!comments.length) {
+    if (appendix) appendix.remove();
+    return;
+  }
+  if (!appendix) {
+    appendix = document.createElement("section");
+    appendix.id = "cmhPrintComments";
+    appendix.className = "cmh-print-comments";
+    appendix.setAttribute("aria-label", "Review comments");
+    root.appendChild(appendix);
+    CMH_INJECTED_CHROME.add(appendix);
+  }
+  appendix.innerHTML = '<h2>Review comments</h2>'
+    + '<p class="cmh-print-intro">Current in-browser comments at print time.</p>'
+    + comments.map(_renderPrintComment).join("");
+}
+function clearPrintAppendix() {
+  const appendix = document.getElementById("cmhPrintComments");
+  if (appendix) appendix.remove();
+}
+function setupPrintAppendix() {
+  if (IS_DECK || setupPrintAppendix._done) return;
+  setupPrintAppendix._done = true;
+  window.addEventListener("beforeprint", materializePrintAppendix);
+  window.addEventListener("afterprint", clearPrintAppendix);
+  if (window.matchMedia) {
+    const query = window.matchMedia("print");
+    const onChange = function (event) {
+      if (event.matches) materializePrintAppendix();
+      else clearPrintAppendix();
+    };
+    if (query.addEventListener) query.addEventListener("change", onChange);
+    else if (query.addListener) query.addListener(onChange);
+    if (query.matches) materializePrintAppendix();
+  }
+}
 /* ---------- Toast ---------- */
 let toastTimer = null;
 function showToast(msg, opts) {
@@ -9111,6 +9451,7 @@ setupSortableTables();
 setupModeUi();
 setupSidebarResize();
 setupCommentSearch();
+setupPrintAppendix();
 function setupDeck() {
   if (window.__cmhDeck) return;  // idempotent: never install the deck chrome twice
   const stage = root.querySelector(".deck-stage");

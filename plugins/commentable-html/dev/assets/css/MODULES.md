@@ -21,4 +21,5 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
 | `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
 | `90-deck.css` | CMH-DECK | Deck profile (`data-cmh-mode="deck"`) overrides. |
+| `92-print.css` | CMH-PRINT | Print/PDF stylesheet for flat documents plus one-slide-per-page deck print flow. |
 | `95-reduced-motion.css` | CMH-A11Y | `prefers-reduced-motion` reset: clamps non-essential animations/transitions to near-zero. |
