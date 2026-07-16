@@ -1157,6 +1157,8 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
   flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
 }
 #commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run { color: #f8fafc; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: #dbeafe; }
 /* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
    side without cramping, so stack them on their own lines. */
 @media (max-width: 700px) {
@@ -1508,6 +1510,12 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-label {
   color: var(--cmh-deck-code-text);
 }
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run {
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run:hover {
+  color: #dbeafe;
+}
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
@@ -1595,9 +1603,13 @@ body.cmh-deck-present #menuComment {
   color: #f8fafc !important;
   fill: #f8fafc !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link, marker path) {
-  stroke: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
+  stroke: #334155 !important;
+  stroke-width: 2.4px !important;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg marker path {
+  stroke: #334155 !important;
+  fill: #334155 !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel p {

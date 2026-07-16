@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.128.0] - 2026-07-16
+
+### Fixed
+
+- Dark KQL caption surfaces now keep the `Run in Azure Data Explorer` link at AA contrast in both
+  report dark theme and deck mode, and deck Mermaid connectors/arrows now render darker and thicker
+  so they stay readable on the light parchment slides. (CMH-KQL-04, CMH-DECK-09, CMH-DECK-13)
+
+### Added
+
+- `tools/validate/cmhval/contrast.py` now resolves computed descendant text/background pairs and
+  low-contrast connector strokes, so `deck_validate.py` catches the old red-on-dark KQL link and
+  washed-out diagram arrows before publish. (CMH-DECK-12)
+
 ## [1.126.0] - 2026-07-16
 
 ### Fixed

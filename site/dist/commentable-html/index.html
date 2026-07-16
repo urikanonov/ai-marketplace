@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.126.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.128.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,25 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.128.0] - 2026-07-16</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Dark KQL caption surfaces now keep the <code>Run in Azure Data Explorer</code> link at AA contrast in both report dark theme and deck mode, and deck Mermaid connectors/arrows now render darker and thicker so they stay readable on the light parchment slides. (CMH-KQL-04, CMH-DECK-09, CMH-DECK-13)</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li><code>tools/validate/cmhval/contrast.py</code> now resolves computed descendant text/background pairs and low-contrast connector strokes, so <code>deck_validate.py</code> catches the old red-on-dark KQL link and washed-out diagram arrows before publish. (CMH-DECK-12)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.126.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Mermaid checker (<code>cmhval/mermaid.py</code>, CMH-SYN-01): flag a <code>sequenceDiagram</code> message whose <code>;</code> leaves an arrow-free tail (a bare word or ordinary prose, e.g. <code>A-&gt;&gt;B: hi; take entities as-is</code>), not only an arrow-without-colon tail. Once the first <code>;</code>-segment is a real signal, any tail that is not another full signal, a keyword-led statement, or empty is a broken second statement the real parser rejects; the broadened rule stays zero-false-positive (proven against the real-parser corpus). Fixes issue #324.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.125.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
@@ -428,8 +441,6 @@
               <li>Simplified the showcase deck copy: shorter install guidance, plain-language prompts, clearer &quot;paste Copy all and press Enter&quot; review flow, and fewer repeated account/server comparisons. (deck issue #290)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.124.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -460,19 +471,7 @@
               <li>Split the shipped layer validator check module into focused assembled topic parts while preserving the public <code>check_layer</code> entry point and validation behavior.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.117.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Document-overview strip for report/plan documents: a <code>cm-skip</code> <code>div.cmh-doc-stats</code> placed directly under the <code>&lt;h1&gt;</code> title shows the section count, word count, and approximate reading time (words / 200 wpm, rounded up). <code>tools/authoring/doc_stats.py</code> computes and injects it, and <code>new_document.py</code>, <code>finalize.py</code>, and <code>retrofit.py</code> bake it by default for report/plan documents (opt out with <code>--no-stats</code>). It is idempotent (counts refresh in place), excluded from its own word count, and baked into the content so it survives Plain / Standalone export. (CMH-STATS-01)</li>
-              <li>Per-version upgrade anti-regression corpus under <code>dev/upgrade-corpus/</code>: <code>tests/test_upgrade_corpus.py</code> upgrades each checked-in fully layered snapshot with the current <code>tools/authoring/upgrade.py</code> and asserts a strict-clean, idempotent result, so a layer or tool change that breaks upgrading a document produced by an older version fails the gate. Snapshots are added per change when a version warrants one. (CMH-TOOL-20)</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The generated table of contents no longer double-numbers author-numbered sections. When a heading already begins with a section number (for example <code>1. Executive summary</code>), <code>generate_toc.py</code> strips the redundant leading number from the ordered-list entry so the <code>&lt;ol&gt;</code> supplies the single number, and <code>finalize.py</code> / <code>retrofit.py</code> de-dup an existing author <code>&lt;ol&gt;</code> <code>.cm-toc</code> in place. A <code>&lt;ul&gt;</code> <code>.cm-toc</code> (where the author supplies the number deliberately) is left untouched. (CMH-TOC-10)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">106 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">107 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

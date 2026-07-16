@@ -92,6 +92,70 @@ class ContrastUtilityTests(unittest.TestCase):
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].background, "#eee")
 
+    def test_cmh_deck_12_finds_computed_kql_run_link_contrast(self):
+        html = """
+        <style>
+        .cmh-kql-cap { background: #111827; }
+        .cmh-kql-run { color: #b11f4b; }
+        </style>
+        <figure class="cmh-kql">
+          <figcaption class="cmh-kql-cap">
+            <a class="cmh-kql-run" href="https://dataexplorer.azure.com/">Run in Azure Data Explorer</a>
+          </figcaption>
+        </figure>
+        """
+        issues = contrast.find_low_contrast_pairs(html)
+        self.assertTrue(any(
+            "cmh-kql-run" in issue.source and issue.background == "#111827"
+            for issue in issues
+        ), issues)
+
+    def test_cmh_deck_12_fixed_kql_run_link_contrast_passes(self):
+        html = """
+        <style>
+        .cmh-kql-cap { background: #111827; }
+        .cmh-kql-run { color: #ffffff; }
+        </style>
+        <figure class="cmh-kql">
+          <figcaption class="cmh-kql-cap">
+            <a class="cmh-kql-run" href="https://dataexplorer.azure.com/">Run in Azure Data Explorer</a>
+          </figcaption>
+        </figure>
+        """
+        self.assertEqual(contrast.find_low_contrast_pairs(html), [])
+
+    def test_cmh_deck_12_finds_low_contrast_connector_stroke(self):
+        html = """
+        <style>
+        .slide { background: #f7f4ef; }
+        .connector { stroke: #cbd5e1; stroke-width: 1.5; fill: none; }
+        </style>
+        <div class="slide">
+          <svg viewBox="0 0 100 20" aria-hidden="true">
+            <path class="connector" d="M 0 10 L 100 10"></path>
+          </svg>
+        </div>
+        """
+        issues = contrast.find_low_contrast_pairs(html)
+        self.assertTrue(any(
+            "connector" in issue.source and "stroke" in issue.message()
+            for issue in issues
+        ), issues)
+
+    def test_cmh_deck_12_fixed_connector_stroke_passes(self):
+        html = """
+        <style>
+        .slide { background: #f7f4ef; }
+        .connector { stroke: #334155; stroke-width: 2.5; fill: none; }
+        </style>
+        <div class="slide">
+          <svg viewBox="0 0 100 20" aria-hidden="true">
+            <path class="connector" d="M 0 10 L 100 10"></path>
+          </svg>
+        </div>
+        """
+        self.assertEqual(contrast.find_low_contrast_pairs(html), [])
+
 
 if __name__ == "__main__":
     unittest.main()
