@@ -11,10 +11,10 @@ const SLIDES =
   '<section class="slide" data-slide-id="slide-00000002"><h2>Two</h2><p>Beta slide two content</p></section>' +
   '<section class="slide" data-slide-id="slide-00000003"><h2>Three</h2><p>Gamma slide three content here</p></section>';
 
-async function openDeck(page) {
+async function openDeck(page, hash = "") {
   await installClipboardCapture(page);
   const { html } = stageDeck(SLIDES);
-  await page.goto(fileUrl(html));
+  await page.goto(fileUrl(html) + hash);
   await ready(page);
 }
 
@@ -90,6 +90,23 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await page.locator("#cmFooter").count()).toBe(0);
     expect(await page.locator("#cmScrollProgress").count()).toBe(0);
     expect(await page.locator(".cm-toc-menu, #cmSideToc").count()).toBe(0);
+  });
+
+  test("CMH-DECK-17: deck URL hash restores and tracks slides without history spam", async ({ page }) => {
+    await openDeck(page, "#slide-00000002");
+    expect(await activeId(page)).toBe("slide-00000002");
+    await expect(page.locator(".cmh-deck-count")).toHaveText("2 / 3");
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#slide-00000002");
+
+    const historyLength = await page.evaluate(() => history.length);
+    await page.locator(".cmh-deck-nav button[aria-label='Next slide']").click();
+    expect(await activeId(page)).toBe("slide-00000003");
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#slide-00000003");
+    expect(await page.evaluate(() => history.length)).toBe(historyLength);
+
+    await page.evaluate(() => { location.hash = "#slide-00000001"; });
+    await expect.poll(() => activeId(page)).toBe("slide-00000001");
+    await expect(page.locator(".cmh-deck-count")).toHaveText("1 / 3");
   });
 
   test("CMH-DECK-05d: typing in an editable field does not navigate; deck chrome is installed once", async ({ page }) => {
@@ -345,8 +362,9 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await page.evaluate(() => window.__cmhDeck.showSlideById("slide-00000003"));
     await addTextComment(page, ".slide.active p", "persist me");
     expect(await page.locator("mark.cm-hl").count()).toBe(1);
-    // reload: the deck re-activates in present mode on slide 1; the comment must restore in the
-    // (now hidden) slide 3 - a restore-from-storage regression would drop it silently.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/#.*/, "")));
+    // Reload without a slide deep link: the deck re-activates in present mode on slide 1; the
+    // comment must restore in the now-hidden slide 3.
     await page.reload();
     await ready(page);
     expect(await activeId(page)).toBe("slide-00000001");
