@@ -42,3 +42,39 @@ test("reduced-motion also clamps transitions (CMH-A11Y-07)", async ({ page }) =>
   });
   expect(parseFloat(dur)).toBeLessThan(0.05);
 });
+
+test("programmatic smooth scrolling becomes instant under reduced motion (CMH-A11Y-07)", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await openInline(page);
+  // The side-TOC "Scroll to Top" button calls window.scrollTo; under reduced motion the shared
+  // cmScrollBehavior() helper must pass behavior:"auto" (JS behavior overrides CSS scroll-behavior).
+  const behavior = await page.evaluate(async () => {
+    let captured;
+    const orig = window.scrollTo;
+    window.scrollTo = (opts) => { captured = opts && opts.behavior; };
+    const btn = [...document.querySelectorAll("#cmSideToc .cm-side-toc-top")]
+      .find((b) => /Scroll to Top/i.test(b.textContent));
+    if (btn) btn.click();
+    window.scrollTo = orig;
+    return captured;
+  });
+  expect(behavior).toBe("auto");
+});
+
+test("programmatic smooth scrolling stays smooth without the preference (CMH-A11Y-07)", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await openInline(page);
+  const behavior = await page.evaluate(() => {
+    let captured;
+    const orig = window.scrollTo;
+    window.scrollTo = (opts) => { captured = opts && opts.behavior; };
+    const btn = [...document.querySelectorAll("#cmSideToc .cm-side-toc-top")]
+      .find((b) => /Scroll to Top/i.test(b.textContent));
+    if (btn) btn.click();
+    window.scrollTo = orig;
+    return captured;
+  });
+  expect(behavior).toBe("smooth");
+});

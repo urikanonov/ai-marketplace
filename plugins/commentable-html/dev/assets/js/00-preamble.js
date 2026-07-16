@@ -18,3 +18,13 @@ const CMH_LAYER_SCRIPT = document.currentScript;
 // host content (which may itself be cm-skip, e.g. a chart <canvas>). See _snapshotWithTail.
 const CMH_INJECTED_CHROME = new Set();
 
+// Scroll behavior that respects prefers-reduced-motion: JS scrollIntoView/scrollTo take a
+// `behavior` option that OVERRIDES the CSS `scroll-behavior` reset, so every programmatic
+// smooth scroll must consult this so motion-sensitive readers get an instant jump instead.
+function cmScrollBehavior() {
+  try {
+    return (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      ? "auto" : "smooth";
+  } catch (e) { return "smooth"; }
+}
+

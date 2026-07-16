@@ -242,7 +242,7 @@ function jumpToChecklist(cid) {
   const cl = checklists.find((c) => c.id === cid);
   if (!cl || !cl.container) return;
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(cl.container);
-  cl.container.scrollIntoView({ behavior: "smooth", block: "center" });
+  cl.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   cl.container.classList.add("cmh-check-flash");
   setTimeout(() => cl.container.classList.remove("cmh-check-flash"), 2200);
 }

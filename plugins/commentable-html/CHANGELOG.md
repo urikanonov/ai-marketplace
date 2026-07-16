@@ -12,7 +12,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (`prefers-reduced-motion: reduce`): non-essential animations and transitions (the composer flash,
   the mermaid and diff pulses, the checklist and notes flashes) are clamped to near-instant so they
   do not animate for motion-sensitive readers, while everything still lands in its final state.
-  (CMH-A11Y-07)
+  Programmatic smooth scrolls (jump-to-comment, scroll-to-top/bottom, deep links) also become
+  instant under the preference. (CMH-A11Y-07)
 
 ## [1.86.0] - 2026-07-16
 
