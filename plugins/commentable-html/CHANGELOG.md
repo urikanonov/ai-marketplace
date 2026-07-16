@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.82.0] - 2026-07-16
+
+### Added
+
+- The shipped skill now carries the MIT `LICENSE` at its root, so every copy that ships (the
+  Copilot/Claude `plugin install` source subtree and the Claude Desktop skill ZIP) redistributes the
+  code with its required license notice. (CMH-DOC-14)
+
 ## [1.81.0] - 2026-07-16
 
 ### Added
