@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.117.1] - 2026-07-16
+
+### Changed
+
+- Split the shipped layer validator check module into focused assembled topic parts while preserving the public `check_layer` entry point and validation behavior.
+
 ## [1.117.0] - 2026-07-16
 
 ### Added

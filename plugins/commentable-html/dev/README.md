@@ -64,7 +64,7 @@ python -m unittest discover -s tests -p "test_*.py"
 
 | Suite | Coverage |
 | --- | --- |
-| `tests/test_validate.py` | Layer structure, validator flags and exit codes, encoding and newline edge cases, NonPortable detection, companion references, version handshake, banner behavior, missing files, and a real `dist/NONPORTABLE.html` positive control. |
+| `tests/test_validate_*.py` | Split validator regressions covering layer structure, validator flags and exit codes, encoding and newline edge cases, NonPortable detection, companion references, version handshake, banner behavior, missing files, and a real `dist/NONPORTABLE.html` positive control. |
 | `tests/test_validate_charts.py` | Chart.js embedding checks, including loader safety, chart data JSON, init ordering, accessibility, `cm-skip`, and network-failure guards. |
 | `tests/test_build.py` | Build drift, generated file parity, idempotence, inline round trips, version single-sourcing, manifest hashes, registry round trips, template validation, stale dist detection, and duplicate-version rejection. |
 | `tests/test_mark_handled.py` | Handled-id append, dedupe, order, unsafe ids, missing or duplicate blocks, surgical edits, newline preservation, bundle parsing, and CLI behavior. |
