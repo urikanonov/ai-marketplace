@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.86.0] - 2026-07-16
+
+### Fixed
+
+- `new_document.py --out` now preserves an existing target by writing the first free
+  `-2` / `-3` suffixed sibling unless `--force` is supplied, and derives `--key auto`
+  from that final resolved path so colliding document creations do not share keys.
+  (CMH-TOOL-18)
+
 ## [1.85.0] - 2026-07-16
 
 ### Fixed

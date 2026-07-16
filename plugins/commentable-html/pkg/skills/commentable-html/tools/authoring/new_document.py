@@ -455,6 +455,23 @@ def resolve_key(key, label, key_from_source=None, source=None, out=None):
     return _derive_auto_key(seed)
 
 
+def resolve_output_path(out, force=False):
+    if not out or force:
+        return out
+    path = Path(out)
+    if not path.exists():
+        return out
+    parent = path.parent
+    stem = path.stem
+    suffix = path.suffix
+    index = 2
+    while True:
+        candidate = parent / ("%s-%d%s" % (stem, index, suffix))
+        if not candidate.exists():
+            return os.fspath(candidate)
+        index += 1
+
+
 def _read_file(path):
     with open(path, "r", encoding="utf-8") as fh:
         return fh.read()
@@ -520,6 +537,8 @@ def main(argv):
                         help="template to clone (default: the skill's dist/NONPORTABLE.html, "
                              "or dist/PORTABLE.html with --portable)")
     parser.add_argument("--out", default=None, help="output file (default: stdout)")
+    parser.add_argument("--force", action="store_true",
+                        help="overwrite --out if it exists instead of writing a suffixed sibling")
     parser.add_argument("--no-title", action="store_true",
                         help="do not prepend a document title header (by default a visible "
                              "<h1> from --label is added when the fragment has none)")
@@ -531,6 +550,7 @@ def main(argv):
                              "documents (wrapping is ON by default so cards render; ignored for "
                              "other kinds)")
     args = parser.parse_args(argv[1:])
+    out_path = resolve_output_path(args.out, force=args.force)
 
     nonportable = not args.portable
     if args.template:
@@ -568,7 +588,7 @@ def main(argv):
             sys.stderr.write("new_document: choose only one of --assets-href, --copy-assets, or --assets-relative\n")
             return 2
         try:
-            prefix, validate_base = _companion_prefix(args.out, args.assets_href, args.copy_assets,
+            prefix, validate_base = _companion_prefix(out_path, args.assets_href, args.copy_assets,
                                                       assets_relative=args.assets_relative)
         except ValueError as exc:
             sys.stderr.write("new_document: %s\n" % exc)
@@ -585,7 +605,7 @@ def main(argv):
 
     try:
         key = resolve_key(args.key, args.label, key_from_source=args.key_from_source,
-                          source=args.source, out=args.out)
+                          source=args.source, out=out_path)
         out_html = make_document(template_html, content, key, args.label, args.source,
                                  generated=args.generated, kind=args.kind)
     except ValueError as exc:
@@ -626,23 +646,24 @@ def main(argv):
     for w in (warnings or []):
         sys.stderr.write("new_document: warning: %s\n" % w)
 
-    if args.out:
+    if out_path:
         # Copy companions BEFORE writing the HTML, so a copy failure never leaves a
         # written document that references companions missing from its folder.
         if copy_here:
             try:
-                _copy_companions(os.path.dirname(os.path.abspath(args.out)))
+                _copy_companions(os.path.dirname(os.path.abspath(out_path)))
             except OSError as exc:
                 sys.stderr.write("new_document: could not copy companions next to %s: %s\n"
-                                 % (args.out, exc))
+                                 % (out_path, exc))
                 return 1
         try:
-            with open(args.out, "w", encoding="utf-8", newline="") as fh:
+            mode = "w" if args.force else "x"
+            with open(out_path, mode, encoding="utf-8", newline="") as fh:
                 fh.write(out_html)
         except OSError as exc:
-            sys.stderr.write("new_document: cannot write %s: %s\n" % (args.out, exc))
+            sys.stderr.write("new_document: cannot write %s: %s\n" % (out_path, exc))
             return 1
-        sys.stderr.write("new_document: wrote %s\n" % args.out)
+        sys.stderr.write("new_document: wrote %s\n" % out_path)
     else:
         sys.stdout.write(out_html)
     return 0
