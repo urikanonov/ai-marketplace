@@ -13,6 +13,9 @@ VOID_TAGS = {
     "link", "meta", "param", "source", "track", "wbr",
 }
 SLUG_RE = re.compile(r"[^a-z0-9]+")
+# A leading author section number (e.g. "1.", "3.1", "2)") that the ordered-list TOC would
+# otherwise double-number. Mirrors the runtime side-toc pattern in assets/js/82-toc.js.
+SECTION_NUMBER_RE = re.compile(r"^(?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*)\s+")
 
 
 def _line_starts(text):
@@ -163,6 +166,15 @@ def _slug(text):
     return value or "section"
 
 
+def _strip_section_number(text):
+    """Drop a leading author section number so the ordered-list TOC is not double-numbered.
+
+    "1. Executive summary" -> "Executive summary"; "3.1 Goals" -> "Goals"; a title with no
+    section-number prefix (e.g. "Overview", "2024 review") is returned unchanged.
+    """
+    return SECTION_NUMBER_RE.sub("", text, count=1)
+
+
 def _unique_slug(text, used):
     base = _slug(text)
     candidate = base
@@ -203,7 +215,7 @@ def _render_nav(items):
     for item in items:
         class_attr = ' class="is-sub"' if item["tag"] == "h3" else ""
         href = html_lib.escape("#" + item["id"], quote=True)
-        text = html_lib.escape(item["text"], quote=False)
+        text = html_lib.escape(_strip_section_number(item["text"]), quote=False)
         lines.append('    <li%s><a href="%s">%s</a></li>' % (class_attr, href, text))
     lines.extend(["  </ol>", "</nav>"])
     return "\n".join(lines)
@@ -212,6 +224,38 @@ def _render_nav(items):
 def build_toc(html):
     """Return a nav.cm-toc snippet for h2 and h3 headings inside #commentRoot."""
     return _render_nav(_heading_items(_parse(html)))
+
+
+_TOC_ANCHOR_RE = re.compile(r"(<a\b[^>]*>)(.*?)(</a>)", re.IGNORECASE | re.DOTALL)
+
+
+def strip_toc_numbers(html):
+    """De-duplicate an existing author `nav.cm-toc` that uses an ordered list.
+
+    Strips a redundant leading section number from each `<a>` label inside an author
+    `.cm-toc` whose list is an `<ol>`, so the ordered list supplies the single number instead
+    of double-numbering. A `.cm-toc` built from a `<ul>` (where the author supplies the number
+    deliberately) is left untouched. Returns (new_html, stripped_count).
+    """
+    parser = _parse(html)
+    if not parser.toc_spans:
+        return html, 0
+    counter = {"n": 0}
+
+    def _strip_anchor(match):
+        inner = match.group(2)
+        new_inner = _strip_section_number(inner)
+        if new_inner != inner:
+            counter["n"] += 1
+        return match.group(1) + new_inner + match.group(3)
+
+    out = html
+    for start, end in sorted(parser.toc_spans, reverse=True):
+        segment = out[start:end]
+        if "<ol" not in segment.lower():
+            continue
+        out = out[:start] + _TOC_ANCHOR_RE.sub(_strip_anchor, segment) + out[end:]
+    return out, counter["n"]
 
 
 def _id_insert_pos(start, start_text):

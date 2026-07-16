@@ -838,6 +838,25 @@ class KindTests(unittest.TestCase):
         self.assertNotIn('aria-labelledby="a"', out)
         self.assertNotIn('aria-labelledby="b"', out)
 
+    def test_report_gets_doc_stats_by_default(self):
+        # CMH-STATS-01: a created report bakes the section/word/reading-time overview strip.
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
+             "--kind", "report", "--portable"],
+            stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
+        self.assertEqual(code, 0, err)
+        self.assertIn("data-cmh-doc-stats", out)
+        self.assertIn("<strong>2</strong> sections", out)
+
+    def test_no_stats_flag_skips_the_overview_strip(self):
+        # CMH-STATS-01: --no-stats keeps new_document from baking the overview strip.
+        code, out, err = self._call(
+            ["new_document.py", "--content", "-", "--key", "k-v1", "--label", "Rep",
+             "--kind", "report", "--portable", "--no-stats"],
+            stdin='<h2 id="a">One</h2><p>a</p><h2 id="b">Two</h2><p>b</p>')
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("data-cmh-doc-stats", out)
+
 
 if __name__ == "__main__":
     unittest.main()

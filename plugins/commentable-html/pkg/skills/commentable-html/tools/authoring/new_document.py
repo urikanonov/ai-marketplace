@@ -576,6 +576,9 @@ def main(argv):
     parser.add_argument("--no-session-id", action="store_true",
                         help="do not stamp the creating AI session id (stamping is ON by default "
                              "when a session id is available from --session-id or the environment)")
+    parser.add_argument("--no-stats", action="store_true",
+                        help="do not bake the section/word/reading-time overview strip for "
+                             "report/plan documents (baking is ON by default; ignored for other kinds)")
     args = parser.parse_args(argv[1:])
     out_path = resolve_output_path(args.out, force=args.force)
 
@@ -653,6 +656,15 @@ def main(argv):
             out_html, _highlighted = highlight_document.highlight_document(out_html)
         except ImportError:
             pass  # degrade gracefully if the highlighter is unavailable
+
+    # Bake the section/word/reading-time overview strip for report/plan documents so a created
+    # plan/report always opens with its size at a glance. Opt out with --no-stats.
+    if args.kind in _SECTION_CARD_KINDS and not args.no_stats:
+        try:
+            import doc_stats
+            out_html = doc_stats.rewrite_html(out_html)
+        except ImportError:
+            pass  # degrade gracefully if the stats tool is unavailable
 
     # Stamp the creation time so the runtime can tell a produced-but-never-validated document apart
     # from one that was strict-validated (validate.py stamps commentable-html-validated on a clean

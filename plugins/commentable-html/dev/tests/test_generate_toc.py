@@ -85,6 +85,66 @@ class GenerateTocTests(unittest.TestCase):
         self.assertIn("Fish &amp; Chips &lt;ok&gt;", toc)
         self.assertNotIn("Fish & Chips <ok>", toc)
 
+    def test_generated_toc_strips_redundant_author_section_numbers(self):
+        html = doc('<h2 id="a">1. Executive summary</h2>\n<h2 id="b">2. How the two source plans merge</h2>')
+        toc = generate_toc.build_toc(html)
+        self.assertIn('<a href="#a">Executive summary</a>', toc)
+        self.assertIn('<a href="#b">How the two source plans merge</a>', toc)
+        self.assertNotIn("1. Executive", toc)
+        self.assertNotIn("2. How", toc)
+        # The ordered list is kept; it supplies the single number.
+        self.assertIn("<ol>", toc)
+
+    def test_toc_strips_dotted_and_paren_numbering_variants(self):
+        html = doc(
+            '<h2 id="a">3.1 Goals</h2>'
+            '<h2 id="b">2) Scope</h2>'
+            '<h3 id="c">1.2.3 Deep item</h3>'
+        )
+        toc = generate_toc.build_toc(html)
+        self.assertIn('<a href="#a">Goals</a>', toc)
+        self.assertIn('<a href="#b">Scope</a>', toc)
+        self.assertIn('<a href="#c">Deep item</a>', toc)
+
+    def test_toc_keeps_unnumbered_and_year_prefixed_titles(self):
+        html = doc('<h2 id="a">Overview</h2><h2 id="b">2024 review</h2>')
+        toc = generate_toc.build_toc(html)
+        self.assertIn('<a href="#a">Overview</a>', toc)
+        # "2024 review" has no section-number separator, so it must not be stripped.
+        self.assertIn('<a href="#b">2024 review</a>', toc)
+
+    def test_strip_section_number_helper(self):
+        self.assertEqual(generate_toc._strip_section_number("1. Alpha"), "Alpha")
+        self.assertEqual(generate_toc._strip_section_number("3.1 Beta"), "Beta")
+        self.assertEqual(generate_toc._strip_section_number("2) Gamma"), "Gamma")
+        self.assertEqual(generate_toc._strip_section_number("Delta"), "Delta")
+        self.assertEqual(generate_toc._strip_section_number("2024 review"), "2024 review")
+
+    def test_strip_toc_numbers_dedups_existing_ordered_toc(self):
+        html = doc(
+            '<nav class="cm-toc"><div class="cm-toc-title">Contents</div><ol>'
+            '<li><a href="#a">1. Executive summary</a></li>'
+            '<li><a href="#b">2. How the two source plans merge</a></li>'
+            "</ol></nav>"
+            '<h2 id="a">1. Executive summary</h2><h2 id="b">2. How the two source plans merge</h2>'
+        )
+        out, count = generate_toc.strip_toc_numbers(html)
+        self.assertEqual(count, 2)
+        self.assertIn('<a href="#a">Executive summary</a>', out)
+        self.assertIn('<a href="#b">How the two source plans merge</a>', out)
+
+    def test_strip_toc_numbers_leaves_unordered_toc_untouched(self):
+        html = doc('<nav class="cm-toc"><ul><li><a href="#a">1. Foo</a></li></ul></nav>'
+                   '<h2 id="a">1. Foo</h2>')
+        out, count = generate_toc.strip_toc_numbers(html)
+        self.assertEqual(count, 0)
+        self.assertIn('<a href="#a">1. Foo</a>', out)
+
+    def test_strip_toc_numbers_is_noop_without_a_toc(self):
+        out, count = generate_toc.strip_toc_numbers(doc('<h2 id="a">1. Foo</h2>'))
+        self.assertEqual(count, 0)
+        self.assertNotIn('class="cm-toc"', out)
+
     def test_rewrite_injects_ids_and_inserts_nav_at_top_of_root(self):
         html = doc('<p>Intro</p>\n<h2 class="x">Alpha</h2>\n<h3>Alpha</h3>')
         out = generate_toc.rewrite_html(html)

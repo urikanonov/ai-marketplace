@@ -26,6 +26,7 @@ _toolpath.ensure()
 
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402
+import doc_stats  # noqa: E402
 import highlight_document  # noqa: E402
 import inline_images  # noqa: E402
 import validate  # noqa: E402
@@ -96,8 +97,30 @@ def _run_highlight(path):
     return changed, count
 
 
+def _run_toc_dedup(path):
+    source = _read(path)
+    rewritten, count = generate_toc.strip_toc_numbers(source)
+    changed = rewritten != source
+    if changed:
+        _write(path, rewritten)
+    return changed, count
+
+
+def _run_stats(path):
+    source = _read(path)
+    m = _KIND_META_RE.search(source)
+    kind = (m.group(1) if m else "").strip().lower()
+    if kind not in _SECTION_CARD_KINDS:
+        return False, False
+    rewritten = doc_stats.rewrite_html(source)
+    changed = rewritten != source
+    if changed:
+        _write(path, rewritten)
+    return True, changed
+
+
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
-             run_highlight=True, run_wrap_sections=True):
+             run_highlight=True, run_wrap_sections=True, run_stats=True):
     steps = []
     if run_toc:
         changed = _run_toc(path)
@@ -121,6 +144,15 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
         changed, count = _run_highlight(path)
         status = "highlighted %d block(s)" % count if changed else "unchanged"
         steps.append(("highlight", status))
+    # Always de-duplicate an author-numbered ordered-list .cm-toc so it is never double-numbered.
+    changed, count = _run_toc_dedup(path)
+    if changed:
+        steps.append(("toc-numbers", "stripped %d entry(ies)" % count))
+    # Bake the section/word/reading-time overview strip for report/plan documents.
+    if run_stats:
+        applicable, changed = _run_stats(path)
+        if applicable:
+            steps.append(("doc-stats", "updated" if changed else "unchanged"))
     errors, warnings = validate.validate(path)
     return {"steps": steps, "errors": errors, "warnings": warnings}
 
@@ -141,6 +173,9 @@ def main(argv):
     parser.add_argument("--no-wrap-sections", action="store_true",
                         help="skip wrapping bare top-level <h2> blocks in <section> for report/plan "
                              "documents (on by default)")
+    parser.add_argument("--no-stats", action="store_true",
+                        help="skip baking the section/word/reading-time overview strip for "
+                             "report/plan documents (on by default)")
     parser.add_argument("--strict", action="store_true",
                         help="treat validator warnings as failures (errors already fail)")
     parser.add_argument("--no-stamp", action="store_true",
@@ -160,6 +195,7 @@ def main(argv):
             images_base=args.images_base,
             run_highlight=not args.no_highlight,
             run_wrap_sections=not args.no_wrap_sections,
+            run_stats=not args.no_stats,
         )
     except (OSError, ValueError) as exc:
         sys.stderr.write("finalize: %s\n" % exc)

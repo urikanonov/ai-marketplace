@@ -25,6 +25,14 @@ try:
     import highlight_document as _highlight_document  # noqa: E402
 except ImportError:  # pragma: no cover
     _highlight_document = None
+try:
+    import generate_toc as _generate_toc  # noqa: E402
+except ImportError:  # pragma: no cover
+    _generate_toc = None
+try:
+    import doc_stats as _doc_stats  # noqa: E402
+except ImportError:  # pragma: no cover
+    _doc_stats = None
 
 
 VOID = frozenset((
@@ -622,6 +630,9 @@ def main(argv):
     parser.add_argument("--brand", default=None,
                         help="optional brand.json profile that stamps validated --cp-* theme "
                              "tokens and local data-URI font faces")
+    parser.add_argument("--no-stats", action="store_true",
+                        help="do not bake the section/word/reading-time overview strip for "
+                             "report/plan documents (baking is ON by default; ignored for other kinds)")
     args = parser.parse_args(argv[1:])
 
     out_path = args.out or args.file
@@ -659,6 +670,15 @@ def main(argv):
         brand_warnings = []
         result, brand_warnings = _brand_profile.apply_brand(result, args.brand)
         warnings.extend(brand_warnings)
+        # De-duplicate an author-numbered ordered-list .cm-toc so it is never double-numbered.
+        if _generate_toc is not None:
+            result, _ = _generate_toc.strip_toc_numbers(result)
+        # Bake the section/word/reading-time overview strip for report/plan documents.
+        if not args.no_stats and args.kind in new_document._SECTION_CARD_KINDS and _doc_stats is not None:
+            try:
+                result = _doc_stats.rewrite_html(result)
+            except ValueError:
+                pass  # no #commentRoot to anchor to; leave the document as built
         errors, val_warnings = _validate_candidate(result, out_path, validate_base)
     except RetrofitError as exc:
         sys.stderr.write("retrofit: %s\n" % exc)
