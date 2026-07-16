@@ -5,6 +5,7 @@
 
 - [Runtime UI chrome and toolbar](#runtime-ui-chrome-and-toolbar)
 - [Theme (light by default)](#theme-light-by-default)
+- [Density (optional)](#density-optional)
 - [Table of contents (multi-section documents)](#table-of-contents-multi-section-documents)
 - [Sections and document layout](#sections-and-document-layout)
 - [Tables](#tables)
@@ -57,6 +58,16 @@ The document defaults to a **light** theme. The generated template sets `data-th
 - no parameter is always light.
 
 Default to a light document unless the request is explicitly dark.
+
+## Density (optional)
+
+Leave density unspecified unless the author asks for a different chrome scale. Add
+`data-cm-density="compact"` to `#commentRoot` for tighter toolbar, sidebar, footer, Help, TOC, card,
+composer, toast, and menu spacing. Add `data-cm-density="comfortable"` for a roomier chrome scale.
+
+The runtime mirrors a valid preset to `document.body` and applies it through shared `--cp-chrome-*` spacing
+and font-size tokens, so authored content stays on the same theme variables and documents without the
+attribute keep the default measurements.
 
 ## Table of contents (multi-section documents)
 
@@ -149,7 +160,7 @@ width with an empty sidebar gutter (the `body.sidebar-open .app` rule) for a pan
 
 ## Per-document configuration example
 
-The three document-level attributes live on the content root; no JavaScript edits are required:
+The document-level attributes live on the content root; no JavaScript edits are required:
 
 ```html
 <main id="commentRoot"

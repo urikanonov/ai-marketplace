@@ -15,13 +15,13 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 }
 
 .cm-sidebar header {
-  padding: clamp(0.75rem, 3vw, 1rem) clamp(0.75rem, 3vw, 1.1rem); border-bottom: 1px solid var(--cp-border);
-  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: var(--cp-chrome-header-y) var(--cp-chrome-header-x); border-bottom: 1px solid var(--cp-border);
+  display: flex; flex-direction: column; gap: var(--cp-chrome-gap);
 }
-.cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 0.45rem 0.6rem; }
+.cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--cp-chrome-gap) var(--cp-chrome-wide-gap); }
 .cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex: 1 1 8rem; min-width: 0; }
-.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
+.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: var(--cp-chrome-button-gap); }
+.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: var(--cp-chrome-button-gap); padding: var(--cp-chrome-button-y) var(--cp-chrome-shell-x); font-size: var(--cp-chrome-small-font); }
 .cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: normal; }
 .cm-sidebar.is-narrow .head-meta .cm-head-actions { margin-left: 0; width: 100%; justify-content: stretch; }
 .cm-sidebar.is-narrow .head-meta .cm-head-actions button { flex: 1 1 8rem; }
@@ -41,7 +41,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-tooltip {
   position: fixed; z-index: 400; max-width: 260px;
   background: #22272e; color: #fff;
-  font-size: 0.72rem; line-height: 1.35; padding: 0.35rem 0.55rem;
+  font-size: var(--cp-chrome-small-font); line-height: 1.35; padding: var(--cp-chrome-button-y) var(--cp-chrome-action-x);
   border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);
   pointer-events: none; opacity: 0; transform: translateY(2px);
   transition: opacity 0.12s ease, transform 0.12s ease;
@@ -55,8 +55,8 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar .head-top button,
 .cm-sidebar .head-actions button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
-  padding: 0.35rem 0.6rem; border-radius: 0.5rem; cursor: pointer;
-  font-family: inherit; font-size: 0.78rem;
+  padding: var(--cp-chrome-button-y) var(--cp-chrome-action-x); border-radius: 0.5rem; cursor: pointer;
+  font-family: inherit; font-size: var(--cp-chrome-body-font);
 }
 .cm-sidebar .head-top button:hover,
 .cm-sidebar .head-actions button:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
@@ -67,18 +67,18 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 /* The Copy all action is the most-used control: make it visibly larger and bolder than the
    other header buttons so it is easy to find and click. */
 .cm-sidebar .head-top #btnCopyAll {
-  padding: 0.5rem 1.15rem;
-  font-size: 0.92rem;
+  padding: var(--cp-chrome-primary-y) var(--cp-chrome-primary-x);
+  font-size: var(--cp-chrome-primary-font);
   font-weight: 700;
   border-radius: 0.6rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 /* Sort-by-time arrows sit at the far right of the header row (Copy all stays next to the count). */
-.cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: 0.15rem; }
-.cm-sidebar .head-top .cm-sort-btn { padding: 0.2rem 0.42rem; font-size: 0.7rem; line-height: 1; color: var(--cp-text-soft); }
+.cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: calc(var(--cp-chrome-button-gap) * 0.5); }
+.cm-sidebar .head-top .cm-sort-btn { padding: var(--cp-chrome-sort-y) var(--cp-chrome-sort-x); font-size: var(--cp-chrome-tiny-font); line-height: 1; color: var(--cp-text-soft); }
 .cm-sidebar .head-top .cm-sort-btn[aria-pressed="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 /* Informational "Generated on / Last comment" line under the header. */
-.cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem 0.7rem; font-size: 0.66rem; color: var(--cp-text-soft); margin: 0.15rem 0 0.35rem; }
+.cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem var(--cp-chrome-button-x); font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); margin: 0.15rem 0 var(--cp-chrome-button-y); }
 .cm-side-info > span { white-space: nowrap; }
 /* Clear Comments wears a persistent warning treatment so it is not clicked by accident. */
 .cm-sidebar .head-actions button.danger {
@@ -122,23 +122,23 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-modal-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); color: var(--cp-danger); }
 
 /* Sidebar header meta row: document-type bubble, version, and Help. */
-.cm-sidebar .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
+.cm-sidebar .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cp-chrome-gap); margin-bottom: 0.1rem; }
 .cm-type-badge {
-  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
-  padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
+  font-size: var(--cp-chrome-tiny-font); font-weight: 600; letter-spacing: 0.02em;
+  padding: var(--cp-chrome-pill-y) var(--cp-chrome-pill-x); border-radius: 999px; white-space: nowrap;
   border: 1px solid var(--cp-border); color: var(--cp-text-soft);
 }
 .cm-type-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
 .cm-type-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
-.cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
+.cm-version { font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
 .cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }
 .cm-brand-link:hover { text-decoration: underline; }
 .cm-brand-link:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
 .cm-help-about .cm-brand-link { color: var(--cp-accent); text-decoration: underline; text-underline-offset: 2px; }
 .cm-help-about .cm-brand-link:hover { color: var(--cp-accent-hover); }
-.cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; }
+.cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: var(--cp-chrome-wide-gap); width: 100%; }
 .cm-toolbar-menu-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--cp-accent); }
 .cm-toolbar-menu-brand .cm-brand-icon { width: 20px; height: 20px; margin: 0; }
 .cm-toolbar #btnCopyAllTop[aria-disabled="true"],
@@ -150,11 +150,11 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-text-soft);
 }
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
-.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--cp-chrome-button-gap); }
 .cm-help-btn {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
-  padding: 0.2rem 0.6rem; border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: 0.72rem;
-  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: calc(var(--cp-chrome-button-y) * 0.6) var(--cp-chrome-action-x); border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: var(--cp-chrome-small-font);
+  display: inline-flex; align-items: center; gap: var(--cp-chrome-button-gap);
 }
 .cm-help-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 /* The Hide control sits next to Help; give it a slightly recessed neutral tone (and a
@@ -165,26 +165,26 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 
 /* Help dialog (reuses .cm-modal-overlay). */
 .cm-modal.cm-help { max-width: 42rem; width: calc(100% - 3rem); max-height: calc(100vh - 4rem); display: flex; flex-direction: column; padding: 0; }
-.cm-help-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--cp-border); }
+.cm-help-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem var(--cp-chrome-modal-x); border-bottom: 1px solid var(--cp-border); }
 .cm-help-head h2 { margin: 0; font-size: 1.05rem; }
-.cm-help-close { background: transparent; border: none; color: var(--cp-text-soft); font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.35rem; border-radius: 6px; }
+.cm-help-close { background: transparent; border: none; color: var(--cp-text-soft); font-size: calc(var(--cp-chrome-font) * 1.65); line-height: 1; cursor: pointer; padding: 0 var(--cp-chrome-button-y); border-radius: 6px; }
 .cm-help-close:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-help-body { padding: 0.5rem 1.2rem 1.2rem; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.cm-help-body { padding: var(--cp-chrome-shell-x) var(--cp-chrome-modal-x) var(--cp-chrome-modal-x); overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .cm-help-body h3 { font-size: 0.92rem; margin: 1rem 0 0.3rem; color: var(--cp-text); }
-.cm-help-body p, .cm-help-body li { font-size: 0.86rem; line-height: 1.5; color: var(--cp-text); }
-.cm-help-body ul { margin: 0.3rem 0; padding-left: 1.3rem; }
+.cm-help-body p, .cm-help-body li { font-size: var(--cp-chrome-help-font); line-height: 1.5; color: var(--cp-text); }
+.cm-help-body ul { margin: var(--cp-chrome-button-gap) 0; padding-left: 1.3rem; }
 .cm-help-body kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 0 4px; font-family: inherit; font-size: 0.8em; }
 /* Searchable, collapsible Help topics. */
-.cm-help-search { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.2rem; border-bottom: 1px solid var(--cp-border); color: var(--cp-text-soft); }
-.cm-help-search-input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.86rem; padding: 0.4rem 0.6rem; border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text); }
+.cm-help-search { display: flex; align-items: center; gap: var(--cp-chrome-gap); padding: var(--cp-chrome-card-y) var(--cp-chrome-modal-x); border-bottom: 1px solid var(--cp-border); color: var(--cp-text-soft); }
+.cm-help-search-input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: var(--cp-chrome-help-font); padding: var(--cp-chrome-control-y) var(--cp-chrome-action-x); border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text); }
 .cm-help-search-input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
 .cm-help-topic { border-bottom: 1px solid var(--cp-border); }
-.cm-help-topic > summary { cursor: pointer; list-style: none; padding: 0.6rem 0.2rem; font-weight: 600; font-size: 0.9rem; color: var(--cp-text); display: flex; align-items: center; gap: 0.5rem; }
+.cm-help-topic > summary { cursor: pointer; list-style: none; padding: var(--cp-chrome-action-x) 0.2rem; font-weight: 600; font-size: var(--cp-chrome-topic-font); color: var(--cp-text); display: flex; align-items: center; gap: var(--cp-chrome-gap); }
 .cm-help-topic > summary::-webkit-details-marker { display: none; }
 .cm-help-topic > summary::before { content: "\25B8"; color: var(--cp-text-soft); font-size: 0.8em; transition: transform 0.12s ease; }
 .cm-help-topic[open] > summary::before { transform: rotate(90deg); }
 .cm-help-topic > summary:hover { color: var(--cp-accent); }
-.cm-help-topic-body { padding: 0 0.2rem 0.7rem 1.3rem; }
+.cm-help-topic-body { padding: 0 0.2rem var(--cp-chrome-card-y) 1.3rem; }
 /* Review-loop diagram in the "Getting started" help topic. Themed with the framework's
    --cp-* variables so it follows the light/dark theme like the rest of the UI. */
 .cm-loop-figure { margin: 0.7rem 0 0.3rem; }
@@ -208,7 +208,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   display: none; flex-direction: column;
   background: var(--cp-panel-strong); backdrop-filter: blur(8px);
   border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
-  padding: 0.6rem 0.5rem 0.6rem 0.75rem; font-size: 0.82rem;
+  padding: var(--cp-chrome-action-x) var(--cp-chrome-shell-x) var(--cp-chrome-action-x) var(--cp-chrome-side-toc-left); font-size: var(--cp-chrome-body-font);
 }
 @media (min-width: 1400px) {
   .cm-side-toc { display: flex; }
@@ -217,26 +217,26 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   body.cm-side-toc-on { padding-left: calc(var(--cm-side-toc-w, 17rem) + 2rem); }
   body.cm-side-toc-on.cm-side-toc-collapsed { padding-left: 0; }
 }
-.cm-side-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+.cm-side-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--cp-chrome-button-gap); }
 .cm-side-toc-title { font-weight: 700; color: var(--cp-text); }
 .cm-side-toc-toggle { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; font-size: 1.05rem; line-height: 1; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 6px; }
 .cm-side-toc-toggle:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-side-toc-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; }
-.cm-side-toc-list li { margin: 0.05rem 0; }
+.cm-side-toc-list li { margin: calc(var(--cp-chrome-pill-y) * 0.5) 0; }
 .cm-side-toc-list li.is-sub { padding-left: 0.8rem; }
-.cm-side-toc-list a { display: block; color: var(--cp-text-soft); text-decoration: none; padding: 0.2rem 0.45rem; border-radius: 6px; border-left: 2px solid transparent; }
+.cm-side-toc-list a { display: block; color: var(--cp-text-soft); text-decoration: none; padding: var(--cp-chrome-toc-link-y) var(--cp-chrome-toc-link-x); border-radius: 6px; border-left: 2px solid transparent; }
 .cm-side-toc-list a:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-side-toc-list a.is-active { color: var(--cp-accent); border-left-color: var(--cp-accent); background: var(--cp-accent-soft); font-weight: 600; }
-.cm-side-toc-top { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; margin-top: 0.4rem; background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text); border-radius: 0.5rem; padding: 0.3rem; cursor: pointer; font-family: inherit; font-size: 0.75rem; }
+.cm-side-toc-top { display: inline-flex; align-items: center; justify-content: center; gap: var(--cp-chrome-button-gap); margin-top: var(--cp-chrome-gap); background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text); border-radius: 0.5rem; padding: var(--cp-chrome-toc-button-pad); cursor: pointer; font-family: inherit; font-size: var(--cp-chrome-small-font); }
 .cm-side-toc-top:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
-.cm-side-toc-scroll { display: flex; gap: 0.3rem; }
-.cm-side-toc-scroll .cm-side-toc-top { flex: 1 1 0; margin-top: 0.4rem; }
+.cm-side-toc-scroll { display: flex; gap: var(--cp-chrome-button-gap); }
+.cm-side-toc-scroll .cm-side-toc-top { flex: 1 1 0; margin-top: var(--cp-chrome-gap); }
 /* Bottom-right scroll-position bubble (runtime, cm-skip, absent from Plain export). */
 .cm-scroll-progress {
   position: fixed; right: 1rem; bottom: 1rem; z-index: 95;
   background: var(--cp-panel-strong); backdrop-filter: blur(6px);
   border: 1px solid var(--cp-border); border-radius: 999px;
-  padding: 0.25rem 0.6rem; font-size: 0.72rem; font-weight: 600;
+  padding: var(--cp-chrome-scroll-y) var(--cp-chrome-action-x); font-size: var(--cp-chrome-small-font); font-weight: 600;
   color: var(--cp-text-soft); box-shadow: var(--cp-shadow);
   min-width: 2.6rem; text-align: center; pointer-events: none;
 }

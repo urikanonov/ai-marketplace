@@ -8,10 +8,10 @@ is a real, test-backed area in `dev/SPEC.md`.
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
-| `00-base.css` | CMH-THEME, CMH-CORE | Theme tokens (`--cp-*`) and base element styling. |
-| `10-layout.css` | CMH-CORE, CMH-RESP | Layout recipe, toolbar, and core chrome. |
-| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT | Attribution footer, sidebar meta, help dialog, TOC chrome. |
-| `30-mermaid.css` | CMH-MMD | Mermaid commenting layer + NonPortable controls. |
+| `00-base.css` | CMH-THEME, CMH-CORE, CMH-DENSITY | Theme tokens (`--cp-*`) and base element styling. |
+| `10-layout.css` | CMH-CORE, CMH-RESP, CMH-DENSITY | Layout recipe, toolbar, and core chrome. |
+| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY | Attribution footer, sidebar meta, help dialog, TOC chrome. |
+| `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonPortable controls. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
 | `50-content.css` | CMH-CONTENT | Default content styling (sections, tables, badges). |
 | `60-images.css` | CMH-IMG | Image comment layer. |

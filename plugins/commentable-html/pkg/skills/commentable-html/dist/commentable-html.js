@@ -39,6 +39,12 @@ const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
 // active, the layer replaces the flow-document chrome (heading anchors, collapsible
 // sections, side TOC, footer, scroll progress) with slide navigation and commenting.
 const IS_DECK = !!(root.getAttribute && root.getAttribute("data-cmh-mode") === "deck");
+const CMH_DENSITY = root.dataset.cmDensity || "";
+if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
+  document.body.setAttribute("data-cm-density", CMH_DENSITY);
+} else {
+  document.body.removeAttribute("data-cm-density");
+}
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // Comment ids are generated as "c" + base36 timestamp + 4 base36 chars and are
 // later interpolated into HTML attributes (data-cid="...") and CSS selectors.
@@ -48,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.93.0";
+const CMH_VERSION = "1.94.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -136,7 +142,6 @@ const openComposers = new Set();
 const openEditComposers = new Map();
 let lastFocusedComposer = null;
 let composerZ = 210;
-
 /* ---------- Persistence ---------- */
 function loadComments() {
   let local = [];

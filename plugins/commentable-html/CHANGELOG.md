@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.94.0] - 2026-07-16
+
+### Added
+
+- Authors can set `data-cm-density="compact"` or `data-cm-density="comfortable"` on
+  `#commentRoot` to tune review chrome spacing and font scale through shared
+  `--cp-chrome-*` tokens, while documents without the attribute keep the existing
+  default density. (CMH-DENSITY-01)
+
 ## [1.93.0] - 2026-07-16
 
 ### Added

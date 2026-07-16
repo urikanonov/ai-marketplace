@@ -23,21 +23,165 @@ pre mark.cm-hl, code mark.cm-hl {
 
 :root {
   --cm-sidebar-w: 400px;
+  --cp-chrome-font: 0.85rem;
+  --cp-chrome-help-font: 0.86rem;
+  --cp-chrome-topic-font: 0.9rem;
+  --cp-chrome-code-font: 0.78rem;
+  --cp-chrome-body-font: 0.82rem;
+  --cp-chrome-small-font: 0.72rem;
+  --cp-chrome-tiny-font: 0.66rem;
+  --cp-chrome-gap: 0.4rem;
+  --cp-chrome-wide-gap: 0.6rem;
+  --cp-chrome-button-gap: 0.35rem;
+  --cp-chrome-button-y: 0.35rem;
+  --cp-chrome-button-x: 0.7rem;
+  --cp-chrome-action-x: 0.6rem;
+  --cp-chrome-control-y: 0.4rem;
+  --cp-chrome-control-x: 0.85rem;
+  --cp-chrome-add-y: 0.3rem;
+  --cp-chrome-add-x: 0.85rem;
+  --cp-chrome-shell-y: 0.35rem;
+  --cp-chrome-shell-x: 0.5rem;
+  --cp-chrome-pill-y: 0.1rem;
+  --cp-chrome-pill-x: 0.5rem;
+  --cp-chrome-card-y: 0.7rem;
+  --cp-chrome-card-x: 0.8rem;
+  --cp-chrome-card-gap: 0.45rem;
+  --cp-chrome-primary-y: 0.5rem;
+  --cp-chrome-primary-x: 1.15rem;
+  --cp-chrome-primary-font: 0.92rem;
+  --cp-chrome-header-y: clamp(0.75rem, 3vw, 1rem);
+  --cp-chrome-header-x: clamp(0.75rem, 3vw, 1.1rem);
+  --cp-chrome-modal-x: 1.2rem;
+  --cp-chrome-side-toc-left: 0.75rem;
+  --cp-chrome-sort-y: 0.2rem;
+  --cp-chrome-sort-x: 0.42rem;
+  --cp-chrome-toc-link-y: 0.2rem;
+  --cp-chrome-toc-link-x: 0.45rem;
+  --cp-chrome-toc-button-pad: 0.3rem;
+  --cp-chrome-scroll-y: 0.25rem;
+  --cp-chrome-caret-gap: 0.2rem;
+  --cp-chrome-search-top: 0.25rem;
+  --cp-chrome-search-y: 0.3rem;
+  --cp-chrome-search-x: 0.55rem;
+  --cp-chrome-search-clear: 1.55rem;
+  --cp-chrome-quote-y: 0.3rem;
+  --cp-chrome-quote-x: 0.55rem;
+  --cp-chrome-toast-x: 1.1rem;
+  --cp-chrome-menu-item-y: 0.45rem;
+}
+
+body[data-cm-density="compact"] {
+  --cp-chrome-font: 0.8rem;
+  --cp-chrome-help-font: 0.81rem;
+  --cp-chrome-topic-font: 0.84rem;
+  --cp-chrome-code-font: 0.74rem;
+  --cp-chrome-body-font: 0.78rem;
+  --cp-chrome-small-font: 0.66rem;
+  --cp-chrome-tiny-font: 0.62rem;
+  --cp-chrome-gap: 0.3rem;
+  --cp-chrome-wide-gap: 0.45rem;
+  --cp-chrome-button-gap: 0.25rem;
+  --cp-chrome-button-y: 0.28rem;
+  --cp-chrome-button-x: 0.55rem;
+  --cp-chrome-action-x: 0.5rem;
+  --cp-chrome-control-y: 0.32rem;
+  --cp-chrome-control-x: 0.7rem;
+  --cp-chrome-add-y: 0.24rem;
+  --cp-chrome-add-x: 0.7rem;
+  --cp-chrome-shell-y: 0.25rem;
+  --cp-chrome-shell-x: 0.4rem;
+  --cp-chrome-pill-y: 0.06rem;
+  --cp-chrome-pill-x: 0.38rem;
+  --cp-chrome-card-y: 0.55rem;
+  --cp-chrome-card-x: 0.65rem;
+  --cp-chrome-card-gap: 0.32rem;
+  --cp-chrome-primary-y: 0.38rem;
+  --cp-chrome-primary-x: 0.9rem;
+  --cp-chrome-primary-font: 0.86rem;
+  --cp-chrome-header-y: clamp(0.6rem, 2.4vw, 0.82rem);
+  --cp-chrome-header-x: clamp(0.6rem, 2.4vw, 0.9rem);
+  --cp-chrome-modal-x: 1rem;
+  --cp-chrome-side-toc-left: 0.6rem;
+  --cp-chrome-sort-y: 0.16rem;
+  --cp-chrome-sort-x: 0.34rem;
+  --cp-chrome-toc-link-y: 0.16rem;
+  --cp-chrome-toc-link-x: 0.36rem;
+  --cp-chrome-toc-button-pad: 0.24rem;
+  --cp-chrome-scroll-y: 0.18rem;
+  --cp-chrome-caret-gap: 0.15rem;
+  --cp-chrome-search-top: 0.2rem;
+  --cp-chrome-search-y: 0.24rem;
+  --cp-chrome-search-x: 0.45rem;
+  --cp-chrome-search-clear: 1.38rem;
+  --cp-chrome-quote-y: 0.24rem;
+  --cp-chrome-quote-x: 0.45rem;
+  --cp-chrome-toast-x: 0.9rem;
+  --cp-chrome-menu-item-y: 0.36rem;
+}
+
+body[data-cm-density="comfortable"] {
+  --cp-chrome-font: 0.9rem;
+  --cp-chrome-help-font: 0.91rem;
+  --cp-chrome-topic-font: 0.96rem;
+  --cp-chrome-code-font: 0.82rem;
+  --cp-chrome-body-font: 0.86rem;
+  --cp-chrome-small-font: 0.76rem;
+  --cp-chrome-tiny-font: 0.7rem;
+  --cp-chrome-gap: 0.5rem;
+  --cp-chrome-wide-gap: 0.75rem;
+  --cp-chrome-button-gap: 0.45rem;
+  --cp-chrome-button-y: 0.42rem;
+  --cp-chrome-button-x: 0.85rem;
+  --cp-chrome-action-x: 0.72rem;
+  --cp-chrome-control-y: 0.48rem;
+  --cp-chrome-control-x: 1rem;
+  --cp-chrome-add-y: 0.36rem;
+  --cp-chrome-add-x: 1rem;
+  --cp-chrome-shell-y: 0.45rem;
+  --cp-chrome-shell-x: 0.65rem;
+  --cp-chrome-pill-y: 0.14rem;
+  --cp-chrome-pill-x: 0.6rem;
+  --cp-chrome-card-y: 0.85rem;
+  --cp-chrome-card-x: 0.95rem;
+  --cp-chrome-card-gap: 0.55rem;
+  --cp-chrome-primary-y: 0.6rem;
+  --cp-chrome-primary-x: 1.35rem;
+  --cp-chrome-primary-font: 0.98rem;
+  --cp-chrome-header-y: clamp(0.9rem, 3.4vw, 1.15rem);
+  --cp-chrome-header-x: clamp(0.9rem, 3.4vw, 1.25rem);
+  --cp-chrome-modal-x: 1.35rem;
+  --cp-chrome-side-toc-left: 0.9rem;
+  --cp-chrome-sort-y: 0.24rem;
+  --cp-chrome-sort-x: 0.5rem;
+  --cp-chrome-toc-link-y: 0.24rem;
+  --cp-chrome-toc-link-x: 0.55rem;
+  --cp-chrome-toc-button-pad: 0.36rem;
+  --cp-chrome-scroll-y: 0.3rem;
+  --cp-chrome-caret-gap: 0.25rem;
+  --cp-chrome-search-top: 0.3rem;
+  --cp-chrome-search-y: 0.36rem;
+  --cp-chrome-search-x: 0.65rem;
+  --cp-chrome-search-clear: 1.72rem;
+  --cp-chrome-quote-y: 0.36rem;
+  --cp-chrome-quote-x: 0.65rem;
+  --cp-chrome-toast-x: 1.3rem;
+  --cp-chrome-menu-item-y: 0.54rem;
 }
 
 .cm-toolbar {
   position: fixed; top: 1rem; right: 1rem; z-index: 100;
-  display: flex; gap: 0.4rem;
+  display: flex; gap: var(--cp-chrome-gap);
   background: var(--cp-panel-strong); backdrop-filter: blur(8px);
   border: 1px solid var(--cp-border); border-radius: 999px;
-  padding: 0.35rem 0.5rem; box-shadow: var(--cp-shadow);
-  align-items: center; font-size: 0.82rem;
+  padding: var(--cp-chrome-shell-y) var(--cp-chrome-shell-x); box-shadow: var(--cp-shadow);
+  align-items: center; font-size: var(--cp-chrome-body-font);
 }
 .cm-toolbar button {
   background: transparent; border: none; color: var(--cp-text);
-  font-family: inherit; font-size: 0.85rem; padding: 0.35rem 0.7rem;
+  font-family: inherit; font-size: var(--cp-chrome-font); padding: var(--cp-chrome-button-y) var(--cp-chrome-button-x);
   border-radius: 999px; cursor: pointer; display: inline-flex;
-  align-items: center; gap: 0.35rem;
+  align-items: center; gap: var(--cp-chrome-button-gap);
 }
 .cm-toolbar button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 /* When the panel is collapsed, the Show button gets a distinct filled bubble so it
@@ -50,8 +194,8 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
 }
 .cm-toolbar .pill-count, .cm-sidebar header .pill-count {
   background: var(--cp-accent); color: var(--cp-accent-fg);
-  border-radius: 999px; padding: 0.1rem 0.5rem;
-  font-size: 0.72rem; font-weight: 600; min-width: 1.4rem; text-align: center;
+  border-radius: 999px; padding: var(--cp-chrome-pill-y) var(--cp-chrome-pill-x);
+  font-size: var(--cp-chrome-small-font); font-weight: 600; min-width: 1.4rem; text-align: center;
 }
 
 .cm-sidebar {
@@ -82,4 +226,3 @@ body.cm-sidebar-resizing .cm-sidebar { transition: none; }
    offers is present in the panel header, so there is no reason to keep a pill
    hovering over the document content. It returns when the panel is closed. */
 body.sidebar-open .cm-toolbar { display: none; }
-
