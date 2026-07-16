@@ -1,25 +1,30 @@
 # commentable-html development
 
-This `dev/` folder is the development home for `commentable-html`. It is not copied when users install the marketplace plugin. The shipped plugin is `../pkg`, which contains `plugin.json` and `skills/commentable-html/`; this folder keeps the canonical assets, build tooling, tests, fixtures, and spec in the source repository.
+This `dev/` folder is the development home for `commentable-html`. It is not copied when users install the marketplace plugin. The editable + built skill tree (the STAGE) lives beside it at `dev/skill/`; `build.py` assembles the STAGE's bulky runtime into a single `skill-resources.zip`, and the plugin ships a minimal `../pkg` (`plugin.json`, the SessionStart hook, and `skills/commentable-html/` holding only `SKILL.md`, `LICENSE`, and `skill-resources.zip`) so the installer writes very few files. A SessionStart hook extracts the zip on first run. This folder keeps the canonical assets, build tooling, tests, fixtures, and spec in the source repository.
 
-## Two-directory layout
+## Directory layout
 
 ```text
 dev/
   assets/                 canonical CSS, JS, and template shell sources
   tools/                  maintainer-only build and screenshot tools
+  skill/                  STAGE: the full editable + built skill (source of truth for tests)
+    SKILL.md              shipped skill instructions
+    dist/                 generated PORTABLE.html, NONPORTABLE.html, companions, manifest.json
+    tools/                runtime Python tools
+    references/           reference docs the agent consults
+    vendor/               deck vendor templates
   tests/                  Python test_*.py suites, Playwright *.spec.js suites, helpers, and fixtures
-  SPEC.md                 behavioral spec
+  SPEC.md                 behavioral spec (generated from dev/spec/ partials by build_spec.py)
   package.json, package-lock.json, playwright.config.js
 ../pkg/
   plugin.json             marketplace plugin manifest
+  hooks.json, hooks/      the SessionStart extractor hook (Copilot + Claude configs, extract_resources.py)
   skills/commentable-html/
-    SKILL.md              shipped skill instructions
-    dist/                 generated PORTABLE.html, NONPORTABLE.html, companions, manifest.json
-    tools/                runtime Python tools that ship
-    references/           shipped reference docs
-    docs/                 shipped tutorial and tutorial images
-    examples/             shipped worked prompts and example reports
+    SKILL.md, LICENSE     shipped unzipped (the agent discovers the skill before extraction)
+    skill-resources.zip   the bulky runtime (tools/references/dist/vendor), extracted on first run
+../docs/                   tutorial and tutorial images (NOT shipped; published on the site)
+../examples/               worked prompts and example reports (NOT shipped; published on the site)
 ```
 
 ## Single source of truth
@@ -32,23 +37,23 @@ Edit `dev/assets/` only when changing the review layer:
 
 The version lives in `dev/VERSION` (plain-text semver) and is the only hand-edited version. `build.py` reads it and stamps the runtime `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each generated document's `<meta name="commentable-html-version">`. Companion filenames are version-agnostic, so a version bump never renames dist files.
 
-Everything under `../pkg/skills/commentable-html/dist/` is generated and committed so installs do not run a build step. Do not hand-edit `dist/PORTABLE.html`, `dist/NONPORTABLE.html`, the companions, or `manifest.json`.
+Everything under `dev/skill/dist/` is generated (and packed into `skill-resources.zip`) so installs do not run a build step. Do not hand-edit `dist/PORTABLE.html`, `dist/NONPORTABLE.html`, the companions, or `manifest.json`.
 
 ## Build pipeline
 
-Run from `dev/`:
+The one-command build from the repo root regenerates every artifact in order (dist -> SPEC -> fixtures -> screenshots -> site):
 
 ```powershell
-python tools\build.py --assets-dir assets --out-dir ..\pkg\skills\commentable-html
+python scripts\rebuild_all.py            # or --check to verify drift without writing
 ```
 
-Check for drift without writing:
+To run only the layer build, from `dev/` point the builder at the STAGE and the minimal shipped pkg:
 
 ```powershell
-python tools\build.py --assets-dir assets --out-dir ..\pkg\skills\commentable-html --check
+python tools\build.py --assets-dir assets --out-dir skill --pkg-dir ..\pkg\skills\commentable-html --examples-dir ..\examples
 ```
 
-`--assets-dir` and `--out-dir` point the builder at this split source/shipped layout. The check mode is the CI guard for generated output drift.
+Add `--check` to any of these for the CI drift guard (write nothing, fail on drift).
 
 To bump the version, edit `VERSION` then run `build.py`; it restamps every version spot (the layer `CMH_VERSION` const, `../pkg/plugin.json`, the marketplace entry, and each document's `<meta name="commentable-html-version">`). Companion filenames are version-agnostic, so the bump does not rename any dist files. `build.py --check` fails if any stamped spot drifts from `VERSION`.
 
@@ -56,7 +61,7 @@ To bump mermaid (usually a Dependabot PR against `package.json`): the mermaid CD
 
 ## Python suite
 
-The Python tests use standard-library `unittest`. They import the runtime tools from `../pkg/skills/commentable-html/tools` and validate the generated artifacts in `../pkg`, so a pass covers what ships.
+The Python tests use standard-library `unittest`. They import the runtime tools from `dev/skill/tools` (the STAGE, which `build.py` packs into `skill-resources.zip`) and validate the generated artifacts in `dev/skill`, so a pass covers what ships once extracted.
 
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
@@ -119,18 +124,18 @@ python tools\validate.py --strict dist\PORTABLE.html examples\report-community-g
 
 ## Rebuilding the example images
 
-The shipped example reports are single self-contained files with their images inlined as data URIs, so `pkg/skills/commentable-html/examples/` has no `images/` folder. The source images for the community garden example live here in `dev/examples/images/` (kept for reproducibility, not shipped). To re-inline them into a freshly authored example and validate it, run from `dev/`:
+The shipped example reports are single self-contained files with their images inlined as data URIs, so the top-level `../examples/` has no `images/` folder. The source images for the community garden example live here in `dev/examples/images/` (kept for reproducibility, not shipped). To re-inline them into a freshly authored example and validate it, run from `dev/`:
 
 ```powershell
-python ..\pkg\skills\commentable-html\tools\inline_images.py <report>.html --base ..\dev\examples\images --strict
-python ..\pkg\skills\commentable-html\tools\validate.py <report>.html
+python skill\tools\authoring\inline_images.py <report>.html --base examples\images --strict
+python skill\tools\validate\validate.py <report>.html
 ```
 
 The taxi example has no images, so it needs no inlining - just validate it.
 
 ## Regenerating tutorial screenshots
 
-The tutorial (`../pkg/skills/commentable-html/docs/TUTORIAL.md`) embeds nine `garden-*.png`
+The tutorial (`../docs/TUTORIAL.md`) embeds nine `garden-*.png`
 screenshots captured from the community-garden example. Regenerate all of them with one command from
 `dev/`:
 
@@ -139,9 +144,9 @@ npm run shots
 ```
 
 `npm run shots` runs `tools/capture_tutorial.mjs` with no arguments: it drives
-`../pkg/skills/commentable-html/examples/report-community-garden.html` and writes
+`../examples/report-community-garden.html` and writes
 `garden-01-top-light.png` through `garden-09-copyall.png` into
-`../pkg/skills/commentable-html/docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
+`../docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
 capture clock, random seed, viewport, locale, timezone, reduced motion, browser font rendering flags,
 and capture fonts, then normalizes PNG output so repeated runs produce byte-identical files on the
 same browser environment. Check committed screenshots for drift without rewriting them:
@@ -182,6 +187,6 @@ node tests\fixtures\generate.mjs --check
 
 ## What is committed
 
-Committed source-repo files include `dev/assets/`, `dev/tools/`, `dev/tests/`, `dev/SPEC.md`, `dev/package.json`, `dev/package-lock.json`, `dev/playwright.config.js`, shipped runtime tools under `pkg/skills/commentable-html/tools/`, shipped docs under `pkg/skills/commentable-html/references/` and `docs/`, examples, and generated dist artifacts.
+Committed source-repo files include `dev/assets/`, `dev/tools/`, `dev/tests/`, `dev/SPEC.md`, `dev/package.json`, `dev/package-lock.json`, `dev/playwright.config.js`, the STAGE runtime tools under `dev/skill/tools/`, reference docs under `dev/skill/references/`, the top-level `docs/` and `examples/`, and the generated `dev/skill/dist/` artifacts and shipped `pkg/` (the SessionStart hook and `skill-resources.zip`).
 
 Do not commit `node_modules/`, `test-results/`, or `playwright-report/`; a fresh checkout recreates them with `npm ci` and `npx playwright install chromium`. Packaged marketplace installs include only `pkg/`, not this development harness.

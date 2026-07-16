@@ -1,6 +1,6 @@
 ## Deck integration (frontend-slides)
 
-The commentable-html skill vendors a curated, pristine subset of the third-party frontend-slides skill (MIT, Zara Zhang) under `pkg/skills/commentable-html/vendor/frontend-slides/` to power a built-in deck capability. The vendored subtree is enforced pristine by a required CI gate. The author-time deck tools live under `pkg/skills/commentable-html/tools/deck/`, and the runtime deck profile lives in the layer (activated only by `data-cmh-mode="deck"`, so non-deck documents are unaffected). See `references/deck-contract.md` for the runtime interface contract.
+The commentable-html skill vendors a curated, pristine subset of the third-party frontend-slides skill (MIT, Zara Zhang) under `dev/skill/vendor/frontend-slides/` (the STAGE; it ships inside `skill-resources.zip` and extracts to `skills/commentable-html/vendor/frontend-slides/`) to power a built-in deck capability. The vendored subtree is enforced pristine by a required CI gate. The author-time deck tools live under `dev/skill/tools/deck/`, and the runtime deck profile lives in the layer (activated only by `data-cmh-mode="deck"`, so non-deck documents are unaffected). See `references/deck-contract.md` for the runtime interface contract.
 
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |

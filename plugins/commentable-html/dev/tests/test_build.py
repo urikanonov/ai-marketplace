@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -691,17 +692,73 @@ class PackageTests(unittest.TestCase):
             drift = build.check_package(_paths.PKG, pkg, v)
             self.assertTrue(any("invalid or corrupt" in x for x in drift))
 
+    @staticmethod
+    def _minimal_stage(d):
+        """A minimal but COMPLETE stage: one file in every required runtime dir, so the packager's
+        all-dirs-present guard is satisfied and a test can then perturb one thing in isolation."""
+        stage = os.path.join(d, "skill")
+        for sub in build.PACKAGE_BULKY_DIRS:
+            os.makedirs(os.path.join(stage, sub))
+            with open(os.path.join(stage, sub, "f.txt"), "w", encoding="utf-8") as fh:
+                fh.write(sub + "\n")
+        return stage
+
+    def test_packager_rejects_missing_runtime_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            shutil.rmtree(os.path.join(stage, "references"))
+            with self.assertRaises(SystemExit) as cm:
+                build.build_resources_zip_bytes(stage)
+            self.assertIn("references", str(cm.exception))
+
+    def test_packager_rejects_empty_runtime_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            os.remove(os.path.join(stage, "vendor", "f.txt"))  # dir present but contributes nothing
+            with self.assertRaises(SystemExit) as cm:
+                build.build_resources_zip_bytes(stage)
+            self.assertIn("vendor", str(cm.exception))
+
+    def test_check_flags_duplicate_zip_member(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            # Rewrite the committed zip with a duplicated member name (which a name->bytes map would
+            # silently collapse) and confirm --check refuses to treat it as in sync.
+            zp = os.path.join(pkg, "skill-resources.zip")
+            with zipfile.ZipFile(zp, "w") as zf:
+                zf.writestr("tools/a.py", "one\n")
+                zf.writestr("tools/a.py", "two\n")
+            drift = build.check_package(_paths.PKG, pkg, v)
+            self.assertTrue(any("duplicate member" in x for x in drift),
+                            "a duplicated zip member must be reported, not silently collapsed")
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_packager_rejects_a_junction_input(self):
+        # os.path.islink misses junctions; the packager's realpath containment must still reject one.
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            outside = os.path.join(d, "outside")
+            os.makedirs(outside)
+            with open(os.path.join(outside, "secret.txt"), "w", encoding="utf-8") as fh:
+                fh.write("secret\n")
+            junction = os.path.join(stage, "tools", "linked")
+            rc = subprocess.run(["cmd", "/c", "mklink", "/J", junction, outside],
+                                capture_output=True, text=True)
+            if rc.returncode != 0:
+                self.skipTest("could not create a junction: " + rc.stderr.strip())
+            with self.assertRaises(SystemExit):
+                build.build_resources_zip_bytes(stage)
+
     def test_packager_rejects_a_symlinked_input(self):
         with tempfile.TemporaryDirectory() as d:
-            stage = os.path.join(d, "skill")
-            tools = os.path.join(stage, "tools")
-            os.makedirs(tools)
-            with open(os.path.join(tools, "real.py"), "w", encoding="utf-8") as fh:
-                fh.write("x\n")
+            stage = self._minimal_stage(d)
             outside = os.path.join(d, "secret.txt")
             with open(outside, "w", encoding="utf-8") as fh:
                 fh.write("secret\n")
-            link = os.path.join(tools, "leak.txt")
+            link = os.path.join(stage, "tools", "leak.txt")
             try:
                 os.symlink(outside, link)
             except (OSError, NotImplementedError):

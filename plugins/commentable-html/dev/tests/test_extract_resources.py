@@ -358,6 +358,85 @@ class ExtractResourcesTests(unittest.TestCase):
         os.makedirs(os.path.join(staging, "tools"), exist_ok=True)
         self.assertTrue(extract_resources._is_swappable(self.skill, "tools"))
 
+    # CMH-PKG-08: only real directories are installed - a plain file at the staging root (which a
+    # tampered zip could carry) is never swapped over a control file.
+    def test_is_swappable_rejects_a_plain_file(self):
+        staging = os.path.join(self.skill, extract_resources.STAGING_NAME)
+        os.makedirs(staging, exist_ok=True)
+        with open(os.path.join(staging, "loose.txt"), "w", encoding="utf-8") as fh:
+            fh.write("x\n")
+        self.assertFalse(extract_resources._is_swappable(self.skill, "loose.txt"),
+                         "a plain file at the staging root must not be swappable")
+
+    # CMH-PKG-01: a zip that carries no installable directory must NOT be marked successful (else a
+    # truncated/empty/wrong zip would permanently cache a broken install and never self-heal).
+    def test_zip_without_installable_directories_writes_no_marker(self):
+        _make_zip(self.zip, {"SKILL.md": "loose\n", "notes.txt": "x\n"})
+        with self.assertRaises(RuntimeError):
+            extract_resources.extract_all(self.zip, self.skill, "1.0.0", retries=1, backoff=0.001,
+                                          sleep=lambda *_: None)
+        self.assertFalse(os.path.isfile(self._marker("1.0.0")),
+                         "an empty/incomplete zip must leave no marker so the next session retries")
+
+    # CMH-PKG-04: the marker's own final rename retries a transient Defender lock, so a lock on the
+    # just-written temp does not waste a fully-successful extraction.
+    def test_write_marker_retries_transient_lock_on_final_rename(self):
+        real_replace = os.replace
+        state = {"fails": 2}
+        slept = []
+        dst = self._marker("1.0.0")
+
+        def _flaky(src, target, *a, **k):
+            if os.path.abspath(target) == os.path.abspath(dst) and state["fails"] > 0:
+                state["fails"] -= 1
+                err = OSError("locked")
+                err.winerror = 5
+                raise err
+            return real_replace(src, target, *a, **k)
+
+        with unittest.mock.patch("os.replace", _flaky):
+            extract_resources._write_marker(self.skill, "1.0.0", retries=5, backoff=0.001,
+                                            sleep=slept.append, deadline=time.monotonic() + 30)
+        self.assertEqual(state["fails"], 0)
+        self.assertTrue(os.path.isfile(dst))
+        self.assertGreaterEqual(len(slept), 2)
+
+    # CMH-PKG-03: the retryable Windows error set includes 33 (lock-pending) and 145 (dir-not-empty),
+    # the NTFS delete-pending races that motivated adding them - pin them so trimming the set fails.
+    def test_winerror_dir_not_empty_and_lock_pending_are_retried(self):
+        for code in (33, 145):
+            with self.subTest(winerror=code):
+                self._reset_skill()
+                err = OSError("locked")
+                err.winerror = code
+                state = {"fails": 1}
+                real = extract_resources._extract_member
+
+                def _flaky(zf, member, dest, _err=err, _st=state):
+                    if member.filename.endswith("a.py") and _st["fails"] > 0:
+                        _st["fails"] -= 1
+                        raise _err
+                    real(zf, member, dest)
+
+                rc = extract_resources.run(self.skill, "1.0.0", extract=_flaky,
+                                           sleep=lambda *_: None, backoff=0.001)
+                self.assertEqual(rc, 0)
+                self.assertEqual(state["fails"], 0)
+
+    # CMH-PKG-08: _make_writable restores the directory execute/search bit (not S_IWRITE only), so a
+    # tree that came back with cleared bits on POSIX can still be walked and removed by rmtree.
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_make_writable_restores_execute_bit_on_directories(self):
+        import stat as _stat
+
+        d = os.path.join(self.tmp, "ro")
+        os.makedirs(os.path.join(d, "sub"))
+        os.chmod(os.path.join(d, "sub"), 0o000)
+        os.chmod(d, 0o000)
+        extract_resources._make_writable(d)
+        self.assertTrue(os.stat(d).st_mode & _stat.S_IXUSR, "dir search bit must be restored")
+        self.assertTrue(os.stat(d).st_mode & _stat.S_IWUSR, "dir write bit must be restored")
+
     # CMH-PKG-05: the rollback itself retries a transient lock and restores the previous version.
     def test_rollback_survives_transient_lock_during_restore(self):
         _make_zip(self.zip, {"tools/a.py": "x\n", "dist/c.html": "<html></html>\n"})

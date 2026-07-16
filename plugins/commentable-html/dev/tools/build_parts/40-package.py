@@ -74,10 +74,12 @@ def _iter_zip_members(stage_dir):
     for d in PACKAGE_BULKY_DIRS:
         base = os.path.join(stage_dir, d)
         if not os.path.isdir(base):
-            continue
+            raise SystemExit(
+                "skill-resources.zip: required runtime directory is missing from the stage: " + d)
         if not _contained(stage_real, base):
             raise SystemExit(
                 "skill-resources.zip: refusing a redirected build-input directory: " + d)
+        before = len(members)
         for root, dirs, files in os.walk(base):
             kept = []
             for x in dirs:
@@ -102,6 +104,9 @@ def _iter_zip_members(stage_dir):
                         + os.path.relpath(full, stage_dir))
                 rel = os.path.relpath(full, stage_dir).replace(os.sep, "/")
                 members.append((rel, full))
+        if len(members) == before:
+            raise SystemExit(
+                "skill-resources.zip: required runtime directory is empty in the stage: " + d)
     members.sort(key=lambda pair: pair[0])
     return members
 
@@ -122,12 +127,22 @@ def build_resources_zip_bytes(stage_dir):
 
 
 def _zip_content_map(source):
-    """Map member-name -> bytes for a zip given as a path or raw bytes. Platform-independent."""
+    """Map member-name -> bytes for a zip given as a path or raw bytes. Platform-independent.
+    Duplicate member names are rejected (ValueError): a zip can legally carry two entries with the
+    same name, and a name->bytes map would silently collapse them to the last one - so a tampered or
+    corrupt committed zip with a duplicated member could otherwise compare equal and evade --check."""
+    def _build(zf):
+        out = {}
+        for info in zf.infolist():
+            if info.filename in out:
+                raise ValueError("duplicate member: " + info.filename)
+            out[info.filename] = zf.read(info.filename)
+        return out
     if isinstance(source, (bytes, bytearray)):
         with zipfile.ZipFile(io.BytesIO(source)) as zf:
-            return {info.filename: zf.read(info.filename) for info in zf.infolist()}
+            return _build(zf)
     with open(source, "rb") as fh, zipfile.ZipFile(fh) as zf:
-        return {info.filename: zf.read(info.filename) for info in zf.infolist()}
+        return _build(zf)
 
 
 def _stamp_hooks(text, version):
@@ -183,6 +198,9 @@ def check_package(stage_dir, pkg_dir, version):
         except (zipfile.BadZipFile, OSError):
             have = None
             drift.append(PACKAGE_ZIP_NAME + " (invalid or corrupt; rebuild)")
+        except ValueError as exc:
+            have = None
+            drift.append(PACKAGE_ZIP_NAME + " (" + str(exc) + "; rebuild)")
         if have is None:
             pass
         elif set(have) != set(fresh):

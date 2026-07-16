@@ -137,12 +137,23 @@ class HookWiringTests(unittest.TestCase):
         for cmd in (copilot["bash"], claude, _read(PS1)):
             self.assertIn("WindowsApps", cmd, "hook must skip the WindowsApps python alias stub")
             self.assertIn("-c", cmd, "hook must probe that the interpreter actually runs")
+            # Pin the exact probe body: `-c pass` (a no-op statement). The round-2 Windows-breaker
+            # was `-c ''` - PowerShell drops the empty positional, so `python -I -c` is a syntax
+            # error and the probe rejects every real interpreter, silently disabling extraction.
+            self.assertRegex(cmd, r"-c\s+['\"]?pass['\"]?",
+                             "hook interpreter probe must run `-c pass`, never an empty `-c ''`")
             self.assertIn(" -I ", " " + cmd + " ", "hook must run the extractor isolated (-I)")
 
     def test_powershell_launcher_forces_success_exit(self):
         self.assertRegex(_read(PS1).rstrip() + "\n", r"exit 0\s*$",
                          "session-extract.ps1 must force exit 0 so a failed extraction is "
                          "non-blocking")
+
+    # CMH-PKG-09: the Windows launcher resolves its paths from $PSScriptRoot (the script's own
+    # directory), NOT the process CWD, so it works regardless of where Copilot invokes the hook.
+    def test_powershell_launcher_is_scriptroot_anchored(self):
+        self.assertIn("$PSScriptRoot", _read(PS1),
+                      "session-extract.ps1 must anchor its paths to $PSScriptRoot, not the CWD")
 
     def _assert_marker_before_python(self, cmd, label):
         cmd = self._strip_comments(cmd)

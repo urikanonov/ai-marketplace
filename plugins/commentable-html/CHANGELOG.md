@@ -22,6 +22,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `--examples-dir` and assembles the deterministic zip, and the editable + built skill tree now
   lives under `dev/skill/`.
 
+### Fixed
+
+- Harden the first-run extractor and packager (review round): the extractor now refuses to write the
+  success marker for a zip that carries no installable runtime directory (a truncated/empty/wrong
+  zip self-heals next session instead of caching a broken install); a fully-successful swap that
+  then hits a locked orphan backup still writes the marker (the backup is reclaimed next run rather
+  than forcing a needless re-extract); `_make_writable` restores the directory execute bit on POSIX
+  (not `S_IWRITE` only) so a cleared-bit tree can still be removed; and its NTFS retry set is pinned
+  (`WinError 5/32/33/145`). The packager now fails the build if any required runtime dir is missing
+  or empty, and `--check` flags a duplicated zip member (which a name-to-bytes map would silently
+  collapse). The Windows launcher's `$PSScriptRoot` anchoring and the `-c pass` interpreter probe
+  are pinned by tests, plus a Windows-junction packager-guard test.
+
 ## [1.117.1] - 2026-07-16
 
 ### Changed

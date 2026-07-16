@@ -150,19 +150,38 @@ def _safe_member_path(dest, name):
     return target
 
 
-def _make_writable(path):
-    """Best-effort: clear the read-only attribute across a tree so an AV-quarantined-and-restored
-    file (which can come back read-only on Windows) does not defeat rmtree with a permanent EACCES."""
+def _add_write_bit(p, is_dir):
+    """Restore write (and, for a directory, execute/search) access on top of the existing mode so
+    rmtree can descend and unlink. Adding to the current mode - rather than chmod-ing to S_IWRITE
+    only - matters on POSIX, where clearing a directory's execute bit makes its children
+    unreachable; S_IWRITE alone (0o200) is enough on Windows but would strip that bit on POSIX."""
     try:
-        if os.path.isfile(path) or os.path.islink(path):
-            os.chmod(path, stat.S_IWRITE)
+        mode = os.stat(p).st_mode
+    except OSError:
+        mode = 0
+    want = mode | stat.S_IWRITE | (stat.S_IXUSR if is_dir else 0)
+    try:
+        os.chmod(p, want)
+    except OSError:
+        pass
+
+
+def _make_writable(path):
+    """Best-effort: restore write/execute access across a tree so an AV-quarantined-and-restored
+    file (which can come back read-only on Windows, or with cleared bits on POSIX) does not defeat
+    rmtree with a permanent EACCES."""
+    try:
+        if os.path.islink(path):
             return
+        if os.path.isfile(path):
+            _add_write_bit(path, is_dir=False)
+            return
+        _add_write_bit(path, is_dir=True)
         for root, dirs, files in os.walk(path):
-            for name in dirs + files:
-                try:
-                    os.chmod(os.path.join(root, name), stat.S_IWRITE)
-                except OSError:
-                    pass
+            for name in dirs:
+                _add_write_bit(os.path.join(root, name), is_dir=True)
+            for name in files:
+                _add_write_bit(os.path.join(root, name), is_dir=False)
     except OSError:
         pass
 
@@ -271,6 +290,11 @@ def _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline):
     budget, since the main deadline may be spent), so the installed skill is either fully upgraded or
     left exactly as it was - never a mixed or missing state."""
     entries = [e for e in sorted(os.listdir(staging)) if _is_swappable(skill_dir, e)]
+    if not entries:
+        # A truncated/empty/wrong zip yielded no installable directory. Do NOT proceed to mark this
+        # a success (that would permanently cache a broken install); raise so extract_all writes no
+        # marker and the next session re-extracts.
+        raise RuntimeError("skill-resources.zip contained no installable directories")
     touched = []  # (dst, bak_or_None): entries whose new dir we began moving into place
     try:
         for entry in entries:
@@ -298,7 +322,13 @@ def _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline):
         raise
     for _dst, bak in touched:
         if bak is not None:
-            _rmtree_retry(bak, retries, backoff, sleep, deadline)
+            # Best-effort: the swap already fully succeeded, so a transient lock on an orphan backup
+            # must NOT abort the marker write (that would needlessly re-extract next session). Any
+            # backup left behind is removed by _cleanup_leftovers on the next run.
+            try:
+                _rmtree_retry(bak, retries, backoff, sleep, deadline)
+            except Exception:  # noqa: BLE001 - orphan cruft; cleaned up next session
+                pass
 
 
 def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_BACKOFF,
