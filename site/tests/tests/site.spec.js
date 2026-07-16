@@ -693,6 +693,23 @@ test("the Claude Desktop skill ZIP is served for download (SITE-INSTALL-06)", as
   expect(r.headers()["content-type"]).toContain("application/zip");
 });
 
+test("the install tabs read as a clickable segmented control (SITE-INSTALL-07)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const block = page.locator("#install .install-tabs");
+  const selectedBg = await block.locator('.install-tab[aria-selected="true"]').evaluate(
+    (el) => getComputedStyle(el).backgroundColor);
+  const unselectedBg = await block.locator('.install-tab[aria-selected="false"]').first().evaluate(
+    (el) => getComputedStyle(el).backgroundColor);
+  // The active tab carries a real filled background (not transparent) distinct from an inactive tab,
+  // so it is obvious which tab is selected and that the tabs are interactive controls.
+  expect(selectedBg).not.toBe(unselectedBg);
+  expect(selectedBg).not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|^transparent$/);
+  // The tablist is a visible bordered tray, reinforcing the segmented-control affordance.
+  const trayBorder = await block.locator(".install-tablist").evaluate(
+    (el) => parseFloat(getComputedStyle(el).borderTopWidth));
+  expect(trayBorder).toBeGreaterThan(0);
+});
+
 test("the pages state dual-agent invocation from each agent's CLI and Desktop app (SITE-DUAL-01)", async ({ page }) => {
   // Hub: the hero lead names both agents and the CLI+Desktop invocation.
   await page.goto("/", { waitUntil: "domcontentloaded" });
