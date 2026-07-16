@@ -35,7 +35,7 @@ run() {
 }
 
 # Mirrors the required `validate` job: Markdown hygiene, manifest/plugin/skill
-# validation, the script unit tests, and the changelog sync + history guard.
+# validation, no-Backlog guard, script unit tests, and the changelog sync + history guard.
 run "Markdown hygiene" "$PY" scripts/validate_markdown.py
 
 if "$PY" -c "import yaml, jsonschema" >/dev/null 2>&1; then
@@ -46,6 +46,7 @@ fi
 
 run "script unit tests" "$PY" -m unittest discover -s scripts -p "test_*.py"
 run "forbidden secret-bearing files" "$PY" scripts/check_forbidden_files.py
+run "Backlog.md artifacts absent" "$PY" scripts/check_no_backlog.py
 
 found_python_tests=0
 for _tests in plugins/*/dev/tests; do
