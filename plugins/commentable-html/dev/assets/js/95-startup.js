@@ -66,6 +66,42 @@ function setupFooter() {
   document.body.classList.add("cm-has-footer");
   const hb = f.querySelector(".cm-footer-help");
   if (hb) hb.addEventListener("click", function () { showHelp(hb); });
+  setupFooterSessionCopy(f);
+}
+
+// Footer control that copies the creating AI agent's session id (CMH-FOOT-04). It appears only
+// when the document carries a `commentable-html-session-id` provenance stamp (written by the
+// authoring tools by default; opt out with --no-session-id). The `commentable-html-agent` slug
+// names the copy tooltip. Like the rest of the footer it is cm-skip chrome, so it never bakes into
+// a Plain HTML export and is re-derived from the meta on load.
+function _cmSessionMeta(name) {
+  const m = document.querySelector('meta[name="' + name + '"]');
+  return m ? (m.getAttribute("content") || "").trim() : "";
+}
+function _cmAgentLabel(slug) {
+  const s = (slug || "").toLowerCase();
+  if (s === "copilot") return "Copilot";
+  if (s === "claude") return "Claude";
+  return slug || "AI";
+}
+function setupFooterSessionCopy(footer) {
+  const sid = _cmSessionMeta("commentable-html-session-id");
+  if (!sid) return;
+  const label = "Copy " + _cmAgentLabel(_cmSessionMeta("commentable-html-agent")) + " session id";
+  const sep = document.createElement("span");
+  sep.className = "cm-footer-sep";
+  sep.setAttribute("aria-hidden", "true");
+  sep.textContent = "\u00b7";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "cm-footer-copy-session";
+  btn.setAttribute("aria-label", label);
+  btn.setAttribute("data-cmh-tip", label);
+  btn.innerHTML = _cmIco("clipboard", 14);
+  btn.addEventListener("click", function () { copyPlain(sid, "Session id copied to clipboard."); });
+  const help = footer.querySelector(".cm-footer-help");
+  if (help) { footer.insertBefore(sep, help); footer.insertBefore(btn, help); }
+  else { footer.appendChild(sep); footer.appendChild(btn); }
 }
 
 // Lightweight, dependency-free tooltip layer. It upgrades the native `title` on chrome

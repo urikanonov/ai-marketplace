@@ -177,6 +177,15 @@ def main(argv=None):
     ap.add_argument("--brand", default=None,
                     help="optional brand.json profile that stamps validated --cp-* theme tokens "
                          "and local data-URI font faces")
+    ap.add_argument("--session-id", default=None,
+                    help="AI session id of the agent creating this deck, stamped as provenance and "
+                         "copyable from the footer (default: auto-detected from the environment)")
+    ap.add_argument("--agent", default=None,
+                    help="producing agent slug (e.g. copilot, claude) shown in the footer copy "
+                         "tooltip; default: inferred from which session env var matched")
+    ap.add_argument("--no-session-id", action="store_true",
+                    help="do not stamp the creating AI session id (ON by default when a session id "
+                         "is available from --session-id or the environment)")
     args = ap.parse_args(argv)
 
     out = Path(args.out)
@@ -220,6 +229,13 @@ def main(argv=None):
     try:
         import doc_stamp
         html = doc_stamp.stamp_created(html, when=args.generated)
+        if not args.no_session_id:
+            sid, agent = args.session_id, args.agent
+            if not sid:
+                sid, detected_agent = doc_stamp.detect_session()
+                if agent is None:
+                    agent = detected_agent
+            html = doc_stamp.stamp_session(html, sid, agent=agent)
     except ImportError:
         pass
 

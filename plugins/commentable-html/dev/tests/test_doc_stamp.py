@@ -49,6 +49,59 @@ class DocStampUnitTests(unittest.TestCase):
         self.assertIn("commentable-html-created", out)
         self.assertNotIn('content="a"b', out)
 
+    def test_stamp_session_sets_id_and_agent(self):
+        out = doc_stamp.stamp_session("<head></head>", "sess-123", agent="copilot")
+        self.assertEqual(doc_stamp.get_meta(out, doc_stamp.SESSION_META), "sess-123")
+        self.assertEqual(doc_stamp.get_meta(out, doc_stamp.AGENT_META), "copilot")
+
+    def test_stamp_session_without_agent_omits_agent_meta(self):
+        out = doc_stamp.stamp_session("<head></head>", "sess-123")
+        self.assertEqual(doc_stamp.get_meta(out, doc_stamp.SESSION_META), "sess-123")
+        self.assertIsNone(doc_stamp.get_meta(out, doc_stamp.AGENT_META))
+
+    def test_stamp_session_is_idempotent(self):
+        once = doc_stamp.stamp_session("<head></head>", "first", agent="copilot")
+        twice = doc_stamp.stamp_session(once, "second", agent="claude")
+        self.assertEqual(doc_stamp.get_meta(twice, doc_stamp.SESSION_META), "first")
+        self.assertEqual(doc_stamp.get_meta(twice, doc_stamp.AGENT_META), "copilot")
+
+    def test_stamp_session_blank_is_noop(self):
+        self.assertNotIn(doc_stamp.SESSION_META, doc_stamp.stamp_session("<head></head>", ""))
+        self.assertNotIn(doc_stamp.SESSION_META, doc_stamp.stamp_session("<head></head>", None))
+
+    def test_detect_session_reads_copilot_env(self):
+        self.assertEqual(doc_stamp.detect_session({"COPILOT_AGENT_SESSION_ID": "cop-1"}),
+                         ("cop-1", "copilot"))
+
+    def test_detect_session_reads_claude_env(self):
+        self.assertEqual(doc_stamp.detect_session({"CLAUDE_CODE_SESSION_ID": "cc-1"}),
+                         ("cc-1", "claude"))
+
+    def test_detect_session_reads_claude_legacy_env(self):
+        self.assertEqual(doc_stamp.detect_session({"CLAUDE_SESSION_ID": "cl-1"}),
+                         ("cl-1", "claude"))
+
+    def test_detect_session_prefers_copilot_when_both_present_and_no_runtime_marker(self):
+        self.assertEqual(
+            doc_stamp.detect_session({"COPILOT_AGENT_SESSION_ID": "cop-1", "CLAUDE_CODE_SESSION_ID": "cc-1"}),
+            ("cop-1", "copilot"))
+
+    def test_detect_session_prefers_the_running_agent_when_both_present(self):
+        # A tool run by Claude under a Copilot parent inherits both session ids; the CLAUDECODE
+        # runtime marker attributes it to the agent actually executing the tool.
+        self.assertEqual(
+            doc_stamp.detect_session({"COPILOT_AGENT_SESSION_ID": "cop-1", "CLAUDE_CODE_SESSION_ID": "cc-1",
+                                      "CLAUDECODE": "1", "COPILOT_CLI": "1"}),
+            ("cc-1", "claude"))
+        self.assertEqual(
+            doc_stamp.detect_session({"COPILOT_AGENT_SESSION_ID": "cop-1", "CLAUDE_CODE_SESSION_ID": "cc-1",
+                                      "COPILOT_CLI": "1"}),
+            ("cop-1", "copilot"))
+
+    def test_detect_session_absent_is_none(self):
+        self.assertEqual(doc_stamp.detect_session({}), (None, None))
+        self.assertEqual(doc_stamp.detect_session({"COPILOT_AGENT_SESSION_ID": "  "}), (None, None))
+
 
 def _run_new_document(argv, stdin=CONTENT):
     out, err = io.StringIO(), io.StringIO()
@@ -75,6 +128,45 @@ class NewDocumentCreatedStampTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.VALIDATED_META),
                           "creation must not claim validation")
+
+
+class NewDocumentSessionStampTests(unittest.TestCase):
+    """CMH-STAMP-04: new_document stamps the creating AI session id by default (from --session-id
+    or the environment), records the agent, and suppresses it with --no-session-id."""
+
+    def test_stamps_session_from_flag(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            code, html, err = _run_new_document(
+                ["new_document.py", "--content", "-", "--key", "ss-v1", "--label", "L",
+                 "--kind", "report", "--portable", "--session-id", "flag-sess", "--agent", "claude"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(doc_stamp.get_meta(html, doc_stamp.SESSION_META), "flag-sess")
+        self.assertEqual(doc_stamp.get_meta(html, doc_stamp.AGENT_META), "claude")
+
+    def test_stamps_session_from_environment_by_default(self):
+        with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
+            code, html, err = _run_new_document(
+                ["new_document.py", "--content", "-", "--key", "ss-v2", "--label", "L",
+                 "--kind", "report", "--portable"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(doc_stamp.get_meta(html, doc_stamp.SESSION_META), "env-sess")
+        self.assertEqual(doc_stamp.get_meta(html, doc_stamp.AGENT_META), "copilot")
+
+    def test_no_session_id_flag_suppresses_the_stamp(self):
+        with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
+            code, html, err = _run_new_document(
+                ["new_document.py", "--content", "-", "--key", "ss-v3", "--label", "L",
+                 "--kind", "report", "--portable", "--no-session-id"])
+        self.assertEqual(code, 0, err)
+        self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.SESSION_META))
+
+    def test_absent_when_no_session_id_is_available(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            code, html, err = _run_new_document(
+                ["new_document.py", "--content", "-", "--key", "ss-v4", "--label", "L",
+                 "--kind", "report", "--portable"])
+        self.assertEqual(code, 0, err)
+        self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.SESSION_META))
 
 
 class ValidateStampTests(unittest.TestCase):

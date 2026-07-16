@@ -205,6 +205,37 @@ class DeckScaffoldTests(unittest.TestCase):
         self.assertIn("remote media", proc.stderr)
         self.assertFalse(os.path.exists(self.out))
 
+    # CMH-STAMP-04: a scaffolded deck stamps the creating AI session id by default (flag or env),
+    # records the agent, and suppresses it with --no-session-id.
+    def test_scaffold_stamps_session_from_flag(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(deck_scaffold.main(
+                ["--slides", "1", "--label", "L", "--out", self.out,
+                 "--session-id", "deck-flag", "--agent", "claude"]), 0)
+        html = Path(self.out).read_text(encoding="utf-8")
+        self.assertIn('<meta name="commentable-html-session-id" content="deck-flag"', html)
+        self.assertIn('<meta name="commentable-html-agent" content="claude"', html)
+
+    def test_scaffold_stamps_session_from_environment_by_default(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "deck-env"}, clear=True):
+            self.assertEqual(deck_scaffold.main(
+                ["--slides", "1", "--label", "L", "--out", self.out]), 0)
+        html = Path(self.out).read_text(encoding="utf-8")
+        self.assertIn('<meta name="commentable-html-session-id" content="deck-env"', html)
+        self.assertIn('<meta name="commentable-html-agent" content="copilot"', html)
+
+    def test_scaffold_no_session_id_flag_suppresses(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "deck-env"}, clear=True):
+            self.assertEqual(deck_scaffold.main(
+                ["--slides", "1", "--label", "L", "--out", self.out, "--no-session-id"]), 0)
+        html = Path(self.out).read_text(encoding="utf-8")
+        # Check the meta TAG is absent, not the bare name string: the portable deck inlines the
+        # runtime JS, which references the meta name "commentable-html-session-id" dynamically.
+        self.assertNotIn('<meta name="commentable-html-session-id"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

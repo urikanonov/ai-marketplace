@@ -11,10 +11,34 @@ current validated stamp - a document that was produced but never strict-validate
 last-resort signal; the skill MUST always finalize and strict-validate before handoff.
 """
 import datetime
+import os
 import re
 
 CREATED_META = "commentable-html-created"
 VALIDATED_META = "commentable-html-validated"
+# Provenance of the AI session that produced the document. `session-id` is the raw id string
+# the runtime footer copies to the clipboard; `agent` is the producing tool's slug (e.g.
+# "copilot", "claude") the footer maps to a friendly name in the copy tooltip.
+SESSION_META = "commentable-html-session-id"
+AGENT_META = "commentable-html-agent"
+
+# Environment variables each supported agent exports for its own session id, in priority order.
+# Copilot CLI exports COPILOT_AGENT_SESSION_ID; Claude Code exports CLAUDE_CODE_SESSION_ID (both
+# confirmed live), with CLAUDE_SESSION_ID kept as a fallback name. The list is easy to extend.
+_SESSION_ENV_VARS = (
+    ("COPILOT_AGENT_SESSION_ID", "copilot"),
+    ("CLAUDE_CODE_SESSION_ID", "claude"),
+    ("CLAUDE_SESSION_ID", "claude"),
+)
+
+# "I am the running CLI" marker env vars each agent sets. When more than one agent's session id is
+# visible (e.g. one CLI launched from another, so a parent's id is inherited by the child), these
+# disambiguate which agent is the IMMEDIATE runtime actually executing the tool. Claude is checked
+# first so a Claude-run tool under a Copilot parent is attributed to Claude.
+_RUNTIME_MARKERS = (
+    ("claude", ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")),
+    ("copilot", ("COPILOT_CLI",)),
+)
 
 
 def now_iso():
@@ -57,3 +81,48 @@ def stamp_created(html, when=None):
 def stamp_validated_html(html, when=None):
     """Return html with the validated stamp set to `when` (default: now)."""
     return set_meta(html, VALIDATED_META, when or now_iso())
+
+
+def detect_session(environ=None):
+    """Return `(session_id, agent)` auto-detected from the environment, or `(None, None)`.
+
+    Collects every `_SESSION_ENV_VARS` entry present in the environment. With one match it is
+    returned; with several (a nested launch where a parent CLI's id was inherited) the agent that
+    is the IMMEDIATE runtime - identified by its `_RUNTIME_MARKERS` - wins, falling back to list
+    order when no marker resolves it. Pass `environ` to test without mutating `os.environ`."""
+    env = os.environ if environ is None else environ
+    present = [(var, agent) for var, agent in _SESSION_ENV_VARS if (env.get(var) or "").strip()]
+    if not present:
+        return None, None
+    if len(present) > 1:
+        runtime = _current_runtime(env)
+        for var, agent in present:
+            if agent == runtime:
+                return (env.get(var) or "").strip(), agent
+    var, agent = present[0]
+    return (env.get(var) or "").strip(), agent
+
+
+def _current_runtime(env):
+    """Return the slug of the agent CLI actually running this process, or None, from the
+    `_RUNTIME_MARKERS`. Used only to break ties when several agents' session ids are visible."""
+    for agent, markers in _RUNTIME_MARKERS:
+        if any((env.get(m) or "").strip() for m in markers):
+            return agent
+    return None
+
+
+def stamp_session(html, session_id, agent=None):
+    """Stamp the producing AI session id (and optional agent slug) as provenance meta.
+
+    Idempotent on the session id: an existing `commentable-html-session-id` stamp is preserved
+    (so a re-scaffold never rewrites the original producer), and a blank/None session id is a
+    no-op. When a session id is written and `agent` is given, the agent slug is written too."""
+    sid = (session_id or "").strip()
+    if not sid or get_meta(html, SESSION_META) is not None:
+        return html
+    html = set_meta(html, SESSION_META, sid)
+    ag = (agent or "").strip()
+    if ag:
+        html = set_meta(html, AGENT_META, ag)
+    return html
