@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.82.0] - 2026-07-16
+
+### Changed
+
+- The shipped showcase/pitch deck (`examples/deck-showcase.html`) was polished across many rounds of
+  multi-model design review into a presentation-ready pitch. Vertical balance now fills the fixed
+  stage (no top-weighted clusters), the "Parchment and Amber" palette gained depth (radial parchment
+  wash, bento gradient card surfaces, a per-act accent rail that fills with amber as the acts
+  progress, and large low-opacity editorial act numerals), a transform-only entrance reveal keeps
+  static captures fully painted, and the commentable-html brand mark now sits in the top-right of
+  every slide with the comment-mode toggle moved to the bottom-right. The narrative opens pain-first,
+  the peak-pain slide catalogues real "lost chat message" phrasings, the feature grid carries on-brand
+  glyph badges, and the comparison, install, and value-recap slides were tightened for clarity and AA
+  contrast.
+- The deck's install commands are now split into one copyable block per command, and clicking anywhere
+  on a command row copies that exact command (gutter-free) to the clipboard with a "Copied" flash,
+  in addition to the per-block Copy button; the click handler is guarded off in comment mode.
+  (CMH-DECK-SHOWCASE-05)
+- The Act 1 loop slide always paints a static fallback loop strip so a slow or blocked mermaid CDN
+  never leaves a blank box; once the live mermaid diagram renders it replaces the fallback.
+  (CMH-DECK-SHOWCASE-06)
+- Deck-authoring guidance now captures what building the showcase deck taught. When asked to plan a
+  deck, the skill asks the user the conditional up-front questions (duration, audience, live vs
+  handed-off, theme, running example, install-CTA placement) and routes to a new CHM-specific
+  `references/deck-design.md` playbook (fill the fixed stage, capture-safe transform-only motion, act
+  wayfinding, pain-before-mechanism narrative, review-surface patterns, and the contrast/clip
+  discipline), alongside the vendored frontend-slides design docs. (CMH-DECK-17)
+
 ## [1.81.0] - 2026-07-16
 
 ### Added

@@ -1472,6 +1472,12 @@ body.cmh-deck-present #menuComment {
   width: 20px;
   height: 20px;
 }
+/* A vertically-centered slide can place the comment composer's Save button over the fixed nav pill,
+   and the composer lives in the active slide's stacking context so a z-index bump cannot lift it
+   above the nav. Make the nav pill background and its DISABLED buttons transparent to pointer events
+   (so a click passes through to the composer) while keeping the enabled nav buttons fully clickable. */
+.cmh-deck-nav { pointer-events: none; }
+.cmh-deck-nav button:not(:disabled) { pointer-events: auto; }
 .cmh-deck-nav {
   position: fixed;
   bottom: 16px;

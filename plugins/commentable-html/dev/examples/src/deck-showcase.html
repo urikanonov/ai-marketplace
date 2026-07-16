@@ -9,17 +9,11 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
-<!-- Clawpilot theme detection (paste FIRST, before any other script) -->
+<!-- This pitch deck is design-locked to its light "Parchment and Amber" theme: the slide styles
+     hardcode light surfaces and have no dark variant, so it always pins data-theme=light and
+     ignores any clawpilotTheme override that would otherwise flip a normal document to dark. -->
 <script>
-  (() => {
-    const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
-    // Default to light. ?clawpilotTheme=dark forces dark; ?clawpilotTheme=auto follows the OS.
-    const theme =
-      param === "auto"
-        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-        : (param || "light");
-    document.documentElement.setAttribute("data-theme", theme);
-  })();
+  document.documentElement.setAttribute("data-theme", "light");
 </script>
 
 <!-- Mermaid loader. The commentable layer auto-detects pre.mermaid / div.mermaid
@@ -1796,8 +1790,15 @@ svg {
   --show-warn: #b45309;
   --slide-bg: var(--show-bg);
   --slide-fg: var(--show-text);
-  background: var(--slide-bg);
-  padding: 64px 78px;
+  --act-rail: var(--show-accent);
+  background:
+    radial-gradient(1220px 720px at 85% -14%, rgba(255, 253, 248, 0.92), rgba(247, 244, 239, 0) 58%),
+    radial-gradient(980px 600px at -6% 114%, rgba(245, 158, 11, 0.07), rgba(247, 244, 239, 0) 52%),
+    linear-gradient(180deg, #f8f5f0 0%, #f1ebe0 100%);
+  padding: 66px 104px;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
 }
 #commentRoot[data-cmh-mode="deck"] .slide h1,
 #commentRoot[data-cmh-mode="deck"] .slide h2,
@@ -1807,8 +1808,9 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .slide p,
 #commentRoot[data-cmh-mode="deck"] .slide li { color: var(--show-muted); font-size: 26px; }
 #commentRoot[data-cmh-mode="deck"] .slide strong { color: var(--show-text); }
-#commentRoot[data-cmh-mode="deck"] .show-mark { background: rgba(245, 158, 11, 0.42); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.42); border-radius: 6px; padding: 0 4px; }
-#commentRoot[data-cmh-mode="deck"] .show-kicker { color: var(--show-accent); font-size: 24px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 18px; }
+#commentRoot[data-cmh-mode="deck"] .show-mark { background: linear-gradient(180deg, transparent 0%, transparent 55%, rgba(245, 158, 11, 0.58) 55%, rgba(245, 158, 11, 0.5) 100%); box-shadow: none; border-radius: 3px; padding: 0 5px 2px; }
+#commentRoot[data-cmh-mode="deck"] .show-kicker { color: var(--show-accent); font-size: 23px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 18px; display: inline-flex; align-items: center; gap: 14px; }
+#commentRoot[data-cmh-mode="deck"] .show-kicker::before { content: ""; width: 44px; height: 4px; border-radius: 3px; background: linear-gradient(90deg, var(--show-accent), #f59e0b); flex: none; }
 #commentRoot[data-cmh-mode="deck"] .show-lead { font-size: 30px; color: var(--show-muted); max-width: 1480px; }
 #commentRoot[data-cmh-mode="deck"] .show-title { padding: 138px 112px; }
 #commentRoot[data-cmh-mode="deck"] .show-title h1 { font-size: 98px; line-height: 1.03; margin-bottom: 30px; }
@@ -1831,29 +1833,43 @@ svg {
 #commentRoot[data-cmh-mode="deck"] table.show-table td { color: var(--show-text); font-size: 22px; line-height: 1.3; background: #fffdf8; }
 #commentRoot[data-cmh-mode="deck"] table.show-table tr:nth-child(even) td { background: #f3ece0; }
 #commentRoot[data-cmh-mode="deck"] .show-chart-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px; align-items: start; }
-#commentRoot[data-cmh-mode="deck"] figure.chart.show-chart { margin: 0; padding: 22px; background: #ffffff; border: 1px solid var(--show-line); border-radius: 20px; }
+#commentRoot[data-cmh-mode="deck"] figure.chart.show-chart { margin: 0; padding: 22px; background: #fffdf8; border: 1px solid var(--show-line); border-radius: 20px; }
 #commentRoot[data-cmh-mode="deck"] figure.chart.show-chart figcaption { color: #514a3a; font-size: 20px; margin-top: 10px; }
 #commentRoot[data-cmh-mode="deck"] .show-chart .chart-wrap { height: 340px; max-height: 340px; position: relative; overflow: hidden; }
 #commentRoot[data-cmh-mode="deck"] .show-image { width: 100%; border-radius: 18px; border: 1px solid var(--show-line); background: #efe8db; }
-#commentRoot[data-cmh-mode="deck"] pre.mermaid { margin: 18px auto 0; max-width: 1560px; min-height: 540px; padding: 26px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); font-size: 23px; line-height: 1.35; text-align: center; }
+#commentRoot[data-cmh-mode="deck"] pre.mermaid { margin: 8px auto 0; width: 100%; max-width: 1560px; min-height: 300px; padding: 34px 60px; border-radius: 22px; background: #fffdf8; border: 1px solid var(--show-line); display: flex; align-items: center; justify-content: center; }
+#commentRoot[data-cmh-mode="deck"] pre.mermaid svg { max-width: 100% !important; height: auto !important; }
+/* Mermaid measures label width off-tree (without the slide's inherited text metrics), so the
+   in-slide render can be a few px wider than the foreignObject it computed and gets clipped by
+   overflow:hidden. The node rect is far wider than the label box, so letting the label overflow the
+   foreignObject (and normalizing letter-spacing) shows the full label cleanly inside the node. */
+#commentRoot[data-cmh-mode="deck"] pre.mermaid svg foreignObject { overflow: visible !important; }
+#commentRoot[data-cmh-mode="deck"] pre.mermaid svg :where(foreignObject div, .nodeLabel, .label) {
+  overflow: visible !important;
+  letter-spacing: normal !important;
+  white-space: nowrap !important;
+  font-size: 15px !important;
+}
 #commentRoot[data-cmh-mode="deck"] .show-code-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px; align-items: start; }
 #commentRoot[data-cmh-mode="deck"] .show-code-grid pre { max-height: 700px; overflow: hidden; border-radius: 16px; font-size: 20px; line-height: 1.35; }
 #commentRoot[data-cmh-mode="deck"] .show-code-stack { display: grid; gap: 14px; }
 #commentRoot[data-cmh-mode="deck"] .show-code-stack pre { max-height: 320px; font-size: 18px; }
 #commentRoot[data-cmh-mode="deck"] .show-code-stack p { margin-top: 0; }
+#commentRoot[data-cmh-mode="deck"] .show-code-foot { margin-top: 20px; max-width: none; }
+#commentRoot[data-cmh-mode="deck"] .show-card-note { margin-top: 14px; font-size: 20px; line-height: 1.38; color: var(--show-muted); }
 #commentRoot[data-cmh-mode="deck"] .showcase-diff-slide .cmh-diff-host { font-size: 18px; line-height: 1.26; }
 #commentRoot[data-cmh-mode="deck"] .show-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
 #commentRoot[data-cmh-mode="deck"] .show-col { min-height: 340px; padding: 16px; border-radius: 18px; background: #fffdf8; border: 1px solid var(--show-line); }
 #commentRoot[data-cmh-mode="deck"] .show-col h3 { font-size: 26px; margin-bottom: 12px; color: var(--show-text); }
 #commentRoot[data-cmh-mode="deck"] .show-ticket { border-radius: 14px; padding: 14px; margin: 10px 0; background: #fbe9d6; border: 1px solid #eccfa8; }
 #commentRoot[data-cmh-mode="deck"] .show-ticket strong { display: block; font-size: 22px; margin-bottom: 5px; color: var(--show-text); }
-#commentRoot[data-cmh-mode="deck"] .show-ticket span { color: #5c5344; font-size: 19px; }
+#commentRoot[data-cmh-mode="deck"] .show-ticket span { color: #4a3f30; font-size: 20px; }
 #commentRoot[data-cmh-mode="deck"] .showcase-checklist-slide .cmh-checklist { padding: 20px 28px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); }
 #commentRoot[data-cmh-mode="deck"] .showcase-checklist-slide li { font-size: 22px; margin: 10px 0; }
 #commentRoot[data-cmh-mode="deck"] .show-export-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 26px; }
-#commentRoot[data-cmh-mode="deck"] .show-export { min-height: 220px; padding: 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); }
-#commentRoot[data-cmh-mode="deck"] .show-export h3 { color: var(--show-accent-2); font-size: 27px; }
-#commentRoot[data-cmh-mode="deck"] .show-export p { font-size: 21px; line-height: 1.32; }
+#commentRoot[data-cmh-mode="deck"] .show-export { min-height: 250px; padding: 26px 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-export h3 { color: #9a4a08; font-size: 27px; }
+#commentRoot[data-cmh-mode="deck"] .show-export p { font-size: 24px; line-height: 1.35; }
 #commentRoot[data-cmh-mode="deck"] .show-cta { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; margin-top: 8px; }
 #commentRoot[data-cmh-mode="deck"] .show-install { padding: 22px 24px; border-radius: 18px; background: #fffdf8; border: 1px solid var(--show-line); }
 #commentRoot[data-cmh-mode="deck"] .show-install h3 { font-size: 28px; margin-bottom: 12px; color: var(--show-text); }
@@ -1887,73 +1903,400 @@ svg {
   color: #1b1f3b !important;
   fill: #1b1f3b !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link, marker path) {
-  stroke: #1b1f3b !important;
-  fill: #1b1f3b !important;
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
+  stroke: #6b6478 !important;
+  fill: none !important;
+  stroke-width: 2px !important;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(marker path, marker *) {
+  fill: #6b6478 !important;
+  stroke: #6b6478 !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel p {
   background: #fffdf8 !important;
   color: #1b1f3b !important;
 }
+
+/* Round-1 polish: depth, bento surfaces, motion (light-only, reduced-motion-safe). Purely additive
+   layers - no vertical padding growth - so the dense slides keep their existing clip-safe room. */
+#commentRoot[data-cmh-mode="deck"] .slide::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 8px;
+  background: linear-gradient(180deg, var(--act-rail, #b11f4b), #f59e0b);
+  pointer-events: none;
+  z-index: 0;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.show-title::before,
+#commentRoot[data-cmh-mode="deck"] .slide.show-close::before { width: 11px; }
+#commentRoot[data-cmh-mode="deck"] .slide > * { position: relative; z-index: 1; }
+#commentRoot[data-cmh-mode="deck"] .show-title { padding: 96px 116px; }
+
+/* One bento card family: soft gradient surface plus a layered shadow, so the cards read tactile. */
+#commentRoot[data-cmh-mode="deck"] :is(.show-card, .show-panel, .show-loop, .show-export, .show-col, .show-install) {
+  background: linear-gradient(155deg, #fffefb 0%, #f5eee0 100%);
+  border-color: #ece2cf;
+  box-shadow: 0 16px 40px rgba(27, 31, 59, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+#commentRoot[data-cmh-mode="deck"] .slide { font-variant-numeric: tabular-nums; }
+
+/* Staggered entrance reveal. Transform-only (no opacity fade) so content is ALWAYS painted at full
+   opacity - a static capture (audit, print, a test screenshot) can never catch it mid-fade - while a
+   live advance still gets a subtle rise. The slide-level cross-fade handles the opacity transition. */
+@keyframes cmhRise { from { transform: translateY(16px); } to { transform: none; } }
+#commentRoot[data-cmh-mode="deck"] .slide.active > * { animation: cmhRise 460ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+#commentRoot[data-cmh-mode="deck"] .slide.active > *:nth-child(1) { animation-delay: 40ms; }
+#commentRoot[data-cmh-mode="deck"] .slide.active > *:nth-child(2) { animation-delay: 110ms; }
+#commentRoot[data-cmh-mode="deck"] .slide.active > *:nth-child(3) { animation-delay: 180ms; }
+#commentRoot[data-cmh-mode="deck"] .slide.active > *:nth-child(4) { animation-delay: 250ms; }
+#commentRoot[data-cmh-mode="deck"] .slide.active > *:nth-child(n+5) { animation-delay: 310ms; }
+@media (prefers-reduced-motion: reduce) {
+  #commentRoot[data-cmh-mode="deck"] .slide.active > * { animation: none; }
+}
+
+/* Fill and scale: give the airy slides real presence so content occupies the stage instead of
+   floating as a small cluster, and open up the title line-height so a wrapped marker-highlight does
+   not collide with the line above. Dense slides keep safe-center top-align; deck_validate --strict
+   guards against any vertical clip these bumps might introduce. */
+#commentRoot[data-cmh-mode="deck"] .slide h2 { font-size: 60px; line-height: 1.16; margin-bottom: 30px; }
+#commentRoot[data-cmh-mode="deck"] .show-title h1 { line-height: 1.12; }
+#commentRoot[data-cmh-mode="deck"] .show-mark { box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+#commentRoot[data-cmh-mode="deck"] .show-lead { font-size: 32px; line-height: 1.42; margin-top: 34px; }
+#commentRoot[data-cmh-mode="deck"] .show-card { min-height: 220px; padding: 34px 38px; }
+#commentRoot[data-cmh-mode="deck"] .show-card h3 { font-size: 34px; margin-bottom: 14px; }
+#commentRoot[data-cmh-mode="deck"] .show-card p,
+#commentRoot[data-cmh-mode="deck"] .show-card li { font-size: 25px; line-height: 1.4; }
+#commentRoot[data-cmh-mode="deck"] .show-two { gap: 44px; }
+#commentRoot[data-cmh-mode="deck"] .show-four { gap: 28px; }
+#commentRoot[data-cmh-mode="deck"] .show-problem { gap: 30px; margin-top: 44px; }
+#commentRoot[data-cmh-mode="deck"] .show-loop { min-height: 420px; padding: 34px; }
+#commentRoot[data-cmh-mode="deck"] .show-loop h3 { font-size: 33px; }
+#commentRoot[data-cmh-mode="deck"] .show-install { padding: 30px 34px; }
+#commentRoot[data-cmh-mode="deck"] .show-install h3 { font-size: 31px; }
+#commentRoot[data-cmh-mode="deck"] .show-install pre { font-size: 22px; padding: 18px 20px; }
+#commentRoot[data-cmh-mode="deck"] .show-cta { gap: 34px; margin-top: 20px; }
+#commentRoot[data-cmh-mode="deck"] .show-links { font-size: 27px; margin-top: 32px; }
+#commentRoot[data-cmh-mode="deck"] .show-byline { margin-top: 64px; }
+#commentRoot[data-cmh-mode="deck"] .show-pill { font-size: 24px; padding: 13px 22px; }
+
+/* Per-command install rows: each command is its own copyable block (its own runtime Copy button),
+   stacked with a small gap and a stronger surface so the CTA reads as a real terminal. */
+#commentRoot[data-cmh-mode="deck"] .show-install pre.show-cmd { margin: 0 0 12px; background: #12162b; border: 1px solid #2a2f4a; }
+#commentRoot[data-cmh-mode="deck"] .show-install pre.show-cmd:last-child { margin-bottom: 0; }
+#commentRoot[data-cmh-mode="deck"] .show-install pre.show-cmd code { color: #e7ecff; }
+#commentRoot[data-cmh-mode="deck"] .show-install pre.show-cmd { cursor: pointer; position: relative; transition: outline-color 120ms ease; outline: 2px solid transparent; outline-offset: 2px; }
+#commentRoot[data-cmh-mode="deck"] .show-install pre.show-cmd:hover { outline-color: rgba(245, 158, 11, 0.55); }
+#commentRoot[data-cmh-mode="deck"] .show-install pre.show-cmd.show-cmd-copied { outline-color: #4ade80; }
+#commentRoot[data-cmh-mode="deck"] .show-install pre.show-cmd.show-cmd-copied::after { content: "Copied"; position: absolute; left: 14px; bottom: 10px; background: #166534; color: #fff; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 9px; border-radius: 999px; z-index: 6; }
+
+/* Persistent Commentable HTML brand mark, top-right of every slide: noticeable but restrained,
+   never intercepts a comment target. */
+#commentRoot[data-cmh-mode="deck"] .slide::after {
+  content: "";
+  position: absolute;
+  top: 42px;
+  right: 58px;
+  width: 58px;
+  height: 58px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect x='3.5' y='5' width='41' height='29' rx='9' fill='%23b11f4b'/%3E%3Cpath d='M13 33h10l-5 8z' fill='%23b11f4b'/%3E%3Ccircle cx='15' cy='19.5' r='3.1' fill='%23fffdf8'/%3E%3Ccircle cx='24' cy='19.5' r='3.1' fill='%23fffdf8'/%3E%3Ccircle cx='33' cy='19.5' r='3.1' fill='%23fffdf8'/%3E%3Ccircle cx='40.5' cy='8.5' r='6' fill='%23f59e0b'/%3E%3C/svg%3E") center / contain no-repeat;
+  opacity: 0.95;
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 6px 14px rgba(27, 31, 59, 0.18));
+}
+/* Move the functional comment-mode toggle to the bottom-right (chat-widget style) so the brand mark
+   owns the top-right corner without the two bubble marks colliding. */
+body:has(#commentRoot[data-cmh-mode="deck"]) .cmh-deck-mode-toggle {
+  top: auto !important;
+  bottom: 40px !important;
+  right: 40px !important;
+}
+
+/* Round-2: act-aware wayfinding, editorial numerals, comparison payoff, quieter nav. */
+/* The left rail fills with amber as the acts progress - a free, on-brand progress cue. */
+#commentRoot[data-cmh-mode="deck"] .slide::before {
+  background: linear-gradient(180deg, #b11f4b 0%, #b11f4b var(--rail-stop, 45%), #f59e0b 100%);
+}
+#commentRoot[data-cmh-mode="deck"] .slide[data-act="1"] { --rail-stop: 82%; }
+#commentRoot[data-cmh-mode="deck"] .slide[data-act="2"] { --rail-stop: 64%; }
+#commentRoot[data-cmh-mode="deck"] .slide[data-act="3"] { --rail-stop: 46%; }
+#commentRoot[data-cmh-mode="deck"] .slide[data-act="4"] { --rail-stop: 28%; }
+#commentRoot[data-cmh-mode="deck"] .slide[data-act="5"] { --rail-stop: 10%; }
+
+/* Large editorial act numeral: low-opacity, top-right, behind content. Decorative and aria-hidden, so
+   it is absolute (zero layout, cannot clip) and never animates. Uses only the system serif stack. */
+#commentRoot[data-cmh-mode="deck"] .show-act-numeral {
+  position: absolute;
+  top: 30px;
+  right: 138px;
+  font-family: ui-serif, Georgia, "Times New Roman", Cambria, serif;
+  font-size: 300px;
+  line-height: 0.8;
+  font-weight: 600;
+  color: rgba(27, 31, 59, 0.065);
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+  animation: none !important;
+}
+
+/* Slide 8: the winning "Commentable HTML" row is the argument of the slide - make it obvious in one
+   glance instead of reading identical to the three rows above it. Scoped to the comparison table only
+   (via .show-compare) so a plain data table on another slide is never auto-highlighted. */
+#commentRoot[data-cmh-mode="deck"] table.show-compare tbody tr:last-child td {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.20), rgba(177, 31, 75, 0.10)) !important;
+  font-weight: 700;
+  color: var(--show-text);
+}
+
+/* Slide 10: index the three review loops with an editorial numeral so they read as a sequence. */
+#commentRoot[data-cmh-mode="deck"] .show-loops { counter-reset: loop; }
+#commentRoot[data-cmh-mode="deck"] .show-loop { counter-increment: loop; }
+#commentRoot[data-cmh-mode="deck"] .show-loop h3::before {
+  content: counter(loop, decimal-leading-zero);
+  display: block;
+  font-family: ui-serif, Georgia, "Times New Roman", Cambria, serif;
+  font-size: 52px;
+  line-height: 0.9;
+  color: rgba(177, 31, 75, 0.42);
+  margin-bottom: 6px;
+}
+
+/* Demote the deck nav pill to quiet chrome so it stops competing with the slide content. */
+.cmh-deck-nav { background: rgba(27, 31, 59, 0.06); border-color: transparent; box-shadow: none; }
+.cmh-deck-nav .cmh-deck-count { color: var(--show-text, #1b1f3b); }
+
+/* Slide 2: a real gradient chevron disc instead of a stray ">" glyph, plus colour-coded before/after. */
+#commentRoot[data-cmh-mode="deck"] .show-arrow {
+  width: 78px; height: 78px; align-self: center; justify-self: center; margin: 0 auto;
+  background: linear-gradient(135deg, #b11f4b, #f59e0b);
+  border-radius: 50%;
+  box-shadow: 0 12px 26px rgba(177, 31, 75, 0.28);
+  position: relative;
+  font-size: 0;
+}
+#commentRoot[data-cmh-mode="deck"] .show-arrow::after {
+  content: ""; position: absolute; inset: 0; background: #fffdf8;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round' d='M10 6l6 6-6 6'/%3E%3C/svg%3E") center / 34px no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round' d='M10 6l6 6-6 6'/%3E%3C/svg%3E") center / 34px no-repeat;
+}
+#commentRoot[data-cmh-mode="deck"] .show-card--before h3 { color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-card--after h3 { color: var(--show-accent); }
+
+/* Slide 12 (Act 3 CTA): a distinct value recap with proof numerals plus action pills, so it no longer
+   repeats the two-column install block shown on the Start-today and closing slides. */
+#commentRoot[data-cmh-mode="deck"] .show-value-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 40px; }
+#commentRoot[data-cmh-mode="deck"] .show-value-card {
+  padding: 30px 32px; border-radius: 22px; min-height: 250px;
+  background: linear-gradient(155deg, #fffefb 0%, #f5eee0 100%);
+  border: 1px solid #ece2cf;
+  box-shadow: 0 16px 40px rgba(27, 31, 59, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+#commentRoot[data-cmh-mode="deck"] .show-value-num {
+  font-family: ui-serif, Georgia, "Times New Roman", Cambria, serif;
+  font-size: 62px; line-height: 1; font-weight: 700; color: var(--show-accent); margin-bottom: 16px;
+}
+#commentRoot[data-cmh-mode="deck"] .show-value-card p { font-size: 25px; line-height: 1.4; }
+#commentRoot[data-cmh-mode="deck"] .show-actions { display: flex; gap: 20px; margin-top: 40px; flex-wrap: wrap; }
+#commentRoot[data-cmh-mode="deck"] a.show-action {
+  display: inline-flex; align-items: center; justify-content: center; padding: 17px 40px; border-radius: 999px;
+  border: 1px solid var(--show-line); background: #fffdf8; color: var(--show-text);
+  font-size: 27px; font-weight: 700; text-decoration: none;
+}
+#commentRoot[data-cmh-mode="deck"] a.show-action--primary {
+  background: linear-gradient(135deg, var(--show-accent), #9a1a41); color: #fff; border-color: transparent;
+  box-shadow: 0 12px 28px rgba(177, 31, 75, 0.30); min-width: 200px;
+}
+#commentRoot[data-cmh-mode="deck"] a.show-action:focus-visible { outline: 3px solid #b45309; outline-offset: 3px; }
+#commentRoot[data-cmh-mode="deck"] .show-cta-hint { margin: 6px 0 0; font-size: 22px; font-weight: 600; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-sublead { margin: 4px 0 20px; font-size: 25px; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-bundle { margin-top: 24px; }
+#commentRoot[data-cmh-mode="deck"] .show-bundle-cap { font-size: 20px; font-weight: 700; color: var(--show-muted); margin-bottom: 10px; }
+#commentRoot[data-cmh-mode="deck"] .show-bundle-pre { margin: 0; background: #12162b; border: 1px solid #2a2f4a; border-radius: 14px; padding: 18px 22px; color: #e7ecff; font-size: 20px; line-height: 1.5; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+#commentRoot[data-cmh-mode="deck"] .show-card-glyph {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.5em; height: 1.5em; padding: 0 0.34em; box-sizing: border-box;
+  margin-right: 0.42em; vertical-align: -0.3em;
+  font-size: 0.8em; font-weight: 800; line-height: 1;
+  background: rgba(177, 31, 75, 0.10); color: #b11f4b; border-radius: 9px;
+}
+#commentRoot[data-cmh-mode="deck"] .show-four .show-card h3 { min-height: 2.5em; }
+#commentRoot[data-cmh-mode="deck"] .show-lost {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 34px; margin-top: 30px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 21px; color: #6b6250;
+}
+
+/* Round-3: break the equal-card rhythm in Act 4 with asymmetric bento lanes (editorial, not template).
+   Purely column-ratio changes on existing grids - no markup, no clipping. */
+#commentRoot[data-cmh-mode="deck"] .show-two--asym { grid-template-columns: 0.92fr 1.08fr; }
+#commentRoot[data-cmh-mode="deck"] .show-three { grid-template-columns: 1.2fr 1fr 0.9fr; }
+#commentRoot[data-cmh-mode="deck"] .show-export-row { grid-template-columns: 1.22fr 1fr 1fr 1.06fr; }
+
+/* Slide 1 hero: a two-column title with a real product specimen so the deck SHOWS the commentable
+   artifact - an anchored amber highlight plus a comment carrying quote / path / stable id - instead of
+   only describing it. Decorative (cm-skip, aria-hidden); slide 1 has ample headroom so it cannot clip. */
+#commentRoot[data-cmh-mode="deck"] .show-title-grid { display: grid; grid-template-columns: 1.12fr 0.88fr; gap: 56px; align-items: center; width: 100%; }
+#commentRoot[data-cmh-mode="deck"] .show-title-grid h1 { font-size: 74px; line-height: 1.08; }
+#commentRoot[data-cmh-mode="deck"] .show-title-grid .showcase-comment-target { font-size: 30px; max-width: none; }
+#commentRoot[data-cmh-mode="deck"] .show-specimen { position: relative; }
+#commentRoot[data-cmh-mode="deck"] .spec-doc { background: #fffefb; border: 1px solid #e4dbc8; border-radius: 16px; box-shadow: 0 26px 60px rgba(27, 31, 59, 0.16); overflow: hidden; }
+#commentRoot[data-cmh-mode="deck"] .spec-head { display: flex; align-items: center; gap: 7px; padding: 13px 18px; background: #f1e9dc; border-bottom: 1px solid #e4dbc8; }
+#commentRoot[data-cmh-mode="deck"] .spec-dot { width: 11px; height: 11px; border-radius: 50%; background: #cdbb98; }
+#commentRoot[data-cmh-mode="deck"] .spec-name { margin-left: 10px; font-size: 18px; color: #5a5140; font-family: ui-monospace, Consolas, monospace; }
+#commentRoot[data-cmh-mode="deck"] .spec-body { padding: 22px 24px 26px; }
+#commentRoot[data-cmh-mode="deck"] .spec-title { font-size: 24px; font-weight: 800; color: #1b1f3b; margin: 0 0 14px; }
+#commentRoot[data-cmh-mode="deck"] .spec-row { display: flex; justify-content: space-between; padding: 11px 14px; border-radius: 8px; font-size: 22px; color: #33304a; }
+#commentRoot[data-cmh-mode="deck"] .spec-row.spec-hl { background: rgba(245, 158, 11, 0.30); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.55); font-weight: 700; color: #1b1f3b; }
+#commentRoot[data-cmh-mode="deck"] .spec-comment { position: absolute; right: 0; top: calc(100% + 16px); bottom: auto; width: 320px; background: #fffdf8; border: 1px solid #f0c9d3; border-left: 4px solid #b11f4b; border-radius: 12px; box-shadow: 0 20px 46px rgba(27, 31, 59, 0.20); padding: 15px 18px; }
+#commentRoot[data-cmh-mode="deck"] .spec-comment-head { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; color: #b11f4b; margin-bottom: 6px; }
+#commentRoot[data-cmh-mode="deck"] .spec-avatar { width: 25px; height: 25px; border-radius: 50%; background: #b11f4b; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+#commentRoot[data-cmh-mode="deck"] .spec-comment p { font-size: 20px; color: #1b1f3b; margin: 0 0 10px; line-height: 1.3; }
+#commentRoot[data-cmh-mode="deck"] .spec-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+#commentRoot[data-cmh-mode="deck"] .spec-meta span { font-size: 13px; font-family: ui-monospace, Consolas, monospace; background: #f1e9dc; color: #4a453a; padding: 3px 8px; border-radius: 6px; }
+
+/* Round-4: a reliable slide-3 loop fallback (always painted; the live mermaid replaces it once its SVG
+   renders via :has(), so a slow or blocked CDN never leaves a blank box), plus consistency + contrast. */
+#commentRoot[data-cmh-mode="deck"] .show-loop-wrap { position: relative; width: 100%; max-width: 1560px; margin: 8px auto 0; }
+#commentRoot[data-cmh-mode="deck"] .show-loop-wrap pre.mermaid { margin: 0; width: 100%; max-width: 100%; }
+#commentRoot[data-cmh-mode="deck"] .show-loop-strip {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px 12px;
+  padding: 30px 44px; border-radius: 22px; background: #fffdf8; border: 1px solid var(--show-line);
+}
+#commentRoot[data-cmh-mode="deck"] .slide:has(pre.mermaid svg) .show-loop-strip { display: none; }
+#commentRoot[data-cmh-mode="deck"] .loop-node { padding: 13px 20px; border-radius: 13px; background: #fffefb; border: 1.5px solid #b11f4b; font-size: 27px; font-weight: 700; color: #1b1f3b; }
+#commentRoot[data-cmh-mode="deck"] .loop-node--amber { border-color: #b45309; background: rgba(245, 158, 11, 0.16); }
+#commentRoot[data-cmh-mode="deck"] .loop-node--rasp { background: rgba(177, 31, 75, 0.10); }
+#commentRoot[data-cmh-mode="deck"] .loop-arrow { color: #7a6f5a; font-size: 26px; font-weight: 900; }
+#commentRoot[data-cmh-mode="deck"] .loop-return { flex-basis: 100%; text-align: center; margin-top: 8px; color: #5a5140; font-size: 21px; }
+
+/* Bump the loop index numerals so they read as intentional numbering, not a ghost. */
+#commentRoot[data-cmh-mode="deck"] .show-loop h3::before { color: rgba(177, 31, 75, 0.55); }
+
+/* Scale the deck checklist and left-panel code so they read at presentation distance and match the
+   install-command size (one legibility tier, not two). */
+#commentRoot[data-cmh-mode="deck"] .cmh-checklist { font-size: 22px; line-height: 1.5; }
+#commentRoot[data-cmh-mode="deck"] .show-panel pre { font-size: 22px; line-height: 1.5; }
+
+/* Darken the muted lead + caption copy one step so small supporting text never reads washed out. */
+#commentRoot[data-cmh-mode="deck"] .show-lead { color: #4d463b; }
+#commentRoot[data-cmh-mode="deck"] figure.chart.show-chart figcaption { color: #4a453a; }
+#commentRoot[data-cmh-mode="deck"] .show-install-note { margin: 14px 0 0; font-size: 18px; color: #5a5140; line-height: 1.4; }
+#commentRoot[data-cmh-mode="deck"] .show-install-note code { background: #efe8db; padding: 2px 7px; border-radius: 6px; font-size: 16px; color: #4a453a; word-break: break-word; }
+
+/* Round-5: Act 3 emphasis + slide-7 checklist compaction. Make the peer-review loop the hero, and
+   flow the checklist into two columns so it fills the width and clears the nav pill. */
+#commentRoot[data-cmh-mode="deck"] .show-loops { grid-template-columns: 0.96fr 1.1fr 0.96fr; }
+#commentRoot[data-cmh-mode="deck"] .show-loops .show-loop:nth-child(2) { border-color: #d9b48a; box-shadow: 0 20px 46px rgba(177, 31, 75, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.7); }
+#commentRoot[data-cmh-mode="deck"] .showcase-checklist-slide .cmh-checklist > ul { column-count: 2; column-gap: 64px; }
+#commentRoot[data-cmh-mode="deck"] .showcase-checklist-slide .cmh-checklist > ul > li { break-inside: avoid; }
 </style>
 
-<section class="slide show-title active" data-cm-widget="showcase-title" data-cm-part-label="Title slide" data-slide-id="slide-76b2501c">
-  <div class="show-kicker">Commentable HTML</div>
-  <h1>Keep the <span class="show-mark">review loop</span> inside the artifact.</h1>
-  <p class="showcase-comment-target">The review loop gets fast when the plan itself is commentable: point at the exact sentence, table cell, chart, diagram node, image, code line, or slide and hand the agent structured feedback in one pass.</p>
-  <div class="show-byline">
-    <span class="show-pill">One community-garden plan, reviewed end to end</span>
-    <span class="show-pill">Works with Copilot and Claude</span>
-    <span class="show-pill">Local-first, no account</span>
+<section class="slide show-title active" data-cm-widget="showcase-title" data-cm-part-label="Title slide" data-slide-id="slide-76b2501c" data-act="1">
+  <div class="show-act-numeral" aria-hidden="true">1</div>
+  <div class="show-title-grid">
+    <div class="show-title-main">
+      <div class="show-kicker">Commentable HTML</div>
+      <h1>Keep the <span class="show-mark">review loop</span> inside the artifact.</h1>
+      <p class="showcase-comment-target">Describe where in chat and the location is lost. Point at the exact sentence, table cell, chart, diagram node, image, code line, or slide instead - and the review loop stays fast because the agent gets structured feedback in one pass.</p>
+      <div class="show-byline">
+        <span class="show-pill">Any AI-written artifact becomes reviewable</span>
+        <span class="show-pill">Works with Copilot and Claude</span>
+        <span class="show-pill">Local-first, no account</span>
+      </div>
+    </div>
+    <div class="show-specimen cm-skip" aria-hidden="true">
+      <div class="spec-doc">
+        <div class="spec-head"><span class="spec-dot"></span><span class="spec-dot"></span><span class="spec-dot"></span><span class="spec-name">garden-plan.html</span></div>
+        <div class="spec-body">
+          <p class="spec-title">Watering schedule</p>
+          <div class="spec-row"><span>Bed 1</span><span>36 L</span></div>
+          <div class="spec-row spec-hl"><span>Bed 4</span><span>44 L</span></div>
+          <div class="spec-row"><span>Bed 6</span><span>22 L</span></div>
+        </div>
+      </div>
+      <div class="spec-comment">
+        <div class="spec-comment-head"><span class="spec-avatar">U</span>You</div>
+        <p>Confirm 44 L before spring planting.</p>
+        <div class="spec-meta"><span>quote</span><span>watering / row 2</span><span>#bed4</span></div>
+      </div>
+    </div>
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-10bf834b">
+<section class="slide" data-slide-id="slide-10bf834b" data-act="1">
+  <div class="show-act-numeral" aria-hidden="true">1</div>
   <div class="show-kicker">Act 1 - The pain</div>
   <h2>You reviewed the garden plan. Now describe <span class="show-mark">where</span> in chat.</h2>
   <div class="show-problem">
-    <div class="show-card">
+    <div class="show-card show-card--before">
       <h3>Before</h3>
       <p>Read the community-garden plan in the browser, switch to chat, and type "the watering table, third row, make it clearer" - then hope the agent edits the right cell.</p>
     </div>
-    <div class="show-arrow">&gt;</div>
-    <div class="show-card">
+    <div class="show-arrow" aria-hidden="true"></div>
+    <div class="show-card show-card--after">
       <h3>After</h3>
       <p>Comment on that exact cell inside the plan. The note carries its quote, section path, and a stable id, so the agent changes precisely what you pointed at.</p>
     </div>
   </div>
-  <p class="show-lead" style="margin-top:30px;">Every round-trip through chat loses the location. The artifact already knows where "here" is.</p>
+  <div class="show-lost cm-skip" aria-hidden="true">
+    <span>"the third row of the watering table"</span>
+    <span>"the node labeled rainfall_mm"</span>
+    <span>"the Bed 8 crop decision"</span>
+  </div>
+  <p class="show-lead" style="margin-top:24px;">Every round-trip through chat loses the location. The artifact already knows where "here" is.</p>
 </section>
 
-<section class="slide" data-slide-id="slide-efe04d9f">
+<section class="slide" data-slide-id="slide-efe04d9f" data-act="1">
+  <div class="show-act-numeral" aria-hidden="true">1</div>
   <div class="show-kicker">Act 1 - The loop</div>
   <h2>Generate, review in place, copy all, apply - <span class="show-mark">without leaving the page</span>.</h2>
-  <pre class="mermaid cm-skip">
+  <div class="show-loop-wrap">
+    <pre class="mermaid cm-skip">
+%%{init: {'flowchart': {'htmlLabels': true, 'padding': 26, 'nodeSpacing': 46, 'rankSpacing': 62, 'curve': 'basis'}}}%%
 flowchart LR
-  A[Agent writes the garden plan] --> B[Commentable HTML plan]
-  B --> C[You comment on the exact spot]
-  C --> D[Copy all Markdown bundle]
-  D --> E[Agent applies each note]
-  E --> F[Handled ids embedded]
+  A[Agent writes] --> B[Commentable HTML]
+  B --> C[You comment]
+  C --> D[Copy all]
+  D --> E[Agent applies]
+  E --> F[Handled ids]
   F --> B
-  C -. comment on any element .-> B
-  </pre>
+    </pre>
+    <div class="show-loop-strip cm-skip" aria-hidden="true">
+      <span class="loop-node">Agent writes</span>
+      <span class="loop-arrow">-&gt;</span>
+      <span class="loop-node">Commentable HTML</span>
+      <span class="loop-arrow">-&gt;</span>
+      <span class="loop-node">You comment</span>
+      <span class="loop-arrow">-&gt;</span>
+      <span class="loop-node loop-node--amber">Copy all</span>
+      <span class="loop-arrow">-&gt;</span>
+      <span class="loop-node">Agent applies</span>
+      <span class="loop-arrow">-&gt;</span>
+      <span class="loop-node loop-node--rasp">Handled ids</span>
+      <span class="loop-return">the handled bundle loops back into the same plan</span>
+    </div>
+  </div>
+  <p class="show-lead" style="margin-top:24px;">Each pass refines the plan in place - no server, no account, no upload.</p>
 </section>
 
-<section class="slide" data-slide-id="slide-c9c66adb">
+<section class="slide" data-slide-id="slide-c9c66adb" data-act="2">
+  <div class="show-act-numeral" aria-hidden="true">2</div>
   <div class="show-kicker">Act 2 - What you can point at</div>
   <h2>Comment on the actual thing, not a screenshot of it.</h2>
   <div class="show-four">
-    <div class="show-card"><h3>Prose and cells</h3><p>Paragraphs, headings, list items, and single table cells in the garden plan.</p></div>
-    <div class="show-card"><h3>Charts and images</h3><p>The watering chart or a bed-layout image as one visual anchor.</p></div>
-    <div class="show-card"><h3>Diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p></div>
-    <div class="show-card"><h3>Code, KQL, diffs</h3><p>Exact code ranges and diff rows, copied without line-number noise.</p></div>
+    <div class="show-card"><h3><span class="show-card-glyph" aria-hidden="true">&#182;</span>Prose and cells</h3><p>Paragraphs, headings, list items, and single table cells in the garden plan.</p></div>
+    <div class="show-card"><h3><span class="show-card-glyph" aria-hidden="true">&#9635;</span>Charts and images</h3><p>The watering chart or a bed-layout image as one visual anchor.</p></div>
+    <div class="show-card"><h3><span class="show-card-glyph" aria-hidden="true">&#9671;</span>Diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p></div>
+    <div class="show-card"><h3><span class="show-card-glyph" aria-hidden="true">&lt;/&gt;</span>Code, KQL, diffs</h3><p>Exact code ranges and diff rows, copied without line-number noise.</p></div>
   </div>
   <p class="show-lead" style="margin-top:30px;">Same Add Comment flow everywhere. Try it on this deck: open comment mode and point at any card. Live demo at <a href="https://urikanonov.github.io/ai-marketplace/">urikanonov.github.io/ai-marketplace</a>.</p>
 </section>
 
-<section class="slide showcase-chart-slide" data-slide-id="slide-d7119544">
+<section class="slide showcase-chart-slide" data-slide-id="slide-d7119544" data-act="2">
+  <div class="show-act-numeral" aria-hidden="true">2</div>
   <div class="show-kicker">Act 2 - The evidence</div>
   <h2>Charts, images, and table cells are all review targets.</h2>
   <div class="show-chart-grid">
@@ -1969,7 +2312,7 @@ flowchart LR
           var values = [36, 44, 22, 8];
           var max = 48, baseY = 286, scale = 236 / max;
           ctx.clearRect(0, 0, el.width, el.height);
-          ctx.fillStyle = "#ffffff";
+          ctx.fillStyle = "#fffdf8";
           ctx.fillRect(0, 0, el.width, el.height);
           ctx.strokeStyle = "#cbb48a";
           ctx.lineWidth = 2;
@@ -2005,7 +2348,8 @@ flowchart LR
   </div>
 </section>
 
-<section class="slide showcase-diff-slide" data-slide-id="slide-748ae4e1">
+<section class="slide showcase-diff-slide" data-slide-id="slide-748ae4e1" data-act="2">
+  <div class="show-act-numeral" aria-hidden="true">2</div>
   <div class="show-kicker">Act 2 - Code, KQL, and diffs</div>
   <h2>Review exact lines without losing syntax or layout.</h2>
   <div class="show-code-grid">
@@ -2030,7 +2374,7 @@ flowchart LR
     note <span class="cmh-code-op">=</span> <span class="cmh-code-str">"skip watering when rain covered the bed"</span>
     <span class="cmh-code-kw">if</span> rainfall_mm <span class="cmh-code-op">&gt;=</span> <span class="cmh-code-num">12.0</span><span class="cmh-code-op">:</span>
         <span class="cmh-code-kw">return</span> <span class="cmh-code-num">0.0</span>
-    <span class="cmh-code-kw">return</span> <span class="cmh-code-fn">round</span><span class="cmh-code-op">(</span>base <span class="cmh-code-op">-</span> rainfall_mm <span class="cmh-code-op">*</span> bed<span class="cmh-code-op">.</span>area_m2<span class="cmh-code-op">,</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)</span>
+    <span class="cmh-code-kw">return</span> <span class="cmh-code-fn">round</span><span class="cmh-code-op">(</span>base <span class="cmh-code-op">-</span> rainfall_mm<span class="cmh-code-op">,</span> <span class="cmh-code-num">1</span><span class="cmh-code-op">)</span>
 </code></pre>
 <figure class="cmh-kql">
 <figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F8tJLVFITyxKSc0LLkksSVWwVVDy9PHx9PP3DFay5gouyS%2FKdS1LzSsp5qpRKM9ILUpVAKorKgnJzE1VsFNITM%2FXMDYzNUjRRJYGGWOLbCpQsrg0NzexKLMqVQFiHNCi5PzSvBINTYWkSohYSGUBSGVJfoGCKVywWCEltTgZAP85Mx%2BmAAAA" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
@@ -2041,13 +2385,14 @@ StormEvents
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Events <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> EventType
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">top</span> <span class="cmh-kql-num">5</span> <span class="cmh-kql-kw">by</span> Events <span class="cmh-kql-kw">desc</span></code></pre>
 </figure>
-        <p>The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
       </div>
     </div>
   </div>
+  <p class="show-lead show-code-foot">The diff renderer offers inline or side-by-side view. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
 </section>
 
-<section class="slide showcase-checklist-slide" data-slide-id="slide-a74f331a">
+<section class="slide showcase-checklist-slide" data-slide-id="slide-a74f331a" data-act="2">
+  <div class="show-act-numeral" aria-hidden="true">2</div>
   <div class="show-kicker">Act 2 - Decide and track</div>
   <h2>Decisions and checklists are structured feedback too.</h2>
   <div class="show-board cm-skip" data-cm-widget="showcase-triage-board" data-cm-draggable aria-label="Garden decision board">
@@ -2059,10 +2404,12 @@ StormEvents
     <div class="show-col" data-cm-slot="Decide now" data-cm-part="slot-decide" data-cm-part-label="Decide now column">
       <h3>Decide now</h3>
       <article class="show-ticket" data-cm-part="rain-rule" data-cm-part-label="Rain skip rule"><strong>Rain skip rule</strong><span>Skip watering when rainfall clears 12 mm.</span></article>
+      <article class="show-ticket" data-cm-part="compost-day" data-cm-part-label="Compost pickup day"><strong>Compost pickup day</strong><span>Saturday mornings - needs a volunteer lead.</span></article>
     </div>
     <div class="show-col" data-cm-slot="Locked" data-cm-part="slot-locked" data-cm-part-label="Locked column">
       <h3>Locked</h3>
       <article class="show-ticket" data-cm-part="compost" data-cm-part-label="Compost bins"><strong>Compost bins</strong><span>Two bins by the north fence, approved.</span></article>
+      <article class="show-ticket" data-cm-part="shed-key" data-cm-part-label="Tool shed key"><strong>Tool shed key</strong><span>Copy made with the plot lead, on the board.</span></article>
     </div>
   </div>
   <div class="cmh-checklist" data-cmh-checklist="garden-readiness" data-cmh-checklist-label="Garden plan readiness" style="margin-top:22px;">
@@ -2084,11 +2431,13 @@ StormEvents
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-bdd3b1b5">
+<section class="slide" data-slide-id="slide-bdd3b1b5" data-act="2">
+  <div class="show-act-numeral" aria-hidden="true">2</div>
   <div class="show-kicker">Act 2 - Why this, not that</div>
   <h2>Chat, a shared doc, or a PR each lose something. This does not.</h2>
-  <table class="show-table">
-    <thead><tr><th>Approach</th><th>Points at the exact element</th><th>Agent-ready output</th><th>Runs with no service</th></tr></thead>
+  <p class="show-sublead">One scenario: reviewing the community-garden plan.</p>
+  <table class="show-table show-compare">
+    <thead><tr><th>Approach</th><th>Points at the exact element</th><th>Agent-ready output</th><th>No account or server</th></tr></thead>
     <tbody>
       <tr><td>Describe it in chat</td><td>No - you retype the location</td><td>Prose the agent must guess from</td><td>Yes</td></tr>
       <tr><td>Comments in a shared doc</td><td>Sometimes - not charts, code, or diagrams</td><td>Threaded prose, not structured</td><td>No - needs an account</td></tr>
@@ -2098,19 +2447,21 @@ StormEvents
   </table>
 </section>
 
-<section class="slide" data-slide-id="slide-12668385">
+<section class="slide" data-slide-id="slide-12668385" data-act="2">
+  <div class="show-act-numeral" aria-hidden="true">2</div>
   <div class="show-kicker">Act 2 - Start today</div>
-  <h2>From a reviewed plan to applied edits - <span class="show-mark">install in two commands</span>.</h2>
+  <h2>From a reviewed plan to applied edits - <span class="show-mark">two commands per agent</span>.</h2>
+  <p class="show-cta-hint">Pick your agent, then run both lines in that column - add the marketplace once, then install.</p>
   <div class="show-cta">
     <div class="show-install">
       <h3>GitHub Copilot CLI</h3>
-      <pre><code>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
-copilot plugin install commentable-html@urikan-ai-marketplace</code></pre>
+      <pre class="show-cmd" data-cmd="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace"><code>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</code></pre>
+      <pre class="show-cmd" data-cmd="copilot plugin install commentable-html@urikan-ai-marketplace"><code>copilot plugin install commentable-html@urikan-ai-marketplace</code></pre>
     </div>
     <div class="show-install">
       <h3>Claude Code</h3>
-      <pre><code>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
-claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
+      <pre class="show-cmd" data-cmd="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace"><code>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</code></pre>
+      <pre class="show-cmd" data-cmd="claude plugin install commentable-html@urikan-ai-marketplace"><code>claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
     </div>
   </div>
   <div class="show-links">
@@ -2121,26 +2472,28 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
   <p class="show-lead" style="margin-top:22px;">Then ask your agent to review the garden plan: Copy all hands back a Markdown bundle with stable ids, and Export Offline or Portable when you want to share it.</p>
 </section>
 
-<section class="slide" data-slide-id="slide-b8394524">
+<section class="slide" data-slide-id="slide-b8394524" data-act="3">
+  <div class="show-act-numeral" aria-hidden="true">3</div>
   <div class="show-kicker">Act 3 - How it fits your day</div>
   <h2>Three review loops, one surface.</h2>
   <div class="show-loops">
     <div class="show-loop">
       <h3>Review your own work</h3>
-      <p><b>You and the agent.</b> Generate the garden plan, mark what is off, Copy all, and let the agent tighten it before anyone else sees it.</p>
+      <p><b>You and the agent.</b> Generate the garden plan, mark what is off, Copy all, and let the agent tighten it - so the version your team sees is already your second draft, not your first.</p>
     </div>
     <div class="show-loop">
       <h3>Peer review</h3>
-      <p><b>A teammate and you.</b> Send a Portable file. They comment locally and send the bundle back, with no account or server in the middle.</p>
+      <p><b>A teammate and you.</b> Send a Portable file. They comment locally and send the bundle back, with no account or server in the middle. The same stable ids mean handled notes prune and unresolved ones stay put on the round-trip.</p>
     </div>
     <div class="show-loop">
       <h3>Review a plan before you build</h3>
-      <p><b>Stakeholders and the agent.</b> Walk a room through the plan, collect decisions on the board and checklist, and hand the agent one structured pass.</p>
+      <p><b>Stakeholders and the agent.</b> Walk stakeholders through the plan, collect decisions on the board and checklist, and hand the agent one structured pass.</p>
     </div>
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-7e37216a">
+<section class="slide" data-slide-id="slide-7e37216a" data-act="3">
+  <div class="show-act-numeral" aria-hidden="true">3</div>
   <div class="show-kicker">Act 3 - Ask for it</div>
   <h2>Two prompts that produce a review-ready artifact.</h2>
   <div class="show-two">
@@ -2150,44 +2503,50 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
 commentable HTML report I can review
 in the browser, then wait for my
 Copy all bundle.</code></pre>
+      <p class="show-card-note">Names the artifact and the surface, so the agent hands back one file you open, not a wall of chat.</p>
     </div>
     <div class="show-card">
       <h3>Apply my review</h3>
       <pre><code>Here is my Copy all bundle. Apply each
 note to the exact anchor, mark handled
 ids, and keep the unresolved comments.</code></pre>
+      <p class="show-card-note">Closes the loop: stable ids let the agent land each edit on its anchor and prune what is done.</p>
     </div>
   </div>
   <p class="show-lead" style="margin-top:26px;">The prompt names the artifact, the surface, and the round-trip - so the agent produces something you can point at, not just read.</p>
 </section>
 
-<section class="slide" data-slide-id="slide-e3c5d641">
+<section class="slide" data-slide-id="slide-e3c5d641" data-act="3">
+  <div class="show-act-numeral" aria-hidden="true">3</div>
   <div class="show-kicker">Act 3 - Your move</div>
   <h2>Stop describing edits. <span class="show-mark">Point at them.</span></h2>
   <p class="show-lead">Install once, then every plan, dashboard, code review, and deck becomes a local-first review surface your agent can act on precisely.</p>
-  <div class="show-cta">
-    <div class="show-install">
-      <h3>GitHub Copilot CLI</h3>
-      <pre><code>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
-copilot plugin install commentable-html@urikan-ai-marketplace</code></pre>
+  <div class="show-value-row">
+    <div class="show-value-card">
+      <div class="show-value-num">1 file</div>
+      <p>Every artifact your agent writes becomes a review surface you own - no service, no account.</p>
     </div>
-    <div class="show-install">
-      <h3>Claude Code</h3>
-      <pre><code>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
-claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
+    <div class="show-value-card">
+      <div class="show-value-num">9+ targets</div>
+      <p>Prose, cells, charts, diagram nodes, images, code lines, slides, board cards, and checklist items each take a comment.</p>
+    </div>
+    <div class="show-value-card">
+      <div class="show-value-num">1 bundle</div>
+      <p>Hand the agent a Markdown bundle with stable ids and it applies each note precisely.</p>
     </div>
   </div>
-  <div class="show-links">
-    <a href="https://urikanonov.github.io/ai-marketplace/">Live demo</a>
-    <a href="https://github.com/urikanonov/ai-marketplace">GitHub</a>
-    <a href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/">Tutorial</a>
+  <div class="show-actions">
+    <a class="show-action show-action--primary" href="https://urikanonov.github.io/ai-marketplace/">Try the live demo</a>
+    <a class="show-action" href="https://github.com/urikanonov/ai-marketplace">GitHub</a>
+    <a class="show-action" href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/">Tutorial</a>
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-63f73d21">
+<section class="slide" data-slide-id="slide-63f73d21" data-act="4">
+  <div class="show-act-numeral" aria-hidden="true">4</div>
   <div class="show-kicker">Act 4 - Behind the scenes</div>
   <h2>Anatomy of a commentable file.</h2>
-  <div class="show-two">
+  <div class="show-two show-two--asym">
     <div class="show-card">
       <h3>One self-contained document</h3>
       <ul>
@@ -2208,7 +2567,8 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
   <p class="show-lead" style="margin-top:24px;">The build swaps only the layer regions and re-stamps the version. Your content is never clobbered.</p>
 </section>
 
-<section class="slide" data-slide-id="slide-f2d0c0bc">
+<section class="slide" data-slide-id="slide-f2d0c0bc" data-act="4">
+  <div class="show-act-numeral" aria-hidden="true">4</div>
   <div class="show-kicker">Act 4 - Anchoring</div>
   <h2>How a comment finds the same spot on reload.</h2>
   <div class="show-three">
@@ -2216,10 +2576,19 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
     <div class="show-card"><h3>Structural keys</h3><p>Charts, images, Mermaid nodes, and slides anchor by a stable element key, not a pixel position.</p></div>
     <div class="show-card"><h3>Widget deltas</h3><p>Board moves and checklist toggles record the before and after state as part of the bundle.</p></div>
   </div>
-  <p class="show-lead" style="margin-top:26px;">Stable ids let the agent mark a comment handled; on reload, handled-comment pruning clears it while unresolved notes stay put.</p>
+  <div class="show-bundle cm-skip" aria-hidden="true">
+    <div class="show-bundle-cap">What Copy all hands the agent (Markdown bundle):</div>
+    <pre class="show-bundle-pre">## Comment 1  -  handled: false
+&gt; 44 L
+where:  Watering schedule / row 2
+anchor: bed4-watering (text offset 128-132)
+note:   Confirm 44 L before spring planting.</pre>
+  </div>
+  <p class="show-lead" style="margin-top:24px;">Stable ids let the agent mark a comment handled; on reload, handled-comment pruning clears it while unresolved notes stay put.</p>
 </section>
 
-<section class="slide" data-slide-id="slide-f1599f66">
+<section class="slide" data-slide-id="slide-f1599f66" data-act="4">
+  <div class="show-act-numeral" aria-hidden="true">4</div>
   <div class="show-kicker">Act 4 - Portability</div>
   <h2>Four outputs cover every handoff.</h2>
   <div class="show-export-row">
@@ -2231,7 +2600,8 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
   <p class="show-lead" style="margin-top:24px;">The only network use in a normal Portable file is optional library code for Mermaid or charts, never your content. Offline removes that too.</p>
 </section>
 
-<section class="slide" data-slide-id="slide-3d5c8a12">
+<section class="slide" data-slide-id="slide-3d5c8a12" data-act="4">
+  <div class="show-act-numeral" aria-hidden="true">4</div>
   <div class="show-kicker">Act 4 - Safe by construction</div>
   <h2>Authoring is deterministic, strict, and stdlib-only.</h2>
   <div class="show-two">
@@ -2244,14 +2614,16 @@ python tools/deck/deck_validate.py --strict examples/deck-showcase.html</code></
   </div>
 </section>
 
-<section class="slide show-close" data-slide-id="slide-9a891595">
+<section class="slide show-close" data-slide-id="slide-9a891595" data-act="5">
+  <div class="show-act-numeral" aria-hidden="true">5</div>
   <div class="show-kicker">Act 5 - Tomorrow morning</div>
   <h2>Ship the review loop with the artifact.</h2>
   <p>Point your agent at one plan today, review it in place, and Copy all back. That is the whole loop - and it runs from a single file you own.</p>
   <div class="show-install">
     <h3>Install now</h3>
-    <pre><code>copilot plugin install commentable-html@urikan-ai-marketplace
-claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
+    <pre class="show-cmd" data-cmd="copilot plugin install commentable-html@urikan-ai-marketplace"><code>copilot plugin install commentable-html@urikan-ai-marketplace</code></pre>
+      <pre class="show-cmd" data-cmd="claude plugin install commentable-html@urikan-ai-marketplace"><code>claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
+    <p class="show-install-note">New here? Add the marketplace once first: <code>copilot</code> / <code>claude</code> <code>plugin marketplace add https://github.com/urikanonov/ai-marketplace</code></p>
   </div>
   <div class="show-links" style="justify-content:center;">
     <a href="https://urikanonov.github.io/ai-marketplace/">Live demo</a>
@@ -2266,6 +2638,41 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
 <!-- END: commentable-html - CONTENT -->
 </main>
 </div>
+<script>
+(function () {
+  // Click-to-copy for the install command rows: click a command line to copy it (each row also has
+  // the runtime Copy button). Delegated so it survives the runtime's code-block wrapping, guarded so
+  // it never fires in comment mode, and it copies the exact command from data-cmd (gutter-free).
+  var root = document.getElementById("commentRoot") || document;
+  function copyText(t) {
+    var fallback = function () {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand("copy"); document.body.removeChild(ta);
+      } catch (e) {}
+    };
+    if (navigator.clipboard && window.isSecureContext && navigator.clipboard.writeText) {
+      // writeText is async: only fall back if the promise actually rejects (e.g. clipboard denied),
+      // not synchronously, or the fallback would never run when the async write fails.
+      try { navigator.clipboard.writeText(t).then(null, fallback); } catch (e) { fallback(); }
+    } else {
+      fallback();
+    }
+  }
+  root.addEventListener("click", function (e) {
+    var cr = document.getElementById("commentRoot");
+    if (cr && cr.classList.contains("cmh-deck-comment-mode")) return;
+    var pre = e.target.closest ? e.target.closest("pre.show-cmd[data-cmd]") : null;
+    if (!pre) return;
+    copyText(pre.getAttribute("data-cmd") || "");
+    pre.classList.add("show-cmd-copied");
+    setTimeout(function () { pre.classList.remove("show-cmd-copied"); }, 1100);
+  });
+})();
+</script>
+
 <!-- End of per-document content -->
 
 <!-- ============================================================

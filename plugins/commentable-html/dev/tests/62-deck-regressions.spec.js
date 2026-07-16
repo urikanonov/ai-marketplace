@@ -3,6 +3,7 @@ import path from "path";
 import {
   SKILL,
   copiedBundle,
+  denyExternalNetwork,
   installClipboardCapture,
   ready,
   routeMermaidLocal,
@@ -309,6 +310,51 @@ test("CMH-DECK-SHOWCASE-03: an early install CTA shows both agents before the fi
     await expect(cta.locator('a[href="https://github.com/urikanonov/ai-marketplace"]')).toHaveCount(1);
     await expect(cta.locator('a[href="https://urikanonov.github.io/ai-marketplace/"]')).toHaveCount(1);
     await expect(cta.locator('a[href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/"]')).toHaveCount(1);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-05: install command rows copy the exact command on click in present mode", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-install pre.show-cmd[data-cmd]");
+    const cmds = page.locator(".slide.active .show-install pre.show-cmd[data-cmd]");
+    const count = await cmds.count();
+    expect(count).toBeGreaterThanOrEqual(4);
+    for (let i = 0; i < count; i++) {
+      const pre = cmds.nth(i);
+      const dataCmd = await pre.getAttribute("data-cmd");
+      // The copyable command must equal the visible code text, gutter-free (no line-number noise).
+      expect((await pre.locator("code").innerText()).trim()).toBe(dataCmd);
+      await pre.click();
+      await expect(pre).toHaveClass(/show-cmd-copied/);
+      expect(await copiedBundle(page)).toBe(dataCmd);
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-06: slide-3 loop paints a fallback strip and swaps to live mermaid", async ({ page }) => {
+  // With the mermaid CDN blocked, the always-painted fallback strip carries the loop.
+  await denyExternalNetwork(page);
+  let server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-loop-strip");
+    await expect(page.locator(".slide.active .show-loop-strip")).toBeVisible();
+    await expect(page.locator(".slide.active .show-loop-strip .loop-node")).toHaveCount(6);
+    expect(await page.locator(".slide.active pre.mermaid svg").count()).toBe(0);
+  } finally {
+    await server.close();
+  }
+
+  // When the mermaid CDN is available, the rendered diagram replaces the fallback strip.
+  server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg").count()).toBeGreaterThanOrEqual(1);
+    await expect(page.locator(".slide.active .show-loop-strip")).toBeHidden();
   } finally {
     await server.close();
   }

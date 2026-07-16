@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.81.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.82.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,24 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.82.0] - 2026-07-16</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The shipped showcase/pitch deck (<code>examples/deck-showcase.html</code>) was polished across many rounds of multi-model design review into a presentation-ready pitch. Vertical balance now fills the fixed stage (no top-weighted clusters), the &quot;Parchment and Amber&quot; palette gained depth (radial parchment wash, bento gradient card surfaces, a per-act accent rail that fills with amber as the acts progress, and large low-opacity editorial act numerals), a transform-only entrance reveal keeps static captures fully painted, and the commentable-html brand mark now sits in the top-right of every slide with the comment-mode toggle moved to the bottom-right. The narrative opens pain-first, the peak-pain slide catalogues real &quot;lost chat message&quot; phrasings, the feature grid carries on-brand glyph badges, and the comparison, install, and value-recap slides were tightened for clarity and AA contrast.</li>
+              <li>The deck&#x27;s install commands are now split into one copyable block per command, and clicking anywhere on a command row copies that exact command (gutter-free) to the clipboard with a &quot;Copied&quot; flash, in addition to the per-block Copy button; the click handler is guarded off in comment mode. (CMH-DECK-SHOWCASE-05)</li>
+              <li>The Act 1 loop slide always paints a static fallback loop strip so a slow or blocked mermaid CDN never leaves a blank box; once the live mermaid diagram renders it replaces the fallback. (CMH-DECK-SHOWCASE-06)</li>
+              <li>Deck-authoring guidance now captures what building the showcase deck taught. When asked to plan a deck, the skill asks the user the conditional up-front questions (duration, audience, live vs handed-off, theme, running example, install-CTA placement) and routes to a new CHM-specific <code>references/deck-design.md</code> playbook (fill the fixed stage, capture-safe transform-only motion, act wayfinding, pain-before-mechanism narrative, review-surface patterns, and the contrast/clip discipline), alongside the vendored frontend-slides design docs. (CMH-DECK-17)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.81.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Callouts now carry a non-color cue so their meaning survives grayscale printing, color-blindness, and screen readers: each variant (info/success/warning/danger) shows a distinct leading glyph, and the runtime stamps <code>role=&quot;note&quot;</code> with a variant label. An authored leading <code>&lt;strong&gt;</code> label (or an explicit <code>aria-label</code>) is respected so the variant is not announced twice. (CMH-CALLOUT-03)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.80.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -429,8 +441,6 @@
               <li>The side-navigation scroll-spy now marks the current section&#x27;s link with <code>aria-current=&quot;location&quot;</code> (kept unique and cleared from the others), so screen readers announce the reader&#x27;s location instead of relying on the visual highlight alone. (CMH-TOC-08)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.79.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -465,18 +475,7 @@
               <li>Early install call to action: the deck now surfaces both agents&#x27; exact install commands (Copilot and Claude <code>plugin marketplace add</code> plus <code>plugin install commentable-html@urikan-ai-marketplace</code>) as code blocks on an Act 2 slide well before the close, alongside the live-demo, GitHub, and tutorial links, and again as the primary CTA and the closing slide - so a viewer can act within the first few minutes rather than only at the end. (CMH-DECK-SHOWCASE-03)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.75.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Section-card auto-wrap for report/plan documents - the deterministic fix for the CMH-VAL-14 flat-section warning. <code>tools/authoring/wrap_sections.py</code> wraps each bare top-level <code>&lt;h2&gt;</code> block (the heading plus the siblings up to the next top-level <code>&lt;h2&gt;</code>) in <code>&lt;section aria-labelledby=&quot;the-h2-id&quot;&gt;</code> so a <code>report</code>/<code>plan</code> renders as boxed section cards (<code>#commentRoot &gt; section</code>), leaving the title/lede above the cards. It is idempotent, a no-op when a top-level <code>&lt;section&gt;</code> already exists, and scopes to the <code>#commentRoot</code> element for a full document or the fragment root for a bare fragment. <code>new_document.py</code> (report/plan fragments) and <code>finalize.py</code> (full docs, gated on the kind meta) run it by default; opt out with <code>--no-wrap-sections</code>. (CMH-TOOL-17)</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>build.py</code> now re-stamps the version into the Claude Code manifests (<code>.claude-plugin/plugin.json</code> and <code>.claude-plugin/marketplace.json</code>) alongside the Copilot ones, so a version bump no longer leaves the Claude mirror behind (which previously required a manual bump and could fail the claude-manifest / version-bump guards). (CMH-TOOL-06)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">79 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">80 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
