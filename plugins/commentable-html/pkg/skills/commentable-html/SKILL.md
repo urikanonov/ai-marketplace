@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.134.0`
+**Version:** `1.135.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -180,7 +180,7 @@ This skill can build a real animated slide **deck** that is also a commentable-h
 
 **Ask first (CMH-DECK-22).** Before you outline a deck, ask the user the conditional questions in `references/deck-design.md` that you cannot infer - the duration and format, the audience's technical level, whether it is presented live (internet) or handed off / air-gapped, whether reviewers will comment on it and send it back, the theme or brand, whether there is one running example to thread through it, and how early the install call-to-action should appear. These change the deck's density, depth, chrome, and export story, so gather them up front rather than guessing.
 
-**Plan first (frontend-slides).** When asked to plan or design a deck (not just scaffold one), consult the vendored `frontend-slides` design system before scaffolding: read `vendor/frontend-slides/bold-template-pack/selection-index.json` to shortlist templates by mood/tone/scheme/best_for, plus `vendor/frontend-slides/STYLE_PRESETS.md`, `html-template.md`, and `animation-patterns.md` for the style presets, the fixed-stage structure, and entrance animations. Then read `references/deck-design.md`, the CHM-specific deck design and narrative playbook (fill the fixed stage, capture-safe transform-only motion, act wayfinding, pain-before-mechanism narrative, the review-surface patterns, and the contrast/clip discipline), which adapts that general guidance to a commentable, strictly-validated deck. Decide the slide outline and theme, and offer a safe, a bold, and a wildcard title-slide option, before writing any slides.
+**Design with a native theme first (CMH-DECK-14).** When asked to plan or design a deck (not just scaffold one), pick a native CMH deck theme preset before scaffolding: choose a preset from `tools/deck/themes/` (for example `terminal`; run `tools/deck/deck_theme.py list` to see the available presets) and pass it to `tools/deck/deck_scaffold.py --theme <name>` to create a fully styled, contrast-safe deck, or re-theme an existing deck in place with `tools/deck/deck_theme.py apply --theme <name> <deck.html>` (idempotent and comment-safe - it never disturbs slide ids or comments). Compose slides from the native recipe classes (`.cmh-slide-section`, `.cmh-slide-lede`, `.cmh-cols-2`, `.cmh-metric-grid`, `.cmh-pill`) and follow `references/deck-design.md`, the CHM-specific deck design and narrative playbook (fill the fixed stage, capture-safe transform-only motion, act wayfinding, pain-before-mechanism narrative, review-surface patterns, and the contrast/clip discipline), so a themed deck needs no per-deck CSS and no hand-translation. The vendored `vendor/frontend-slides/` subtree is design provenance and the maintainer refresh source only; consult it just for a bespoke, non-preset style a user explicitly asks for, and if you do, keep the deck egress-free (system fonts, no remote loads).
 
 **Deck invariants:**
 

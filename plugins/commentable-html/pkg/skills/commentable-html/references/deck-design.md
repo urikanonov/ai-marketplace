@@ -1,13 +1,16 @@
 # Deck design playbook (CHM-specific)
 
-How to author a commentable-html deck that is presentation-ready, not just valid. Read this AFTER the
-vendored `vendor/frontend-slides/` design system (`STYLE_PRESETS.md`, `html-template.md`,
-`animation-patterns.md`, `bold-template-pack/selection-index.json`) and the
-[deck runtime contract](deck-contract.md). frontend-slides teaches general slide design; this file is
-the delta for a CHM deck, which differs in three ways: it is a **local-first commentable review
-surface**, it renders on a **fixed 1920x1080 stage gated by a strict validator** (no vertical clip, AA
-contrast), and it must stay **corporate-safe** (no remote fonts/media/scripts). Every rule below was
-paid for while building the shipped showcase deck (`examples/deck-showcase.html`).
+How to author a commentable-html deck that is presentation-ready, not just valid. For visual styling,
+apply a **native CMH deck theme preset** (`tools/deck/themes/`, via `deck_scaffold.py --theme` or
+`deck_theme.py apply`) and compose the native recipe classes (see the
+[deck runtime contract](deck-contract.md)) - that is the default, corporate-safe path and needs no
+per-deck CSS. The vendored `vendor/frontend-slides/` design system (`STYLE_PRESETS.md`,
+`html-template.md`, `animation-patterns.md`, `bold-template-pack/selection-index.json`) is design
+provenance and a source of ideas for a bespoke, non-preset look a user explicitly asks for. This file
+is the CHM-specific narrative and layout delta on top of either path: a CHM deck is a **local-first
+commentable review surface**, it renders on a **fixed 1920x1080 stage gated by a strict validator** (no
+vertical clip, AA contrast), and it must stay **corporate-safe** (no remote fonts/media/scripts). Every
+rule below was paid for while building the shipped showcase deck (`examples/deck-showcase.html`).
 
 ## Contents
 
@@ -40,15 +43,16 @@ confirm):
    (snapshotted diagrams/charts, zero network) and expect a static fallback to show.
 4. **Async peer review?** Will reviewers comment on it and send it back? If yes, emphasize the
    **Export Portable** round-trip and stable-id story; the deck is itself the review surface.
-5. **Theme / brand.** A specific palette or brand, or pick a frontend-slides preset? Commit to ONE
-   content-informed palette (see frontend-slides `STYLE_PRESETS.md`); avoid generic AI-slop defaults.
+5. **Theme / brand.** Which native deck theme preset (`tools/deck/themes/`, for example `terminal`),
+   or a specific palette/brand? Commit to ONE content-informed theme; prefer a native preset, and use
+   the vendored frontend-slides `STYLE_PRESETS.md` only for a bespoke look; avoid generic AI-slop defaults.
 6. **Running example.** Is there one concrete scenario to thread through every slide (the showcase deck
    uses a single community-garden plan)? A through-line beats abstract feature lists.
 7. **Install / call-to-action.** Which agents (Copilot, Claude, both), and should the install CTA
    appear EARLY (not just on the closing slide)? See "Narrative" below.
 
 Default when the user does not answer: a 30-60 min live talk for a mixed audience, one running example,
-install CTA early and at the close, a content-informed light theme, both agents.
+install CTA early and at the close, a native deck theme preset (for example `terminal`), both agents.
 
 ## Fill the fixed stage
 

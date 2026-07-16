@@ -57,6 +57,28 @@ EDIT_TOGGLE_RE = re.compile(r"<\s*edit-toggle\b|class\s*=\s*['\"][^'\"]*\bedit-t
 DECK_CONTRAST_VARIABLE_PAIRS = (
     ("--slide-fg", "--slide-bg", "deck theme variables --slide-fg/--slide-bg"),
     ("--slide-fg", "--stage-bg", "deck theme variables --slide-fg/--stage-bg"),
+    ("--slide-fg-muted", "--slide-bg", "deck theme variables --slide-fg-muted/--slide-bg"),
+    ("--slide-link", "--slide-bg", "deck theme variables --slide-link/--slide-bg"),
+    ("--slide-accent-fg", "--slide-accent", "deck theme variables --slide-accent-fg/--slide-accent"),
+    ("--slide-accent", "--slide-bg", "deck theme variables --slide-accent/--slide-bg (recipe accent text)"),
+    ("--cmh-deck-code-text", "--cmh-deck-code-bg", "deck theme variables code text/bg"),
+    ("--cmh-deck-code-muted", "--cmh-deck-code-bg", "deck theme variables code muted/bg"),
+    ("--cmh-deck-code-muted", "--cmh-deck-code-bg-soft", "deck theme variables code muted/bg-soft"),
+    ("--cmh-deck-code-soft", "--cmh-deck-code-bg", "deck theme variables code soft/bg"),
+    ("--cmh-deck-diff-add-fg", "--cmh-deck-code-bg", "deck theme variables diff add/code bg"),
+    ("--cmh-deck-diff-del-fg", "--cmh-deck-code-bg", "deck theme variables diff del/code bg"),
+    ("--cmh-deck-diff-hunk-fg", "--cmh-deck-code-bg", "deck theme variables diff hunk/code bg"),
+    ("--cmh-deck-tok-kw", "--cmh-deck-code-bg", "deck theme variables token kw/code bg"),
+    ("--cmh-deck-tok-fn", "--cmh-deck-code-bg", "deck theme variables token fn/code bg"),
+    ("--cmh-deck-tok-str", "--cmh-deck-code-bg", "deck theme variables token str/code bg"),
+    ("--cmh-deck-tok-num", "--cmh-deck-code-bg", "deck theme variables token num/code bg"),
+    ("--cmh-deck-tok-com", "--cmh-deck-code-bg", "deck theme variables token com/code bg"),
+    ("--cmh-deck-tok-op", "--cmh-deck-code-bg", "deck theme variables token op/code bg"),
+    ("--cmh-deck-table-head-fg", "--cmh-deck-table-head-bg", "deck theme variables table head fg/bg"),
+    ("--cmh-deck-mermaid-label", "--cmh-deck-mermaid-node-fill",
+     "deck theme variables mermaid label/node"),
+    ("--cmh-deck-mermaid-edge-label-fg", "--cmh-deck-mermaid-edge-label-bg",
+     "deck theme variables mermaid edge-label fg/bg"),
 )
 DEFAULT_MAX_SLIDE_LINES = 24
 DEFAULT_MAX_SLIDE_ELEMENTS = 40

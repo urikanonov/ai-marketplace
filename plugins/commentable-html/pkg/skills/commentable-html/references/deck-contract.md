@@ -60,8 +60,29 @@ extracted strings before they enter slide markup. Speaker notes are not supporte
 
 ## Slide design and fonts
 
-After scaffolding, fill the existing `.slide` sections in place. For design-system guidance, read the
-vendored frontend-slides references before authoring slide layouts:
+After scaffolding, fill the existing `.slide` sections in place. Prefer a NATIVE deck theme preset over
+per-deck styling: pass `deck_scaffold.py --theme <name>` (or re-theme in place later with
+`deck_theme.py apply --theme <name> <deck.html>`; `deck_theme.py list` prints the presets) to stamp a `<style id="cmh-deck-theme" class="cm-skip">` block of
+allowlisted, system-font, contrast-safe deck tokens (`--slide-bg/-fg/-accent/-link/-border`, the
+`--cmh-deck-*` component colours, and `--font-body/--font-display`). Presets live under
+`tools/deck/themes/`; the block is `cm-skip`, so re-theming never shifts a stored comment offset.
+
+Compose slide bodies from the reusable native recipe classes so a themed deck needs no per-deck CSS:
+
+- `.cmh-slide-section` - a section-divider slide; put an uppercase `<p class="cmh-slide-kicker">` and an
+  `<h2>` inside. Budget: a kicker + a heading + at most one line.
+- `.cmh-slide-lede` - a large muted intro paragraph (about 26ch). Budget: one short paragraph.
+- `.cmh-cols-2` - a two-column grid wrapper; put two child blocks inside. Budget: two columns.
+- `.cmh-metric-grid` + `.cmh-metric` (with `.cmh-metric-value` + `.cmh-metric-label`) - stat cards.
+  Budget: 2-4 metrics per row.
+- `.cmh-pill` - an accent-filled inline label (uses `--slide-accent` with `--slide-accent-fg` text).
+  Budget: one or two words.
+
+These recipes consume the theme accent/muted/border tokens, so they recolour automatically under any
+preset and stay coherent (with generic-dark defaults) on an unthemed deck.
+
+For a bespoke, non-preset style a user explicitly asks for, you MAY read the vendored frontend-slides
+references before authoring slide layouts:
 
 - `vendor/frontend-slides/html-template.md`
 - `vendor/frontend-slides/viewport-base.css`
@@ -192,7 +213,11 @@ plus the last effective `background` or `background-color`, and the deck theme v
 The validator names the offending element, selector, or variable pair and both colors. It does not
 attempt a full CSS cascade, inherited color lookup, media-query evaluation, or alpha compositing
 against unknown ancestor backgrounds; semi-transparent backgrounds are skipped for that reason. Use
-explicit text/background pairs for any deck theme override that must be author-time checked.
+explicit text/background pairs for any deck theme override that must be author-time checked. The
+variable pairs are resolved from the custom properties declared in the document; the native flow
+declares the theme tokens only in the `cmh-deck-theme` block (there is no per-deck CSS), so that block
+is authoritative. A deck that additionally redefines a theme token (for example `--slide-bg`) in an
+unrelated rule can skew a variable-pair check - do not redefine the theme tokens outside the theme block.
 
 The strict "zero network of any kind" guarantee (including the optional mermaid/Chart CDN loaders
 and any chart init script) is asserted separately against the **Export Offline** deck.

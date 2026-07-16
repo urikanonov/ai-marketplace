@@ -40,3 +40,41 @@ See `dev/frontend-slides-upstream-sync.md`. In short: fetch upstream, re-run the
 the new commit, diff against this commit, re-vendor the curated subset (exclusions preserved),
 run `python dev/tools/check_vendor.py --update`, update this file's commit + the site credit +
 CHANGELOG, bump the plugin version, and run the validators.
+
+## Native deck theme presets (adapted, not vendored)
+
+The deck engine ships NATIVE theme presets under
+`pkg/skills/commentable-html/tools/deck/themes/<name>.theme.json`. These are CMH-authored files, NOT
+vendored copies: they re-express a frontend-slides style's palette and character as an allowlisted
+set of CMH deck CSS variables with system-font stacks, contrast-checked at build time. The shipped
+`terminal` preset is ADAPTED (color and name inspired) from the frontend-slides "Terminal Green"
+style. frontend-slides is MIT (see `LICENSE`), which permits this adaptation; each preset records its
+`adaptedFrom` and `sourceCommit` provenance in its JSON.
+
+### Updating CMH deck themes from a new frontend-slides release
+
+When you resync the vendored subset (above), also review the deck theme presets:
+
+1. Diff the upstream `STYLE_PRESETS.md` entries a preset was adapted from against the preset's pinned
+   `sourceCommit`. A palette or type change upstream is a candidate preset update - but a curated
+   adaptation need not track every upstream tweak; record "reviewed, no change" rather than forcing a
+   port.
+2. For a NEW preset, prefer a STYLE_PRESETS.md style whose identity survives system fonts (monospace,
+   Swiss/Helvetica) or self-host an OFL `.woff2` subset as a local `data:` font (the preset `fonts`
+   array accepts only local data URIs). Author explicit opaque fg/bg pairs and list them under the
+   preset's `contrastPairs` so the load-time self-check and `deck_validate.py` both gate them.
+3. Run the gate stack: `python dev/tools/../tests` deck theme tests, `deck_validate.py --strict` on a
+   `--theme` scaffold, and the `70-deck-theme.spec.js` rendered checks.
+
+Deferred automation (tracked as follow-up issues, see #334): a deterministic converter
+(`fs_theme_convert.py`) that extracts hex colors, scales `vw`/`clamp()` to the 1920x1080 stage, and
+substitutes remote fonts for system stacks to emit a STARTER preset a human reviews; and a staleness
+CI gate keyed on each preset's `sourceCommit`.
+
+### Licensing note: bold-template-pack
+
+The vendored `bold-template-pack/` declares `source_repo: zarazhangrui/beautiful-html-templates`
+(a DIFFERENT upstream repo than frontend-slides), and this tree records only the frontend-slides MIT
+`LICENSE`. Before adapting ANY bold-template-pack design into a native preset, independently verify
+`beautiful-html-templates`' license + commit and record it here. The current `terminal` preset is
+adapted only from a `STYLE_PRESETS.md` entry, which the frontend-slides `LICENSE` covers.
