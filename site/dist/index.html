@@ -85,6 +85,23 @@
               "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
               "url": "https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/"
             }
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "item": {
+              "@type": "SoftwareApplication",
+              "name": "multi-duck",
+              "applicationCategory": "DeveloperApplication",
+              "operatingSystem": "Cross-platform (Claude Code, GitHub Copilot CLI)",
+              "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+              },
+              "description": "Convene a panel of independent rubber-duck reviewers over your in-flight work (a diff, PR, plan, tests, or commentable-HTML plans with their open comments), each on a different model so their blind spots do not overlap, all in parallel, then consolidate the findings and autonomously apply the safe fixes. Two modes: prisms for wide coverage, consensus for cross-model agreement. Works on Claude Code and the GitHub Copilot CLI.",
+              "url": "https://urikanonov.github.io/ai-marketplace/multi-duck/"
+            }
           }
         ]
       }
@@ -312,6 +329,72 @@
               </div>
             </div>
             <div class="foot"><a class="btn learn-more" href="./urikan-ai-marketplace-auto-updater/">Learn more</a><a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">Source</a></div>
+          </article>
+          <article class="card plugin-card">
+            <div class="head">
+              <span class="name"><a href="./multi-duck/">multi-duck</a></span>
+              <span class="badge version">v1.0.0</span>
+              <span class="badge">code review</span>
+            </div>
+            <p class="desc">Convene a panel of independent rubber-duck reviewers over your in-flight work (a diff, PR, plan, tests, or commentable-HTML plans with their open comments), each on a different model so their blind spots do not overlap, all in parallel, then consolidate the findings and autonomously apply the safe fixes. Two modes: prisms for wide coverage, consensus for cross-model agreement. Works on Claude Code and the GitHub Copilot CLI.</p>
+            <div class="keywords"><span class="chip">multi-duck</span><span class="chip">rubber-duck</span><span class="chip">ducks</span><span class="chip">review</span><span class="chip">code-review</span><span class="chip">multi-model</span><span class="chip">ensemble</span><span class="chip">consensus</span><span class="chip">panel</span><span class="chip">quality</span></div>
+            <div class="install">
+              <div class="install-block install-tabs" data-install-tabs>
+                <div class="install-tablist" role="tablist" aria-label="Install with">
+                  <button class="install-tab" role="tab" type="button" id="install-card-multi-duck-copilot-tab" data-install-target="install-card-multi-duck-copilot" aria-selected="true" aria-controls="install-card-multi-duck-copilot" tabindex="0">GitHub Copilot</button>
+                  <button class="install-tab" role="tab" type="button" id="install-card-multi-duck-claude-tab" data-install-target="install-card-multi-duck-claude" aria-selected="false" aria-controls="install-card-multi-duck-claude" tabindex="-1">Claude Code</button>
+                </div>
+                <div class="install-panel" role="tabpanel" id="install-card-multi-duck-copilot" aria-labelledby="install-card-multi-duck-copilot-tab">
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">1</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install marketplace</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">2</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install plugin</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin install multi-duck@urikan-ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin install multi-duck@urikan-ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="install-panel" role="tabpanel" id="install-card-multi-duck-claude" aria-labelledby="install-card-multi-duck-claude-tab" hidden>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">1</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install marketplace</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">2</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install plugin</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>claude plugin install multi-duck@urikan-ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="claude plugin install multi-duck@urikan-ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="foot"><a class="btn learn-more" href="./multi-duck/">Learn more</a><a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">Source</a></div>
           </article>
           <!-- END:plugins -->
         </div>

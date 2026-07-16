@@ -396,5 +396,50 @@ class AutoUpdaterPageTests(unittest.TestCase):
         self.assertIn("[1.1.0]", html)
 
 
+class MultiDuckPageTests(unittest.TestCase):
+    """The multi-duck plugin has its own generated site page (SITE-MDUCK-01..03): its hub card links
+    to that page and the page is wired into the sitemap, llms.txt, and hub JSON-LD."""
+
+    MDUCK = "multi-duck"
+    PAGE = "./multi-duck/"
+
+    def _real_manifest(self):
+        with open(os.path.join(bsd.REPO_ROOT, ".github", "plugin", "marketplace.json"),
+                  encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def _jsonld_graph(self, script):
+        inner = script[script.index(">") + 1: script.rindex("</script>")]
+        return json.loads(inner)["@graph"]
+
+    def test_plugin_pages_includes_multi_duck(self):
+        self.assertEqual(bsd.PLUGIN_PAGES.get(self.MDUCK), self.PAGE)
+
+    def test_render_plugins_links_the_multi_duck_card_to_its_page(self):
+        out = bsd.render_plugins(self._real_manifest())
+        self.assertIn(
+            '<span class="name"><a href="%s">%s</a></span>' % (self.PAGE, self.MDUCK), out)
+        self.assertIn('<a class="btn learn-more" href="%s">Learn more</a>' % self.PAGE, out)
+
+    def test_sitemap_lists_the_multi_duck_page(self):
+        xml = bsd.render_sitemap(bsd.REPO_ROOT)
+        self.assertIn("<loc>%s%s/</loc>" % (bsd.SITE_BASE_URL, self.MDUCK), xml)
+
+    def test_llms_links_the_multi_duck_page(self):
+        text = bsd.render_llms(bsd.REPO_ROOT, self._real_manifest())
+        self.assertIn("[%s](%s%s/)" % (self.MDUCK, bsd.SITE_BASE_URL, self.MDUCK), text)
+
+    def test_jsonld_uses_the_multi_duck_site_page_url(self):
+        graph = self._jsonld_graph(bsd.render_jsonld(self._real_manifest()))
+        itemlist = next(n for n in graph if n["@type"] == "ItemList")
+        urls = {li["item"]["name"]: li["item"]["url"] for li in itemlist["itemListElement"]}
+        self.assertEqual(urls[self.MDUCK], bsd.SITE_BASE_URL + self.MDUCK + "/")
+
+    def test_render_plugin_changelog_renders_multi_duck_releases(self):
+        html = bsd.render_plugin_changelog(bsd.REPO_ROOT, self.MDUCK)
+        self.assertIn('class="release"', html)
+        self.assertIn("[1.0.0]", html)
+
+
 if __name__ == "__main__":
     unittest.main()

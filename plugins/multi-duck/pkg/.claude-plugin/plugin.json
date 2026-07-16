@@ -1,0 +1,9 @@
+{
+  "name": "multi-duck",
+  "description": "Convene a panel of independent rubber-duck reviewers over your in-flight work (a diff, PR, plan, tests, or commentable-HTML plans with their open comments), each on a different model so their blind spots do not overlap, all in parallel, then consolidate the findings and autonomously apply the safe fixes. Two modes: prisms for wide coverage, consensus for cross-model agreement. Works on Claude Code and the GitHub Copilot CLI.",
+  "version": "1.0.0",
+  "author": { "name": "Uri Kanonov", "email": "urikanonov@gmail.com" },
+  "keywords": ["multi-duck", "rubber-duck", "ducks", "review", "code-review", "multi-model", "ensemble", "consensus", "panel", "quality"],
+  "license": "MIT",
+  "skills": "./skills/"
+}

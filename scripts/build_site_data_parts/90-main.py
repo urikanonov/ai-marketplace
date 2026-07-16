@@ -39,8 +39,9 @@ def main(argv):
             break
     version = plugin_version(manifest, CHANGELOG_PLUGIN)
     updater_version = plugin_version(manifest, UPDATER_PLUGIN)
+    multi_duck_version = plugin_version(manifest, MULTI_DUCK_PLUGIN)
 
-    for src_rel in (HUB_SRC, PLUGIN_SRC, UPDATER_SRC):
+    for src_rel in (HUB_SRC, PLUGIN_SRC, UPDATER_SRC, MULTI_DUCK_SRC):
         if not os.path.isfile(os.path.join(root, src_rel)):
             raise SystemExit("page source missing: %s (a built page under site/dist/ has no source "
                              "to rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
@@ -66,9 +67,16 @@ def main(argv):
             UPDATER_PLUGIN, suffix, UPDATER_PLUGIN in claude_names, "install-updater")),
         ("block", "changelog", render_plugin_changelog(root, UPDATER_PLUGIN)),
     ])
+    multi_duck_out = build_page(root, MULTI_DUCK_SRC, [
+        ("inline", "version", "v" + esc(multi_duck_version)),
+        ("block", "install", render_install(
+            MULTI_DUCK_PLUGIN, suffix, MULTI_DUCK_PLUGIN in claude_names, "install-multi-duck")),
+        ("block", "changelog", render_plugin_changelog(root, MULTI_DUCK_PLUGIN)),
+    ])
     hub_out_path = os.path.join(root, HUB_OUT)
     plugin_out_path = os.path.join(root, PLUGIN_OUT)
     updater_out_path = os.path.join(root, UPDATER_OUT)
+    multi_duck_out_path = os.path.join(root, MULTI_DUCK_OUT)
 
     tutorial_src_page = os.path.join(root, TUTORIAL_PAGE_SRC)
     tutorial_out_path = os.path.join(root, TUTORIAL_PAGE)
@@ -114,6 +122,11 @@ def main(argv):
                             "site/pages/%s/index.html source "
                             "(do not hand-edit the built page; edit the source and rebuild)"
                             % (UPDATER_PLUGIN, UPDATER_PLUGIN))
+        if multi_duck_out != _read_artifact(multi_duck_out_path):
+            problems.append("site/dist/%s/index.html is stale vs its "
+                            "site/pages/%s/index.html source "
+                            "(do not hand-edit the built page; edit the source and rebuild)"
+                            % (MULTI_DUCK_PLUGIN, MULTI_DUCK_PLUGIN))
         if tutorial_out is not None and tutorial_out != _read_artifact(tutorial_out_path):
             problems.append("site/dist/commentable-html/tutorial/index.html is stale vs its "
                             "site/pages/commentable-html/tutorial/index.html source and "
@@ -144,6 +157,7 @@ def main(argv):
     write_text(hub_out_path, hub_out)
     write_text(plugin_out_path, plugin_out)
     write_text(updater_out_path, updater_out)
+    write_text(multi_duck_out_path, multi_duck_out)
     if tutorial_out is not None:
         write_text(tutorial_out_path, tutorial_out)
     elif tutorial_orphaned:
