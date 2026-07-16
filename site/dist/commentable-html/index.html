@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.85.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.86.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.86.0] - 2026-07-16</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>new_document.py --out</code> now preserves an existing target by writing the first free <code>-2</code> / <code>-3</code> suffixed sibling unless <code>--force</code> is supplied, and derives <code>--key auto</code> from that final resolved path so colliding document creations do not share keys. (CMH-TOOL-18)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.85.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Updated stale shipped-doc tool paths, including the plugin README&#x27;s validation, document-creation, and handled-comment paths, to the current <code>tools/&lt;topic&gt;/...</code> buckets. Added a docs test so future tool-layout refactors cannot leave stale README paths behind. (CMH-DOC-15)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.82.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -428,8 +437,6 @@
               <li>The shipped skill now carries the MIT <code>LICENSE</code> at its root, so every copy that ships (the Copilot/Claude <code>plugin install</code> source subtree and the Claude Desktop skill ZIP) redistributes the code with its required license notice. (CMH-DOC-14)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.81.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -460,14 +467,7 @@
               <li>The split-screen slide overview is easier to read and use. Its panel now has a light accent-tinted (red-ish) background, the Close button uses the regular accent fill, and the slide count appears next to the &quot;Slide overview&quot; title. Clicking the main deck area (outside the panel) closes the overview, the grid scrolls reliably when the slides overflow the viewport height, and thumbnails force-reveal animated slide content so each one previews the slide&#x27;s final rendered state. (CMH-DECK-16)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.77.0] - 2026-07-15</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>SKILL.md now states the plugin installs into both Claude Code and the GitHub Copilot CLI and is invokable from each agent&#x27;s CLI and Desktop app, so the dual-agent support is visible in the shipped skill doc (its output was always a portable, agent-agnostic HTML file). (CMH-DOC-12)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">81 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">82 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

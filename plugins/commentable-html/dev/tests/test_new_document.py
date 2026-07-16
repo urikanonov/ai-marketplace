@@ -277,6 +277,50 @@ class MainCliTests(unittest.TestCase):
         self.assertIn('data-comment-key="file-v1"', written)
         self.assertIn('data-doc-source="body.html"', written)
 
+    def test_cmh_tool_18_out_collision_suffixes_without_overwriting(self):
+        d = self._tmpdir()
+        opath = os.path.join(d, "out.html")
+        opath_2 = os.path.join(d, "out-2.html")
+        opath_3 = os.path.join(d, "out-3.html")
+        for path, text in ((opath, "original"), (opath_2, "second")):
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(text)
+
+        code, _out, err = self._call_main(
+            ["new_document.py", "--content", "-", "--key", "collision-v1",
+             "--label", "Collision Doc", "--portable", "--out", opath],
+            stdin=CONTENT)
+
+        self.assertEqual(code, 0, err)
+        with open(opath, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "original")
+        with open(opath_2, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "second")
+        self.assertTrue(os.path.exists(opath_3))
+        self.assertIn("wrote %s" % opath_3, err)
+        with open(opath_3, encoding="utf-8") as fh:
+            written = fh.read()
+        self.assertIn('data-comment-key="collision-v1"', written)
+
+    def test_cmh_tool_18_force_overwrites_out_target(self):
+        d = self._tmpdir()
+        opath = os.path.join(d, "out.html")
+        with open(opath, "w", encoding="utf-8") as fh:
+            fh.write("original")
+
+        code, _out, err = self._call_main(
+            ["new_document.py", "--content", "-", "--key", "force-v1",
+             "--label", "Force Doc", "--portable", "--force", "--out", opath],
+            stdin=CONTENT)
+
+        self.assertEqual(code, 0, err)
+        self.assertIn("wrote %s" % opath, err)
+        self.assertFalse(os.path.exists(os.path.join(d, "out-2.html")))
+        with open(opath, encoding="utf-8") as fh:
+            written = fh.read()
+        self.assertIn('data-comment-key="force-v1"', written)
+        self.assertNotEqual(written, "original")
+
     def test_cli_bakes_syntax_highlighting_by_default(self):
         # CMH-HL-04: new_document bakes highlighting so a created doc is never raw. This is the
         # root-cause fix for the notes-feature-plan.html defect (a raw language block shipped
@@ -333,6 +377,27 @@ class MainCliTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         expected = "cmh-" + hashlib.sha256(os.path.abspath(op).encode("utf-8")).hexdigest()[:12]
         html = open(op, encoding="utf-8").read()
+        self.assertIn('data-comment-key="%s"' % expected, html)
+
+    def test_cmh_tool_18_key_auto_derives_from_collision_resolved_out_path(self):
+        d = self._tmpdir()
+        op = os.path.join(d, "auto-report.html")
+        with open(op, "w", encoding="utf-8") as fh:
+            fh.write("original")
+        resolved = os.path.join(d, "auto-report-2.html")
+
+        code, _out, err = self._call_main(
+            ["new_document.py", "--content", "-", "--key", "auto", "--label", "Auto Key Label",
+             "--portable", "--out", op],
+            stdin=CONTENT,
+        )
+
+        self.assertEqual(code, 0, err)
+        with open(op, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "original")
+        expected = "cmh-" + hashlib.sha256(os.path.abspath(resolved).encode("utf-8")).hexdigest()[:12]
+        with open(resolved, encoding="utf-8") as fh:
+            html = fh.read()
         self.assertIn('data-comment-key="%s"' % expected, html)
 
     def test_key_auto_without_identity_exits_2(self):
