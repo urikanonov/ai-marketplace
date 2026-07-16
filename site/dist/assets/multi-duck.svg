@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="multi-duck logo">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0e8f7e"/>
+  <g fill="#bfeee6">
+    <circle cx="14" cy="14" r="2.5"/>
+    <circle cx="22" cy="14" r="2.5"/>
+    <circle cx="30" cy="14" r="2.5"/>
+  </g>
+  <g>
+    <ellipse cx="29" cy="42" rx="17" ry="11" fill="#fcfbf8"/>
+    <circle cx="42" cy="29" r="9" fill="#fcfbf8"/>
+    <path d="M50 26 L60 29 L50 33 Z" fill="#f5c451"/>
+    <circle cx="43.5" cy="27" r="1.7" fill="#0e8f7e"/>
+    <path d="M19 42 q10 8 21 1" fill="none" stroke="#0e8f7e" stroke-width="2" stroke-linecap="round"/>
+  </g>
+</svg>

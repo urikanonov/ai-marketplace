@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<!-- GENERATED FILE - DO NOT EDIT. Built from site/pages/multi-duck/index.html by scripts/build_site_data.py; run: python scripts/build_site_data.py -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
+  <title>multi-duck - a panel of AI reviewers for your code, on many models at once</title>
+  <meta name="description" content="A skill for Claude Code and the GitHub Copilot CLI that convenes a panel of independent rubber-duck reviewers over your in-flight work - each on a different model so their blind spots do not overlap - then consolidates the findings and applies the safe fixes." />
+  <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/multi-duck/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="ai-marketplace" />
+  <meta property="og:title" content="multi-duck - a panel of AI reviewers for your code, on many models at once" />
+  <meta property="og:description" content="Convene a panel of independent rubber-duck reviewers over your in-flight work, each on a different model, all in parallel, then consolidate the findings and apply the safe fixes. Two modes: prisms and consensus." />
+  <meta property="og:url" content="https://urikanonov.github.io/ai-marketplace/multi-duck/" />
+  <meta property="og:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="ai-marketplace multi-duck" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="multi-duck - a panel of AI reviewers, on many models at once" />
+  <meta name="twitter:description" content="A multi-model rubber-duck review panel for Claude Code and the GitHub Copilot CLI. Diverse models, uncorrelated blind spots, safe fixes applied for you." />
+  <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
+  <link rel="icon" type="image/svg+xml" href="../assets/multi-duck.svg" />
+  <link rel="stylesheet" href="../assets/styles.css?v=f6b9e96ed845" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "multi-duck",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Cross-platform (Claude Code, GitHub Copilot CLI)",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "description": "A skill for Claude Code and the GitHub Copilot CLI that convenes a panel of independent rubber-duck reviewers over your in-flight work, each on a different model, then consolidates the findings and applies the safe fixes.",
+        "url": "https://urikanonov.github.io/ai-marketplace/multi-duck/",
+        "author": { "@type": "Person", "name": "Uri Kanonov", "url": "https://github.com/urikanonov" }
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "ai-marketplace", "item": "https://urikanonov.github.io/ai-marketplace/" },
+          { "@type": "ListItem", "position": 2, "name": "multi-duck", "item": "https://urikanonov.github.io/ai-marketplace/multi-duck/" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <nav class="navbar">
+    <div class="wrap">
+      <a class="brand" href="./">
+        <img src="../assets/multi-duck.svg" alt="multi-duck logo" />
+        <span>multi-duck</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#modes" class="hide-sm">Modes</a>
+        <a href="#how" class="hide-sm">How it works</a>
+        <a href="#install">Install</a>
+        <a href="#changelog" class="hide-sm">Changelog</a>
+        <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">GitHub</a>
+        <a href="../">Marketplace</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="main">
+    <header class="hero">
+      <div class="wrap">
+        <a class="back-link" href="../">&larr; All plugins</a>
+        <h1>Review your code with a <span class="accent">panel of models</span>, not just one</h1>
+        <p class="lead">One reviewer has one set of blind spots - and a single model, however strong, misses the same class of bug every time. <strong>multi-duck</strong> convenes a panel of independent rubber-duck reviewers over whatever you have in flight (a diff, a PR, a plan, tests, or a commentable-HTML plan with its open comments), puts each duck on a <em>different</em> high-capability model so their blind spots do not overlap, runs them all in parallel, then consolidates their findings and applies the fixes that are safe to apply. The disagreement is the point.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#install">Install</a>
+          <a class="btn" href="#how">How it works</a>
+          <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">View source</a>
+        </div>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.0.0<!-- END:version --></span></a>
+      </div>
+    </header>
+
+    <section id="why">
+      <div class="wrap">
+        <div class="section-block prose">
+          <h2 class="section-title">Why a panel beats a single review</h2>
+          <p>Every model is confidently wrong in its own way. Ask the same model that wrote (or reviewed) a change to review it again and it tends to re-make the same oversight. The fix is not a bigger model - it is <strong>uncorrelated</strong> reviewers. Put an Anthropic model, an OpenAI model, a Google model, and more on the same change and the bug one family always glosses over is the one another family flags on sight.</p>
+          <p><strong>multi-duck turns that into a one-word command.</strong> It runs end to end with no extra prompt: say "multi-duck" and it discovers what to review on its own, launches the panel, waits for every duck, merges the results into one ranked list, and autonomously applies the fixes that are safe - leaving the judgment calls clearly flagged for you. The ducks are strictly review-only; every change is made by the main agent under explicit safe-fix rules.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2 class="section-title">What it is good for</h2>
+        <p class="section-sub">A second, third, and fourth opinion - on demand, before you ship.</p>
+        <div class="grid">
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg></span><h3>A go/no-go before you merge</h3><p>Point it at a branch, an open PR, or a design and get a cross-model read on whether it is safe to ship, with the top agreed risks called out.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.2-3 7.4-7 8.5C8 19.4 5 16.2 5 12V7z"/><path d="M9 12l2 2 4-4"/></svg></span><h3>Catches the bug one model misses</h3><p>Model diversity is uncorrelated failure: correctness slips, edge cases, race conditions, security and data-safety issues, missing tests, and migration risks that a single reviewer waves through.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 3z"/><path d="M8 9h8M8 12h5"/></svg></span><h3>Reviews plans, not just code</h3><p>It discovers active HTML and commentable-HTML plans and mines their open inline comments, so the panel reviews the proposal and the feedback already on it.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></span><h3>High-confidence verification</h3><p>In consensus mode every duck answers the same question ("is this migration safe?"), so agreement across independent models becomes a real confidence signal.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="2.5"/></svg></span><h3>Autonomous, safe cleanup</h3><p>The safe, local, well-verified fixes get applied and verified with the narrowest test; the risky ones are surfaced with a recommended action and why they were held back.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 20h8"/></svg></span><h3>Works where you work</h3><p>The same panel runs on both Claude Code and the GitHub Copilot CLI, with a host mapping for launching reviewers, picking models, and collecting results.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="modes">
+      <div class="wrap">
+        <h2 class="section-title">Two modes, one command</h2>
+        <p class="section-sub">Pick breadth or agreement - or let the default (prisms) choose breadth for you.</p>
+        <div class="grid">
+          <div class="card feature"><h3>Prisms (default)</h3><p>The panel is split by review aspect - correctness, edge cases, security, tests, performance, migration - with at least two differently-modeled ducks per aspect. Every aspect gets two independent opinions, so coverage spreads wide across a large change.</p></div>
+          <div class="card feature"><h3>Consensus</h3><p>Every duck chases the same goal, so cross-model agreement (k of N) is a strong confidence signal. Best for a focused question or a high-confidence go/no-go: a critical flagged by most of the panel is near-certain.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <h2 class="section-title">How it works</h2>
+        <p class="section-sub">Discover, diversify, launch, consolidate, act - autonomously and safely.</p>
+        <div class="steps steps-vertical">
+          <div class="step"><h3>Discover the work in flight</h3><p>It gathers the diff, the PR and its open comments, any markdown plan, the tests, and active commentable-HTML plans with their open inline comments into one self-contained bundle every reviewer can read.</p></div>
+          <div class="step"><h3>Pick a model-diverse roster</h3><p>The strongest, most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p></div>
+          <div class="step"><h3>Launch the panel in parallel</h3><p>Every duck runs at once as a strictly review-only reviewer. Running many in parallel is safe because no duck can change anything.</p></div>
+          <div class="step"><h3>Consolidate the findings</h3><p>Cluster duplicate findings, weigh agreement, rank by severity, and adjudicate conflicts by reading the code - because agreement across models that read the same bundle is corroboration to verify, never proof.</p></div>
+          <div class="step"><h3>Act on the safe ones</h3><p>Apply the local, non-destructive, independently-verified fixes and check them with the narrowest test. Defer anything risky - API, dependency, migration, security, infrastructure, history-rewriting - with a clear recommendation.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2 class="section-title">Install</h2>
+        <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI. Add the marketplace, install multi-duck, and say "multi-duck".</p>
+        <!-- BEGIN:install -->
+        <div class="install-block install-tabs" data-install-tabs>
+              <div class="install-tablist" role="tablist" aria-label="Install with">
+                <button class="install-tab" role="tab" type="button" id="install-multi-duck-copilot-tab" data-install-target="install-multi-duck-copilot" aria-selected="true" aria-controls="install-multi-duck-copilot" tabindex="0">GitHub Copilot</button>
+                <button class="install-tab" role="tab" type="button" id="install-multi-duck-claude-tab" data-install-target="install-multi-duck-claude" aria-selected="false" aria-controls="install-multi-duck-claude" tabindex="-1">Claude Code</button>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-multi-duck-copilot" aria-labelledby="install-multi-duck-copilot-tab">
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">1</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install marketplace</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">2</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install plugin</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>copilot plugin install multi-duck@urikan-ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="copilot plugin install multi-duck@urikan-ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-multi-duck-claude" aria-labelledby="install-multi-duck-claude-tab" hidden>
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">1</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install marketplace</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="install-row">
+                  <span class="install-step" aria-hidden="true">2</span>
+                  <div class="install-cmd">
+                    <span class="install-label">Install plugin</span>
+                    <div class="cmd">
+                      <span class="prompt">$</span>
+                      <pre>claude plugin install multi-duck@urikan-ai-marketplace</pre>
+                      <button class="copy-btn" type="button" data-copy="claude plugin install multi-duck@urikan-ai-marketplace">copy</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+        <!-- END:install -->
+        <p class="section-sub install-note">Model diversity is the whole point, so the panel is strongest where several high-capability models are available to you. On the Copilot CLI each duck runs on a distinct model out of the box; on Claude Code, configure a few rubber-duck subagents pinned to different models to get the same cross-model coverage.</p>
+      </div>
+    </section>
+
+    <section id="safety">
+      <div class="wrap">
+        <h2 class="section-title">Autonomous, but safe by design</h2>
+        <p class="section-sub">It fixes what is safe to fix and never guesses at the rest.</p>
+        <div class="grid">
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.2-3 7.4-7 8.5C8 19.4 5 16.2 5 12V7z"/></svg></span><h3>Reviewers cannot mutate</h3><p>Ducks are review-only. Every change is made by the main agent under explicit safe-fix rules, and each fix is independently verified before it lands.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V7a6 6 0 0112 0v2"/><rect x="4" y="9" width="16" height="11" rx="2"/></svg></span><h3>Risky changes are deferred</h3><p>Public API, dependency, migration, security, infrastructure, and history-rewriting changes are never applied autonomously - they are surfaced with a recommended action for you to decide.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg></span><h3>Reviewed content is untrusted</h3><p>The diff, PR text, and plan comments are treated as data, never as instructions, so embedded prompt injection cannot manufacture panel agreement or drive an autonomous change.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="changelog">
+      <div class="wrap">
+        <h2 class="section-title">Changelog</h2>
+        <p class="section-sub">Changes to multi-duck. See the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/multi-duck/CHANGELOG.md">full changelog on GitHub</a>.</p>
+        <div class="changelog">
+          <!-- BEGIN:changelog -->
+          <div class="release">
+            <div class="rel-head"><h3>[1.0.0]</h3></div>
+            <ul>
+              <li>Initial release of multi-duck: convene a panel of independent rubber-duck reviewers over the work in flight (a diff, PR, plan, tests, or commentable-HTML plans with their open inline comments), each on a different model, all in parallel, then consolidate the findings and autonomously apply the safe fixes.</li>
+              <li>Two panel modes: prisms (split the panel by review aspect, at least two differently-modeled ducks per aspect, for wide coverage) and consensus (every duck chases the same goal so cross-model agreement is a confidence signal).</li>
+              <li>Auto-discovers what to review (diff, PR, markdown plan, and active commentable-HTML plans plus their open inline comments) and runs end to end with no extra prompt.</li>
+              <li>Dual-host: runs on both Claude Code and the GitHub Copilot CLI, with a host mapping for the reviewer subagent, per-duck model selection, parallel launch, result collection, and tracking.</li>
+            </ul>
+          </div>
+          <!-- END:changelog -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>MIT License &middot; &copy; <span id="year">2026</span> <a href="https://www.linkedin.com/in/uri-kanonov-946761119">Uri Kanonov</a></span>
+      <span class="built"><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md">Contribute</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new?template=feature-request.yml">Request a feature</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/issues/new/choose">File an issue</a> &middot; <a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">Plugin source</a></span>
+    </div>
+  </footer>
+
+  <script src="../assets/site.js?v=0a271f72308e"></script>
+</body>
+</html>
