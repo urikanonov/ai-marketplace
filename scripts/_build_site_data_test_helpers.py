@@ -12,5 +12,6 @@ import unittest
 from unittest import mock
 
 import build_site_data as bsd
+from _git_test_env import clean_git_env
 
 __all__ = [name for name in globals() if name != "__all__" and not name.startswith("__")]
