@@ -348,6 +348,67 @@ class ExtractResourcesTests(unittest.TestCase):
             self.assertEqual(fh.read(), "REAL\n", "the shipped SKILL.md must not be overwritten")
         self.assertTrue(os.path.isfile(os.path.join(self.skill, "tools", "a.py")))
 
+    def test_is_swappable_rejects_case_variant_reserved_and_backup_names(self):
+        staging = os.path.join(self.skill, extract_resources.STAGING_NAME)
+        for name in ("skill.md", "License", "SKILL-RESOURCES.ZIP", "tools.skill-resources-old",
+                     ".hidden"):
+            os.makedirs(os.path.join(staging, name), exist_ok=True)
+            self.assertFalse(extract_resources._is_swappable(self.skill, name),
+                             "%r must not be swappable" % name)
+        os.makedirs(os.path.join(staging, "tools"), exist_ok=True)
+        self.assertTrue(extract_resources._is_swappable(self.skill, "tools"))
+
+    # CMH-PKG-05: the rollback itself retries a transient lock and restores the previous version.
+    def test_rollback_survives_transient_lock_during_restore(self):
+        _make_zip(self.zip, {"tools/a.py": "x\n", "dist/c.html": "<html></html>\n"})
+        extract_resources.run(self.skill, "1.0.0")
+        sentinel = os.path.join(self.skill, "tools", "old_only.py")
+        with open(sentinel, "w", encoding="utf-8") as fh:
+            fh.write("old\n")
+        real_replace = extract_resources.os.replace
+        state = {"restore_fails": 2}
+
+        def _patched(src, dst, *a, **k):
+            base = os.path.basename(dst)
+            if base == "tools" and extract_resources.STAGING_NAME in str(src):
+                raise PermissionError("move-in locked")  # force a rollback
+            if base == "tools" and str(src).endswith(extract_resources.BACKUP_SUFFIX):
+                if state["restore_fails"] > 0:
+                    state["restore_fails"] -= 1
+                    raise PermissionError("restore transiently locked")
+            return real_replace(src, dst, *a, **k)
+
+        with unittest.mock.patch.object(extract_resources.os, "replace", _patched):
+            with self.assertRaises(PermissionError):
+                extract_resources.extract_all(self.zip, self.skill, "1.1.0", retries=6,
+                                              backoff=0.001, sleep=lambda *_: None)
+        self.assertEqual(state["restore_fails"], 0, "the rollback restore must have been retried")
+        self.assertTrue(os.path.isfile(sentinel),
+                        "the rollback must restore the previous version despite a transient lock")
+
+    def test_release_does_not_delete_a_foreign_pid_lock(self):
+        lock, fd = extract_resources._acquire_lock(self.skill)
+        self.assertIsNotNone(lock)
+        os.close(fd)
+        with open(lock, "wb") as fh:  # simulate a concurrent session that stole and recreated it
+            fh.write(b"999999")
+        extract_resources._release_lock(lock, None)
+        self.assertTrue(os.path.isfile(lock), "must not delete a lock owned by another session")
+        os.remove(lock)
+
+    # A crash between rename-aside and move-in leaves a backup but no live dir; the next run restores
+    # it instead of deleting the only copy.
+    def test_cleanup_restores_backup_when_live_dir_is_missing(self):
+        extract_resources.run(self.skill, "1.0.0")
+        live = os.path.join(self.skill, "tools")
+        bak = live + extract_resources.BACKUP_SUFFIX
+        os.replace(live, bak)  # simulate a crash right after the rename-aside
+        self.assertFalse(os.path.isdir(live))
+        extract_resources._cleanup_leftovers(self.skill, 3, 0.001, lambda *_: None, None)
+        self.assertTrue(os.path.isdir(live), "the backup must be restored when the live dir is gone")
+        self.assertFalse(os.path.isdir(bak))
+        self.assertTrue(os.path.isfile(os.path.join(live, "a.py")))
+
     def _reset_skill(self):
         import shutil
 
