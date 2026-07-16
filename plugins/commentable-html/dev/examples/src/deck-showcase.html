@@ -1841,6 +1841,14 @@ svg {
 #commentRoot[data-cmh-mode="deck"] table.show-compare-table th,
 #commentRoot[data-cmh-mode="deck"] table.show-compare-table td { font-size: 20px; padding: 10px 14px; }
 #commentRoot[data-cmh-mode="deck"] table.show-compare-table td:first-child { font-weight: 700; }
+#commentRoot[data-cmh-mode="deck"] table.show-table :is(th, td):hover,
+#commentRoot[data-cmh-mode="deck"] table.show-table :is(th, td):focus-within {
+  box-shadow: inset 0 0 0 2px rgba(177, 31, 75, 0.32);
+}
+#commentRoot[data-cmh-mode="deck"] table.show-table td:hover,
+#commentRoot[data-cmh-mode="deck"] table.show-table td:focus-within { background: #f7e6eb !important; }
+#commentRoot[data-cmh-mode="deck"] table.show-table th:hover,
+#commentRoot[data-cmh-mode="deck"] table.show-table th:focus-within { background: #981a40 !important; }
 #commentRoot[data-cmh-mode="deck"] .show-chart-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px; align-items: start; }
 #commentRoot[data-cmh-mode="deck"] figure.chart.show-chart { margin: 0; padding: 22px; background: #ffffff; border: 1px solid var(--show-line); border-radius: 20px; }
 #commentRoot[data-cmh-mode="deck"] figure.chart.show-chart figcaption { color: #514a3a; font-size: 20px; margin-top: 10px; }
@@ -2089,36 +2097,19 @@ ids, and keep the unresolved comments.</code></pre>
   <div class="show-chart-grid">
     <figure class="chart show-chart" aria-labelledby="show-chart-cap">
       <div class="chart-wrap cm-skip">
-        <canvas id="showcaseChart" class="cmh-chart" width="760" height="340" role="img" aria-label="Weekly watering per garden bed in liters"></canvas>
-        <script>
-        (function () {
-          var el = document.getElementById("showcaseChart");
-          if (!el || typeof el.getContext !== "function") return;
-          var ctx = el.getContext("2d");
-          var labels = ["Bed 1", "Bed 4", "Bed 6", "Bed 8"];
-          var values = [36, 44, 22, 8];
-          var max = 48, baseY = 286, scale = 236 / max;
-          ctx.clearRect(0, 0, el.width, el.height);
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, el.width, el.height);
-          ctx.strokeStyle = "#cbb48a";
-          ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.moveTo(72, 24); ctx.lineTo(72, baseY); ctx.lineTo(730, baseY); ctx.stroke();
-          for (var i = 0; i < values.length; i++) {
-            var x = 104 + i * 158;
-            var h = values[i] * scale;
-            ctx.fillStyle = i === 1 ? "#b11f4b" : "#e08aa4";
-            ctx.fillRect(x, baseY - h, 92, h);
-            ctx.fillStyle = "#1b1f3b";
-            ctx.font = "bold 22px Segoe UI, sans-serif";
-            ctx.fillText(values[i] + " L", x + 12, baseY - h - 10);
-            ctx.font = "18px Segoe UI, sans-serif";
-            ctx.fillText(labels[i], x - 2, 318);
-          }
-        })();
+        <canvas
+          id="showcaseChart"
+          class="cmh-chart"
+          width="760"
+          height="340"
+          role="img"
+          aria-label="Weekly watering per garden bed in liters"
+          data-cmh-chart-source="showcaseChartData"></canvas>
+        <script type="application/json" id="showcaseChartData">
+        {"max":48,"step":12,"unit":"L","tooltipUnit":"L / week","points":[{"label":"Bed 1","value":36,"fill":"#e08aa4"},{"label":"Bed 4","value":44,"fill":"#b11f4b"},{"label":"Bed 6","value":22,"fill":"#d79ab3"},{"label":"Bed 8","value":8,"fill":"#edc1cf"}]}
         </script>
       </div>
-      <figcaption id="show-chart-cap">A Chart.js-style canvas of weekly watering liters per bed. Comment on the chart as a whole; Offline export snapshots it.</figcaption>
+      <figcaption id="show-chart-cap">An inline canvas chart of weekly watering liters per bed. Hover a bar for the exact value, comment on the chart as one visual anchor, and keep Offline export snapshotting the rendered canvas.</figcaption>
     </figure>
     <div>
       <table class="show-table">
@@ -2130,7 +2121,7 @@ ids, and keep the unresolved comments.</code></pre>
           <tr><td>Bed 8</td><td>Undecided</td><td>8</td></tr>
         </tbody>
       </table>
-      <p style="margin-top:14px;">Hover the chart or a single cell in comment mode: the visual and the number are both anchors.</p>
+      <p style="margin-top:14px;">Hover the chart for a point tooltip or a single cell for a subtle highlight: the visual and the number stay aligned while both remain review targets.</p>
     </div>
   </div>
 </section>

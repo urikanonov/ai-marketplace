@@ -1062,6 +1062,7 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
 #commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
 #commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+.cmh-chart-tooltip { z-index: 410; white-space: nowrap; }
 .cm-image-add { position: fixed; z-index: 200; }
 /* Commentable widget parts (generic opt-in via data-cm-part inside a data-cm-widget).
    Parts live inside a cm-skip widget but are individually commentable, so they get the
@@ -1130,7 +1131,6 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl:hover .cmh-sort-up, .cmh-sort-ctrl:hover .cmh-sort-dn { opacity: 0.7; }
 .cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up { opacity: 1; color: var(--cp-accent); }
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
-
 
 /* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
@@ -1467,6 +1467,22 @@ body.cmh-deck-present #menuComment {
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
   border-color: rgba(148, 163, 184, 0.48);
+}
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td) {
+  transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):hover,
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):focus-within {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--cp-accent, #2ecc71) 58%, transparent);
+  transform: translateY(-1px);
+}
+#commentRoot[data-cmh-mode="deck"] .slide table td:hover,
+#commentRoot[data-cmh-mode="deck"] .slide table td:focus-within {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 14%, var(--cp-surface, #fff));
+}
+#commentRoot[data-cmh-mode="deck"] .slide table thead th:hover,
+#commentRoot[data-cmh-mode="deck"] .slide table thead th:focus-within {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 84%, #111827);
 }
 #commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid),
 #commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid) code,
