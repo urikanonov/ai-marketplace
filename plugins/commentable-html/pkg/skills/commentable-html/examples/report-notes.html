@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.126.0" />
+<meta name="commentable-html-version" content="1.129.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.126.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.129.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -1285,6 +1285,8 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
   flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
 }
 #commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run { color: #f8fafc; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: #dbeafe; }
 /* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
    side without cramping, so stack them on their own lines. */
 @media (max-width: 700px) {
@@ -1636,6 +1638,12 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-label {
   color: var(--cmh-deck-code-text);
 }
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run {
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run:hover {
+  color: #dbeafe;
+}
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
@@ -1723,9 +1731,13 @@ body.cmh-deck-present #menuComment {
   color: #f8fafc !important;
   fill: #f8fafc !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link, marker path) {
-  stroke: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
+  stroke: #334155 !important;
+  stroke-width: 2.4px !important;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg marker path {
+  stroke: #334155 !important;
+  fill: #334155 !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel p {
@@ -2562,7 +2574,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.126.0";
+const CMH_VERSION = "1.129.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

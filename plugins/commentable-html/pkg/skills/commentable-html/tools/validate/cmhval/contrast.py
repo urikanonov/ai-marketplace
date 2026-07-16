@@ -6,6 +6,7 @@ import math
 import re
 
 DEFAULT_MIN_CONTRAST_RATIO = 4.5
+DEFAULT_MIN_STROKE_CONTRAST_RATIO = 3.0
 
 _NAMED_COLORS = {
     "black": (0, 0, 0, 1.0),
@@ -29,13 +30,47 @@ class ContrastIssue:
     background: str
     ratio: float
     threshold: float
+    kind: str = "text"
 
     def message(self):
+        label = "text contrast" if self.kind == "text" else "stroke contrast"
+        role = "foreground" if self.kind == "text" else "stroke"
         return (
-            f"{self.source}: low text contrast - foreground {self.foreground} on "
+            f"{self.source}: low {label} - {role} {self.foreground} on "
             f"background {self.background} has contrast {self.ratio:.2f}:1 below "
             f"{self.threshold:.2f}:1; adjust one color before publishing."
         )
+
+
+@dataclass
+class _DomNode:
+    tag: str
+    attrs: dict
+    parent: object = None
+    children: object = None
+    text_parts: object = None
+    order: int = 0
+    color_raw: str = None
+    background_raw: str = None
+    stroke_raw: str = None
+    variables: object = None
+
+    def __post_init__(self):
+        if self.children is None:
+            self.children = []
+        if self.text_parts is None:
+            self.text_parts = []
+        if self.variables is None:
+            self.variables = {}
+
+
+@dataclass(frozen=True)
+class _SelectorRule:
+    selector: str
+    parts: tuple
+    specificity: tuple
+    order: int
+    items: tuple
 
 
 def _matching_paren(value, open_index):
@@ -206,6 +241,16 @@ def _relative_luminance(color):
 def _composite(foreground, background):
     alpha = foreground[3]
     return tuple(round(foreground[i] * alpha + background[i] * (1 - alpha)) for i in range(3)) + (1.0,)
+
+
+def _composite_rgba(foreground, background):
+    alpha = foreground[3] + background[3] * (1 - foreground[3])
+    if alpha <= 0:
+        return 0, 0, 0, 0.0
+    return tuple(
+        round((foreground[i] * foreground[3] + background[i] * background[3] * (1 - foreground[3])) / alpha)
+        for i in range(3)
+    ) + (alpha,)
 
 
 def contrast_ratio(foreground, background, variables=None):
@@ -388,6 +433,50 @@ class _StyleScanner(HTMLParser):
             self._style_body = []
 
 
+class _DocumentScanner(_StyleScanner):
+    def __init__(self):
+        super().__init__()
+        self.root = _DomNode("__doc__", {})
+        self._stack = [self.root]
+        self._order = 0
+
+    @staticmethod
+    def _node(tag, attrs, order):
+        return _DomNode(tag.lower(), attrs, order=order)
+
+    def _push_node(self, tag, attrs):
+        node = self._node(tag, attrs, self._order)
+        self._order += 1
+        node.parent = self._stack[-1]
+        node.parent.children.append(node)
+        self._stack.append(node)
+        return node
+
+    def handle_starttag(self, tag, attrs):
+        super().handle_starttag(tag, attrs)
+        self._push_node(tag, self._attrs_dict(attrs))
+
+    def handle_startendtag(self, tag, attrs):
+        super().handle_startendtag(tag, attrs)
+        node = self._node(tag, self._attrs_dict(attrs), self._order)
+        self._order += 1
+        node.parent = self._stack[-1]
+        node.parent.children.append(node)
+
+    def handle_data(self, data):
+        super().handle_data(data)
+        if self._stack:
+            self._stack[-1].text_parts.append(data)
+
+    def handle_endtag(self, tag):
+        super().handle_endtag(tag)
+        low = tag.lower()
+        while len(self._stack) > 1:
+            node = self._stack.pop()
+            if node.tag == low:
+                return
+
+
 def _element_source(tag, attrs):
     label = tag
     if attrs.get("id"):
@@ -395,7 +484,7 @@ def _element_source(tag, attrs):
     classes = [part for part in attrs.get("class", "").split() if part]
     if classes:
         label += "." + ".".join(classes)
-    return f"element <{label}> inline style"
+    return f"element <{label}>"
 
 
 def _collect_variables(style_blocks):
@@ -409,9 +498,301 @@ def _collect_variables(style_blocks):
     return variables
 
 
-def _issue_for_pair(source, fg_value, bg_value, variables, threshold):
-    fg_token = _extract_css_color(fg_value, variables)
-    bg_token = _extract_css_color(bg_value, variables)
+def _split_selector_parts(selector):
+    out = []
+    cur = []
+    depth = 0
+    quote = None
+    for ch in selector:
+        if quote:
+            cur.append(ch)
+            if ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            cur.append(ch)
+        elif ch in ("[", "("):
+            depth += 1
+            cur.append(ch)
+        elif ch in ("]", ")"):
+            depth = max(0, depth - 1)
+            cur.append(ch)
+        elif ch.isspace() and depth == 0:
+            if cur:
+                out.append("".join(cur).strip())
+                cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        out.append("".join(cur).strip())
+    return out
+
+
+def _expand_where(selector):
+    m = re.search(r":where\(", selector)
+    if not m:
+        return [selector]
+    open_index = m.end() - 1
+    close = _matching_paren(selector, open_index)
+    if close < 0:
+        return [selector]
+    prefix = selector[:m.start()]
+    suffix = selector[close + 1:]
+    inner = selector[open_index + 1:close]
+    expanded = []
+    for option in _split_top_level(inner, ","):
+        expanded.extend(_expand_where(prefix + option.strip() + suffix))
+    return expanded
+
+
+def _parse_selector_compound(raw):
+    raw = raw.strip()
+    if not raw:
+        return None
+    token = {"tag": None, "id": None, "classes": set(), "attrs": [], "root": False}
+    i = 0
+    while i < len(raw):
+        if raw.startswith(":root", i):
+            token["root"] = True
+            i += 5
+            continue
+        ch = raw[i]
+        if ch == "*":
+            i += 1
+            continue
+        if ch == ".":
+            m = re.match(r"\.([A-Za-z0-9_-]+)", raw[i:])
+            if not m:
+                return None
+            token["classes"].add(m.group(1))
+            i += len(m.group(0))
+            continue
+        if ch == "#":
+            m = re.match(r"#([A-Za-z0-9_-]+)", raw[i:])
+            if not m:
+                return None
+            token["id"] = m.group(1)
+            i += len(m.group(0))
+            continue
+        if ch == "[":
+            end = raw.find("]", i + 1)
+            if end < 0:
+                return None
+            inner = raw[i + 1:end].strip()
+            if "=" in inner:
+                name, value = inner.split("=", 1)
+                name = name.strip().lower()
+                value = value.strip().strip('"').strip("'")
+                token["attrs"].append((name, value))
+            else:
+                token["attrs"].append((inner.lower(), None))
+            i = end + 1
+            continue
+        if ch == ":":
+            return None
+        m = re.match(r"[A-Za-z][A-Za-z0-9_-]*", raw[i:])
+        if not m:
+            return None
+        token["tag"] = m.group(0).lower()
+        i += len(m.group(0))
+    return token
+
+
+def _parse_selector(selector):
+    if any(ch in selector for ch in (">", "+", "~")):
+        return None
+    parts = []
+    for raw in _split_selector_parts(selector):
+        compound = _parse_selector_compound(raw)
+        if compound is None:
+            return None
+        parts.append(compound)
+    return tuple(parts) if parts else None
+
+
+def _selector_specificity(parts):
+    ids = 0
+    classes = 0
+    tags = 0
+    for part in parts:
+        ids += 1 if part["id"] else 0
+        classes += len(part["classes"]) + len(part["attrs"]) + (1 if part["root"] else 0)
+        tags += 1 if part["tag"] else 0
+    return ids, classes, tags
+
+
+def _selector_matches_part(node, part):
+    if part["root"] and not (node.parent and node.parent.tag == "__doc__"):
+        return False
+    if part["tag"] and node.tag != part["tag"]:
+        return False
+    if part["id"] and node.attrs.get("id") != part["id"]:
+        return False
+    classes = {cls for cls in node.attrs.get("class", "").split() if cls}
+    if not part["classes"].issubset(classes):
+        return False
+    for name, value in part["attrs"]:
+        if name not in node.attrs:
+            return False
+        if value is not None and node.attrs.get(name) != value:
+            return False
+    return True
+
+
+def _selector_matches(node, parts):
+    cur = node
+    for part in reversed(parts):
+        while cur is not None and not _selector_matches_part(cur, part):
+            cur = cur.parent
+        if cur is None or cur.tag == "__doc__":
+            return False
+        cur = cur.parent
+    return True
+
+
+def _collect_rules(style_blocks):
+    rules = []
+    order = 0
+    for css in style_blocks:
+        for selector_text, body in _iter_css_rules(css):
+            items = tuple(_parse_declaration_items(body))
+            for selector in _split_top_level(selector_text, ","):
+                for expanded in _expand_where(selector.strip()):
+                    parts = _parse_selector(expanded)
+                    if parts is None:
+                        continue
+                    rules.append(_SelectorRule(
+                        selector=expanded.strip(),
+                        parts=parts,
+                        specificity=_selector_specificity(parts),
+                        order=order,
+                        items=items,
+                    ))
+                    order += 1
+    return rules
+
+
+def _winner_beats(current_key, new_key):
+    return current_key is None or new_key >= current_key
+
+
+def _compute_tree_styles(root, rules):
+    interesting = {"color", "background", "background-color", "stroke", "stroke-width"}
+
+    def walk(node, inherited_color=None, inherited_vars=None):
+        inherited_vars = dict(inherited_vars or {})
+        winners = {}
+        for rule in rules:
+            if not _selector_matches(node, rule.parts):
+                continue
+            for idx, (name, value) in enumerate(rule.items):
+                if name not in interesting and not name.startswith("--"):
+                    continue
+                key = rule.specificity + (rule.order, idx)
+                if _winner_beats(winners.get(name, (None, None))[0], key):
+                    winners[name] = (key, value)
+
+        inline_items = _parse_declaration_items(node.attrs.get("style", ""))
+        inline_spec = (10_000, 0, 0)
+        for idx, (name, value) in enumerate(inline_items):
+            if name not in interesting and not name.startswith("--"):
+                continue
+            key = inline_spec + (node.order, idx)
+            if _winner_beats(winners.get(name, (None, None))[0], key):
+                winners[name] = (key, value)
+
+        variables = dict(inherited_vars)
+        for name, (_key, value) in winners.items():
+            if name.startswith("--"):
+                variables[name] = _resolve_vars(value, variables)
+
+        raw_color = winners.get("color", (None, inherited_color))[1] or inherited_color
+        if raw_color and parse_css_color(raw_color, variables) is None:
+            raw_color = inherited_color
+
+        bg = None
+        bg_key = None
+        for prop in ("background-color", "background"):
+            if prop in winners and _winner_beats(bg_key, winners[prop][0]):
+                bg_key = winners[prop][0]
+                bg = winners[prop][1]
+
+        stroke = winners.get("stroke", (None, None))[1]
+        if stroke and stroke.strip().lower() in ("currentcolor", "current-color"):
+            stroke = raw_color
+
+        node.color_raw = raw_color
+        node.background_raw = bg
+        node.stroke_raw = stroke
+        node.variables = variables
+        for child in node.children:
+            walk(child, inherited_color=raw_color, inherited_vars=variables)
+
+    for child in root.children:
+        walk(child)
+
+
+def _rgba_to_token(color):
+    return f"rgb({color[0]}, {color[1]}, {color[2]})"
+
+
+def _effective_background(node):
+    cur = node
+    carry = None
+    while cur is not None and cur.tag != "__doc__":
+        token = _extract_css_color(cur.background_raw, cur.variables) if cur.background_raw else None
+        if token:
+            color = parse_css_color(token, cur.variables)
+            if color is None:
+                token = None
+            elif carry is None:
+                if color[3] >= 1:
+                    return token, color
+                carry = color
+            else:
+                top = carry
+                if top[3] < 1:
+                    carry = _composite_rgba(top, color)
+                else:
+                    return _rgba_to_token(top), top
+                if color[3] >= 1:
+                    return _rgba_to_token(carry), carry
+        cur = cur.parent
+    if carry is not None and carry[3] >= 1:
+        return _rgba_to_token(carry), carry
+    return None, None
+
+
+def _node_text_content(node):
+    text = list(node.text_parts)
+    for child in node.children:
+        if child.tag in ("style", "script"):
+            continue
+        text.append(_node_text_content(child))
+    return "".join(text)
+
+
+def _has_visible_text(node):
+    if node.tag in ("style", "script", "svg", "path", "marker"):
+        return False
+    return bool(_node_text_content(node).strip())
+
+
+def _connectorish(node):
+    if node.tag not in ("path", "line", "polyline", "polygon"):
+        return False
+    if node.parent and node.parent.tag == "marker":
+        return True
+    label = " ".join([
+        node.tag,
+        node.attrs.get("class", ""),
+        node.parent.attrs.get("class", "") if node.parent else "",
+    ]).lower()
+    return any(token in label for token in ("edge", "arrow", "connector", "flowchart-link"))
+
+
+def _issue_for_tokens(source, fg_token, bg_token, threshold, variables=None, kind="text"):
     if not fg_token or not bg_token:
         return None
     try:
@@ -420,11 +801,50 @@ def _issue_for_pair(source, fg_value, bg_value, variables, threshold):
         return None
     if ratio >= threshold:
         return None
-    return ContrastIssue(source, fg_token, bg_token, ratio, threshold)
+    return ContrastIssue(source, fg_token, bg_token, ratio, threshold, kind=kind)
 
 
-def find_low_contrast_pairs(html, threshold=DEFAULT_MIN_CONTRAST_RATIO, variable_pairs=()):
-    scanner = _StyleScanner()
+def _computed_element_issues(scanner, threshold, stroke_threshold):
+    rules = _collect_rules(scanner.style_blocks)
+    if not rules and not scanner.inline_styles:
+        return []
+    _compute_tree_styles(scanner.root, rules)
+    issues = []
+    stack = list(scanner.root.children)
+    while stack:
+        node = stack.pop()
+        stack.extend(reversed(node.children))
+        if _has_visible_text(node):
+            bg_token, _bg = _effective_background(node)
+            fg_token = _extract_css_color(node.color_raw, node.variables) if node.color_raw else None
+            issue = _issue_for_tokens(_element_source(node.tag, node.attrs), fg_token, bg_token,
+                                      threshold, node.variables, kind="text")
+            if issue:
+                issues.append(issue)
+        if _connectorish(node):
+            bg_token, _bg = _effective_background(node)
+            stroke_token = _extract_css_color(node.stroke_raw, node.variables) if node.stroke_raw else None
+            issue = _issue_for_tokens(_element_source(node.tag, node.attrs), stroke_token, bg_token,
+                                      stroke_threshold, node.variables, kind="stroke")
+            if issue:
+                issues.append(issue)
+    return issues
+
+
+def _issue_for_pair(source, fg_value, bg_value, variables, threshold):
+    return _issue_for_tokens(
+        source,
+        _extract_css_color(fg_value, variables),
+        _extract_css_color(bg_value, variables),
+        threshold,
+        variables,
+        kind="text",
+    )
+
+
+def find_low_contrast_pairs(html, threshold=DEFAULT_MIN_CONTRAST_RATIO, variable_pairs=(),
+                            stroke_threshold=DEFAULT_MIN_STROKE_CONTRAST_RATIO):
+    scanner = _DocumentScanner()
     scanner.feed(html)
     scanner.close()
     variables = _collect_variables(scanner.style_blocks)
@@ -464,10 +884,12 @@ def find_low_contrast_pairs(html, threshold=DEFAULT_MIN_CONTRAST_RATIO, variable
         if issue:
             issues.append(issue)
 
+    issues.extend(_computed_element_issues(scanner, threshold, stroke_threshold))
+
     seen = set()
     unique = []
     for issue in issues:
-        key = (issue.source, issue.foreground, issue.background, round(issue.ratio, 4))
+        key = (issue.kind, issue.source, issue.foreground, issue.background, round(issue.ratio, 4))
         if key not in seen:
             seen.add(key)
             unique.append(issue)

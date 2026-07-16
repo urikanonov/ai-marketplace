@@ -23,6 +23,8 @@
   flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
 }
 #commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run { color: #f8fafc; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: #dbeafe; }
 /* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
    side without cramping, so stack them on their own lines. */
 @media (max-width: 700px) {

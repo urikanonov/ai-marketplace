@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.126.0" />
+<meta name="commentable-html-version" content="1.129.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.126.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.129.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -1292,6 +1292,8 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
   flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
 }
 #commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run { color: #f8fafc; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: #dbeafe; }
 /* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
    side without cramping, so stack them on their own lines. */
 @media (max-width: 700px) {
@@ -1643,6 +1645,12 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-label {
   color: var(--cmh-deck-code-text);
 }
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run {
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run:hover {
+  color: #dbeafe;
+}
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
@@ -1730,9 +1738,13 @@ body.cmh-deck-present #menuComment {
   color: #f8fafc !important;
   fill: #f8fafc !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link, marker path) {
-  stroke: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
+  stroke: #334155 !important;
+  stroke-width: 2.4px !important;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg marker path {
+  stroke: #334155 !important;
+  fill: #334155 !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel p {
@@ -2791,7 +2803,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.126.0";
+const CMH_VERSION = "1.129.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

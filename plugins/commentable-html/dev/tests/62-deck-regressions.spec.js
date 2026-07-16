@@ -165,6 +165,7 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
         nodeFill: getComputedStyle(shape).fill,
         labelColor: getComputedStyle(label).color || getComputedStyle(label).fill,
         edgeStroke: getComputedStyle(edge).stroke,
+        edgeStrokeWidth: getComputedStyle(edge).strokeWidth,
       };
     });
     const slideBg = parseRgb(metrics.slideBg);
@@ -175,6 +176,7 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
     expect(metrics.edgeCount).toBeGreaterThanOrEqual(5);
     expect(contrast(labelColor, nodeFill)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(edgeStroke, slideBg)).toBeGreaterThanOrEqual(3);
+    expect(Number.parseFloat(metrics.edgeStrokeWidth)).toBeGreaterThanOrEqual(2.4);
   } finally {
     await server.close();
   }
@@ -324,6 +326,8 @@ test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep readable contra
       expect(await effectiveContrast(page, selector)).toBeGreaterThanOrEqual(4.5);
     }
     expect(new Set(kqlTokenColors).size).toBe(kqlTokenColors.length);
+    await expect(page.locator(".slide.active .cmh-kql-run")).toBeVisible();
+    expect(await effectiveContrast(page, ".slide.active .cmh-kql-run")).toBeGreaterThanOrEqual(4.5);
   } finally {
     await server.close();
   }
