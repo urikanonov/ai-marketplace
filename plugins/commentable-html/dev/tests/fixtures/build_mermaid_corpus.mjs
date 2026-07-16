@@ -80,9 +80,11 @@ const ENTRIES = [
   { name: "seq-semicolon-arrow-no-colon-double", py_flag: true, src: "sequenceDiagram\n  A->>B: begin; Z --> W continues here" },
   { name: "seq-semicolon-arrow-async", py_flag: true, src: "sequenceDiagram\n  A->>B: kick off; worker -) queue drains" },
 
-  // ---- invalid sequence the Python checker conservatively SKIPS (safe FN) ----
-  { name: "seq-semicolon-bare-word", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; world" },
-  { name: "seq-semicolon-prose-tail", py_flag: false, src: "sequenceDiagram\n  A->>B: hi; then two more words" },
+  // ---- invalid sequence the broadened tail rule now flags: an arrow-free tail
+  //      (bare word / prose) is a broken second statement the real parser rejects
+  //      (issue #324). ----
+  { name: "seq-semicolon-bare-word", py_flag: true, src: "sequenceDiagram\n  A->>B: hi; world" },
+  { name: "seq-semicolon-prose-tail", py_flag: true, src: "sequenceDiagram\n  A->>B: hi; then two more words" },
 
   // ---- valid flowcharts (must never be flagged) ----
   { name: "flow-basic", py_flag: false, src: "flowchart TD\n  A --> B --> C" },

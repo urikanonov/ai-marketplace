@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.125.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.126.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.126.0] - 2026-07-16</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Mermaid checker (<code>cmhval/mermaid.py</code>, CMH-SYN-01): flag a <code>sequenceDiagram</code> message whose <code>;</code> leaves an arrow-free tail (a bare word or ordinary prose, e.g. <code>A-&gt;&gt;B: hi; take entities as-is</code>), not only an arrow-without-colon tail. Once the first <code>;</code>-segment is a real signal, any tail that is not another full signal, a keyword-led statement, or empty is a broken second statement the real parser rejects; the broadened rule stays zero-false-positive (proven against the real-parser corpus). Fixes issue #324.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.125.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Simplified the showcase deck copy: shorter install guidance, plain-language prompts, clearer &quot;paste Copy all and press Enter&quot; review flow, and fewer repeated account/server comparisons. (deck issue #290)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.124.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -429,8 +438,6 @@
               <li>Deck table cells now animate a subtle hover highlight that keeps the cell text readable while making individual review targets easier to spot in the slide. (CMH-DECK-21)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.119.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
@@ -465,14 +472,7 @@
               <li>The generated table of contents no longer double-numbers author-numbered sections. When a heading already begins with a section number (for example <code>1. Executive summary</code>), <code>generate_toc.py</code> strips the redundant leading number from the ordered-list entry so the <code>&lt;ol&gt;</code> supplies the single number, and <code>finalize.py</code> / <code>retrofit.py</code> de-dup an existing author <code>&lt;ol&gt;</code> <code>.cm-toc</code> in place. A <code>&lt;ul&gt;</code> <code>.cm-toc</code> (where the author supplies the number deliberately) is left untouched. (CMH-TOC-10)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.116.0] - 2026-07-16</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Reworked the showcase deck&#x27;s Act 4 &quot;behind the scenes&quot; run so it now teaches the deterministic region split, the website-style portability model, how the skill is assembled from <code>SKILL.md</code>, on-demand references, and authoring/validation tools, plus the cross-platform Playwright-and-Python validation methodology behind the shipped experience. (CMH-DECK-SHOWCASE-06)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">105 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">106 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

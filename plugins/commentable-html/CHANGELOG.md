@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.126.0] - 2026-07-16
+
+### Fixed
+
+- Mermaid checker (`cmhval/mermaid.py`, CMH-SYN-01): flag a `sequenceDiagram` message whose `;` leaves an arrow-free tail (a bare word or ordinary prose, e.g. `A->>B: hi; take entities as-is`), not only an arrow-without-colon tail. Once the first `;`-segment is a real signal, any tail that is not another full signal, a keyword-led statement, or empty is a broken second statement the real parser rejects; the broadened rule stays zero-false-positive (proven against the real-parser corpus). Fixes issue #324.
+
 ## [1.125.0] - 2026-07-16
 
 ### Changed

@@ -18,9 +18,13 @@ The sequence rule (all ERRORS, because a broken diagram renders as mermaid's
 
   In a sequenceDiagram, `;` is a statement separator, so
   `A->>B: validate; map X -> Y` is parsed as the signal `A->>B: validate`
-  followed by a second statement `map X -> Y`. A statement that carries a message
-  arrow but no `:` message is an invalid signal - the exact class of the bug this
-  checker was built for. To stay zero-false-positive:
+  followed by a second statement `map X -> Y`. Once the FIRST `;`-segment is a
+  real signal, the ONLY valid tail statements are another full signal, a
+  keyword-led statement (`activate`, `Note`, `participant`, `end`, ...), or an
+  empty tail (a trailing `;`). ANY other tail - an arrow-without-colon signal, a
+  bare word, or ordinary prose - is a broken second statement the real parser
+  rejects, the class of the bug this checker was built for. To stay
+  zero-false-positive:
     - Only a line whose FIRST `;`-segment is a real signal (an arrow WITH a `:`
       message after it, and not led by a keyword) is inspected; a directive like
       `accTitle: A -> B` (whose value is free text to end of line) is never
@@ -138,16 +142,23 @@ def _is_signal(segment):
     return bool(m) and ":" in segment[m[1]:]
 
 
-def _tail_is_invalid_signal(segment):
-    """True when a NON-keyword-led tail segment carries a message arrow but has no
-    `:` after it - a signal without its message, which mermaid always rejects."""
+def _tail_is_invalid(segment):
+    """True when a NON-empty, non-comment, non-keyword-led tail segment is not
+    itself a valid signal. The caller has already established that segments[0] is
+    a real signal and a raw `;` follows, so the ONLY valid tail statements are
+    another full signal (`arrow` + `: message`), a keyword-led statement
+    (`activate`, `Note`, `participant`, `end`, ...), or an empty tail (a trailing
+    `;`). ANY other tail - an arrow-without-colon signal, a bare word, or ordinary
+    prose - is a broken second statement mermaid rejects as "Syntax error in
+    text", so flag it. A keyword-led tail that is only contextually invalid (a
+    bare `end` with no open block) stays a safe non-flag delegated to the oracle,
+    which is what preserves the zero-false-positive guarantee."""
     seg = segment.strip()
-    if not seg or _leads_with_keyword(seg):
-        return False
-    m = _find_arrow(seg)
-    if not m:
-        return False
-    return ":" not in seg[m[1]:]
+    if not seg or seg[:1] in ("%", "#"):
+        return False  # empty (trailing ';') or a comment that consumes the tail
+    if _leads_with_keyword(seg):
+        return False  # a valid keyword-led statement after the ';'
+    return not _is_signal(seg)  # a full second signal is valid; anything else is not
 
 
 def _check_sequence(lines, where):
@@ -162,10 +173,10 @@ def _check_sequence(lines, where):
         for seg in segments[1:]:
             if seg.strip()[:1] in ("%", "#"):
                 break  # a '%%', single '%', or '#' begins a comment that consumes the rest of the line
-            if _tail_is_invalid_signal(seg):
+            if _tail_is_invalid(seg):
                 errors.append(
                     "%s: a ';' in a sequence message splits it into a separate statement, and "
-                    "the text after it (\"%s\") is parsed as a signal with no message - "
+                    "the text after it (\"%s\") is not a valid mermaid statement - "
                     "mermaid reports \"Syntax error in text\". Remove the ';' or rephrase the "
                     "message (a ';' is a statement separator in mermaid)." % (where, seg.strip())
                 )
