@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.107.0] - 2026-07-16
+
+### Changed
+
+- Hardened the information-density advisory (CMH-VAL-15) for authoring edge cases: an inline
+  `cm-skip` inside a paragraph now excludes only its own text instead of splitting the paragraph;
+  sections are tracked as a heading stack so nested and headless sections are labeled by their own
+  heading and two distinct prose walls are each reported; a stray or unmatched `</section>` no
+  longer suppresses a genuine wall; and a `<section>` embedded in a layout block no longer reframes
+  the enclosing prose section. (CMH-VAL-15)
+
 ## [1.106.0] - 2026-07-16
 
 ### Added
