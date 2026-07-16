@@ -21,13 +21,19 @@ class OrchestrationTests(unittest.TestCase):
     def tearDown(self):
         rebuild_all._run = self._orig_run
 
-    def test_check_runs_build_screenshots_and_site_in_order_with_check_flag(self):
+    def test_check_runs_build_spec_screenshots_and_site_in_order_with_check_flag(self):
         rc = rebuild_all.main(["rebuild_all.py", "--check"])
         self.assertEqual(rc, 0)
         labels = [c[0] for c in self.calls]
-        # build.py runs first, screenshots precede the site sync, and every step carries --check.
+        # build.py runs first, the SPEC assembler is checked, screenshots precede the site sync,
+        # and every step carries --check.
         self.assertTrue(labels[0].startswith("commentable-html layer dist"))
+        self.assertTrue(any(lbl.startswith("commentable-html dev SPEC") for lbl in labels))
         self.assertTrue(labels[-1].startswith("GitHub Pages site"))
+        self.assertLess(
+            next(i for i, lbl in enumerate(labels) if lbl.startswith("commentable-html layer dist")),
+            next(i for i, lbl in enumerate(labels) if lbl.startswith("commentable-html dev SPEC")),
+        )
         self.assertLess(
             next(i for i, lbl in enumerate(labels) if lbl.startswith("Tutorial screenshots")),
             next(i for i, lbl in enumerate(labels) if lbl.startswith("GitHub Pages site")),

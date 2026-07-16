@@ -6,9 +6,10 @@ run in order, and it is easy to forget one - which produced a string of "regener
 gate" fixup commits. This is the single command that runs them all deterministically:
 
   1. tools/build.py         - the commentable-html layer dist bundles + stamped manifests
-  2. tests/fixtures/generate.mjs - the Playwright fixtures (embed the runtime version)
-  3. capture_tutorial.mjs - tutorial screenshots used by docs and the site
-  4. scripts/build_site_data.py  - the GitHub Pages site (pages, demos, sitemap, llms)
+  2. tools/build_spec.py    - the generated commentable-html dev/SPEC.md
+  3. tests/fixtures/generate.mjs - the Playwright fixtures (embed the runtime version)
+  4. capture_tutorial.mjs - tutorial screenshots used by docs and the site
+  5. scripts/build_site_data.py  - the GitHub Pages site (pages, demos, sitemap, llms)
 
 Usage:
   python scripts/rebuild_all.py           # regenerate everything in order
@@ -25,6 +26,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_PY = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "build.py")
+BUILD_SPEC = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "build_spec.py")
 ASSETS_DIR = os.path.join(ROOT, "plugins", "commentable-html", "dev", "assets")
 OUT_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "commentable-html")
 FIXTURES_GEN = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tests", "fixtures", "generate.mjs")
@@ -50,6 +52,7 @@ def main(argv=None):
     steps = [
         ("commentable-html layer dist (build.py)",
          [sys.executable, BUILD_PY, "--assets-dir", ASSETS_DIR, "--out-dir", OUT_DIR] + check),
+        ("commentable-html dev SPEC (build_spec.py)", [sys.executable, BUILD_SPEC] + check),
     ]
     node = shutil.which("node")
     if node and os.path.exists(FIXTURES_GEN):
