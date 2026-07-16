@@ -14,7 +14,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   repeat loops - are clamped to a near-instant single pass so they do not animate for
   motion-sensitive readers, while everything still lands in its final state. Programmatic smooth
   scrolls (jump-to-comment, scroll-to-top/bottom, deep links) also become instant under the
-  preference. (CMH-A11Y-07)
+  preference. (The deck slide stage keeps the vendored slide engine's own reduced-motion rule for
+  its essential slide transition.) (CMH-A11Y-07)
 
 ## [1.86.0] - 2026-07-16
 

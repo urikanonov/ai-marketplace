@@ -97,10 +97,12 @@ test("programmatic smooth scrolling stays smooth without the preference (CMH-A11
 });
 
 test("no layer JS partial hardcodes behavior:\"smooth\" - all scroll sites route through cmScrollBehavior() (CMH-A11Y-07)", async () => {
-  // Static guard: the 4 runtime tests above exercise one scroll path each, but there are ~13
-  // programmatic scroll sites. Rather than click through all of them, assert at the source that
-  // none hardcodes a smooth behavior, so any new call site is forced through the reduced-motion
-  // -aware helper and a future regression is caught without a per-site browser test.
+  // Static guard: the runtime tests exercise one scroll path each, but there are ~13 programmatic
+  // scroll sites. Rather than click through all of them, assert at the source that (a) no literal
+  // smooth behavior is written (any quote style, including template literals) and (b) every
+  // scroll call that passes a `behavior` routes it through the reduced-motion-aware helper. Calls
+  // are single-line in this codebase, so a line-scoped check catches literal, template-literal,
+  // and indirect (behavior: someVar) values that would bypass the helper.
   const dir = new URL("../assets/js/", import.meta.url);
   const files = readdirSync(dir).filter((f) => f.endsWith(".js"));
   const offenders = [];
@@ -108,9 +110,32 @@ test("no layer JS partial hardcodes behavior:\"smooth\" - all scroll sites route
   for (const f of files) {
     const src = readFileSync(new URL(f, dir), "utf8");
     if (/function\s+cmScrollBehavior\s*\(/.test(src)) helperDefined = true;
-    const m = src.match(/behavior\s*:\s*["']smooth["']/g);
-    if (m) offenders.push(`${f}: ${m.length}`);
+    for (const lit of src.match(/behavior\s*:\s*[`"']smooth[`"']/g) || []) offenders.push(`${f}: ${lit}`);
+    for (const line of src.split("\n")) {
+      if (/\.(scrollIntoView|scrollTo|scrollBy)\s*\(/.test(line) && /behavior/.test(line) && !/cmScrollBehavior/.test(line)) {
+        offenders.push(`${f}: ${line.trim()}`);
+      }
+    }
   }
   expect(helperDefined).toBe(true);
   expect(offenders).toEqual([]);
+});
+
+test("cmScrollBehavior() fails closed to \"auto\" when the preference cannot be determined (CMH-A11Y-07)", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await openInline(page);
+  // Simulate an environment where matchMedia is unavailable AFTER startup, so only the scroll
+  // helper (which re-reads on each call) hits it. An a11y feature must default to less motion.
+  const behavior = await page.evaluate(() => {
+    window.matchMedia = undefined;
+    let captured;
+    const orig = window.scrollTo;
+    window.scrollTo = (opts) => { captured = opts && opts.behavior; };
+    const btn = [...document.querySelectorAll("#cmSideToc .cm-side-toc-top")]
+      .find((b) => /Scroll to Top/i.test(b.textContent));
+    if (btn) btn.click();
+    window.scrollTo = orig;
+    return captured;
+  });
+  expect(behavior).toBe("auto");
 });
