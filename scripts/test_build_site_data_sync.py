@@ -83,11 +83,12 @@ class SkillZipTests(unittest.TestCase):
         import subprocess as sp
         with tempfile.TemporaryDirectory() as root:
             skill_rel = self._make_skill(root)
-            env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e",
-                       GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
+            # Scrub inherited git location vars (GIT_DIR, ...) so these operate on the temp
+            # repo, never the real one when the suite runs from the pre-push hook (#283).
+            env = clean_git_env()
             try:
-                sp.run(["git", "init", "-q"], cwd=root, check=True)
-                sp.run(["git", "add", "-A"], cwd=root, check=True)
+                sp.run(["git", "init", "-q"], cwd=root, env=env, check=True)
+                sp.run(["git", "add", "-A"], cwd=root, env=env, check=True)
                 sp.run(["git", "commit", "-qm", "init"], cwd=root, env=env, check=True)
             except (FileNotFoundError, sp.CalledProcessError):
                 self.skipTest("git not available")

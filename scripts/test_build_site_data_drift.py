@@ -29,6 +29,7 @@ class CheckDriftTests(unittest.TestCase):
         import tempfile
         try:
             tracked = subprocess.run(["git", "-C", bsd.REPO_ROOT, "ls-files", "-z"],
+                                     env=clean_git_env(),
                                      capture_output=True, check=True).stdout.decode("utf-8").split("\0")
         except (FileNotFoundError, subprocess.CalledProcessError):
             cls._template_ok = False
