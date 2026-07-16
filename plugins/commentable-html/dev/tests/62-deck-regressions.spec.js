@@ -412,15 +412,19 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portab
     await expect(anatomy).toContainText("JS region");
     await expect(anatomy).toContainText("CONTENT region");
     await expect(anatomy).toContainText("That separation is why upgrades stay deterministic");
+    await expect(anatomy).toContainText("The build swaps only the layer-owned regions and re-stamps the version");
 
     await showSlideWith(page, "text=Three portability modes explain every handoff.");
     const portability = page.locator(".slide.active");
+    await expect(portability).toContainText("Non-portable");
+    await expect(portability).toContainText("Portable");
+    await expect(portability).toContainText("Offline");
     await expect(portability).toContainText("Styles + runtime");
     await expect(portability).toContainText("skill folder");
     await expect(portability).toContainText("CDN");
+    await expect(portability).toContainText("vendored runtimes");
     await expect(portability).toContainText("browser storage");
     await expect(portability).toContainText("seeded from HTML");
-    await expect(portability).toContainText("inlined snapshots");
 
     await showSlideWith(page, "text=How the skill is built.");
     const build = page.locator(".slide.active");

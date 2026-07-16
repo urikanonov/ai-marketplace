@@ -191,7 +191,7 @@ function cspMetaContent(html) {
   return c ? c[2] : "";
 }
 
-test("Export Offline snapshots mermaid and Chart.js charts for zero-network reopen (CMH-OFFLINE-01, CMH-OFFLINE-02)", async ({ page, browser }) => {
+test("Export Offline embeds vendored mermaid and Chart.js for zero-network reopen (CMH-OFFLINE-01, CMH-OFFLINE-02)", async ({ page, browser }) => {
   test.setTimeout(60000);
   expect(networkLoadRefs(CONTENT)).toEqual(expect.arrayContaining([
     "https://example.com/tracker.png",
@@ -228,7 +228,9 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     expect(realLayerDescriptorScripts(exportedHtml)).toHaveLength(1);
     expect(exportedHtml).toContain('<script type="application/json" data-id="commentableHtmlLayer">{"decoy":"keep"}</script>');
     expect(exportedHtml).toContain('id="embeddedComments"');
-    expect(exportedHtml).toContain('data-cm-offline-chart="true"');
+    expect(exportedHtml).toContain('<canvas id="offlineChart"');
+    expect(exportedHtml).not.toContain('data-cm-offline-chart="true"');
+    expect(exportedHtml).not.toContain('<img id="offlineChart"');
     expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/mermaid");
     expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/chart.js");
     expect(exportedHtml).not.toContain("bare-module.js");
@@ -238,12 +240,11 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     fs.writeFileSync(exportedPath, exportedHtml);
     execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
 
-    ctx2 = await browser.newContext();
+    ctx2 = await browser.newContext({ offline: true });
     const page2 = await ctx2.newPage();
     const external = [];
-    await page2.route(/^https?:\/\//, async (route) => {
-      external.push(route.request().url());
-      await route.abort();
+    page2.on("request", (request) => {
+      if (/^https?:\/\//.test(request.url())) external.push(request.url());
     });
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
@@ -270,17 +271,36 @@ test("Export Offline snapshots mermaid and Chart.js charts for zero-network reop
     await page2.locator("#commentRoot pre.mermaid svg g.node").first().hover();
     await expect(page2.locator("#mermaidAddBtn")).toBeVisible();
 
-    const chart = page2.locator('img#offlineChart.cmh-chart[data-cm-offline-chart="true"]');
-    await expect(chart).toHaveClass(/cm-img-commentable/);
+    const chart = page2.locator("canvas#offlineChart");
     await expect(chart).toBeVisible();
-    const chartMetrics = await chart.evaluate((img) => {
-      const rect = img.getBoundingClientRect();
-      return { src: img.getAttribute("src") || "", naturalWidth: img.naturalWidth, width: rect.width, height: rect.height };
+    const chartMetrics = await page2.evaluate(() => {
+      const canvas = document.getElementById("offlineChart");
+      const chart = window.Chart && window.Chart.getChart && window.Chart.getChart("offlineChart");
+      if (!canvas || !chart) return null;
+      const rect = canvas.getBoundingClientRect();
+      const active = [{ datasetIndex: 0, index: 1 }];
+      if (chart.setActiveElements) chart.setActiveElements(active);
+      if (chart.tooltip && chart.tooltip.setActiveElements) {
+        chart.tooltip.setActiveElements(active, {
+          x: rect.left + rect.width / 2,
+          y: rect.top + 20,
+        });
+      }
+      chart.update("none");
+      return {
+        width: rect.width,
+        height: rect.height,
+        tooltipOpacity: chart.tooltip && typeof chart.tooltip.opacity === "number" ? chart.tooltip.opacity : 0,
+        datasets: chart.data && chart.data.datasets ? chart.data.datasets.length : 0,
+        chartAreaWidth: chart.chartArea ? chart.chartArea.right - chart.chartArea.left : 0,
+      };
     });
-    expect(chartMetrics.src).toMatch(/^data:image\/png;base64,/);
-    expect(chartMetrics.naturalWidth).toBeGreaterThan(0);
+    expect(chartMetrics).toBeTruthy();
+    expect(chartMetrics.datasets).toBe(1);
     expect(chartMetrics.width).toBeGreaterThan(20);
     expect(chartMetrics.height).toBeGreaterThan(20);
+    expect(chartMetrics.chartAreaWidth).toBeGreaterThan(20);
+    expect(chartMetrics.tooltipOpacity).toBeGreaterThan(0);
     expect(external).toEqual([]);
   } finally {
     if (ctx2) await ctx2.close();

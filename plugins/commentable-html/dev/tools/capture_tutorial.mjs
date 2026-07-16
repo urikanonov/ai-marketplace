@@ -235,7 +235,7 @@ async function screenshotLocator(page, normalizer, locator, pathName) {
   const box = await locator.boundingBox();
   if (!box) return;
   const size = await locator.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
-  await writeScreenshot(page, normalizer, pathName, { clip: roundedClip(box, size) });
+  await writeScreenshot(page, normalizer, pathName, { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
 }
 
 async function ready(page) {
@@ -357,7 +357,7 @@ async function captureAll(targetDir) {
       if (box) {
         const size = await chart.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
         await writeScreenshot(page, normalizer, shotPath(targetDir, "03-chart"),
-          { clip: roundedClip(box, size) });
+          { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
       }
     }
 

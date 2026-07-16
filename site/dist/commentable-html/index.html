@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.130.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.131.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.131.0] - 2026-07-16</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Offline export now embeds vendored copies of the rich-content JavaScript libraries (mermaid, Chart.js) so an exported Offline artifact renders diagrams and interactive charts with zero network access (issue #296).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.130.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Deck showcase polish: added the linked Commentable HTML brand button, distinct Overview/counter nav chrome, a static &quot;make it clearer&quot; comment mockup on the Act 1 After card, richer point-at/install pills, and a supported-languages plus notes-demo slide while preserving the restructured deck flow, the interactive chart, and the new edge-navigation runtime.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.129.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
@@ -432,8 +441,6 @@
               <li><code>tools/validate/cmhval/contrast.py</code> now resolves computed descendant text/background pairs and low-contrast connector strokes, so <code>deck_validate.py</code> catches the old red-on-dark KQL link and washed-out diagram arrows before publish. (CMH-DECK-12)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.126.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
@@ -464,14 +471,7 @@
               <li>Deck triage board: the Locked-column Add Comment affordance no longer overlaps the Reset moves button (issue #294).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.118.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Deck navigation: dimmed edge hover-arrows for previous/next slide and Enter/Space to advance when the deck stage is focused (issue #292).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">108 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">109 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

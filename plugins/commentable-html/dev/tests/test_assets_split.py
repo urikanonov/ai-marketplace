@@ -124,6 +124,7 @@ class AssemblyIntegrityTests(unittest.TestCase):
         os.makedirs(assets)
         shutil.copytree(os.path.join(ASSETS, "js"), os.path.join(assets, "js"))
         shutil.copytree(os.path.join(ASSETS, "css"), os.path.join(assets, "css"))
+        shutil.copytree(os.path.join(ASSETS, "vendor"), os.path.join(assets, "vendor"))
         shutil.copy2(os.path.join(ASSETS, "template.shell.html"),
                      os.path.join(assets, "template.shell.html"))
         marker = "/* SENTINEL-MARKER-xyz */"

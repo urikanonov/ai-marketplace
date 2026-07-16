@@ -58,4 +58,4 @@ If mermaid never renders because network access is unavailable, CSP blocks it, o
 
 CDN mermaid loading is an explicit opt-in. It executes remote code, so shared files depend on network availability to render the diagram. Use it only when the user accepts that tradeoff; otherwise self-host the module or inline it.
 
-For a zero-network handoff after the page has rendered, use **Export Offline**. It copies the rendered SVG into the exported document, removes the mermaid CDN import, and keeps `data-cmh-md-src` for Markdown export. The exported SVG keeps the node structure the comment layer uses, so mermaid comments can still restore their rings without loading mermaid again.
+For a zero-network handoff after the page has rendered, use **Export Offline**. It removes the mermaid loader, inlines a vendored mermaid runtime into the exported document, and keeps `data-cmh-md-src` for Markdown export. The reopened offline file renders the diagram again from source, so mermaid comments can still restore their rings and the diagram stays live without any network dependency.

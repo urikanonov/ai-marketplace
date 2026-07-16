@@ -13,6 +13,8 @@ const SHOTS = [
 const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
 const REPO = path.resolve(DEV, "..", "..", "..");
 const TEST_TMP = path.join(REPO, "tmp", "tutorial-shots-spec");
+const PIXEL_CHANNEL_TOLERANCE = 96;
+const MAX_PIXEL_DIFF_RATIO = 0.15;
 
 // Run the capture tool with only the example + output dir (no prefix): the tool defaults the
 // prefix to "garden", so regenerating the tutorial screenshots is a single, argument-light command.
@@ -33,6 +35,51 @@ function freshDir(name) {
   return dir;
 }
 
+async function imagesMatch(comparePage, expected, actual) {
+  if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
+  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance }) => {
+    async function decode(base64) {
+      const img = new Image();
+      img.src = "data:image/png;base64," + base64;
+      await img.decode();
+      return img;
+    }
+    try {
+      const expectedImg = await decode(expectedBase64);
+      const actualImg = await decode(actualBase64);
+      if (expectedImg.naturalWidth !== actualImg.naturalWidth || expectedImg.naturalHeight !== actualImg.naturalHeight) return 1;
+      const canvas = document.createElement("canvas");
+      canvas.width = expectedImg.naturalWidth;
+      canvas.height = expectedImg.naturalHeight;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(expectedImg, 0, 0);
+      const expectedData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(actualImg, 0, 0);
+      const actualData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let different = 0;
+      const total = canvas.width * canvas.height;
+      for (let i = 0; i < expectedData.length; i += 4) {
+        const maxChannelDelta = Math.max(
+          Math.abs(expectedData[i] - actualData[i]),
+          Math.abs(expectedData[i + 1] - actualData[i + 1]),
+          Math.abs(expectedData[i + 2] - actualData[i + 2]),
+          Math.abs(expectedData[i + 3] - actualData[i + 3]),
+        );
+        if (maxChannelDelta > tolerance) different += 1;
+      }
+      return different / total;
+    } catch {
+      return 1;
+    }
+  }, {
+    expectedBase64: fs.readFileSync(expected).toString("base64"),
+    actualBase64: fs.readFileSync(actual).toString("base64"),
+    tolerance: PIXEL_CHANNEL_TOLERANCE,
+  });
+  return ratio <= MAX_PIXEL_DIFF_RATIO;
+}
+
 test.afterAll(() => {
   fs.rmSync(TEST_TMP, { recursive: true, force: true });
   fs.rmSync(path.join(REPO, "tmp", "tutorial-shots-check"), { recursive: true, force: true });
@@ -40,8 +87,10 @@ test.afterAll(() => {
 
 // dev/tools/capture_tutorial.mjs must regenerate every tutorial screenshot with one easy command
 // and do it reproducibly, so refreshing the tutorial images is deterministic and reviewable.
-test("one command regenerates and checks all tutorial screenshots, deterministically (CMH-TUT-SHOTS-01)", async () => {
+test("one command regenerates and checks all tutorial screenshots, deterministically (CMH-TUT-SHOTS-01)", async ({ browser }) => {
   test.setTimeout(240000);
+  const comparePage = await browser.newPage();
+  try {
 
   // The no-argument invocation (what `npm run shots` runs) resolves to the shipped tutorial defaults.
   const dry = spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--print-paths"],
@@ -75,6 +124,13 @@ test("one command regenerates and checks all tutorial screenshots, deterministic
   const r2 = capture(outB);
   expect(r2.error, String(r2.error)).toBeFalsy();
   expect(r2.status, r2.stderr).toBe(0);
+  for (const name of SHOTS) {
+    expect(await imagesMatch(
+      comparePage,
+      path.join(outA, `garden-${name}.png`),
+      path.join(outB, `garden-${name}.png`),
+    ), `${name} drifted beyond the normalized screenshot diff budget`).toBe(true);
+  }
   const cleanB = check(outB);
   expect(cleanB.error, String(cleanB.error)).toBeFalsy();
   expect(cleanB.status, cleanB.stderr).toBe(0);
@@ -84,4 +140,7 @@ test("one command regenerates and checks all tutorial screenshots, deterministic
   expect(stale.error, String(stale.error)).toBeFalsy();
   expect(stale.status, stale.stdout + stale.stderr).toBe(1);
   expect(stale.stderr).toContain("garden-01-top-light.png differs");
+  } finally {
+    await comparePage.close();
+  }
 });
