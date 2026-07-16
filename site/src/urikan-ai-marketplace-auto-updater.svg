@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="urikan-ai-marketplace auto-updater logo">
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="#b11f4b"/>
-  <g transform="translate(3.2 3.2) scale(2.4)" fill="none" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" stroke="#fcfbf8"/>
-    <polyline points="23 4 23 10 17 10" stroke="#fcfbf8"/>
-    <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" stroke="#f7c9d6"/>
-    <polyline points="1 20 1 14 7 14" stroke="#f7c9d6"/>
-  </g>
-</svg>

@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Report a security vulnerability
-    url: https://github.com/urikanonov/ai-marketplace/security/advisories/new
-    about: Report security issues privately. Please do not open a public issue.
-  - name: Contributing guide
-    url: https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md
-    about: How to improve an existing plugin or open a pull request.

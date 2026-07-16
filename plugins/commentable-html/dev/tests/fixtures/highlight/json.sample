@@ -1,8 +1,0 @@
-{
-  "name": "commentable-html",
-  "version": "1.3.0",
-  "enabled": true,
-  "retries": 3,
-  "tags": ["review", "html"],
-  "author": { "name": "Uri", "email": "urikanonov@gmail.com" }
-}
