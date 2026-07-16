@@ -9,6 +9,7 @@ import {
   startStaticServer,
   routeMermaidLocal,
   SKILL,
+  PLUGIN,
 } from "./helpers.js";
 
 async function openComposerFromSelection(page, selector, index = 0) {
@@ -102,7 +103,7 @@ test.describe("coverage gap closures", () => {
 
   test("CMH-CHART-04: community garden Chart.js tooltip has title and body", async ({ page }) => {
     test.setTimeout(60000);
-    const server = await startStaticServer(SKILL);
+    const server = await startStaticServer(PLUGIN);
     try {
       await page.goto(server.url + "/examples/report-community-garden.html");
       await ready(page);

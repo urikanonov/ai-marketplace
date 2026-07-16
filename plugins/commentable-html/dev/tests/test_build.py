@@ -164,7 +164,7 @@ class BuildTests(unittest.TestCase):
         # version too - otherwise a version bump leaves the Claude plugin.json behind and the
         # claude-manifest/version-bump guards fail on the next release.
         v = build.read_version()
-        stamps = build.source_stamps(v, build.ASSETS, ROOT)
+        stamps = build.source_stamps(v, build.ASSETS, ROOT, _paths.PKG_SHIPPED)
         claude_pj = [p for p in stamps
                      if p.replace("\\", "/").endswith(".claude-plugin/plugin.json")]
         claude_mkt = [p for p in stamps
@@ -188,7 +188,7 @@ class BuildTests(unittest.TestCase):
         # assertion is not vacuous). Examples that do not use mermaid are simply not required to.
         ref_re = re.compile(r"cdn\.jsdelivr\.net/npm/mermaid@([^/]+)/dist/")
         shipped = [os.path.join(DIST, "PORTABLE.html"), os.path.join(DIST, "NONPORTABLE.html")]
-        ex_dir = os.path.join(ROOT, "examples")
+        ex_dir = _paths.EXAMPLES
         if os.path.isdir(ex_dir):
             shipped += [os.path.join(ex_dir, n) for n in os.listdir(ex_dir) if n.endswith(".html")]
         seen = 0
@@ -212,7 +212,7 @@ class BuildTests(unittest.TestCase):
                 p = os.path.join(d, "examples", "guide-drift.html")
                 with open(p, "w", encoding="utf-8") as fh:
                     fh.write(drift)
-                stamps = build.example_stamps(d, mv)
+                stamps = build.example_stamps(os.path.join(d, "examples"), mv)
                 self.assertIn(p, stamps)
                 self.assertIn("mermaid@%s/dist/" % mv, stamps[p])
                 self.assertNotIn("mermaid@%s/dist/" % bad, stamps[p])
@@ -228,7 +228,7 @@ class BuildTests(unittest.TestCase):
             p = os.path.join(d, "examples", "report-drift.html")
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write(drift)
-            self.assertNotIn(p, build.example_stamps(d, mv))
+            self.assertNotIn(p, build.example_stamps(os.path.join(d, "examples"), mv))
 
     def test_example_stamps_skips_non_mermaid_and_is_idempotent(self):
         mv = build.read_mermaid_version()
@@ -243,7 +243,7 @@ class BuildTests(unittest.TestCase):
             ok_p = os.path.join(d, "examples", "guide-ok.html")
             with open(ok_p, "w", encoding="utf-8") as fh:
                 fh.write(ok)
-            stamps = build.example_stamps(d, mv)
+            stamps = build.example_stamps(os.path.join(d, "examples"), mv)
             self.assertNotIn(none_p, stamps)
             self.assertEqual(stamps[ok_p], ok)
 
@@ -261,7 +261,7 @@ class BuildTests(unittest.TestCase):
             p = os.path.join(d, "examples", "report-taxi.html")
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write(drifted)
-            out = build.build_examples(portable, version, mv, d)
+            out = build.build_examples(portable, version, mv, os.path.join(d, "examples"))
             self.assertIn(p, out)
             self.assertIn("mermaid@%s/dist/" % mv, out[p])
             self.assertNotIn("mermaid@9.9.9/dist/", out[p])
@@ -631,6 +631,38 @@ class StampHelperTests(unittest.TestCase):
             open(os.path.join(mk, "marketplace.json"), "w").close()
             self.assertEqual(os.path.normcase(build._find_marketplace(sub)),
                              os.path.normcase(os.path.join(mk, "marketplace.json")))
+
+
+class PackageTests(unittest.TestCase):
+    """CMH-PKG-11: build.py assembles a deterministic skill-resources.zip and --check (check_package)
+    catches drift in the zip contents or the shipped SKILL.md/LICENSE/hook stamps."""
+
+    def test_resources_zip_is_deterministic(self):
+        a = build.build_resources_zip_bytes(_paths.PKG)
+        b = build.build_resources_zip_bytes(_paths.PKG)
+        self.assertEqual(a, b, "the zip must be byte-identical for an unchanged source tree")
+
+    def test_package_check_detects_zip_drift(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [],
+                             "a freshly packaged tree must be in sync")
+            # A drift in a shipped text stamp is caught.
+            with open(os.path.join(pkg, "SKILL.md"), "a", encoding="utf-8") as fh:
+                fh.write("\nDRIFT\n")
+            self.assertTrue(any("SKILL.md" in x for x in build.check_package(_paths.PKG, pkg, v)))
+            # A drift in a zipped source file is caught by the CONTENT comparison.
+            stage2 = os.path.join(d, "stage")
+            shutil.copytree(_paths.PKG, stage2)
+            ref = os.path.join(stage2, "references", "validation.md")
+            with open(ref, "a", encoding="utf-8") as fh:
+                fh.write("\nDRIFT\n")
+            drift = build.check_package(stage2, pkg, v)
+            self.assertTrue(any("skill-resources.zip" in x for x in drift),
+                            "a changed zipped source file must be reported as zip drift")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ import {
   addTextComment, SKILL,
 } from "./helpers.js";
 
-const CHECKLIST_DEMO = path.join(SKILL, "examples", "report-checklist.html");
+const CHECKLIST_DEMO = path.join(SKILL, "..", "..", "examples", "report-checklist.html");
 
 const LIST = `
   <h1>Checklist demo</h1>

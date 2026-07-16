@@ -162,14 +162,14 @@ def read_mermaid_version(package_json=None):
     return m.group(1)
 
 
-def example_stamps(out_dir, mermaid_version):
+def example_stamps(examples_dir, mermaid_version):
     """Return {path: stamped_text} for hand-maintained example files that build_examples
     does NOT fully regenerate, with only their mermaid CDN version rewritten to the single
     source (package.json). report-*.html and deck-*.html files are owned by build_examples
     (which stamps mermaid itself), so they are skipped here to avoid two producers writing
     the same path. --check flags drift."""
     stamps = {}
-    ex_dir = os.path.join(out_dir, "examples")
+    ex_dir = examples_dir
     if not os.path.isdir(ex_dir):
         return stamps
     for name in sorted(os.listdir(ex_dir)):
@@ -239,26 +239,32 @@ def _find_marketplace(start):
         cur = parent
 
 
-def source_stamps(version, assets_dir, out_dir):
+def source_stamps(version, assets_dir, out_dir, pkg_dir=None):
     """Return {path: stamped_text} for the hand-maintained files that carry the
     version: the layer const, plugin.json (Copilot and Claude), the marketplace entry
     (Copilot and Claude), and the visible `**Version:**` line in SKILL.md and dist/README.md.
     Only files that exist are included, so non-standard layouts degrade gracefully. Examples
     are NOT stamped here - they embed the whole layer and are regenerated from dist, which
-    already carries the version."""
+    already carries the version.
+
+    out_dir is the STAGE skill tree (where SKILL.md and dist/README.md live and are stamped).
+    The manifests (plugin.json, the Claude mirror, and the marketplace entries) live beside the
+    SHIPPED plugin, so they are resolved from pkg_dir when given (the pkg/dev split) and from
+    out_dir otherwise (a flat, non-relocated build)."""
     stamps = {}
     js_path = _js_version_part(assets_dir)
     stamps[js_path] = _stamp_const(read(js_path), version, os.path.basename(js_path))
-    plugin_json = os.path.join(os.path.dirname(os.path.dirname(out_dir)), "plugin.json")
+    manifest_root = pkg_dir if pkg_dir else out_dir
+    plugin_json = os.path.join(os.path.dirname(os.path.dirname(manifest_root)), "plugin.json")
     if os.path.exists(plugin_json):
         stamps[plugin_json] = _stamp_plugin_json(read(plugin_json), version)
     # The Claude Code manifest mirrors the Copilot plugin.json (identity fields incl. version),
     # so it is a version spot too - stamp it the same way to keep the mirror in sync on every bump.
     claude_plugin_json = os.path.join(
-        os.path.dirname(os.path.dirname(out_dir)), ".claude-plugin", "plugin.json")
+        os.path.dirname(os.path.dirname(manifest_root)), ".claude-plugin", "plugin.json")
     if os.path.exists(claude_plugin_json):
         stamps[claude_plugin_json] = _stamp_plugin_json(read(claude_plugin_json), version)
-    marketplace = _find_marketplace(out_dir)
+    marketplace = _find_marketplace(manifest_root)
     if marketplace:
         stamps[marketplace] = _stamp_marketplace(read(marketplace), version)
         # The Claude marketplace (repo-root .claude-plugin/marketplace.json) mirrors the Copilot

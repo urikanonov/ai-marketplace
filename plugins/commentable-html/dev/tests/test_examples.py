@@ -9,10 +9,10 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
 SKILL = _paths.PKG
-EXAMPLE = os.path.join(SKILL, "examples", "report-community-garden.html")
-TAXI = os.path.join(SKILL, "examples", "report-taxi.html")
-TRIAGE = os.path.join(SKILL, "examples", "report-triage.html")
-METRICS = os.path.join(SKILL, "examples", "report-metrics.html")
+EXAMPLE = os.path.join(_paths.EXAMPLES, "report-community-garden.html")
+TAXI = os.path.join(_paths.EXAMPLES, "report-taxi.html")
+TRIAGE = os.path.join(_paths.EXAMPLES, "report-triage.html")
+METRICS = os.path.join(_paths.EXAMPLES, "report-metrics.html")
 EXAMPLES = (EXAMPLE, TAXI, TRIAGE, METRICS)
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 
@@ -74,7 +74,7 @@ class ExampleTests(unittest.TestCase):
             self.assertIsNotNone(source, "example is missing data-doc-source: " + path)
             self.assertEqual(source, os.path.basename(path),
                              "data-doc-source does not match the shipped filename in " + path)
-            self.assertTrue(os.path.isfile(os.path.join(SKILL, "examples", source)),
+            self.assertTrue(os.path.isfile(os.path.join(_paths.EXAMPLES, source)),
                             "data-doc-source names a file that does not exist: " + source)
 
     def test_example_exercises_every_feature(self):
@@ -266,7 +266,7 @@ class ChecklistExampleTests(unittest.TestCase):
     """CMH-DEMO-04: the layered-checklist demo report ships, validates clean, carries both
     checklist shapes, and uses a unique comment key at the current version."""
 
-    _EX = os.path.join(SKILL, "examples", "report-checklist.html")
+    _EX = os.path.join(_paths.EXAMPLES, "report-checklist.html")
 
     def test_checklist_example_ships_and_validates_strict(self):
         self.assertTrue(os.path.isfile(self._EX), "report-checklist.html is missing")
@@ -295,7 +295,7 @@ class NotesExampleTests(unittest.TestCase):
     """CMH-DEMO-05: the editable-notes demo report ships, validates clean, carries a single-line
     and a multi-line note, and uses a unique comment key at the current version."""
 
-    _EX = os.path.join(SKILL, "examples", "report-notes.html")
+    _EX = os.path.join(_paths.EXAMPLES, "report-notes.html")
 
     def test_notes_example_ships_and_validates_strict(self):
         self.assertTrue(os.path.isfile(self._EX), "report-notes.html is missing")
@@ -315,7 +315,7 @@ class NotesExampleTests(unittest.TestCase):
         html = _read(self._EX)
         key = _active_root_attr(html, "data-comment-key")
         self.assertIsNotNone(key, "notes example is missing data-comment-key")
-        checklist = os.path.join(SKILL, "examples", "report-checklist.html")
+        checklist = os.path.join(_paths.EXAMPLES, "report-checklist.html")
         others = [_active_root_attr(_read(p), "data-comment-key") for p in list(EXAMPLES) + [checklist]]
         self.assertNotIn(key, others, "notes example reuses another example's comment key")
         self.assertIn('const CMH_VERSION = "%s"' % _read_version(), html)

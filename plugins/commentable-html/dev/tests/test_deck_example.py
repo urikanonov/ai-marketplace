@@ -20,9 +20,9 @@ from unittest import mock
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
 SKILL = _paths.PKG
-DECK = os.path.join(SKILL, "examples", "deck-showcase.html")
+DECK = os.path.join(_paths.EXAMPLES, "deck-showcase.html")
 DECK_SRC = os.path.join(_paths.DEV, "examples", "src", "deck-showcase.html")
-DECK_PROMPT = os.path.join(SKILL, "examples", "prompt-showcase.md")
+DECK_PROMPT = os.path.join(_paths.EXAMPLES, "prompt-showcase.md")
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 DECK_VALIDATE = os.path.join(SKILL, "tools", "deck", "deck_validate.py")
 

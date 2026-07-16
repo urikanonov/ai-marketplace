@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "d=\"skills/commentable-html\"; m=\"$d/.skill-resources-1.118.0.ok\"; [ -e \"$m\" ] && exit 0; py=$(command -v python3 2>/dev/null || command -v python 2>/dev/null); [ -n \"$py\" ] && \"$py\" -E -s hooks/extract_resources.py --version 1.118.0 --agent copilot >/dev/null 2>&1 || true; true",
+        "powershell": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$ErrorActionPreference='SilentlyContinue'; if (Test-Path 'skills\\commentable-html\\.skill-resources-1.118.0.ok') { exit 0 }; $py = Get-Command python3, python -ErrorAction SilentlyContinue | Select-Object -First 1; if ($py) { & $py.Source -E -s 'hooks\\extract_resources.py' --version 1.118.0 --agent copilot *> $null }\"",
+        "timeoutSec": 120
+      }
+    ]
+  }
+}

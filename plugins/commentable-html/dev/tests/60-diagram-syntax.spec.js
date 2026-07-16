@@ -28,10 +28,10 @@ function runNode(args, timeoutMs) {
 }
 
 const exampleFiles = fs
-  .readdirSync(path.join(SKILL, "examples"))
+  .readdirSync(path.join(SKILL, "..", "..", "examples"))
   .filter((f) => f.endsWith(".html"))
   .sort()
-  .map((f) => path.join(SKILL, "examples", f));
+  .map((f) => path.join(SKILL, "..", "..", "examples", f));
 
 test("CMH-SYN-04: every mermaid diagram and chart in the shipped example reports parses with the real parser", () => {
   test.setTimeout(120000);

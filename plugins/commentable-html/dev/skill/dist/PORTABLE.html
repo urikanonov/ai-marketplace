@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.117.1" />
-<meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.117.1","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<meta name="commentable-html-version" content="1.118.0" />
+<meta name="commentable-html-kind" content="generic" />
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.118.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
-<title>Incident Triage Board</title>
+<title>Commentable HTML - Demo</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
 <script>
@@ -28,16 +28,20 @@
      block degrades to readable source text. For a fully self-contained artifact, vendor a
      local copy of mermaid and import it by relative path (see SKILL.md). -->
 <script type="module">
-  try {
-    const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
-    const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-    m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
-    } else {
-      m.run().catch(() => {});
-    }
-  } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  // Only reach out to the mermaid CDN when the document actually contains a diagram, so a
+  // diagram-free document (including a deck) makes no network request at all.
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    try {
+      const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
+      const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
+      } else {
+        m.run().catch(() => {});
+      }
+    } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  }
 </script>
 
 <style>
@@ -2230,19 +2234,6 @@ body.cmh-deck-present #menuComment {
    END: commentable-html - CSS
    ============================================================ */
 </style>
-
-<style>
-#commentRoot .triage-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
-#commentRoot .triage-stat { border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface-soft); padding: 0.85rem; }
-#commentRoot .triage-stat strong { display: block; font-size: 1.45rem; color: var(--cp-text); }
-#commentRoot .triage-board-demo { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0; align-items: start; }
-#commentRoot .triage-column { border: 1px solid var(--cp-border); border-radius: 14px; background: var(--cp-surface); padding: 0.85rem; min-width: 0; }
-#commentRoot .triage-column h3 { margin: 0 0 0.65rem; font-size: 1rem; }
-#commentRoot .triage-card { border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface-soft); padding: 0.8rem; margin: 0.65rem 0; box-shadow: 0 8px 20px var(--cp-shadow); }
-#commentRoot .triage-card strong { display: block; margin-bottom: 0.35rem; }
-#commentRoot .triage-meta { color: var(--cp-text-muted); font-size: 0.86rem; }
-@media (max-width: 820px) { #commentRoot .triage-board-demo { grid-template-columns: 1fr; } }
-</style>
 </head>
 
 <body>
@@ -2386,69 +2377,176 @@ body.cmh-deck-present #menuComment {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-07-12">
-<nav class="cm-toc" aria-label="Table of contents">
-  <div class="cm-toc-title">Contents</div>
-  <ol>
-    <li><a href="#triage-snapshot">Snapshot</a></li>
-    <li><a href="#triage-board">Commentable board</a></li>
-    <li><a href="#triage-chart">Queue counts</a></li>
-  </ol>
-</nav>
+<main id="commentRoot"
+      data-cmh-content-root
+      data-comment-key="commentable-html-demo"
+      data-doc-label="Commentable HTML demo"
+      data-doc-source="PORTABLE.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
-<h1>Incident Triage Board</h1>
-<p class="cmh-lede">A compact review surface for queue order, ownership, and the next repair move.</p>
-<section aria-labelledby="triage-snapshot">
-  <h2 id="triage-snapshot">Snapshot</h2>
-  <div class="triage-summary-grid">
-    <div class="triage-stat"><strong>18</strong><span>open incidents</span></div>
-    <div class="triage-stat"><strong>3</strong><span>customer-impacting</span></div>
-    <div class="triage-stat"><strong>42 min</strong><span>median age</span></div>
-  </div>
-  <table>
-    <thead><tr><th>Queue</th><th>Owner</th><th>Oldest</th><th>Exit check</th></tr></thead>
-    <tbody>
-      <tr><td>New</td><td>Live site</td><td>36 min</td><td>First responder assigned</td></tr>
-      <tr><td>Investigating</td><td>Platform</td><td>2 h</td><td>Repro and trace attached</td></tr>
-      <tr><td>Fixed</td><td>Release</td><td>4 h</td><td>Patch verified in canary</td></tr>
-    </tbody>
-  </table>
-</section>
-<section aria-labelledby="triage-board">
-  <h2 id="triage-board">Commentable board</h2>
-  <div class="triage-board-demo cm-skip" data-cm-widget="incident-triage-board" data-cm-draggable aria-label="Incident triage board">
-    <div class="triage-column" data-cm-slot="New" data-cm-part="column-new" data-cm-part-label="New column">
-      <h3>New</h3>
-      <article class="triage-card" data-cm-part="api-saturation" data-cm-part-label="API saturation"><strong>API saturation</strong><div class="triage-meta">Sev 2 - owner: gateway - impact: 8 regions</div></article>
-      <article class="triage-card" data-cm-part="checkout-timeouts" data-cm-part-label="Checkout timeouts"><strong>Checkout timeouts</strong><div class="triage-meta">Sev 1 - owner: commerce - impact: paid users</div></article>
-      <article class="triage-card" data-cm-part="schema-drift" data-cm-part-label="Schema drift alert"><strong>Schema drift alert</strong><div class="triage-meta">Sev 3 - owner: data - impact: reports delayed</div></article>
-    </div>
-    <div class="triage-column" data-cm-slot="Investigating" data-cm-part="column-investigating" data-cm-part-label="Investigating column">
-      <h3>Investigating</h3>
-      <article class="triage-card" data-cm-part="auth-retries" data-cm-part-label="Auth retries"><strong>Auth retries</strong><div class="triage-meta">Sev 2 - owner: identity - trace: retry storm</div></article>
-      <article class="triage-card" data-cm-part="worker-lag" data-cm-part-label="Worker lag"><strong>Worker lag</strong><div class="triage-meta">Sev 3 - owner: jobs - trace: queue depth</div></article>
-    </div>
-    <div class="triage-column" data-cm-slot="Fixed" data-cm-part="column-fixed" data-cm-part-label="Fixed column">
-      <h3>Fixed</h3>
-      <article class="triage-card" data-cm-part="cache-patch" data-cm-part-label="Cache patch"><strong>Cache patch</strong><div class="triage-meta">Sev 2 - owner: platform - verified in canary</div></article>
-      <article class="triage-card" data-cm-part="log-sampling" data-cm-part-label="Log sampling restored"><strong>Log sampling restored</strong><div class="triage-meta">Sev 3 - owner: observability - rolled out</div></article>
-    </div>
-  </div>
-</section>
-<section aria-labelledby="triage-chart">
-  <h2 id="triage-chart">Queue counts</h2>
-  <!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="triageQueueChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="triageQueueChart" role="img" aria-label="Chart: Incident queue health. Open incidents by queue and severity."></canvas>
-  </div>
-  <figcaption id="triageQueueChart-caption">Open incidents by queue and severity.</figcaption>
+  <header class="cmh-lede">
+    <h1>Commentable HTML demo</h1>
+    <p>This is a small playground. Try selecting some text below, right-click, and pick <em>Add Comment</em>. The comment appears in the sidebar on the right.</p>
+  </header>
+
+  <nav class="cm-toc" aria-label="Table of contents">
+    <div class="cm-toc-title">Contents</div>
+    <ol>
+      <li><a href="#try-it">Try it</a></li>
+      <li><a href="#callouts">Callouts</a></li>
+      <li><a href="#code-blocks">Code blocks</a></li>
+      <li><a href="#kql">Kusto query blocks</a></li>
+      <li><a href="#mermaid">Mermaid diagrams</a></li>
+      <li><a href="#diffs">Code review diffs</a></li>
+      <li><a href="#images">Images</a></li>
+    </ol>
+  </nav>
+
+  <section>
+    <h2 id="try-it">Try it</h2>
+    <p>The commenting layer wraps a selection in a <code>&lt;mark&gt;</code> element and stores the character offsets within <code>#commentRoot</code> in <code>localStorage</code>. The HTML file itself records which comments the agent has already handled, so reloading the page automatically prunes anything marked done.</p>
+    <p>Clicking a highlighted span scrolls the sidebar to that comment. Clicking <em>jump</em> in a card scrolls the document to that highlight.</p>
+  </section>
+
+  <section>
+    <h2 id="callouts">Callouts</h2>
+    <p>Use <code>cmh-callout</code> with a variant class for boxed asides. They stay readable in both light and dark themes because they use the built-in theme variables, so never hardcode colors in report content.</p>
+    <div class="cmh-callout cmh-callout-info"><strong>Info.</strong> A neutral note styled with <code>cmh-callout-info</code>.</div>
+    <div class="cmh-callout cmh-callout-success"><strong>Success.</strong> The change landed cleanly; <code>cmh-callout-success</code> signals a good outcome.</div>
+    <div class="cmh-callout cmh-callout-warning"><strong>Warning.</strong> Double-check this step; <code>cmh-callout-warning</code> draws a cautious eye.</div>
+    <div class="cmh-callout cmh-callout-danger"><strong>Bottom line.</strong> The important takeaway, styled with <code>cmh-callout-danger</code> and fully readable on its tinted background in either theme.</div>
+  </section>
+
+  <section>
+    <h2>Keyboard shortcuts</h2>
+    <ul>
+      <li><kbd>Ctrl</kbd> + <kbd>Enter</kbd> while typing in the composer saves the comment.</li>
+      <li><kbd>Esc</kbd> closes the composer or the context menu.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What ships in the clipboard</h2>
+    <p>The <strong>Copy all</strong> button emits a Markdown bundle with quoted text, the user's note, the comment id, and a trailing <code>HANDLED_IDS_JSON: [...]</code> line for the agent. Comments are not auto-cleared on copy; they are pruned only when the agent marks ids handled in this HTML.</p>
+  </section>
+
+  <section>
+    <h2 id="code-blocks">Code blocks (commentable by default)</h2>
+    <p>Any <code>&lt;pre&gt;</code> or <code>&lt;pre&gt;&lt;code&gt;</code> block that is not tagged <code>cm-skip</code> is selectable. Highlights survive line wraps, the sidebar preview keeps monospace formatting, and the <strong>Copy all</strong> bundle emits a fenced block so newlines and indentation paste back correctly. The language tag from <code>class="language-XXX"</code> on the inner <code>&lt;code&gt;</code> is propagated.</p>
+    <pre><code class="language-python"><span class="cmh-code-kw">def</span> <span class="cmh-code-fn">reduce</span><span class="cmh-code-op">(</span>items<span class="cmh-code-op">,</span> fn<span class="cmh-code-op">,</span> acc<span class="cmh-code-op">=</span><span class="cmh-code-kw">None</span><span class="cmh-code-op">):</span>
+    <span class="cmh-code-kw">for</span> x <span class="cmh-code-kw">in</span> items<span class="cmh-code-op">:</span>
+        acc <span class="cmh-code-op">=</span> <span class="cmh-code-fn">fn</span><span class="cmh-code-op">(</span>acc<span class="cmh-code-op">,</span> x<span class="cmh-code-op">)</span> <span class="cmh-code-kw">if</span> acc <span class="cmh-code-kw">is</span> <span class="cmh-code-kw">not</span> <span class="cmh-code-kw">None</span> <span class="cmh-code-kw">else</span> x
+    <span class="cmh-code-kw">return</span> acc
+
+<span class="cmh-code-fn">print</span><span class="cmh-code-op">(</span><span class="cmh-code-fn">reduce</span><span class="cmh-code-op">([</span><span class="cmh-code-num">1</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">2</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">3</span><span class="cmh-code-op">,</span> <span class="cmh-code-num">4</span><span class="cmh-code-op">],</span> <span class="cmh-code-kw">lambda</span> a<span class="cmh-code-op">,</span> b<span class="cmh-code-op">:</span> a <span class="cmh-code-op">+</span> b<span class="cmh-code-op">))</span></code></pre>
+  </section>
+
+  <section>
+    <h2 id="tables">Sortable tables</h2>
+    <p>Every column of a table with a real <code>&lt;thead&gt;</code> gets up/down chevrons in its header. Click to sort ascending, again for descending, and a third time to restore the authored order. Numeric columns sort numerically, not lexicographically. Sorting reorders rows for display only; comment anchors are recomputed so they stay attached to their text.</p>
+    <table>
+      <thead><tr><th>Service</th><th>Requests</th><th>p95 (ms)</th></tr></thead>
+      <tbody>
+        <tr><td>gateway</td><td>1200</td><td>85</td></tr>
+        <tr><td>auth</td><td>340</td><td>1020</td></tr>
+        <tr><td>catalog</td><td>9800</td><td>240</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2 id="kql">Kusto query blocks (Run in Azure Data Explorer deep link)</h2>
+    <p>An embedded KQL query is rendered as a framed figure: a caption bar naming the target cluster/database, a <strong>Run in Azure Data Explorer</strong> deep link that opens the query pre-loaded in the Azure Data Explorer web UX, and the query itself with author-time syntax highlighting. The code stays a normal commentable <code>&lt;pre&gt;&lt;code class="language-kusto"&gt;</code> block (select any part to comment); the caption and link are <code>cm-skip</code> chrome. Build the figure with <code>tools/kql_highlight.py</code> (which calls <code>tools/kusto_link.py</code> for the link).</p>
+    <figure class="cmh-kql">
+<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F1WNPQ%2BCMBRFd3%2FFDRNN5KM4ODGYyG4Cg2uRF2QoJe1DgvHH2wYGTe7yzrs5t2ZjdfWikd3hg%2BVJllCzstwMmtASL0Qj4k4xsSdxkefnJJc%2BAmmKfy6L5CSF%2BBUxoSwRNdX9Ukf%2B4WatlR3ehG0UJR5mHjkWR1yVVr3vh1K8HTdrJrK8CrTrrkOWobdmngJyAXktmwkyD2SXdOQeXy3AkyHcAAAA" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
+<pre><code class="language-kusto">StormEvents
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> StartTime <span class="cmh-kql-kw">between</span> <span class="cmh-kql-op">(</span><span class="cmh-kql-fn">datetime</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">2007</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">01</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">01</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-op">.</span><span class="cmh-kql-op">.</span> <span class="cmh-kql-fn">datetime</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">2007</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">12</span><span class="cmh-kql-op">-</span><span class="cmh-kql-num">31</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">)</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> State <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"TEXAS"</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Events <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Damage <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">sum</span><span class="cmh-kql-op">(</span>DamageProperty<span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> State  <span class="cmh-kql-com">// group by state</span>
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">top</span> <span class="cmh-kql-num">10</span> <span class="cmh-kql-kw">by</span> Damage <span class="cmh-kql-kw">desc</span></code></pre>
 </figure>
-</section>
+
+  </section>
+
+  <section>
+    <h2 id="mermaid">Mermaid diagrams</h2>
+    <p>If your document contains <code>&lt;pre class="mermaid"&gt;</code> blocks, the layer also lets you comment on individual diagram nodes. Hover any node, click <em>Add Comment</em>, and the comment is anchored to that node by its mermaid id rather than character offsets. The highlight is a coloured ring around the node and survives reload, copy, and Export as Portable.</p>
+    <p>Keep <code>cm-skip</code> on the <code>&lt;pre class="mermaid"&gt;</code> element. It tells the text-selection layer to ignore the source code; the mermaid layer attaches independently via the <code>mermaid</code> class.</p>
+    <pre class="mermaid cm-skip">
+flowchart LR
+    A([User]) --> B{Hover a node}
+    B --> C[Add Comment appears]
+    C --> D[Composer opens]
+    D --> E([Comment anchored to<br/>diagramIndex + nodeKey])
+    </pre>
+    <p>Other diagram types work too. In a Gantt chart the task labels are commentable, anchored by the label text.</p>
+    <pre class="mermaid cm-skip">
+gantt
+    title Demo rollout
+    dateFormat YYYY-MM-DD
+    section Build
+    Design      :done,    des1, 2026-07-01, 3d
+    Implement   :active,  imp1, 2026-07-04, 5d
+    section Ship
+    Validate    :         val1, 2026-07-09, 2d
+    Release     :         rel1, 2026-07-11, 1d
+    </pre>
+  </section>
+
+  <section>
+    <h2 id="diffs">Code review diffs (side-by-side or inline)</h2>
+    <p>Drop a unified diff into a <code>&lt;pre class="cmh-diff"&gt;</code> block and the layer renders a colored code-review view. Use the <strong>Side-by-side view</strong> / <strong>Inline view</strong> button in the diff header to switch layouts; the preference is remembered for this document (all diffs in a document share one layout default). Hover any changed or context line and click <em>Add Comment</em> to attach a review comment. Diff comments are anchored to the diff line structurally (not by character offset), so they survive the layout toggle, reload, copy, and Export as Portable. Add <code>data-diff-label</code> to name the file.</p>
+    <pre class="cmh-diff" data-diff-label="src/reducer.py">@@ -1,5 +1,6 @@
+ def reduce(items, fn, acc=None):
+-    for x in items:
+-        acc = fn(acc, x) if acc is not None else x
++    for x in items:
++        acc = x if acc is None else fn(acc, x)
++    # None is now a valid seed value
+     return acc
+ 
+ print(reduce([1, 2, 3, 4], lambda a, b: a + b))</pre>
+  </section>
+
+  <section>
+    <h2 id="images">Images (commentable)</h2>
+    <p>Any <code>&lt;img&gt;</code> inside the content is commentable. Hover an image (or focus it with the keyboard and press <kbd>Enter</kbd>) and click <em>Add Comment</em> to attach a note anchored to that image by its position and <code>src</code>. The highlight is a colored ring that survives reload, <strong>Copy all</strong>, and <strong>Export as Portable</strong>.</p>
+    <img alt="Sample rollout readiness chart" width="240" height="120" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='240'%20height='120'%3E%3Crect%20width='240'%20height='120'%20fill='%23dde7f0'/%3E%3Crect%20x='16'%20y='60'%20width='30'%20height='44'%20fill='%234a7fb5'/%3E%3Crect%20x='60'%20y='40'%20width='30'%20height='64'%20fill='%234a7fb5'/%3E%3Crect%20x='104'%20y='24'%20width='30'%20height='80'%20fill='%234a7fb5'/%3E%3Ctext%20x='120'%20y='18'%20font-family='sans-serif'%20font-size='13'%20fill='%23244'%20text-anchor='middle'%3ESample%20image%3C/text%3E%3C/svg%3E" />
+  </section>
+  <section>
+    <h2 id="charts">Charts (commentable)</h2>
+    <p>A <code>&lt;canvas&gt;</code> chart inside a <code>&lt;figure class="chart"&gt;</code> is commentable just like an image, even though the render surface itself is <code>cm-skip</code>. Hover the chart and click <em>Add Comment</em>; the comment anchors to the chart by position and is labelled <em>chart</em> in the sidebar and the copied bundle.</p>
+    <figure class="chart" aria-labelledby="demo-chart-cap">
+      <div class="chart-wrap cm-skip" style="position: relative; height: 140px; max-height: min(60vh, 480px); overflow: hidden;">
+        <canvas id="demoChart" width="320" height="140" role="img" aria-label="Demo chart: weekly readiness trend"></canvas>
+        <script>
+        (function () {
+          var el = document.getElementById("demoChart");
+          if (!el || typeof el.getContext !== "function") return;
+          var ctx = el.getContext("2d");
+          if (!ctx) return;
+          var bars = [34, 58, 42, 76, 51];
+          var w = el.width, h = el.height, n = bars.length, gap = 14;
+          var bw = (w - gap * (n + 1)) / n, max = 80;
+          ctx.clearRect(0, 0, w, h);
+          ctx.fillStyle = "#4a7fb5";
+          for (var i = 0; i < n; i++) {
+            var bh = (bars[i] / max) * (h - 24);
+            ctx.fillRect(gap + i * (bw + gap), h - bh - 6, bw, bh);
+          }
+        })();
+        </script>
+      </div>
+      <figcaption id="demo-chart-cap">A chart rendered by a library into a canvas. Comment on the chart as a whole.</figcaption>
+    </figure>
+  </section>
 
 <!-- END: commentable-html - CONTENT -->
 </main>
+<noscript id="cmhPrintNoScript" class="cmh-print-noscript" aria-label="Review comments print fallback">
+  <h2>Review comments</h2>
+  <p>JavaScript is disabled, so live comment data cannot be materialized into this printout. Enable JavaScript and print again to include current comments, or export to Markdown from a JavaScript-enabled session.</p>
+</noscript>
 </div>
 <!-- End of per-document content -->
 
@@ -2516,7 +2614,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.117.1";
+const CMH_VERSION = "1.118.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -10029,73 +10127,6 @@ window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
 <!-- END: commentable-html - JS -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
-<script id="triageQueueChart-data" type="application/json">
-{
-  "type": "bar",
-  "data": {
-    "labels": [
-      "New",
-      "Investigating",
-      "Fixed"
-    ],
-    "datasets": [
-      {
-        "label": "Sev 1",
-        "data": [
-          2,
-          1,
-          0
-        ]
-      },
-      {
-        "label": "Sev 2",
-        "data": [
-          4,
-          3,
-          2
-        ]
-      },
-      {
-        "label": "Sev 3",
-        "data": [
-          6,
-          4,
-          5
-        ]
-      }
-    ]
-  },
-  "options": {
-    "plugins": {
-      "legend": {
-        "position": "bottom"
-      }
-    },
-    "scales": {
-      "x": {
-        "stacked": true
-      },
-      "y": {
-        "stacked": true,
-        "beginAtZero": true
-      }
-    }
-  }
-}
-</script>
-<script>
-(function () {
-  var el = document.getElementById("triageQueueChart");
-  if (!el || typeof Chart === "undefined") return;
-  var config = JSON.parse(document.getElementById("triageQueueChart-data").textContent);
-  config.options = config.options || {};
-  config.options.responsive = true;
-  config.options.maintainAspectRatio = false;
-  new Chart(el, config);
-})();
-</script>
-
 
 </body>
 </html>

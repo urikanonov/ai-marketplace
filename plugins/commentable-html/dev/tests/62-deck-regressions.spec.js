@@ -9,7 +9,7 @@ import {
   startStaticServer,
 } from "./helpers.js";
 
-const EXAMPLES = path.join(SKILL, "examples");
+const EXAMPLES = path.join(SKILL, "..", "..", "examples");
 
 function parseRgb(value) {
   const match = String(value || "").match(/rgba?\(([^)]+)\)/);

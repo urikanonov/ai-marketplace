@@ -6,7 +6,7 @@ import {
   addTextComment,
 } from "./helpers.js";
 
-const TRIAGE = path.join(SKILL, "examples", "report-triage.html");
+const TRIAGE = path.join(SKILL, "..", "..", "examples", "report-triage.html");
 
 async function settle(page) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));

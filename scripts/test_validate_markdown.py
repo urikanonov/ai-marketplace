@@ -138,6 +138,25 @@ class TestPathCase(unittest.TestCase):
             self.assertIsNone(vm._check_path_case(root / "Target.md", root))
 
 
+class TestPackagedSkillSkip(unittest.TestCase):
+    """A .md beside a skill-resources.zip is skipped (its relative links resolve into the zip after
+    first-run extraction); a .md without that sibling is still collected."""
+
+    def test_skips_md_beside_skill_resources_zip(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            shipped = root / "pkg" / "skills" / "commentable-html"
+            shipped.mkdir(parents=True)
+            (shipped / "SKILL.md").write_text("[x](references/x.md)\n", encoding="utf-8")
+            (shipped / "skill-resources.zip").write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+            stage = root / "dev" / "skill"
+            stage.mkdir(parents=True)
+            (stage / "SKILL.md").write_text("[x](references/x.md)\n", encoding="utf-8")
+            found = {p.relative_to(root).as_posix() for p in vm.find_markdown_files(root)}
+            self.assertNotIn("pkg/skills/commentable-html/SKILL.md", found)
+            self.assertIn("dev/skill/SKILL.md", found)
+
+
 class TestTables(unittest.TestCase):
     def test_unbalanced_row_flagged(self):
         content = "| a | b |\n| - | - |\n| 1 | 2 | 3 |\n"

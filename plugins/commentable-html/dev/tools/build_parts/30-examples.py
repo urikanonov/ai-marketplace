@@ -75,13 +75,12 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
     return out
 
 
-def build_examples(portable_html, version, mermaid_version, out_dir):
-    """Regenerate every shipped examples/report-*.html and examples/deck-*.html under out_dir
-    from its INDEPENDENT content source in dev/examples/src/ (not from the shipped file itself).
-    Returns {out_path: text}. An absent out_dir/examples directory (e.g. a temp-dir build) or an
-    absent source dir yields no entries. Assembling from an independent source is what lets
-    --check catch a stale or hand-edited shipped example instead of comparing it to itself."""
-    examples_dir = os.path.join(out_dir, "examples")
+def build_examples(portable_html, version, mermaid_version, examples_dir):
+    """Regenerate every report-*.html and deck-*.html under examples_dir from its INDEPENDENT
+    content source in dev/examples/src/ (not from the shipped file itself). Returns {out_path: text}.
+    An absent examples_dir (e.g. a temp-dir build) or an absent source dir yields no entries.
+    Assembling from an independent source is what lets --check catch a stale or hand-edited example
+    instead of comparing it to itself."""
     result = {}
     if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
         return result
@@ -94,13 +93,12 @@ def build_examples(portable_html, version, mermaid_version, out_dir):
     return result
 
 
-def build_prompt_examples(out_dir):
-    """Copy every dev/examples/src/prompt-*.md VERBATIM to the shipped examples/<same-name>.md.
+def build_prompt_examples(examples_dir):
+    """Copy every dev/examples/src/prompt-*.md VERBATIM to examples_dir/<same-name>.md.
     A one-shot prompt is plain Markdown with no layer/version/mermaid to stamp, so its 'assembly'
-    is a byte copy from its independent source; --check then catches a stale or hand-edited shipped
+    is a byte copy from its independent source; --check then catches a stale or hand-edited
     prompt. Only prompts that HAVE a source are written, so hand-maintained prompts without one are
     left untouched. Returns {out_path: text}; an absent examples or source dir yields no entries."""
-    examples_dir = os.path.join(out_dir, "examples")
     result = {}
     if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
         return result
@@ -113,13 +111,11 @@ def build_prompt_examples(out_dir):
     return result
 
 
-def _orphan_examples(out_dir):
-    """Shipped examples/report-*.html or examples/deck-*.html that have NO dev/examples/src source.
-    build_examples only assembles examples that have a source, so an orphan shipped example would
-    otherwise be a pure artifact validated against nothing (the exact self-sourced hole this split
-    closed). --check reports it so it cannot drift undetected; the fix is to add its source or
-    delete it."""
-    examples_dir = os.path.join(out_dir, "examples")
+def _orphan_examples(examples_dir):
+    """report-*.html or deck-*.html under examples_dir that have NO dev/examples/src source.
+    build_examples only assembles examples that have a source, so an orphan would otherwise be a
+    pure artifact validated against nothing (the exact self-sourced hole this split closed). --check
+    reports it so it cannot drift undetected; the fix is to add its source or delete it."""
     if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
         return []
     sources = set(os.listdir(EXAMPLES_SRC))
@@ -127,8 +123,9 @@ def _orphan_examples(out_dir):
             if _EXAMPLE_NAME_RE.match(name) and name not in sources]
 
 
-def build_all(assets_dir=None, out_dir=None):
+def build_all(assets_dir=None, out_dir=None, examples_dir=None):
     out_dir = HERE if out_dir is None else out_dir
+    examples_dir = os.path.join(out_dir, "examples") if examples_dir is None else examples_dir
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
     mermaid_version = read_mermaid_version()
@@ -153,6 +150,6 @@ def build_all(assets_dir=None, out_dir=None):
         os.path.join(dist_dir, "manifest.json"): json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         os.path.join(dist_dir, "NONPORTABLE.html"): build_nonportable(shell, version, mermaid_version),
     }
-    outputs.update(build_examples(portable, version, mermaid_version, out_dir))
-    outputs.update(build_prompt_examples(out_dir))
+    outputs.update(build_examples(portable, version, mermaid_version, examples_dir))
+    outputs.update(build_prompt_examples(examples_dir))
     return outputs, version

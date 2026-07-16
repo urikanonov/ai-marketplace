@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.118.0] - 2026-07-16
+
+### Changed
+
+- Ship the skill as a compact `skills/commentable-html/skill-resources.zip` (only `SKILL.md`,
+  `LICENSE`, and the zip in the shipped skill dir) that a SessionStart hook unpacks on first run per
+  version. This drastically cuts the number of files the plugin installer writes, working around the
+  Windows Defender install failure (`Access is denied. (os error 5)`) where the installer aborts on
+  the first transiently locked file - the extractor retries each member with backoff, which the
+  installer does not. An update ships a new zip and self-heals on the next session (the version
+  marker invalidates), which also fixes the auto-updater silently never updating on Defender
+  machines. The large tutorial (`docs/`) and worked examples (`examples/`) are no longer installed;
+  they moved to the plugin top level and are linked online. `build.py` gains `--pkg-dir` /
+  `--examples-dir` and assembles the deterministic zip, and the editable + built skill tree now
+  lives under `dev/skill/`.
+
 ## [1.117.1] - 2026-07-16
 
 ### Changed

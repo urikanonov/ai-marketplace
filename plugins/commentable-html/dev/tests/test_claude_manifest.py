@@ -11,8 +11,9 @@ import unittest
 
 import _paths
 
-# _paths.PKG is the skill root (pkg/skills/commentable-html); the plugin dir is two levels up.
-PLUGIN_DIR = os.path.dirname(os.path.dirname(_paths.PKG))
+# The plugin dir (pkg/) holds plugin.json, .claude-plugin/, and the shipped skills/ dir; it is two
+# levels up from the shipped skill dir (_paths.PKG_SHIPPED = pkg/skills/commentable-html).
+PLUGIN_DIR = os.path.dirname(os.path.dirname(_paths.PKG_SHIPPED))
 COPILOT_PJ = os.path.join(PLUGIN_DIR, "plugin.json")
 CLAUDE_PJ = os.path.join(PLUGIN_DIR, ".claude-plugin", "plugin.json")
 
@@ -41,7 +42,7 @@ class ClaudeManifestTests(unittest.TestCase):
         self.assertEqual(claude.get("skills"), "./skills/")
         skills_dir = os.path.join(PLUGIN_DIR, "skills")
         self.assertTrue(os.path.isdir(skills_dir))
-        self.assertTrue(os.path.isfile(os.path.join(_paths.PKG, "SKILL.md")))
+        self.assertTrue(os.path.isfile(os.path.join(_paths.PKG_SHIPPED, "SKILL.md")))
 
 
 if __name__ == "__main__":

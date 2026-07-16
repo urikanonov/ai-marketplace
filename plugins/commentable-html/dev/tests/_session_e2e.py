@@ -21,9 +21,9 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# dev/tests -> ../../pkg/skills/commentable-html/tools/authoring/new_document.py
+# dev/tests -> ../skill/tools/authoring/new_document.py (the STAGE skill tree)
 TOOL = os.path.normpath(os.path.join(
-    HERE, "..", "..", "pkg", "skills", "commentable-html",
+    HERE, "..", "skill",
     "tools", "authoring", "new_document.py"))
 
 

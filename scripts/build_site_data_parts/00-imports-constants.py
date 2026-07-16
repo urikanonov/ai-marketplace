@@ -35,8 +35,7 @@ PLUGIN_PAGES = {
 }
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-showcase.html"]
-EXAMPLES_REL = os.path.join(
-    "plugins", "commentable-html", "pkg", "skills", "commentable-html", "examples")
+EXAMPLES_REL = os.path.join("plugins", "commentable-html", "examples")
 # Site layout (all under site/): sources and the generated publishable output live together.
 #   site/pages/  page templates (source)        site/css/  CSS partials (source)
 #   site/src/    hand-maintained static asset sources (site.js, logos, og-cover.png)
@@ -47,10 +46,8 @@ SITE_PAGES = os.path.join("site", "pages")
 SITE_STATIC_SRC = os.path.join("site", "src")
 
 DEMO_REL = os.path.join(SITE_OUT, "commentable-html", "demo")
-TUTORIAL_SRC = os.path.join(
-    "plugins", "commentable-html", "pkg", "skills", "commentable-html", "docs", "TUTORIAL.md")
-TUTORIAL_IMAGES_SRC = os.path.join(
-    "plugins", "commentable-html", "pkg", "skills", "commentable-html", "docs", "assets")
+TUTORIAL_SRC = os.path.join("plugins", "commentable-html", "docs", "TUTORIAL.md")
+TUTORIAL_IMAGES_SRC = os.path.join("plugins", "commentable-html", "docs", "assets")
 TUTORIAL_PAGE = os.path.join(SITE_OUT, "commentable-html", "tutorial", "index.html")
 TUTORIAL_IMAGES_DST = os.path.join(SITE_OUT, "commentable-html", "tutorial", "assets")
 
@@ -97,14 +94,16 @@ INSTALL_AGENTS = [
 
 # Claude Desktop / claude.ai import a skill as a ZIP through Settings > Features (Pro/Max/Team/
 # Enterprise with code execution). The install block offers a third "Claude Desktop" tab for the
-# plugins listed here, linking to a downloadable ZIP of the shipped skill. The auto-updater is
+# plugins listed here, linking to a downloadable ZIP of the FULL skill. The auto-updater is
 # intentionally absent: its value is the session-start hook, which a Desktop skill import cannot
-# provide, so it offers CLI tabs only. Each entry: skill_dir (repo-relative, the shipped skill
-# whose contents are zipped under a single top-level `skill/` folder), skill (the folder/skill
-# name), and zip (the site/dist-relative output path).
+# provide, so it offers CLI tabs only. Each entry: skill_dir (repo-relative; the full editable +
+# built skill STAGE tree, since a Desktop import has no session-start hook to unpack the shipped
+# skill-resources.zip, so it must receive the expanded skill), skill (the folder/skill name), and
+# zip (the site/dist-relative output path). The skill contents are zipped under a single top-level
+# `skill/` folder.
 DESKTOP_SKILLS = {
     "commentable-html": {
-        "skill_dir": "plugins/commentable-html/pkg/skills/commentable-html",
+        "skill_dir": "plugins/commentable-html/dev/skill",
         "skill": "commentable-html",
         "zip": "skills/commentable-html.zip",
     },

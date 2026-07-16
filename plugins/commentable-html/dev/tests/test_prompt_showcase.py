@@ -29,9 +29,9 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
 SKILL = _paths.PKG
-PROMPT = os.path.join(SKILL, "examples", "prompt-showcase.md")
+PROMPT = os.path.join(_paths.EXAMPLES, "prompt-showcase.md")
 PROMPT_SRC = os.path.join(_paths.DEV, "examples", "src", "prompt-showcase.md")
-DECK = os.path.join(SKILL, "examples", "deck-showcase.html")
+DECK = os.path.join(_paths.EXAMPLES, "deck-showcase.html")
 DECK_VALIDATE = os.path.join(SKILL, "tools", "deck", "deck_validate.py")
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 

@@ -12,7 +12,7 @@ import {
   installClipboardCapture, openComposerFor, routeMermaidLocal,
 } from "./helpers.js";
 
-const DECK = path.join(SKILL, "examples", "deck-showcase.html");
+const DECK = path.join(SKILL, "..", "..", "examples", "deck-showcase.html");
 // The first slide of the shipped deck carries a commentable prose paragraph.
 const COMMENT_TARGET = ".slide.active p.showcase-comment-target";
 

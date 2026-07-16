@@ -151,7 +151,9 @@ jobs:
         run: >-
           python plugins/commentable-html/dev/tools/build.py
           --assets-dir plugins/commentable-html/dev/assets
-          --out-dir plugins/commentable-html/pkg/skills/commentable-html --check --check-fixtures
+          --out-dir plugins/commentable-html/dev/skill
+          --pkg-dir plugins/commentable-html/pkg/skills/commentable-html
+          --examples-dir plugins/commentable-html/examples --check --check-fixtures
       - name: Verify commentable-html SPEC.md is in sync with spec partials
         run: python plugins/commentable-html/dev/tools/build_spec.py --check
 

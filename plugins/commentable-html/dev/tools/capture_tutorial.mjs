@@ -12,7 +12,8 @@ import fs from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SKILL = path.resolve(HERE, "..", "..", "pkg", "skills", "commentable-html");
+// The tutorial example and screenshots live at the plugin top level (not shipped, not in the zip).
+const PLUGIN = path.resolve(HERE, "..", "..");
 const REPO = path.resolve(HERE, "..", "..", "..", "..");
 const argv = process.argv.slice(2);
 const printPaths = argv.includes("--print-paths");
@@ -24,8 +25,8 @@ if (unknownFlag) {
   process.exit(2);
 }
 const positional = argv.filter((a) => !a.startsWith("--"));
-const htmlArg = positional[0] || path.join(SKILL, "examples", "report-community-garden.html");
-const outDir = positional[1] || path.join(SKILL, "docs", "assets");
+const htmlArg = positional[0] || path.join(PLUGIN, "examples", "report-community-garden.html");
+const outDir = positional[1] || path.join(PLUGIN, "docs", "assets");
 const prefix = path.basename(positional[2] || "garden");
 const SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",

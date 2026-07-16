@@ -38,10 +38,14 @@ class CheckDriftTests(unittest.TestCase):
             if not rel:
                 continue
             # build_site_data.py reads site/ (sources AND the committed site/dist output) plus the
-            # plugins' pkg changelogs/docs/examples and the marketplace manifest - never
-            # plugins/*/dev/** or the generated plugin dist/ bundles. Keep site/dist/ (the tests
-            # operate on the built site), but drop the plugin pkg dist bundles.
-            if "/dev/" in rel or rel.endswith("/dev") or ("/dist/" in rel and not rel.startswith("site/dist/")):
+            # plugins' pkg changelogs/docs/examples and the marketplace manifest, and the STAGE skill
+            # tree (plugins/*/dev/skill/**) which it zips for the Claude Desktop download - never the
+            # rest of plugins/*/dev/** or the generated plugin dist/ bundles. Keep site/dist/ (the
+            # tests operate on the built site) and dev/skill/, but drop everything else under dev/.
+            is_stage_skill = "/dev/skill/" in rel or rel.endswith("/dev/skill")
+            if not is_stage_skill and (
+                    "/dev/" in rel or rel.endswith("/dev")
+                    or ("/dist/" in rel and not rel.startswith("site/dist/"))):
                 continue
             src = _os.path.join(bsd.REPO_ROOT, rel.replace("/", _os.sep))
             if not _os.path.isfile(src):

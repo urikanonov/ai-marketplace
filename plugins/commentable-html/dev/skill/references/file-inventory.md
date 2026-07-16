@@ -16,16 +16,14 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `dist/manifest.json` | Version and SHA-256 metadata for companions. |
 | `tools/` | Runtime Python helpers that ship with the skill, grouped into per-topic buckets (`tools/deck`, `tools/kusto`, `tools/checklist`, `tools/notes`, `tools/blocks`, `tools/authoring`, `tools/validate`). |
 | `references/` | Detailed generated-report references. |
-| `docs/TUTORIAL.md` | Tutorial using `examples/report-community-garden.html`. |
-| `docs/assets/` | Tutorial screenshots and the review-loop diagram (the diagram is embedded in the plugin README). |
-| `examples/prompt-community-garden.md` | Prompt for the community garden example. |
-| `examples/prompt-taxi.md` | Prompt for the NYC taxi example. |
-| `examples/prompt-triage.md` | Prompt for the incident triage board example. |
-| `examples/prompt-metrics.md` | Prompt for the commentable visuals matrix example. |
-| `examples/report-community-garden.html` | Portable community garden example report. |
-| `examples/report-taxi.html` | Portable NYC taxi example report. |
-| `examples/report-triage.html` | Portable incident triage board example report. |
-| `examples/report-metrics.html` | Portable commentable visuals matrix example report. |
+
+The skill installs from a compact `skill-resources.zip` that a session-start hook unpacks on first
+run, so the installed footprint stays small. The tutorial and worked examples are NOT installed;
+read them online:
+
+- Tutorial: <https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/docs/TUTORIAL.md>
+- Worked prompts and example reports: <https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/examples>
+- Live demos and the review-loop diagram: <https://urikanonov.github.io/ai-marketplace/commentable-html/>
 
 ## Runtime tools
 

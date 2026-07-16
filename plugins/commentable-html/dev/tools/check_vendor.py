@@ -18,7 +18,7 @@ from pathlib import Path
 import sys
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-VENDOR_DIR = PLUGIN_ROOT / "pkg" / "skills" / "commentable-html" / "vendor" / "frontend-slides"
+VENDOR_DIR = PLUGIN_ROOT / "dev" / "skill" / "vendor" / "frontend-slides"
 
 # Files that are ours (provenance), not upstream-derived, excluded from the hashed set.
 SELF_FILES = {"MANIFEST.sha256", "UPSTREAM.md"}

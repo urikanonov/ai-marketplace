@@ -12,7 +12,7 @@ import _paths
 
 EXPORTS_MD = os.path.join(_paths.PKG, "references", "exports.md")
 SKILL_MD = os.path.join(_paths.PKG, "SKILL.md")
-TUTORIAL_MD = os.path.join(_paths.PKG, "docs", "TUTORIAL.md")
+TUTORIAL_MD = os.path.join(_paths.DOCS, "TUTORIAL.md")
 REFERENCES = os.path.join(_paths.PKG, "references")
 FILE_INVENTORY_MD = os.path.join(REFERENCES, "file-inventory.md")
 
@@ -45,7 +45,7 @@ class PortabilityDiagramsTests(unittest.TestCase):
             text)
 
 
-PLUGIN_README = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "README.md"))
+PLUGIN_README = os.path.normpath(os.path.join(_paths.PKG_SHIPPED, "..", "..", "README.md"))
 BLOG_URL = "https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html"
 
 DIST_README = os.path.join(_paths.PKG, "dist", "README.md")
@@ -116,7 +116,7 @@ class ShippedLicenseTests(unittest.TestCase):
         self.assertIn("Uri Kanonov", text)
 
     def test_shipped_license_matches_the_repo_license(self):
-        repo_license = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "..", "..", "..", "LICENSE"))
+        repo_license = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "..", "..", "LICENSE"))
         skill_license = os.path.join(_paths.PKG, "LICENSE")
         self.assertTrue(os.path.isfile(repo_license), repo_license)
         self.assertEqual(_read(skill_license).strip(), _read(repo_license).strip(),
@@ -290,7 +290,7 @@ class ReferenceReachabilityDocsTests(unittest.TestCase):
 
 
 LONG_REFERENCE_LINE_THRESHOLD = 100
-PLUGIN_JSON = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "plugin.json"))
+PLUGIN_JSON = os.path.normpath(os.path.join(_paths.PKG_SHIPPED, "..", "..", "plugin.json"))
 MARKETPLACE_JSON = os.path.normpath(
     os.path.join(_paths.DEV, "..", "..", "..", ".github", "plugin", "marketplace.json"))
 

@@ -6,7 +6,7 @@ import {
   installClipboardCapture, stageInline, startStaticServer, routeMermaidLocal,
 } from "./helpers.js";
 
-const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
+const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
 
 // Seeded PRNG so any failure replays deterministically (same generator as 08-noise).
 const prngInit = (seed) => `

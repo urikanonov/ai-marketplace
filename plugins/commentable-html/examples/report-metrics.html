@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.117.1" />
+<meta name="commentable-html-version" content="1.118.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.117.1","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.118.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
-<title>Design review sign-off</title>
+<title>Commentable Visuals Matrix</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
 <script>
@@ -28,20 +28,16 @@
      block degrades to readable source text. For a fully self-contained artifact, vendor a
      local copy of mermaid and import it by relative path (see SKILL.md). -->
 <script type="module">
-  // Only reach out to the mermaid CDN when the document actually contains a diagram, so a
-  // diagram-free document (including a deck) makes no network request at all.
-  if (document.querySelector("pre.mermaid, div.mermaid")) {
-    try {
-      const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
-      const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
-      } else {
-        m.run().catch(() => {});
-      }
-    } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
-  }
+  try {
+    const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
+    const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+    m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
+    } else {
+      m.run().catch(() => {});
+    }
+  } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
 </script>
 
 <style>
@@ -2234,6 +2230,17 @@ body.cmh-deck-present #menuComment {
    END: commentable-html - CSS
    ============================================================ */
 </style>
+
+<style>
+#commentRoot .visual-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: stretch; }
+#commentRoot .visual-grid > pre.mermaid, #commentRoot .visual-grid > figure { margin: 0; }
+#commentRoot .visual-chip-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }
+#commentRoot .visual-chip-list span { border: 1px solid var(--cp-border); border-radius: 999px; background: var(--cp-surface-soft); color: var(--cp-text-muted); padding: 0.2rem 0.55rem; font-size: 0.82rem; }
+#commentRoot .metric-svg { width: 100%; max-width: 620px; height: auto; display: block; }
+#commentRoot .metric-svg .node-box { fill: var(--cp-surface-soft); stroke: var(--cp-border); stroke-width: 2; }
+#commentRoot .metric-svg .node-line { stroke: var(--cp-accent); stroke-width: 3; fill: none; }
+#commentRoot .metric-svg text { fill: var(--cp-text); font: 13px system-ui, sans-serif; }
+</style>
 </head>
 
 <body>
@@ -2377,50 +2384,150 @@ body.cmh-deck-present #menuComment {
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="commentable-html-notes-demo" data-doc-label="Design review sign-off" data-doc-source="report-notes.html">
+<main data-cmh-content-root id="commentRoot" data-comment-key="commentable-visuals-matrix-report" data-doc-label="Commentable Visuals Matrix" data-doc-source="report-metrics.html" data-generated="2026-07-12">
+<nav class="cm-toc" aria-label="Table of contents">
+  <div class="cm-toc-title">Contents</div>
+  <ol>
+    <li><a href="#visual-index">Inventory</a></li>
+    <li><a href="#mermaid-gallery">Mermaid gallery</a></li>
+    <li><a href="#chart-gallery">Chart gallery</a></li>
+    <li><a href="#svg-widget">SVG parts</a></li>
+    <li><a href="#review-blocks">Diff and KQL</a></li>
+  </ol>
+</nav>
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
-<h1 id="top">Design review sign-off</h1>
-
-<p class="lead">This report shows the <strong>editable notes fields</strong> in commentable-html. Type
-directly into a note; your edit is tracked as a change card in the review sidebar, travels back to the
-agent through <strong>Copy all</strong>, and is cemented into the source with
-<code>tools/notes/notes_apply.py</code>. Use the toggle on a note to switch between a single line and a
-multi-line field.</p>
-
-<section>
-  <h2 id="verdict">Overall verdict</h2>
-  <p>One editable line the reviewer fills in with a go / no-go decision. Click it and type; the sidebar
-  raises a change card, and the document badge flips to Not portable until the edit is saved into the
-  file by re-exporting or by the agent cementing it.</p>
-  <div class="cmh-note" data-cmh-note="verdict" data-cmh-note-label="Verdict">Pending review.</div>
+<h1>Commentable Visuals Matrix</h1>
+<p class="cmh-lede">A dense gallery for testing diagram, chart, diff, KQL, SVG, table, and callout review anchors.</p>
+<div class="visual-chip-list"><span>Mermaid x7</span><span>Chart.js x4</span><span>Diff</span><span>KQL</span><span>SVG parts</span></div>
+<section aria-labelledby="visual-index">
+  <h2 id="visual-index">Inventory</h2>
+  <table>
+    <thead><tr><th>Kind</th><th>Count</th><th>Comment target</th></tr></thead>
+    <tbody>
+      <tr><td>Mermaid</td><td>7</td><td>Diagram nodes and whole diagrams</td></tr>
+      <tr><td>Chart.js</td><td>4</td><td>Canvas plus caption</td></tr>
+      <tr><td>Code review diff</td><td>1</td><td>Changed lines</td></tr>
+      <tr><td>KQL</td><td>1</td><td>Query text</td></tr>
+    </tbody>
+  </table>
 </section>
-
-<section>
-  <h2 id="notes">Reviewer notes</h2>
-  <p>A multi-line note for free-form feedback. The single/multi-line toggle in the note's header switches
-  its height; multi-line notes preserve their line breaks.</p>
-  <div class="cmh-note" data-cmh-note="reviewer-notes" data-cmh-note-label="Reviewer notes"
-       data-cmh-note-multiline="true">No blocking concerns recorded yet.
-Add follow-ups here as they come up.</div>
+<section aria-labelledby="mermaid-gallery">
+  <h2 id="mermaid-gallery">Mermaid gallery</h2>
+  <div class="visual-grid">
+    <pre class="mermaid cm-skip">flowchart LR
+  Signal[Signal] --> Gate{Known issue?}
+  Gate -->|yes| Runbook[Runbook]
+  Gate -->|no| Triage[Triage]</pre>
+    <pre class="mermaid cm-skip">sequenceDiagram
+  participant Monitor
+  participant Router
+  participant Owner
+  Monitor->>Router: alert payload
+  Router->>Owner: assign incident
+  Owner-->>Router: mitigation posted</pre>
+    <pre class="mermaid cm-skip">gantt
+  title Repair plan
+  dateFormat  YYYY-MM-DD
+  section Stabilize
+  Patch queue       :a1, 2026-07-12, 1d
+  Verify canary     :a2, after a1, 1d
+  section Close
+  Update runbook    :a3, after a2, 1d</pre>
+    <pre class="mermaid cm-skip">stateDiagram-v2
+  [*] --> Intake
+  Intake --> Investigating
+  Investigating --> Mitigating
+  Mitigating --> Resolved
+  Resolved --> [*]</pre>
+    <pre class="mermaid cm-skip">classDiagram
+  class SignalRouter {
+    +route(signal)
+    +dedupe(alert)
+  }
+  class IncidentQueue {
+    +promote(card)
+  }
+  SignalRouter --> IncidentQueue</pre>
+    <pre class="mermaid cm-skip">erDiagram
+  INCIDENT ||--o{ SIGNAL : has
+  INCIDENT }o--|| OWNER : assigned_to
+  SIGNAL }o--|| SERVICE : emitted_by</pre>
+    <pre class="mermaid cm-skip">pie title Alert mix
+  "Latency" : 38
+  "Errors" : 24
+  "Saturation" : 18
+  "Deploy" : 9</pre>
+  </div>
 </section>
-
-<section>
-  <h2 id="how">How the round-trip works</h2>
-  <p>Edit a note above, click <strong>Copy all</strong>, and hand the bundle back. The bundle carries a
-  <code>NOTES_STATE_JSON</code> line the agent applies with
-  <code>python tools/notes/notes_apply.py report-notes.html --from-bundle bundle.txt</code>, which writes
-  your text into the <code>data-cmh-note</code> element. Reopen the file and the note shows your text with
-  no pending change.</p>
+<section aria-labelledby="chart-gallery">
+  <h2 id="chart-gallery">Chart gallery</h2>
+  <div class="visual-grid">
+    <!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsBarChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsBarChart" role="img" aria-label="Chart: Incidents by service. Bar chart: incidents by service."></canvas>
+  </div>
+  <figcaption id="metricsBarChart-caption">Bar chart: incidents by service.</figcaption>
+</figure>
+<!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsLineChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsLineChart" role="img" aria-label="Chart: Error rate trend. Line chart: error rate over six hours."></canvas>
+  </div>
+  <figcaption id="metricsLineChart-caption">Line chart: error rate over six hours.</figcaption>
+</figure>
+<!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsPieChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsPieChart" role="img" aria-label="Chart: Alert source mix. Pie chart: alert source mix."></canvas>
+  </div>
+  <figcaption id="metricsPieChart-caption">Pie chart: alert source mix.</figcaption>
+</figure>
+<!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsDoughnutChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsDoughnutChart" role="img" aria-label="Chart: Severity mix. Doughnut chart: severity mix."></canvas>
+  </div>
+  <figcaption id="metricsDoughnutChart-caption">Doughnut chart: severity mix.</figcaption>
+</figure>
+  </div>
 </section>
-
-<section>
-  <h2 id="followups">Follow-ups (foldable)</h2>
-  <p>A <strong>foldable</strong> note (<code>data-cmh-note-foldable</code>) stays out of the way until you
-  need it: it starts as a compact <code>+</code> on the line below. Click the <code>+</code> to reveal the
-  field and jot a follow-up; click the <code>-</code> to fold it away again.</p>
-  <div class="cmh-note" data-cmh-note="followups" data-cmh-note-label="Add a follow-up"
-       data-cmh-note-foldable="true"></div>
+<section aria-labelledby="svg-widget">
+  <h2 id="svg-widget">SVG parts</h2>
+  <figure aria-labelledby="signal-svg-caption">
+    <svg class="metric-svg cm-skip" data-cm-widget="metric-signal-svg" aria-label="Metric signal path" viewBox="0 0 620 160" role="img">
+      <g data-cm-part="ingest" data-cm-part-label="Ingest node"><rect class="node-box" x="20" y="45" width="130" height="64" rx="12"></rect><text x="52" y="82">Ingest</text></g>
+      <path class="node-line" d="M150 77 H250"></path>
+      <g data-cm-part="score" data-cm-part-label="Score node"><rect class="node-box" x="250" y="45" width="130" height="64" rx="12"></rect><text x="290" y="82">Score</text></g>
+      <path class="node-line" d="M380 77 H480"></path>
+      <g data-cm-part="route" data-cm-part-label="Route node"><rect class="node-box" x="480" y="45" width="120" height="64" rx="12"></rect><text x="520" y="82">Route</text></g>
+    </svg>
+    <figcaption id="signal-svg-caption">SVG: metric signal path.</figcaption>
+  </figure>
+</section>
+<section aria-labelledby="review-blocks">
+  <h2 id="review-blocks">Diff and KQL</h2>
+  <div class="cmh-callout cmh-callout-warning"><strong>Review focus.</strong> Confirm that promotion to Sev 1 requires both rate and regional spread.</div>
+  <pre class="cmh-diff" data-diff-label="rules/metric_router.py" data-diff-lang="python">--- a/rules/metric_router.py
++++ b/rules/metric_router.py
+@@ -4,7 +4,8 @@ def route(signal):
+-    if signal.error_rate &gt; 2.0:
+-        return "sev2"
++    if signal.error_rate &gt; 2.0 and signal.region_count &gt;= 3:
++        return "sev1"
++    if signal.error_rate &gt; 1.2:
++        return "sev2"
+     return "watch"
+</pre>
+  <figure class="cmh-kql">
+<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F02OsQ6CQBBEe75iY3UkNDQ25kyMlTX%2BwHE3yiZwl%2BwtEIwfL6gF5WTmzUwPpZljSHOjTpQsuWcyx648FbfoOSBqLt40dxDQVeAU4c4D6LzH1kQeh8EJv0CXHqLZ%2BjRGNWVFDab6p%2FhhVgFhXchaOmzOoaR2oZaj2bVXVHdfUib2WNuTBMgW3F9w2Vf%2FNQrI%2FgPJBdkNzAAAAA%3D%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
+<pre><code class="language-kusto"><span class="cmh-kql-kw">let</span> windowStart <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">ago</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">6h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">;</span>
+Incidents
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> CreatedTime <span class="cmh-kql-op">&gt;</span> windowStart
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Alerts<span class="cmh-kql-op">=</span><span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Sev1<span class="cmh-kql-op">=</span><span class="cmh-kql-fn">countif</span><span class="cmh-kql-op">(</span>Severity <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"Sev1"</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> <span class="cmh-kql-fn">bin</span><span class="cmh-kql-op">(</span>CreatedTime<span class="cmh-kql-op">,</span> <span class="cmh-kql-num">1h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Service
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> CreatedTime <span class="cmh-kql-kw">asc</span><span class="cmh-kql-op">,</span> Alerts <span class="cmh-kql-kw">desc</span></code></pre>
+</figure>
 </section>
 
 <!-- END: commentable-html - CONTENT -->
@@ -2492,7 +2599,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.117.1";
+const CMH_VERSION = "1.118.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -10005,6 +10112,196 @@ window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
 <!-- END: commentable-html - JS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
+<script id="metricsBarChart-data" type="application/json">
+{
+  "type": "bar",
+  "data": {
+    "labels": [
+      "API",
+      "Auth",
+      "Jobs",
+      "Web"
+    ],
+    "datasets": [
+      {
+        "label": "Incidents",
+        "data": [
+          8,
+          5,
+          6,
+          3
+        ]
+      }
+    ]
+  },
+  "options": {
+    "plugins": {
+      "legend": {
+        "display": false
+      }
+    },
+    "scales": {
+      "y": {
+        "beginAtZero": true
+      }
+    }
+  }
+}
+</script>
+<script>
+(function () {
+  var el = document.getElementById("metricsBarChart");
+  if (!el || typeof Chart === "undefined") return;
+  var config = JSON.parse(document.getElementById("metricsBarChart-data").textContent);
+  config.options = config.options || {};
+  config.options.responsive = true;
+  config.options.maintainAspectRatio = false;
+  new Chart(el, config);
+})();
+</script>
+
+<script id="metricsLineChart-data" type="application/json">
+{
+  "type": "line",
+  "data": {
+    "labels": [
+      "10:00",
+      "11:00",
+      "12:00",
+      "13:00",
+      "14:00",
+      "15:00"
+    ],
+    "datasets": [
+      {
+        "label": "Error rate",
+        "data": [
+          1.2,
+          1.6,
+          2.8,
+          2.1,
+          1.5,
+          0.9
+        ],
+        "tension": 0.25
+      }
+    ]
+  },
+  "options": {
+    "interaction": {
+      "mode": "index",
+      "intersect": false
+    },
+    "plugins": {
+      "legend": {
+        "position": "bottom"
+      }
+    },
+    "scales": {
+      "y": {
+        "beginAtZero": true
+      }
+    }
+  }
+}
+</script>
+<script>
+(function () {
+  var el = document.getElementById("metricsLineChart");
+  if (!el || typeof Chart === "undefined") return;
+  var config = JSON.parse(document.getElementById("metricsLineChart-data").textContent);
+  config.options = config.options || {};
+  config.options.responsive = true;
+  config.options.maintainAspectRatio = false;
+  new Chart(el, config);
+})();
+</script>
+
+<script id="metricsPieChart-data" type="application/json">
+{
+  "type": "pie",
+  "data": {
+    "labels": [
+      "Synthetic",
+      "Customer",
+      "SLO",
+      "Deploy"
+    ],
+    "datasets": [
+      {
+        "label": "Alerts",
+        "data": [
+          32,
+          24,
+          18,
+          9
+        ]
+      }
+    ]
+  },
+  "options": {
+    "plugins": {
+      "legend": {
+        "position": "bottom"
+      }
+    }
+  }
+}
+</script>
+<script>
+(function () {
+  var el = document.getElementById("metricsPieChart");
+  if (!el || typeof Chart === "undefined") return;
+  var config = JSON.parse(document.getElementById("metricsPieChart-data").textContent);
+  config.options = config.options || {};
+  config.options.responsive = true;
+  config.options.maintainAspectRatio = false;
+  new Chart(el, config);
+})();
+</script>
+
+<script id="metricsDoughnutChart-data" type="application/json">
+{
+  "type": "doughnut",
+  "data": {
+    "labels": [
+      "Sev 1",
+      "Sev 2",
+      "Sev 3"
+    ],
+    "datasets": [
+      {
+        "label": "Incidents",
+        "data": [
+          3,
+          11,
+          19
+        ]
+      }
+    ]
+  },
+  "options": {
+    "plugins": {
+      "legend": {
+        "position": "bottom"
+      }
+    }
+  }
+}
+</script>
+<script>
+(function () {
+  var el = document.getElementById("metricsDoughnutChart");
+  if (!el || typeof Chart === "undefined") return;
+  var config = JSON.parse(document.getElementById("metricsDoughnutChart-data").textContent);
+  config.options = config.options || {};
+  config.options.responsive = true;
+  config.options.maintainAspectRatio = false;
+  new Chart(el, config);
+})();
+</script>
+
 
 </body>
 </html>

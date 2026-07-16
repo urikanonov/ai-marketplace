@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "r=\"${CLAUDE_PLUGIN_ROOT}\"; d=\"$r/skills/commentable-html\"; m=\"$d/.skill-resources-1.118.0.ok\"; [ -e \"$m\" ] && exit 0; py=$(command -v python3 2>/dev/null || command -v python 2>/dev/null); [ -n \"$py\" ] && \"$py\" -E -s \"$r/hooks/extract_resources.py\" --version 1.118.0 --agent claude >/dev/null 2>&1 || true; true",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
