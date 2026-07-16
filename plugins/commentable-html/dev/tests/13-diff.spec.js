@@ -43,6 +43,23 @@ async function addDiffComment(page, lineSelector, note) {
   await expect(composer).toBeHidden();
 }
 
+async function waitForBothSplitPaneHighlights(page) {
+  return await page.waitForFunction(() => {
+    const byCid = new Map();
+    document.querySelectorAll(".cmh-dl-hl[data-cid]").forEach((el) => {
+      const cid = el.getAttribute("data-cid");
+      if (!cid) return;
+      const sides = byCid.get(cid) || new Set();
+      sides.add(el.getAttribute("data-side"));
+      byCid.set(cid, sides);
+    });
+    for (const [cid, sides] of byCid) {
+      if (sides.has("old") && sides.has("new")) return cid;
+    }
+    return false;
+  }, null, { timeout: 5000 });
+}
+
 // Select a [subStart, subEnd) region of a diff line's code and open the popup, so
 // a comment anchors to that region (sub-line selection, like regular text).
 async function selectDiffRegion(page, lineSelector, subStart, subEnd) {
@@ -394,7 +411,7 @@ test.describe("diff comment lifecycle", () => {
     await expect(page.locator(".cmh-diff-view")).toHaveClass(/cmh-diff-split/); // default is split
     // A context line appears once per side (old + new) sharing one logical lineKey.
     await addDiffComment(page, '.cmh-dl-ctx[data-side="old"]', "on a shared context line");
-    const cid = await page.locator(".cmh-dl-hl").first().getAttribute("data-cid");
+    const cid = await (await waitForBothSplitPaneHighlights(page)).jsonValue();
     // Both the old-side and new-side elements for that line get the same cid.
     await expect(page.locator(`.cmh-dl-hl[data-cid="${cid}"][data-side="old"]`)).toHaveCount(1);
     await expect(page.locator(`.cmh-dl-hl[data-cid="${cid}"][data-side="new"]`)).toHaveCount(1);
@@ -523,15 +540,19 @@ test("the diff add button stays centered on the hovered row (CMH-DIFF-11)", asyn
   await line.scrollIntoViewIfNeeded();
   await line.hover();
   await expect(page.locator("#diffAddBtn")).toBeVisible();
-  const pos = await page.evaluate(() => {
+  const pos = await page.waitForFunction(() => {
     const lineEl = document.querySelector(".cmh-dl-add");
     const btn = document.getElementById("diffAddBtn");
+    if (!lineEl || !btn || btn.hidden) return false;
     const lr = lineEl.getBoundingClientRect();
     const br = btn.getBoundingClientRect();
-    return { lineTop: lr.top, lineBottom: lr.bottom, btnCenterY: br.top + br.height / 2 };
+    const btnCenterY = br.top + br.height / 2;
+    if (btnCenterY < lr.top - 2 || btnCenterY > lr.bottom + 2) return false;
+    return { lineTop: lr.top, lineBottom: lr.bottom, btnCenterY };
   });
-  expect(pos.btnCenterY).toBeGreaterThanOrEqual(pos.lineTop - 2);
-  expect(pos.btnCenterY).toBeLessThanOrEqual(pos.lineBottom + 2);
+  const value = await pos.jsonValue();
+  expect(value.btnCenterY).toBeGreaterThanOrEqual(value.lineTop - 2);
+  expect(value.btnCenterY).toBeLessThanOrEqual(value.lineBottom + 2);
 });
 
 test("two diff blocks keep their comments separate (diffIndex disambiguation)", async ({ page }) => {
