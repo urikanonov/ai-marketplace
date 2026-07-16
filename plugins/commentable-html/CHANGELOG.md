@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.105.0] - 2026-07-16
+
+### Changed
+
+- Split the Chart.js reference into focused embedding/tooltips and recipes/data-hygiene guides, leaving `charts.md` as a thin router so agents can load only the chart guidance they need. (CMH-DOC-16)
+
 ## [1.104.0] - 2026-07-16
 
 ### Added

@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.104.0`
+**Version:** `1.105.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -129,7 +129,9 @@ Use the conditional lookup table below when a document needs a richer feature:
 | KQL blocks and ADE run links | [Kusto query blocks](references/kusto-query-blocks.md) |
 | Mermaid diagrams and structural comments | [Mermaid diagrams](references/mermaid-diagrams.md) |
 | Code review diffs | [Code review diffs](references/code-review-diffs.md) |
-| Chart.js figures and tooltips | [Charts](references/charts.md) |
+| Chart.js embedding, coexistence rules, and tooltips | [Chart embedding](references/charts-embedding.md) |
+| Chart.js per-type recipes, data hygiene, and dark theme | [Chart recipes](references/charts-recipes.md) |
+| Chart.js split reference index | [Charts index](references/charts.md) |
 | Themes, TOC, sections, tables, callouts, and layout recipes | [Document layout](references/document-layout.md) |
 | Commentable widgets, SVG parts, draggable slots (`data-cm-draggable`), and document-wide comments | [Commentable widgets](references/commentable-widgets.md) |
 | Images and chart-canvas comments | [Images](references/images-commentable.md) |

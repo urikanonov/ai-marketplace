@@ -487,6 +487,47 @@ class DirectReferenceLinkDocsTests(unittest.TestCase):
             f"deep): {missing}")
 
 
+class ChartReferenceSplitDocsTests(unittest.TestCase):
+    """CMH-DOC-16: the Chart.js guidance stays split into focused references, with a
+    thin compatibility router and direct SKILL.md links to each focused file."""
+
+    def test_cmh_doc_16_chart_references_are_split_and_routed(self):
+        skill = _read(SKILL_MD)
+        for name in ("charts.md", "charts-embedding.md", "charts-recipes.md"):
+            with self.subTest(reference=name):
+                self.assertIn("references/" + name, skill)
+                self.assertTrue(os.path.isfile(os.path.join(REFERENCES, name)))
+
+        index = _read(os.path.join(REFERENCES, "charts.md"))
+        self.assertLessEqual(
+            len(index.splitlines()), 40,
+            "charts.md should stay a thin router so agents do not load both chart guides")
+        self.assertIn("charts-embedding.md", index)
+        self.assertIn("charts-recipes.md", index)
+
+    def test_cmh_doc_16_embedding_and_recipe_guides_have_distinct_scopes(self):
+        embedding = _read(os.path.join(REFERENCES, "charts-embedding.md"))
+        recipes = _read(os.path.join(REFERENCES, "charts-recipes.md"))
+
+        for heading in (
+            "## Dependency and portability",
+            "## Four rules for coexisting with the commenting layer",
+            "## Minimal copy-paste recipe (light theme)",
+            "## The tooltip options that matter",
+        ):
+            self.assertIn(heading, embedding)
+        self.assertNotIn("## Chart-type recipes", embedding)
+        self.assertNotIn("## Data hygiene", embedding)
+
+        for heading in (
+            "## Chart-type recipes (from the sample report)",
+            "## Data hygiene",
+            "## Dark theme",
+        ):
+            self.assertIn(heading, recipes)
+        self.assertNotIn("## Four rules for coexisting with the commenting layer", recipes)
+
+
 class DescriptionConsistencyDocsTests(unittest.TestCase):
     """CMH-DOC-08: the SKILL.md discovery description and the plugin.json marketplace
     description are intentionally different surfaces (agent trigger vs human blurb), but they

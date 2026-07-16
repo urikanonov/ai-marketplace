@@ -5,7 +5,7 @@ import os from "os";
 import { INLINE, fileUrl, ready, readDownload, openToolbarMenu } from "./helpers.js";
 
 // CMH-EXP-06 (C1): on file:// the export base falls back to a DOM snapshot. That
-// snapshot must include host content placed AFTER the layer <script> (per charts.md:
+// snapshot must include host content placed AFTER the layer <script> (per charts-embedding.md:
 // chart data + init scripts land after the "END: commentable-html - JS" marker, before
 // the final </body>). A snapshot captured at IIFE start stops at the script and silently
 // drops that tail, losing the chart on every file:// export.
