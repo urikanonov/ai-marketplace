@@ -195,6 +195,29 @@ def _unlink_reparse(path):
             pass
 
 
+def _prune_nested_reparse(path):
+    """Unlink every reparse point (symlink/junction) NESTED anywhere under path, so a subsequent
+    shutil.rmtree cannot traverse into a junction's external target and delete files there. On
+    Python < 3.12 shutil.rmtree lacked this protection (bpo-31818), and os.walk's followlinks=False
+    does not stop it descending into Windows junctions (os.path.islink is False for them), so we walk
+    top-down and prune each junction from `dirs` IN PLACE (which stops os.walk descending into it)
+    after unlinking it. Best-effort: a lock here just leaves the junction for the retry/next run."""
+    try:
+        if _is_reparse(path):
+            return  # the caller handles a top-level reparse point itself
+        for root, dirs, files in os.walk(path, topdown=True):
+            keep = []
+            for d in dirs:
+                p = os.path.join(root, d)
+                if _is_reparse(p):
+                    _unlink_reparse(p)  # remove the junction; do NOT descend into its target
+                else:
+                    keep.append(d)
+            dirs[:] = keep
+    except OSError:
+        pass
+
+
 def _make_writable(path):
     """Best-effort: restore write/execute access across a tree so an AV-quarantined-and-restored
     file (which can come back read-only on Windows, or with cleared bits on POSIX) does not defeat
@@ -235,6 +258,7 @@ def _rmtree_retry(path, retries, backoff, sleep, deadline):
         elif os.path.isfile(path):
             os.remove(path)
         else:
+            _prune_nested_reparse(path)  # unlink nested junctions so rmtree can't follow them (<3.12)
             shutil.rmtree(path)
     try:
         _retry(_rm, retries, backoff, sleep, deadline)
@@ -263,6 +287,7 @@ def clear_markers(skill_dir):
                 if _is_reparse(p):
                     _unlink_reparse(p)
                 else:
+                    _prune_nested_reparse(p)
                     shutil.rmtree(p, ignore_errors=True)
 
 
@@ -428,6 +453,7 @@ def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=D
         _swapped = _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline)
         _prune_legacy(skill_dir, _swapped, retries, backoff, sleep, deadline)
     finally:
+        _prune_nested_reparse(staging)  # never let rmtree follow a nested junction out of staging
         shutil.rmtree(staging, ignore_errors=True)
     # The swap succeeded; give the marker write a fresh grace budget so a transient lock on its
     # rename does not waste the whole successful extraction (and re-extract needlessly next session).

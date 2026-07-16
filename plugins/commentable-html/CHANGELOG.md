@@ -58,6 +58,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   the marker write. Added tests: no-descend-into-junction, broken-junction removal, pid-suffixed `.tmp`
   cleanup, an executable PowerShell-launcher smoke test (cold/marker-dir), and a canary proving the warm
   hot path spawns no Python. Repointed remaining stale pre-relocation doc paths.
+- Round-10 review hardening: cleanup now unlinks a junction NESTED inside a directory being removed
+  before calling `shutil.rmtree`, so rmtree can never traverse a nested junction into its external
+  target (Python < 3.12 lacked that protection - bpo-31818); a test pins it. Fixed the `.githooks/pre-push`
+  layer-dist check, which still targeted the pre-relocation `--out-dir` and always failed; made the
+  `40-package.py` build part self-contained (explicit `os`/`re` imports); and added a plugin-level
+  `.gitignore` so the extractor unpacking into the source tree during local testing can never stage a
+  polluted (non-minimal) shipped skill dir.
 
 ## [1.117.1] - 2026-07-16
 

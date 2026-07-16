@@ -8,6 +8,8 @@
 # before extraction), and the hook configs carry the version-stamped marker name.
 # --------------------------------------------------------------------------- #
 import io
+import os
+import re
 import zipfile
 
 PACKAGE_ZIP_NAME = "skill-resources.zip"

@@ -612,6 +612,31 @@ class ExtractResourcesTests(unittest.TestCase):
         extract_resources._rmtree_retry(junction, 1, 0.001, lambda *_: None, None)
         self.assertFalse(os.path.lexists(junction), "a broken junction must be removed, not skipped")
 
+    # CMH-PKG-08: a junction NESTED inside a directory being removed must be unlinked, not traversed
+    # (shutil.rmtree on Python < 3.12 would follow it and delete the external target - bpo-31818).
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_rmtree_does_not_follow_a_nested_junction(self):
+        import subprocess
+
+        target = os.path.join(self.tmp, "ext_target")
+        os.makedirs(target)
+        keep = os.path.join(target, "keep.txt")
+        with open(keep, "w", encoding="utf-8") as fh:
+            fh.write("must survive\n")
+        victim = os.path.join(self.skill, "victim")  # a real dir we will remove
+        os.makedirs(victim)
+        with open(os.path.join(victim, "own.txt"), "w", encoding="utf-8") as fh:
+            fh.write("own\n")
+        nested = os.path.join(victim, "nested")  # a junction NESTED inside victim
+        rc = subprocess.run(["cmd", "/c", "mklink", "/J", nested, target],
+                            capture_output=True, text=True)
+        if rc.returncode != 0:
+            self.skipTest("could not create a junction: " + rc.stderr.strip())
+        extract_resources._rmtree_retry(victim, 1, 0.001, lambda *_: None, None)
+        self.assertFalse(os.path.exists(victim), "the victim dir must be fully removed")
+        self.assertTrue(os.path.isfile(keep),
+                        "a nested junction's external target must NOT be deleted by rmtree")
+
     # CMH-PKG-05: clear_markers sweeps a pid-suffixed .ok.<pid>.tmp leftover (not just .ok.tmp).
     def test_clear_markers_removes_pid_suffixed_tmp(self):
         tmp = self._marker("1.0.0") + ".98765.tmp"

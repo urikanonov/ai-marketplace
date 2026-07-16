@@ -75,7 +75,9 @@ run "site data in sync (build_site_data --check)" "$PY" scripts/build_site_data.
 run "commentable-html layer dist in sync (build.py --check)" "$PY" \
   plugins/commentable-html/dev/tools/build.py \
   --assets-dir plugins/commentable-html/dev/assets \
-  --out-dir plugins/commentable-html/pkg/skills/commentable-html --check
+  --out-dir plugins/commentable-html/dev/skill \
+  --pkg-dir plugins/commentable-html/pkg/skills/commentable-html \
+  --examples-dir plugins/commentable-html/examples --check
 
 if command -v node >/dev/null 2>&1; then
   run "commentable-html test fixtures in sync (generate.mjs --check)" \
