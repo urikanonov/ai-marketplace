@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Verify the vendored frontend-slides subtree stays a pristine, curated subset.
 
-The vendored copy under ``pkg/skills/commentable-html/vendor/frontend-slides/`` must remain a
+The vendored copy under ``dev/skill/vendor/frontend-slides/`` (the STAGE; it ships inside
+``skill-resources.zip``) must remain a
 pristine subset of upstream (github.com/zarazhangrui/frontend-slides at the commit recorded in
 ``UPSTREAM.md``). This gate fails on any unknown, changed, or removed file versus the recorded
 ``MANIFEST.sha256``, and on any denylisted file (``deploy.sh``, ``export-pdf.sh``, an upstream

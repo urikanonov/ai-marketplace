@@ -40,6 +40,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   pin the orphan-backup-cleanup survival, the rename-aside rollback branch, absolute/drive-letter
   zip-member rejection, the stale-lock sidecar cleanup, `.ok.tmp` cleanup, deterministic-zip
   host-neutral metadata, and text LF-normalization.
+- Round-8 review hardening: the hook HOT-PATH marker check is now FILE-specific (bash `-f`, PowerShell
+  `-PathType Leaf`) so a marker-named directory cannot short-circuit the launcher before Python and
+  suppress extraction (previously the `isfile` guard in run() was unreachable behind the launchers'
+  `-e`/`Test-Path`). Cleanup now unlinks a symlink/junction as itself instead of following a reparse
+  point into its target (os.path.islink misses Windows junctions; matters on Python < 3.12). An
+  in-place upgrade prunes the obsolete `docs/` and `examples/` dirs the package no longer ships so the
+  runtime converges to the minimal tree. The packager fails closed if a required shipped file
+  (`SKILL.md`/`LICENSE`) is missing from the stage. Added tests execute the shipped bash hook commands
+  end-to-end (cold/warm/marker-dir) and pin the junction cleanup, the legacy prune, and the missing-file
+  guards.
 
 ## [1.117.1] - 2026-07-16
 

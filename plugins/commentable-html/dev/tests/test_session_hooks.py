@@ -155,6 +155,69 @@ class HookWiringTests(unittest.TestCase):
         self.assertIn("$PSScriptRoot", _read(PS1),
                       "session-extract.ps1 must anchor its paths to $PSScriptRoot, not the CWD")
 
+    # CMH-PKG-09: the marker hot-path check must be FILE-specific (bash `-f`, PowerShell -PathType
+    # Leaf), matching run()'s os.path.isfile, so a directory that shares the marker name does not
+    # short-circuit the hook before Python and permanently suppress extraction.
+    def test_hook_marker_check_is_file_specific(self):
+        copilot = json.loads(_read(COPILOT_HOOKS))["hooks"]["sessionStart"][0]["bash"]
+        claude = json.loads(_read(CLAUDE_HOOKS))["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+        for cmd, label in ((copilot, "copilot bash"), (claude, "claude bash")):
+            self.assertIn('[ -f "$m" ]', cmd, label + " marker guard must use -f (a real file)")
+            self.assertNotIn('[ -e "$m" ]', cmd, label + " must not use -e (true for a directory)")
+        self.assertIn("-PathType Leaf", _read(PS1),
+                      "session-extract.ps1 marker check must use -PathType Leaf")
+
+    # CMH-PKG-09: the SHIPPED bash hook commands (Copilot + Claude), run verbatim under a real bash,
+    # actually extract cold, no-op warm, and are NOT short-circuited by a marker-named directory.
+    def test_shipped_bash_hooks_extract_end_to_end(self):
+        import shutil
+        import subprocess
+        import tempfile
+        bash = shutil.which("bash")
+        if not bash:
+            self.skipTest("no bash on PATH")
+        # The hook discovers python3/python/py; skip if none is usable under this bash.
+        probe = subprocess.run([bash, "-c",
+                                'for c in python3 python py; do command -v "$c" >/dev/null 2>&1 && '
+                                'exit 0; done; exit 1'], capture_output=True)
+        if probe.returncode != 0:
+            self.skipTest("no python discoverable by the hook under bash")
+        version = _version()
+        marker_name = ".skill-resources-" + version + ".ok"
+        cases = (
+            ("copilot", json.loads(_read(COPILOT_HOOKS))["hooks"]["sessionStart"][0]["bash"], None),
+            ("claude",
+             json.loads(_read(CLAUDE_HOOKS))["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+             "PLUGIN_ROOT"),
+        )
+        for agent, command, root_mode in cases:
+            with self.subTest(agent=agent):
+                sandbox = tempfile.mkdtemp(prefix="cmh-hook-" + agent + "-")
+                self.addCleanup(shutil.rmtree, sandbox, ignore_errors=True)
+                shutil.copytree(PLUGIN_DIR, sandbox, dirs_exist_ok=True)
+                sk = os.path.join(sandbox, "skills", "commentable-html")
+                env = dict(os.environ)
+                if root_mode == "PLUGIN_ROOT":
+                    env["CLAUDE_PLUGIN_ROOT"] = sandbox
+                # Cold run: extracts and writes the marker file.
+                r1 = subprocess.run([bash, "-c", command], cwd=sandbox, env=env, capture_output=True)
+                self.assertEqual(r1.returncode, 0, agent + " cold hook must exit 0")
+                self.assertTrue(os.path.isfile(os.path.join(sk, marker_name)),
+                                agent + ": cold run must write the marker file")
+                self.assertTrue(os.path.isfile(os.path.join(sk, "tools", "validate", "validate.py")),
+                                agent + ": cold run must extract the tools tree")
+                # Warm run: marker present -> no work, still exit 0.
+                r2 = subprocess.run([bash, "-c", command], cwd=sandbox, env=env, capture_output=True)
+                self.assertEqual(r2.returncode, 0, agent + " warm hook must exit 0")
+                # Marker-DIRECTORY: replace the marker file with a directory of the same name; the
+                # -f guard must NOT treat it as done, so extraction runs again and restores a file.
+                os.remove(os.path.join(sk, marker_name))
+                os.mkdir(os.path.join(sk, marker_name))
+                r3 = subprocess.run([bash, "-c", command], cwd=sandbox, env=env, capture_output=True)
+                self.assertEqual(r3.returncode, 0, agent + " marker-dir hook must exit 0")
+                self.assertTrue(os.path.isfile(os.path.join(sk, marker_name)),
+                                agent + ": a marker-named directory must not suppress extraction")
+
     def _assert_marker_before_python(self, cmd, label):
         cmd = self._strip_comments(cmd)
         marker_at = cmd.find(".skill-resources-")

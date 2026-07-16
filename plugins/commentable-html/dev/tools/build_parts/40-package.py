@@ -157,8 +157,10 @@ def package_text_stamps(stage_dir, pkg_dir, version):
     out = {}
     for name in PACKAGE_SHIPPED_FILES:
         src = os.path.join(stage_dir, name)
-        if os.path.exists(src):
-            out[os.path.join(pkg_dir, name)] = read(src)
+        if not os.path.exists(src):
+            raise SystemExit(
+                "skill-resources package: required shipped file missing from the stage: " + name)
+        out[os.path.join(pkg_dir, name)] = read(src)
     plugin_dir = os.path.dirname(os.path.dirname(pkg_dir))  # pkg/
     for hook in (os.path.join(plugin_dir, "hooks.json"),
                  os.path.join(plugin_dir, "hooks", "hooks.json")):

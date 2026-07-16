@@ -41,6 +41,10 @@ LOCK_NAME = ".skill-resources.lock"
 STAGING_NAME = ".skill-resources-staging"
 BACKUP_SUFFIX = ".skill-resources-old"
 DEFAULT_ZIP_NAME = "skill-resources.zip"
+# Obsolete top-level dirs that a PRE-1.132 install unzipped into the skill dir and the current
+# package no longer ships (moved online); pruned after a successful swap so an upgrade converges to
+# the minimal runtime tree. Only pruned when NOT present in the freshly extracted runtime.
+LEGACY_PRUNE_DIRS = ("docs", "examples")
 # Names in the shipped skill dir that the swap must never overwrite from a (tampered) zip. Compared
 # with str.casefold() (NOT os.path.normcase, which only folds case on Windows and is a no-op on
 # macOS/Linux) because Windows and default macOS filesystems are case-insensitive, so a staging dir
@@ -166,12 +170,38 @@ def _add_write_bit(p, is_dir):
         pass
 
 
+def _is_reparse(path):
+    """True if path is a symlink OR a Windows junction / directory reparse point. os.path.islink
+    misses junctions, so cleanup that only checked islink could rmtree/os.walk THROUGH a junction and
+    hit its target (on Python < 3.12 shutil.rmtree lacked junction protection). st_file_attributes is
+    available on Windows for all supported Python; on POSIX it is absent (only islink matters)."""
+    if os.path.islink(path):
+        return True
+    try:
+        attrs = os.lstat(path).st_file_attributes  # Windows only
+    except (AttributeError, OSError):
+        return False
+    return bool(attrs & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+
+def _unlink_reparse(path):
+    """Remove a symlink/junction by unlinking the reparse point itself, never its target."""
+    try:
+        os.rmdir(path)  # a directory junction / dir symlink
+    except OSError:
+        try:
+            os.remove(path)  # a file symlink
+        except OSError:
+            pass
+
+
 def _make_writable(path):
     """Best-effort: restore write/execute access across a tree so an AV-quarantined-and-restored
     file (which can come back read-only on Windows, or with cleared bits on POSIX) does not defeat
-    rmtree with a permanent EACCES."""
+    rmtree with a permanent EACCES. A reparse point (symlink/junction) is left alone - never walked
+    into - so we do not chmod its target's files."""
     try:
-        if os.path.islink(path):
+        if _is_reparse(path):
             return
         if os.path.isfile(path):
             _add_write_bit(path, is_dir=False)
@@ -179,7 +209,10 @@ def _make_writable(path):
         _add_write_bit(path, is_dir=True)
         for root, dirs, files in os.walk(path):
             for name in dirs:
-                _add_write_bit(os.path.join(root, name), is_dir=True)
+                p = os.path.join(root, name)
+                if _is_reparse(p):
+                    continue  # do not descend into a junction's target
+                _add_write_bit(p, is_dir=True)
             for name in files:
                 _add_write_bit(os.path.join(root, name), is_dir=False)
     except OSError:
@@ -188,13 +221,16 @@ def _make_writable(path):
 
 def _rmtree_retry(path, retries, backoff, sleep, deadline):
     """Remove a directory tree, retrying a transient lock (do NOT ignore_errors, so a Defender lock
-    is retried rather than silently leaving files behind). Clears read-only attributes first."""
+    is retried rather than silently leaving files behind). Clears read-only attributes first. A
+    reparse point (symlink/junction) is unlinked as itself, never followed into its target."""
     if not os.path.exists(path) and not os.path.islink(path):
         return
     _make_writable(path)
 
     def _rm():
-        if os.path.islink(path) or os.path.isfile(path):
+        if _is_reparse(path):
+            _unlink_reparse(path)
+        elif os.path.isfile(path):
             os.remove(path)
         else:
             shutil.rmtree(path)
@@ -221,7 +257,11 @@ def clear_markers(skill_dir):
             try:
                 os.remove(p)
             except OSError:
-                shutil.rmtree(p, ignore_errors=True)  # a same-named directory
+                # a same-named directory (or a reparse point) under the marker name
+                if _is_reparse(p):
+                    _unlink_reparse(p)
+                else:
+                    shutil.rmtree(p, ignore_errors=True)
 
 
 def _write_marker(skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_BACKOFF,
@@ -332,6 +372,25 @@ def _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline):
                 _rmtree_retry(bak, retries, backoff, sleep, deadline)
             except Exception:  # noqa: BLE001 - orphan cruft; cleaned up next session
                 pass
+    return entries
+
+
+def _prune_legacy(skill_dir, installed, retries, backoff, sleep, deadline):
+    """Remove obsolete top-level dirs a PRE-1.132 install unzipped into the skill dir that the
+    current package no longer ships (the tutorial `docs/` and worked `examples/`, now published
+    online), so an in-place upgrade converges to the minimal runtime tree instead of leaving stale
+    content behind. Guarded: a name is only pruned if the CURRENT extraction did NOT install it (so a
+    future version that re-adds one of these dirs to the zip is never deleted), and only real
+    directories - never a control file or a reparse point's target - are touched."""
+    for name in LEGACY_PRUNE_DIRS:
+        if name in installed:
+            continue
+        p = os.path.join(skill_dir, name)
+        if os.path.isdir(p) and not _is_reparse(p):
+            try:
+                _rmtree_retry(p, retries, backoff, sleep, deadline)
+            except Exception:  # noqa: BLE001 - best effort; stale cruft, never fatal
+                pass
 
 
 def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_BACKOFF,
@@ -362,7 +421,8 @@ def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=D
             for member in members:
                 extract_member_with_retry(zf, member, staging, retries, backoff,
                                           sleep=sleep, extract=extract, deadline=deadline)
-        _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline)
+        _swapped = _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline)
+        _prune_legacy(skill_dir, _swapped, retries, backoff, sleep, deadline)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     # The swap succeeded; give the marker write a fresh grace budget so a transient lock on its

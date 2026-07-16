@@ -688,6 +688,26 @@ class PackageTests(unittest.TestCase):
                                  info.filename + ": timestamp must be the fixed epoch")
                 self.assertEqual(info.external_attr >> 16, 0o644,
                                  info.filename + ": mode must be a fixed 0o644")
+
+    def test_packager_fails_on_missing_shipped_file(self):
+        # A stage missing a required shipped file (SKILL.md/LICENSE) must fail closed, so --check and
+        # write cannot silently leave a stale shipped copy in place.
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)  # has the 4 runtime dirs but no SKILL.md / LICENSE
+            with self.assertRaises(SystemExit) as cm:
+                build.package_text_stamps(stage, os.path.join(d, "pkg"), build.read_version())
+            self.assertIn("SKILL.md", str(cm.exception))
+
+    def test_packager_fails_on_missing_license(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            with open(os.path.join(stage, "SKILL.md"), "w", encoding="utf-8") as fh:
+                fh.write("# skill\n")
+            with self.assertRaises(SystemExit) as cm:
+                build.package_text_stamps(stage, os.path.join(d, "pkg"), build.read_version())
+            self.assertIn("LICENSE", str(cm.exception))
+
+    def test_package_check_detects_hook_stamp_drift(self):
         v = build.read_version()
         with tempfile.TemporaryDirectory() as d:
             pkg = os.path.join(d, "pkg", "skills", "commentable-html")

@@ -1,8 +1,9 @@
 # Resyncing the vendored frontend-slides subset (maintainer)
 
 The deck capability vendors a pristine, curated subset of the third-party `frontend-slides`
-skill under `plugins/commentable-html/pkg/skills/commentable-html/vendor/frontend-slides/`. This
-is development-only guidance; it is never shipped.
+skill under `plugins/commentable-html/dev/skill/vendor/frontend-slides/` (the STAGE source of
+truth; it ships inside `skill-resources.zip` and extracts to `skills/commentable-html/vendor/`).
+This is development-only guidance; it is never shipped.
 
 The vendored subtree is enforced pristine by `dev/tools/check_vendor.py`, which runs in the
 required `validate` CI job. Never hand-edit vendored files - a resync replaces them wholesale.

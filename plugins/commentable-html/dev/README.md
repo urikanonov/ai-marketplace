@@ -110,16 +110,16 @@ The browser suite covers load/init, light and dark themes, standalone and NonPor
 Run the shipped validator against generated outputs and examples from `dev/`:
 
 ```powershell
-python ..\pkg\skills\commentable-html\tools\validate.py --strict `
-  ..\pkg\skills\commentable-html\dist\PORTABLE.html `
-  ..\pkg\skills\commentable-html\examples\report-community-garden.html `
-  ..\pkg\skills\commentable-html\examples\report-taxi.html
+python skill\tools\validate\validate.py --strict `
+  skill\dist\PORTABLE.html `
+  ..\examples\report-community-garden.html `
+  ..\examples\report-taxi.html
 ```
 
-From `pkg\skills\commentable-html`, the same check is:
+From `dev\skill`, the same check is:
 
 ```powershell
-python tools\validate.py --strict dist\PORTABLE.html examples\report-community-garden.html examples\report-taxi.html
+python tools\validate\validate.py --strict dist\PORTABLE.html ..\..\examples\report-community-garden.html ..\..\examples\report-taxi.html
 ```
 
 ## Rebuilding the example images
@@ -175,7 +175,7 @@ Interaction and fuzz tests use generated fixtures under `tests/fixtures/`, inclu
 After changing the layer or fixture sample content, rebuild and refresh fixtures:
 
 ```powershell
-python tools\build.py --assets-dir assets --out-dir ..\pkg\skills\commentable-html
+python tools\build.py --assets-dir assets --out-dir skill --pkg-dir ..\pkg\skills\commentable-html --examples-dir ..\examples
 node tests\fixtures\generate.mjs
 ```
 

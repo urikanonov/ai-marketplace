@@ -522,6 +522,52 @@ class ExtractResourcesTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.skill, "tools", "a.py")),
                         "a marker-named directory must not short-circuit extraction")
 
+    # CMH-PKG-05: an in-place upgrade from a pre-1.132 tree prunes the obsolete docs/ and examples/
+    # dirs the package no longer ships, so the runtime converges to the minimal tree.
+    def test_upgrade_prunes_legacy_docs_and_examples(self):
+        for legacy in ("docs", "examples"):
+            d = os.path.join(self.skill, legacy)
+            os.makedirs(d)
+            with open(os.path.join(d, "old.txt"), "w", encoding="utf-8") as fh:
+                fh.write("stale\n")
+        rc = extract_resources.run(self.skill, "1.0.0", sleep=lambda *_: None)
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.isdir(os.path.join(self.skill, "docs")), "stale docs/ must be pruned")
+        self.assertFalse(os.path.isdir(os.path.join(self.skill, "examples")),
+                         "stale examples/ must be pruned")
+        self.assertTrue(os.path.isfile(os.path.join(self.skill, "tools", "a.py")))
+
+    # CMH-PKG-05: the prune is guarded - a legacy name that the CURRENT zip actually ships is kept,
+    # so a future version that re-adds docs/ or examples/ is never deleted.
+    def test_legacy_prune_keeps_a_dir_present_in_the_new_zip(self):
+        _make_zip(self.zip, {"tools/a.py": "x\n", "docs/keep.md": "# keep\n"})
+        rc = extract_resources.run(self.skill, "1.0.0", sleep=lambda *_: None)
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isfile(os.path.join(self.skill, "docs", "keep.md")),
+                        "a docs/ shipped by the new zip must NOT be pruned")
+
+    # CMH-PKG-08: a reparse point (junction) planted under a cleanup path is unlinked as itself, not
+    # followed - its target's contents are never deleted (os.path.islink misses junctions).
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_reparse_point_is_unlinked_not_followed(self):
+        import subprocess
+
+        target = os.path.join(self.tmp, "target")
+        os.makedirs(target)
+        keep = os.path.join(target, "precious.txt")
+        with open(keep, "w", encoding="utf-8") as fh:
+            fh.write("do not delete\n")
+        junction = os.path.join(self.skill, "j")
+        rc = subprocess.run(["cmd", "/c", "mklink", "/J", junction, target],
+                            capture_output=True, text=True)
+        if rc.returncode != 0:
+            self.skipTest("could not create a junction: " + rc.stderr.strip())
+        self.assertFalse(os.path.islink(junction), "sanity: islink misses a junction")
+        self.assertTrue(extract_resources._is_reparse(junction), "_is_reparse must detect a junction")
+        extract_resources._rmtree_retry(junction, 1, 0.001, lambda *_: None, None)
+        self.assertFalse(os.path.exists(junction), "the junction itself must be removed")
+        self.assertTrue(os.path.isfile(keep), "the junction target's file must be untouched")
+
     # CMH-PKG-05: the rollback itself retries a transient lock and restores the previous version.
     def test_rollback_survives_transient_lock_during_restore(self):
         _make_zip(self.zip, {"tools/a.py": "x\n", "dist/c.html": "<html></html>\n"})
