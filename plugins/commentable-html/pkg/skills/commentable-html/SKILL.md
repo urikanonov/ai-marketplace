@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.131.0`
+**Version:** `1.132.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -178,7 +178,9 @@ This skill can build a real animated slide **deck** that is also a commentable-h
 
 **Detect and confirm (CMH-DECK-01).** When the request is really a presentation (`slide deck`, `presentation`, `pitch deck`, `slides for a talk`, `convert this ppt`), do not silently produce a flat document. Confirm that the user wants a real deck; if they decline, fall back to a normal flat commentable HTML.
 
-**Plan first (frontend-slides).** When asked to plan or design a deck (not just scaffold one), consult the vendored `frontend-slides` design system before scaffolding: read `vendor/frontend-slides/bold-template-pack/selection-index.json` to shortlist templates by mood/tone/scheme/best_for, plus `vendor/frontend-slides/STYLE_PRESETS.md`, `html-template.md`, and `animation-patterns.md` for the style presets, the fixed-stage structure, and entrance animations. Decide the slide outline and theme, and offer a safe, a bold, and a wildcard title-slide option, before writing any slides.
+**Ask first (CMH-DECK-22).** Before you outline a deck, ask the user the conditional questions in `references/deck-design.md` that you cannot infer - the duration and format, the audience's technical level, whether it is presented live (internet) or handed off / air-gapped, whether reviewers will comment on it and send it back, the theme or brand, whether there is one running example to thread through it, and how early the install call-to-action should appear. These change the deck's density, depth, chrome, and export story, so gather them up front rather than guessing.
+
+**Plan first (frontend-slides).** When asked to plan or design a deck (not just scaffold one), consult the vendored `frontend-slides` design system before scaffolding: read `vendor/frontend-slides/bold-template-pack/selection-index.json` to shortlist templates by mood/tone/scheme/best_for, plus `vendor/frontend-slides/STYLE_PRESETS.md`, `html-template.md`, and `animation-patterns.md` for the style presets, the fixed-stage structure, and entrance animations. Then read `references/deck-design.md`, the CHM-specific deck design and narrative playbook (fill the fixed stage, capture-safe transform-only motion, act wayfinding, pain-before-mechanism narrative, the review-surface patterns, and the contrast/clip discipline), which adapts that general guidance to a commentable, strictly-validated deck. Decide the slide outline and theme, and offer a safe, a bold, and a wildcard title-slide option, before writing any slides.
 
 **Deck invariants:**
 
@@ -189,7 +191,7 @@ This skill can build a real animated slide **deck** that is also a commentable-h
 - For PPTX input, extract with the installed `pptx` skill when available, otherwise the local fallback, then pass extracted text through `tools/deck/pptx_to_fragment.py` so strings are HTML-escaped before they enter the deck.
 - Use **Export Offline** for corporate-safe sharing after mermaid diagrams and charts have rendered.
 
-See [Deck runtime interface contract](references/deck-contract.md) for author-time commands, PPTX conversion limits, deterministic font fixing, the runtime interface, stable slide-id contract, controller globals, anchoring model, script and resource restrictions, contrast validation, and limitations. Vendored engine resync is a maintainer task documented in the source repo.
+See [Deck design playbook](references/deck-design.md) for the CHM-specific design and narrative guidance (and the conditional up-front questions), and [Deck runtime interface contract](references/deck-contract.md) for author-time commands, PPTX conversion limits, deterministic font fixing, the runtime interface, stable slide-id contract, controller globals, anchoring model, script and resource restrictions, contrast validation, and limitations. Vendored engine resync is a maintainer task documented in the source repo.
 
 ## Output modes and exports
 

@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.132.0] - 2026-07-16
+
+### Added
+
+- Deck design playbook: a new CHM-specific `references/deck-design.md` (fill the fixed stage, capture-safe motion, wayfinding, pain-before-mechanism narrative, review-surface patterns, card variety, contrast/clip discipline) plus SKILL.md "ask first" up-front questions that route deck planning to it, salvaged from the corrupted #279 branch (CMH-DECK-22, closes #332).
+
 ## [1.131.0] - 2026-07-16
 
 ### Added
