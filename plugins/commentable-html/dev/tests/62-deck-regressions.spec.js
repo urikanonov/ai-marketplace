@@ -314,7 +314,7 @@ test("CMH-DECK-SHOWCASE-03: an early install CTA shows both agents before the fi
   }
 });
 
-test("CMH-DECK-SHOWCASE-05: Act 4 slides explain the deterministic build, portability, and test model", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portability, and test model", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, "text=Anatomy of a commentable file.");

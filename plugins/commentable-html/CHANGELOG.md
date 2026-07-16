@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.116.0] - 2026-07-16
+
+### Changed
+
+- Reworked the showcase deck's Act 4 "behind the scenes" run so it now teaches the
+  deterministic region split, the website-style portability model, how the skill is
+  assembled from `SKILL.md`, on-demand references, and authoring/validation tools,
+  plus the cross-platform Playwright-and-Python validation methodology behind the
+  shipped experience. (CMH-DECK-SHOWCASE-06)
+
 ## [1.115.0] - 2026-07-16
 
 ### Added

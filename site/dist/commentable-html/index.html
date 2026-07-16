@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.115.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.116.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,6 +415,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.116.0] - 2026-07-16</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Reworked the showcase deck&#x27;s Act 4 &quot;behind the scenes&quot; run so it now teaches the deterministic region split, the website-style portability model, how the skill is assembled from <code>SKILL.md</code>, on-demand references, and authoring/validation tools, plus the cross-platform Playwright-and-Python validation methodology behind the shipped experience. (CMH-DECK-SHOWCASE-06)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.115.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -422,6 +429,8 @@
               <li>The document-producing tools (<code>new_document.py</code>, <code>deck_scaffold.py</code>) stamp that session id by default, taking it from <code>--session-id</code> or, when absent, an auto-detected environment variable (<code>COPILOT_AGENT_SESSION_ID</code> for Copilot, <code>CLAUDE_CODE_SESSION_ID</code> for Claude). <code>--agent</code> overrides the label and <code>--no-session-id</code> opts out. When several agents&#x27; session ids are visible at once (a nested launch), the agent actually running the tool wins. A local, non-CI live check that drives the real <code>copilot</code>/<code>claude</code> CLIs is at <code>dev/tests/copilot_e2e_check.py</code> and <code>dev/tests/claude_e2e_check.py</code>. (CMH-STAMP-04)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.108.1] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
@@ -429,8 +438,6 @@
               <li>Restructured the showcase deck&#x27;s narrative flow: added a dedicated header/pitch slide, moved the website-style medium comparison and shipped-example prompts earlier, removed the redundant recap slide, and replaced the close with a &quot;What&#x27;s next?&quot; hub plus a trailing &quot;Questions?&quot; slide while keeping the shipped widget defaults unchanged. (CMH-DECK-SHOWCASE-05)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.107.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
@@ -459,14 +466,7 @@
               <li><code>npm run shots</code> now regenerates all tutorial screenshots from the community-garden example with pinned capture state, and <code>npm run shots:check</code> plus <code>rebuild_all.py --check</code> catch missing or stale committed tutorial screenshots before the site syncs them. (CMH-TUT-SHOTS-01)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.102.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The validator now emits a non-fatal information-density advisory for <code>report</code> and <code>plan</code> documents: it warns when a section is a wall of four or more consecutive long paragraphs with no table, list, figure, diff, chart, or diagram to break it up, nudging authors toward a real skimmable layout. The check uses a dedicated density pass scoped to <code>#commentRoot</code>, ignores <code>cm-skip</code> and paragraphs nested inside layout blocks, resets at any layout block, heading, or section boundary, and runs only for <code>report</code> and <code>plan</code> (<code>slides</code>, <code>board</code>, <code>generic</code>, and a missing or unknown kind are exempt). Its thresholds are tunable. (CMH-VAL-15)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">98 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">99 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

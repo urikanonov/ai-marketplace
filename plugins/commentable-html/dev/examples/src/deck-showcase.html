@@ -2298,36 +2298,43 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
 <section class="slide" data-slide-id="slide-f1599f66">
   <div class="show-kicker">Act 4 - Portability</div>
   <h2>Three portability modes explain every handoff.</h2>
-  <div class="show-three">
-    <div class="show-card">
-      <h3>Non-portable</h3>
-      <p>Best for fast local iteration while the author and the agent keep refining the file.</p>
-      <ul>
-        <li><strong>Styles + runtime</strong>: skill folder</li>
-        <li><strong>Mermaid + charts</strong>: CDN</li>
-        <li><strong>Comments</strong>: browser storage</li>
-      </ul>
-    </div>
-    <div class="show-card">
-      <h3>Portable</h3>
-      <p>One self-contained HTML file for peer review or a durable artifact you can reopen anywhere.</p>
-      <ul>
-        <li><strong>Styles + runtime</strong>: inlined</li>
-        <li><strong>Mermaid + charts</strong>: CDN</li>
-        <li><strong>Comments</strong>: seeded from HTML, then browser storage</li>
-      </ul>
-    </div>
-    <div class="show-card">
-      <h3>Offline</h3>
-      <p>Portable plus zero-network snapshots for diagrams and charts when the review must travel fully offline.</p>
-      <ul>
-        <li><strong>Styles + runtime</strong>: inlined</li>
-        <li><strong>Mermaid + charts</strong>: inlined snapshots</li>
-        <li><strong>Comments</strong>: seeded from HTML, then browser storage</li>
-      </ul>
-    </div>
+  <div class="show-panel" style="padding:20px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Mode</th>
+          <th>Best for</th>
+          <th>Styles + runtime</th>
+          <th>Mermaid + charts</th>
+          <th>Comments</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Non-portable</strong></td>
+          <td>Fast local iteration</td>
+          <td>skill folder</td>
+          <td>CDN</td>
+          <td>browser storage</td>
+        </tr>
+        <tr>
+          <td><strong>Portable</strong></td>
+          <td>Self-contained review or archival</td>
+          <td>inlined</td>
+          <td>CDN</td>
+          <td>seeded from HTML, then browser storage</td>
+        </tr>
+        <tr>
+          <td><strong>Offline</strong></td>
+          <td>Zero-network handoff</td>
+          <td>inlined</td>
+          <td>inlined snapshots</td>
+          <td>seeded from HTML, then browser storage</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
-  <p class="show-lead" style="margin-top:24px;"><strong>CDN</strong> here means library code only. Your document text and comments stay local: browser storage while you iterate, then seeded from HTML after export.</p>
+  <p class="show-lead" style="margin-top:24px;"><strong>CDN</strong> means library code only. Your document text and comments stay local.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-3d5c8a12">
