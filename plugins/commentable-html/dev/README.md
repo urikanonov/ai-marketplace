@@ -82,7 +82,13 @@ npm ci
 npx playwright install chromium
 ```
 
-Run the browser suite:
+Run the browser suite with the tutorial screenshot drift check:
+
+```powershell
+npm test
+```
+
+Run Playwright directly while iterating on browser-only changes:
 
 ```powershell
 npx playwright test
@@ -136,11 +142,15 @@ npm run shots
 `../pkg/skills/commentable-html/examples/report-community-garden.html` and writes
 `garden-01-top-light.png` through `garden-09-copyall.png` into
 `../pkg/skills/commentable-html/docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
-capture clock and disables CSS animations and transitions (and emulates reduced motion), so the
-capture is reproducible: the full-page shots (top-of-document, composer, comment-saved, help,
-copy-all) are byte-identical across runs on the same environment. The element-cropped figure shots
-(kql/chart/diff) and the dark-theme shot can vary by sub-pixel antialiasing, so treat those as
-visually equivalent rather than byte-stable. To capture a different example, pass overrides:
+capture clock, random seed, viewport, locale, timezone, reduced motion, browser font rendering flags,
+and capture fonts, then normalizes PNG output so repeated runs are reviewable on the same browser
+environment. Check committed screenshots for drift without rewriting them:
+
+```powershell
+npm run shots:check
+```
+
+To capture a different example, pass overrides:
 
 ```powershell
 node tools\capture_tutorial.mjs <example.html> <outDir> <prefix>
@@ -149,8 +159,9 @@ node tools\capture_tutorial.mjs <example.html> <outDir> <prefix>
 Screenshot rendering is environment-specific (fonts and anti-aliasing differ across operating
 systems), so regenerate on the canonical environment where the images are maintained. After
 regenerating, rebuild the site so its synced tutorial images stay current: run
-`python scripts/build_site_data.py` from the repo root. The determinism is covered by
-`tests/54-tutorial-shots.spec.js`.
+`python scripts/rebuild_all.py` from the repo root. `npm test` and
+`python scripts/rebuild_all.py --check` both run the screenshot drift check. The determinism is
+covered by `tests/54-tutorial-shots.spec.js`.
 
 ## Fixtures workflow
 

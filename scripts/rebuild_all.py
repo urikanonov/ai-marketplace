@@ -7,7 +7,8 @@ gate" fixup commits. This is the single command that runs them all deterministic
 
   1. tools/build.py         - the commentable-html layer dist bundles + stamped manifests
   2. tests/fixtures/generate.mjs - the Playwright fixtures (embed the runtime version)
-  3. scripts/build_site_data.py  - the GitHub Pages site (pages, demos, sitemap, llms)
+  3. capture_tutorial.mjs - tutorial screenshots used by docs and the site
+  4. scripts/build_site_data.py  - the GitHub Pages site (pages, demos, sitemap, llms)
 
 Usage:
   python scripts/rebuild_all.py           # regenerate everything in order
@@ -27,6 +28,7 @@ BUILD_PY = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "bu
 ASSETS_DIR = os.path.join(ROOT, "plugins", "commentable-html", "dev", "assets")
 OUT_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "commentable-html")
 FIXTURES_GEN = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tests", "fixtures", "generate.mjs")
+TUTORIAL_SHOTS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "capture_tutorial.mjs")
 SITE_DATA = os.path.join(ROOT, "scripts", "build_site_data.py")
 
 
@@ -54,6 +56,10 @@ def main(argv=None):
         steps.append(("Playwright fixtures (generate.mjs)", [node, FIXTURES_GEN] + check))
     else:
         print("== Playwright fixtures (generate.mjs) == skipped (node not found; CI plugin-tests runs it)")
+    if node and os.path.exists(TUTORIAL_SHOTS):
+        steps.append(("Tutorial screenshots (capture_tutorial.mjs)", [node, TUTORIAL_SHOTS] + check))
+    else:
+        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (node not found; CI plugin-tests runs it)")
     steps.append(("GitHub Pages site (build_site_data.py)", [sys.executable, SITE_DATA] + check))
 
     failed = []
