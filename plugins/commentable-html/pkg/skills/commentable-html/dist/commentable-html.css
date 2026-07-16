@@ -1674,3 +1674,16 @@ body.cmh-deck-present #menuComment {
     display: none;
   }
 }
+/* ---------- Reduced motion (CMH-A11Y-07) ---------- */
+/* Honor the OS/browser "reduce motion" preference: clamp every non-essential animation and
+   transition to near-instant so the composer flash, mermaid/diff pulses, and checklist/notes
+   flashes do not animate for users who are motion-sensitive. Durations are clamped (not set to
+   none) so animations that establish a final state via keyframes still land correctly. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

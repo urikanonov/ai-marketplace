@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.86.0" />
+<meta name="commentable-html-version" content="1.87.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.86.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.87.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -1809,6 +1809,19 @@ body.cmh-deck-present #menuComment {
     display: none;
   }
 }
+/* ---------- Reduced motion (CMH-A11Y-07) ---------- */
+/* Honor the OS/browser "reduce motion" preference: clamp every non-essential animation and
+   transition to near-instant so the composer flash, mermaid/diff pulses, and checklist/notes
+   flashes do not animate for users who are motion-sensitive. Durations are clamped (not set to
+   none) so animations that establish a final state via keyframes still land correctly. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 /* ============================================================
    END: commentable-html - CSS
    ============================================================ */
@@ -2275,7 +2288,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.86.0";
+const CMH_VERSION = "1.87.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

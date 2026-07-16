@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.87.0] - 2026-07-16
+
+### Added
+
+- The layer now honors the operating-system "reduce motion" setting
+  (`prefers-reduced-motion: reduce`): non-essential animations and transitions (the composer flash,
+  the mermaid and diff pulses, the checklist and notes flashes) are clamped to near-instant so they
+  do not animate for motion-sensitive readers, while everything still lands in its final state.
+  (CMH-A11Y-07)
+
 ## [1.86.0] - 2026-07-16
 
 ### Fixed
