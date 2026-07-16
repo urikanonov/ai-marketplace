@@ -8547,6 +8547,7 @@ function setupSideToc() {
       const sec = _cmTocSectionOf(it);
       const hay = ((it.label || "") + " " + (sec ? sec.textContent : (it.el.textContent || ""))).toLowerCase();
       const match = !query || hay.indexOf(query) !== -1;
+      it._cmFiltered = !match; // scroll-spy reads this so it skips hidden entries (sectioned or not)
       const li = links[i].closest("li");
       if (li) li.classList.toggle("cm-toc-li-hidden", !match);
       if (sec) sec.classList.toggle("cm-toc-filtered", !match);
@@ -8564,7 +8565,13 @@ function setupSideToc() {
     try { id = decodeURIComponent(id); } catch (e) { /* keep the raw id */ }
     const el = id && document.getElementById(id);
     const sec = el && el.closest && el.closest("section");
-    if (sec && sec.classList.contains("cm-toc-filtered")) { clearTocFilter(); el.scrollIntoView({ block: "start" }); }
+    if (sec && sec.classList.contains("cm-toc-filtered")) {
+      // expandCollapsedAncestors (shared bundle scope) clears the filter AND expands collapsed
+      // ancestors so a revealed section shows its body, not just its heading.
+      if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(el);
+      else clearTocFilter();
+      el.scrollIntoView({ block: "start" });
+    }
   });
   // If the viewport narrows below the side-menu breakpoint the filter box is hidden, so drop any
   // active filter to avoid stranding sections hidden with no visible control to restore them.
@@ -8628,8 +8635,7 @@ function setupSideToc() {
     let bestTop = -Infinity;
     let firstVisible = -1;
     for (let i = 0; i < items.length; i++) {
-      const sec = _cmTocSectionOf(items[i]);
-      if (sec && sec.classList.contains("cm-toc-filtered")) continue;
+      if (items[i]._cmFiltered) continue; // never activate an entry the filter has hidden
       if (firstVisible === -1) firstVisible = i;
       const top = items[i].el.getBoundingClientRect().top;
       if (top <= 120 && top > bestTop) { bestTop = top; activeIdx = i; }
@@ -8640,8 +8646,7 @@ function setupSideToc() {
     const doc = document.documentElement;
     if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) {
       for (let i = items.length - 1; i >= 0; i--) {
-        const sec = _cmTocSectionOf(items[i]);
-        if (!sec || !sec.classList.contains("cm-toc-filtered")) { activeIdx = i; break; }
+        if (!items[i]._cmFiltered) { activeIdx = i; break; }
       }
     }
     for (let i = 0; i < links.length; i++) {

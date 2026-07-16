@@ -407,7 +407,7 @@
             <div class="rel-head"><h3>[1.80.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>The wide-screen side navigation menu now has a filter box that searches AS a filter over the document: typing hides every section (and its menu entry) whose heading and body text does not match, Escape clears it, and following a link to a filtered-out section reveals it instead of scrolling to nothing. Filtered sections are hidden with <code>display:none</code> (comment offsets are unaffected) and are skipped by the scroll-spy. (CMH-TOC-09)</li>
+              <li>The wide-screen side navigation menu now has a filter box that searches AS a filter over the document: typing hides each matching entry&#x27;s section (for section-wrapped content) and always its menu entry, Escape clears it, and following a link or comment jump to a filtered-out section reveals and expands it instead of scrolling to nothing. Filtered sections are hidden with <code>display:none</code> (comment offsets are unaffected) and are never marked current by the scroll-spy. (CMH-TOC-09)</li>
               <li>The side-navigation scroll-spy now marks the current section&#x27;s link with <code>aria-current=&quot;location&quot;</code> (kept unique and cleared from the others), so screen readers announce the reader&#x27;s location instead of relying on the visual highlight alone. (CMH-TOC-08)</li>
             </ul>
           </div>

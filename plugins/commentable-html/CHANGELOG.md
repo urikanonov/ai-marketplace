@@ -9,10 +9,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 ### Added
 
 - The wide-screen side navigation menu now has a filter box that searches AS a filter over the
-  document: typing hides every section (and its menu entry) whose heading and body text does not
-  match, Escape clears it, and following a link to a filtered-out section reveals it instead of
-  scrolling to nothing. Filtered sections are hidden with `display:none` (comment offsets are
-  unaffected) and are skipped by the scroll-spy. (CMH-TOC-09)
+  document: typing hides each matching entry's section (for section-wrapped content) and always its
+  menu entry, Escape clears it, and following a link or comment jump to a filtered-out section reveals
+  and expands it instead of scrolling to nothing. Filtered sections are hidden with `display:none`
+  (comment offsets are unaffected) and are never marked current by the scroll-spy. (CMH-TOC-09)
 - The side-navigation scroll-spy now marks the current section's link with
   `aria-current="location"` (kept unique and cleared from the others), so screen readers announce
   the reader's location instead of relying on the visual highlight alone. (CMH-TOC-08)

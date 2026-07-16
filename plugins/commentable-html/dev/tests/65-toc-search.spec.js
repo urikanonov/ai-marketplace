@@ -94,4 +94,24 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(sec(page, "gamma")).toBeVisible();
     await expect(toc.locator(".cm-side-toc-search")).toHaveValue("");
   });
+
+  test("a filtered-out flat heading entry never receives aria-current (CMH-TOC-09)", async ({ page }) => {
+    // Flat headings with no <section> wrapper: filtering hides the menu row (not the body), and the
+    // scroll-spy must never mark a hidden row current.
+    const FLAT = `<h2 id="fone">Flat one apple</h2><p style="display:block;height:1400px">a</p>
+      <h2 id="ftwo">Flat two banana</h2><p style="display:block;height:1400px">b</p>`;
+    const { html } = stageContent(FLAT, { key: "cmh-toc-flat", source: "flat.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const toc = page.locator("#cmSideToc");
+    await expect(toc).toBeVisible();
+    await toc.locator(".cm-side-toc-search").fill("apple");
+    // The non-matching row is hidden, and no hidden row is ever aria-current.
+    await expect(toc.locator('.cm-side-toc-list a[href="#ftwo"]')).toBeHidden();
+    await expect(toc.locator('.cm-side-toc-list li.cm-toc-li-hidden a[aria-current="location"]')).toHaveCount(0);
+    // A query matching nothing leaves no current link at all.
+    await toc.locator(".cm-side-toc-search").fill("nomatchxyz");
+    await expect(toc.locator('.cm-side-toc-list a[aria-current="location"]')).toHaveCount(0);
+  });
 });
