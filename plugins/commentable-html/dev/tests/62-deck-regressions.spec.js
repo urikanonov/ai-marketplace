@@ -314,69 +314,42 @@ test("CMH-DECK-SHOWCASE-03: an early install CTA shows both agents before the fi
   }
 });
 
-test("CMH-DECK-SHOWCASE-05: showcase deck front-loads the comparison and prompts, keeps widget defaults, and closes with what's next plus questions", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-05: Act 4 slides explain the deterministic build, portability, and test model", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    const slides = await page.evaluate(() =>
-      Array.from(document.querySelectorAll(".slide")).map((slide, index) => ({
-        index,
-        id: slide.dataset.slideId,
-        className: slide.className,
-        heading: (slide.querySelector("h1, h2")?.textContent || "").trim(),
-        text: slide.textContent || "",
-      })),
-    );
-    const indexOfHeading = (heading) => slides.findIndex((slide) => slide.heading === heading);
+    await showSlideWith(page, "text=Anatomy of a commentable file.");
+    const anatomy = page.locator(".slide.active");
+    await expect(anatomy).toContainText("CSS region");
+    await expect(anatomy).toContainText("COMMENT UI region");
+    await expect(anatomy).toContainText("JS region");
+    await expect(anatomy).toContainText("CONTENT region");
+    await expect(anatomy).toContainText("That separation is why upgrades stay deterministic");
 
-    expect(slides[0].className).toContain("show-header");
-    expect(slides[0].text).toContain("Keep the review loop inside any HTML artifact");
+    await showSlideWith(page, "text=Three portability modes explain every handoff.");
+    const portability = page.locator(".slide.active");
+    await expect(portability).toContainText("Styles + runtime");
+    await expect(portability).toContainText("skill folder");
+    await expect(portability).toContainText("CDN");
+    await expect(portability).toContainText("browser storage");
+    await expect(portability).toContainText("seeded from HTML");
+    await expect(portability).toContainText("inlined snapshots");
 
-    const comparisonIndex = indexOfHeading("Chat, Markdown, HTML - or a tight loop?");
-    const examplePromptsIndex = indexOfHeading("Three shipped prompts already land on a full review surface.");
-    const morePromptsIndex = indexOfHeading("Three more prompts cover checklists, notes, and data-heavy review.");
-    const twoPromptsIndex = indexOfHeading("Two prompts cover the review round-trip.");
-    const featureIndex = indexOfHeading("Comment on the actual thing, not a screenshot of it.");
-    expect(comparisonIndex).toBeGreaterThan(0);
-    expect(comparisonIndex).toBeLessThan(examplePromptsIndex);
-    expect(examplePromptsIndex).toBeLessThan(morePromptsIndex);
-    expect(morePromptsIndex).toBeLessThan(twoPromptsIndex);
-    expect(twoPromptsIndex).toBeLessThan(featureIndex);
-    expect(slides.some((slide) => slide.text.includes("Stop describing edits. Point at them."))).toBe(false);
+    await showSlideWith(page, "text=How the skill is built.");
+    const build = page.locator(".slide.active");
+    await expect(build).toContainText("SKILL.md");
+    await expect(build).toContainText("references/document-layout.md");
+    await expect(build).toContainText("references/design-decisions.md");
+    await expect(build).toContainText("tools/authoring/retrofit.py");
+    await expect(build).toContainText("tools/validate/validate.py --strict");
+    await expect(build).toContainText("loaded on demand to keep context minimal");
 
-    const promptSlideIds = [slides[examplePromptsIndex].id, slides[morePromptsIndex].id];
-    const exampleUrls = [
-      "https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-community-garden.html",
-      "https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-triage.html",
-      "https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-metrics.html",
-      "https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-checklist.html",
-      "https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-notes.html",
-      "https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-taxi.html",
-    ];
-    for (const url of exampleUrls) {
-      const count = await page.locator(
-        promptSlideIds.map((id) => `[data-slide-id="${id}"] a[href="${url}"]`).join(", "),
-      ).count();
-      expect(count).toBe(1);
-    }
-
-    await showSlideWith(page, ".showcase-checklist-slide");
-    await expect(page.locator('[data-cm-slot="Open"] [data-cm-part="bed8-crop"]')).toHaveCount(1);
-    await expect(page.locator('[data-cm-slot="Open"] [data-cm-part="water-days"]')).toHaveCount(1);
-    await expect(page.locator('[data-cm-slot="Decide now"] [data-cm-part="rain-rule"]')).toHaveCount(1);
-    await expect(page.locator('[data-cm-slot="Locked"] [data-cm-part="compost"]')).toHaveCount(1);
-    await expect(page.locator('.slide.active [data-cmh-item="layout"][data-cmh-state="check"]')).toHaveCount(1);
-    await expect(page.locator('.slide.active [data-cmh-item="bed8"][data-cmh-state="question"]')).toHaveCount(1);
-    await expect(page.locator('.slide.active [data-cmh-item="days"][data-cmh-state="question"]')).toHaveCount(1);
-
-    expect(slides[slides.length - 2].heading).toBe("What's next?");
-    expect(slides[slides.length - 1].heading).toBe("Questions?");
-    const nextSlide = page.locator(`[data-slide-id="${slides[slides.length - 2].id}"]`);
-    await expect(nextSlide.locator('a[href="https://urikanonov.github.io/ai-marketplace/commentable-html/#install"]')).toHaveCount(1);
-    await expect(nextSlide.locator('a[href="https://urikanonov.github.io/ai-marketplace/commentable-html/"]')).toHaveCount(1);
-    await expect(nextSlide.locator('a[href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/"]')).toHaveCount(1);
-    await expect(nextSlide.locator('a[href="https://github.com/urikanonov/ai-marketplace/issues/new/choose"]')).toHaveCount(1);
-    await expect(nextSlide.locator('a[href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md"]')).toHaveCount(1);
-    await expect(nextSlide.locator('a[href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"]')).toHaveCount(1);
+    await showSlideWith(page, "text=Testing and validation keep the HTML honest.");
+    const testing = page.locator(".slide.active");
+    await expect(testing).toContainText("Playwright");
+    await expect(testing).toContainText("plugin-tests.yml");
+    await expect(testing).toContainText("Windows, macOS, and Linux");
+    await expect(testing).toContainText("Copilot and Claude");
+    await expect(testing).toContainText("test_*.py");
   } finally {
     await server.close();
   }

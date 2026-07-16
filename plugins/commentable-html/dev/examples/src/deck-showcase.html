@@ -2261,23 +2261,27 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
   <h2>Anatomy of a commentable file.</h2>
   <div class="show-two">
     <div class="show-card">
-      <h3>One self-contained document</h3>
-      <ul>
-        <li>The review layer: CSS, comment UI, and JS in marked regions.</li>
-        <li>A CONTENT region that is yours - the garden plan or these slides.</li>
-        <li>Embedded comments and widget state as JSON when you export.</li>
+      <h3>One file, four stable ownership lanes</h3>
+      <ul style="list-style:none;padding:0;margin:0;display:grid;gap:12px;">
+        <li><span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#fbe4ec;color:#8f1239;font-weight:700;">CSS region</span> theme and layout rules the build can replace in one shot.</li>
+        <li><span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#fff1d6;color:#8a4b00;font-weight:700;">COMMENT UI region</span> toolbar, sidebar, menus, and export chrome owned by the layer.</li>
+        <li><span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#e4ebff;color:#1f3a8a;font-weight:700;">JS region</span> runtime behavior, anchoring, exports, and widget logic.</li>
+        <li><span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#e2f3ea;color:#166534;font-weight:700;">CONTENT region</span> your slides, report prose, diagrams, and examples - the part the author owns.</li>
       </ul>
+      <p style="margin-top:18px;">That separation is why upgrades stay deterministic: swap CSS, COMMENT UI, and JS, leave CONTENT alone, then re-stamp the version.</p>
     </div>
     <div class="show-panel" style="padding:24px;">
       <pre><code>&lt;main data-cmh-content-root data-cmh-mode="deck"&gt;
-  &lt;!-- CSS / COMMENT UI / JS: layer-owned --&gt;
-  &lt;!-- BEGIN: CONTENT (your slides) --&gt;
+  &lt;!-- BEGIN: CSS --&gt;
+  &lt;!-- BEGIN: COMMENT UI --&gt;
+  &lt;!-- BEGIN: JS --&gt;
+  &lt;!-- BEGIN: CONTENT --&gt;
   &lt;section class="slide"&gt; ... &lt;/section&gt;
   &lt;!-- END: CONTENT --&gt;
 &lt;/main&gt;</code></pre>
     </div>
   </div>
-  <p class="show-lead" style="margin-top:24px;">The build swaps only the layer regions and re-stamps the version. Your content is never clobbered.</p>
+  <p class="show-lead" style="margin-top:24px;">The build swaps only the layer-owned regions and re-stamps the version. Your content is never clobbered.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-f2d0c0bc">
@@ -2293,26 +2297,69 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
 
 <section class="slide" data-slide-id="slide-f1599f66">
   <div class="show-kicker">Act 4 - Portability</div>
-  <h2>Four outputs cover every handoff.</h2>
-  <div class="show-export-row">
-    <div class="show-export"><h3>Live</h3><p>You author and review in the browser; state sits in local storage while you iterate.</p></div>
-    <div class="show-export"><h3>Portable</h3><p>One HTML file with the layer, comments, and current state embedded. Best for peer review.</p></div>
-    <div class="show-export"><h3>Offline</h3><p>Portable plus rendered diagrams and chart snapshots, with remote loaders stripped for zero-network review.</p></div>
-    <div class="show-export"><h3>Markdown</h3><p>Readable review bundle for chat, tickets, PR descriptions, or another agent pass.</p></div>
+  <h2>Three portability modes explain every handoff.</h2>
+  <div class="show-three">
+    <div class="show-card">
+      <h3>Non-portable</h3>
+      <p>Best for fast local iteration while the author and the agent keep refining the file.</p>
+      <ul>
+        <li><strong>Styles + runtime</strong>: skill folder</li>
+        <li><strong>Mermaid + charts</strong>: CDN</li>
+        <li><strong>Comments</strong>: browser storage</li>
+      </ul>
+    </div>
+    <div class="show-card">
+      <h3>Portable</h3>
+      <p>One self-contained HTML file for peer review or a durable artifact you can reopen anywhere.</p>
+      <ul>
+        <li><strong>Styles + runtime</strong>: inlined</li>
+        <li><strong>Mermaid + charts</strong>: CDN</li>
+        <li><strong>Comments</strong>: seeded from HTML, then browser storage</li>
+      </ul>
+    </div>
+    <div class="show-card">
+      <h3>Offline</h3>
+      <p>Portable plus zero-network snapshots for diagrams and charts when the review must travel fully offline.</p>
+      <ul>
+        <li><strong>Styles + runtime</strong>: inlined</li>
+        <li><strong>Mermaid + charts</strong>: inlined snapshots</li>
+        <li><strong>Comments</strong>: seeded from HTML, then browser storage</li>
+      </ul>
+    </div>
   </div>
-  <p class="show-lead" style="margin-top:24px;">The only network use in a normal Portable file is optional library code for Mermaid or charts, never your content. Offline removes that too.</p>
+  <p class="show-lead" style="margin-top:24px;"><strong>CDN</strong> here means library code only. Your document text and comments stay local: browser storage while you iterate, then seeded from HTML after export.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-3d5c8a12">
   <div class="show-kicker">Act 4 - Safe by construction</div>
-  <h2>Authoring is deterministic, strict, and stdlib-only.</h2>
+  <h2>How the skill is built.</h2>
   <div class="show-two">
-    <div class="show-card"><h3>Scaffold</h3><p><code>deck_scaffold.py</code> builds the fixed 16:9 wrapper, mints stable slide ids, refuses accidental overwrite, and validates before writing.</p></div>
-    <div class="show-card"><h3>Validate</h3><p><code>deck_validate.py</code> checks the deck contract, active-content safety, no remote media, unique slide ids, reduced-motion CSS, Mermaid syntax, and contrast.</p></div>
+    <div class="show-card"><h3>Main skill file</h3><p><code>SKILL.md</code> is the entry point: when to use Commentable HTML, which authoring path to take, and which final validation steps are mandatory.</p></div>
+    <div class="show-card"><h3>On-demand references</h3><p><code>references/document-layout.md</code> and <code>references/design-decisions.md</code> stay loaded on demand to keep context minimal until the agent needs that exact contract.</p></div>
+  </div>
+  <div class="show-two" style="margin-top:22px;">
+    <div class="show-card"><h3>Deterministic editors</h3><p><code>tools/authoring/new_document.py</code>, <code>tools/authoring/retrofit.py</code>, and <code>tools/authoring/upgrade.py</code> do surgical, repeatable edits instead of freehand rewriting.</p></div>
+    <div class="show-card"><h3>Mandatory final gate</h3><p><code>tools/validate/validate.py --strict</code> is the last stop before HTML goes back to the user, so malformed structure never slips through.</p></div>
   </div>
   <div class="show-panel" style="margin-top:24px;padding:24px;">
-    <pre><code>python tools/deck/deck_scaffold.py --content slides.html --label "Showcase" --out deck-showcase.html
-python tools/deck/deck_validate.py --strict examples/deck-showcase.html</code></pre>
+    <pre><code>SKILL.md
+references/document-layout.md
+references/design-decisions.md
+tools/authoring/retrofit.py
+tools/validate/validate.py --strict deck-showcase.html</code></pre>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-6b1c3e44">
+  <div class="show-kicker">Act 4 - Validation methodology</div>
+  <h2>Testing and validation keep the HTML honest.</h2>
+  <div class="show-two">
+    <div class="show-card"><h3>UX-first browser checks</h3><p>Playwright opens the real demos, clicks, drags, exports, and reloads them the way a reviewer does. <code>plugin-tests.yml</code> reruns that browser suite in CI.</p></div>
+    <div class="show-card"><h3>Deterministic Python coverage</h3><p>Python <code>test_*.py</code> files pin the builders, validators, and deck scaffolds so structure or safety regressions fail before publish.</p></div>
+  </div>
+  <div class="show-two" style="margin-top:22px;">
+    <div class="show-card"><h3>Cross-platform and cross-agent</h3><p>The repo reruns validators on Windows, macOS, and Linux, and the same portable HTML works in Copilot and Claude because the output is just HTML.</p></div>
+    <div class="show-card"><h3>Anti-regression by default</h3><p>Every bug fix or new behavior adds a spec row and a covering test, so the next rebuild proves the contract still holds.</p></div>
   </div>
 </section>
 
