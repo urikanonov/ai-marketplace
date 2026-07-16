@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.93.0] - 2026-07-16
+
+### Added
+
+- `tools/authoring/recommend_kind.py` now recommends `--kind report`, `--kind plan`, or
+  `--kind slides` from filename and content signals, prints the evidence behind the
+  recommendation, and emits advisory mismatch warnings when an explicit kind contradicts
+  the signals without changing the chosen kind. (CMH-KIND-04)
+
 ## [1.92.0] - 2026-07-16
 
 ### Added

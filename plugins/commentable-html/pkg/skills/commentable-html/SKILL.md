@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.92.0`
+**Version:** `1.93.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -63,7 +63,13 @@ python tools/authoring/upgrade.py existing-commentable.html
 python tools/deck/deck_scaffold.py --content slides.html --label "My Deck" --source my-deck.html --out my-deck.html
 ```
 
-`--key auto` derives a stable non-demo key; an explicit key must be unique per document on the same origin. `--label` becomes `data-doc-label`; `--source` becomes `data-doc-source`; `--kind` is required and must be `report`, `plan`, `slides`, `board`, or `generic`. `report` and `plan` need a top-level title; the tools and validator enforce that.
+`--key auto` derives a stable non-demo key; an explicit key must be unique per document on the same
+origin. `--label` becomes `data-doc-label`; `--source` becomes `data-doc-source`; `--kind` is required
+and must be `report`, `plan`, `slides`, `board`, or `generic`. `report` and `plan` need a top-level
+title; the tools and validator enforce that. If the right kind is unclear, run
+`tools/authoring/recommend_kind.py <fragment-or-html> [--kind <chosen>]` first. It recommends only
+`report`, `plan`, or `slides` from filename, diff, slide-cadence, comparison-table, and callout signals,
+and any mismatch warning is advisory: it never overrides the `--kind` you choose.
 
 **Mode decision:** NonPortable is for fast iteration, Portable is for peer review, Offline is for zero-network handoff. Portable still fetches optional mermaid or Chart.js from a CDN unless those libraries are vendored or the browser **Export Offline** path snapshots them. Portable != offline. See [Exports](references/exports.md).
 
