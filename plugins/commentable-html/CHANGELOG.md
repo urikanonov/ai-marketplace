@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.134.0] - 2026-07-16
+
+### Changed
+
+- Polished the showcase deck with a concrete Copy all bundle specimen in the technical section, a tighter medium-comparison table, and a corrected Mermaid-node callback so the pitch is more informative without changing the deck contract (CMH-DECK-SHOWCASE-09, closes #244).
+
 ## [1.132.0] - 2026-07-16
 
 ### Added
