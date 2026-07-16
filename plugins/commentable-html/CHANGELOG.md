@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.102.0] - 2026-07-16
+
+### Added
+
+- The validator now emits a non-fatal information-density advisory for `report` and `plan`
+  documents: it warns when a section is a wall of four or more consecutive long paragraphs with no
+  table, list, figure, diff, chart, or diagram to break it up, nudging authors toward a real
+  skimmable layout. The check uses a dedicated density pass scoped to `#commentRoot`, ignores
+  `cm-skip` and paragraphs nested inside layout blocks, resets at any layout block, heading, or
+  section boundary, and is exempt for `slides` and `board`. Its thresholds are tunable. (CMH-VAL-15)
+
 ## [1.101.0] - 2026-07-16
 
 ### Added
