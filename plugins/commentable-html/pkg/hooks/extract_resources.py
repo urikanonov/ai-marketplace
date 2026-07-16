@@ -42,10 +42,11 @@ STAGING_NAME = ".skill-resources-staging"
 BACKUP_SUFFIX = ".skill-resources-old"
 DEFAULT_ZIP_NAME = "skill-resources.zip"
 # Names in the shipped skill dir that the swap must never overwrite from a (tampered) zip. Compared
-# case-insensitively (os.path.normcase) because Windows/macOS filesystems are case-insensitive, so a
-# staging dir named e.g. `skill.md` resolves to the real `SKILL.md`.
+# with str.casefold() (NOT os.path.normcase, which only folds case on Windows and is a no-op on
+# macOS/Linux) because Windows and default macOS filesystems are case-insensitive, so a staging dir
+# named e.g. `skill.md` resolves to the real `SKILL.md`.
 _RESERVED_TOP_NAMES = {"SKILL.md", "LICENSE", DEFAULT_ZIP_NAME}
-_RESERVED_TOP_NORMCASE = {os.path.normcase(n) for n in _RESERVED_TOP_NAMES}
+_RESERVED_TOP_CASEFOLD = {n.casefold() for n in _RESERVED_TOP_NAMES}
 # A fresh grace budget for rolling a failed swap back to the previous version. The main deadline is
 # usually already spent (that is why the swap failed), so rollback needs its own window to clear a
 # transient lock and restore the old tree.
@@ -227,7 +228,7 @@ def _is_swappable(skill_dir, entry):
     staging file, or collide with a `<dir>.skill-resources-old` backup name."""
     if entry.startswith(".") or entry.endswith(BACKUP_SUFFIX):
         return False
-    if os.path.normcase(entry) in _RESERVED_TOP_NORMCASE:
+    if entry.casefold() in _RESERVED_TOP_CASEFOLD:
         return False
     return os.path.isdir(os.path.join(skill_dir, STAGING_NAME, entry))
 
@@ -246,13 +247,15 @@ def _cleanup_leftovers(skill_dir, retries, backoff, sleep, deadline):
         if name.endswith(BACKUP_SUFFIX):
             live = os.path.join(skill_dir, name[:-len(BACKUP_SUFFIX)])
             if not os.path.exists(live) and not os.path.islink(live):
-                # A crash left the live dir missing but its backup intact: restore it rather than
-                # delete the only copy.
+                # A crash left the live dir missing but its backup intact: restore it (retried).
+                # If the restore fails, KEEP the backup - it is the only copy - for the next run.
                 try:
-                    os.replace(p, live)
-                    continue
-                except OSError:
+                    _retry(lambda p=p, live=live: os.replace(p, live),
+                           retries, backoff, sleep, deadline)
+                except Exception:  # noqa: BLE001 - never delete the only recoverable copy
                     pass
+                continue
+            # The live dir exists, so the swap completed and this backup is orphan cruft: remove it.
             _rmtree_retry(p, retries, backoff, sleep, deadline)
         elif name.startswith(LOCK_NAME + ".stale."):
             try:
@@ -283,13 +286,15 @@ def _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline):
     except BaseException:
         rb_deadline = time.monotonic() + ROLLBACK_GRACE_SECONDS
         for dst, bak in reversed(touched):
-            _rmtree_retry(dst, retries, backoff, sleep, rb_deadline)  # remove new/partial content
-            if bak is not None:
-                try:
+            # Isolate each entry so one stubborn lock cannot cancel the remaining restores; the
+            # original swap exception is still re-raised below (no marker -> self-heal next session).
+            try:
+                _rmtree_retry(dst, retries, backoff, sleep, rb_deadline)  # remove new/partial
+                if bak is not None:
                     _retry(lambda d=dst, b=bak: os.replace(b, d), retries, backoff, sleep,
                            rb_deadline)  # restore the previous version
-                except Exception:  # noqa: BLE001 - best effort; next session self-heals
-                    pass
+            except Exception:  # noqa: BLE001 - best effort; keep restoring the rest
+                pass
         raise
     for _dst, bak in touched:
         if bak is not None:
@@ -327,7 +332,10 @@ def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=D
         _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    _write_marker(skill_dir, version, retries, backoff, sleep, deadline)
+    # The swap succeeded; give the marker write a fresh grace budget so a transient lock on its
+    # rename does not waste the whole successful extraction (and re-extract needlessly next session).
+    _write_marker(skill_dir, version, retries, backoff, sleep,
+                  time.monotonic() + ROLLBACK_GRACE_SECONDS)
 
 
 def _acquire_lock(skill_dir):

@@ -409,6 +409,24 @@ class ExtractResourcesTests(unittest.TestCase):
         self.assertFalse(os.path.isdir(bak))
         self.assertTrue(os.path.isfile(os.path.join(live, "a.py")))
 
+    def test_cleanup_preserves_backup_when_restore_fails(self):
+        extract_resources.run(self.skill, "1.0.0")
+        live = os.path.join(self.skill, "tools")
+        bak = live + extract_resources.BACKUP_SUFFIX
+        os.replace(live, bak)  # crash after rename-aside; live is gone, bak is the only copy
+        real_replace = extract_resources.os.replace
+
+        def _fail_restore(src, dst, *a, **k):
+            if dst == live:
+                raise PermissionError("restore locked")
+            return real_replace(src, dst, *a, **k)
+
+        with unittest.mock.patch.object(extract_resources.os, "replace", _fail_restore):
+            extract_resources._cleanup_leftovers(self.skill, 1, 0.001, lambda *_: None, None)
+        self.assertTrue(os.path.isdir(bak),
+                        "a failed restore must NOT delete the backup (the only recoverable copy)")
+        self.assertTrue(os.path.isfile(os.path.join(bak, "a.py")))
+
     def _reset_skill(self):
         import shutil
 
