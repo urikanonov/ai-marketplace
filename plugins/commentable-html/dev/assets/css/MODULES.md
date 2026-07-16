@@ -13,7 +13,7 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY | Attribution footer, sidebar meta, help dialog, TOC chrome. |
 | `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonPortable controls. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
-| `50-content.css` | CMH-CONTENT | Default content styling (sections, tables, badges). |
+| `50-content.css` | CMH-CONTENT, CMH-STATS | Default content styling (sections, tables, badges, document-overview strip). |
 | `60-images.css` | CMH-IMG | Image comment layer. |
 | `70-kql.css` | CMH-KQL | Kusto query figure + KQL token styling. |
 | `80-focus.css` | CMH-A11Y | Shared themed focus ring for interactive controls. |

@@ -211,10 +211,70 @@ class FinalizeTests(unittest.TestCase):
         self._write(path, original)
         with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
             code, _out, err = self._run_main(
-                ["finalize.py", path, "--no-highlight", "--no-wrap-sections", "--no-stamp"])
+                ["finalize.py", path, "--no-highlight", "--no-wrap-sections", "--no-stats", "--no-stamp"])
         self.assertEqual(code, 0, err)
         with open(path, "r", encoding="utf-8") as fh:
             self.assertEqual(fh.read(), original)  # unchanged
+
+    def test_bakes_doc_stats_for_report_by_default(self):
+        # CMH-STATS-01: finalize bakes the overview strip for a report by default.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, self._report_doc(kind="report"))
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, out, err = self._run_main(["finalize.py", path, "--no-highlight"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            result = fh.read()
+        self.assertIn("data-cmh-doc-stats", result)
+        self.assertIn("<strong>2</strong> sections", result)
+        self.assertIn("doc-stats", out)
+
+    def test_no_stats_flag_skips_the_overview_strip(self):
+        # CMH-STATS-01: --no-stats keeps finalize from baking the overview strip.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, self._report_doc(kind="report"))
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(["finalize.py", path, "--no-highlight", "--no-stats"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertNotIn("data-cmh-doc-stats", fh.read())
+
+    def test_stats_skipped_for_non_card_kind(self):
+        # A generic document does not get the report/plan overview strip.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, self._report_doc(kind="generic"))
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(["finalize.py", path, "--no-highlight", "--no-stamp"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertNotIn("data-cmh-doc-stats", fh.read())
+
+    def test_dedups_existing_ordered_toc_numbers(self):
+        # CMH-TOC-10: finalize strips redundant author numbers from an ordered-list .cm-toc.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, (
+            "<html><head>\n"
+            '<meta name="commentable-html-kind" content="plan">\n'
+            "</head><body>\n"
+            '<main id="commentRoot" data-cmh-content-root data-comment-key="k">\n'
+            "  <h1>Title</h1>\n"
+            '  <nav class="cm-toc"><ol><li><a href="#a">1. Executive summary</a></li>'
+            '<li><a href="#b">2. Scope</a></li></ol></nav>\n'
+            '  <section aria-labelledby="a"><h2 id="a">1. Executive summary</h2><p>x</p></section>\n'
+            '  <section aria-labelledby="b"><h2 id="b">2. Scope</h2><p>y</p></section>\n'
+            "</main>\n</body></html>\n"))
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, out, err = self._run_main(["finalize.py", path, "--no-highlight", "--no-stats", "--no-stamp"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            result = fh.read()
+        self.assertIn('<a href="#a">Executive summary</a>', result)
+        self.assertIn('<a href="#b">Scope</a>', result)
+        self.assertIn("toc-numbers", out)
 
     def test_wrap_sections_skips_non_card_kind(self):
         # A generic document has its own layout; finalize must not wrap its <h2> blocks.

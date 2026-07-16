@@ -467,6 +467,54 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn("z-index", stderr)
         self._strict_clean(out)
 
+    _REPORT_HOST = (
+        "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>Plan</title></head>\n<body>\n"
+        "<h1>Migration Plan</h1>\n"
+        '<section><h2 id="a">1. Goals</h2><p>Some goal text for the plan review.</p></section>\n'
+        '<section><h2 id="b">2. Scope</h2><p>Scope details for the plan review.</p></section>\n'
+        "</body></html>\n")
+
+    def test_report_gets_doc_stats_by_default(self):
+        # CMH-STATS-01: retrofitting a report bakes the overview strip.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", self._REPORT_HOST)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Migration Plan", "--kind", "report", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn("data-cmh-doc-stats", html)
+        self.assertIn("<strong>2</strong> sections", html)
+        self._strict_clean(out)
+
+    def test_no_stats_flag_skips_the_overview_strip(self):
+        # CMH-STATS-01: --no-stats keeps retrofit from baking the overview strip.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", self._REPORT_HOST)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Migration Plan", "--kind", "report", "--out", out, "--no-stats"])
+        self.assertEqual(code, 0, stderr)
+        self.assertNotIn("data-cmh-doc-stats", _read_text(out))
+
+    def test_dedups_existing_numbered_ordered_toc(self):
+        # CMH-TOC-10: retrofitting de-dups an author-numbered ordered-list .cm-toc.
+        d = self._tmpdir()
+        host = self._REPORT_HOST.replace(
+            "<h1>Migration Plan</h1>\n",
+            "<h1>Migration Plan</h1>\n"
+            '<nav class="cm-toc"><ol><li><a href="#a">1. Goals</a></li>'
+            '<li><a href="#b">2. Scope</a></li></ol></nav>\n')
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", "Migration Plan", "--kind", "report", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('<a href="#a">Goals</a>', html)
+        self.assertIn('<a href="#b">Scope</a>', html)
+        self._strict_clean(out)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

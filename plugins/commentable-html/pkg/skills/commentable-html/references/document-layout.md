@@ -7,6 +7,7 @@
 - [Theme (light by default)](#theme-light-by-default)
 - [Density (optional)](#density-optional)
 - [Table of contents (multi-section documents)](#table-of-contents-multi-section-documents)
+- [Document overview strip (report/plan)](#document-overview-strip-reportplan)
 - [Sections and document layout](#sections-and-document-layout)
 - [Tables](#tables)
 - [Layout recipes](#layout-recipes)
@@ -84,10 +85,15 @@ For a document with roughly **4+ top-level sections**, add a table of contents s
 
 - Give each heading a stable, kebab-case `id` derived from its text.
 - Place the `nav.cm-toc` at the top of `#commentRoot`, after any intro paragraph.
+- If your section headings are numbered (for example `1. Goals`, `2. Scope`), do NOT number the TOC entries yourself: the ordered list supplies the number, and `generate_toc.py` (and `finalize.py` / `retrofit.py` for an existing `<ol>` `.cm-toc`) strip the redundant leading number from each entry so it is never double-numbered. Keep the `<ol>`.
 - Keep it inside `#commentRoot` as normal content. Anchor links still work because highlighted links can be opened through the hover comment bubble.
 - The runtime side menu appears on wide screens. It uses author `.cm-toc` links when present, otherwise `h2`/`h3` ids. Its runtime heading is **Navigation** (the author-provided `.cm-toc-title` can still say **Contents**), it numbers entries, scroll-spies the active section, collapses to `Navigation >>`, expands with `<<`, and adds **Scroll to Top** / **Scroll to Bottom**.
 - If collapsible sections exist, the side menu also adds **Expand All** and **Collapse All**.
 - A runtime `cm-skip` scroll-progress bubble appears at bottom-right and shows the percent scrolled. It moves left when the comments panel is open.
+
+## Document overview strip (report/plan)
+
+A `report` or `plan` automatically gets a small `cm-skip` overview strip (`div.cmh-doc-stats`) directly under the `<h1>` title, showing the section count, the word count, and an approximate reading time (words / 200 wpm). `new_document.py`, `finalize.py`, and `retrofit.py` bake it by DEFAULT (opt out with `--no-stats`). It is idempotent (the counts refresh in place on the next finalize), excluded from its own word count, and baked into the content so it survives Plain / Standalone export. Do not author it by hand.
 
 ## Sections and document layout
 

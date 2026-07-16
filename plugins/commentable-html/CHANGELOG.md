@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.117.0] - 2026-07-16
+
+### Added
+
+- Document-overview strip for report/plan documents: a `cm-skip` `div.cmh-doc-stats` placed
+  directly under the `<h1>` title shows the section count, word count, and approximate reading time
+  (words / 200 wpm, rounded up). `tools/authoring/doc_stats.py` computes and injects it, and
+  `new_document.py`, `finalize.py`, and `retrofit.py` bake it by default for report/plan documents
+  (opt out with `--no-stats`). It is idempotent (counts refresh in place), excluded from its own
+  word count, and baked into the content so it survives Plain / Standalone export. (CMH-STATS-01)
+- Per-version upgrade anti-regression corpus under `dev/upgrade-corpus/`: `tests/test_upgrade_corpus.py`
+  upgrades each checked-in fully layered snapshot with the current `tools/authoring/upgrade.py` and
+  asserts a strict-clean, idempotent result, so a layer or tool change that breaks upgrading a
+  document produced by an older version fails the gate. Snapshots are added per change when a
+  version warrants one. (CMH-TOOL-20)
+
+### Fixed
+
+- The generated table of contents no longer double-numbers author-numbered sections. When a heading
+  already begins with a section number (for example `1. Executive summary`), `generate_toc.py` strips
+  the redundant leading number from the ordered-list entry so the `<ol>` supplies the single number,
+  and `finalize.py` / `retrofit.py` de-dup an existing author `<ol>` `.cm-toc` in place. A `<ul>`
+  `.cm-toc` (where the author supplies the number deliberately) is left untouched. (CMH-TOC-10)
+
 ## [1.116.0] - 2026-07-16
 
 ### Changed

@@ -42,7 +42,8 @@ Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-h
 - `chart_block.py` - emits a validator-clean Chart.js figure, loader, data block, and init.
 - `kql_highlight.py` and `kusto_link.py` - build KQL figures and Run in Azure Data Explorer deep links.
 - `highlight_code.py` - emits highlighted code blocks.
-- `generate_toc.py` - creates a `nav.cm-toc` from headings.
+- `generate_toc.py` - creates a `nav.cm-toc` from headings and strips redundant author section numbers from an ordered-list TOC.
+- `doc_stats.py` - bakes the report/plan document-overview strip (section count, word count, reading time).
 - `fix_skip.py` - adds `cm-skip` to bare Mermaid blocks.
 - `inline_images.py` - inlines local images as data URIs.
 - `deck_fix_fonts.py` - strips copied remote deck font loaders and maps web-font stacks to approved system stacks.

@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.116.0`
+**Version:** `1.117.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -108,9 +108,10 @@ Use the tools rather than manual region editing. If manual fallback is unavoidab
 - Unified code diff: `tools/blocks/diff_block.py`.
 - Highlighted source code: `tools/blocks/highlight_code.py` or the document pass in `tools/blocks/highlight_document.py`.
 - Chart: `tools/blocks/chart_block.py`.
-- Table of contents + heading ids: `tools/authoring/generate_toc.py --in-place`.
+- Table of contents + heading ids: `tools/authoring/generate_toc.py --in-place` (it also strips a redundant leading section number from each entry so an author-numbered `<ol>` TOC is never double-numbered; `finalize.py` / `retrofit.py` de-dup an existing `<ol>` `.cm-toc` too).
 - Mermaid `cm-skip`: `tools/authoring/fix_skip.py`.
 - Section cards for a report/plan: `tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block in `<section>` so the document renders as boxed cards (`#commentRoot > section`); `new_document.py` (report/plan fragments) and `finalize.py` run it by default, so hand-wrapping is only needed for externally produced HTML. The validator warns (CMH-VAL-14) when top-level content is not sectioned.
+- Document overview strip for a report/plan (section count, word count, reading time): `tools/authoring/doc_stats.py` bakes a `cm-skip` strip under the `<h1>` title; `new_document.py`, `finalize.py`, and `retrofit.py` run it by default (opt out with `--no-stats`).
 - Local images in a standalone doc: `tools/authoring/inline_images.py --strict`.
 - Layered checklist markup: `tools/checklist/checklist_scaffold.py`.
 - Editable notes-field markup: `tools/notes/notes_scaffold.py`.
