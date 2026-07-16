@@ -11,6 +11,13 @@ mark.cm-hl {
 }
 mark.cm-hl:hover { background: rgba(245, 158, 11, 0.5); }
 mark.cm-hl.active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+mark.cm-hl.cm-hl-gap {
+  display: contents;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  cursor: inherit;
+}
 html[data-theme="dark"] mark.cm-hl { background: rgba(251, 191, 36, 0.28); }
 html[data-theme="dark"] mark.cm-hl:hover { background: rgba(251, 191, 36, 0.42); }
 html[data-theme="dark"] mark.cm-hl.active { background: rgba(251, 191, 36, 0.6); }

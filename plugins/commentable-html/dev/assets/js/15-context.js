@@ -126,6 +126,7 @@ function wrapRangeWithMark(range, id) {
     if (s > 0) target = tn.splitText(s);
     const m = document.createElement("mark");
     m.className = "cm-hl";
+    if (!(target.nodeValue || "").trim()) m.classList.add("cm-hl-gap");
     m.dataset.cid = id;
     target.parentNode.insertBefore(m, target);
     m.appendChild(target);
@@ -148,4 +149,3 @@ function removeHighlight(comment) {
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }
-
