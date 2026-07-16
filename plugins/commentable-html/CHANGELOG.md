@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.100.0] - 2026-07-16
+
+### Added
+
+- Added `tools/deck/deck_fix_fonts.py` to strip copied remote deck font loaders and
+  deterministically map web-font stacks to approved system stacks before deck validation.
+  (CMH-DECK-18)
+
 ## [1.98.0] - 2026-07-16
 
 ### Added

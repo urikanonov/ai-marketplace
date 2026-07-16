@@ -45,6 +45,7 @@ Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-h
 - `generate_toc.py` - creates a `nav.cm-toc` from headings.
 - `fix_skip.py` - adds `cm-skip` to bare Mermaid blocks.
 - `inline_images.py` - inlines local images as data URIs.
+- `deck_fix_fonts.py` - strips copied remote deck font loaders and maps web-font stacks to approved system stacks.
 
 ## References
 

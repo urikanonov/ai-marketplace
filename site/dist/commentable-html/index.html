@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.98.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.100.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.100.0] - 2026-07-16</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Added <code>tools/deck/deck_fix_fonts.py</code> to strip copied remote deck font loaders and deterministically map web-font stacks to approved system stacks before deck validation. (CMH-DECK-18)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.98.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li><code>new_document.py</code>, <code>retrofit.py</code>, and <code>deck_scaffold.py</code> now accept <code>--brand brand.json</code> to stamp validated <code>--cp-*</code> theme tokens plus optional local data-URI font faces into generated documents, reject unknown or injection-shaped token values, and print a low-contrast advisory for unsafe brand color pairs. (CMH-TOOL-19)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.96.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
@@ -428,8 +437,6 @@
               <li>Clear now restores slot-level draggable boards to their load-time sibling order, including interleaved non-part nodes, while clean boards are left untouched. (CMH-BOARD-05)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.94.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -458,14 +465,7 @@
               <li>Flat commentable documents now print and export to PDF cleanly: print media hides runtime chrome, expands collapsed sections, resets fixed or shadowed UI into a readable paper flow, appends current comments as a print-only appendix, and keeps decks at one slide per page. (CMH-PRINT-01)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.87.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The layer now honors the operating-system &quot;reduce motion&quot; setting (<code>prefers-reduced-motion: reduce</code>): non-essential animations and transitions (the composer flash, the mermaid and diff pulses, the checklist and notes flashes) - including their delays and repeat loops - are clamped to a near-instant single pass so they do not animate for motion-sensitive readers, while everything still lands in its final state. Programmatic smooth scrolls (jump-to-comment, scroll-to-top/bottom, deep links) also become instant under the preference. (The deck slide stage keeps the vendored slide engine&#x27;s own reduced-motion rule for its essential slide transition.) (CMH-A11Y-07)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">89 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">90 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
