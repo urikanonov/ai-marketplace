@@ -667,6 +667,49 @@ test("install tabs support arrow-key navigation (SITE-INSTALL-03)", async ({ pag
   await expect(copilotTab).toHaveAttribute("aria-selected", "true");
 });
 
+test("a skill plugin offers a Claude Desktop ZIP-download tab; the auto-updater does not (SITE-INSTALL-05)", async ({ page }) => {
+  // commentable-html is a pure importable skill, so its install block has a third "Claude Desktop"
+  // tab whose panel downloads the skill ZIP (no CLI command). The auto-updater's value is a session
+  // hook a Desktop import cannot provide, so it offers CLI tabs only.
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const block = page.locator("#install .install-tabs");
+  const desktopTab = block.locator(".install-tab", { hasText: "Claude Desktop" });
+  await expect(desktopTab).toBeVisible();
+  await desktopTab.click();
+  const download = page.locator("#install .install-download a[download]");
+  await expect(download).toBeVisible();
+  // Exact per-page relative path: the plugin page lives one level deep, so the ZIP is under ../.
+  await expect(download).toHaveAttribute("href", "../skills/commentable-html.zip");
+  // The auto-updater page keeps only the two CLI tabs.
+  await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#install .install-tab", { hasText: "GitHub Copilot" })).toBeVisible();
+  await expect(page.locator("#install .install-tab", { hasText: "Claude Code" })).toBeVisible();
+  await expect(page.locator("#install .install-tab", { hasText: "Claude Desktop" })).toHaveCount(0);
+});
+
+test("the Claude Desktop skill ZIP is served for download (SITE-INSTALL-06)", async ({ request }) => {
+  const r = await request.get("/skills/commentable-html.zip");
+  expect(r.status()).toBeLessThan(400);
+  expect(r.headers()["content-type"]).toContain("application/zip");
+});
+
+test("the install tabs read as a clickable segmented control (SITE-INSTALL-07)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const block = page.locator("#install .install-tabs");
+  const selectedBg = await block.locator('.install-tab[aria-selected="true"]').evaluate(
+    (el) => getComputedStyle(el).backgroundColor);
+  const unselectedBg = await block.locator('.install-tab[aria-selected="false"]').first().evaluate(
+    (el) => getComputedStyle(el).backgroundColor);
+  // The active tab carries a real filled background (not transparent) distinct from an inactive tab,
+  // so it is obvious which tab is selected and that the tabs are interactive controls.
+  expect(selectedBg).not.toBe(unselectedBg);
+  expect(selectedBg).not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|^transparent$/);
+  // The tablist is a visible bordered tray, reinforcing the segmented-control affordance.
+  const trayBorder = await block.locator(".install-tablist").evaluate(
+    (el) => parseFloat(getComputedStyle(el).borderTopWidth));
+  expect(trayBorder).toBeGreaterThan(0);
+});
+
 test("the pages state dual-agent invocation from each agent's CLI and Desktop app (SITE-DUAL-01)", async ({ page }) => {
   // Hub: the hero lead names both agents and the CLI+Desktop invocation.
   await page.goto("/", { waitUntil: "domcontentloaded" });

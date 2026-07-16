@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Install reusable skills, session hooks, and MCP servers by name in Claude Code or the GitHub Copilot CLI." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
-  <link rel="stylesheet" href="assets/styles.css?v=92821dd06eec" />
+  <link rel="stylesheet" href="assets/styles.css?v=7db96102095e" />
   <!-- BEGIN:jsonld -->
   <script type="application/ld+json">
   {
@@ -183,6 +183,7 @@
                 <div class="install-tablist" role="tablist" aria-label="Install with">
                   <button class="install-tab" role="tab" type="button" id="install-card-commentable-html-copilot-tab" data-install-target="install-card-commentable-html-copilot" aria-selected="true" aria-controls="install-card-commentable-html-copilot" tabindex="0">GitHub Copilot</button>
                   <button class="install-tab" role="tab" type="button" id="install-card-commentable-html-claude-tab" data-install-target="install-card-commentable-html-claude" aria-selected="false" aria-controls="install-card-commentable-html-claude" tabindex="-1">Claude Code</button>
+                  <button class="install-tab" role="tab" type="button" id="install-card-commentable-html-desktop-tab" data-install-target="install-card-commentable-html-desktop" aria-selected="false" aria-controls="install-card-commentable-html-desktop" tabindex="-1">Claude Desktop</button>
                 </div>
                 <div class="install-panel" role="tabpanel" id="install-card-commentable-html-copilot" aria-labelledby="install-card-commentable-html-copilot-tab">
                   <div class="install-row">
@@ -230,6 +231,16 @@
                         <button class="copy-btn" type="button" data-copy="claude plugin install commentable-html@urikan-ai-marketplace">copy</button>
                       </div>
                     </div>
+                  </div>
+                </div>
+                <div class="install-panel" role="tabpanel" id="install-card-commentable-html-desktop" aria-labelledby="install-card-commentable-html-desktop-tab" hidden>
+                  <div class="install-download">
+                    <a class="btn btn-primary install-download-btn" href="skills/commentable-html.zip" download>Download the skill (ZIP)</a>
+                    <ol class="install-desktop-steps">
+                      <li>Download the ZIP above.</li>
+                      <li>In Claude (Desktop or claude.ai), open <strong>Settings &gt; Features</strong> and enable Skills (Pro, Max, Team, or Enterprise with code execution).</li>
+                      <li>Upload the ZIP to add the <code>commentable-html</code> skill, then invoke it in any chat.</li>
+                    </ol>
                   </div>
                 </div>
               </div>
