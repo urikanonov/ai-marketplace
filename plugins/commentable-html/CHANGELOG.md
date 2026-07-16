@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.125.0] - 2026-07-16
+
+### Changed
+
+- Simplified the showcase deck copy: shorter install guidance, plain-language prompts,
+  clearer "paste Copy all and press Enter" review flow, and fewer repeated account/server
+  comparisons. (deck issue #290)
+
 ## [1.124.0] - 2026-07-16
 
 ### Added

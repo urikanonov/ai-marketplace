@@ -1943,12 +1943,12 @@ svg {
   </div>
   <div>
     <div class="show-kicker">Commentable HTML</div>
-    <h1>Keep the <span class="show-mark">review loop</span> inside the artifact.</h1>
-    <p class="showcase-comment-target">Keep the review loop inside any HTML artifact: comment on the exact sentence, cell, chart, diagram node, or code line, then hand the agent one structured bundle.</p>
+    <h1>Keep <span class="show-mark">comments</span> with the file.</h1>
+    <p class="showcase-comment-target">Comment on the exact sentence, cell, chart, diagram node, or code line, then paste one bundle back to the agent.</p>
     <div class="show-byline">
-      <span class="show-pill">Logo, prompt, review, and handoff in one file</span>
+      <span class="show-pill">Prompt, review, and handoff in one file</span>
       <span class="show-pill">Works with Copilot and Claude</span>
-      <span class="show-pill">Local-first, no account</span>
+      <span class="show-pill">One file you can keep or share</span>
     </div>
   </div>
 </section>
@@ -1994,18 +1994,18 @@ svg {
       <p>Comment on that exact cell inside the plan. The note carries its quote, section path, and a stable id, so the agent changes precisely what you pointed at.</p>
     </div>
   </div>
-  <p class="show-lead" style="margin-top:30px;">Every round-trip through chat loses the location. The artifact already knows where "here" is.</p>
+  <p class="show-lead" style="margin-top:30px;">Chat loses the location. The file already knows where "here" is.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-efe04d9f">
   <div class="show-kicker">Act 1 - The loop</div>
-  <h2>Generate, review in place, copy all, apply - <span class="show-mark">without leaving the page</span>.</h2>
+  <h2>Generate, review in place, copy all, paste, <span class="show-mark">press Enter</span>.</h2>
   <pre class="mermaid cm-skip">
 flowchart LR
   A[Agent writes the garden plan] --> B[Commentable HTML plan]
   B --> C[You comment on the exact spot]
-  C --> D[Copy all Markdown bundle]
-  D --> E[Agent applies each note]
+  C --> D[Paste the Copy all bundle]
+  D --> E[Agent applies the notes]
   E --> F[Handled ids embedded]
   F --> B
   C -. comment on any element .-> B
@@ -2060,23 +2060,21 @@ flowchart LR
 
 <section class="slide" data-slide-id="slide-7e37216a">
   <div class="show-kicker">Act 2 - Ask for the loop</div>
-  <h2>Two prompts cover the <span class="show-mark">review round-trip</span>.</h2>
+  <h2>Two simple prompts cover the <span class="show-mark">review round-trip</span>.</h2>
   <div class="show-two">
     <div class="show-card">
       <h3>Make it commentable</h3>
-      <pre><code>Turn the community-garden plan into a
-commentable HTML report I can review
-in the browser, then wait for my
-Copy all bundle.</code></pre>
+      <pre><code>Make this community-garden-plan.html
+a commentable html.</code></pre>
     </div>
     <div class="show-card">
-      <h3>Apply my review</h3>
-      <pre><code>Here is my Copy all bundle. Apply each
-note to the exact anchor, mark handled
-ids, and keep the unresolved comments.</code></pre>
+      <h3>Apply the review</h3>
+      <pre><code>[paste Copy all bundle here]
+
+Press Enter.</code></pre>
     </div>
   </div>
-  <p class="show-lead" style="margin-top:26px;">The prompt names the artifact, the surface, and the handoff - so the agent produces something you can point at, not just read.</p>
+  <p class="show-lead" style="margin-top:26px;">The first prompt makes the file commentable. After that, you usually just paste the Copy all bundle back and press Enter.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-c9c66adb">
@@ -2170,7 +2168,7 @@ StormEvents
 
 <section class="slide showcase-checklist-slide" data-slide-id="slide-a74f331a">
   <div class="show-kicker">Act 2 - Decide and track</div>
-  <h2>Decisions and checklists are structured feedback too.</h2>
+  <h2>Decisions and checklists are feedback too.</h2>
   <div class="show-board cm-skip" data-cm-widget="showcase-triage-board" data-cm-draggable aria-label="Garden decision board">
     <div class="show-col" data-cm-slot="Open" data-cm-part="slot-open" data-cm-part-label="Open column">
       <h3>Open</h3>
@@ -2207,7 +2205,7 @@ StormEvents
 
 <section class="slide" data-slide-id="slide-12668385">
   <div class="show-kicker">Act 2 - Start today</div>
-  <h2>From a reviewed plan to applied edits - <span class="show-mark">install in two commands</span>.</h2>
+  <h2><span class="show-mark">How to install?</span></h2>
   <div class="show-cta">
     <div class="show-install">
       <h3>GitHub Copilot CLI</h3>
@@ -2225,12 +2223,12 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
     <a href="https://github.com/urikanonov/ai-marketplace">GitHub</a>
     <a href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/">Tutorial</a>
   </div>
-  <p class="show-lead" style="margin-top:22px;">Then ask your agent to review the garden plan: Copy all hands back a Markdown bundle with stable ids, and Export Offline or Portable when you want to share it.</p>
+  <p class="show-lead" style="margin-top:22px;">Then ask your agent to make the garden plan commentable. When you are done reviewing, click Copy all and paste the bundle back. Export Offline or Portable when you want to share the file.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-b8394524">
   <div class="show-kicker">Act 3 - How it fits your day</div>
-  <h2>Three review loops, one surface.</h2>
+  <h2>Three common review passes.</h2>
   <div class="show-loops">
     <div class="show-loop">
       <h3>Review your own work</h3>
@@ -2238,11 +2236,11 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
     </div>
     <div class="show-loop">
       <h3>Peer review</h3>
-      <p><b>A teammate and you.</b> Send a Portable file. They comment locally and send the bundle back, with no account or server in the middle.</p>
+      <p><b>A teammate and you.</b> Send a Portable file. They comment in the file and send it back.</p>
     </div>
     <div class="show-loop">
       <h3>Review a plan before you build</h3>
-      <p><b>Stakeholders and the agent.</b> Walk a room through the plan, collect decisions on the board and checklist, and hand the agent one structured pass.</p>
+      <p><b>Stakeholders and the agent.</b> Walk a room through the plan, collect decisions on the board and checklist, and hand the agent one bundle of notes.</p>
     </div>
   </div>
 </section>
@@ -2367,8 +2365,8 @@ tools/validate/validate.py --strict deck-showcase.html</code></pre>
   <p>Pick the next surface you already review in a browser, make it commentable, and keep the handoff precise from the first pass.</p>
   <div class="show-next-grid">
     <div class="show-next-card">
-      <h3>Create with CHM</h3>
-      <p><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/#install">Install in two commands</a> from the marketplace page.</p>
+      <h3>Install</h3>
+      <p><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/#install">Start from the marketplace page</a> and try it on one file.</p>
     </div>
     <div class="show-next-card">
       <h3>Learn</h3>
