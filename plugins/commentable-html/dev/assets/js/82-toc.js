@@ -205,6 +205,12 @@ function setupSideToc() {
   toggle.setAttribute("aria-label", "Collapse section menu");
   toggle.innerHTML = "&laquo;";
   head.append(title, toggle);
+  // A11: search-as-filter over the sections (not just the list); runtime chrome, cm-skip.
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "cm-side-toc-search cm-skip";
+  search.setAttribute("placeholder", "Filter sections...");
+  search.setAttribute("aria-label", "Filter sections");
   const list = document.createElement("ul");
   list.className = "cm-side-toc-list";
   const links = [];
@@ -230,6 +236,51 @@ function setupSideToc() {
     li.appendChild(a);
     list.appendChild(li);
     links.push(a);
+  });
+  // A11: filter the visible sections (and their menu entries) by heading + body text.
+  function _cmTocSectionOf(it) { return (it.el && it.el.closest) ? it.el.closest("section") : null; }
+  // Cache each item's lowercase haystack (label + its section/heading text) once, so typing does
+  // not re-read textContent of every section on each keystroke.
+  items.forEach(function (it) {
+    const sec = _cmTocSectionOf(it);
+    it._cmHay = ((it.label || "") + " " + (sec ? sec.textContent : (it.el.textContent || ""))).toLowerCase();
+  });
+  function applyTocFilter(q) {
+    const query = String(q || "").trim().toLowerCase();
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const sec = _cmTocSectionOf(it);
+      const match = !query || it._cmHay.indexOf(query) !== -1;
+      it._cmFiltered = !match; // scroll-spy reads this so it skips hidden entries (sectioned or not)
+      const li = links[i].closest("li");
+      if (li) li.classList.toggle("cm-toc-li-hidden", !match);
+      if (sec) sec.classList.toggle("cm-toc-filtered", !match);
+    }
+    if (typeof schedule === "function") schedule(); // re-run scroll-spy so aria-current follows the filter
+  }
+  function clearTocFilter() { if (search.value) search.value = ""; applyTocFilter(""); }
+  search.addEventListener("input", function () { applyTocFilter(search.value); });
+  search.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { e.preventDefault(); clearTocFilter(); search.blur(); }
+  });
+  // Reveal a filtered-out section when a deep link targets it, rather than scrolling to nothing.
+  window.addEventListener("hashchange", function () {
+    let id = (location.hash || "").slice(1);
+    try { id = decodeURIComponent(id); } catch (e) { /* keep the raw id */ }
+    const el = id && document.getElementById(id);
+    const sec = el && el.closest && el.closest("section");
+    if (sec && sec.classList.contains("cm-toc-filtered")) {
+      // expandCollapsedAncestors (shared bundle scope) clears the filter AND expands collapsed
+      // ancestors so a revealed section shows its body, not just its heading.
+      if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(el);
+      else clearTocFilter();
+      el.scrollIntoView({ block: "start" });
+    }
+  });
+  // If the viewport narrows below the side-menu breakpoint the filter box is hidden, so drop any
+  // active filter to avoid stranding sections hidden with no visible control to restore them.
+  window.addEventListener("resize", function () {
+    if (search.value && nav && getComputedStyle(nav).display === "none") clearTocFilter();
   });
   const scrollBtns = document.createElement("div");
   scrollBtns.className = "cm-side-toc-scroll";
@@ -262,8 +313,8 @@ function setupSideToc() {
   bottom.title = "Scroll to the bottom of the document";
   bottom.innerHTML = _cmIco("bottom") + "<span>Scroll to Bottom</span>";
   scrollBtns.append(top, bottom);
-  if (expandGrp) nav.append(head, list, expandGrp, scrollBtns);
-  else nav.append(head, list, scrollBtns);
+  if (expandGrp) nav.append(head, search, list, expandGrp, scrollBtns);
+  else nav.append(head, search, list, scrollBtns);
   document.body.appendChild(nav);
   document.body.classList.add("cm-side-toc-on");
   toggle.addEventListener("click", function () {
@@ -282,19 +333,33 @@ function setupSideToc() {
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
   });
   function onScroll() {
-    // Activate the section nearest above the threshold by GEOMETRY (greatest top that is
-    // still <= 120), so it is correct even if the author TOC links are not in document order.
-    let activeIdx = 0;
+    // Activate the visible section nearest above the threshold by GEOMETRY (greatest top still
+    // <= 120), skipping any section hidden by the filter so aria-current never lands on it.
+    let activeIdx = -1;
     let bestTop = -Infinity;
+    let firstVisible = -1;
     for (let i = 0; i < items.length; i++) {
+      if (items[i]._cmFiltered) continue; // never activate an entry the filter has hidden
+      if (firstVisible === -1) firstVisible = i;
       const top = items[i].el.getBoundingClientRect().top;
       if (top <= 120 && top > bestTop) { bestTop = top; activeIdx = i; }
     }
-    // At the page bottom a short trailing section never reaches the 120px threshold, so the
-    // final item would never light up. Force it active once the document is fully scrolled.
+    if (activeIdx === -1) activeIdx = firstVisible; // above the first visible section (or none visible)
+    // At the page bottom a short trailing section never reaches the 120px threshold, so force the
+    // LAST visible item active once the document is fully scrolled.
     const doc = document.documentElement;
-    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) activeIdx = items.length - 1;
-    for (let i = 0; i < links.length; i++) links[i].classList.toggle("is-active", i === activeIdx);
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 2) {
+      for (let i = items.length - 1; i >= 0; i--) {
+        if (!items[i]._cmFiltered) { activeIdx = i; break; }
+      }
+    }
+    for (let i = 0; i < links.length; i++) {
+      const on = i === activeIdx;
+      links[i].classList.toggle("is-active", on);
+      // aria-current marks the reader's location for assistive tech, not just visually.
+      if (on) links[i].setAttribute("aria-current", "location");
+      else links[i].removeAttribute("aria-current");
+    }
   }
   let raf = 0;
   function schedule() {
