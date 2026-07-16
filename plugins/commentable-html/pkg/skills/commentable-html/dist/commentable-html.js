@@ -36,7 +36,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.80.0";
+const CMH_VERSION = "1.81.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2750,6 +2750,44 @@ function setupValidationBanner() {
   document.body.appendChild(banner);
   CMH_INJECTED_CHROME.add(banner);
 }
+/* ---------- Callout accessibility affordance (CMH-CALLOUT-03) ---------- */
+// A cmh-callout differs from its neighbors only by color, which fails color-blind readers,
+// grayscale printouts, and screen readers. The CSS adds a per-variant ::before glyph (the
+// non-color signal); this pass adds role="note" plus a variant aria-label so assistive tech
+// announces the kind. When the author already opened the callout with a <strong> label
+// (e.g. "Bottom line."), the aria-label is suppressed so the variant is not announced twice.
+(function () {
+  const root = document.getElementById("commentRoot") || document.body;
+  if (!root) return;
+  const LABELS = { info: "Note", success: "Success", warning: "Warning", danger: "Danger" };
+  // The first meaningful child node of a container (skips whitespace text AND empty wrapper
+  // elements like a stray leading <p></p>), or null.
+  function firstMeaningfulChild(container) {
+    for (let n = container.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) { if ((n.textContent || "").trim() === "") continue; return n; }
+      if (n.nodeType === 1) { if ((n.textContent || "").trim() === "") continue; return n; }
+    }
+    return null;
+  }
+  // True only when the callout OPENS with a <strong> label (directly, or as the first thing in its
+  // first paragraph). Mid-sentence bold ("Watch out, <strong>Warning:</strong>") must NOT count,
+  // so we check the FIRST meaningful node, not merely the first <strong> element.
+  function startsWithStrongLabel(el) {
+    let node = firstMeaningfulChild(el);
+    if (node && node.nodeType === 1 && node.tagName === "P") node = firstMeaningfulChild(node);
+    return !!(node && node.nodeType === 1 && node.tagName === "STRONG" && (node.textContent || "").trim());
+  }
+  root.querySelectorAll(".cmh-callout").forEach(function (el) {
+    if (el.closest(".cm-skip")) return;
+    if (!el.hasAttribute("role")) el.setAttribute("role", "note");
+    if (el.hasAttribute("aria-label")) return; // respect an explicit author label
+    let variant = null;
+    for (const v in LABELS) { if (el.classList.contains("cmh-callout-" + v)) { variant = v; break; } }
+    if (!variant) return;
+    if (startsWithStrongLabel(el)) return; // authored visible label is the sole announcement
+    el.setAttribute("aria-label", LABELS[variant]);
+  });
+})();
 /* ---------- Document-wide comments ---------- */
 // A comment not tied to any element (raised by right-clicking empty space). It has no
 // highlight and no offsets; it just carries a note about the whole document.

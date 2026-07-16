@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.80.0" />
+<meta name="commentable-html-version" content="1.81.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.80.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.81.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <title>NYC Taxi 2014 Report</title>
 
 <!-- Clawpilot theme detection (paste FIRST, before any other script) -->
@@ -954,12 +954,35 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
    on the soft tinted backgrounds in both light and dark themes. Authors must use
    these classes (or the theme variables) instead of hardcoding colors. */
 #commentRoot .cmh-callout { border-radius: 8px; padding: 0.75rem 1rem; margin: 1rem 0; border: 1px solid var(--cp-border); background: var(--cp-surface-soft); color: var(--cp-text); line-height: 1.55; }
-#commentRoot .cmh-callout > :first-child { margin-top: 0; }
+#commentRoot .cmh-callout > :first-child { margin-top: 0; padding-top: 0; }
 #commentRoot .cmh-callout > :last-child { margin-bottom: 0; }
 #commentRoot .cmh-callout-danger { border-color: var(--cp-danger); background: var(--cp-danger-soft); }
 #commentRoot .cmh-callout-warning { border-color: var(--cp-warning); background: var(--cp-warning-soft); }
 #commentRoot .cmh-callout-success { border-color: var(--cp-success); background: var(--cp-success-soft); }
 #commentRoot .cmh-callout-info { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+/* Non-color affordance: a leading glyph per variant so the meaning survives grayscale printing
+   and color-blindness (color is not the only signal). The glyph sits in a ::before pseudo-element
+   so it never enters text selection or comment offsets, is drawn in --cp-text so it stays legible
+   in both themes and in grayscale (shape, not color, carries the meaning), and forces text (not
+   emoji) presentation with the U+FE0E variation selector. Padding is scoped to the variant classes
+   so a bare .cmh-callout shows no empty gutter. */
+#commentRoot .cmh-callout { position: relative; }
+#commentRoot .cmh-callout-info,
+#commentRoot .cmh-callout-success,
+#commentRoot .cmh-callout-warning,
+#commentRoot .cmh-callout-danger { padding-inline-start: 2.4rem; }
+#commentRoot .cmh-callout::before {
+  position: absolute; inset-inline-start: 0.85rem; top: 0.75rem; font-weight: 700; font-style: normal;
+  line-height: 1.55; color: var(--cp-text);
+}
+/* Each variant declares a plain `content` first (the glyph, shown everywhere) then a
+   `content: ".." / ""` override that hides the glyph from the accessibility tree on browsers that
+   support alt-text (screen readers use the runtime aria-label instead). A browser that does not
+   parse the alt-text form drops only that second declaration and keeps the visible glyph. */
+#commentRoot .cmh-callout-info::before { content: "i"; content: "i" / ""; }
+#commentRoot .cmh-callout-success::before { content: "\2713\FE0E"; content: "\2713\FE0E" / ""; }
+#commentRoot .cmh-callout-warning::before { content: "\26A0\FE0E"; content: "\26A0\FE0E" / ""; }
+#commentRoot .cmh-callout-danger::before { content: "\2716\FE0E"; content: "\2716\FE0E" / ""; }
 
 #commentRoot .cm-toc { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.25rem 0; }
 #commentRoot .cm-toc-title { font-weight: 700; color: var(--cp-text); margin-bottom: 0.5rem; font-size: 1rem; }
@@ -2252,7 +2275,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.80.0";
+const CMH_VERSION = "1.81.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4966,6 +4989,44 @@ function setupValidationBanner() {
   document.body.appendChild(banner);
   CMH_INJECTED_CHROME.add(banner);
 }
+/* ---------- Callout accessibility affordance (CMH-CALLOUT-03) ---------- */
+// A cmh-callout differs from its neighbors only by color, which fails color-blind readers,
+// grayscale printouts, and screen readers. The CSS adds a per-variant ::before glyph (the
+// non-color signal); this pass adds role="note" plus a variant aria-label so assistive tech
+// announces the kind. When the author already opened the callout with a <strong> label
+// (e.g. "Bottom line."), the aria-label is suppressed so the variant is not announced twice.
+(function () {
+  const root = document.getElementById("commentRoot") || document.body;
+  if (!root) return;
+  const LABELS = { info: "Note", success: "Success", warning: "Warning", danger: "Danger" };
+  // The first meaningful child node of a container (skips whitespace text AND empty wrapper
+  // elements like a stray leading <p></p>), or null.
+  function firstMeaningfulChild(container) {
+    for (let n = container.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) { if ((n.textContent || "").trim() === "") continue; return n; }
+      if (n.nodeType === 1) { if ((n.textContent || "").trim() === "") continue; return n; }
+    }
+    return null;
+  }
+  // True only when the callout OPENS with a <strong> label (directly, or as the first thing in its
+  // first paragraph). Mid-sentence bold ("Watch out, <strong>Warning:</strong>") must NOT count,
+  // so we check the FIRST meaningful node, not merely the first <strong> element.
+  function startsWithStrongLabel(el) {
+    let node = firstMeaningfulChild(el);
+    if (node && node.nodeType === 1 && node.tagName === "P") node = firstMeaningfulChild(node);
+    return !!(node && node.nodeType === 1 && node.tagName === "STRONG" && (node.textContent || "").trim());
+  }
+  root.querySelectorAll(".cmh-callout").forEach(function (el) {
+    if (el.closest(".cm-skip")) return;
+    if (!el.hasAttribute("role")) el.setAttribute("role", "note");
+    if (el.hasAttribute("aria-label")) return; // respect an explicit author label
+    let variant = null;
+    for (const v in LABELS) { if (el.classList.contains("cmh-callout-" + v)) { variant = v; break; } }
+    if (!variant) return;
+    if (startsWithStrongLabel(el)) return; // authored visible label is the sole announcement
+    el.setAttribute("aria-label", LABELS[variant]);
+  });
+})();
 /* ---------- Document-wide comments ---------- */
 // A comment not tied to any element (raised by right-clicking empty space). It has no
 // highlight and no offsets; it just carries a note about the whole document.

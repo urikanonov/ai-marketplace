@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.81.0] - 2026-07-16
+
+### Added
+
+- Callouts now carry a non-color cue so their meaning survives grayscale printing,
+  color-blindness, and screen readers: each variant (info/success/warning/danger) shows a distinct
+  leading glyph, and the runtime stamps `role="note"` with a variant label. An authored leading
+  `<strong>` label (or an explicit `aria-label`) is respected so the variant is not announced twice.
+  (CMH-CALLOUT-03)
+
 ## [1.80.0] - 2026-07-15
 
 ### Added
