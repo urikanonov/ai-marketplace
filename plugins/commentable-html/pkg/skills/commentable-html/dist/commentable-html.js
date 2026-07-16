@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.118.0";
+const CMH_VERSION = "1.119.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -474,6 +474,7 @@ function wrapRangeWithMark(range, id) {
     if (s > 0) target = tn.splitText(s);
     const m = document.createElement("mark");
     m.className = "cm-hl";
+    if (!(target.nodeValue || "").trim()) m.classList.add("cm-hl-gap");
     m.dataset.cid = id;
     target.parentNode.insertBefore(m, target);
     m.appendChild(target);
@@ -496,7 +497,6 @@ function removeHighlight(comment) {
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }
-
 /* ---------- Mermaid commenting layer ----------
    Lets the user click rendered diagram nodes inside
    pre.mermaid / div.mermaid blocks and attach a comment.
@@ -1975,9 +1975,27 @@ function positionWidgetAdd(el) {
   if (!visible) return false;
   const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
-  const left = visible.right - bw - 6, top = visible.top + 6;
-  widgetAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
-  widgetAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
+  const widget = el.closest("[data-cm-widget]");
+  const reset = widget && widget.matches("[data-cm-draggable]") ? widget.querySelector(".cm-widget-reset") : null;
+  const resetRect = reset && !reset.hidden ? reset.getBoundingClientRect() : null;
+  const candidates = [
+    { left: visible.right - bw - 6, top: visible.top + 6 },
+    { left: visible.left + 6, top: visible.top + 6 },
+    { left: visible.right - bw - 6, top: visible.bottom - bh - 6 },
+    { left: visible.left + 6, top: visible.bottom - bh - 6 },
+  ].map((pos) => ({
+    left: _clamp(pos.left, bounds.left, bounds.right - bw),
+    top: _clamp(pos.top, bounds.top, bounds.bottom - bh),
+  }));
+  const placed = candidates.find((pos) => {
+    if (!resetRect) return true;
+    return !_intersectRects(
+      { left: pos.left, right: pos.left + bw, top: pos.top, bottom: pos.top + bh },
+      resetRect,
+    );
+  }) || candidates[0];
+  widgetAddBtn.style.left = placed.left + "px";
+  widgetAddBtn.style.top = placed.top + "px";
   return true;
 }
 function showWidgetAddFor(el) {

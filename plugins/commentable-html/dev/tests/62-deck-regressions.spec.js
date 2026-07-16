@@ -87,6 +87,14 @@ async function dragCardToSlot(page, cardSelector, slotSelector) {
   await settle(page);
 }
 
+function boxesIntersect(a, b) {
+  return !!(a && b
+    && a.x < b.x + b.width
+    && a.x + a.width > b.x
+    && a.y < b.y + b.height
+    && a.y + a.height > b.y);
+}
+
 async function effectiveContrast(page, selector) {
   const colors = await page.locator(selector).first().evaluate((el) => {
     function rgba(value) {
@@ -350,6 +358,77 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portab
     await expect(testing).toContainText("Windows, macOS, and Linux");
     await expect(testing).toContainText("Copilot and Claude");
     await expect(testing).toContainText("test_*.py");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-20: slide 16 cross-card comments do not highlight the grid gap", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await page.locator(".cmh-deck-mode-toggle").click();
+    await showSlideWith(page, '[data-slide-id="slide-3d5c8a12"]');
+
+    await page.evaluate(() => {
+      const realTexts = (el) => {
+        const out = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = walker.nextNode())) {
+          if ((n.textContent || "").trim()) out.push(n);
+        }
+        return out;
+      };
+      const cards = document.querySelectorAll('.slide.active .show-card p');
+      const left = realTexts(cards[0])[1];
+      const right = realTexts(cards[1])[1] || realTexts(cards[1])[0];
+      const range = document.createRange();
+      range.setStart(left, 1);
+      range.setEnd(right, Math.min(right.textContent.length, 24));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      cards[1].dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 700, clientY: 300 }));
+    });
+    await page.locator("#menuComment").click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("Keep the strict validator callout together.");
+    await composer.locator('[data-act="save"]').click();
+
+    const marks = await page.locator('mark.cm-hl').evaluateAll((els) => els.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        text: el.textContent || "",
+        parentClass: el.parentElement ? el.parentElement.className : "",
+        width: rect.width,
+        height: rect.height,
+      };
+    }));
+    expect(marks.some((mark) =>
+      !mark.text.trim()
+      && mark.parentClass.includes("show-two")
+      && mark.width > 20
+      && mark.height > 20,
+    )).toBe(false);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-BOARD-06: the showcase Locked column Add Comment affordance avoids Reset moves", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await page.locator(".cmh-deck-mode-toggle").click();
+    await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
+
+    await dragCardToSlot(page, '[data-cm-part="bed8-crop"]', '[data-cm-slot="Locked"]');
+    await page.locator('[data-cm-part="slot-locked"]').focus();
+    await expect(page.locator("#widgetAddBtn")).toBeVisible();
+    await expect(page.locator(".show-board .cm-widget-reset")).toBeVisible();
+
+    const addBox = await page.locator("#widgetAddBtn").boundingBox();
+    const resetBox = await page.locator(".show-board .cm-widget-reset").boundingBox();
+    expect(boxesIntersect(addBox, resetBox)).toBe(false);
   } finally {
     await server.close();
   }

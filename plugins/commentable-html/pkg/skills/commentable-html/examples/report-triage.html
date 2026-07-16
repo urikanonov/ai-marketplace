@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.118.0" />
+<meta name="commentable-html-version" content="1.119.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.118.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.119.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -135,6 +135,13 @@ mark.cm-hl {
 }
 mark.cm-hl:hover { background: rgba(245, 158, 11, 0.5); }
 mark.cm-hl.active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+mark.cm-hl.cm-hl-gap {
+  display: contents;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  cursor: inherit;
+}
 html[data-theme="dark"] mark.cm-hl { background: rgba(251, 191, 36, 0.28); }
 html[data-theme="dark"] mark.cm-hl:hover { background: rgba(251, 191, 36, 0.42); }
 html[data-theme="dark"] mark.cm-hl.active { background: rgba(251, 191, 36, 0.6); }
@@ -2563,7 +2570,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.118.0";
+const CMH_VERSION = "1.119.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2983,6 +2990,7 @@ function wrapRangeWithMark(range, id) {
     if (s > 0) target = tn.splitText(s);
     const m = document.createElement("mark");
     m.className = "cm-hl";
+    if (!(target.nodeValue || "").trim()) m.classList.add("cm-hl-gap");
     m.dataset.cid = id;
     target.parentNode.insertBefore(m, target);
     m.appendChild(target);
@@ -3005,7 +3013,6 @@ function removeHighlight(comment) {
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }
-
 /* ---------- Mermaid commenting layer ----------
    Lets the user click rendered diagram nodes inside
    pre.mermaid / div.mermaid blocks and attach a comment.
@@ -4484,9 +4491,27 @@ function positionWidgetAdd(el) {
   if (!visible) return false;
   const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
-  const left = visible.right - bw - 6, top = visible.top + 6;
-  widgetAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
-  widgetAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
+  const widget = el.closest("[data-cm-widget]");
+  const reset = widget && widget.matches("[data-cm-draggable]") ? widget.querySelector(".cm-widget-reset") : null;
+  const resetRect = reset && !reset.hidden ? reset.getBoundingClientRect() : null;
+  const candidates = [
+    { left: visible.right - bw - 6, top: visible.top + 6 },
+    { left: visible.left + 6, top: visible.top + 6 },
+    { left: visible.right - bw - 6, top: visible.bottom - bh - 6 },
+    { left: visible.left + 6, top: visible.bottom - bh - 6 },
+  ].map((pos) => ({
+    left: _clamp(pos.left, bounds.left, bounds.right - bw),
+    top: _clamp(pos.top, bounds.top, bounds.bottom - bh),
+  }));
+  const placed = candidates.find((pos) => {
+    if (!resetRect) return true;
+    return !_intersectRects(
+      { left: pos.left, right: pos.left + bw, top: pos.top, bottom: pos.top + bh },
+      resetRect,
+    );
+  }) || candidates[0];
+  widgetAddBtn.style.left = placed.left + "px";
+  widgetAddBtn.style.top = placed.top + "px";
   return true;
 }
 function showWidgetAddFor(el) {
