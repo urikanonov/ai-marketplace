@@ -147,5 +147,7 @@
   { "name": "ge-comment-tail-arrow-nospace", "src": "sequenceDiagram\n  A->>B: msg; %%->" },
   { "name": "ge-comment-tail-with-semicolons", "src": "sequenceDiagram\n  A->>B: msg; %% -> ; A->>C: x" },
   { "name": "ge-comment-tail-then-next-line", "src": "sequenceDiagram\n  A->>B: hi; %% a note about -> flows\n  B->>A: bye" },
-  { "name": "ge-two-signals-then-comment-tail", "src": "sequenceDiagram\n  A->>B: hi; C->>D: bye; %% wrap -> up" }
+  { "name": "ge-two-signals-then-comment-tail", "src": "sequenceDiagram\n  A->>B: hi; C->>D: bye; %% wrap -> up" },
+  { "name": "seq-prose-tail-repro-324", "src": "sequenceDiagram\n    A->>B: Contract to AlertV3 (reuse converter); take entities + dict bags as-is" },
+  { "name": "seq-prose-tail-and-words", "src": "sequenceDiagram\n    A->>B: hi; take entities and dict bags as-is" }
 ]

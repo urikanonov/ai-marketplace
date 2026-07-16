@@ -1442,6 +1442,20 @@
     "src": "sequenceDiagram\n  par to B\n    A->>B: x\n  and to C\n    A->>C: y\n  end"
   },
   {
+    "name": "seq-prose-tail-and-words",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "sequenceDiagram\n    A->>B: hi; take entities and dict bags as-is"
+  },
+  {
+    "name": "seq-prose-tail-repro-324",
+    "kind": "mermaid",
+    "valid": false,
+    "py_flag": true,
+    "src": "sequenceDiagram\n    A->>B: Contract to AlertV3 (reuse converter); take entities + dict bags as-is"
+  },
+  {
     "name": "seq-r5-entity-led-tail-bug",
     "kind": "mermaid",
     "valid": false,
@@ -1473,14 +1487,14 @@
     "name": "seq-semicolon-bare-word",
     "kind": "mermaid",
     "valid": false,
-    "py_flag": false,
+    "py_flag": true,
     "src": "sequenceDiagram\n  A->>B: hi; world"
   },
   {
     "name": "seq-semicolon-prose-tail",
     "kind": "mermaid",
     "valid": false,
-    "py_flag": false,
+    "py_flag": true,
     "src": "sequenceDiagram\n  A->>B: hi; then two more words"
   },
   {

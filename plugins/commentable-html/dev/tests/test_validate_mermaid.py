@@ -96,10 +96,20 @@ class MermaidSequenceRule(unittest.TestCase):
     def test_semicolon_then_keyword_not_flagged(self):
         self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; activate B"))
 
-    def test_bare_word_tail_conservatively_skipped(self):
-        # Invalid in mermaid, but not the arrow-without-colon class, so we do not
-        # flag it (a safe false negative, never a false positive).
-        self.assertFalse(_flag("sequenceDiagram\n  A->>B: hi; world"))
+    def test_bare_word_tail_is_flagged(self):
+        # A ';' splits the message; the tail `world` is not a signal, a keyword,
+        # or a comment, so the real parser rejects it and the checker flags it
+        # (broadened rule - the arrow-free prose class, issue #324).
+        self.assertTrue(_flag("sequenceDiagram\n  A->>B: hi; world"))
+
+    def test_prose_tail_repro_is_flagged(self):
+        # The real authored repro (issue #324): a ';' in the message leaves an
+        # arrow-free prose tail that mermaid parses as a broken second statement.
+        src = ("sequenceDiagram\n"
+               "  A->>B: Contract to AlertV3 (reuse converter); take entities + dict bags as-is")
+        errs = M.check_mermaid_source(src)
+        self.assertTrue(errs)
+        self.assertIn("take entities + dict bags as-is", errs[0])
 
     def test_acctitle_directive_not_flagged(self):
         # accTitle:/accDescr: consume the rest of the line; their ':' precedes any
