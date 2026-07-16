@@ -206,7 +206,9 @@ def _rmtree_retry(path, retries, backoff, sleep, deadline):
 
 def clear_markers(skill_dir):
     """Remove any .skill-resources-*.ok markers and leftover .tmp files so a stale or crashed
-    extraction does not leave a misleading marker or temp cruft."""
+    extraction does not leave a misleading marker or temp cruft. A path that is unexpectedly a
+    directory (tampering, or a crash that landed a dir under the marker name) is removed too, so a
+    later marker write is never blocked by a same-named directory."""
     try:
         names = os.listdir(skill_dir)
     except OSError:
@@ -215,10 +217,11 @@ def clear_markers(skill_dir):
         if not name.startswith(MARKER_PREFIX):
             continue
         if name.endswith(MARKER_SUFFIX) or name.endswith(MARKER_SUFFIX + ".tmp"):
+            p = os.path.join(skill_dir, name)
             try:
-                os.remove(os.path.join(skill_dir, name))
+                os.remove(p)
             except OSError:
-                pass
+                shutil.rmtree(p, ignore_errors=True)  # a same-named directory
 
 
 def _write_marker(skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_BACKOFF,
@@ -435,7 +438,7 @@ def run(skill_dir, version, zip_path=None, retries=DEFAULT_RETRIES, backoff=DEFA
     it, so exactly one session extracts and the others see the finished marker.
     """
     marker = marker_path(skill_dir, version)
-    if os.path.exists(marker) and not force:
+    if os.path.isfile(marker) and not force:
         return 0
     if zip_path is None:
         zip_path = os.path.join(skill_dir, DEFAULT_ZIP_NAME)
@@ -449,7 +452,7 @@ def run(skill_dir, version, zip_path=None, retries=DEFAULT_RETRIES, backoff=DEFA
             log("another session is extracting skill resources; skipping.")
         return 0
     try:
-        if os.path.exists(marker) and not force:
+        if os.path.isfile(marker) and not force:
             return 0
         extract_all(zip_path, skill_dir, version, retries=retries, backoff=backoff,
                     sleep=sleep, extract=extract, budget=budget)

@@ -665,7 +665,29 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(any("skill-resources.zip" in x for x in drift),
                             "a changed zipped source file must be reported as zip drift")
 
-    def test_package_check_detects_hook_stamp_drift(self):
+    def test_member_bytes_normalizes_text_crlf_but_not_binary(self):
+        with tempfile.TemporaryDirectory() as d:
+            txt = os.path.join(d, "a.py")
+            with open(txt, "wb") as fh:
+                fh.write(b"line1\r\nline2\r\n")
+            self.assertEqual(build._member_bytes(txt), b"line1\nline2\n",
+                             "text members must be LF-normalized for a host-stable zip")
+            png = os.path.join(d, "img.png")
+            raw = b"\x89PNG\r\n\x1a\n\r\nbinary\r\n"
+            with open(png, "wb") as fh:
+                fh.write(raw)
+            self.assertEqual(build._member_bytes(png), raw,
+                             "binary members must be copied byte-for-byte (no CRLF rewrite)")
+
+    def test_resources_zip_metadata_is_host_neutral(self):
+        import io as _io
+        with zipfile.ZipFile(_io.BytesIO(build.build_resources_zip_bytes(_paths.PKG))) as zf:
+            for info in zf.infolist():
+                self.assertEqual(info.create_system, 3, info.filename + ": create_system must be unix(3)")
+                self.assertEqual(info.date_time, (1980, 1, 1, 0, 0, 0),
+                                 info.filename + ": timestamp must be the fixed epoch")
+                self.assertEqual(info.external_attr >> 16, 0o644,
+                                 info.filename + ": mode must be a fixed 0o644")
         v = build.read_version()
         with tempfile.TemporaryDirectory() as d:
             pkg = os.path.join(d, "pkg", "skills", "commentable-html")

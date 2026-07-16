@@ -80,6 +80,30 @@ class CheckDriftTests(unittest.TestCase):
             fh.write("\n/* mutate without regenerating */\n")
         self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
 
+    def test_cli_wrapper_propagates_nonzero_exit_on_drift(self):
+        # Regression guard for the CLI entrypoint itself: bsd.main() returns 1 on drift, but the
+        # `python scripts/build_site_data.py` wrapper must PROPAGATE that as the process exit code -
+        # the `site` CI gate (pages.yml runs `build_site_data.py --check`) relies on the exit code,
+        # so a wrapper that swallowed it (bare `main(sys.argv)`) would make the gate toothless.
+        import os as _os
+        import subprocess
+        import sys
+        wrapper = _os.path.join(bsd.REPO_ROOT, "scripts", "build_site_data.py")
+        if not _os.path.isfile(wrapper):
+            self.skipTest("build_site_data.py wrapper not found")
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        clean = subprocess.run([sys.executable, wrapper, "--check", "--root", root],
+                               capture_output=True)
+        self.assertEqual(clean.returncode, 0, "a fresh tree must exit 0")
+        with open(_os.path.join(root, "site", "dist", "assets", "styles.css"), "a",
+                  encoding="utf-8") as fh:
+            fh.write("\n/* mutate without regenerating */\n")
+        drifted = subprocess.run([sys.executable, wrapper, "--check", "--root", root],
+                                 capture_output=True)
+        self.assertNotEqual(drifted.returncode, 0,
+                            "the CLI wrapper must exit non-zero on drift so the site gate can fail")
+
     def test_check_flags_a_hand_edited_built_page(self):
         # The clobber guard, end to end through the real CLI: a hand-edit to a built page's STATIC
         # content (not a marker region) must fail --check, because the page is rebuilt from its

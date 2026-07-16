@@ -437,6 +437,91 @@ class ExtractResourcesTests(unittest.TestCase):
         self.assertTrue(os.stat(d).st_mode & _stat.S_IXUSR, "dir search bit must be restored")
         self.assertTrue(os.stat(d).st_mode & _stat.S_IWUSR, "dir write bit must be restored")
 
+    # CMH-PKG-05: a fully-successful swap that then cannot delete an orphan *.skill-resources-old
+    # backup (transient lock) STILL writes the marker - the backup is reclaimed next run, never a
+    # needless full re-extract. Pins the round-6 try/except around the final backup cleanup.
+    def test_successful_swap_survives_locked_orphan_backup(self):
+        extract_resources.run(self.skill, "1.0.0")
+        real_rmtree = extract_resources._rmtree_retry
+
+        def _fail_on_existing_backup(path, *a, **k):
+            if path.endswith(extract_resources.BACKUP_SUFFIX) and os.path.exists(path):
+                raise OSError("backup is transiently locked")
+            return real_rmtree(path, *a, **k)
+
+        _make_zip(self.zip, {"tools/a.py": "v2\n", "dist/c.html": "<html>v2</html>\n"})
+        with unittest.mock.patch.object(extract_resources, "_rmtree_retry", _fail_on_existing_backup):
+            rc = extract_resources.run(self.skill, "1.1.0", sleep=lambda *_: None, backoff=0.001)
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isfile(self._marker("1.1.0")),
+                        "a locked orphan backup must not cost the marker after a successful swap")
+        with open(os.path.join(self.skill, "tools", "a.py"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "v2\n", "the new version must be live")
+
+    # CMH-PKG-12: a leftover .lock.stale.<pid> sidecar from an interrupted atomic lock-steal is swept
+    # up on the next run rather than accumulating.
+    def test_cleanup_removes_stale_lock_sidecar(self):
+        sidecar = os.path.join(self.skill, extract_resources.LOCK_NAME + ".stale.999999")
+        open(sidecar, "w").close()
+        rc = extract_resources.run(self.skill, "1.0.0", sleep=lambda *_: None)
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(sidecar), "the stale-lock sidecar must be cleaned up")
+
+    # CMH-PKG-05: clear_markers removes a leftover .ok.tmp temp from a crashed marker write.
+    def test_clear_markers_removes_tmp_leftover(self):
+        tmp = self._marker("1.0.0") + ".tmp"
+        open(tmp, "w").close()
+        extract_resources.clear_markers(self.skill)
+        self.assertFalse(os.path.exists(tmp), "a leftover .ok.tmp must be cleared")
+
+    # CMH-PKG-08: _safe_member_path fails closed on absolute, drive-letter, and backslash members,
+    # not only on '..' traversal (which test_rejects_zip_slip_member covers).
+    def test_safe_member_path_rejects_absolute_and_drive_members(self):
+        staging = os.path.join(self.skill, extract_resources.STAGING_NAME)
+        for bad in ("/etc/passwd", "C:\\evil.txt", "C:/evil.txt", "tools\\..\\..\\evil",
+                    "\\\\server\\share\\x"):
+            with self.subTest(member=bad):
+                with self.assertRaises(ValueError):
+                    extract_resources._safe_member_path(staging, bad)
+        # a normal relative member is accepted
+        self.assertTrue(extract_resources._safe_member_path(staging, "tools/ok.py"))
+
+    # CMH-PKG-05: if the rename-ASIDE step (dst -> backup) fails, the already-swapped entries roll
+    # back and the failing live dir is left untouched (it was never moved aside).
+    def test_swap_rollback_on_rename_aside_failure(self):
+        _make_zip(self.zip, {"aaa/f.py": "old\n", "zzz/f.py": "old\n"})
+        extract_resources.run(self.skill, "1.0.0")
+        _make_zip(self.zip, {"aaa/f.py": "new\n", "zzz/f.py": "new\n"})
+        real_replace = os.replace
+
+        def _fail_aside_of_zzz(src, dst, *a, **k):
+            # entries swap in sorted order (aaa then zzz); fail zzz's rename-aside (dst -> *.old)
+            if dst.endswith(extract_resources.BACKUP_SUFFIX) and (os.sep + "zzz") in src:
+                raise OSError("aside locked")
+            return real_replace(src, dst, *a, **k)
+
+        with unittest.mock.patch("os.replace", _fail_aside_of_zzz):
+            with self.assertRaises(OSError):
+                extract_resources.extract_all(self.zip, self.skill, "1.1.0", retries=1,
+                                              backoff=0.001, sleep=lambda *_: None)
+        # aaa was swapped-in then rolled back to old; zzz was never moved aside so it stays old.
+        with open(os.path.join(self.skill, "aaa", "f.py"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "old\n", "aaa must roll back to the previous version")
+        with open(os.path.join(self.skill, "zzz", "f.py"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "old\n", "zzz (rename-aside failed) must be untouched")
+        self.assertFalse(os.path.isfile(self._marker("1.1.0")))
+
+    # CMH-PKG-02: a directory that happens to share the marker name must NOT be mistaken for a
+    # completed marker (isfile, not exists), so extraction still runs.
+    def test_marker_named_directory_does_not_skip_extraction(self):
+        os.makedirs(self._marker("1.0.0"))  # a DIRECTORY with the marker's name
+        rc = extract_resources.run(self.skill, "1.0.0", sleep=lambda *_: None, backoff=0.001)
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isfile(self._marker("1.0.0")),
+                        "the marker must end up a real file after extraction")
+        self.assertTrue(os.path.isfile(os.path.join(self.skill, "tools", "a.py")),
+                        "a marker-named directory must not short-circuit extraction")
+
     # CMH-PKG-05: the rollback itself retries a transient lock and restores the previous version.
     def test_rollback_survives_transient_lock_during_restore(self):
         _make_zip(self.zip, {"tools/a.py": "x\n", "dist/c.html": "<html></html>\n"})

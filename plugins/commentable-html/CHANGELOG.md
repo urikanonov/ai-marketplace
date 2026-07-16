@@ -34,6 +34,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   or empty, and `--check` flags a duplicated zip member (which a name-to-bytes map would silently
   collapse). The Windows launcher's `$PSScriptRoot` anchoring and the `-c pass` interpreter probe
   are pinned by tests, plus a Windows-junction packager-guard test.
+- Round-7 review hardening: the version-marker fast path now tests for a real FILE (`isfile`, not
+  `exists`) and `clear_markers` removes a marker-named directory, so a directory that somehow shares
+  the marker name can no longer permanently skip extraction or block the marker write. Added tests
+  pin the orphan-backup-cleanup survival, the rename-aside rollback branch, absolute/drive-letter
+  zip-member rejection, the stale-lock sidecar cleanup, `.ok.tmp` cleanup, deterministic-zip
+  host-neutral metadata, and text LF-normalization.
 
 ## [1.117.1] - 2026-07-16
 
