@@ -14,8 +14,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   Windows Defender install failure (`Access is denied. (os error 5)`) where the installer aborts on
   the first transiently locked file - the extractor retries each member with backoff, which the
   installer does not. An update ships a new zip and self-heals on the next session (the version
-  marker invalidates), which also fixes the auto-updater silently never updating on Defender
-  machines. The large tutorial (`docs/`) and worked examples (`examples/`) are no longer installed;
+  marker invalidates), which largely fixes the auto-updater silently never updating on Defender
+  machines: it now rewrites just the one zip instead of ~178 files, shrinking the transient-lock
+  surface dramatically (a lock on that single file is still possible and simply retries next
+  session). The large tutorial (`docs/`) and worked examples (`examples/`) are no longer installed;
   they moved to the plugin top level and are linked online. `build.py` gains `--pkg-dir` /
   `--examples-dir` and assembles the deterministic zip, and the editable + built skill tree now
   lives under `dev/skill/`.

@@ -31,6 +31,7 @@ HOOKS = _paths.HOOKS
 PLUGIN_DIR = os.path.dirname(os.path.dirname(PKG_SHIPPED))  # pkg/
 COPILOT_HOOKS = os.path.join(PLUGIN_DIR, "hooks.json")
 CLAUDE_HOOKS = os.path.join(PLUGIN_DIR, "hooks", "hooks.json")
+PS1 = os.path.join(PLUGIN_DIR, "hooks", "session-extract.ps1")
 ZIP = os.path.join(PKG_SHIPPED, "skill-resources.zip")
 
 
@@ -108,52 +109,56 @@ class HookWiringTests(unittest.TestCase):
                 text, r"\.skill-resources-(?!" + re.escape(version) + r"\.ok)[0-9]+\.[0-9]+\.[0-9]+\.ok",
                 hook + " carries a stale marker version")
 
-    # CMH-PKG-09: the hot path checks the marker before any Python spawn.
+    # CMH-PKG-09: the hot path checks the marker before any Python spawn. The Copilot bash path does
+    # it inline; the Windows path does it in the -File launcher session-extract.ps1.
     def test_copilot_hook_checks_marker_before_python(self):
-        hooks = json.loads(_read(COPILOT_HOOKS))
-        entry = hooks["hooks"]["sessionStart"][0]
-        for shell_key in ("bash", "powershell"):
-            cmd = entry[shell_key]
-            marker_at = cmd.find(".skill-resources-")
-            py_at = self._first_python_index(cmd)
-            self.assertNotEqual(marker_at, -1, shell_key + ": no marker check")
-            self.assertNotEqual(py_at, -1, shell_key + ": no python invocation")
-            self.assertLess(marker_at, py_at,
-                            shell_key + ": the marker check must precede the python invocation")
-            self.assertIn("extract_resources.py", cmd)
+        entry = json.loads(_read(COPILOT_HOOKS))["hooks"]["sessionStart"][0]
+        bash = entry["bash"]
+        self._assert_marker_before_python(bash, "copilot bash")
+        # The PowerShell field is a thin -File launcher; the logic lives in the .ps1.
+        self.assertIn("session-extract.ps1", entry["powershell"])
+        self.assertIn("-File", entry["powershell"])
+        self._assert_marker_before_python(_read(PS1), "session-extract.ps1")
 
     def test_claude_hook_checks_marker_before_python(self):
-        hooks = json.loads(_read(CLAUDE_HOOKS))
-        entry = hooks["hooks"]["SessionStart"][0]
+        entry = json.loads(_read(CLAUDE_HOOKS))["hooks"]["SessionStart"][0]
         self.assertEqual(entry.get("matcher"), "startup|resume")
-        cmd = entry["hooks"][0]["command"]
-        marker_at = cmd.find(".skill-resources-")
-        py_at = self._first_python_index(cmd)
-        self.assertNotEqual(marker_at, -1)
-        self.assertNotEqual(py_at, -1)
-        self.assertLess(marker_at, py_at,
-                        "the marker check must precede the python invocation")
-        self.assertIn("extract_resources.py", cmd)
+        self._assert_marker_before_python(entry["hooks"][0]["command"], "claude bash")
 
     def test_plugin_json_wires_the_copilot_hooks(self):
         pj = json.loads(_read(os.path.join(PLUGIN_DIR, "plugin.json")))
         self.assertEqual(pj.get("hooks"), "hooks.json")
 
-    # CMH-PKG-09: the hooks probe the interpreter (skip the Windows Store python3 alias stub) and
-    # isolate it, and the PowerShell cold path forces a success exit (non-blocking).
+    # CMH-PKG-09: the interpreter is probed (skip the Windows Store python3 alias stub) and isolated,
+    # and the PowerShell launcher forces a success exit (non-blocking).
     def test_hooks_probe_interpreter_and_skip_windowsapps_stub(self):
         copilot = json.loads(_read(COPILOT_HOOKS))["hooks"]["sessionStart"][0]
         claude = json.loads(_read(CLAUDE_HOOKS))["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-        for cmd in (copilot["bash"], copilot["powershell"], claude):
+        for cmd in (copilot["bash"], claude, _read(PS1)):
             self.assertIn("WindowsApps", cmd, "hook must skip the WindowsApps python alias stub")
             self.assertIn("-c", cmd, "hook must probe that the interpreter actually runs")
             self.assertIn(" -I ", " " + cmd + " ", "hook must run the extractor isolated (-I)")
 
-    def test_powershell_hook_forces_success_exit(self):
-        copilot = json.loads(_read(COPILOT_HOOKS))["hooks"]["sessionStart"][0]
-        self.assertRegex(copilot["powershell"].rstrip('"').rstrip(), r"exit 0$",
-                         "the PowerShell cold path must force exit 0 so a failed extraction is "
+    def test_powershell_launcher_forces_success_exit(self):
+        self.assertRegex(_read(PS1).rstrip() + "\n", r"exit 0\s*$",
+                         "session-extract.ps1 must force exit 0 so a failed extraction is "
                          "non-blocking")
+
+    def _assert_marker_before_python(self, cmd, label):
+        cmd = self._strip_comments(cmd)
+        marker_at = cmd.find(".skill-resources-")
+        py_at = self._first_python_index(cmd)
+        self.assertNotEqual(marker_at, -1, label + ": no marker check")
+        self.assertNotEqual(py_at, -1, label + ": no python invocation")
+        self.assertLess(marker_at, py_at,
+                        label + ": the marker check must precede the python invocation")
+        self.assertIn("extract_resources.py", cmd)
+
+    @staticmethod
+    def _strip_comments(cmd):
+        # Drop whole-line comments (PowerShell/# lines) so a comment mentioning "python" does not
+        # register as an invocation before the marker check.
+        return "\n".join(ln for ln in cmd.splitlines() if not ln.lstrip().startswith("#"))
 
     @staticmethod
     def _first_python_index(cmd):

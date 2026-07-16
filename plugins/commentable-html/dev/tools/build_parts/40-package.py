@@ -27,7 +27,7 @@ _PACKAGE_BINARY_EXTS = {
     ".zip", ".pdf",
 }
 _HOOKS_MARKER_RE = re.compile(r"(\.skill-resources-)[0-9]+\.[0-9]+\.[0-9]+(\.ok)")
-_HOOKS_VERSION_ARG_RE = re.compile(r"(--version[ =])[0-9]+\.[0-9]+\.[0-9]+")
+_HOOKS_VERSION_ARG_RE = re.compile(r"(-{1,2}[Vv]ersion[ =])[0-9]+\.[0-9]+\.[0-9]+")
 
 
 def resources_zip_path(pkg_dir):
@@ -53,34 +53,52 @@ def _member_bytes(path):
         return raw
 
 
+def _contained(base_real, path):
+    """True if `path` resolves (through any symlink/junction/reparse point) to somewhere inside
+    `base_real`. Uses realpath + commonpath so it catches symlinks, Windows directory junctions, and
+    a redirected top-level dir uniformly - unlike os.path.islink, which misses junctions."""
+    try:
+        return os.path.commonpath([base_real, os.path.realpath(path)]) == base_real
+    except ValueError:  # different drives on Windows
+        return False
+
+
 def _iter_zip_members(stage_dir):
     """Sorted (posix-rel, abspath) pairs for every file in the bulky dirs, so the zip is stable.
     Machine-specific and junk paths (__pycache__, *.pyc, .DS_Store, marker files) are excluded so
-    the zip is deterministic and clean across build hosts."""
+    the zip is deterministic and clean across build hosts. A build input that redirects outside the
+    stage tree (a symlink or Windows junction, which could smuggle host-local files into the shipped
+    zip) is rejected - fail closed rather than follow it."""
     members = []
+    stage_real = os.path.realpath(stage_dir)
     for d in PACKAGE_BULKY_DIRS:
         base = os.path.join(stage_dir, d)
         if not os.path.isdir(base):
             continue
+        if not _contained(stage_real, base):
+            raise SystemExit(
+                "skill-resources.zip: refusing a redirected build-input directory: " + d)
         for root, dirs, files in os.walk(base):
-            # Reject symlinked directories: a symlink in a build input could smuggle host-local
-            # (out-of-repo) files into the shipped zip, breaking the "the zip is trusted because we
-            # build it" assumption. Fail closed rather than follow it.
+            kept = []
             for x in dirs:
-                if os.path.islink(os.path.join(root, x)):
+                if x in _PACKAGE_SKIP_DIRS:
+                    continue
+                full = os.path.join(root, x)
+                if not _contained(stage_real, full):
                     raise SystemExit(
-                        "skill-resources.zip: refusing to package a symlinked directory: "
-                        + os.path.relpath(os.path.join(root, x), stage_dir))
-            dirs[:] = [x for x in dirs if x not in _PACKAGE_SKIP_DIRS]
+                        "skill-resources.zip: refusing a redirected (symlink/junction) directory: "
+                        + os.path.relpath(full, stage_dir))
+                kept.append(x)
+            dirs[:] = kept
             for name in files:
                 if name in _PACKAGE_SKIP_NAMES:
                     continue
                 if os.path.splitext(name)[1].lower() in _PACKAGE_SKIP_EXTS:
                     continue
                 full = os.path.join(root, name)
-                if os.path.islink(full):
+                if not _contained(stage_real, full):
                     raise SystemExit(
-                        "skill-resources.zip: refusing to package a symlinked file: "
+                        "skill-resources.zip: refusing a redirected (symlink/junction) file: "
                         + os.path.relpath(full, stage_dir))
                 rel = os.path.relpath(full, stage_dir).replace(os.sep, "/")
                 members.append((rel, full))

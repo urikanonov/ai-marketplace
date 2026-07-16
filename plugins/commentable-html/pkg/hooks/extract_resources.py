@@ -2,24 +2,26 @@
 """Unpack the commentable-html skill-resources.zip into the skill directory, once per version.
 
 Ships unzipped alongside the SessionStart hook. The bulky runtime (tools/, references/, dist/,
-vendor/) is shipped as a single skill-resources.zip so the plugin installer writes only a handful
-of files - which matters on Windows, where Defender briefly locks each file as it is written and the
+vendor/) is shipped as a single skill-resources.zip so the plugin installer writes only a handful of
+files - which matters on Windows, where Defender briefly locks each file as it is written and the
 installer aborts the whole install on the first transient lock (the 'Access is denied. (os error 5)'
 failure). The hook's native fast path checks for the version-stamped marker and only spawns this
-script when the resources are missing or stale (a fresh install, or an update dropped a new zip), so
-it runs at most once per version. Extraction:
+script when the resources are missing or stale, so it runs at most once per version. Extraction is
+built to be robust and to NEVER leave a half-usable skill:
 
-- retries the zip OPEN and every member on a transient lock with backoff (the fresh zip is exactly
-  the file Defender scans when the hook fires), bounded by an overall time budget under the hook
-  timeout so a permanent failure cannot hang the session;
-- serializes across concurrent session startups with an exclusive lock (with stale-lock recovery),
-  so two windows starting at once cannot interleave writes into the same files;
-- wipes the runtime dirs the zip owns before extracting, so a file removed/renamed in a newer
-  version does not linger and shadow the new one;
-- validates each member path (defence in depth on top of stdlib zip-slip sanitisation), failing
-  closed on an absolute or traversing member;
-- writes the version marker only after ALL members extract (partial failure leaves no marker, so the
-  next session re-extracts), and clears stale markers and temp files.
+- it extracts into a private STAGING subdir first, then atomically swaps each top-level runtime dir
+  into place, so a transient lock, timeout, or crash mid-extract leaves the PREVIOUS version fully
+  intact (the swap removes the old dir and renames the new one in, retrying a transient lock);
+- because removed/renamed files are replaced by a fresh directory, nothing lingers across a version
+  upgrade, and because the swap targets come from the real extracted directories (not from raw zip
+  member names) there is no path-derivation mismatch;
+- every member path is validated (reject absolute / drive / `..` / backslash-separated members) on
+  top of stdlib zip-slip sanitisation, failing closed on a tampered zip;
+- the zip OPEN and every member are retried on a transient lock (the fresh zip is what Defender
+  scans) within time budgets under the hook timeout, so a permanent failure aborts gracefully and
+  retries next session instead of hanging;
+- concurrent session startups are serialised by an exclusive lock (held open for the duration, with
+  an atomic steal of a lock abandoned by a crashed process), so two windows cannot extract at once.
 
 It is non-blocking: any failure is logged and swallowed so a session is never broken. Stdlib only;
 safe under `python -I`.
@@ -27,6 +29,7 @@ safe under `python -I`.
 import argparse
 import errno
 import os
+import shutil
 import sys
 import time
 import zipfile
@@ -34,16 +37,19 @@ import zipfile
 MARKER_PREFIX = ".skill-resources-"
 MARKER_SUFFIX = ".ok"
 LOCK_NAME = ".skill-resources.lock"
+STAGING_NAME = ".skill-resources-staging"
 DEFAULT_ZIP_NAME = "skill-resources.zip"
 DEFAULT_RETRIES = 8
 DEFAULT_BACKOFF = 0.05  # seconds; doubles each retry, capped, so a lock clears without stalling.
 _MAX_DELAY = 2.0
-# Overall wall-clock budget for one extraction attempt, comfortably under the hook's 120s timeout,
-# so a permanent (non-transient) failure aborts gracefully and retries next session instead of
-# hanging the whole SessionStart.
+# Time budgets (seconds), comfortably under the hook's 120s timeout. The zip OPEN gets its own slice
+# so a slow-to-open zip cannot starve the per-member retry budget.
 DEFAULT_BUDGET_SECONDS = 90.0
-# A lock older than this is treated as abandoned by a crashed process and stolen.
-STALE_LOCK_SECONDS = 300.0
+_OPEN_BUDGET_SECONDS = 15.0
+# A lock older than this is treated as abandoned by a crashed process and stolen. No legitimate
+# holder can outlive the 120s hook timeout, so this only governs crash recovery; keep it just above
+# the hook cap so a crashed session's lock clears on the next start rather than blocking for minutes.
+STALE_LOCK_SECONDS = 150.0
 # Windows lock/share error codes worth retrying: ACCESS_DENIED, SHARING_VIOLATION, LOCK_VIOLATION.
 _LOCK_WINERRORS = {5, 32, 33}
 
@@ -73,17 +79,24 @@ def marker_path(skill_dir, version):
 
 def _retry(func, retries, backoff, sleep, deadline):
     """Call func(), retrying a transient lock up to `retries` times with capped exponential backoff,
-    but never past `deadline` (time.monotonic seconds). Re-raises a non-lock error immediately."""
+    but never sleeping past `deadline` (time.monotonic seconds). A non-lock error, an exhausted
+    retry count, or an expired budget re-raises immediately - so no attempt is made after the
+    deadline."""
     attempt = 0
     delay = backoff
     while True:
         try:
             return func()
         except Exception as exc:  # noqa: BLE001 - decide by kind, then re-raise
-            past_deadline = deadline is not None and time.monotonic() >= deadline
-            if not _is_lock_error(exc) or attempt >= retries or past_deadline:
+            if not _is_lock_error(exc) or attempt >= retries:
                 raise
-            sleep(min(delay, _MAX_DELAY))
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise
+            nap = min(delay, _MAX_DELAY)
+            if remaining is not None:
+                nap = min(nap, remaining)
+            sleep(nap)
             delay *= 2
             attempt += 1
 
@@ -105,23 +118,41 @@ def _is_within(base, target):
 
 
 def _safe_member_path(dest, name):
-    """Fail closed on an absolute or traversing zip member (defence in depth; stdlib zipfile also
-    strips these, but we reject rather than silently relocate a tampered member)."""
-    target = os.path.join(dest, name)
+    """Resolve a zip member under dest, failing closed on an absolute / drive-letter / traversing
+    member. Treats BOTH `/` and `\\` as separators so a backslash-encoded `..\\x` cannot slip past
+    on POSIX (defence in depth; stdlib zipfile also sanitises)."""
+    norm = name.replace("\\", "/")
+    if norm.startswith("/") or os.path.isabs(name) or (len(name) > 1 and name[1] == ":"):
+        raise ValueError("unsafe (absolute) zip member path: %r" % name)
+    parts = [p for p in norm.split("/") if p not in ("", ".")]
+    if any(p == ".." for p in parts):
+        raise ValueError("unsafe (traversing) zip member path: %r" % name)
+    target = os.path.join(dest, *parts) if parts else dest
     if not _is_within(dest, target):
         raise ValueError("unsafe zip member path: %r" % name)
     return target
 
 
-def _rmtree(path):
-    import shutil
+def _rmtree_retry(path, retries, backoff, sleep, deadline):
+    """Remove a directory tree, retrying a transient lock (do NOT ignore_errors, so a Defender lock
+    is retried rather than silently leaving files behind)."""
+    if not os.path.exists(path) and not os.path.islink(path):
+        return
 
-    shutil.rmtree(path, ignore_errors=True)
+    def _rm():
+        if os.path.islink(path) or os.path.isfile(path):
+            os.remove(path)
+        else:
+            shutil.rmtree(path)
+    try:
+        _retry(_rm, retries, backoff, sleep, deadline)
+    except FileNotFoundError:
+        pass
 
 
 def clear_markers(skill_dir):
-    """Remove any older .skill-resources-*.ok markers and leftover .tmp files so only the current
-    version's marker remains and a crashed extraction does not leave temp cruft."""
+    """Remove any .skill-resources-*.ok markers and leftover .tmp files so a stale or crashed
+    extraction does not leave a misleading marker or temp cruft."""
     try:
         names = os.listdir(skill_dir)
     except OSError:
@@ -136,79 +167,98 @@ def clear_markers(skill_dir):
                 pass
 
 
-def _owned_top_dirs(members):
-    """The top-level directories the zip owns (its members' first path segments)."""
-    tops = set()
-    for m in members:
-        name = m.filename.replace("\\", "/")
-        if m.is_dir() or "/" not in name:
-            first = name.rstrip("/").split("/", 1)[0]
-        else:
-            first = name.split("/", 1)[0]
-        if first:
-            tops.add(first)
-    return sorted(tops)
+def _write_marker(skill_dir, version):
+    """Write the version marker with a no-follow temp create (so a pre-planted `.tmp` symlink cannot
+    redirect the write), then atomically move it into place."""
+    tmp = marker_path(skill_dir, version) + ".tmp"
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    try:
+        os.write(fd, (version + "\n").encode("utf-8"))
+    finally:
+        os.close(fd)
+    os.replace(tmp, marker_path(skill_dir, version))
 
 
 def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_BACKOFF,
                 sleep=time.sleep, extract=_extract_member, budget=DEFAULT_BUDGET_SECONDS):
-    """Extract every member with per-file retry; write the marker only after ALL succeed.
-
-    Removes the current-version marker up front (so a mid-extract failure - including a forced
-    re-extract - never leaves a valid marker), wipes the runtime dirs the zip owns (so files removed
-    in a newer version do not linger), validates each member path, and retries the zip open and each
-    member on a transient lock within an overall time budget.
-    """
-    deadline = time.monotonic() + budget if budget else None
-    # Invalidate first: any failure below leaves no valid marker, so the next session re-extracts.
+    """Extract into a staging dir, then atomically swap each top-level dir into place, and write the
+    marker only after ALL of it succeeds. Any failure leaves the previous version intact and no
+    marker, so the next session re-extracts (self-heal)."""
+    now = time.monotonic
+    open_deadline = None if budget is None else now() + min(_OPEN_BUDGET_SECONDS, budget)
+    # Invalidate the current marker and clear old markers/temps up front, so a failure below never
+    # leaves a marker pointing at a tree we are about to replace.
     try:
         os.remove(marker_path(skill_dir, version))
     except OSError:
         pass
-    zf = _retry(lambda: zipfile.ZipFile(zip_path), retries, backoff, sleep, deadline)
-    with zf:
-        members = zf.infolist()
-        for name in [m.filename for m in members]:
-            _safe_member_path(skill_dir, name)  # fail closed before we delete or write anything
-        for top in _owned_top_dirs(members):
-            _rmtree(os.path.join(skill_dir, top))
-        for member in members:
-            extract_member_with_retry(zf, member, skill_dir, retries, backoff,
-                                      sleep=sleep, extract=extract, deadline=deadline)
     clear_markers(skill_dir)
-    tmp = marker_path(skill_dir, version) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write(version + "\n")
-    os.replace(tmp, marker_path(skill_dir, version))
+    staging = os.path.join(skill_dir, STAGING_NAME)
+    _rmtree_retry(staging, retries, backoff, sleep, open_deadline)
+    os.makedirs(staging, exist_ok=True)
+    try:
+        zf = _retry(lambda: zipfile.ZipFile(zip_path), retries, backoff, sleep, open_deadline)
+        with zf:
+            members = zf.infolist()
+            for member in members:
+                _safe_member_path(staging, member.filename)  # fail closed before writing anything
+            member_deadline = None if budget is None else now() + budget
+            for member in members:
+                extract_member_with_retry(zf, member, staging, retries, backoff,
+                                          sleep=sleep, extract=extract, deadline=member_deadline)
+        # Atomic swap: for each top-level entry the zip produced, replace the installed one. Targets
+        # come from the REAL extracted directory listing, so there is no raw-member-name mismatch.
+        swap_deadline = None if budget is None else now() + budget
+        for entry in sorted(os.listdir(staging)):
+            src = os.path.join(staging, entry)
+            dst = os.path.join(skill_dir, entry)
+            _rmtree_retry(dst, retries, backoff, sleep, swap_deadline)
+            _retry(lambda s=src, d=dst: os.replace(s, d), retries, backoff, sleep, swap_deadline)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    _write_marker(skill_dir, version)
 
 
-def _acquire_lock(skill_dir, sleep=time.sleep):
-    """Acquire an exclusive extraction lock. Returns the lock path on success, or None if another
-    session holds a fresh lock (this session should skip and let that one finish). A lock older than
-    STALE_LOCK_SECONDS is assumed abandoned by a crashed process and stolen once."""
+def _acquire_lock(skill_dir):
+    """Acquire an exclusive extraction lock, held open for the duration. Returns (lock_path, fd) on
+    success, or (None, None) if another session holds a fresh lock (skip and let it finish). A lock
+    older than STALE_LOCK_SECONDS is assumed abandoned by a crashed process and stolen atomically
+    (rename-to-unique, so only one racing session wins the steal)."""
     lock = os.path.join(skill_dir, LOCK_NAME)
     for _attempt in range(2):
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(fd)
-            return lock
+            return lock, fd
         except FileExistsError:
             try:
                 age = time.time() - os.path.getmtime(lock)
             except OSError:
-                sleep(0.05)
-                continue
-            if age > STALE_LOCK_SECONDS:
-                try:
-                    os.remove(lock)
-                except OSError:
-                    return None
-                continue
-            return None
-    return None
+                return None, None
+            if age <= STALE_LOCK_SECONDS:
+                return None, None
+            stolen = lock + ".stale.%d" % os.getpid()
+            try:
+                os.replace(lock, stolen)  # atomic: the loser's source is already gone
+            except OSError:
+                return None, None  # another session won the steal
+            try:
+                os.remove(stolen)
+            except OSError:
+                pass
+            # loop once more to create our own lock
+    return None, None
 
 
-def _release_lock(lock):
+def _release_lock(lock, fd):
+    if fd is not None:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
     if lock:
         try:
             os.remove(lock)
@@ -233,7 +283,7 @@ def run(skill_dir, version, zip_path=None, retries=DEFAULT_RETRIES, backoff=DEFA
         if log:
             log("skill-resources.zip not found at %s; nothing to extract." % zip_path)
         return 0
-    lock = _acquire_lock(skill_dir, sleep=sleep)
+    lock, fd = _acquire_lock(skill_dir)
     if lock is None:
         if log:
             log("another session is extracting skill resources; skipping.")
@@ -245,7 +295,7 @@ def run(skill_dir, version, zip_path=None, retries=DEFAULT_RETRIES, backoff=DEFA
                     sleep=sleep, extract=extract, budget=budget)
         return 0
     finally:
-        _release_lock(lock)
+        _release_lock(lock, fd)
 
 
 def _log_dir(agent):

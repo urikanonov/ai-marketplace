@@ -4,8 +4,8 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "d=\"skills/commentable-html\"; m=\"$d/.skill-resources-1.132.0.ok\"; [ -e \"$m\" ] && exit 0; py=\"\"; for c in python3 python py; do p=$(command -v \"$c\" 2>/dev/null) || continue; case \"$p\" in *WindowsApps*) continue;; esac; \"$p\" -I -c \"\" >/dev/null 2>&1 && { py=\"$p\"; break; }; done; [ -n \"$py\" ] && \"$py\" -I hooks/extract_resources.py --version 1.132.0 --agent copilot >/dev/null 2>&1; true",
-        "powershell": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$ErrorActionPreference='SilentlyContinue'; if (Test-Path 'skills\\commentable-html\\.skill-resources-1.132.0.ok') { exit 0 }; $py=$null; foreach ($c in 'python','python3','py') { $cmd=Get-Command $c -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $cmd) { continue }; if ($cmd.Source -like '*\\WindowsApps\\*') { continue }; & $cmd.Source -I -c '' 2>$null; if ($LASTEXITCODE -eq 0) { $py=$cmd.Source; break } }; if ($py) { & $py -I 'hooks\\extract_resources.py' --version 1.132.0 --agent copilot *> $null }; exit 0\"",
+        "bash": "d=\"skills/commentable-html\"; m=\"$d/.skill-resources-1.132.0.ok\"; [ -e \"$m\" ] && exit 0; py=\"\"; for c in python3 python py; do p=$(command -v \"$c\" 2>/dev/null) || continue; case \"$p\" in *WindowsApps*) continue;; esac; \"$p\" -I -c pass >/dev/null 2>&1 && { py=\"$p\"; break; }; done; [ -n \"$py\" ] && \"$py\" -I hooks/extract_resources.py --version 1.132.0 --agent copilot >/dev/null 2>&1; true",
+        "powershell": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File hooks\\session-extract.ps1 -Version 1.132.0",
         "timeoutSec": 120
       }
     ]

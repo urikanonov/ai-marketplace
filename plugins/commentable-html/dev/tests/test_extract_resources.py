@@ -19,6 +19,7 @@ import importlib.util
 import os
 import time
 import unittest
+import unittest.mock
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -240,10 +241,72 @@ class ExtractResourcesTests(unittest.TestCase):
         open(lock, "w").close()
         old = time.time() - (extract_resources.STALE_LOCK_SECONDS + 60)
         os.utime(lock, (old, old))
-        rc = extract_resources.run(self.skill, "1.0.0")
+        rc = extract_resources.run(self.skill, "1.0.0", sleep=lambda *_: None)
         self.assertEqual(rc, 0)
         self.assertTrue(os.path.isfile(self._marker("1.0.0")))
         self.assertFalse(os.path.isfile(lock), "the stale lock must be released")
+
+    # CMH-PKG-03: the zip OPEN (not just members) is retried on a transient lock.
+    def test_zip_open_is_retried(self):
+        real_zipfile = extract_resources.zipfile.ZipFile
+        state = {"fails": 2}
+        slept = []
+
+        def _flaky_open(path, *a, **k):
+            if state["fails"] > 0:
+                state["fails"] -= 1
+                raise PermissionError("zip is locked")
+            return real_zipfile(path, *a, **k)
+
+        with unittest.mock.patch.object(extract_resources.zipfile, "ZipFile", _flaky_open):
+            extract_resources.extract_all(self.zip, self.skill, "1.0.0", backoff=0.001,
+                                          sleep=slept.append)
+        self.assertEqual(state["fails"], 0)
+        self.assertGreaterEqual(len(slept), 2)
+        self.assertTrue(os.path.isfile(self._marker("1.0.0")))
+
+    # CMH-PKG-03/04: an exhausted time budget aborts without a marker (never hangs).
+    def test_budget_exhausted_aborts_without_marker(self):
+        def _always_locked(zf, member, dest):
+            raise PermissionError("still locked")
+
+        with self.assertRaises(PermissionError):
+            extract_resources.extract_all(self.zip, self.skill, "1.0.0", retries=1000,
+                                          backoff=0.001, sleep=lambda *_: None,
+                                          extract=_always_locked, budget=0.0)
+        self.assertFalse(os.path.isfile(self._marker("1.0.0")))
+
+    # CMH-PKG-12: a failed extraction releases the lock so a later session can proceed.
+    def test_lock_released_on_extraction_failure(self):
+        def _boom(zf, member, dest):
+            raise ValueError("not a lock")
+
+        with self.assertRaises(ValueError):
+            extract_resources.run(self.skill, "1.0.0", extract=_boom, sleep=lambda *_: None)
+        self.assertFalse(os.path.isfile(os.path.join(self.skill, extract_resources.LOCK_NAME)),
+                         "the lock must be released even when extraction raises")
+        # A subsequent normal run proceeds and completes.
+        self.assertEqual(extract_resources.run(self.skill, "1.0.0"), 0)
+        self.assertTrue(os.path.isfile(self._marker("1.0.0")))
+
+    # CMH-PKG-05: a failed upgrade leaves the previous version's files intact (staging swap).
+    def test_failed_upgrade_leaves_previous_version_intact(self):
+        extract_resources.run(self.skill, "1.0.0")
+        old_tool = os.path.join(self.skill, "tools", "a.py")
+        self.assertTrue(os.path.isfile(old_tool))
+
+        def _always_locked(zf, member, dest):
+            raise PermissionError("locked")
+
+        with self.assertRaises(PermissionError):
+            extract_resources.extract_all(self.zip, self.skill, "1.1.0", retries=1,
+                                          backoff=0.001, sleep=lambda *_: None,
+                                          extract=_always_locked)
+        self.assertTrue(os.path.isfile(old_tool),
+                        "a failed upgrade must not destroy the working previous version")
+        self.assertFalse(os.path.isfile(self._marker("1.1.0")))
+        self.assertFalse(os.path.isdir(os.path.join(self.skill, extract_resources.STAGING_NAME)),
+                         "staging must be cleaned up after a failure")
 
     def _reset_skill(self):
         import shutil
