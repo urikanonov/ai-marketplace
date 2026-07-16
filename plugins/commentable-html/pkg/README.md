@@ -76,24 +76,24 @@ See the [tutorial](skills/commentable-html/docs/TUTORIAL.md) for a full walkthro
 The authoritative per-generation instructions are in [`skills/commentable-html/SKILL.md`](skills/commentable-html/SKILL.md). In short: start from `skills/commentable-html/dist/PORTABLE.html` for a standalone file, or `skills/commentable-html/dist/NONPORTABLE.html` plus its companions for a local iterative file, then run the validator when Python is available:
 
 ```powershell
-python skills\commentable-html\tools\validate.py --strict <file.html>
+python skills\commentable-html\tools\validate\validate.py --strict <file.html>
 ```
 
-The review loop is also documented in `skills/commentable-html/SKILL.md`: the user copies all comments, the agent processes the bundle, and `tools\mark_handled.py` appends handled ids so processed comments disappear on reload.
+The review loop is also documented in `skills/commentable-html/SKILL.md`: the user copies all comments, the agent processes the bundle, and `tools/authoring/mark_handled.py` appends handled ids so processed comments disappear on reload.
 
 ### Quickstart: build a document from a content fragment
 
-`tools/new_document.py` wraps a ready HTML content fragment (the part that goes inside `#commentRoot`) in the review layer. Given a `report-body.html` fragment, produce a single self-contained file:
+`tools/authoring/new_document.py` wraps a ready HTML content fragment (the part that goes inside `#commentRoot`) in the review layer. Given a `report-body.html` fragment, produce a single self-contained file:
 
 ```powershell
-python skills\commentable-html\tools\new_document.py `
+python skills\commentable-html\tools\authoring\new_document.py `
   --content report-body.html `
   --portable `
   --label "Q3 Cost Review" `
   --key auto `
   --source report-body.html `
   --out q3-cost-review.html
-python skills\commentable-html\tools\validate.py --strict q3-cost-review.html
+python skills\commentable-html\tools\validate\validate.py --strict q3-cost-review.html
 ```
 
 `--key auto` derives a stable, collision-free `data-comment-key` from the output/source path (not from `--label`), so two same-titled reports keep separate comment stores. Drop `--portable` for a NonPortable file that references the companion assets, and pass `--content -` to read the fragment from stdin. The fragment is trusted HTML and is not sanitized; sanitize any untrusted host HTML before wrapping it.

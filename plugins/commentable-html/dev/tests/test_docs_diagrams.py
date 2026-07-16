@@ -123,6 +123,22 @@ class ShippedLicenseTests(unittest.TestCase):
                          "the shipped skill LICENSE must match the repository root LICENSE")
 
 
+class PluginReadmeToolPathDocsTests(unittest.TestCase):
+    """CMH-DOC-15: every tool path in the shipped plugin README.md resolves to a real shipped file."""
+
+    TOOL_PATH_RE = re.compile(r"(?:skills[\\/]+commentable-html[\\/]+)?tools[\\/]+[A-Za-z0-9_.\\/-]+\.py")
+
+    def test_plugin_readme_tool_paths_resolve(self):
+        text = _read(PLUGIN_README)
+        paths = sorted({match.group(0) for match in self.TOOL_PATH_RE.finditer(text)})
+        self.assertGreater(len(paths), 0)
+        for path in paths:
+            normalized = path.replace("\\", "/")
+            tools_tail = normalized.split("tools/", 1)[1]
+            shipped_path = os.path.join(_paths.TOOLS, *tools_tail.split("/"))
+            self.assertTrue(os.path.isfile(shipped_path), "%s does not resolve to %s" % (path, shipped_path))
+
+
 class MotivationDocsTests(unittest.TestCase):
     """CMH-DOC-01: the shipped README and SKILL.md carry the medium-comparison motivation
     and cite the "unreasonable effectiveness of HTML" blog post."""

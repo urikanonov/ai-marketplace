@@ -25,5 +25,5 @@ any browser and share:
   disagree, and the table shape uses `data-cmh-parent` so the hierarchy survives sorting.
 - Your state changes are saved in the browser, surfaced as one per-list card with jump and
   Reset, and collected into Copy all so an agent can cement them back into the source with
-  `tools/checklist_apply.py`.
+  `tools/checklist/checklist_apply.py`.
 - Item labels stay ordinary commentable text, so you can still leave a note on any item.
