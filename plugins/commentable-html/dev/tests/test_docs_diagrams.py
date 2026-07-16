@@ -102,6 +102,27 @@ class PluginReadmeDualAgentTests(unittest.TestCase):
         self.assertIn("copilot plugin install commentable-html@urikan-ai-marketplace", text)
 
 
+class ShippedLicenseTests(unittest.TestCase):
+    """CMH-DOC-14: the shipped skill carries the MIT LICENSE at its root, so every copy that ships
+    (the Copilot/Claude `plugin install` source subtree and the Claude Desktop skill ZIP) redistributes
+    the code with its required license notice."""
+
+    def test_skill_ships_the_mit_license(self):
+        license_path = os.path.join(_paths.PKG, "LICENSE")
+        self.assertTrue(os.path.isfile(license_path),
+                        "the shipped skill must carry a LICENSE at its root: %s" % license_path)
+        text = _read(license_path)
+        self.assertIn("MIT License", text)
+        self.assertIn("Uri Kanonov", text)
+
+    def test_shipped_license_matches_the_repo_license(self):
+        repo_license = os.path.normpath(os.path.join(_paths.PKG, "..", "..", "..", "..", "..", "LICENSE"))
+        skill_license = os.path.join(_paths.PKG, "LICENSE")
+        self.assertTrue(os.path.isfile(repo_license), repo_license)
+        self.assertEqual(_read(skill_license).strip(), _read(repo_license).strip(),
+                         "the shipped skill LICENSE must match the repository root LICENSE")
+
+
 class MotivationDocsTests(unittest.TestCase):
     """CMH-DOC-01: the shipped README and SKILL.md carry the medium-comparison motivation
     and cite the "unreasonable effectiveness of HTML" blog post."""

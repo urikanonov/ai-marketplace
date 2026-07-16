@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.81.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.82.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.82.0] - 2026-07-16</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The shipped skill now carries the MIT <code>LICENSE</code> at its root, so every copy that ships (the Copilot/Claude <code>plugin install</code> source subtree and the Claude Desktop skill ZIP) redistributes the code with its required license notice. (CMH-DOC-14)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.81.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Callouts now carry a non-color cue so their meaning survives grayscale printing, color-blindness, and screen readers: each variant (info/success/warning/danger) shows a distinct leading glyph, and the runtime stamps <code>role=&quot;note&quot;</code> with a variant label. An authored leading <code>&lt;strong&gt;</code> label (or an explicit <code>aria-label</code>) is respected so the variant is not announced twice. (CMH-CALLOUT-03)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.80.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -429,8 +438,6 @@
               <li>The side-navigation scroll-spy now marks the current section&#x27;s link with <code>aria-current=&quot;location&quot;</code> (kept unique and cleared from the others), so screen readers announce the reader&#x27;s location instead of relying on the visual highlight alone. (CMH-TOC-08)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.79.0] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -465,18 +472,7 @@
               <li>Early install call to action: the deck now surfaces both agents&#x27; exact install commands (Copilot and Claude <code>plugin marketplace add</code> plus <code>plugin install commentable-html@urikan-ai-marketplace</code>) as code blocks on an Act 2 slide well before the close, alongside the live-demo, GitHub, and tutorial links, and again as the primary CTA and the closing slide - so a viewer can act within the first few minutes rather than only at the end. (CMH-DECK-SHOWCASE-03)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.75.0] - 2026-07-15</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Section-card auto-wrap for report/plan documents - the deterministic fix for the CMH-VAL-14 flat-section warning. <code>tools/authoring/wrap_sections.py</code> wraps each bare top-level <code>&lt;h2&gt;</code> block (the heading plus the siblings up to the next top-level <code>&lt;h2&gt;</code>) in <code>&lt;section aria-labelledby=&quot;the-h2-id&quot;&gt;</code> so a <code>report</code>/<code>plan</code> renders as boxed section cards (<code>#commentRoot &gt; section</code>), leaving the title/lede above the cards. It is idempotent, a no-op when a top-level <code>&lt;section&gt;</code> already exists, and scopes to the <code>#commentRoot</code> element for a full document or the fragment root for a bare fragment. <code>new_document.py</code> (report/plan fragments) and <code>finalize.py</code> (full docs, gated on the kind meta) run it by default; opt out with <code>--no-wrap-sections</code>. (CMH-TOOL-17)</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>build.py</code> now re-stamps the version into the Claude Code manifests (<code>.claude-plugin/plugin.json</code> and <code>.claude-plugin/marketplace.json</code>) alongside the Copilot ones, so a version bump no longer leaves the Claude mirror behind (which previously required a manual bump and could fail the claude-manifest / version-bump guards). (CMH-TOOL-06)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">79 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">80 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
