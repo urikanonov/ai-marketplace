@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.130.0] - 2026-07-16
+
+### Changed
+
+- Deck showcase polish: added the linked Commentable HTML brand button, distinct Overview/counter nav chrome, a static "make it clearer" comment mockup on the Act 1 After card, richer point-at/install pills, and a supported-languages plus notes-demo slide while preserving the restructured deck flow, the interactive chart, and the new edge-navigation runtime.
+
 ## [1.129.0] - 2026-07-16
 
 ### Fixed

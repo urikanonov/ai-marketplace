@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.129.0" />
+<meta name="commentable-html-version" content="1.130.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.129.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.130.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -1576,6 +1576,9 @@ body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
 body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle {
   display: none !important;
 }
+body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-brand-link {
+  display: none !important;
+}
 /* In present mode, suppress the text-selection popup so a selection is not a dead end
    (the composer/sidebar are hidden; the user enters comment mode to review). */
 body.cmh-deck-present #menuComment {
@@ -1759,10 +1762,10 @@ body.cmh-deck-present #menuComment {
   visibility: visible !important;
   transform: none !important;
 }
+.cmh-deck-brand-link,
 .cmh-deck-mode-toggle {
   position: fixed;
   top: 14px;
-  right: 14px;
   z-index: 100001;
   display: inline-flex;
   align-items: center;
@@ -1778,6 +1781,24 @@ body.cmh-deck-present #menuComment {
   cursor: pointer;
   /* Lift the chrome off arbitrary slide backgrounds so it stays legible over any slide colour. */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.cmh-deck-brand-link {
+  right: 14px;
+  color: var(--cp-text, #fff);
+  text-decoration: none;
+}
+.cmh-deck-brand-link:hover {
+  text-decoration: none;
+  border-color: var(--cp-accent, #2ecc71);
+  background: var(--cp-surface-soft, #333);
+}
+.cmh-deck-brand-link .cm-brand-icon {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.cmh-deck-mode-toggle {
+  right: 64px;
 }
 .cmh-deck-mode-toggle.cmh-deck-mode-on {
   background: var(--cp-accent, #2ecc71);
@@ -1806,11 +1827,22 @@ body.cmh-deck-present #menuComment {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 .cmh-deck-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 16%, var(--cp-surface-soft, #333));
+  border: 1px solid color-mix(in srgb, var(--cp-accent, #2ecc71) 34%, var(--cp-border, #444));
   color: var(--cp-text, #fff);
   font: inherit;
   min-width: 56px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+.cmh-deck-nav .cmh-deck-overview-button {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 22%, var(--cp-surface-soft, #333));
+  border-color: color-mix(in srgb, var(--cp-accent, #2ecc71) 40%, var(--cp-border, #444));
 }
 .cmh-deck-nav button {
   padding: 6px 12px;
@@ -2598,7 +2630,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.129.0";
+const CMH_VERSION = "1.130.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -10435,6 +10467,23 @@ function setupDeck() {
   toggle.setAttribute("aria-pressed", "false");
   toggle.addEventListener("click", () => { setCommentMode(!commentMode); toggle.blur(); });
   document.body.prepend(toggle);
+  const brandLink = document.createElement("a");
+  brandLink.className = "cm-skip cm-brand-link cmh-deck-brand-link";
+  brandLink.href = CMH_SITE_URL;
+  brandLink.target = "_blank";
+  brandLink.rel = "noopener noreferrer";
+  brandLink.title = "Commentable HTML site";
+  brandLink.setAttribute("aria-label", "Commentable HTML site (opens in a new tab)");
+  brandLink.innerHTML = CMH_ICON_SVG;
+  const brandIcon = brandLink.querySelector("svg");
+  if (brandIcon) {
+    brandIcon.setAttribute("aria-hidden", "true");
+    brandIcon.setAttribute("focusable", "false");
+    brandIcon.removeAttribute("role");
+    brandIcon.removeAttribute("aria-label");
+    brandIcon.removeAttribute("data-cmh-tip");
+  }
+  toggle.after(brandLink);
 
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";
@@ -10451,6 +10500,7 @@ function setupDeck() {
   counter.textContent = (current + 1) + " / " + slides.length;
   counter.setAttribute("aria-label", "Slide " + (current + 1) + " of " + slides.length);
   const overviewControl = document.createElement("button");
+  overviewControl.className = "cmh-deck-overview-button";
   overviewControl.type = "button";
   overviewControl.textContent = "Overview";
   overviewControl.title = "Slide overview";

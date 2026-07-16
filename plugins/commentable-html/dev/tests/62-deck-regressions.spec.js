@@ -495,6 +495,42 @@ test("CMH-DECK-20: slide 16 cross-card comments do not highlight the grid gap", 
   }
 });
 
+test("CMH-DECK-21: deck chrome exposes the project link and distinct overview/count pills", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const brand = page.locator(".cmh-deck-brand-link");
+    await expect(brand).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
+    await expect(brand).toHaveAttribute("target", "_blank");
+    await expect(brand.locator("svg.cm-brand-icon")).toHaveCount(1);
+
+    const chrome = await page.evaluate(() => {
+      const nav = document.querySelector(".cmh-deck-nav");
+      const prev = nav.querySelector('button[aria-label="Prev slide"]');
+      const overview = nav.querySelector(".cmh-deck-overview-button");
+      const count = nav.querySelector(".cmh-deck-count");
+      const navStyle = getComputedStyle(nav);
+      const prevStyle = getComputedStyle(prev);
+      const overviewStyle = getComputedStyle(overview);
+      const countStyle = getComputedStyle(count);
+      return {
+        prevBg: prevStyle.backgroundColor,
+        overviewBg: overviewStyle.backgroundColor,
+        countBg: countStyle.backgroundColor,
+        navBg: navStyle.backgroundColor,
+        countRadius: countStyle.borderRadius,
+        countPaddingLeft: countStyle.paddingLeft,
+      };
+    });
+
+    expect(chrome.overviewBg).not.toBe(chrome.prevBg);
+    expect(chrome.countBg).not.toBe(chrome.navBg);
+    expect(parseFloat(chrome.countRadius)).toBeGreaterThanOrEqual(20);
+    expect(parseFloat(chrome.countPaddingLeft)).toBeGreaterThan(0);
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-BOARD-06: the showcase Locked column Add Comment affordance avoids Reset moves", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
@@ -509,6 +545,58 @@ test("CMH-BOARD-06: the showcase Locked column Add Comment affordance avoids Res
     const addBox = await page.locator("#widgetAddBtn").boundingBox();
     const resetBox = await page.locator(".show-board .cm-widget-reset").boundingBox();
     expect(boxesIntersect(addBox, resetBox)).toBe(false);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-07: the problem, point-at, and install slides use the new visual chrome", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-static-comment");
+    await expect(page.locator(".slide.active .show-static-target")).toHaveCount(1);
+    await expect(page.locator(".slide.active .show-static-comment")).toContainText("make it clearer");
+
+    await showSlideWith(page, ".show-card-example");
+    const pointAt = page.locator(".slide.active");
+    await expect(pointAt.locator(".show-card-example")).toHaveCount(4);
+    const titleChrome = await pointAt.locator(".show-four .show-card h3").evaluateAll((els) =>
+      els.map((el) => ({
+        whiteSpace: getComputedStyle(el).whiteSpace,
+        textOverflow: getComputedStyle(el).textOverflow,
+      })),
+    );
+    titleChrome.forEach((item) => {
+      expect(item.whiteSpace).toBe("nowrap");
+      expect(item.textOverflow).toBe("ellipsis");
+    });
+    const demo = pointAt.locator('a.show-link-pill[href="https://urikanonov.github.io/ai-marketplace/commentable-html/#demo"]');
+    await expect(demo).toContainText("View Live Demo");
+    await expect(demo.locator(".show-link-icon")).toHaveCount(1);
+
+    const cta = page.locator('[data-slide-id="slide-12668385"]');
+    await expect(cta.locator("a.show-link-pill")).toHaveCount(3);
+    await expect(cta.locator(".show-link-pill .show-link-icon")).toHaveCount(3);
+    await expect(cta.locator('a.show-link-pill[href="https://github.com/urikanonov/ai-marketplace"]')).toHaveCount(1);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and a notes demo slide", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-note-field");
+    const slide = page.locator(".slide.active");
+    await expect(slide.locator(".show-supported-pills .show-pill")).toHaveCount(11);
+    await expect(slide.locator(".show-supported-panel")).toContainText("Python");
+    await expect(slide.locator(".show-supported-panel")).toContainText("TypeScript");
+    await expect(slide.locator(".show-supported-panel")).toContainText("PowerShell");
+    await expect(slide.locator(".show-supported-panel")).toContainText("+37 more");
+    await expect(slide.locator(".show-note-field")).toHaveCount(2);
+    await expect(slide.locator(".show-note-field").first()).toContainText("Reviewer summary");
+    await expect(slide.locator(".show-note-field").nth(1)).toContainText("Meeting follow-up");
+    await expect(slide.locator(".show-note-toggle")).toHaveCount(2);
   } finally {
     await server.close();
   }

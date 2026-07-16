@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.129.0";
+const CMH_VERSION = "1.130.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7891,6 +7891,23 @@ function setupDeck() {
   toggle.setAttribute("aria-pressed", "false");
   toggle.addEventListener("click", () => { setCommentMode(!commentMode); toggle.blur(); });
   document.body.prepend(toggle);
+  const brandLink = document.createElement("a");
+  brandLink.className = "cm-skip cm-brand-link cmh-deck-brand-link";
+  brandLink.href = CMH_SITE_URL;
+  brandLink.target = "_blank";
+  brandLink.rel = "noopener noreferrer";
+  brandLink.title = "Commentable HTML site";
+  brandLink.setAttribute("aria-label", "Commentable HTML site (opens in a new tab)");
+  brandLink.innerHTML = CMH_ICON_SVG;
+  const brandIcon = brandLink.querySelector("svg");
+  if (brandIcon) {
+    brandIcon.setAttribute("aria-hidden", "true");
+    brandIcon.setAttribute("focusable", "false");
+    brandIcon.removeAttribute("role");
+    brandIcon.removeAttribute("aria-label");
+    brandIcon.removeAttribute("data-cmh-tip");
+  }
+  toggle.after(brandLink);
 
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";
@@ -7907,6 +7924,7 @@ function setupDeck() {
   counter.textContent = (current + 1) + " / " + slides.length;
   counter.setAttribute("aria-label", "Slide " + (current + 1) + " of " + slides.length);
   const overviewControl = document.createElement("button");
+  overviewControl.className = "cmh-deck-overview-button";
   overviewControl.type = "button";
   overviewControl.textContent = "Overview";
   overviewControl.title = "Slide overview";
