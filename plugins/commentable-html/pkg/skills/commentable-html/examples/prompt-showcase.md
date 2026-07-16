@@ -64,36 +64,40 @@ commentable-html document, not a flat report.
 >   create-only behavior, no remote media, reduced-motion CSS, and validation before write.
 > - Use the exact phrase "syntax-highlighted code and KQL" in the content so the feature is explicit.
 >
-> Slide outline to follow (about 17 slides across five acts):
+> Slide outline to follow (about 20 slides across five acts):
 > Act 1 - Hook:
-> 1. Title promise - keep the review loop inside the artifact; a strong opening line and a
->    commentable subtitle.
-> 2. The pain, shown - reviewing the garden plan, then losing the location by describing it in chat.
-> 3. Close the loop - a Mermaid flowchart of agent -> commentable plan -> comment in place ->
+> 1. Header / pitch slide first - logo plus a one-line pitch that keeps the review loop inside the
+>    artifact.
+> 2. Title promise - point at the exact thing, then send one bundle back.
+> 3. Why this medium - the website-style comparison table (chat / Markdown / plain HTML /
+>    Commentable HTML) early in the deck.
+> 4. The pain, shown - reviewing the garden plan, then losing the location by describing it in chat.
+> 5. Close the loop - a Mermaid flowchart of agent -> commentable plan -> comment in place ->
 >    Copy all -> agent applies -> handled ids embedded.
-> Act 2 - Value on one example:
-> 4. Comment on anything - the element-type grid plus a soft pointer to the live demo.
-> 5. Review data and diagrams - the garden watering chart, the bed table, and an image, all
+> Act 2 - Start with prompts, then show the surface:
+> 6. Example prompts - the first three shipped one-line prompts, each linked to its full demo page on the site.
+> 7. More example prompts - the other three shipped one-line prompts, also linked to their full demo pages.
+> 8. Prompts that work - the two prompts that produce and then apply a review, placed early near the
+>    example-prompts slide.
+> 9. Comment on anything - the element-type grid plus a soft pointer to the live demo.
+> 10. Review data and diagrams - the garden watering chart, the bed table, and an image, all
 >    commentable.
-> 6. Review code, not just prose - a real `pre.cmh-diff` garden diff plus syntax-highlighted code
->    and KQL block.
-> 7. Decide and track - one slide holding both the drag-and-drop triage board (garden decisions) and
->    the layered checklist.
-> 8. Why not just chat, a doc, or a PR - a comparison table.
-> 9. Start today (EARLY install) - both agents' install commands as code blocks plus the site,
->    GitHub, and tutorial links.
-> Act 3 - How it fits and the ask:
-> 10. Three review loops - review your own work, peer review, and reviewing a plan before you build.
-> 11. Prompts that work - the two prompts that produce and then apply a review.
-> 12. Primary call to action - the payoff line plus both installs and the links again.
+> 11. Review code, not just prose - a real `pre.cmh-diff` garden diff plus syntax-highlighted code
+>     and KQL block.
+> 12. Decide and track - one slide holding both the drag-and-drop triage board (garden decisions)
+>     and the layered checklist, keeping the shipped widget defaults unchanged.
+> 13. Start today (EARLY install) - both agents' install commands as code blocks plus the site,
+>     GitHub, and tutorial links.
+> Act 3 - How it fits:
+> 14. Three review loops - review your own work, peer review, and reviewing a plan before you build.
 > Act 4 - Behind the scenes (engineers):
-> 13. Anatomy of a file - the region map of layer versus CONTENT.
-> 14. How comments stick - text offsets, structural keys, and widget deltas.
-> 15. Portability internals - Live, Portable, Offline, and Markdown.
-> 16. Safe and deterministic - the scaffold and strict validator checklist.
+> 15. Anatomy of a file - the region map of layer versus CONTENT.
+> 16. How comments stick - text offsets, structural keys, and widget deltas.
+> 17. Portability internals - Live, Portable, Offline, and Markdown.
+> 18. Safe and deterministic - the scaffold and strict validator checklist.
 > Act 5 - Close:
-> 17. Tomorrow morning - a room-wide close with one next action and a compact restated call to
->     action.
+> 19. What's next - five links: create with CHM, learn, found an issue, contribute, read the code.
+> 20. Questions - a final discussion slide after the close.
 >
 > Quality gates before returning:
 > - Run `python tools/deck/deck_validate.py <deck-file>` and fix every error.
@@ -102,7 +106,9 @@ commentable-html document, not a flat report.
 > - Verify the Mermaid slide renders, the table header is readable, the triage board card can move
 >   between slots, the checklist initializes, and the diff renders with an inline/side-by-side
 >   toggle.
-> - Verify both install call-to-action slides show the Copilot and Claude commands and the links.
+> - Verify the early install slide shows the Copilot and Claude commands and the links.
+> - Verify the final "What's next?" slide links to install, learn, issues, contributing, and source,
+>   and that the deck ends on a separate "Questions?" slide.
 > - Return the final HTML file path and a one-paragraph summary of the slide story.
 
 ## What you get
