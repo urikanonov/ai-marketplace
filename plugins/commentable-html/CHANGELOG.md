@@ -48,7 +48,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - Deck runtime: commenting across the two cards on the "Authoring is deterministic" slide no longer paints an empty highlight over the grid gap (issue #294).
 - Deck triage board: the Locked-column Add Comment affordance no longer overlaps the Reset moves button (issue #294).
-
 ## [1.118.0] - 2026-07-16
 
 ### Added
