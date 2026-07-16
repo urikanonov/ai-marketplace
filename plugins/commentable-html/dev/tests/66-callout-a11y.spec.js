@@ -13,6 +13,8 @@ const CONTENT = `
   <div class="cmh-callout cmh-callout-danger" id="c-danger"><p>The key takeaway.</p></div>
   <div class="cmh-callout cmh-callout-danger" id="c-labelled"><p><strong>Bottom line.</strong> Authored label.</p></div>
   <div class="cmh-callout cmh-callout-warning" id="c-midbold"><p>Heads up, <strong>not a leading label.</strong></p></div>
+  <div class="cmh-callout cmh-callout-info" id="c-explicit" aria-label="Custom label"><p>Author set the label.</p></div>
+  <div class="cmh-callout cmh-callout-danger" id="c-emptylead"><p></p><p><strong>Bottom line.</strong> After an empty node.</p></div>
 </section>`;
 
 async function openDoc(page) {
@@ -25,20 +27,18 @@ async function beforeContent(page, sel) {
   return page.evaluate((s) => getComputedStyle(document.querySelector(s), "::before").content, sel);
 }
 
-test("each callout variant exposes a role and a variant accessible name (CMH-CALLOUT-03)", async ({ page }) => {
+test("each callout variant exposes role=note and the correct variant accessible name (CMH-CALLOUT-03)", async ({ page }) => {
   await openDoc(page);
-  for (const id of ["c-info", "c-success", "c-warning", "c-danger"]) {
+  const EXPECT = { "c-info": "Note", "c-success": "Success", "c-warning": "Warning", "c-danger": "Danger" };
+  for (const id in EXPECT) {
     await expect(page.locator("#" + id)).toHaveAttribute("role", "note");
-    const label = await page.locator("#" + id).getAttribute("aria-label");
-    expect(label, id + " has a non-empty aria-label").toBeTruthy();
+    await expect(page.locator("#" + id)).toHaveAttribute("aria-label", EXPECT[id]);
   }
-  // The accessible names differ per variant, so a screen reader distinguishes them.
-  const names = {};
-  for (const id of ["c-info", "c-success", "c-warning", "c-danger"]) {
-    names[id] = await page.locator("#" + id).getAttribute("aria-label");
-  }
-  const unique = new Set(Object.values(names));
-  expect(unique.size, "variant aria-labels are distinct").toBe(4);
+});
+
+test("an explicit author aria-label is respected (CMH-CALLOUT-03)", async ({ page }) => {
+  await openDoc(page);
+  await expect(page.locator("#c-explicit")).toHaveAttribute("aria-label", "Custom label");
 });
 
 test("each callout variant renders a distinct non-color glyph (CMH-CALLOUT-03)", async ({ page }) => {
@@ -67,4 +67,11 @@ test("mid-sentence bold does NOT suppress the aria-label (CMH-CALLOUT-03)", asyn
   // A <strong> that is not the leading label (text precedes it) must keep the variant label.
   await expect(page.locator("#c-midbold")).toHaveAttribute("role", "note");
   expect(await page.locator("#c-midbold").getAttribute("aria-label")).toBe("Warning");
+});
+
+test("an empty leading element does not defeat strong-label suppression (CMH-CALLOUT-03)", async ({ page }) => {
+  await openDoc(page);
+  // A stray empty <p> before the labelled paragraph still counts as a leading <strong> label.
+  await expect(page.locator("#c-emptylead")).toHaveAttribute("role", "note");
+  expect(await page.locator("#c-emptylead").getAttribute("aria-label")).toBeNull();
 });

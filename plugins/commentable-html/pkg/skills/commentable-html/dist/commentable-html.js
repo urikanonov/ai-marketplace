@@ -2759,12 +2759,13 @@ function setupValidationBanner() {
 (function () {
   const root = document.getElementById("commentRoot") || document.body;
   if (!root) return;
-  const LABELS = { info: "Note", success: "Success", warning: "Warning", danger: "Important" };
-  // The first meaningful (non-whitespace) child node of a container, or null.
+  const LABELS = { info: "Note", success: "Success", warning: "Warning", danger: "Danger" };
+  // The first meaningful child node of a container (skips whitespace text AND empty wrapper
+  // elements like a stray leading <p></p>), or null.
   function firstMeaningfulChild(container) {
     for (let n = container.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) { if ((n.textContent || "").trim() === "") continue; return n; }
-      if (n.nodeType === 1) return n;
+      if (n.nodeType === 1) { if ((n.textContent || "").trim() === "") continue; return n; }
     }
     return null;
   }
