@@ -1830,10 +1830,18 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-panel { border: 1px solid var(--show-line); border-radius: 22px; background: var(--show-panel); box-shadow: 0 14px 34px rgba(120, 98, 60, 0.12); }
 #commentRoot[data-cmh-mode="deck"] .show-card { padding: 26px 28px; min-height: 168px; }
 #commentRoot[data-cmh-mode="deck"] .show-card h3 { font-size: 31px; margin-bottom: 10px; color: var(--show-text); }
+#commentRoot[data-cmh-mode="deck"] .show-four .show-card h3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 29px; }
 #commentRoot[data-cmh-mode="deck"] .show-card p,
 #commentRoot[data-cmh-mode="deck"] .show-card li { font-size: 23px; line-height: 1.35; }
+#commentRoot[data-cmh-mode="deck"] .show-card-example { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--show-line); color: var(--show-text); font-size: 20px; line-height: 1.3; }
 #commentRoot[data-cmh-mode="deck"] .show-problem { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 24px; align-items: center; margin-top: 34px; }
 #commentRoot[data-cmh-mode="deck"] .show-arrow { color: var(--show-accent); font-size: 58px; text-align: center; font-weight: 900; }
+#commentRoot[data-cmh-mode="deck"] .show-after-card { display: grid; gap: 18px; }
+#commentRoot[data-cmh-mode="deck"] .show-after-mock { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 18px; align-items: start; }
+#commentRoot[data-cmh-mode="deck"] .show-static-target { background: rgba(245, 158, 11, 0.36); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.36); border-radius: 6px; padding: 0 4px; color: var(--show-text); }
+#commentRoot[data-cmh-mode="deck"] .show-static-comment { padding: 16px 18px; border-radius: 18px; background: #fff8ed; border: 1px solid #eccfa8; box-shadow: 0 10px 24px rgba(177, 31, 75, 0.12); }
+#commentRoot[data-cmh-mode="deck"] .show-static-comment-label { display: inline-block; margin-bottom: 8px; padding: 6px 10px; border-radius: 999px; background: rgba(177, 31, 75, 0.12); color: var(--show-accent); font-size: 16px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+#commentRoot[data-cmh-mode="deck"] .show-static-comment p { margin: 0; color: var(--show-text); font-size: 22px; font-weight: 700; }
 #commentRoot[data-cmh-mode="deck"] table.show-table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border-radius: 18px; border: 1px solid var(--show-line); background: #fffdf8; }
 #commentRoot[data-cmh-mode="deck"] table.show-table th { background: #b11f4b !important; color: #ffffff !important; font-weight: 800; font-size: 23px; text-align: left; }
 #commentRoot[data-cmh-mode="deck"] table.show-table td { color: var(--show-text); font-size: 22px; line-height: 1.3; background: #fffdf8; }
@@ -1885,6 +1893,32 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-prompt-card p { font-size: 19px; line-height: 1.38; color: var(--show-muted); }
 #commentRoot[data-cmh-mode="deck"] .show-prompt-card:hover { border-color: var(--show-accent); transform: translateY(-2px); transition: transform 0.12s ease, border-color 0.12s ease; }
 #commentRoot[data-cmh-mode="deck"] .show-prompt-card .show-link-label { display: inline-block; margin-top: 12px; font-size: 18px; font-weight: 800; color: var(--show-accent); }
+#commentRoot[data-cmh-mode="deck"] .show-demo-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 30px; }
+#commentRoot[data-cmh-mode="deck"] .show-demo-row .show-lead { margin: 0; flex: 1; }
+#commentRoot[data-cmh-mode="deck"] .show-links { margin-top: 22px; display: flex; gap: 14px; flex-wrap: wrap; font-size: 24px; }
+#commentRoot[data-cmh-mode="deck"] .show-link-pill { display: inline-flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 999px; border: 1px solid var(--show-line); background: #fffdf8; color: var(--show-text); font-size: 21px; font-weight: 800; text-decoration: none; box-shadow: 0 10px 24px rgba(120, 98, 60, 0.12); }
+#commentRoot[data-cmh-mode="deck"] .show-link-pill:hover { text-decoration: none; transform: translateY(-1px); }
+#commentRoot[data-cmh-mode="deck"] .show-link-pill-primary { background: var(--show-accent); border-color: #8f173b; color: #fffdf8; }
+#commentRoot[data-cmh-mode="deck"] .show-link-pill-primary .show-link-icon { background: rgba(255, 255, 255, 0.16); }
+#commentRoot[data-cmh-mode="deck"] .show-link-icon { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: #efe8db; color: currentColor; flex: none; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+#commentRoot[data-cmh-mode="deck"] .show-link-svg { width: 18px; height: 18px; display: block; }
+#commentRoot[data-cmh-mode="deck"] .show-supported-notes { align-items: start; }
+#commentRoot[data-cmh-mode="deck"] .show-supported-panel,
+#commentRoot[data-cmh-mode="deck"] .show-note-demo { padding: 26px 28px; }
+#commentRoot[data-cmh-mode="deck"] .show-supported-panel h3,
+#commentRoot[data-cmh-mode="deck"] .show-note-demo h3 { margin-bottom: 12px; }
+#commentRoot[data-cmh-mode="deck"] .show-supported-pills { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+#commentRoot[data-cmh-mode="deck"] .show-supported-pills .show-pill { font-size: 20px; padding: 8px 14px; }
+#commentRoot[data-cmh-mode="deck"] .show-pill-muted { background: #efe8db; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-note-field { margin-top: 16px; padding: 16px 18px; border-radius: 18px; border: 1px solid var(--show-line); background: #fffdf8; }
+#commentRoot[data-cmh-mode="deck"] .show-note-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+#commentRoot[data-cmh-mode="deck"] .show-note-label,
+#commentRoot[data-cmh-mode="deck"] .show-note-toggle { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+#commentRoot[data-cmh-mode="deck"] .show-note-label { background: rgba(177, 31, 75, 0.12); color: var(--show-accent); }
+#commentRoot[data-cmh-mode="deck"] .show-note-toggle { background: #efe8db; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-note-body,
+#commentRoot[data-cmh-mode="deck"] .show-note-fold { min-height: 78px; padding: 16px 18px; border-radius: 14px; border: 1px solid #dcc9aa; background: #ffffff; color: var(--show-text); font-size: 21px; line-height: 1.35; }
+#commentRoot[data-cmh-mode="deck"] .show-note-fold { min-height: 58px; color: var(--show-muted); }
 #commentRoot[data-cmh-mode="deck"] .show-loops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 20px; }
 #commentRoot[data-cmh-mode="deck"] .show-loop { padding: 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); min-height: 360px; }
 #commentRoot[data-cmh-mode="deck"] .show-loop h3 { color: var(--show-text); font-size: 30px; margin-bottom: 10px; }
@@ -1989,9 +2023,15 @@ svg {
       <p>Read the community-garden plan in the browser, switch to chat, and type "the watering table, third row, make it clearer" - then hope the agent edits the right cell.</p>
     </div>
     <div class="show-arrow">&gt;</div>
-    <div class="show-card">
+    <div class="show-card show-after-card">
       <h3>After</h3>
-      <p>Comment on that exact cell inside the plan. The note carries its quote, section path, and a stable id, so the agent changes precisely what you pointed at.</p>
+      <div class="show-after-mock">
+        <p>Comment on that <span class="show-static-target">exact cell inside the plan</span>. The note carries its quote, section path, and a stable id, so the agent changes precisely what you pointed at.</p>
+        <div class="show-static-comment">
+          <span class="show-static-comment-label">Comment</span>
+          <p>make it clearer</p>
+        </div>
+      </div>
     </div>
   </div>
   <p class="show-lead" style="margin-top:30px;">Chat loses the location. The file already knows where "here" is.</p>
@@ -2081,12 +2121,18 @@ Press Enter.</code></pre>
   <div class="show-kicker">Act 2 - What you can point at</div>
   <h2>Comment on the actual thing, not a screenshot of it.</h2>
   <div class="show-four">
-    <div class="show-card"><h3>Prose and cells</h3><p>Paragraphs, headings, list items, and single table cells in the garden plan.</p></div>
-    <div class="show-card"><h3>Charts and images</h3><p>The watering chart or a bed-layout image as one visual anchor.</p></div>
-    <div class="show-card"><h3>Diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p></div>
-    <div class="show-card"><h3>Code, KQL, diffs</h3><p>Exact code ranges and diff rows, copied without line-number noise.</p></div>
+    <div class="show-card"><h3>Prose and cells</h3><p>Paragraphs, headings, list items, and single table cells in the garden plan.</p><p class="show-card-example">Example: the "Bed 4 / 44 L" watering cell.</p></div>
+    <div class="show-card"><h3>Charts + images</h3><p>The watering chart or a bed-layout image as one visual anchor.</p><p class="show-card-example">Example: the full watering chart canvas.</p></div>
+    <div class="show-card"><h3>Mermaid diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p><p class="show-card-example">Example: the "Copy all Markdown bundle" node.</p></div>
+    <div class="show-card"><h3>Code, KQL, diffs</h3><p>Exact code ranges and diff rows, copied without line-number noise.</p><p class="show-card-example">Example: the rainfall skip branch in the diff.</p></div>
   </div>
-  <p class="show-lead" style="margin-top:30px;">Same Add Comment flow everywhere. Try it on this deck: open comment mode and point at any card. Live demo at <a href="https://urikanonov.github.io/ai-marketplace/">urikanonov.github.io/ai-marketplace</a>.</p>
+  <div class="show-demo-row">
+    <p class="show-lead">Same Add Comment flow everywhere. Try it on this deck: open comment mode and point at any card.</p>
+    <a class="show-link-pill show-link-pill-primary" href="https://urikanonov.github.io/ai-marketplace/commentable-html/#demo">
+      <span class="show-link-icon" aria-hidden="true"><svg class="show-link-svg" viewBox="0 0 24 24" focusable="false"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4.5 3.5A1 1 0 0 1 3 19.7V5z" fill="currentColor"></path><rect x="6" y="7" width="12" height="1.8" rx="0.9" fill="#fffdf8"></rect><rect x="6" y="10.5" width="8" height="1.8" rx="0.9" fill="#fffdf8"></rect></svg></span>
+      <span>View Live Demo</span>
+    </a>
+  </div>
 </section>
 
 <section class="slide showcase-chart-slide" data-slide-id="slide-d7119544">
@@ -2166,6 +2212,48 @@ StormEvents
   </div>
 </section>
 
+<section class="slide showcase-languages-notes-slide" data-slide-id="slide-6f0f4d24">
+  <div class="show-kicker">Act 2 - Code and notes</div>
+  <h2>Syntax-highlighted code and editable notes stay in the same file.</h2>
+  <div class="show-two show-supported-notes">
+    <div class="show-panel show-supported-panel">
+      <h3>Supported syntax labels</h3>
+      <p>The built-in highlighter covers the core review languages without a separate build step.</p>
+      <div class="show-supported-pills">
+        <span class="show-pill">Python</span>
+        <span class="show-pill">JavaScript</span>
+        <span class="show-pill">TypeScript</span>
+        <span class="show-pill">Bash</span>
+        <span class="show-pill">PowerShell</span>
+        <span class="show-pill">JSON</span>
+        <span class="show-pill">YAML</span>
+        <span class="show-pill">HTML</span>
+        <span class="show-pill">CSS</span>
+        <span class="show-pill">SQL</span>
+        <span class="show-pill show-pill-muted">+37 more</span>
+      </div>
+    </div>
+    <div class="show-panel show-note-demo">
+      <h3>Notes demo</h3>
+      <p>Use notes for summaries, follow-ups, or presenter cues that stay attached to the file.</p>
+      <div class="show-note-field">
+        <div class="show-note-meta">
+          <span class="show-note-label">Reviewer summary</span>
+          <span class="show-note-toggle">multi-line</span>
+        </div>
+        <div class="show-note-body">Clarify the Bed 8 recommendation before sign-off.</div>
+      </div>
+      <div class="show-note-field">
+        <div class="show-note-meta">
+          <span class="show-note-label">Meeting follow-up</span>
+          <span class="show-note-toggle">expand</span>
+        </div>
+        <div class="show-note-fold">Capture the volunteer-day decision after Thursday's walk-through.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="slide showcase-checklist-slide" data-slide-id="slide-a74f331a">
   <div class="show-kicker">Act 2 - Decide and track</div>
   <h2>Decisions and checklists are feedback too.</h2>
@@ -2219,9 +2307,9 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
     </div>
   </div>
   <div class="show-links">
-    <a href="https://urikanonov.github.io/ai-marketplace/">Live demo</a>
-    <a href="https://github.com/urikanonov/ai-marketplace">GitHub</a>
-    <a href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/">Tutorial</a>
+    <a class="show-link-pill show-link-pill-primary" href="https://urikanonov.github.io/ai-marketplace/"><span class="show-link-icon" aria-hidden="true"><svg class="show-link-svg" viewBox="0 0 24 24" focusable="false"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4.5 3.5A1 1 0 0 1 3 19.7V5z" fill="currentColor"></path><rect x="6" y="7" width="12" height="1.8" rx="0.9" fill="#fffdf8"></rect><rect x="6" y="10.5" width="8" height="1.8" rx="0.9" fill="#fffdf8"></rect></svg></span><span>Live demo</span></a>
+    <a class="show-link-pill" href="https://github.com/urikanonov/ai-marketplace"><span class="show-link-icon" aria-hidden="true">GH</span><span>GitHub</span></a>
+    <a class="show-link-pill" href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/"><span class="show-link-icon" aria-hidden="true">DOC</span><span>Tutorial</span></a>
   </div>
   <p class="show-lead" style="margin-top:22px;">Then ask your agent to make the garden plan commentable. When you are done reviewing, click Copy all and paste the bundle back. Export Offline or Portable when you want to share the file.</p>
 </section>

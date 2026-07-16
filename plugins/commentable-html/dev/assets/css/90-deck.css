@@ -15,6 +15,9 @@ body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
 body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle {
   display: none !important;
 }
+body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-brand-link {
+  display: none !important;
+}
 /* In present mode, suppress the text-selection popup so a selection is not a dead end
    (the composer/sidebar are hidden; the user enters comment mode to review). */
 body.cmh-deck-present #menuComment {
@@ -198,10 +201,10 @@ body.cmh-deck-present #menuComment {
   visibility: visible !important;
   transform: none !important;
 }
+.cmh-deck-brand-link,
 .cmh-deck-mode-toggle {
   position: fixed;
   top: 14px;
-  right: 14px;
   z-index: 100001;
   display: inline-flex;
   align-items: center;
@@ -217,6 +220,24 @@ body.cmh-deck-present #menuComment {
   cursor: pointer;
   /* Lift the chrome off arbitrary slide backgrounds so it stays legible over any slide colour. */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.cmh-deck-brand-link {
+  right: 14px;
+  color: var(--cp-text, #fff);
+  text-decoration: none;
+}
+.cmh-deck-brand-link:hover {
+  text-decoration: none;
+  border-color: var(--cp-accent, #2ecc71);
+  background: var(--cp-surface-soft, #333);
+}
+.cmh-deck-brand-link .cm-brand-icon {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.cmh-deck-mode-toggle {
+  right: 64px;
 }
 .cmh-deck-mode-toggle.cmh-deck-mode-on {
   background: var(--cp-accent, #2ecc71);
@@ -245,11 +266,22 @@ body.cmh-deck-present #menuComment {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 .cmh-deck-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 16%, var(--cp-surface-soft, #333));
+  border: 1px solid color-mix(in srgb, var(--cp-accent, #2ecc71) 34%, var(--cp-border, #444));
   color: var(--cp-text, #fff);
   font: inherit;
   min-width: 56px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+.cmh-deck-nav .cmh-deck-overview-button {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 22%, var(--cp-surface-soft, #333));
+  border-color: color-mix(in srgb, var(--cp-accent, #2ecc71) 40%, var(--cp-border, #444));
 }
 .cmh-deck-nav button {
   padding: 6px 12px;

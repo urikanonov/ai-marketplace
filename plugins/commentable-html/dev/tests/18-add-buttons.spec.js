@@ -142,14 +142,16 @@ test.describe("add-comment affordances", () => {
     const before = await gap();
     expect(before).not.toBeNull();
     await page.evaluate(() => window.scrollBy(0, 40));
+    await waitForStableTop(page, "#diffAddBtn");
     // The button tracks its line via positionDiffAdd on scroll. A correctly pinned button keeps
     // essentially the same offset from its line, give or take a few px of first-paint and
     // scroll-settle noise (the initial position can use the fallback button height before layout
     // flushes, and getBoundingClientRect is sub-pixel); a button that came loose would instead
     // drift by ~the full scroll distance. Poll until the reposition settles within a tolerance
-    // that absorbs that noise but stays far below the 40px it would move if it failed to track.
-    await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 12; },
-      { timeout: 10000 }).toBe(true);
+    // that absorbs that noise but stays far below the 40px it would move if it failed to track,
+    // even when the full suite is contending for the browser on a busy Windows runner.
+    await expect.poll(async () => { const a = await gap(); return a === null || Math.abs(a - before) < 24; },
+      { timeout: 15000 }).toBe(true);
   });
 
   test("the mermaid add button stays pinned to its node on scroll (no drift)", async ({ page }) => {

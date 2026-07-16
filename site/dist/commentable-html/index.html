@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.129.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.130.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,6 +415,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.130.0] - 2026-07-16</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deck showcase polish: added the linked Commentable HTML brand button, distinct Overview/counter nav chrome, a static &quot;make it clearer&quot; comment mockup on the Act 1 After card, richer point-at/install pills, and a supported-languages plus notes-demo slide while preserving the restructured deck flow, the interactive chart, and the new edge-navigation runtime.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.129.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -425,6 +432,8 @@
               <li><code>tools/validate/cmhval/contrast.py</code> now resolves computed descendant text/background pairs and low-contrast connector strokes, so <code>deck_validate.py</code> catches the old red-on-dark KQL link and washed-out diagram arrows before publish. (CMH-DECK-12)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.126.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
@@ -432,8 +441,6 @@
               <li>Mermaid checker (<code>cmhval/mermaid.py</code>, CMH-SYN-01): flag a <code>sequenceDiagram</code> message whose <code>;</code> leaves an arrow-free tail (a bare word or ordinary prose, e.g. <code>A-&gt;&gt;B: hi; take entities as-is</code>), not only an arrow-without-colon tail. Once the first <code>;</code>-segment is a real signal, any tail that is not another full signal, a keyword-led statement, or empty is a broken second statement the real parser rejects; the broadened rule stays zero-false-positive (proven against the real-parser corpus). Fixes issue #324.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.125.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
@@ -464,14 +471,7 @@
               <li>Deck navigation: dimmed edge hover-arrows for previous/next slide and Enter/Space to advance when the deck stage is focused (issue #292).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.117.1] - 2026-07-16</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Split the shipped layer validator check module into focused assembled topic parts while preserving the public <code>check_layer</code> entry point and validation behavior.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">107 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">108 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
