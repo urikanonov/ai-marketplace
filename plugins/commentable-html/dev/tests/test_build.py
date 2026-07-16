@@ -664,6 +664,51 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(any("skill-resources.zip" in x for x in drift),
                             "a changed zipped source file must be reported as zip drift")
 
+    def test_package_check_detects_hook_stamp_drift(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            hook = os.path.join(d, "pkg", "hooks.json")
+            with open(hook, "w", encoding="utf-8") as fh:
+                fh.write('{"cmd": ".skill-resources-0.0.1.ok --version 0.0.1"}\n')
+            build.write_package(_paths.PKG, pkg, v)  # stamps the hook to the real version
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
+            with open(hook, "w", encoding="utf-8") as fh:
+                fh.write('{"cmd": ".skill-resources-0.0.1.ok --version 0.0.1"}\n')  # re-drift
+            drift = build.check_package(_paths.PKG, pkg, v)
+            self.assertTrue(any("hooks.json" in x for x in drift),
+                            "a stale hook version stamp must be reported as drift")
+
+    def test_check_package_reports_corrupt_zip(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            with open(os.path.join(pkg, "skill-resources.zip"), "wb") as fh:
+                fh.write(b"not a zip")
+            drift = build.check_package(_paths.PKG, pkg, v)
+            self.assertTrue(any("invalid or corrupt" in x for x in drift))
+
+    def test_packager_rejects_a_symlinked_input(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = os.path.join(d, "skill")
+            tools = os.path.join(stage, "tools")
+            os.makedirs(tools)
+            with open(os.path.join(tools, "real.py"), "w", encoding="utf-8") as fh:
+                fh.write("x\n")
+            outside = os.path.join(d, "secret.txt")
+            with open(outside, "w", encoding="utf-8") as fh:
+                fh.write("secret\n")
+            link = os.path.join(tools, "leak.txt")
+            try:
+                os.symlink(outside, link)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks not creatable in this environment")
+            with self.assertRaises(SystemExit):
+                build.build_resources_zip_bytes(stage)
+
 
 if __name__ == "__main__":
     unittest.main()

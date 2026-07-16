@@ -17,6 +17,7 @@ Run from the skill root:  python -m unittest discover -s tests -p "test_extract_
 """
 import importlib.util
 import os
+import time
 import unittest
 import zipfile
 
@@ -145,6 +146,113 @@ class ExtractResourcesTests(unittest.TestCase):
         rc = extract_resources.run(self.skill, "1.0.0")
         self.assertEqual(rc, 0)
         self.assertFalse(os.path.isfile(self._marker("1.0.0")))
+
+    # CMH-PKG-03: the lock classifier retries the real Windows/Defender lock variants.
+    def test_retries_winerror_and_errno_lock_variants(self):
+        for exc in (OSError(13, "sharing"), PermissionError("denied")):
+            with self.subTest(exc=exc):
+                self._reset_skill()
+                state = {"fails": 2}
+                slept = []
+                real = extract_resources._extract_member
+
+                def _flaky(zf, member, dest, _exc=exc):
+                    if member.filename.endswith("a.py") and state["fails"] > 0:
+                        state["fails"] -= 1
+                        raise _exc
+                    real(zf, member, dest)
+
+                rc = extract_resources.run(self.skill, "1.0.0", extract=_flaky,
+                                           sleep=slept.append, backoff=0.001)
+                self.assertEqual(rc, 0)
+                self.assertEqual(state["fails"], 0)
+                self.assertGreaterEqual(len(slept), 2)
+
+    def test_winerror_lock_is_retried(self):
+        err = OSError("locked")
+        err.winerror = 32  # ERROR_SHARING_VIOLATION
+        state = {"fails": 1}
+        real = extract_resources._extract_member
+
+        def _flaky(zf, member, dest):
+            if member.filename.endswith("a.py") and state["fails"] > 0:
+                state["fails"] -= 1
+                raise err
+            real(zf, member, dest)
+
+        rc = extract_resources.run(self.skill, "1.0.0", extract=_flaky, sleep=lambda *_: None,
+                                   backoff=0.001)
+        self.assertEqual(rc, 0)
+        self.assertEqual(state["fails"], 0)
+
+    def test_non_lock_error_is_not_retried(self):
+        calls = {"n": 0}
+
+        def _boom(zf, member, dest):
+            calls["n"] += 1
+            raise ValueError("not a lock")
+
+        with self.assertRaises(ValueError):
+            extract_resources.extract_all(self.zip, self.skill, "1.0.0", retries=5, backoff=0.001,
+                                          sleep=lambda *_: None, extract=_boom)
+        self.assertEqual(calls["n"], 1)  # raised on the first attempt, no retry
+        self.assertFalse(os.path.isfile(self._marker("1.0.0")))
+
+    # CMH-PKG-08: a tampered zip with a traversing/absolute member is rejected (fail closed).
+    def test_rejects_zip_slip_member(self):
+        slip = os.path.join(self.skill, "slip.zip")
+        _make_zip(slip, {"tools/ok.py": "x\n", "../evil.txt": "pwn\n"})
+        with self.assertRaises(ValueError):
+            extract_resources.extract_all(slip, self.skill, "1.0.0", sleep=lambda *_: None)
+        self.assertFalse(os.path.isfile(os.path.join(os.path.dirname(self.skill), "evil.txt")))
+        self.assertFalse(os.path.isfile(self._marker("1.0.0")))
+
+    # CMH-PKG-05: a file removed in a newer version does not linger after re-extraction.
+    def test_removes_files_absent_from_new_version(self):
+        extract_resources.run(self.skill, "1.0.0")
+        gone = os.path.join(self.skill, "tools", "gone.py")
+        os.makedirs(os.path.dirname(gone), exist_ok=True)
+        with open(gone, "w", encoding="utf-8") as fh:
+            fh.write("stale\n")
+        # New version's zip does not contain tools/gone.py.
+        extract_resources.run(self.skill, "1.1.0")
+        self.assertFalse(os.path.isfile(gone), "stale file from the old version must be removed")
+        self.assertTrue(os.path.isfile(os.path.join(self.skill, "tools", "a.py")))
+        self.assertTrue(os.path.isfile(self._marker("1.1.0")))
+        self.assertFalse(os.path.isfile(self._marker("1.0.0")))
+
+    # A fresh lock held by another session makes this session skip (no concurrent extraction).
+    def test_concurrent_lock_makes_run_skip(self):
+        lock = os.path.join(self.skill, extract_resources.LOCK_NAME)
+        open(lock, "w").close()
+        calls = {"n": 0}
+
+        def _count(zf, member, dest):
+            calls["n"] += 1
+
+        rc = extract_resources.run(self.skill, "1.0.0", extract=_count)
+        self.assertEqual(rc, 0)
+        self.assertEqual(calls["n"], 0)
+        self.assertFalse(os.path.isfile(self._marker("1.0.0")))
+
+    def test_stale_lock_is_stolen(self):
+        lock = os.path.join(self.skill, extract_resources.LOCK_NAME)
+        open(lock, "w").close()
+        old = time.time() - (extract_resources.STALE_LOCK_SECONDS + 60)
+        os.utime(lock, (old, old))
+        rc = extract_resources.run(self.skill, "1.0.0")
+        self.assertEqual(rc, 0)
+        self.assertTrue(os.path.isfile(self._marker("1.0.0")))
+        self.assertFalse(os.path.isfile(lock), "the stale lock must be released")
+
+    def _reset_skill(self):
+        import shutil
+
+        for name in os.listdir(self.skill):
+            if name == "skill-resources.zip":
+                continue
+            p = os.path.join(self.skill, name)
+            shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
 
 
 if __name__ == "__main__":

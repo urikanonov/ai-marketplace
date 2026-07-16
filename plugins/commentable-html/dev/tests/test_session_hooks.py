@@ -139,6 +139,22 @@ class HookWiringTests(unittest.TestCase):
         pj = json.loads(_read(os.path.join(PLUGIN_DIR, "plugin.json")))
         self.assertEqual(pj.get("hooks"), "hooks.json")
 
+    # CMH-PKG-09: the hooks probe the interpreter (skip the Windows Store python3 alias stub) and
+    # isolate it, and the PowerShell cold path forces a success exit (non-blocking).
+    def test_hooks_probe_interpreter_and_skip_windowsapps_stub(self):
+        copilot = json.loads(_read(COPILOT_HOOKS))["hooks"]["sessionStart"][0]
+        claude = json.loads(_read(CLAUDE_HOOKS))["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+        for cmd in (copilot["bash"], copilot["powershell"], claude):
+            self.assertIn("WindowsApps", cmd, "hook must skip the WindowsApps python alias stub")
+            self.assertIn("-c", cmd, "hook must probe that the interpreter actually runs")
+            self.assertIn(" -I ", " " + cmd + " ", "hook must run the extractor isolated (-I)")
+
+    def test_powershell_hook_forces_success_exit(self):
+        copilot = json.loads(_read(COPILOT_HOOKS))["hooks"]["sessionStart"][0]
+        self.assertRegex(copilot["powershell"].rstrip('"').rstrip(), r"exit 0$",
+                         "the PowerShell cold path must force exit 0 so a failed extraction is "
+                         "non-blocking")
+
     @staticmethod
     def _first_python_index(cmd):
         idxs = [cmd.find(tok) for tok in ("python3", "python") if cmd.find(tok) != -1]

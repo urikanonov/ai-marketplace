@@ -149,11 +149,14 @@ class TestPackagedSkillSkip(unittest.TestCase):
             shipped.mkdir(parents=True)
             (shipped / "SKILL.md").write_text("[x](references/x.md)\n", encoding="utf-8")
             (shipped / "skill-resources.zip").write_bytes(b"PK\x05\x06" + b"\x00" * 18)
+            # A non-SKILL.md file beside the zip is still linted (rule is scoped to SKILL.md).
+            (shipped / "OTHER.md").write_text("hi\n", encoding="utf-8")
             stage = root / "dev" / "skill"
             stage.mkdir(parents=True)
             (stage / "SKILL.md").write_text("[x](references/x.md)\n", encoding="utf-8")
             found = {p.relative_to(root).as_posix() for p in vm.find_markdown_files(root)}
             self.assertNotIn("pkg/skills/commentable-html/SKILL.md", found)
+            self.assertIn("pkg/skills/commentable-html/OTHER.md", found)
             self.assertIn("dev/skill/SKILL.md", found)
 
 

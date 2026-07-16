@@ -63,6 +63,14 @@ def _iter_zip_members(stage_dir):
         if not os.path.isdir(base):
             continue
         for root, dirs, files in os.walk(base):
+            # Reject symlinked directories: a symlink in a build input could smuggle host-local
+            # (out-of-repo) files into the shipped zip, breaking the "the zip is trusted because we
+            # build it" assumption. Fail closed rather than follow it.
+            for x in dirs:
+                if os.path.islink(os.path.join(root, x)):
+                    raise SystemExit(
+                        "skill-resources.zip: refusing to package a symlinked directory: "
+                        + os.path.relpath(os.path.join(root, x), stage_dir))
             dirs[:] = [x for x in dirs if x not in _PACKAGE_SKIP_DIRS]
             for name in files:
                 if name in _PACKAGE_SKIP_NAMES:
@@ -70,6 +78,10 @@ def _iter_zip_members(stage_dir):
                 if os.path.splitext(name)[1].lower() in _PACKAGE_SKIP_EXTS:
                     continue
                 full = os.path.join(root, name)
+                if os.path.islink(full):
+                    raise SystemExit(
+                        "skill-resources.zip: refusing to package a symlinked file: "
+                        + os.path.relpath(full, stage_dir))
                 rel = os.path.relpath(full, stage_dir).replace(os.sep, "/")
                 members.append((rel, full))
     members.sort(key=lambda pair: pair[0])
@@ -93,8 +105,10 @@ def build_resources_zip_bytes(stage_dir):
 
 def _zip_content_map(source):
     """Map member-name -> bytes for a zip given as a path or raw bytes. Platform-independent."""
-    handle = io.BytesIO(source) if isinstance(source, (bytes, bytearray)) else open(source, "rb")
-    with zipfile.ZipFile(handle) as zf:
+    if isinstance(source, (bytes, bytearray)):
+        with zipfile.ZipFile(io.BytesIO(source)) as zf:
+            return {info.filename: zf.read(info.filename) for info in zf.infolist()}
+    with open(source, "rb") as fh, zipfile.ZipFile(fh) as zf:
         return {info.filename: zf.read(info.filename) for info in zf.infolist()}
 
 
@@ -146,8 +160,14 @@ def check_package(stage_dir, pkg_dir, version):
     if not os.path.exists(zip_path):
         drift.append(PACKAGE_ZIP_NAME + " (missing)")
     else:
-        have = _zip_content_map(zip_path)
-        if set(have) != set(fresh):
+        try:
+            have = _zip_content_map(zip_path)
+        except (zipfile.BadZipFile, OSError):
+            have = None
+            drift.append(PACKAGE_ZIP_NAME + " (invalid or corrupt; rebuild)")
+        if have is None:
+            pass
+        elif set(have) != set(fresh):
             missing = sorted(set(fresh) - set(have))
             extra = sorted(set(have) - set(fresh))
             detail = []

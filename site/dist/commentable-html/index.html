@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.118.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.132.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,7 +415,7 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.118.0] - 2026-07-16</h3></div>
+            <div class="rel-head"><h3>[1.132.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Ship the skill as a compact <code>skills/commentable-html/skill-resources.zip</code> (only <code>SKILL.md</code>, <code>LICENSE</code>, and the zip in the shipped skill dir) that a SessionStart hook unpacks on first run per version. This drastically cuts the number of files the plugin installer writes, working around the Windows Defender install failure (<code>Access is denied. (os error 5)</code>) where the installer aborts on the first transiently locked file - the extractor retries each member with backoff, which the installer does not. An update ships a new zip and self-heals on the next session (the version marker invalidates), which also fixes the auto-updater silently never updating on Defender machines. The large tutorial (<code>docs/</code>) and worked examples (<code>examples/</code>) are no longer installed; they moved to the plugin top level and are linked online. <code>build.py</code> gains <code>--pkg-dir</code> / <code>--examples-dir</code> and assembles the deterministic zip, and the editable + built skill tree now lives under <code>dev/skill/</code>.</li>
