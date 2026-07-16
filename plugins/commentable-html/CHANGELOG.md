@@ -13,7 +13,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   table, list, figure, diff, chart, or diagram to break it up, nudging authors toward a real
   skimmable layout. The check uses a dedicated density pass scoped to `#commentRoot`, ignores
   `cm-skip` and paragraphs nested inside layout blocks, resets at any layout block, heading, or
-  section boundary, and is exempt for `slides` and `board`. Its thresholds are tunable. (CMH-VAL-15)
+  section boundary, and runs only for `report` and `plan` (`slides`, `board`, `generic`, and a
+  missing or unknown kind are exempt). Its thresholds are tunable. (CMH-VAL-15)
 
 ## [1.101.0] - 2026-07-16
 

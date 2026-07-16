@@ -108,13 +108,42 @@ class DensityAdvisoryTests(unittest.TestCase):
         self.assertTrue(density.check_density(doc)[1], "first (report) kind meta should win")
 
     def test_cmh_val_15_whitespace_does_not_inflate_length(self):
-        # Short prose padded with source newlines and inline markup collapses below the threshold.
-        para = "<p>\n  a <em>b</em>\n     c  <strong>d</strong>\n</p>"
-        self.assertEqual(density.check_density(_doc(para * 8))[1], [])
+        # Near-threshold: raw text (with source newlines/indentation) exceeds min_chars but the
+        # whitespace-collapsed text does not, so it is NOT a long paragraph.
+        near = "\n        ".join(["word"] * 40)  # ~433 raw chars, ~199 collapsed
+        self.assertEqual(density.check_density(_doc(("<p>%s</p>" % near) * 4))[1], [])
 
     def test_cmh_val_15_short_paragraph_breaks_consecutiveness(self):
         # Long paragraphs separated by short ones are not "consecutive long paragraphs".
         self.assertEqual(density.check_density(_doc((_p(LONG) + _p(SHORT)) * 5))[1], [])
+
+    def test_cmh_val_15_cm_skip_block_breaks_the_run(self):
+        # A cm-skip block between paragraphs (e.g. a non-commentable embedded table) interrupts the
+        # consecutive-long count, so paragraphs either side are separate short runs.
+        inner = (_p(LONG) * 2
+                 + '<div class="cm-skip"><table><tr><td>x</td></tr></table></div>'
+                 + _p(LONG) * 2)
+        self.assertEqual(density.check_density(_doc(inner))[1], [])
+
+    def test_cmh_val_15_self_closing_layout_breaks_the_run(self):
+        # A self-closing layout element must break the run (pins the removal of handle_startendtag,
+        # which previously swallowed self-closing tags).
+        inner = _p(LONG) * 2 + '<canvas class="cmh-chart" />' + _p(LONG) * 2
+        self.assertEqual(density.check_density(_doc(inner))[1], [])
+
+    def test_cmh_val_15_headless_section_is_not_mislabeled(self):
+        # A headless wall section following a headed clean section must be labeled
+        # "(untitled section)", not the previous heading.
+        html = (
+            '<!doctype html><html><head>'
+            '<meta name="commentable-html-kind" content="report" /></head><body>'
+            '<main id="commentRoot" data-cmh-content-root><h1>T</h1>'
+            "<section><h2>Clean</h2>%s</section>"
+            "<section>%s</section></main></body></html>" % (_p(LONG) * 2, _p(LONG) * 4)
+        )
+        _errors, warnings = density.check_density(html)
+        self.assertTrue(any('"(untitled section)"' in w for w in warnings))
+        self.assertFalse(any('"Clean"' in w for w in warnings))
 
     def test_cmh_val_15_wired_into_validate(self):
         import tempfile

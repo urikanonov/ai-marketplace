@@ -96,13 +96,20 @@ class _DensityParser(HTMLParser):
         is_skip = "cm-skip" in self._classes(d)
         is_layout = self.root_depth > 0 and self.skip_depth == 0 and self._is_layout(tag, d)
         in_scope = self.root_depth > 0 and self.skip_depth == 0
+        # Entering a top-level cm-skip subtree (e.g. a non-commentable embedded table/widget) also
+        # breaks a prose run and must not let an open paragraph keep accumulating skipped text.
+        entering_skip = is_skip and self.root_depth > 0 and self.skip_depth == 0
         is_boundary = in_scope and (is_layout or tag in _HEADINGS or tag == "section")
-        # A new paragraph or a boundary closes an open prose paragraph; a boundary also breaks the
-        # run (a new paragraph continues it).
-        if tag == "p" or is_boundary:
+        # A new paragraph, a boundary, or entering a skip block closes an open prose paragraph; a
+        # boundary/skip-entry also breaks the run (a new paragraph continues it).
+        if tag == "p" or is_boundary or entering_skip:
             self._flush_open_paragraph()
-        if is_boundary:
+        if is_boundary or entering_skip:
             self.run = 0
+        # A new section starts a fresh label, so a headless section is not mislabeled with the
+        # previous section's heading.
+        if tag == "section" and in_scope:
+            self.current_heading = ""
         # Only a prose-level heading (not one buried in a layout block like a <figcaption>) names
         # the current section.
         if tag in _HEADINGS and in_scope and self.layout_depth == 0:
@@ -123,7 +130,7 @@ class _DensityParser(HTMLParser):
             self.layout_depth += 1
 
     def handle_data(self, data):
-        if self._p_prose:
+        if self._p_prose and self.skip_depth == 0 and self.layout_depth == 0:
             self._p_text.append(data)
         if self._heading_capture:
             self._heading_text.append(data)
@@ -163,8 +170,8 @@ class _DensityParser(HTMLParser):
                     if contrib["layout"]:
                         self.layout_depth -= 1
                 break
-        if tag == "section" and self.root_depth > 0:
-            self._break_run()  # a section boundary ends the run
+        if tag == "section" and self.root_depth > 0 and self.skip_depth == 0:
+            self._break_run()  # a section boundary ends the run (ignored inside a cm-skip subtree)
 
 
 def check_density(html, min_chars=MIN_LONG_PARAGRAPH_CHARS, max_run=MAX_CONSECUTIVE_LONG):

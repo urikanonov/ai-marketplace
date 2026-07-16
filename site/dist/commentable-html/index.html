@@ -418,7 +418,7 @@
             <div class="rel-head"><h3>[1.102.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>The validator now emits a non-fatal information-density advisory for <code>report</code> and <code>plan</code> documents: it warns when a section is a wall of four or more consecutive long paragraphs with no table, list, figure, diff, chart, or diagram to break it up, nudging authors toward a real skimmable layout. The check uses a dedicated density pass scoped to <code>#commentRoot</code>, ignores <code>cm-skip</code> and paragraphs nested inside layout blocks, resets at any layout block, heading, or section boundary, and is exempt for <code>slides</code> and <code>board</code>. Its thresholds are tunable. (CMH-VAL-15)</li>
+              <li>The validator now emits a non-fatal information-density advisory for <code>report</code> and <code>plan</code> documents: it warns when a section is a wall of four or more consecutive long paragraphs with no table, list, figure, diff, chart, or diagram to break it up, nudging authors toward a real skimmable layout. The check uses a dedicated density pass scoped to <code>#commentRoot</code>, ignores <code>cm-skip</code> and paragraphs nested inside layout blocks, resets at any layout block, heading, or section boundary, and runs only for <code>report</code> and <code>plan</code> (<code>slides</code>, <code>board</code>, <code>generic</code>, and a missing or unknown kind are exempt). Its thresholds are tunable. (CMH-VAL-15)</li>
             </ul>
           </div>
           <div class="release">
