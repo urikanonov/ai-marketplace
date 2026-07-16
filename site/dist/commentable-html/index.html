@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.82.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.85.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.85.0] - 2026-07-16</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Updated stale shipped-doc tool paths, including the plugin README&#x27;s validation, document-creation, and handled-comment paths, to the current <code>tools/&lt;topic&gt;/...</code> buckets. Added a docs test so future tool-layout refactors cannot leave stale README paths behind. (CMH-DOC-15)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.82.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The shipped skill now carries the MIT <code>LICENSE</code> at its root, so every copy that ships (the Copilot/Claude <code>plugin install</code> source subtree and the Claude Desktop skill ZIP) redistributes the code with its required license notice. (CMH-DOC-14)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.81.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -428,8 +437,6 @@
               <li>Callouts now carry a non-color cue so their meaning survives grayscale printing, color-blindness, and screen readers: each variant (info/success/warning/danger) shows a distinct leading glyph, and the runtime stamps <code>role=&quot;note&quot;</code> with a variant label. An authored leading <code>&lt;strong&gt;</code> label (or an explicit <code>aria-label</code>) is respected so the variant is not announced twice. (CMH-CALLOUT-03)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.80.0] - 2026-07-15</h3></div>
             <div class="group-label">Added</div>
@@ -460,19 +467,7 @@
               <li>SKILL.md now states the plugin installs into both Claude Code and the GitHub Copilot CLI and is invokable from each agent&#x27;s CLI and Desktop app, so the dual-agent support is visible in the shipped skill doc (its output was always a portable, agent-agnostic HTML file). (CMH-DOC-12)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.76.0] - 2026-07-15</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Reworked the showcase deck (<code>examples/deck-showcase.html</code>) into a light &quot;Parchment and Amber&quot; five-act pitch (pinned <code>data-theme=&quot;light&quot;</code>, raspberry accent, amber decorative highlight on key title words, indigo ink body) that threads a single community-garden plan as its one running example instead of unrelated feature samples. Acts 1 to 3 speak to a non-technical viewer and end on the primary call to action, Act 4 is the engineers-only deep dive (chart, diff, code, KQL, triage board, checklist), and Act 5 is a room-wide close. Retitled the slides to outcome-focused headings and rebuilt the shipped and site copies. (CMH-DECK-SHOWCASE-01, CMH-DECK-SHOWCASE-02)</li>
-              <li>Rethemed the deck&#x27;s rich content for the light parchment slides: the chart, Mermaid diagram, code diff, syntax-highlighted code and KQL, drag-and-drop triage board, table headers, and layered checklist all stay legible and pass the strict contrast validator on the new theme. (CMH-DECK-08, CMH-DECK-09, CMH-DECK-10, CMH-DECK-13)</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Early install call to action: the deck now surfaces both agents&#x27; exact install commands (Copilot and Claude <code>plugin marketplace add</code> plus <code>plugin install commentable-html@urikan-ai-marketplace</code>) as code blocks on an Act 2 slide well before the close, alongside the live-demo, GitHub, and tutorial links, and again as the primary CTA and the closing slide - so a viewer can act within the first few minutes rather than only at the end. (CMH-DECK-SHOWCASE-03)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">80 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">81 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
