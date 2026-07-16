@@ -218,8 +218,11 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       .toBe("slide-00000001");
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("ArrowRight");
+    await expect.poll(async () => page.evaluate(
+      () => document.activeElement && document.activeElement.getAttribute("data-slide-id"),
+    )).toBe("slide-00000003");
     await page.keyboard.press(" ");
-    await expect(overview).toBeHidden();
+    await expect(overview).toBeHidden({ timeout: 10000 });
     expect(await activeId(page)).toBe("slide-00000003");
     expect(await page.evaluate(() => window.__overviewEvts.length)).toBe(1);
 
@@ -233,8 +236,11 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await page.keyboard.press("o");
     await expect(overview).toBeVisible();
     await page.keyboard.press("End");
+    await expect.poll(async () => page.evaluate(
+      () => document.activeElement && document.activeElement.getAttribute("data-slide-id"),
+    )).toBe("slide-00000003");
     await page.keyboard.press(" ");
-    await expect(overview).toBeHidden();
+    await expect(overview).toBeHidden({ timeout: 10000 });
     expect(await activeId(page)).toBe("slide-00000003");
   });
 

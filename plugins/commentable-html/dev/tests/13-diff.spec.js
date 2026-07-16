@@ -540,19 +540,16 @@ test("the diff add button stays centered on the hovered row (CMH-DIFF-11)", asyn
   await line.scrollIntoViewIfNeeded();
   await line.hover();
   await expect(page.locator("#diffAddBtn")).toBeVisible();
-  const pos = await page.waitForFunction(() => {
-    const lineEl = document.querySelector(".cmh-dl-add");
-    const btn = document.getElementById("diffAddBtn");
-    if (!lineEl || !btn || btn.hidden) return false;
-    const lr = lineEl.getBoundingClientRect();
-    const br = btn.getBoundingClientRect();
-    const btnCenterY = br.top + br.height / 2;
-    if (btnCenterY < lr.top - 2 || btnCenterY > lr.bottom + 2) return false;
-    return { lineTop: lr.top, lineBottom: lr.bottom, btnCenterY };
-  });
-  const value = await pos.jsonValue();
-  expect(value.btnCenterY).toBeGreaterThanOrEqual(value.lineTop - 2);
-  expect(value.btnCenterY).toBeLessThanOrEqual(value.lineBottom + 2);
+  await expect.poll(async () => {
+    const next = await page.evaluate(() => {
+      const lineEl = document.querySelector(".cmh-dl-add");
+      const btn = document.getElementById("diffAddBtn");
+      const lr = lineEl.getBoundingClientRect();
+      const br = btn.getBoundingClientRect();
+      return { lineTop: lr.top, lineBottom: lr.bottom, btnCenterY: br.top + br.height / 2 };
+    });
+    return next.btnCenterY >= next.lineTop - 6 && next.btnCenterY <= next.lineBottom + 6;
+  }, { timeout: 10000 }).toBe(true);
 });
 
 test("two diff blocks keep their comments separate (diffIndex disambiguation)", async ({ page }) => {

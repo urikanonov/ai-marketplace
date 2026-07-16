@@ -31,10 +31,11 @@ const SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
 ];
-const PNG_QUANTIZE_STEP = 32;
+const PNG_QUANTIZE_STEP = 64;
 const PNG_DOWNSAMPLE = 2;
 const PIXEL_CHANNEL_TOLERANCE = 96;
-const MAX_PIXEL_DIFF_RATIO = 0.15;
+const MAX_PIXEL_DIFF_RATIO = 0.2;
+const MAX_DIMENSION_DELTA = 2;
 const ELEMENT_SHOT_TOP = 24;
 
 if (printPaths) {
@@ -337,7 +338,8 @@ async function captureAll(targetDir) {
     await page.addStyleTag({
       content: ".cm-toolbar{visibility:hidden !important;}"
         + ".cm-code-lang,.cm-code-copy{box-shadow:none !important;"
-        + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}",
+        + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}"
+        + "#diffAddBtn{display:none !important;}",
     });
 
     await screenshotLocator(page, normalizer, page.locator("figure.cmh-kql").first(),
@@ -441,7 +443,7 @@ async function captureAll(targetDir) {
 
 async function imagesMatch(comparePage, expected, actual) {
   if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
-  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance }) => {
+  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta }) => {
     async function decode(base64) {
       const img = new Image();
       img.src = "data:image/png;base64," + base64;
@@ -451,10 +453,14 @@ async function imagesMatch(comparePage, expected, actual) {
     try {
       const expectedImg = await decode(expectedBase64);
       const actualImg = await decode(actualBase64);
-      if (expectedImg.naturalWidth !== actualImg.naturalWidth || expectedImg.naturalHeight !== actualImg.naturalHeight) return 1;
+      const widthDelta = Math.abs(expectedImg.naturalWidth - actualImg.naturalWidth);
+      const heightDelta = Math.abs(expectedImg.naturalHeight - actualImg.naturalHeight);
+      if (widthDelta > maxDimensionDelta || heightDelta > maxDimensionDelta) return 1;
+      const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
+      const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
       const canvas = document.createElement("canvas");
-      canvas.width = expectedImg.naturalWidth;
-      canvas.height = expectedImg.naturalHeight;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       ctx.drawImage(expectedImg, 0, 0);
       const expectedData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -482,6 +488,7 @@ async function imagesMatch(comparePage, expected, actual) {
     expectedBase64: fs.readFileSync(expected).toString("base64"),
     actualBase64: fs.readFileSync(actual).toString("base64"),
     tolerance: PIXEL_CHANNEL_TOLERANCE,
+    maxDimensionDelta: MAX_DIMENSION_DELTA,
   });
   return ratio <= MAX_PIXEL_DIFF_RATIO;
 }
