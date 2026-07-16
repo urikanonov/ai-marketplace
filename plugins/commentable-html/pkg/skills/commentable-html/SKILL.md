@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.108.1`
+**Version:** `1.115.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -39,8 +39,8 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 
 | Input | Tool | Key behavior |
 | --- | --- | --- |
-| New document from a content fragment | `tools/authoring/new_document.py` | Builds the shell, configures `#commentRoot`, stamps `commentable-html-kind`, bakes syntax highlighting, surfaces validator warnings, validates before writing, and suffixes a colliding `--out` unless `--force` is set. |
-| New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids), bakes highlighting, accepts the same optional `--brand`, and self-validates. This is the ONLY tool that creates a real deck. |
+| New document from a content fragment | `tools/authoring/new_document.py` | Builds the shell, configures `#commentRoot`, stamps `commentable-html-kind`, bakes syntax highlighting, surfaces validator warnings, validates before writing, and suffixes a colliding `--out` unless `--force` is set. It also stamps the creating agent's session id by default (auto-detected from the environment - `COPILOT_AGENT_SESSION_ID` on Copilot, `CLAUDE_CODE_SESSION_ID` on Claude - or passed via `--session-id`/`--agent`) so a viewer can copy it from the footer; `--no-session-id` opts out. |
+| New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids), bakes highlighting, accepts the same optional `--brand`, self-validates, and stamps the creating agent's session id (same `--session-id`/`--agent`/`--no-session-id` behavior as `new_document.py`). This is the ONLY tool that creates a real deck. |
 | Fix copied deck web fonts | `tools/deck/deck_fix_fonts.py` | Removes remote font loaders and maps copied web-font stacks to the approved deterministic system stacks before deck validation. |
 | Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer, wraps or stamps a content root, preserves host content, bakes highlighting, accepts the same optional `--brand`, and validates before writing. |
 | Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attributes. |

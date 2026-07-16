@@ -1,5 +1,18 @@
 import { test, expect } from "@playwright/test";
-import { openInline, openToolbarMenu, ready, readDownload } from "./helpers.js";
+import { openInline, openToolbarMenu, ready, readDownload, installClipboardCapture, stageInline, fileUrl, lastCopied } from "./helpers.js";
+
+// Inject the provenance session stamp the authoring tools write, so the footer copy control renders.
+function withSession(html, { sid = "sess-abc-123", agent = "copilot" } = {}) {
+  const metas = '<meta name="commentable-html-session-id" content="' + sid + '" />'
+    + (agent ? '<meta name="commentable-html-agent" content="' + agent + '" />' : "");
+  return html.replace(/<head[^>]*>/i, (m) => m + "\n" + metas);
+}
+async function openWithSession(page, opts) {
+  const { html } = stageInline({ mutate: (h) => withSession(h, opts) });
+  await installClipboardCapture(page);
+  await page.goto(fileUrl(html));
+  await ready(page);
+}
 
 test.describe("attribution footer + Show affordance", () => {
   test("the footer shows version and a Help link; attribution lives in Help", async ({ page }) => {
@@ -82,6 +95,41 @@ test.describe("attribution footer + Show affordance", () => {
     const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSavePlainTop")]);
     const out = await readDownload(dl);
     expect(out).not.toContain('id="cmFooter"');
+  });
+
+  test("the footer copy-session icon copies the creating agent's session id (CMH-FOOT-04)", async ({ page }) => {
+    await openWithSession(page, { sid: "sess-abc-123", agent: "copilot" });
+    const btn = page.locator("#cmFooter .cm-footer-copy-session");
+    await expect(btn).toHaveCount(1);
+    await expect(btn).toHaveAttribute("aria-label", "Copy Copilot session id");
+    await btn.click();
+    expect(await lastCopied(page)).toBe("sess-abc-123");
+    await expect(page.locator("#toast")).toContainText(/Session id copied/i);
+  });
+
+  test("the copy-session tooltip names the agent (Claude) (CMH-FOOT-04)", async ({ page }) => {
+    await openWithSession(page, { sid: "cl-xyz", agent: "claude" });
+    const btn = page.locator("#cmFooter .cm-footer-copy-session");
+    await expect(btn).toHaveAttribute("aria-label", "Copy Claude session id");
+    await expect(btn).toHaveAttribute("data-cmh-tip", "Copy Claude session id");
+  });
+
+  test("the footer copy-session icon is absent without a session-id stamp (CMH-FOOT-04)", async ({ page }) => {
+    await openInline(page);
+    await expect(page.locator("#cmFooter")).toBeVisible();
+    await expect(page.locator("#cmFooter .cm-footer-copy-session")).toHaveCount(0);
+  });
+
+  test("the copy-session control does not leak into a Plain HTML export (CMH-FOOT-04)", async ({ page }) => {
+    await openWithSession(page, { sid: "sess-abc-123", agent: "copilot" });
+    await expect(page.locator("#cmFooter .cm-footer-copy-session")).toHaveCount(1);
+    await openToolbarMenu(page);
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSavePlainTop")]);
+    const out = await readDownload(dl);
+    // The interactive control is runtime chrome inside #cmFooter, so it is stripped; the
+    // runtime-composed button aria-label must not appear in the plain export.
+    expect(out).not.toContain('id="cmFooter"');
+    expect(out).not.toContain("Copy Copilot session id");
   });
 
   test("the overflow-menu Show button reopens the panel", async ({ page }) => {

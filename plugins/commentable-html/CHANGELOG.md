@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.115.0] - 2026-07-16
+
+### Added
+
+- The runtime footer now shows a small copy icon that copies the creating AI agent's
+  session id to the clipboard when the document carries a `commentable-html-session-id`
+  provenance stamp; the button's accessible label and tooltip name the agent (Copilot or
+  Claude), and the control never leaks into a Plain HTML export. (CMH-FOOT-04)
+- The document-producing tools (`new_document.py`, `deck_scaffold.py`) stamp that session
+  id by default, taking it from `--session-id` or, when absent, an auto-detected
+  environment variable (`COPILOT_AGENT_SESSION_ID` for Copilot, `CLAUDE_CODE_SESSION_ID`
+  for Claude). `--agent` overrides the label and `--no-session-id` opts out. When several
+  agents' session ids are visible at once (a nested launch), the agent actually running the
+  tool wins. A local, non-CI live check that drives the real `copilot`/`claude` CLIs is at
+  `dev/tests/copilot_e2e_check.py` and `dev/tests/claude_e2e_check.py`. (CMH-STAMP-04)
+
 ## [1.108.1] - 2026-07-16
 
 ### Changed

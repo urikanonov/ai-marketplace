@@ -22,7 +22,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.108.1";
+const CMH_VERSION = "1.115.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -53,6 +53,7 @@ const _CM_ICONS = {
   top:      "M12 19V6 M6 11l6-6 6 6",
   bottom:   "M12 5v13 M6 13l6 6 6-6",
   search:   "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-3.5-3.5",
+  clipboard: "M8 6h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z M9 6V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1",
 };
 function _cmIco(name, size) {
   const d = _CM_ICONS[name];

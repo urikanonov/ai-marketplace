@@ -566,6 +566,16 @@ def main(argv):
     parser.add_argument("--brand", default=None,
                         help="optional brand.json profile that stamps validated --cp-* theme "
                              "tokens and local data-URI font faces")
+    parser.add_argument("--session-id", default=None,
+                        help="AI session id of the agent creating this document, stamped as "
+                             "provenance and copyable from the footer (default: auto-detected "
+                             "from the environment, e.g. COPILOT_AGENT_SESSION_ID)")
+    parser.add_argument("--agent", default=None,
+                        help="producing agent slug (e.g. copilot, claude) shown in the footer "
+                             "copy tooltip; default: inferred from which session env var matched")
+    parser.add_argument("--no-session-id", action="store_true",
+                        help="do not stamp the creating AI session id (stamping is ON by default "
+                             "when a session id is available from --session-id or the environment)")
     args = parser.parse_args(argv[1:])
     out_path = resolve_output_path(args.out, force=args.force)
 
@@ -650,6 +660,13 @@ def main(argv):
     try:
         import doc_stamp
         out_html = doc_stamp.stamp_created(out_html, when=args.generated)
+        if not args.no_session_id:
+            sid, agent = args.session_id, args.agent
+            if not sid:
+                sid, detected_agent = doc_stamp.detect_session()
+                if agent is None:
+                    agent = detected_agent
+            out_html = doc_stamp.stamp_session(out_html, sid, agent=agent)
     except ImportError:
         pass
 

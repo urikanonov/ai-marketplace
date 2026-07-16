@@ -496,6 +496,15 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-footer-help:hover { text-decoration: underline; }
 .cm-footer-ver { font-weight: 600; color: var(--cp-text); }
 .cm-footer-sep { opacity: 0.5; }
+/* Footer copy-session control (CMH-FOOT-04): a small icon button that copies the creating AI
+   agent's session id. Accent-coloured to read as an action, with a subtle hover surface. */
+.cm-footer-copy-session {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.15rem; margin: 0; border: none; border-radius: 0.35rem;
+  background: transparent; color: var(--cp-accent); cursor: pointer; line-height: 0;
+}
+.cm-footer-copy-session:hover { background: var(--cp-surface-soft, rgba(127,127,127,0.14)); }
+.cm-footer-copy-session .cm-ui-ico { display: block; }
 /* When the comments panel is open, track the .app content column exactly: the layout recipe
    (10-layout.css) insets .app by 2rem left / sidebar+2rem right from 1100px, and by a centered
    gutter from 1700px. Mirror those insets so the footer stays flush with the content sections
