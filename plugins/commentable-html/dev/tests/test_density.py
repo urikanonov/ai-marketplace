@@ -31,6 +31,17 @@ def _doc(inner, kind="report"):
     )
 
 
+def _doc_body(body_html, kind="report"):
+    # A document whose #commentRoot holds body_html verbatim (no auto <section> wrapper), for
+    # exercising nested/headless sections and malformed markup.
+    return (
+        '<!doctype html><html><head>'
+        '<meta name="commentable-html-kind" content="%s" />'
+        '</head><body><main id="commentRoot" data-cmh-content-root>'
+        "<h1>Title</h1>%s</main></body></html>" % (kind, body_html)
+    )
+
+
 class DensityAdvisoryTests(unittest.TestCase):
     def test_cmh_val_15_prose_wall_warns(self):
         errors, warnings = density.check_density(_doc(_p(LONG) * 4))
@@ -144,6 +155,39 @@ class DensityAdvisoryTests(unittest.TestCase):
         _errors, warnings = density.check_density(html)
         self.assertTrue(any('"(untitled section)"' in w for w in warnings))
         self.assertFalse(any('"Clean"' in w for w in warnings))
+
+    def test_cmh_val_15_inline_cm_skip_does_not_split_a_paragraph(self):
+        # An inline cm-skip span inside a paragraph excludes only its own text; the paragraph is
+        # still one long unit, so a wall of such paragraphs is still flagged.
+        para = '<p>%s <span class="cm-skip">ignore</span> %s</p>' % (LONG, LONG)
+        self.assertTrue(density.check_density(_doc(para * 4))[1],
+                        "inline cm-skip must not truncate its paragraph")
+
+    def test_cmh_val_15_min_chars_is_tunable(self):
+        med = "word " * 24  # ~120 chars: short at the default, long at a smaller min_chars
+        doc = _doc(("<p>%s</p>" % med) * 4)
+        self.assertEqual(density.check_density(doc)[1], [])
+        self.assertTrue(density.check_density(doc, min_chars=100)[1])
+
+    def test_cmh_val_15_two_headless_walls_are_both_reported(self):
+        body = "<section>%s</section><section>%s</section>" % (_p(LONG) * 4, _p(LONG) * 4)
+        _errors, warnings = density.check_density(_doc_body(body))
+        self.assertEqual(len([w for w in warnings if "wall of" in w]), 2,
+                         "two distinct headless walls must each be reported")
+
+    def test_cmh_val_15_prose_after_nested_section_uses_outer_heading(self):
+        body = ("<section><h2>Outer</h2>"
+                "<section><h3>Inner</h3><p>short</p></section>"
+                "%s</section>" % (_p(LONG) * 4))
+        _errors, warnings = density.check_density(_doc_body(body))
+        self.assertTrue(any('"Outer"' in w for w in warnings),
+                        "a wall in the outer section after a nested one must keep the outer label")
+
+    def test_cmh_val_15_stray_close_section_does_not_suppress(self):
+        # A dangling </section> with no matching open must not silently break a real wall.
+        body = "%s</section>%s" % (_p(LONG) * 2, _p(LONG) * 2)
+        self.assertTrue(density.check_density(_doc_body(body))[1],
+                        "a stray unmatched </section> must not suppress a genuine wall")
 
     def test_cmh_val_15_wired_into_validate(self):
         import tempfile
