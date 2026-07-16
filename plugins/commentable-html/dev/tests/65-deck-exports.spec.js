@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, readDownload, startStaticServer,
-  installClipboardCapture, addTextComment, routeMermaidLocal,
+  installClipboardCapture, openComposerFor, routeMermaidLocal,
 } from "./helpers.js";
 
 const DECK = path.join(SKILL, "examples", "deck-showcase.html");
@@ -62,7 +62,11 @@ async function openDeck(page) {
 // export buttons (the proven deck export entry point, mirroring 52-deck.spec.js).
 async function enterCommentModeAndComment(page, note) {
   await page.locator(".cmh-deck-mode-toggle").click();
-  await addTextComment(page, COMMENT_TARGET, note);
+  const composer = await openComposerFor(page, COMMENT_TARGET);
+  const textarea = composer.locator("textarea");
+  await textarea.fill(note);
+  await textarea.press("Control+Enter");
+  await expect(composer).toHaveCount(0);
 }
 
 test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reopens self-contained", async ({ page, browser }) => {
