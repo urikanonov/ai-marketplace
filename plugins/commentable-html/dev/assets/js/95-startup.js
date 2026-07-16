@@ -188,6 +188,7 @@ setupSortableTables();
 setupModeUi();
 setupSidebarResize();
 setupCommentSearch();
+setupPrintAppendix();
 function setupDeck() {
   if (window.__cmhDeck) return;  // idempotent: never install the deck chrome twice
   const stage = root.querySelector(".deck-stage");

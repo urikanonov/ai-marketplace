@@ -1,0 +1,255 @@
+.cmh-print-comments,
+.cmh-print-noscript {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 0.6in;
+  }
+
+  :root,
+  html[data-theme="dark"] {
+    --cp-bg: #fff;
+    --cp-bg-elevated: #fff;
+    --cp-surface: #fff;
+    --cp-surface-soft: #f8fafc;
+    --cp-panel-strong: #fff;
+    --cp-border: #cbd5e1;
+    --cp-text: #111827;
+    --cp-text-soft: #374151;
+    --cp-text-muted: #4b5563;
+    --cp-link: #1d4ed8;
+    --cp-accent: #1d4ed8;
+    --cp-accent-hover: #1e40af;
+    --cp-accent-soft: #eff6ff;
+    --cp-accent-fg: #fff;
+    --cp-warning: #92400e;
+    --cp-warning-soft: #fffbeb;
+    --cp-danger: #991b1b;
+    --cp-danger-soft: #fef2f2;
+    --cp-success: #166534;
+    --cp-success-soft: #f0fdf4;
+    --cp-shadow: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+  }
+
+  html,
+  body {
+    background: var(--cp-bg) !important;
+    color: var(--cp-text) !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: economy;
+    print-color-adjust: economy;
+  }
+
+  body,
+  .app,
+  body.sidebar-open .app,
+  body.cm-side-toc-on .app,
+  body.cm-has-footer .app {
+    max-width: none !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: var(--cp-bg) !important;
+    color: var(--cp-text) !important;
+    overflow: visible !important;
+  }
+
+  body > .cm-skip,
+  .cm-toolbar,
+  .cm-sidebar,
+  .cm-sidebar-resize,
+  .cm-side-toc,
+  .cm-scroll-progress,
+  .cm-footer,
+  .cm-menu,
+  .cm-composer,
+  .cm-tooltip,
+  .cm-toast,
+  .cm-modal-overlay,
+  .cm-mermaid-add,
+  .cm-diff-add,
+  .cm-image-add,
+  .cm-widget-add,
+  .cm-hl-bubble,
+  #commentRoot .cmh-sec-caret,
+  .cm-code-copy,
+  #commentRoot [data-cmh-copy],
+  #commentRoot [data-cmh-check-btn],
+  #commentRoot [data-cmh-note-toggle],
+  #commentRoot [data-cmh-note-fold] {
+    display: none !important;
+  }
+
+  #commentRoot,
+  #commentRoot * {
+    overflow: visible !important;
+  }
+
+  #commentRoot {
+    background: var(--cp-bg) !important;
+    color: var(--cp-text) !important;
+  }
+
+  #commentRoot section.cmh-section-collapsed > * {
+    display: revert !important;
+  }
+
+  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
+  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head {
+    display: revert !important;
+  }
+
+  #commentRoot section.cmh-section-collapsed > .cm-code-copy,
+  #commentRoot section.cmh-section-collapsed > [data-cmh-copy],
+  #commentRoot section.cmh-section-collapsed > [data-cmh-check-btn],
+  #commentRoot section.cmh-section-collapsed > [data-cmh-note-toggle],
+  #commentRoot section.cmh-section-collapsed > [data-cmh-note-fold] {
+    display: none !important;
+  }
+
+  #commentRoot > section,
+  #commentRoot .cmh-lede,
+  #commentRoot .cm-toc,
+  #commentRoot .cmh-callout,
+  #commentRoot figure.cmh-kql,
+  #commentRoot .cmh-diff-view,
+  .cmh-print-comments,
+  .cmh-print-noscript {
+    background: var(--cp-surface) !important;
+    color: var(--cp-text) !important;
+    border-color: var(--cp-border) !important;
+    box-shadow: none !important;
+  }
+
+  #commentRoot > section,
+  #commentRoot .cmh-lede,
+  #commentRoot .cm-toc,
+  #commentRoot figure,
+  #commentRoot pre,
+  #commentRoot blockquote,
+  #commentRoot table,
+  #commentRoot .cmh-callout,
+  .cmh-print-comment {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #commentRoot pre,
+  #commentRoot code,
+  #commentRoot .cmh-diff-view pre,
+  #commentRoot .cmh-diff-view code,
+  #commentRoot figure.cmh-kql pre,
+  #commentRoot figure.cmh-kql code {
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+
+  #commentRoot table {
+    display: table !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  #commentRoot img,
+  #commentRoot svg,
+  #commentRoot canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  a {
+    color: var(--cp-link) !important;
+  }
+
+  .cmh-print-comments,
+  .cmh-print-noscript {
+    display: block !important;
+    margin: 2rem 0 0 !important;
+    padding: 1rem 0 0 !important;
+    border-top: 2px solid var(--cp-border) !important;
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .cmh-print-comments h2,
+  .cmh-print-noscript h2 {
+    margin: 0 0 0.7rem !important;
+    color: var(--cp-text) !important;
+  }
+
+  .cmh-print-comment {
+    margin: 1rem 0 !important;
+    padding: 0.85rem 1rem !important;
+    border: 1px solid var(--cp-border) !important;
+    border-radius: 10px !important;
+    background: var(--cp-surface-soft) !important;
+  }
+
+  .cmh-print-comment h3 {
+    margin: 0 0 0.45rem !important;
+    color: var(--cp-text) !important;
+  }
+
+  .cmh-print-comment p {
+    margin: 0.35rem 0 !important;
+  }
+
+  .cmh-print-comment blockquote {
+    margin: 0.5rem 0 !important;
+    padding: 0.4rem 0.65rem !important;
+    border-left: 3px solid var(--cp-warning) !important;
+    color: var(--cp-text-muted) !important;
+    background: var(--cp-warning-soft) !important;
+    white-space: pre-wrap !important;
+  }
+
+  .cmh-print-meta {
+    color: var(--cp-text-muted) !important;
+    font-size: 0.82rem !important;
+  }
+
+  #commentRoot[data-cmh-mode="deck"] .deck-viewport,
+  #commentRoot[data-cmh-mode="deck"] .deck-stage {
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    height: auto !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+
+  #commentRoot[data-cmh-mode="deck"] .slide {
+    position: relative !important;
+    inset: auto !important;
+    display: block !important;
+    width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: none !important;
+    overflow: visible !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #commentRoot[data-cmh-mode="deck"] .slide:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}
