@@ -61,7 +61,7 @@ hlBubble.addEventListener("click", (e) => {
   if (!id) return;
   openSidebar();
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
-  if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (card) card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   flashActive(id);
 });
 window.addEventListener("scroll", () => {

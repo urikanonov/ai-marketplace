@@ -18,6 +18,18 @@ const CMH_LAYER_SCRIPT = document.currentScript;
 // host content (which may itself be cm-skip, e.g. a chart <canvas>). See _snapshotWithTail.
 const CMH_INJECTED_CHROME = new Set();
 
+// Scroll behavior that respects prefers-reduced-motion: JS scrollIntoView/scrollTo take a
+// `behavior` option that OVERRIDES the CSS `scroll-behavior` reset, so every programmatic
+// smooth scroll must consult this so motion-sensitive readers get an instant jump instead.
+// Fails closed to "auto" (less motion) when the preference cannot be determined, since this is
+// an accessibility affordance and an instant jump is never worse than an unwanted animation.
+function cmScrollBehavior() {
+  try {
+    if (typeof window.matchMedia !== "function") return "auto";
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  } catch (e) { return "auto"; }
+}
+
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
 const root = document.getElementById("commentRoot") || document.body;
 const COMMENT_KEY = root.dataset.commentKey || ("commentable-html:" + location.pathname);
@@ -36,7 +48,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.86.0";
+const CMH_VERSION = "1.87.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -767,7 +779,7 @@ function attachMermaidHostHandlers(host) {
     if (!id) return;
     openSidebar();
     const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
-    if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(id); }
+    if (card) { card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(id); }
     flashMermaid(id);
   });
 }
@@ -1438,7 +1450,7 @@ function attachDiffHostHandlers(block) {
     if (!id) return;
     openSidebar();
     const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
-    if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(id); }
+    if (card) { card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(id); }
     flashDiff(id);
   });
   // Keyboard: focusing a commentable line reveals the + button; Enter opens the
@@ -1723,7 +1735,7 @@ function setupImageLayer() {
         if (!id) return;
         openSidebar();
         const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
-        if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(id); }
+        if (card) { card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(id); }
         flashImage(id);
       });
     }
@@ -2384,7 +2396,7 @@ function jumpToChecklist(cid) {
   const cl = checklists.find((c) => c.id === cid);
   if (!cl || !cl.container) return;
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(cl.container);
-  cl.container.scrollIntoView({ behavior: "smooth", block: "center" });
+  cl.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   cl.container.classList.add("cmh-check-flash");
   setTimeout(() => cl.container.classList.remove("cmh-check-flash"), 2200);
 }
@@ -2607,7 +2619,7 @@ function jumpToNote(id) {
   if (!note || !note.container) return;
   if (note.foldable && note.collapsed) { note.collapsed = false; _noteApplyFold(note); }
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(note.container);
-  note.container.scrollIntoView({ behavior: "smooth", block: "center" });
+  note.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   note.container.classList.add("cmh-note-flash");
   setTimeout(() => note.container.classList.remove("cmh-note-flash"), 2200);
   try { note.textarea.focus(); } catch (e) { /* focus is best-effort */ }
@@ -3609,7 +3621,7 @@ function _jumpToWidget(name) {
   try { el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (e) { /* invalid selector */ }
   if (!el) return;
   expandCollapsedAncestors(el);
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   el.classList.add("cm-widget-flash");
   setTimeout(() => el.classList.remove("cm-widget-flash"), 2200);
 }
@@ -3660,12 +3672,12 @@ function scrollToAnchor(c) {
     // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
     // document start) so a document-wide comment card does not strand the presenter.
     if (window.__cmhDeck) window.__cmhDeck.showSlide(0);
-    else window.scrollTo({ top: 0, behavior: "smooth" });
+    else window.scrollTo({ top: 0, behavior: cmScrollBehavior() });
     flashActive(c.id);
     return;
   }
   else el = root.querySelector(`mark.cm-hl[data-cid="${c.id}"]`);
-  if (el) { expandCollapsedAncestors(el); el.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(c.id); }
+  if (el) { expandCollapsedAncestors(el); el.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(c.id); }
 }
 // A comment can live inside a collapsed section (display:none = no layout box), so
 // expand every collapsed ancestor section before scrolling to it.
@@ -3761,7 +3773,7 @@ root.addEventListener("click", (e) => {
   const id = m.dataset.cid;
   openSidebar();
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
-  if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(id); }
+  if (card) { card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(id); }
 });
 
 /* ---------- Comment search / filter ---------- */
@@ -3933,7 +3945,7 @@ hlBubble.addEventListener("click", (e) => {
   if (!id) return;
   openSidebar();
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
-  if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (card) card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   flashActive(id);
 });
 window.addEventListener("scroll", () => {
@@ -6456,7 +6468,7 @@ function setupHeadingAnchors() {
     function deepLink() {
       if (window.history && history.pushState) history.pushState(null, "", "#" + h.id);
       else location.hash = h.id;
-      h.scrollIntoView({ behavior: "smooth", block: "start" });
+      h.scrollIntoView({ behavior: cmScrollBehavior(), block: "start" });
     }
     h.addEventListener("click", function (e) {
       const sel = window.getSelection();
@@ -6679,10 +6691,10 @@ function setupSideToc() {
     toggle.title = collapsed ? "Expand the section menu" : "Collapse the section menu";
   });
   top.addEventListener("click", function () {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: cmScrollBehavior() });
   });
   bottom.addEventListener("click", function () {
-    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: cmScrollBehavior() });
   });
   function onScroll() {
     // Activate the visible section nearest above the threshold by GEOMETRY (greatest top still

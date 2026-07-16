@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.87.0] - 2026-07-16
+
+### Added
+
+- The layer now honors the operating-system "reduce motion" setting
+  (`prefers-reduced-motion: reduce`): non-essential animations and transitions (the composer flash,
+  the mermaid and diff pulses, the checklist and notes flashes) - including their delays and
+  repeat loops - are clamped to a near-instant single pass so they do not animate for
+  motion-sensitive readers, while everything still lands in its final state. Programmatic smooth
+  scrolls (jump-to-comment, scroll-to-top/bottom, deep links) also become instant under the
+  preference. (The deck slide stage keeps the vendored slide engine's own reduced-motion rule for
+  its essential slide transition.) (CMH-A11Y-07)
+
 ## [1.86.0] - 2026-07-16
 
 ### Fixed

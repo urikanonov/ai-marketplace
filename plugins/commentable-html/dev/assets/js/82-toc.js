@@ -104,7 +104,7 @@ function setupHeadingAnchors() {
     function deepLink() {
       if (window.history && history.pushState) history.pushState(null, "", "#" + h.id);
       else location.hash = h.id;
-      h.scrollIntoView({ behavior: "smooth", block: "start" });
+      h.scrollIntoView({ behavior: cmScrollBehavior(), block: "start" });
     }
     h.addEventListener("click", function (e) {
       const sel = window.getSelection();
@@ -327,10 +327,10 @@ function setupSideToc() {
     toggle.title = collapsed ? "Expand the section menu" : "Collapse the section menu";
   });
   top.addEventListener("click", function () {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: cmScrollBehavior() });
   });
   bottom.addEventListener("click", function () {
-    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: cmScrollBehavior() });
   });
   function onScroll() {
     // Activate the visible section nearest above the threshold by GEOMETRY (greatest top still

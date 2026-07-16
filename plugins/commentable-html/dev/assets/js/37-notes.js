@@ -148,7 +148,7 @@ function jumpToNote(id) {
   if (!note || !note.container) return;
   if (note.foldable && note.collapsed) { note.collapsed = false; _noteApplyFold(note); }
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(note.container);
-  note.container.scrollIntoView({ behavior: "smooth", block: "center" });
+  note.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   note.container.classList.add("cmh-note-flash");
   setTimeout(() => note.container.classList.remove("cmh-note-flash"), 2200);
   try { note.textarea.focus(); } catch (e) { /* focus is best-effort */ }

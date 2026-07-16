@@ -192,7 +192,7 @@ function _jumpToWidget(name) {
   try { el = root.querySelector('[data-cm-widget="' + _cssEsc(name) + '"]'); } catch (e) { /* invalid selector */ }
   if (!el) return;
   expandCollapsedAncestors(el);
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   el.classList.add("cm-widget-flash");
   setTimeout(() => el.classList.remove("cm-widget-flash"), 2200);
 }
@@ -243,12 +243,12 @@ function scrollToAnchor(c) {
     // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
     // document start) so a document-wide comment card does not strand the presenter.
     if (window.__cmhDeck) window.__cmhDeck.showSlide(0);
-    else window.scrollTo({ top: 0, behavior: "smooth" });
+    else window.scrollTo({ top: 0, behavior: cmScrollBehavior() });
     flashActive(c.id);
     return;
   }
   else el = root.querySelector(`mark.cm-hl[data-cid="${c.id}"]`);
-  if (el) { expandCollapsedAncestors(el); el.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(c.id); }
+  if (el) { expandCollapsedAncestors(el); el.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(c.id); }
 }
 // A comment can live inside a collapsed section (display:none = no layout box), so
 // expand every collapsed ancestor section before scrolling to it.
@@ -344,6 +344,6 @@ root.addEventListener("click", (e) => {
   const id = m.dataset.cid;
   openSidebar();
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
-  if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); flashActive(id); }
+  if (card) { card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(id); }
 });
 
