@@ -49,7 +49,9 @@ Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-h
 
 ## References
 
-- `references/charts.md` - Chart.js embedding, tooltip, portability, data hygiene, and verification guidance.
+- `references/charts.md` - Thin Chart.js reference index that routes to the focused files.
+- `references/charts-embedding.md` - Chart.js dependencies, coexistence rules, minimal markup, tooltips, verification, and embedding pitfalls.
+- `references/charts-recipes.md` - Chart.js per-type recipes, data hygiene, and dark-theme guidance.
 - `references/code-blocks.md` - Code comment behavior and copy buttons.
 - `references/code-review-diffs.md` - Unified diff rendering and anchors.
 - `references/commentable-widgets.md` - Widget/SVG-node comments, state-change tracking, document-wide comments.

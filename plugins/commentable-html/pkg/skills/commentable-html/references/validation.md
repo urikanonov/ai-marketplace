@@ -9,7 +9,7 @@
 python tools/validate/validate.py --strict path/to/file.html [more.html ...]
 ```
 
-It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when every file passes (warnings allowed) and `1` when any file has errors; `--strict` also fails on any warning, so a single run surfaces *everything* to fix and you iterate until it reports `OK (0 warning(s))`. When the document embeds Chart.js charts (a `<canvas>` is present), it **also** runs the chart-embedding checks automatically (see `charts.md`); pass `--charts-only` or `--layer-only` to run just one half. If Python is not installed, skip it and fall back to the manual [Quick verification after retrofitting](#quick-verification-after-retrofitting) checks.
+It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when every file passes (warnings allowed) and `1` when any file has errors; `--strict` also fails on any warning, so a single run surfaces *everything* to fix and you iterate until it reports `OK (0 warning(s))`. When the document embeds Chart.js charts (a `<canvas>` is present), it **also** runs the chart-embedding checks automatically (see `charts-embedding.md`); pass `--charts-only` or `--layer-only` to run just one half. If Python is not installed, skip it and fall back to the manual [Quick verification after retrofitting](#quick-verification-after-retrofitting) checks.
 
 **Errors (block - the file will not work):**
 
@@ -36,7 +36,7 @@ It prints one `ERROR` / `WARNING` line per issue. By default it exits `0` when e
 
 The checker parses the document with a tolerant HTML parser and reads real elements, attributes and `<script>` bodies (not a regex over raw text), so an `id="..."` sitting inside another attribute's value, a `>` inside a quoted attribute, or example markup inside a comment / `<pre>` / a JS string literal does not trigger a false positive.
 
-When a `<canvas>` is present, additional **chart** checks run: `cm-skip` on the canvas wrapper (not the `<figure>`), valid non-empty chart-data JSON with no `</script>` / `<!--` breakout, chart init after the JS END marker **and** after the loader, canvas `role`/`aria-label`, and a `typeof Chart` network-failure guard. Use a local or inline Chart.js loader by default; if a CDN loader is explicitly chosen, pin it and add SRI plus `crossorigin`. See [Charts with tooltips](charts.md).
+When a `<canvas>` is present, additional **chart** checks run: `cm-skip` on the canvas wrapper (not the `<figure>`), valid non-empty chart-data JSON with no `</script>` / `<!--` breakout, chart init after the JS END marker **and** after the loader, canvas `role`/`aria-label`, and a `typeof Chart` network-failure guard. Use a local or inline Chart.js loader by default; if a CDN loader is explicitly chosen, pin it and add SRI plus `crossorigin`. See [Chart.js embedding and tooltips](charts-embedding.md).
 
 
 ## Quick verification after retrofitting

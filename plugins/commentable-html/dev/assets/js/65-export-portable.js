@@ -58,7 +58,7 @@ function _isInjectedChrome(n) {
 function _snapshotWithTail() {
   // SNAPSHOT_HTML is pristine (captured before any runtime mutation) but stops at the
   // layer <script>, so any host content parsed after it (chart data/init scripts placed
-  // after the JS region, per charts.md) is missing and would be dropped on a file://
+  // after the JS region, per charts-embedding.md) is missing and would be dropped on a file://
   // export. That tail is host-owned and never mutated by the layer, so recover it now
   // from the fully-parsed live DOM and splice it back in before the snapshot's </body>.
   const anchor = CMH_LAYER_SCRIPT;
