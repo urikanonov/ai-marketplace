@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.106.0" />
+<meta name="commentable-html-version" content="1.108.1" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.106.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.108.1","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -2544,6 +2544,14 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-mark { background: rgba(245, 158, 11, 0.42); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.42); border-radius: 6px; padding: 0 4px; }
 #commentRoot[data-cmh-mode="deck"] .show-kicker { color: var(--show-accent); font-size: 24px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 18px; }
 #commentRoot[data-cmh-mode="deck"] .show-lead { font-size: 30px; color: var(--show-muted); max-width: 1480px; }
+#commentRoot[data-cmh-mode="deck"] .show-header { display: grid; grid-template-columns: 360px 1fr; gap: 44px; align-items: center; padding: 148px 120px; }
+#commentRoot[data-cmh-mode="deck"] .show-logo-wrap { width: 320px; height: 320px; border-radius: 38px; background: #fffdf8; border: 1px solid var(--show-line); box-shadow: 0 18px 38px rgba(120, 98, 60, 0.12); display: grid; place-items: center; }
+#commentRoot[data-cmh-mode="deck"] .show-logo-mark { width: 220px; height: 220px; }
+#commentRoot[data-cmh-mode="deck"] .show-logo-mark .logo-shell { fill: #b11f4b; }
+#commentRoot[data-cmh-mode="deck"] .show-logo-mark .logo-line { fill: #ffffff; }
+#commentRoot[data-cmh-mode="deck"] .show-logo-mark .logo-dot { fill: #f59e0b; }
+#commentRoot[data-cmh-mode="deck"] .show-header h1 { font-size: 108px; line-height: 1.02; margin-bottom: 24px; }
+#commentRoot[data-cmh-mode="deck"] .show-header .showcase-comment-target { max-width: 1120px; font-size: 34px; line-height: 1.34; color: var(--show-text); }
 #commentRoot[data-cmh-mode="deck"] .show-title { padding: 138px 112px; }
 #commentRoot[data-cmh-mode="deck"] .show-title h1 { font-size: 98px; line-height: 1.03; margin-bottom: 30px; }
 #commentRoot[data-cmh-mode="deck"] .show-title .showcase-comment-target { max-width: 1260px; font-size: 38px; line-height: 1.34; color: var(--show-text); }
@@ -2564,6 +2572,9 @@ svg {
 #commentRoot[data-cmh-mode="deck"] table.show-table th { background: #b11f4b !important; color: #ffffff !important; font-weight: 800; font-size: 23px; text-align: left; }
 #commentRoot[data-cmh-mode="deck"] table.show-table td { color: var(--show-text); font-size: 22px; line-height: 1.3; background: #fffdf8; }
 #commentRoot[data-cmh-mode="deck"] table.show-table tr:nth-child(even) td { background: #f3ece0; }
+#commentRoot[data-cmh-mode="deck"] table.show-compare-table th,
+#commentRoot[data-cmh-mode="deck"] table.show-compare-table td { font-size: 20px; padding: 10px 14px; }
+#commentRoot[data-cmh-mode="deck"] table.show-compare-table td:first-child { font-weight: 700; }
 #commentRoot[data-cmh-mode="deck"] .show-chart-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px; align-items: start; }
 #commentRoot[data-cmh-mode="deck"] figure.chart.show-chart { margin: 0; padding: 22px; background: #ffffff; border: 1px solid var(--show-line); border-radius: 20px; }
 #commentRoot[data-cmh-mode="deck"] figure.chart.show-chart figcaption { color: #514a3a; font-size: 20px; margin-top: 10px; }
@@ -2594,6 +2605,12 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-install pre { margin: 0; background: #efe8db; border: 1px solid var(--show-line); border-radius: 12px; padding: 14px 16px; font-size: 20px; line-height: 1.42; white-space: pre-wrap; word-break: break-word; }
 #commentRoot[data-cmh-mode="deck"] .show-links { margin-top: 22px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 24px; }
 #commentRoot[data-cmh-mode="deck"] .show-links a { font-weight: 800; }
+#commentRoot[data-cmh-mode="deck"] .show-prompts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 24px; }
+#commentRoot[data-cmh-mode="deck"] .show-prompt-card { display: block; min-height: 220px; padding: 22px 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); box-shadow: 0 14px 34px rgba(120, 98, 60, 0.12); text-decoration: none; }
+#commentRoot[data-cmh-mode="deck"] .show-prompt-card h3 { margin-bottom: 10px; font-size: 25px; color: var(--show-text); }
+#commentRoot[data-cmh-mode="deck"] .show-prompt-card p { font-size: 19px; line-height: 1.38; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-prompt-card:hover { border-color: var(--show-accent); transform: translateY(-2px); transition: transform 0.12s ease, border-color 0.12s ease; }
+#commentRoot[data-cmh-mode="deck"] .show-prompt-card .show-link-label { display: inline-block; margin-top: 12px; font-size: 18px; font-weight: 800; color: var(--show-accent); }
 #commentRoot[data-cmh-mode="deck"] .show-loops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 20px; }
 #commentRoot[data-cmh-mode="deck"] .show-loop { padding: 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); min-height: 360px; }
 #commentRoot[data-cmh-mode="deck"] .show-loop h3 { color: var(--show-text); font-size: 30px; margin-bottom: 10px; }
@@ -2602,6 +2619,15 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-close h2 { font-size: 78px; max-width: 1360px; margin: 0 auto 28px; color: var(--show-text); }
 #commentRoot[data-cmh-mode="deck"] .show-close p { max-width: 1120px; margin: 0 auto; font-size: 32px; color: var(--show-muted); }
 #commentRoot[data-cmh-mode="deck"] .show-close .show-install { max-width: 920px; margin: 36px auto 0; text-align: left; }
+#commentRoot[data-cmh-mode="deck"] .show-next-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; margin-top: 30px; text-align: left; }
+#commentRoot[data-cmh-mode="deck"] .show-next-card { min-height: 208px; padding: 22px 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-next-card h3 { font-size: 24px; margin-bottom: 10px; color: var(--show-text); }
+#commentRoot[data-cmh-mode="deck"] .show-next-card p,
+#commentRoot[data-cmh-mode="deck"] .show-next-card li { font-size: 20px; line-height: 1.34; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-next-card a { font-weight: 800; }
+#commentRoot[data-cmh-mode="deck"] .show-question { text-align: center; padding: 170px 150px; }
+#commentRoot[data-cmh-mode="deck"] .show-question h2 { font-size: 102px; margin-bottom: 22px; }
+#commentRoot[data-cmh-mode="deck"] .show-question p { max-width: 980px; margin: 0 auto; font-size: 34px; color: var(--show-muted); }
 
 /* Light-slide Mermaid retheme: override the deck runtime's default dark-slide treatment so nodes,
    labels, and connectors read against the parchment slide. */
@@ -2632,15 +2658,52 @@ svg {
 }
 </style>
 
-<section class="slide show-title active" data-cm-widget="showcase-title" data-cm-part-label="Title slide" data-slide-id="slide-76b2501c">
-  <div class="show-kicker">Commentable HTML</div>
-  <h1>Keep the <span class="show-mark">review loop</span> inside the artifact.</h1>
-  <p class="showcase-comment-target">The review loop gets fast when the plan itself is commentable: point at the exact sentence, table cell, chart, diagram node, image, code line, or slide and hand the agent structured feedback in one pass.</p>
+<section class="slide show-header active" data-cm-widget="showcase-title" data-cm-part-label="Header slide" data-slide-id="slide-21860f4e">
+  <div class="show-logo-wrap cm-skip" aria-hidden="true">
+    <svg class="show-logo-mark" viewBox="0 0 240 240" role="presentation" focusable="false">
+      <path class="logo-shell" d="M34 54c0-11 9-20 20-20h132c11 0 20 9 20 20v86c0 11-9 20-20 20H98l-40 31c-6 5-16 0-16-8V54z"></path>
+      <rect class="logo-line" x="66" y="79" width="108" height="16" rx="8"></rect>
+      <rect class="logo-line" x="66" y="110" width="76" height="16" rx="8"></rect>
+      <circle class="logo-dot" cx="176" cy="111" r="18"></circle>
+    </svg>
+  </div>
+  <div>
+    <div class="show-kicker">Commentable HTML</div>
+    <h1>Keep the <span class="show-mark">review loop</span> inside the artifact.</h1>
+    <p class="showcase-comment-target">Keep the review loop inside any HTML artifact: comment on the exact sentence, cell, chart, diagram node, or code line, then hand the agent one structured bundle.</p>
+    <div class="show-byline">
+      <span class="show-pill">Logo, prompt, review, and handoff in one file</span>
+      <span class="show-pill">Works with Copilot and Claude</span>
+      <span class="show-pill">Local-first, no account</span>
+    </div>
+  </div>
+</section>
+
+<section class="slide show-title" data-cm-part-label="Title slide" data-slide-id="slide-76b2501c">
+  <div class="show-kicker">Act 1 - The promise</div>
+  <h1>Point at the exact thing, then send <span class="show-mark">one bundle</span> back.</h1>
+  <p class="showcase-comment-target">The community-garden plan is just the running example. The point is the surface: prose, tables, charts, diagrams, code, and slides all become exact anchors the agent can act on without guessing what "that part" means.</p>
   <div class="show-byline">
     <span class="show-pill">One community-garden plan, reviewed end to end</span>
-    <span class="show-pill">Works with Copilot and Claude</span>
-    <span class="show-pill">Local-first, no account</span>
+    <span class="show-pill">Structured Copy all handoff</span>
+    <span class="show-pill">Portable, Offline, Plain, and Markdown exports</span>
   </div>
+</section>
+
+<section class="slide" data-slide-id="slide-bdd3b1b5">
+  <div class="show-kicker">Act 1 - Why this medium</div>
+  <h2>Chat, Markdown, HTML - or a <span class="show-mark">tight loop</span>?</h2>
+  <table class="show-table show-compare-table">
+    <thead>
+      <tr><th>Where you plan</th><th>Rich plan</th><th>In-place review</th><th>Review loop</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Chat / terminal</td><td>Poor</td><td>No</td><td>Painful</td></tr>
+      <tr><td>Markdown file</td><td>Limited</td><td>No</td><td>Manual</td></tr>
+      <tr><td>Plain HTML</td><td>Rich</td><td>No</td><td>Out-of-band</td></tr>
+      <tr><td>Commentable HTML</td><td>Rich</td><td>Yes</td><td>Tight</td></tr>
+    </tbody>
+  </table>
 </section>
 
 <section class="slide" data-slide-id="slide-10bf834b">
@@ -2673,6 +2736,73 @@ flowchart LR
   F --> B
   C -. comment on any element .-> B
   </pre>
+</section>
+
+<section class="slide" data-slide-id="slide-4bfbc689">
+  <div class="show-kicker">Act 2 - Example prompts</div>
+  <h2>Three shipped prompts already land on a <span class="show-mark">full review surface</span>.</h2>
+  <p class="show-lead">Each one-line ask ships with a matching example page on the site, so you can see how little prompt ceremony CHM needs.</p>
+  <div class="show-prompts-grid">
+    <a class="show-prompt-card" href="https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-community-garden.html">
+      <h3>Planning a Community Garden</h3>
+      <p>Make me a commentable HTML page for planning a community garden.</p>
+      <span class="show-link-label">Open the full example</span>
+    </a>
+    <a class="show-prompt-card" href="https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-triage.html">
+      <h3>Incident Triage Board</h3>
+      <p>Make me a commentable HTML incident triage board so my on-call team can review queue order and ownership in place.</p>
+      <span class="show-link-label">Open the full example</span>
+    </a>
+    <a class="show-prompt-card" href="https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-metrics.html">
+      <h3>Commentable Visuals Matrix</h3>
+      <p>Make me a commentable HTML gallery that shows one of every visual the skill can anchor a comment on.</p>
+      <span class="show-link-label">Open the full example</span>
+    </a>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-cb8b7c4d">
+  <div class="show-kicker">Act 2 - More shipped prompts</div>
+  <h2>Three more prompts cover <span class="show-mark">checklists, notes, and data-heavy review</span>.</h2>
+  <p class="show-lead">The examples stay simple on purpose: one sentence in, a rich review surface out.</p>
+  <div class="show-prompts-grid">
+    <a class="show-prompt-card" href="https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-checklist.html">
+      <h3>Release readiness review</h3>
+      <p>Make me a commentable HTML release readiness review built around layered checklists.</p>
+      <span class="show-link-label">Open the full example</span>
+    </a>
+    <a class="show-prompt-card" href="https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-notes.html">
+      <h3>Design review sign-off</h3>
+      <p>Make me a commentable HTML design review sign-off built around editable notes fields.</p>
+      <span class="show-link-label">Open the full example</span>
+    </a>
+    <a class="show-prompt-card" href="https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-taxi.html">
+      <h3>NYC Yellow Taxi 2014 Operations Report</h3>
+      <p>Make me a commentable HTML report on the 2014 New York City yellow taxi data, using the public dataset so I can check the numbers.</p>
+      <span class="show-link-label">Open the full example</span>
+    </a>
+  </div>
+</section>
+
+<section class="slide" data-slide-id="slide-7e37216a">
+  <div class="show-kicker">Act 2 - Ask for the loop</div>
+  <h2>Two prompts cover the <span class="show-mark">review round-trip</span>.</h2>
+  <div class="show-two">
+    <div class="show-card">
+      <h3>Make it commentable</h3>
+      <pre><code>Turn the community-garden plan into a
+commentable HTML report I can review
+in the browser, then wait for my
+Copy all bundle.</code></pre>
+    </div>
+    <div class="show-card">
+      <h3>Apply my review</h3>
+      <pre><code>Here is my Copy all bundle. Apply each
+note to the exact anchor, mark handled
+ids, and keep the unresolved comments.</code></pre>
+    </div>
+  </div>
+  <p class="show-lead" style="margin-top:26px;">The prompt names the artifact, the surface, and the handoff - so the agent produces something you can point at, not just read.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-c9c66adb">
@@ -2818,20 +2948,6 @@ StormEvents
   </div>
 </section>
 
-<section class="slide" data-slide-id="slide-bdd3b1b5">
-  <div class="show-kicker">Act 2 - Why this, not that</div>
-  <h2>Chat, a shared doc, or a PR each lose something. This does not.</h2>
-  <table class="show-table">
-    <thead><tr><th>Approach</th><th>Points at the exact element</th><th>Agent-ready output</th><th>Runs with no service</th></tr></thead>
-    <tbody>
-      <tr><td>Describe it in chat</td><td>No - you retype the location</td><td>Prose the agent must guess from</td><td>Yes</td></tr>
-      <tr><td>Comments in a shared doc</td><td>Sometimes - not charts, code, or diagrams</td><td>Threaded prose, not structured</td><td>No - needs an account</td></tr>
-      <tr><td>Open a pull request</td><td>Code only</td><td>Great for code, wrong tool for a plan</td><td>No - needs a repo and host</td></tr>
-      <tr><td>Commentable HTML</td><td>Yes - any element, cells and nodes included</td><td>Markdown bundle with stable ids</td><td>Yes - one static file</td></tr>
-    </tbody>
-  </table>
-</section>
-
 <section class="slide" data-slide-id="slide-12668385">
   <div class="show-kicker">Act 2 - Start today</div>
   <h2>From a reviewed plan to applied edits - <span class="show-mark">install in two commands</span>.</h2>
@@ -2871,50 +2987,6 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
       <h3>Review a plan before you build</h3>
       <p><b>Stakeholders and the agent.</b> Walk a room through the plan, collect decisions on the board and checklist, and hand the agent one structured pass.</p>
     </div>
-  </div>
-</section>
-
-<section class="slide" data-slide-id="slide-7e37216a">
-  <div class="show-kicker">Act 3 - Ask for it</div>
-  <h2>Two prompts that produce a review-ready artifact.</h2>
-  <div class="show-two">
-    <div class="show-card">
-      <h3>Make it commentable</h3>
-      <pre><code>Turn the community-garden plan into a
-commentable HTML report I can review
-in the browser, then wait for my
-Copy all bundle.</code></pre>
-    </div>
-    <div class="show-card">
-      <h3>Apply my review</h3>
-      <pre><code>Here is my Copy all bundle. Apply each
-note to the exact anchor, mark handled
-ids, and keep the unresolved comments.</code></pre>
-    </div>
-  </div>
-  <p class="show-lead" style="margin-top:26px;">The prompt names the artifact, the surface, and the round-trip - so the agent produces something you can point at, not just read.</p>
-</section>
-
-<section class="slide" data-slide-id="slide-e3c5d641">
-  <div class="show-kicker">Act 3 - Your move</div>
-  <h2>Stop describing edits. <span class="show-mark">Point at them.</span></h2>
-  <p class="show-lead">Install once, then every plan, dashboard, code review, and deck becomes a local-first review surface your agent can act on precisely.</p>
-  <div class="show-cta">
-    <div class="show-install">
-      <h3>GitHub Copilot CLI</h3>
-      <pre><code>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace
-copilot plugin install commentable-html@urikan-ai-marketplace</code></pre>
-    </div>
-    <div class="show-install">
-      <h3>Claude Code</h3>
-      <pre><code>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace
-claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
-    </div>
-  </div>
-  <div class="show-links">
-    <a href="https://urikanonov.github.io/ai-marketplace/">Live demo</a>
-    <a href="https://github.com/urikanonov/ai-marketplace">GitHub</a>
-    <a href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/">Tutorial</a>
   </div>
 </section>
 
@@ -2979,24 +3051,41 @@ python tools/deck/deck_validate.py --strict examples/deck-showcase.html</code></
 </section>
 
 <section class="slide show-close" data-slide-id="slide-9a891595">
-  <div class="show-kicker">Act 5 - Tomorrow morning</div>
-  <h2>Ship the review loop with the artifact.</h2>
-  <p>Point your agent at one plan today, review it in place, and Copy all back. That is the whole loop - and it runs from a single file you own.</p>
-  <div class="show-install">
-    <h3>Install now</h3>
-    <pre><code>copilot plugin install commentable-html@urikan-ai-marketplace
-claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
+  <div class="show-kicker">Act 5 - What's next</div>
+  <h2>What's next?</h2>
+  <p>Pick the next surface you already review in a browser, make it commentable, and keep the handoff precise from the first pass.</p>
+  <div class="show-next-grid">
+    <div class="show-next-card">
+      <h3>Create with CHM</h3>
+      <p><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/#install">Install in two commands</a> from the marketplace page.</p>
+    </div>
+    <div class="show-next-card">
+      <h3>Learn</h3>
+      <p><a href="https://urikanonov.github.io/ai-marketplace/commentable-html/">Live demo</a> and <a href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/">tutorial</a> for the full workflow.</p>
+    </div>
+    <div class="show-next-card">
+      <h3>Found an issue</h3>
+      <p><a href="https://github.com/urikanonov/ai-marketplace/issues/new/choose">Open a GitHub issue</a> with the example, bug, or feature request.</p>
+    </div>
+    <div class="show-next-card">
+      <h3>Contribute</h3>
+      <p><a href="https://github.com/urikanonov/ai-marketplace/blob/main/CONTRIBUTING.md">Read the contributing guide</a> before opening a pull request.</p>
+    </div>
+    <div class="show-next-card">
+      <h3>Read the code</h3>
+      <p><a href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">Browse the source</a> for the skill, examples, and deck tooling.</p>
+    </div>
   </div>
-  <div class="show-links" style="justify-content:center;">
-    <a href="https://urikanonov.github.io/ai-marketplace/">Live demo</a>
-    <a href="https://github.com/urikanonov/ai-marketplace">GitHub</a>
-    <a href="https://urikanonov.github.io/ai-marketplace/commentable-html/tutorial/">Tutorial</a>
-  </div>
+</section>
+
+<section class="slide show-question" data-slide-id="slide-90e72651">
+  <div class="show-kicker">Act 5 - Discussion</div>
+  <h2>Questions?</h2>
+  <p>Open comment mode, point at the exact slide, chart, or line, and use the deck itself as the review surface for the conversation.</p>
 </section>
 
 </div>
 </div>
-
 <!-- END: commentable-html - CONTENT -->
 </main>
 </div>
@@ -3066,7 +3155,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.106.0";
+const CMH_VERSION = "1.108.1";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

@@ -22,6 +22,13 @@ _SCOPED_KINDS = ("report", "plan")
 _VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 _HEADINGS = frozenset("h1 h2 h3 h4 h5 h6".split())
+# Block-level elements that implicitly close an open <p> (the HTML5 paragraph-closing set). A
+# cm-skip on one of these breaks the prose run even mid-paragraph; a cm-skip on any other
+# (phrasing/void/custom inline) element inside an open paragraph is inline and only excludes its
+# own text.
+_BLOCK_TAGS = frozenset((
+    "address article aside blockquote details dialog div dl fieldset figcaption figure footer form "
+    "h1 h2 h3 h4 h5 h6 header hgroup hr main menu nav ol p pre search section table ul canvas").split())
 # Layout-bearing containers: their presence breaks a prose run, and their inner paragraphs are
 # layout content, not a wall.
 _LAYOUT_TAGS = frozenset("table ul ol dl figure pre blockquote canvas".split())
@@ -40,12 +47,19 @@ class _DensityParser(HTMLParser):
         self.skip_depth = 0
         self.layout_depth = 0
         self.run = 0
-        self.current_heading = ""
+        # Heading stack so a nested or trailing section is labeled by its OWN heading, and a
+        # headless/nested section restores the parent heading on close.
+        self._sections = []       # stack of section headings (str), innermost last
+        self._root_heading = ""   # heading of top-level (unsectioned) content
         self.findings = []        # section labels whose prose run reached the threshold
         self._p_prose = False     # inside a prose-level <p>
         self._p_text = []
         self._heading_capture = False
         self._heading_text = []
+
+    @property
+    def current_heading(self):
+        return self._sections[-1] if self._sections else self._root_heading
 
     def _attrs(self, attrs):
         d = {}
@@ -96,9 +110,14 @@ class _DensityParser(HTMLParser):
         is_skip = "cm-skip" in self._classes(d)
         is_layout = self.root_depth > 0 and self.skip_depth == 0 and self._is_layout(tag, d)
         in_scope = self.root_depth > 0 and self.skip_depth == 0
-        # Entering a top-level cm-skip subtree (e.g. a non-commentable embedded table/widget) also
-        # breaks a prose run and must not let an open paragraph keep accumulating skipped text.
-        entering_skip = is_skip and self.root_depth > 0 and self.skip_depth == 0
+        # A cm-skip subtree BETWEEN paragraphs (a non-commentable embedded table/widget) breaks a
+        # prose run. An INLINE cm-skip inside an open paragraph must NOT: it only excludes its own
+        # text (via the skip_depth gate in handle_data), keeping the surrounding prose one unit. A
+        # BLOCK-level cm-skip element implicitly closes the paragraph, so it still breaks the run
+        # even when the </p> was omitted.
+        inline_skip_in_paragraph = self._p_prose and tag not in _BLOCK_TAGS
+        entering_skip = (is_skip and self.root_depth > 0 and self.skip_depth == 0
+                         and not inline_skip_in_paragraph)
         is_boundary = in_scope and (is_layout or tag in _HEADINGS or tag == "section")
         # A new paragraph, a boundary, or entering a skip block closes an open prose paragraph; a
         # boundary/skip-entry also breaks the run (a new paragraph continues it).
@@ -106,10 +125,12 @@ class _DensityParser(HTMLParser):
             self._flush_open_paragraph()
         if is_boundary or entering_skip:
             self.run = 0
-        # A new section starts a fresh label, so a headless section is not mislabeled with the
-        # previous section's heading.
-        if tag == "section" and in_scope:
-            self.current_heading = ""
+        # A new section pushes a fresh heading frame so it is labeled by its OWN heading and a
+        # nested section restores the parent heading when it closes. Gated to prose level so a
+        # <section> structurally embedded in a layout block does not reframe the prose section.
+        pushes_section = tag == "section" and in_scope and self.layout_depth == 0
+        if pushes_section:
+            self._sections.append("")
         # Only a prose-level heading (not one buried in a layout block like a <figcaption>) names
         # the current section.
         if tag in _HEADINGS and in_scope and self.layout_depth == 0:
@@ -121,7 +142,8 @@ class _DensityParser(HTMLParser):
             self._p_text = []
         if tag in _VOID:
             return
-        self._stack.append((tag, {"root": is_root, "skip": is_skip, "layout": is_layout}))
+        self._stack.append((tag, {"root": is_root, "skip": is_skip, "layout": is_layout,
+                                  "section": pushes_section}))
         if is_root:
             self.root_depth += 1
         if is_skip:
@@ -135,16 +157,24 @@ class _DensityParser(HTMLParser):
         if self._heading_capture:
             self._heading_text.append(data)
 
+    def _set_current_heading(self, text):
+        if self._sections:
+            self._sections[-1] = text
+        else:
+            self._root_heading = text
+
     def _close_paragraph(self):
         text = re.sub(r"\s+", " ", "".join(self._p_text)).strip()
         self._p_prose = False
         self._p_text = []
         if len(text) >= self.min_chars:
             self.run += 1
+            # The equality fires exactly once per continuous run (when it first reaches the
+            # threshold), so each distinct wall is reported once. Two genuine walls in the same
+            # section (separated by a layout block or an intervening child section) are distinct
+            # problems and are both reported.
             if self.run == self.max_run:
-                label = self.current_heading or "(untitled section)"
-                if label not in self.findings:
-                    self.findings.append(label)
+                self.findings.append(self.current_heading or "(untitled section)")
         else:
             # A short paragraph interrupts consecutiveness of long ones; reset without recursing
             # back through _break_run (the paragraph is already closed).
@@ -155,13 +185,20 @@ class _DensityParser(HTMLParser):
         if tag == "p" and self._p_prose:
             self._close_paragraph()
         if tag in _HEADINGS and self._heading_capture:
-            self.current_heading = "".join(self._heading_text).strip()
+            self._set_current_heading("".join(self._heading_text).strip())
             self._heading_capture = False
         for i in range(len(self._stack) - 1, -1, -1):
             if self._stack[i][0] == tag:
                 popped = self._stack[i:]
                 del self._stack[i:]
                 for _t, contrib in reversed(popped):
+                    if contrib["section"]:
+                        # Flush/attribute the closing section's wall to it, then restore the parent
+                        # heading. (A section inside cm-skip was never pushed, so this never fires
+                        # there.)
+                        self._break_run()
+                        if self._sections:
+                            self._sections.pop()
                     if contrib["root"]:
                         self._break_run()  # leaving the content root ends any open run
                         self.root_depth -= 1
@@ -170,8 +207,6 @@ class _DensityParser(HTMLParser):
                     if contrib["layout"]:
                         self.layout_depth -= 1
                 break
-        if tag == "section" and self.root_depth > 0 and self.skip_depth == 0:
-            self._break_run()  # a section boundary ends the run (ignored inside a cm-skip subtree)
 
 
 def check_density(html, min_chars=MIN_LONG_PARAGRAPH_CHARS, max_run=MAX_CONSECUTIVE_LONG):

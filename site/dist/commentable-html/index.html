@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.106.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.108.1<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,6 +415,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.108.1] - 2026-07-16</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Restructured the showcase deck&#x27;s narrative flow: added a dedicated header/pitch slide, moved the website-style medium comparison and shipped-example prompts earlier, removed the redundant recap slide, and replaced the close with a &quot;What&#x27;s next?&quot; hub plus a trailing &quot;Questions?&quot; slide while keeping the shipped widget defaults unchanged. (CMH-DECK-SHOWCASE-05)</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.107.0] - 2026-07-16</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Hardened the information-density advisory (CMH-VAL-15) for authoring edge cases: an inline <code>cm-skip</code> inside a paragraph now excludes only its own text instead of splitting the paragraph; sections are tracked as a heading stack so nested and headless sections are labeled by their own heading and two distinct prose walls are each reported; a stray or unmatched <code>&lt;/section&gt;</code> no longer suppresses a genuine wall; and a <code>&lt;section&gt;</code> embedded in a layout block no longer reframes the enclosing prose section. (CMH-VAL-15)</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
             <div class="rel-head"><h3>[1.106.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -428,8 +444,6 @@
               <li>Split the Chart.js reference into focused embedding/tooltips and recipes/data-hygiene guides, leaving <code>charts.md</code> as a thin router so agents can load only the chart guidance they need. (CMH-DOC-16)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.104.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -451,21 +465,7 @@
               <li>The flat-document validator now checks authored <code>--cp-*</code> theme overrides for WCAG contrast, evaluating the light and dark theme environments separately so a token overridden only in one theme is judged against that theme&#x27;s value. It runs only on tokens changed from the shipped defaults (the accepted defaults are never flagged): text and link pairs use a 4.5:1 target (a 3.0-4.49:1 near-miss is an advisory warning, below 3.0:1 is an error) and non-text UI pairs use a 3.0:1 bar. An override that cannot be resolved to two concrete colors is reported as &#x27;not evaluated&#x27; (a static check, no computed-style parity). A new <code>--suggest</code> flag prints a compliant nudged value when one is reachable, and the near-miss/unresolved advisories stay out of <code>retrofit.py</code>&#x27;s hard-fail path unless the contrast is actually bad. (CMH-THEME-02)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.100.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Added <code>tools/deck/deck_fix_fonts.py</code> to strip copied remote deck font loaders and deterministically map web-font stacks to approved system stacks before deck validation. (CMH-DECK-18)</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.98.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li><code>new_document.py</code>, <code>retrofit.py</code>, and <code>deck_scaffold.py</code> now accept <code>--brand brand.json</code> to stamp validated <code>--cp-*</code> theme tokens plus optional local data-URI font faces into generated documents, reject unknown or injection-shaped token values, and print a low-contrast advisory for unsafe brand color pairs. (CMH-TOOL-19)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">95 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">97 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
