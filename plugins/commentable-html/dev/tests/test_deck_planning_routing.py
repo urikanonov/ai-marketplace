@@ -34,6 +34,31 @@ class DeckPlanningRoutingTests(unittest.TestCase):
         deck = self._deck_section()
         self.assertRegex(deck.lower(), r"before scaffolding")
 
+    def test_ask_first_lists_the_conditional_questions(self):
+        deck = self._deck_section()
+        self.assertIn("Ask first", deck)
+        low = deck.lower()
+        for token in ("duration", "audience", "handed off", "running example", "install call-to-action", "theme"):
+            self.assertIn(token, low, f"deck section must prompt for {token!r} up front")
+
+    def test_plan_step_routes_to_the_deck_design_playbook(self):
+        deck = self._deck_section()
+        self.assertIn("references/deck-design.md", deck)
+
+    def test_deck_design_playbook_exists_and_covers_key_conventions(self):
+        path = os.path.join(_paths.PKG, "references", "deck-design.md")
+        self.assertTrue(os.path.isfile(path), "references/deck-design.md must exist")
+        text = _read(path).lower()
+        for token in (
+            "ask first",
+            "fill the fixed stage",
+            "transform-only",
+            "pain before mechanism",
+            "copy all",
+            "data-slide-id",
+        ):
+            self.assertIn(token, text, f"deck-design.md must cover {token!r}")
+
 
 if __name__ == "__main__":
     unittest.main()
