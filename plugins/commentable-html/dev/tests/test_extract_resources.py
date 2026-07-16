@@ -308,6 +308,46 @@ class ExtractResourcesTests(unittest.TestCase):
         self.assertFalse(os.path.isdir(os.path.join(self.skill, extract_resources.STAGING_NAME)),
                          "staging must be cleaned up after a failure")
 
+    # CMH-PKG-05: a failure DURING the swap rolls every touched dir back to the previous version.
+    def test_swap_rollback_restores_previous_version_on_mid_swap_failure(self):
+        _make_zip(self.zip, {"tools/a.py": "x\n", "dist/c.html": "<html></html>\n"})
+        extract_resources.run(self.skill, "1.0.0")
+        sentinel = os.path.join(self.skill, "tools", "old_only.py")
+        with open(sentinel, "w", encoding="utf-8") as fh:
+            fh.write("old\n")
+        real_replace = extract_resources.os.replace
+
+        def _fail_moving_tools_in(src, dst, *a, **k):
+            # Fail only the move of the NEW tools dir into place (entries sort dist, then tools, so
+            # dist is already swapped when this fires - exercising multi-entry rollback).
+            if os.path.basename(dst) == "tools" and extract_resources.STAGING_NAME in str(src):
+                raise PermissionError("locked during swap")
+            return real_replace(src, dst, *a, **k)
+
+        with unittest.mock.patch.object(extract_resources.os, "replace", _fail_moving_tools_in):
+            with self.assertRaises(PermissionError):
+                extract_resources.extract_all(self.zip, self.skill, "1.1.0", retries=1,
+                                              backoff=0.001, sleep=lambda *_: None)
+        self.assertTrue(os.path.isfile(sentinel),
+                        "rollback must restore the previous tools/ (with its old-only file)")
+        self.assertTrue(os.path.isfile(os.path.join(self.skill, "dist", "c.html")),
+                        "the already-swapped dist/ must be rolled back too")
+        self.assertFalse(os.path.isfile(self._marker("1.1.0")))
+        self.assertFalse(os.path.isdir(os.path.join(self.skill, extract_resources.STAGING_NAME)))
+        leftovers = [n for n in os.listdir(self.skill)
+                     if n.endswith(extract_resources.BACKUP_SUFFIX)]
+        self.assertEqual(leftovers, [], "no backup dirs may linger after rollback")
+
+    # A zip whose root entry collides with a control file must not overwrite it via the swap.
+    def test_swap_does_not_overwrite_control_files(self):
+        _make_zip(self.zip, {"tools/a.py": "x\n", "SKILL.md": "HOSTILE\n"})
+        with open(os.path.join(self.skill, "SKILL.md"), "w", encoding="utf-8") as fh:
+            fh.write("REAL\n")
+        extract_resources.run(self.skill, "1.0.0")
+        with open(os.path.join(self.skill, "SKILL.md"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "REAL\n", "the shipped SKILL.md must not be overwritten")
+        self.assertTrue(os.path.isfile(os.path.join(self.skill, "tools", "a.py")))
+
     def _reset_skill(self):
         import shutil
 

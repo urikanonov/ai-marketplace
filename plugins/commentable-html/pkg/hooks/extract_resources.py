@@ -30,6 +30,7 @@ import argparse
 import errno
 import os
 import shutil
+import stat
 import sys
 import time
 import zipfile
@@ -38,20 +39,27 @@ MARKER_PREFIX = ".skill-resources-"
 MARKER_SUFFIX = ".ok"
 LOCK_NAME = ".skill-resources.lock"
 STAGING_NAME = ".skill-resources-staging"
+BACKUP_SUFFIX = ".skill-resources-old"
 DEFAULT_ZIP_NAME = "skill-resources.zip"
+# Names in the shipped skill dir that the swap must never overwrite from a (tampered) zip.
+_RESERVED_TOP_NAMES = {"SKILL.md", "LICENSE", DEFAULT_ZIP_NAME}
 DEFAULT_RETRIES = 8
 DEFAULT_BACKOFF = 0.05  # seconds; doubles each retry, capped, so a lock clears without stalling.
 _MAX_DELAY = 2.0
-# Time budgets (seconds), comfortably under the hook's 120s timeout. The zip OPEN gets its own slice
-# so a slow-to-open zip cannot starve the per-member retry budget.
+# ONE overall wall-clock budget for a whole extraction attempt, comfortably under the hook's 120s
+# timeout AND under STALE_LOCK_SECONDS, so a live holder can never be mistaken for a crashed one. The
+# zip OPEN gets a sub-slice of this budget so a slow-to-open zip cannot starve member extraction, but
+# open + members + swap all share the SAME deadline, so total runtime stays within budget.
 DEFAULT_BUDGET_SECONDS = 90.0
 _OPEN_BUDGET_SECONDS = 15.0
-# A lock older than this is treated as abandoned by a crashed process and stolen. No legitimate
-# holder can outlive the 120s hook timeout, so this only governs crash recovery; keep it just above
-# the hook cap so a crashed session's lock clears on the next start rather than blocking for minutes.
+# A lock older than this is treated as abandoned by a crashed process and stolen. A live holder
+# finishes within DEFAULT_BUDGET_SECONDS (90s), well under this, so a running session is never seen
+# as stale; this only governs recovery from a hard-crashed holder.
 STALE_LOCK_SECONDS = 150.0
-# Windows lock/share error codes worth retrying: ACCESS_DENIED, SHARING_VIOLATION, LOCK_VIOLATION.
-_LOCK_WINERRORS = {5, 32, 33}
+# Windows lock/share/transient codes worth retrying: ACCESS_DENIED, SHARING_VIOLATION,
+# LOCK_VIOLATION, and DIR_NOT_EMPTY (the NTFS delete-pending window after an rmtree, before an
+# os.replace onto the same path).
+_LOCK_WINERRORS = {5, 32, 33, 145}
 
 
 def _is_lock_error(exc):
@@ -133,11 +141,29 @@ def _safe_member_path(dest, name):
     return target
 
 
+def _make_writable(path):
+    """Best-effort: clear the read-only attribute across a tree so an AV-quarantined-and-restored
+    file (which can come back read-only on Windows) does not defeat rmtree with a permanent EACCES."""
+    try:
+        if os.path.isfile(path) or os.path.islink(path):
+            os.chmod(path, stat.S_IWRITE)
+            return
+        for root, dirs, files in os.walk(path):
+            for name in dirs + files:
+                try:
+                    os.chmod(os.path.join(root, name), stat.S_IWRITE)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def _rmtree_retry(path, retries, backoff, sleep, deadline):
     """Remove a directory tree, retrying a transient lock (do NOT ignore_errors, so a Defender lock
-    is retried rather than silently leaving files behind)."""
+    is retried rather than silently leaving files behind). Clears read-only attributes first."""
     if not os.path.exists(path) and not os.path.islink(path):
         return
+    _make_writable(path)
 
     def _rm():
         if os.path.islink(path) or os.path.isfile(path):
@@ -183,22 +209,85 @@ def _write_marker(skill_dir, version):
     os.replace(tmp, marker_path(skill_dir, version))
 
 
+def _is_swappable(skill_dir, entry):
+    """A staging top-level entry is installed only if it is a real directory and not a reserved
+    control name, so a (tampered) zip cannot overwrite SKILL.md, LICENSE, the zip itself, or any
+    dot-prefixed marker/lock/staging/backup file via the swap."""
+    if entry.startswith(".") or entry in _RESERVED_TOP_NAMES:
+        return False
+    return os.path.isdir(os.path.join(skill_dir, STAGING_NAME, entry))
+
+
+def _cleanup_leftovers(skill_dir, retries, backoff, sleep, deadline):
+    """Remove a leftover staging dir, old-version backup dirs, and stale-lock sidecars from a prior
+    crashed run so they cannot accumulate or confuse a fresh extraction."""
+    _rmtree_retry(os.path.join(skill_dir, STAGING_NAME), retries, backoff, sleep, deadline)
+    try:
+        names = os.listdir(skill_dir)
+    except OSError:
+        return
+    for name in names:
+        if name.endswith(BACKUP_SUFFIX) or name.startswith(LOCK_NAME + ".stale."):
+            p = os.path.join(skill_dir, name)
+            try:
+                if os.path.isdir(p) and not os.path.islink(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                else:
+                    os.remove(p)
+            except OSError:
+                pass
+
+
+def _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline):
+    """Install each extracted top-level directory transactionally: rename the existing dir aside to a
+    backup, move the new one in, then delete the backups. If ANY entry fails, roll every touched
+    entry back to the previous version, so the installed skill is either fully upgraded or left
+    exactly as it was - never a mixed or missing state."""
+    entries = [e for e in sorted(os.listdir(staging)) if _is_swappable(skill_dir, e)]
+    touched = []  # (dst, bak_or_None): entries whose new dir we began moving into place
+    try:
+        for entry in entries:
+            src = os.path.join(staging, entry)
+            dst = os.path.join(skill_dir, entry)
+            bak = dst + BACKUP_SUFFIX
+            _rmtree_retry(bak, retries, backoff, sleep, deadline)
+            had_old = os.path.exists(dst) or os.path.islink(dst)
+            if had_old:
+                _retry(lambda d=dst, b=bak: os.replace(d, b), retries, backoff, sleep, deadline)
+            touched.append((dst, bak if had_old else None))
+            _retry(lambda s=src, d=dst: os.replace(s, d), retries, backoff, sleep, deadline)
+    except BaseException:
+        for dst, bak in reversed(touched):
+            shutil.rmtree(dst, ignore_errors=True)  # remove the new/partial content
+            if bak is not None:
+                try:
+                    os.replace(bak, dst)  # restore the previous version
+                except OSError:
+                    pass
+        raise
+    for _dst, bak in touched:
+        if bak is not None:
+            shutil.rmtree(bak, ignore_errors=True)
+
+
 def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_BACKOFF,
                 sleep=time.sleep, extract=_extract_member, budget=DEFAULT_BUDGET_SECONDS):
-    """Extract into a staging dir, then atomically swap each top-level dir into place, and write the
-    marker only after ALL of it succeeds. Any failure leaves the previous version intact and no
-    marker, so the next session re-extracts (self-heal)."""
+    """Extract into a staging dir, then transactionally swap each top-level dir into place, and write
+    the marker only after ALL of it succeeds. Every phase (open, members, swap) shares ONE overall
+    deadline under the hook timeout, and the swap rolls back on failure, so any failure leaves the
+    previous version intact and no marker - the next session re-extracts (self-heal)."""
     now = time.monotonic
-    open_deadline = None if budget is None else now() + min(_OPEN_BUDGET_SECONDS, budget)
-    # Invalidate the current marker and clear old markers/temps up front, so a failure below never
-    # leaves a marker pointing at a tree we are about to replace.
+    deadline = None if budget is None else now() + budget
+    open_deadline = deadline if deadline is None else min(now() + _OPEN_BUDGET_SECONDS, deadline)
+    # Invalidate the current marker and clear old markers/temps/leftovers up front, so a failure
+    # below never leaves a marker pointing at a tree we are about to replace.
     try:
         os.remove(marker_path(skill_dir, version))
     except OSError:
         pass
     clear_markers(skill_dir)
+    _cleanup_leftovers(skill_dir, retries, backoff, sleep, open_deadline)
     staging = os.path.join(skill_dir, STAGING_NAME)
-    _rmtree_retry(staging, retries, backoff, sleep, open_deadline)
     os.makedirs(staging, exist_ok=True)
     try:
         zf = _retry(lambda: zipfile.ZipFile(zip_path), retries, backoff, sleep, open_deadline)
@@ -206,32 +295,28 @@ def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=D
             members = zf.infolist()
             for member in members:
                 _safe_member_path(staging, member.filename)  # fail closed before writing anything
-            member_deadline = None if budget is None else now() + budget
             for member in members:
                 extract_member_with_retry(zf, member, staging, retries, backoff,
-                                          sleep=sleep, extract=extract, deadline=member_deadline)
-        # Atomic swap: for each top-level entry the zip produced, replace the installed one. Targets
-        # come from the REAL extracted directory listing, so there is no raw-member-name mismatch.
-        swap_deadline = None if budget is None else now() + budget
-        for entry in sorted(os.listdir(staging)):
-            src = os.path.join(staging, entry)
-            dst = os.path.join(skill_dir, entry)
-            _rmtree_retry(dst, retries, backoff, sleep, swap_deadline)
-            _retry(lambda s=src, d=dst: os.replace(s, d), retries, backoff, sleep, swap_deadline)
+                                          sleep=sleep, extract=extract, deadline=deadline)
+        _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     _write_marker(skill_dir, version)
 
 
 def _acquire_lock(skill_dir):
-    """Acquire an exclusive extraction lock, held open for the duration. Returns (lock_path, fd) on
-    success, or (None, None) if another session holds a fresh lock (skip and let it finish). A lock
-    older than STALE_LOCK_SECONDS is assumed abandoned by a crashed process and stolen atomically
-    (rename-to-unique, so only one racing session wins the steal)."""
+    """Acquire an exclusive extraction lock, held open for the duration and stamped with our pid.
+    Returns (lock_path, fd) on success, or (None, None) if another session holds a fresh lock (skip
+    and let it finish). A lock older than STALE_LOCK_SECONDS is assumed abandoned by a crashed
+    process and stolen atomically (rename-to-unique, so only one racing session wins the steal)."""
     lock = os.path.join(skill_dir, LOCK_NAME)
     for _attempt in range(2):
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(fd, str(os.getpid()).encode("ascii"))
+            except OSError:
+                pass
             return lock, fd
         except FileExistsError:
             try:
@@ -259,7 +344,16 @@ def _release_lock(lock, fd):
             os.close(fd)
         except OSError:
             pass
-    if lock:
+    if not lock:
+        return
+    # Only remove the lock if it is still OURS: if a concurrent session stole ours (mistaking us for
+    # crashed) and created its own, the file now carries that session's pid, so we must not delete it.
+    try:
+        with open(lock, "rb") as fh:
+            content = fh.read().strip()
+    except OSError:
+        content = None
+    if content in (None, b"", str(os.getpid()).encode("ascii")):
         try:
             os.remove(lock)
         except OSError:
@@ -340,7 +434,8 @@ def main(argv=None):
             backoff=args.backoff, force=args.force, log=log)
         return 0
     except Exception as exc:  # noqa: BLE001 - non-blocking: log and swallow
-        log("extraction failed for version %s: %s" % (args.version, exc))
+        log("extraction failed for version %s: %s; the previous version is left intact and the "
+            "next session will re-extract." % (args.version, exc))
         return 1
 
 
