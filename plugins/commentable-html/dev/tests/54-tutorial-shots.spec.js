@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { spawnSync } from "child_process";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { DEV, SKILL } from "./helpers.js";
 
@@ -11,14 +10,9 @@ const SHOTS = [
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
 ];
 
-// The full-page shots that are reproducible byte-for-byte on a given environment. With the capture
-// clock pinned and CSS motion frozen these are stable run to run (verified across repeated pairs).
-// Excluded: the figure crops (02/03/04) can vary by sub-pixel antialiasing on an element screenshot,
-// and the dark-theme shot (08) varies for a non-clock reason - both are visually equivalent, not
-// byte-stable, so they are not asserted.
-const STABLE = ["01-top-light", "05-composer", "06-comment-saved", "07-help", "09-copyall"];
-
 const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
+const REPO = path.resolve(DEV, "..", "..", "..");
+const TEST_TMP = path.join(REPO, "tmp", "tutorial-shots-spec");
 
 // Run the capture tool with only the example + output dir (no prefix): the tool defaults the
 // prefix to "garden", so regenerating the tutorial screenshots is a single, argument-light command.
@@ -27,10 +21,27 @@ function capture(outDir) {
     { encoding: "utf8", timeout: 150000, killSignal: "SIGKILL" });
 }
 
+function check(outDir) {
+  return spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--check", EXAMPLE, outDir],
+    { encoding: "utf8", timeout: 150000, killSignal: "SIGKILL" });
+}
+
+function freshDir(name) {
+  const dir = path.join(TEST_TMP, name);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+test.afterAll(() => {
+  fs.rmSync(TEST_TMP, { recursive: true, force: true });
+  fs.rmSync(path.join(REPO, "tmp", "tutorial-shots-check"), { recursive: true, force: true });
+});
+
 // dev/tools/capture_tutorial.mjs must regenerate every tutorial screenshot with one easy command
 // and do it reproducibly, so refreshing the tutorial images is deterministic and reviewable.
-test("CMH-TUT-SHOTS-01: one command regenerates all tutorial screenshots, deterministically", async () => {
-  test.setTimeout(180000);
+test("one command regenerates and checks all tutorial screenshots, deterministically (CMH-TUT-SHOTS-01)", async () => {
+  test.setTimeout(240000);
 
   // The no-argument invocation (what `npm run shots` runs) resolves to the shipped tutorial defaults.
   const dry = spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--print-paths"],
@@ -41,24 +52,43 @@ test("CMH-TUT-SHOTS-01: one command regenerates all tutorial screenshots, determ
   expect(defaults.example.replace(/\\/g, "/")).toMatch(/pkg\/skills\/commentable-html\/examples\/report-community-garden\.html$/);
   expect(defaults.outDir.replace(/\\/g, "/")).toMatch(/pkg\/skills\/commentable-html\/docs\/assets$/);
   expect(defaults.prefix).toBe("garden");
+  expect(defaults.check).toBe(false);
 
   // A nonexistent NESTED output dir also exercises recursive out-dir creation.
-  const outA = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_shots_a_")), "nested", "assets");
+  const outA = path.join(freshDir("a"), "nested", "assets");
   const r1 = capture(outA);
   expect(r1.error, String(r1.error)).toBeFalsy();
   expect(r1.status, r1.stderr).toBe(0);
   for (const name of SHOTS) {
     expect(fs.existsSync(path.join(outA, `garden-${name}.png`)), `missing garden-${name}.png`).toBe(true);
   }
+  const firstCapture = new Map(SHOTS.map((name) => [
+    name,
+    fs.readFileSync(path.join(outA, `garden-${name}.png`)),
+  ]));
+  const r1b = capture(outA);
+  expect(r1b.error, String(r1b.error)).toBeFalsy();
+  expect(r1b.status, r1b.stderr).toBe(0);
+  for (const name of SHOTS) {
+    expect(fs.readFileSync(path.join(outA, `garden-${name}.png`)).equals(firstCapture.get(name))).toBe(true);
+  }
 
-  // Deterministic: a second run produces byte-identical output for the stable full-page shots.
-  const outB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_shots_b_")), "nested", "assets");
+  const clean = check(outA);
+  expect(clean.error, String(clean.error)).toBeFalsy();
+  expect(clean.status, clean.stderr).toBe(0);
+  expect(clean.stdout).toContain("tutorial screenshots are in sync");
+
+  const outB = path.join(freshDir("b"), "nested", "assets");
   const r2 = capture(outB);
   expect(r2.error, String(r2.error)).toBeFalsy();
   expect(r2.status, r2.stderr).toBe(0);
-  for (const name of STABLE) {
-    const a = fs.readFileSync(path.join(outA, `garden-${name}.png`));
-    const b = fs.readFileSync(path.join(outB, `garden-${name}.png`));
-    expect(Buffer.compare(a, b), `garden-${name}.png is not byte-identical across runs`).toBe(0);
-  }
+  const cleanB = check(outB);
+  expect(cleanB.error, String(cleanB.error)).toBeFalsy();
+  expect(cleanB.status, cleanB.stderr).toBe(0);
+
+  fs.writeFileSync(path.join(outA, "garden-01-top-light.png"), Buffer.from("stale screenshot"));
+  const stale = check(outA);
+  expect(stale.error, String(stale.error)).toBeFalsy();
+  expect(stale.status, stale.stdout + stale.stderr).toBe(1);
+  expect(stale.stderr).toContain("garden-01-top-light.png differs");
 });

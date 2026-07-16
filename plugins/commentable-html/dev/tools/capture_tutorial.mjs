@@ -1,14 +1,11 @@
 // Deterministic tutorial screenshot capture for the commentable-html plugin (dev-only, not shipped).
 // With no arguments it regenerates every tutorial screenshot (the garden-*.png images that
-// docs/TUTORIAL.md embeds) from the shipped community-garden example into docs/assets. Optional
-// positional overrides let it capture any example:
-//   node capture_tutorial.mjs [example.html] [outDir] [prefix]
+// docs/TUTORIAL.md embeds) from the shipped community-garden example into docs/assets. Use --check
+// to capture into repo-root tmp/ and compare against the committed docs/assets images without
+// writing them. Optional positional overrides let it capture any example:
+//   node capture_tutorial.mjs [--check] [example.html] [outDir] [prefix]
 // Defaults: example = pkg/.../examples/report-community-garden.html, outDir = pkg/.../docs/assets,
-// prefix = "garden". From dev/, run it as `npm run shots`. It pins the capture clock and disables CSS
-// animations and transitions (and emulates reduced motion), so the capture is reproducible: the
-// full-page shots are byte-identical across runs on the same environment. (The element-cropped figure
-// shots (kql/chart/diff) and the dark-theme shot can vary by sub-pixel antialiasing - visually
-// equivalent, not byte-stable.)
+// prefix = "garden". From dev/, run `npm run shots` or `npm run shots:check`.
 import { chromium } from "@playwright/test";
 import path from "path";
 import fs from "fs";
@@ -16,17 +13,32 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SKILL = path.resolve(HERE, "..", "..", "pkg", "skills", "commentable-html");
+const REPO = path.resolve(HERE, "..", "..", "..", "..");
 const argv = process.argv.slice(2);
 const printPaths = argv.includes("--print-paths");
+const checkMode = argv.includes("--check");
+const knownFlags = new Set(["--print-paths", "--check"]);
+const unknownFlag = argv.find((a) => a.startsWith("--") && !knownFlags.has(a));
+if (unknownFlag) {
+  console.error("capture_tutorial: unknown option:", unknownFlag);
+  process.exit(2);
+}
 const positional = argv.filter((a) => !a.startsWith("--"));
 const htmlArg = positional[0] || path.join(SKILL, "examples", "report-community-garden.html");
 const outDir = positional[1] || path.join(SKILL, "docs", "assets");
 const prefix = path.basename(positional[2] || "garden");
+const SHOTS = [
+  "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",
+  "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
+];
+const PNG_QUANTIZE_STEP = 32;
+const PNG_DOWNSAMPLE = 1;
+const PIXEL_CHANNEL_TOLERANCE = 96;
+const MAX_PIXEL_DIFF_RATIO = 0.15;
+const ELEMENT_SHOT_TOP = 24;
 
-// --print-paths resolves and prints the defaults without launching a browser or writing any files,
-// so the no-argument (npm run shots) contract can be tested hermetically.
 if (printPaths) {
-  console.log(JSON.stringify({ example: htmlArg, outDir, prefix }));
+  console.log(JSON.stringify({ example: htmlArg, outDir, prefix, check: checkMode }));
   process.exit(0);
 }
 
@@ -34,30 +46,99 @@ if (!fs.existsSync(htmlArg)) {
   console.error("capture_tutorial: example not found:", htmlArg);
   process.exit(2);
 }
-fs.mkdirSync(outDir, { recursive: true });
 const url = pathToFileURL(path.resolve(htmlArg)).href;
 
-function shotPath(name) { return path.join(outDir, `${prefix}-${name}.png`); }
+function shotPath(dir, name) { return path.join(dir, `${prefix}-${name}.png`); }
+function screenshotOptions(extra = {}) { return { animations: "disabled", caret: "hide", ...extra }; }
+
+async function settlePaint(page) {
+  await page.evaluate(async () => {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+}
+
+function roundedClip(box, size, top = Math.floor(box.y)) {
+  return {
+    x: Math.floor(box.x),
+    y: top,
+    width: Math.max(1, size.width),
+    height: Math.max(1, size.height),
+  };
+}
+
+async function writeNormalizedPng(normalizer, buffer, pathName) {
+  const png = await normalizer.evaluate(async ({ base64, step, scale }) => {
+    const img = new Image();
+    img.src = "data:image/png;base64," + base64;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    if (scale > 1) {
+      const small = document.createElement("canvas");
+      small.width = Math.max(1, Math.ceil(canvas.width / scale));
+      small.height = Math.max(1, Math.ceil(canvas.height / scale));
+      const sctx = small.getContext("2d");
+      sctx.imageSmoothingEnabled = true;
+      sctx.drawImage(canvas, 0, 0, small.width, small.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(small, 0, 0, canvas.width, canvas.height);
+    }
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < image.data.length; i += 4) {
+      image.data[i] = Math.round(image.data[i] / step) * step;
+      image.data[i + 1] = Math.round(image.data[i + 1] / step) * step;
+      image.data[i + 2] = Math.round(image.data[i + 2] / step) * step;
+      if (image.data[i] === image.data[i + 1] && image.data[i + 1] === image.data[i + 2] && image.data[i] >= 192) {
+        image.data[i] = 255;
+        image.data[i + 1] = 255;
+        image.data[i + 2] = 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    return canvas.toDataURL("image/png").split(",", 2)[1];
+  }, { base64: buffer.toString("base64"), step: PNG_QUANTIZE_STEP, scale: PNG_DOWNSAMPLE });
+  fs.writeFileSync(pathName, Buffer.from(png, "base64"));
+}
+
+async function writeScreenshot(page, normalizer, pathName, extra = {}) {
+  const buffer = await page.screenshot(screenshotOptions(extra));
+  await writeNormalizedPng(normalizer, buffer, pathName);
+}
+
+async function screenshotLocator(page, normalizer, locator, pathName) {
+  if (!await locator.count()) return;
+  await locator.evaluate((el, topMargin) => {
+    const rect = el.getBoundingClientRect();
+    window.scrollTo(0, Math.max(0, Math.round(window.scrollY + rect.top - topMargin)));
+  }, ELEMENT_SHOT_TOP);
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(500);
+  await settlePaint(page);
+  const box = await locator.boundingBox();
+  if (!box) return;
+  const size = await locator.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
+  await writeScreenshot(page, normalizer, pathName, { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
+}
 
 async function ready(page) {
   await page.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 15000 });
   await page.waitForTimeout(300);
 }
 
-// Disable CSS animations and transitions so a shot taken while a panel, toast, or theme is settling
-// is stable (the timed waits below already let them finish; this is belt-and-suspenders). The caret
-// rule is redundant with Playwright's default caret:"hide" on screenshots but is harmless. Best-effort:
-// a document CSP that forbids the injected style is reported (degraded mode), not silently swallowed.
 async function freezeMotion(page) {
   await page.addStyleTag({ content:
     "*,*::before,*::after{animation-duration:0s !important;animation-delay:0s !important;"
     + "transition-duration:0s !important;transition-delay:0s !important;caret-color:transparent !important;}"
+    + "html,body,#commentRoot,.cm-sidebar,button,input,textarea{font-family:Arial,sans-serif !important;}"
+    + "pre,code,kbd,samp,.cmh-code-wrap,.cmh-diff-view{font-family:Consolas,'Courier New',monospace !important;}"
   }).catch((e) => console.warn("capture_tutorial: freezeMotion blocked (degraded determinism):", e.message));
 }
 
-// Pin the clock so any wall-clock content (a saved comment's timestamp, the "Generated on / Last
-// comment" meta line) renders the same on every run - otherwise a capture that straddles a minute
-// boundary would differ. Explicit-argument Date construction and parsing are preserved.
 async function freezeClock(context) {
   await context.addInitScript(() => {
     const OriginalDate = Date;
@@ -73,97 +154,277 @@ async function freezeClock(context) {
   });
 }
 
-const run = async () => {
-  const browser = await chromium.launch();
-  const context = await browser.newContext({
-    viewport: { width: 1320, height: 900 },
-    deviceScaleFactor: 2,
-    reducedMotion: "reduce",
-    permissions: ["clipboard-read", "clipboard-write"],
-  });
-  const page = await context.newPage();
-  await freezeClock(context);
-  await page.goto(url);
-  await ready(page);
-  await freezeMotion(page);
+async function freezeRandom(context) {
+  await context.addInitScript(() => { Math.random = () => 0.123456789; });
+}
 
-  // 1. Top of the document, light theme.
-  await page.screenshot({ path: shotPath("01-top-light"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
-
-  // 2. The KQL figure with its Run-in-Kusto link.
-  const kql = page.locator("figure.cmh-kql").first();
-  if (await kql.count()) { await kql.scrollIntoViewIfNeeded(); await page.waitForTimeout(150); await kql.screenshot({ path: shotPath("02-kql") }); }
-
-  // 3. The chart.
-  const chart = page.locator("figure.chart").first();
-  if (await chart.count()) { await chart.scrollIntoViewIfNeeded(); await page.waitForTimeout(400); await chart.screenshot({ path: shotPath("03-chart") }); }
-
-  // 4. The diff / code-review block.
-  const diff = page.locator(".cmh-diff-host, pre.cmh-diff").first();
-  if (await diff.count()) { await diff.scrollIntoViewIfNeeded(); await page.waitForTimeout(150); await diff.screenshot({ path: shotPath("04-diff") }); }
-
-  // 5. A comment composer open on the first prose paragraph (the core workflow).
-  await page.evaluate(() => window.scrollTo(0, 0));
-  const para = page.locator("#commentRoot p").first();
-  await para.scrollIntoViewIfNeeded();
-  await para.evaluate((el) => {
-    const r = document.createRange();
-    r.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(r);
-    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-  });
-  await page.waitForTimeout(300);
-  const addBtn = page.locator(".cm-add-comment, [data-cm-add], button:has-text('Add comment')").first();
-  if (await addBtn.count()) {
-    // Fail loudly if the compose/save flow does not actually happen: otherwise 05/06 would be
-    // captured in the wrong state yet still look "successful" (and would even be byte-stable across
-    // two equally-broken runs). The outer count() guard still skips examples without the add flow.
-    await addBtn.click();
-    const composer = page.locator(".cm-composer").first();
-    await composer.waitFor({ state: "visible", timeout: 5000 });
-    await page.waitForTimeout(300);
-    await page.screenshot({ path: shotPath("05-composer"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
-    await composer.locator("textarea").first().fill("Does this section read clearly? Consider adding one more example.");
-    await page.waitForTimeout(150);
-    await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
-    await page.locator("#commentRoot mark.cm-hl").first().waitFor({ state: "visible", timeout: 5000 });
-    await page.waitForTimeout(400);
-  }
-
-  // 6. The comments panel with a saved comment.
-  await page.screenshot({ path: shotPath("06-comment-saved"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
-
-  // 9. "Copy all" - the review bundle copied back to the agent (step 3 of the review loop).
-  await page.evaluate(() => { window.prompt = () => ""; });
-  const copyBtn = page.locator("#btnCopyAll");
-  if (await copyBtn.count()) {
-    await copyBtn.click().catch(() => {});
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: shotPath("09-copyall"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
-  }
-
-  // 7. The help panel.
+async function stabilizeCharts(page) {
   await page.evaluate(() => {
-    const b = document.getElementById("btnHelp");
-    if (b && b.offsetParent !== null) { b.click(); return; }
-    const m = document.getElementById("btnToolbarMenu");
-    if (m) m.click();
-    const t = document.getElementById("btnHelpTop");
-    if (t) t.click();
+    const Chart = window.Chart;
+    if (!Chart || !Chart.instances) return;
+    for (const chart of Object.values(Chart.instances)) {
+      if (!chart) continue;
+      chart.stop();
+      if (chart.options) {
+        chart.options.animation = false;
+        chart.options.animations = {};
+        chart.options.transitions = {};
+      }
+      chart.update("none");
+    }
+  }).catch(() => {});
+}
+
+async function captureAll(targetDir) {
+  fs.mkdirSync(targetDir, { recursive: true });
+  const browser = await chromium.launch({
+    args: [
+      "--disable-gpu",
+      "--disable-lcd-text",
+      "--disable-font-subpixel-positioning",
+      "--font-render-hinting=none",
+    ],
   });
-  await page.waitForTimeout(400);
-  await page.screenshot({ path: shotPath("07-help"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
+  try {
+    const context = await browser.newContext({
+      viewport: { width: 1320, height: 900 },
+      deviceScaleFactor: 2,
+      colorScheme: "light",
+      locale: "en-US",
+      timezoneId: "UTC",
+      reducedMotion: "reduce",
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
+    await freezeClock(context);
+    await freezeRandom(context);
+    const normalizer = await context.newPage();
+    const page = await context.newPage();
+    await page.goto(url);
+    await ready(page);
+    await freezeMotion(page);
+    await stabilizeCharts(page);
+    await settlePaint(page);
 
-  // 8. Dark theme, top of the document.
-  await page.keyboard.press("Escape").catch(() => {});
-  await page.evaluate(() => { document.documentElement.setAttribute("data-theme", "dark"); window.scrollTo(0, 0); });
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: shotPath("08-top-dark"), clip: { x: 0, y: 0, width: 1320, height: 900 } });
+    await writeScreenshot(page, normalizer, shotPath(targetDir, "01-top-light"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+    await page.addStyleTag({
+      content: ".cm-toolbar{visibility:hidden !important;}"
+        + ".cm-code-lang,.cm-code-copy{box-shadow:none !important;"
+        + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}",
+    });
 
-  await browser.close();
-  console.log("captured shots with prefix", prefix, "->", outDir);
+    await screenshotLocator(page, normalizer, page.locator("figure.cmh-kql").first(),
+      shotPath(targetDir, "02-kql"));
+
+    const chart = page.locator("figure.chart").first();
+    if (await chart.count()) {
+      await chart.evaluate((el, topMargin) => {
+        const rect = el.getBoundingClientRect();
+        window.scrollTo(0, Math.max(0, Math.round(window.scrollY + rect.top - topMargin)));
+      }, ELEMENT_SHOT_TOP);
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(400);
+      await stabilizeCharts(page);
+      await settlePaint(page);
+      const box = await chart.boundingBox();
+      if (box) {
+        const size = await chart.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
+        await writeScreenshot(page, normalizer, shotPath(targetDir, "03-chart"),
+          { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
+      }
+    }
+
+    await screenshotLocator(page, normalizer, page.locator(".cmh-diff-host, pre.cmh-diff").first(),
+      shotPath(targetDir, "04-diff"));
+
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const para = page.locator("#commentRoot p").first();
+    await para.scrollIntoViewIfNeeded();
+    await para.evaluate((el) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    await page.waitForTimeout(300);
+    const addBtn = page.locator(".cm-add-comment, [data-cm-add], button:has-text('Add comment')").first();
+    if (await addBtn.count()) {
+      await addBtn.click();
+      const composer = page.locator(".cm-composer").first();
+      await composer.waitFor({ state: "visible", timeout: 5000 });
+      await page.waitForTimeout(300);
+      await writeScreenshot(page, normalizer, shotPath(targetDir, "05-composer"),
+        { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+      await composer.locator("textarea").first().fill("Does this section read clearly? Consider adding one more example.");
+      await page.waitForTimeout(150);
+      await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
+      await page.locator("#commentRoot mark.cm-hl").first().waitFor({ state: "visible", timeout: 5000 });
+      await page.waitForTimeout(400);
+    }
+
+    await writeScreenshot(page, normalizer, shotPath(targetDir, "06-comment-saved"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+
+    await page.evaluate(() => { window.prompt = () => ""; });
+    const copyBtn = page.locator("#btnCopyAll");
+    if (await copyBtn.count()) {
+      await copyBtn.click().catch(() => {});
+      await page.waitForTimeout(500);
+      await writeScreenshot(page, normalizer, shotPath(targetDir, "09-copyall"),
+        { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+    }
+
+    await page.evaluate(() => {
+      const b = document.getElementById("btnHelp");
+      if (b && b.offsetParent !== null) { b.click(); return; }
+      const m = document.getElementById("btnToolbarMenu");
+      if (m) m.click();
+      const t = document.getElementById("btnHelpTop");
+      if (t) t.click();
+    });
+    await page.waitForTimeout(400);
+    await writeScreenshot(page, normalizer, shotPath(targetDir, "07-help"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.evaluate(() => {
+      const menu = document.getElementById("toolbarMenu");
+      if (menu) menu.hidden = true;
+      const menuButton = document.getElementById("btnToolbarMenu");
+      if (menuButton) menuButton.setAttribute("aria-expanded", "false");
+      const toastEl = document.getElementById("toast");
+      if (toastEl) toastEl.classList.remove("show");
+      document.querySelectorAll(".cm-tooltip").forEach((el) => el.remove());
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      document.documentElement.setAttribute("data-theme", "dark");
+      window.scrollTo(0, 0);
+    });
+    await page.mouse.move(1, 1);
+    await page.waitForTimeout(300);
+    await writeScreenshot(page, normalizer, shotPath(targetDir, "08-top-dark"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+  } finally {
+    await browser.close();
+  }
+}
+
+async function imagesMatch(comparePage, expected, actual) {
+  if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
+  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance }) => {
+    async function decode(base64) {
+      const img = new Image();
+      img.src = "data:image/png;base64," + base64;
+      await img.decode();
+      return img;
+    }
+    try {
+      const expectedImg = await decode(expectedBase64);
+      const actualImg = await decode(actualBase64);
+      if (expectedImg.naturalWidth !== actualImg.naturalWidth || expectedImg.naturalHeight !== actualImg.naturalHeight) return 1;
+      const canvas = document.createElement("canvas");
+      canvas.width = expectedImg.naturalWidth;
+      canvas.height = expectedImg.naturalHeight;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(expectedImg, 0, 0);
+      const expectedData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(actualImg, 0, 0);
+      const actualData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let different = 0;
+      const total = canvas.width * canvas.height;
+      for (let i = 0; i < expectedData.length; i += 4) {
+        const maxChannelDelta = Math.max(
+          Math.abs(expectedData[i] - actualData[i]),
+          Math.abs(expectedData[i + 1] - actualData[i + 1]),
+          Math.abs(expectedData[i + 2] - actualData[i + 2]),
+          Math.abs(expectedData[i + 3] - actualData[i + 3]),
+        );
+        if (maxChannelDelta > tolerance) {
+          different += 1;
+        }
+      }
+      return different / total;
+    } catch (e) {
+      return 1;
+    }
+  }, {
+    expectedBase64: fs.readFileSync(expected).toString("base64"),
+    actualBase64: fs.readFileSync(actual).toString("base64"),
+    tolerance: PIXEL_CHANNEL_TOLERANCE,
+  });
+  return ratio <= MAX_PIXEL_DIFF_RATIO;
+}
+
+async function checkScreenshots() {
+  const checkDir = path.join(REPO, "tmp", "tutorial-shots-check", String(process.pid));
+  fs.rmSync(checkDir, { recursive: true, force: true });
+  let stale = false;
+  try {
+    await captureAll(checkDir);
+    const compareBrowser = await chromium.launch();
+    const comparePage = await compareBrowser.newPage();
+    const problems = [];
+    try {
+      for (const name of SHOTS) {
+        const file = `${prefix}-${name}.png`;
+        const expected = path.join(outDir, file);
+        const actual = path.join(checkDir, file);
+        if (!fs.existsSync(expected)) problems.push(`${file} missing`);
+        else if (!await imagesMatch(comparePage, expected, actual)) problems.push(`${file} differs`);
+      }
+    } finally {
+      await compareBrowser.close();
+    }
+    if (problems.length) {
+      stale = true;
+      for (const problem of problems) console.error(problem);
+      console.error("capture_tutorial: tutorial screenshots are stale. Run npm run shots from plugins/commentable-html/dev.");
+      console.error("capture_tutorial: fresh screenshots were kept in", checkDir);
+      return 1;
+    }
+    console.log("tutorial screenshots are in sync");
+    return 0;
+  } finally {
+    if (!stale) fs.rmSync(checkDir, { recursive: true, force: true });
+  }
+}
+
+async function regenerateScreenshots() {
+  const freshDir = path.join(REPO, "tmp", "tutorial-shots-generate", String(process.pid));
+  fs.rmSync(freshDir, { recursive: true, force: true });
+  try {
+    await captureAll(freshDir);
+    fs.mkdirSync(outDir, { recursive: true });
+    const compareBrowser = await chromium.launch();
+    const comparePage = await compareBrowser.newPage();
+    let written = 0;
+    try {
+      for (const name of SHOTS) {
+        const file = `${prefix}-${name}.png`;
+        const target = path.join(outDir, file);
+        const fresh = path.join(freshDir, file);
+        if (!fs.existsSync(target) || !await imagesMatch(comparePage, target, fresh)) {
+          fs.copyFileSync(fresh, target);
+          written += 1;
+        }
+      }
+    } finally {
+      await compareBrowser.close();
+    }
+    console.log("captured shots with prefix", prefix, "->", outDir, `(${written} updated)`);
+  } finally {
+    fs.rmSync(freshDir, { recursive: true, force: true });
+  }
+}
+
+const run = async () => {
+  if (checkMode) {
+    process.exitCode = await checkScreenshots();
+    return;
+  }
+  await regenerateScreenshots();
 };
 
 run().catch((e) => { console.error(e); process.exit(1); });

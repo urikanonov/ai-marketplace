@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.104.0] - 2026-07-16
+
+### Added
+
+- `npm run shots` now regenerates all tutorial screenshots from the community-garden example with
+  pinned capture state, and `npm run shots:check` plus `rebuild_all.py --check` catch missing or
+  stale committed tutorial screenshots before the site syncs them. (CMH-TUT-SHOTS-01)
+
 ## [1.102.0] - 2026-07-16
 
 ### Added
