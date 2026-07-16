@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 
+import _brand_profile  # noqa: E402
 import new_document  # noqa: E402
 import recommend_kind  # noqa: E402
 import upgrade  # noqa: E402
@@ -601,6 +602,9 @@ def main(argv):
     parser.add_argument("--no-highlight", action="store_true",
                         help="do not bake syntax highlighting into raw language-labelled code "
                              "blocks (baking is ON by default so a retrofitted document is never raw)")
+    parser.add_argument("--brand", default=None,
+                        help="optional brand.json profile that stamps validated --cp-* theme "
+                             "tokens and local data-URI font faces")
     args = parser.parse_args(argv[1:])
 
     out_path = args.out or args.file
@@ -635,8 +639,14 @@ def main(argv):
         # is never raw (opt out with --no-highlight).
         if not args.no_highlight and _highlight_document is not None:
             result, _ = _highlight_document.highlight_document(result)
+        brand_warnings = []
+        result, brand_warnings = _brand_profile.apply_brand(result, args.brand)
+        warnings.extend(brand_warnings)
         errors, val_warnings = _validate_candidate(result, out_path, validate_base)
     except RetrofitError as exc:
+        sys.stderr.write("retrofit: %s\n" % exc)
+        return 2
+    except _brand_profile.BrandProfileError as exc:
         sys.stderr.write("retrofit: %s\n" % exc)
         return 2
     except ValueError as exc:

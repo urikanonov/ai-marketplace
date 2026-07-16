@@ -60,6 +60,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _brand_profile  # noqa: E402
 import recommend_kind  # noqa: E402
 
 BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
@@ -562,6 +563,9 @@ def main(argv):
                         help="do not wrap bare top-level <h2> blocks in <section> for report/plan "
                              "documents (wrapping is ON by default so cards render; ignored for "
                              "other kinds)")
+    parser.add_argument("--brand", default=None,
+                        help="optional brand.json profile that stamps validated --cp-* theme "
+                             "tokens and local data-URI font faces")
     args = parser.parse_args(argv[1:])
     out_path = resolve_output_path(args.out, force=args.force)
 
@@ -649,6 +653,13 @@ def main(argv):
     except ImportError:
         pass
 
+    brand_warnings = []
+    try:
+        out_html, brand_warnings = _brand_profile.apply_brand(out_html, args.brand)
+    except _brand_profile.BrandProfileError as exc:
+        sys.stderr.write("new_document: %s\n" % exc)
+        return 2
+
     errors, warnings = _self_validate(out_html, base_dir=validate_base)
     if errors:
         sys.stderr.write("new_document: the generated document does not validate:\n")
@@ -657,7 +668,7 @@ def main(argv):
         return 1
     # Surface validator warnings (they used to be discarded). A warning here means the document is
     # valid but not finished - it MUST still be finalized and strict-validated before it is shared.
-    for w in (warnings or []):
+    for w in list(warnings or []) + brand_warnings:
         sys.stderr.write("new_document: warning: %s\n" % w)
 
     if out_path:

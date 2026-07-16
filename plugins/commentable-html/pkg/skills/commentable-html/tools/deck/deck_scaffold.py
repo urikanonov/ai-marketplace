@@ -29,6 +29,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _brand_profile  # noqa: E402
 from deck_common import esc, slide_id  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -173,6 +174,9 @@ def main(argv=None):
     ap.add_argument("--no-highlight", action="store_true",
                     help="do not bake syntax highlighting into raw language-labelled code blocks "
                          "(baking is ON by default so a scaffolded deck is never raw)")
+    ap.add_argument("--brand", default=None,
+                    help="optional brand.json profile that stamps validated --cp-* theme tokens "
+                         "and local data-URI font faces")
     args = ap.parse_args(argv)
 
     out = Path(args.out)
@@ -219,6 +223,13 @@ def main(argv=None):
     except ImportError:
         pass
 
+    brand_warnings = []
+    try:
+        html, brand_warnings = _brand_profile.apply_brand(html, args.brand)
+    except _brand_profile.BrandProfileError as exc:
+        print(f"deck_scaffold: {exc}", file=sys.stderr)
+        return 2
+
     problems = []
     warnings = []
     if _validate is not None:
@@ -241,7 +252,7 @@ def main(argv=None):
 
     # Surface validator warnings (previously discarded): a warning means the deck is valid but not
     # finished - it MUST still be finalized and strict-validated before it is shared.
-    for w in warnings:
+    for w in list(warnings) + brand_warnings:
         print(f"deck_scaffold: warning: {w}", file=sys.stderr)
 
     out.write_text(html, encoding="utf-8")

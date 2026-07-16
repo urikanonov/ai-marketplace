@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.98.0] - 2026-07-16
+
+### Added
+
+- `new_document.py`, `retrofit.py`, and `deck_scaffold.py` now accept `--brand brand.json`
+  to stamp validated `--cp-*` theme tokens plus optional local data-URI font faces into
+  generated documents, reject unknown or injection-shaped token values, and print a
+  low-contrast advisory for unsafe brand color pairs. (CMH-TOOL-19)
+
 ## [1.96.0] - 2026-07-16
 
 ### Fixed
