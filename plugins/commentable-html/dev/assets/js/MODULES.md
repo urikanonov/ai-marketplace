@@ -20,7 +20,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
 | `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access. |
-| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
+| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
 | `05-persistence.js` | CMH-PERSIST, CMH-EXP | localStorage load/merge/save of the comments array. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |

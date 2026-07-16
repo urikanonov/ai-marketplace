@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.93.0" />
+<meta name="commentable-html-version" content="1.94.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.93.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.94.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -147,21 +147,165 @@ pre mark.cm-hl, code mark.cm-hl {
 
 :root {
   --cm-sidebar-w: 400px;
+  --cp-chrome-font: 0.85rem;
+  --cp-chrome-help-font: 0.86rem;
+  --cp-chrome-topic-font: 0.9rem;
+  --cp-chrome-code-font: 0.78rem;
+  --cp-chrome-body-font: 0.82rem;
+  --cp-chrome-small-font: 0.72rem;
+  --cp-chrome-tiny-font: 0.66rem;
+  --cp-chrome-gap: 0.4rem;
+  --cp-chrome-wide-gap: 0.6rem;
+  --cp-chrome-button-gap: 0.35rem;
+  --cp-chrome-button-y: 0.35rem;
+  --cp-chrome-button-x: 0.7rem;
+  --cp-chrome-action-x: 0.6rem;
+  --cp-chrome-control-y: 0.4rem;
+  --cp-chrome-control-x: 0.85rem;
+  --cp-chrome-add-y: 0.3rem;
+  --cp-chrome-add-x: 0.85rem;
+  --cp-chrome-shell-y: 0.35rem;
+  --cp-chrome-shell-x: 0.5rem;
+  --cp-chrome-pill-y: 0.1rem;
+  --cp-chrome-pill-x: 0.5rem;
+  --cp-chrome-card-y: 0.7rem;
+  --cp-chrome-card-x: 0.8rem;
+  --cp-chrome-card-gap: 0.45rem;
+  --cp-chrome-primary-y: 0.5rem;
+  --cp-chrome-primary-x: 1.15rem;
+  --cp-chrome-primary-font: 0.92rem;
+  --cp-chrome-header-y: clamp(0.75rem, 3vw, 1rem);
+  --cp-chrome-header-x: clamp(0.75rem, 3vw, 1.1rem);
+  --cp-chrome-modal-x: 1.2rem;
+  --cp-chrome-side-toc-left: 0.75rem;
+  --cp-chrome-sort-y: 0.2rem;
+  --cp-chrome-sort-x: 0.42rem;
+  --cp-chrome-toc-link-y: 0.2rem;
+  --cp-chrome-toc-link-x: 0.45rem;
+  --cp-chrome-toc-button-pad: 0.3rem;
+  --cp-chrome-scroll-y: 0.25rem;
+  --cp-chrome-caret-gap: 0.2rem;
+  --cp-chrome-search-top: 0.25rem;
+  --cp-chrome-search-y: 0.3rem;
+  --cp-chrome-search-x: 0.55rem;
+  --cp-chrome-search-clear: 1.55rem;
+  --cp-chrome-quote-y: 0.3rem;
+  --cp-chrome-quote-x: 0.55rem;
+  --cp-chrome-toast-x: 1.1rem;
+  --cp-chrome-menu-item-y: 0.45rem;
+}
+
+body[data-cm-density="compact"] {
+  --cp-chrome-font: 0.8rem;
+  --cp-chrome-help-font: 0.81rem;
+  --cp-chrome-topic-font: 0.84rem;
+  --cp-chrome-code-font: 0.74rem;
+  --cp-chrome-body-font: 0.78rem;
+  --cp-chrome-small-font: 0.66rem;
+  --cp-chrome-tiny-font: 0.62rem;
+  --cp-chrome-gap: 0.3rem;
+  --cp-chrome-wide-gap: 0.45rem;
+  --cp-chrome-button-gap: 0.25rem;
+  --cp-chrome-button-y: 0.28rem;
+  --cp-chrome-button-x: 0.55rem;
+  --cp-chrome-action-x: 0.5rem;
+  --cp-chrome-control-y: 0.32rem;
+  --cp-chrome-control-x: 0.7rem;
+  --cp-chrome-add-y: 0.24rem;
+  --cp-chrome-add-x: 0.7rem;
+  --cp-chrome-shell-y: 0.25rem;
+  --cp-chrome-shell-x: 0.4rem;
+  --cp-chrome-pill-y: 0.06rem;
+  --cp-chrome-pill-x: 0.38rem;
+  --cp-chrome-card-y: 0.55rem;
+  --cp-chrome-card-x: 0.65rem;
+  --cp-chrome-card-gap: 0.32rem;
+  --cp-chrome-primary-y: 0.38rem;
+  --cp-chrome-primary-x: 0.9rem;
+  --cp-chrome-primary-font: 0.86rem;
+  --cp-chrome-header-y: clamp(0.6rem, 2.4vw, 0.82rem);
+  --cp-chrome-header-x: clamp(0.6rem, 2.4vw, 0.9rem);
+  --cp-chrome-modal-x: 1rem;
+  --cp-chrome-side-toc-left: 0.6rem;
+  --cp-chrome-sort-y: 0.16rem;
+  --cp-chrome-sort-x: 0.34rem;
+  --cp-chrome-toc-link-y: 0.16rem;
+  --cp-chrome-toc-link-x: 0.36rem;
+  --cp-chrome-toc-button-pad: 0.24rem;
+  --cp-chrome-scroll-y: 0.18rem;
+  --cp-chrome-caret-gap: 0.15rem;
+  --cp-chrome-search-top: 0.2rem;
+  --cp-chrome-search-y: 0.24rem;
+  --cp-chrome-search-x: 0.45rem;
+  --cp-chrome-search-clear: 1.38rem;
+  --cp-chrome-quote-y: 0.24rem;
+  --cp-chrome-quote-x: 0.45rem;
+  --cp-chrome-toast-x: 0.9rem;
+  --cp-chrome-menu-item-y: 0.36rem;
+}
+
+body[data-cm-density="comfortable"] {
+  --cp-chrome-font: 0.9rem;
+  --cp-chrome-help-font: 0.91rem;
+  --cp-chrome-topic-font: 0.96rem;
+  --cp-chrome-code-font: 0.82rem;
+  --cp-chrome-body-font: 0.86rem;
+  --cp-chrome-small-font: 0.76rem;
+  --cp-chrome-tiny-font: 0.7rem;
+  --cp-chrome-gap: 0.5rem;
+  --cp-chrome-wide-gap: 0.75rem;
+  --cp-chrome-button-gap: 0.45rem;
+  --cp-chrome-button-y: 0.42rem;
+  --cp-chrome-button-x: 0.85rem;
+  --cp-chrome-action-x: 0.72rem;
+  --cp-chrome-control-y: 0.48rem;
+  --cp-chrome-control-x: 1rem;
+  --cp-chrome-add-y: 0.36rem;
+  --cp-chrome-add-x: 1rem;
+  --cp-chrome-shell-y: 0.45rem;
+  --cp-chrome-shell-x: 0.65rem;
+  --cp-chrome-pill-y: 0.14rem;
+  --cp-chrome-pill-x: 0.6rem;
+  --cp-chrome-card-y: 0.85rem;
+  --cp-chrome-card-x: 0.95rem;
+  --cp-chrome-card-gap: 0.55rem;
+  --cp-chrome-primary-y: 0.6rem;
+  --cp-chrome-primary-x: 1.35rem;
+  --cp-chrome-primary-font: 0.98rem;
+  --cp-chrome-header-y: clamp(0.9rem, 3.4vw, 1.15rem);
+  --cp-chrome-header-x: clamp(0.9rem, 3.4vw, 1.25rem);
+  --cp-chrome-modal-x: 1.35rem;
+  --cp-chrome-side-toc-left: 0.9rem;
+  --cp-chrome-sort-y: 0.24rem;
+  --cp-chrome-sort-x: 0.5rem;
+  --cp-chrome-toc-link-y: 0.24rem;
+  --cp-chrome-toc-link-x: 0.55rem;
+  --cp-chrome-toc-button-pad: 0.36rem;
+  --cp-chrome-scroll-y: 0.3rem;
+  --cp-chrome-caret-gap: 0.25rem;
+  --cp-chrome-search-top: 0.3rem;
+  --cp-chrome-search-y: 0.36rem;
+  --cp-chrome-search-x: 0.65rem;
+  --cp-chrome-search-clear: 1.72rem;
+  --cp-chrome-quote-y: 0.36rem;
+  --cp-chrome-quote-x: 0.65rem;
+  --cp-chrome-toast-x: 1.3rem;
+  --cp-chrome-menu-item-y: 0.54rem;
 }
 
 .cm-toolbar {
   position: fixed; top: 1rem; right: 1rem; z-index: 100;
-  display: flex; gap: 0.4rem;
+  display: flex; gap: var(--cp-chrome-gap);
   background: var(--cp-panel-strong); backdrop-filter: blur(8px);
   border: 1px solid var(--cp-border); border-radius: 999px;
-  padding: 0.35rem 0.5rem; box-shadow: var(--cp-shadow);
-  align-items: center; font-size: 0.82rem;
+  padding: var(--cp-chrome-shell-y) var(--cp-chrome-shell-x); box-shadow: var(--cp-shadow);
+  align-items: center; font-size: var(--cp-chrome-body-font);
 }
 .cm-toolbar button {
   background: transparent; border: none; color: var(--cp-text);
-  font-family: inherit; font-size: 0.85rem; padding: 0.35rem 0.7rem;
+  font-family: inherit; font-size: var(--cp-chrome-font); padding: var(--cp-chrome-button-y) var(--cp-chrome-button-x);
   border-radius: 999px; cursor: pointer; display: inline-flex;
-  align-items: center; gap: 0.35rem;
+  align-items: center; gap: var(--cp-chrome-button-gap);
 }
 .cm-toolbar button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 /* When the panel is collapsed, the Show button gets a distinct filled bubble so it
@@ -174,8 +318,8 @@ body:not(.sidebar-open) .cm-toolbar #btnToggleSidebar:hover {
 }
 .cm-toolbar .pill-count, .cm-sidebar header .pill-count {
   background: var(--cp-accent); color: var(--cp-accent-fg);
-  border-radius: 999px; padding: 0.1rem 0.5rem;
-  font-size: 0.72rem; font-weight: 600; min-width: 1.4rem; text-align: center;
+  border-radius: 999px; padding: var(--cp-chrome-pill-y) var(--cp-chrome-pill-x);
+  font-size: var(--cp-chrome-small-font); font-weight: 600; min-width: 1.4rem; text-align: center;
 }
 
 .cm-sidebar {
@@ -206,7 +350,6 @@ body.cm-sidebar-resizing .cm-sidebar { transition: none; }
    offers is present in the panel header, so there is no reason to keep a pill
    hovering over the document content. It returns when the panel is closed. */
 body.sidebar-open .cm-toolbar { display: none; }
-
 /* === Layout recipe (centered max-width). Swap as needed. === */
 body.sidebar-open .app { padding-right: 1.5rem; }
 @media (min-width: 1100px) {
@@ -224,13 +367,13 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 }
 
 .cm-sidebar header {
-  padding: clamp(0.75rem, 3vw, 1rem) clamp(0.75rem, 3vw, 1.1rem); border-bottom: 1px solid var(--cp-border);
-  display: flex; flex-direction: column; gap: 0.5rem;
+  padding: var(--cp-chrome-header-y) var(--cp-chrome-header-x); border-bottom: 1px solid var(--cp-border);
+  display: flex; flex-direction: column; gap: var(--cp-chrome-gap);
 }
-.cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 0.45rem 0.6rem; }
+.cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--cp-chrome-gap) var(--cp-chrome-wide-gap); }
 .cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex: 1 1 8rem; min-width: 0; }
-.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.4rem 0.35rem; font-size: 0.72rem; }
+.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: var(--cp-chrome-button-gap); }
+.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: var(--cp-chrome-button-gap); padding: var(--cp-chrome-button-y) var(--cp-chrome-shell-x); font-size: var(--cp-chrome-small-font); }
 .cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: normal; }
 .cm-sidebar.is-narrow .head-meta .cm-head-actions { margin-left: 0; width: 100%; justify-content: stretch; }
 .cm-sidebar.is-narrow .head-meta .cm-head-actions button { flex: 1 1 8rem; }
@@ -250,7 +393,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-tooltip {
   position: fixed; z-index: 400; max-width: 260px;
   background: #22272e; color: #fff;
-  font-size: 0.72rem; line-height: 1.35; padding: 0.35rem 0.55rem;
+  font-size: var(--cp-chrome-small-font); line-height: 1.35; padding: var(--cp-chrome-button-y) var(--cp-chrome-action-x);
   border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.30);
   pointer-events: none; opacity: 0; transform: translateY(2px);
   transition: opacity 0.12s ease, transform 0.12s ease;
@@ -264,8 +407,8 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar .head-top button,
 .cm-sidebar .head-actions button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
-  padding: 0.35rem 0.6rem; border-radius: 0.5rem; cursor: pointer;
-  font-family: inherit; font-size: 0.78rem;
+  padding: var(--cp-chrome-button-y) var(--cp-chrome-action-x); border-radius: 0.5rem; cursor: pointer;
+  font-family: inherit; font-size: var(--cp-chrome-body-font);
 }
 .cm-sidebar .head-top button:hover,
 .cm-sidebar .head-actions button:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
@@ -276,18 +419,18 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 /* The Copy all action is the most-used control: make it visibly larger and bolder than the
    other header buttons so it is easy to find and click. */
 .cm-sidebar .head-top #btnCopyAll {
-  padding: 0.5rem 1.15rem;
-  font-size: 0.92rem;
+  padding: var(--cp-chrome-primary-y) var(--cp-chrome-primary-x);
+  font-size: var(--cp-chrome-primary-font);
   font-weight: 700;
   border-radius: 0.6rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 /* Sort-by-time arrows sit at the far right of the header row (Copy all stays next to the count). */
-.cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: 0.15rem; }
-.cm-sidebar .head-top .cm-sort-btn { padding: 0.2rem 0.42rem; font-size: 0.7rem; line-height: 1; color: var(--cp-text-soft); }
+.cm-sidebar .head-top .cm-sort { margin-left: auto; display: inline-flex; gap: calc(var(--cp-chrome-button-gap) * 0.5); }
+.cm-sidebar .head-top .cm-sort-btn { padding: var(--cp-chrome-sort-y) var(--cp-chrome-sort-x); font-size: var(--cp-chrome-tiny-font); line-height: 1; color: var(--cp-text-soft); }
 .cm-sidebar .head-top .cm-sort-btn[aria-pressed="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 /* Informational "Generated on / Last comment" line under the header. */
-.cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem 0.7rem; font-size: 0.66rem; color: var(--cp-text-soft); margin: 0.15rem 0 0.35rem; }
+.cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem var(--cp-chrome-button-x); font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); margin: 0.15rem 0 var(--cp-chrome-button-y); }
 .cm-side-info > span { white-space: nowrap; }
 /* Clear Comments wears a persistent warning treatment so it is not clicked by accident. */
 .cm-sidebar .head-actions button.danger {
@@ -331,23 +474,23 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-modal-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); color: var(--cp-danger); }
 
 /* Sidebar header meta row: document-type bubble, version, and Help. */
-.cm-sidebar .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.1rem; }
+.cm-sidebar .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cp-chrome-gap); margin-bottom: 0.1rem; }
 .cm-type-badge {
-  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
-  padding: 0.12rem 0.5rem; border-radius: 999px; white-space: nowrap;
+  font-size: var(--cp-chrome-tiny-font); font-weight: 600; letter-spacing: 0.02em;
+  padding: var(--cp-chrome-pill-y) var(--cp-chrome-pill-x); border-radius: 999px; white-space: nowrap;
   border: 1px solid var(--cp-border); color: var(--cp-text-soft);
 }
 .cm-type-badge[data-doc-type="Portable"] { color: var(--cp-success); border-color: var(--cp-success); background: rgba(22, 163, 74, 0.12); }
 .cm-type-badge[data-doc-type="Offline"] { color: var(--cp-accent); border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-type-badge[data-doc-type="Not portable"] { color: var(--cp-warning); border-color: var(--cp-warning); background: rgba(245, 158, 11, 0.12); cursor: help; }
-.cm-version { font-size: 0.66rem; color: var(--cp-text-soft); }
+.cm-version { font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); }
 .cm-brand-icon { vertical-align: -3px; margin-right: 0.15rem; flex: none; }
 .cm-brand-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; border-radius: 6px; }
 .cm-brand-link:hover { text-decoration: underline; }
 .cm-brand-link:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
 .cm-help-about .cm-brand-link { color: var(--cp-accent); text-decoration: underline; text-underline-offset: 2px; }
 .cm-help-about .cm-brand-link:hover { color: var(--cp-accent-hover); }
-.cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; }
+.cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: var(--cp-chrome-wide-gap); width: 100%; }
 .cm-toolbar-menu-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--cp-accent); }
 .cm-toolbar-menu-brand .cm-brand-icon { width: 20px; height: 20px; margin: 0; }
 .cm-toolbar #btnCopyAllTop[aria-disabled="true"],
@@ -359,11 +502,11 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-text-soft);
 }
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
-.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--cp-chrome-button-gap); }
 .cm-help-btn {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
-  padding: 0.2rem 0.6rem; border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: 0.72rem;
-  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: calc(var(--cp-chrome-button-y) * 0.6) var(--cp-chrome-action-x); border-radius: 0.5rem; cursor: pointer; font-family: inherit; font-size: var(--cp-chrome-small-font);
+  display: inline-flex; align-items: center; gap: var(--cp-chrome-button-gap);
 }
 .cm-help-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 /* The Hide control sits next to Help; give it a slightly recessed neutral tone (and a
@@ -374,26 +517,26 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 
 /* Help dialog (reuses .cm-modal-overlay). */
 .cm-modal.cm-help { max-width: 42rem; width: calc(100% - 3rem); max-height: calc(100vh - 4rem); display: flex; flex-direction: column; padding: 0; }
-.cm-help-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--cp-border); }
+.cm-help-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem var(--cp-chrome-modal-x); border-bottom: 1px solid var(--cp-border); }
 .cm-help-head h2 { margin: 0; font-size: 1.05rem; }
-.cm-help-close { background: transparent; border: none; color: var(--cp-text-soft); font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0 0.35rem; border-radius: 6px; }
+.cm-help-close { background: transparent; border: none; color: var(--cp-text-soft); font-size: calc(var(--cp-chrome-font) * 1.65); line-height: 1; cursor: pointer; padding: 0 var(--cp-chrome-button-y); border-radius: 6px; }
 .cm-help-close:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-help-body { padding: 0.5rem 1.2rem 1.2rem; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.cm-help-body { padding: var(--cp-chrome-shell-x) var(--cp-chrome-modal-x) var(--cp-chrome-modal-x); overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .cm-help-body h3 { font-size: 0.92rem; margin: 1rem 0 0.3rem; color: var(--cp-text); }
-.cm-help-body p, .cm-help-body li { font-size: 0.86rem; line-height: 1.5; color: var(--cp-text); }
-.cm-help-body ul { margin: 0.3rem 0; padding-left: 1.3rem; }
+.cm-help-body p, .cm-help-body li { font-size: var(--cp-chrome-help-font); line-height: 1.5; color: var(--cp-text); }
+.cm-help-body ul { margin: var(--cp-chrome-button-gap) 0; padding-left: 1.3rem; }
 .cm-help-body kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 0 4px; font-family: inherit; font-size: 0.8em; }
 /* Searchable, collapsible Help topics. */
-.cm-help-search { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.2rem; border-bottom: 1px solid var(--cp-border); color: var(--cp-text-soft); }
-.cm-help-search-input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.86rem; padding: 0.4rem 0.6rem; border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text); }
+.cm-help-search { display: flex; align-items: center; gap: var(--cp-chrome-gap); padding: var(--cp-chrome-card-y) var(--cp-chrome-modal-x); border-bottom: 1px solid var(--cp-border); color: var(--cp-text-soft); }
+.cm-help-search-input { flex: 1 1 auto; min-width: 0; font: inherit; font-size: var(--cp-chrome-help-font); padding: var(--cp-chrome-control-y) var(--cp-chrome-action-x); border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text); }
 .cm-help-search-input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
 .cm-help-topic { border-bottom: 1px solid var(--cp-border); }
-.cm-help-topic > summary { cursor: pointer; list-style: none; padding: 0.6rem 0.2rem; font-weight: 600; font-size: 0.9rem; color: var(--cp-text); display: flex; align-items: center; gap: 0.5rem; }
+.cm-help-topic > summary { cursor: pointer; list-style: none; padding: var(--cp-chrome-action-x) 0.2rem; font-weight: 600; font-size: var(--cp-chrome-topic-font); color: var(--cp-text); display: flex; align-items: center; gap: var(--cp-chrome-gap); }
 .cm-help-topic > summary::-webkit-details-marker { display: none; }
 .cm-help-topic > summary::before { content: "\25B8"; color: var(--cp-text-soft); font-size: 0.8em; transition: transform 0.12s ease; }
 .cm-help-topic[open] > summary::before { transform: rotate(90deg); }
 .cm-help-topic > summary:hover { color: var(--cp-accent); }
-.cm-help-topic-body { padding: 0 0.2rem 0.7rem 1.3rem; }
+.cm-help-topic-body { padding: 0 0.2rem var(--cp-chrome-card-y) 1.3rem; }
 /* Review-loop diagram in the "Getting started" help topic. Themed with the framework's
    --cp-* variables so it follows the light/dark theme like the rest of the UI. */
 .cm-loop-figure { margin: 0.7rem 0 0.3rem; }
@@ -417,7 +560,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   display: none; flex-direction: column;
   background: var(--cp-panel-strong); backdrop-filter: blur(8px);
   border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
-  padding: 0.6rem 0.5rem 0.6rem 0.75rem; font-size: 0.82rem;
+  padding: var(--cp-chrome-action-x) var(--cp-chrome-shell-x) var(--cp-chrome-action-x) var(--cp-chrome-side-toc-left); font-size: var(--cp-chrome-body-font);
 }
 @media (min-width: 1400px) {
   .cm-side-toc { display: flex; }
@@ -426,26 +569,26 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   body.cm-side-toc-on { padding-left: calc(var(--cm-side-toc-w, 17rem) + 2rem); }
   body.cm-side-toc-on.cm-side-toc-collapsed { padding-left: 0; }
 }
-.cm-side-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.3rem; }
+.cm-side-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--cp-chrome-button-gap); }
 .cm-side-toc-title { font-weight: 700; color: var(--cp-text); }
 .cm-side-toc-toggle { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; font-size: 1.05rem; line-height: 1; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 6px; }
 .cm-side-toc-toggle:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-side-toc-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; }
-.cm-side-toc-list li { margin: 0.05rem 0; }
+.cm-side-toc-list li { margin: calc(var(--cp-chrome-pill-y) * 0.5) 0; }
 .cm-side-toc-list li.is-sub { padding-left: 0.8rem; }
-.cm-side-toc-list a { display: block; color: var(--cp-text-soft); text-decoration: none; padding: 0.2rem 0.45rem; border-radius: 6px; border-left: 2px solid transparent; }
+.cm-side-toc-list a { display: block; color: var(--cp-text-soft); text-decoration: none; padding: var(--cp-chrome-toc-link-y) var(--cp-chrome-toc-link-x); border-radius: 6px; border-left: 2px solid transparent; }
 .cm-side-toc-list a:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cm-side-toc-list a.is-active { color: var(--cp-accent); border-left-color: var(--cp-accent); background: var(--cp-accent-soft); font-weight: 600; }
-.cm-side-toc-top { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; margin-top: 0.4rem; background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text); border-radius: 0.5rem; padding: 0.3rem; cursor: pointer; font-family: inherit; font-size: 0.75rem; }
+.cm-side-toc-top { display: inline-flex; align-items: center; justify-content: center; gap: var(--cp-chrome-button-gap); margin-top: var(--cp-chrome-gap); background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text); border-radius: 0.5rem; padding: var(--cp-chrome-toc-button-pad); cursor: pointer; font-family: inherit; font-size: var(--cp-chrome-small-font); }
 .cm-side-toc-top:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
-.cm-side-toc-scroll { display: flex; gap: 0.3rem; }
-.cm-side-toc-scroll .cm-side-toc-top { flex: 1 1 0; margin-top: 0.4rem; }
+.cm-side-toc-scroll { display: flex; gap: var(--cp-chrome-button-gap); }
+.cm-side-toc-scroll .cm-side-toc-top { flex: 1 1 0; margin-top: var(--cp-chrome-gap); }
 /* Bottom-right scroll-position bubble (runtime, cm-skip, absent from Plain export). */
 .cm-scroll-progress {
   position: fixed; right: 1rem; bottom: 1rem; z-index: 95;
   background: var(--cp-panel-strong); backdrop-filter: blur(6px);
   border: 1px solid var(--cp-border); border-radius: 999px;
-  padding: 0.25rem 0.6rem; font-size: 0.72rem; font-weight: 600;
+  padding: var(--cp-chrome-scroll-y) var(--cp-chrome-action-x); font-size: var(--cp-chrome-small-font); font-weight: 600;
   color: var(--cp-text-soft); box-shadow: var(--cp-shadow);
   min-width: 2.6rem; text-align: center; pointer-events: none;
 }
@@ -463,9 +606,9 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
    Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side
    padding) so the footer never sticks out past the content sections above it. */
 .cm-footer {
-  margin: 0.5rem auto 1.25rem; max-width: calc(1480px - 3rem); padding: 0.6rem 1rem;
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem;
-  font-size: 0.72rem; color: var(--cp-text-soft);
+  margin: var(--cp-chrome-shell-x) auto 1.25rem; max-width: calc(1480px - 3rem); padding: var(--cp-chrome-action-x) 1rem;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--cp-chrome-gap);
+  font-size: var(--cp-chrome-small-font); color: var(--cp-text-soft);
   border: 1px solid var(--cp-border); border-radius: 0.6rem; background: var(--cp-surface);
 }
 /* With the runtime footer present, the layout recipe's large bottom padding would leave
@@ -499,8 +642,8 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-side-toc-list a.is-active .cm-toc-num { color: var(--cp-accent); }
 /* Side-TOC filter box (search-as-filter) and the hide rules it toggles. */
 .cm-side-toc-search {
-  width: 100%; box-sizing: border-box; margin: 0.25rem 0 0.5rem; padding: 0.3rem 0.5rem;
-  font: inherit; font-size: 0.82rem; color: var(--cp-text); background: var(--cp-surface);
+  width: 100%; box-sizing: border-box; margin: var(--cp-chrome-search-top) 0 var(--cp-chrome-shell-x); padding: var(--cp-chrome-search-y) var(--cp-chrome-shell-x);
+  font: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); background: var(--cp-surface);
   border: 1px solid var(--cp-border); border-radius: 0.4rem;
 }
 .cm-side-toc-search:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 1px; }
@@ -520,7 +663,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 /* Collapsible sections: caret on the heading toggles a class that hides the body. */
 .cmh-sec-caret {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 1.9em; height: 1.9em; margin-right: 0.2rem; vertical-align: middle;
+  width: 1.9em; height: 1.9em; margin-right: var(--cp-chrome-caret-gap); vertical-align: middle;
   background: transparent; border: 0; border-radius: 6px; cursor: pointer;
   color: var(--cp-text-soft); padding: 0; line-height: 1;
 }
@@ -531,51 +674,51 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 #commentRoot section.cmh-section-collapsed > * { display: none; }
 #commentRoot section.cmh-section-collapsed > .cmh-section-heading { display: revert; }
 
-.cm-sidebar .list { flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
-.cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: 0.85rem; line-height: 1.55; }
-.cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: 0.78rem; color: var(--cp-text); }
+.cm-sidebar .list { flex: 1; overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
+.cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: var(--cp-chrome-font); line-height: 1.55; }
+.cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class
    because .cm-card sets display:flex, which would otherwise win over the UA [hidden] rule. */
-.head-search { display: flex; align-items: center; gap: 0.4rem; padding: 0.1rem 0.35rem 0.5rem; }
+.head-search { display: flex; align-items: center; gap: var(--cp-chrome-gap); padding: 0.1rem var(--cp-chrome-button-y) var(--cp-chrome-shell-x); }
 .head-search[hidden] { display: none; }
 .cm-search-ico { flex: none; color: var(--cp-text-soft); }
 .cm-search-input {
-  flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.8rem; padding: 0.35rem 0.55rem;
+  flex: 1 1 auto; min-width: 0; font: inherit; font-size: var(--cp-chrome-body-font); padding: var(--cp-chrome-button-y) var(--cp-chrome-search-x);
   border: 1px solid var(--cp-border); border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text);
 }
 .cm-search-input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
 .cm-search-clear {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 1.55rem; height: 1.55rem; padding: 0; border: 1px solid var(--cp-border);
+  width: var(--cp-chrome-search-clear); height: var(--cp-chrome-search-clear); padding: 0; border: 1px solid var(--cp-border);
   border-radius: 0.5rem; background: var(--cp-surface); color: var(--cp-text-soft); cursor: pointer;
 }
 .cm-search-clear:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 .cm-search-clear[hidden] { display: none; }
-.cm-search-count { flex: none; font-size: 0.68rem; color: var(--cp-text-soft); min-width: 2.2rem; text-align: right; font-variant-numeric: tabular-nums; }
+.cm-search-count { flex: none; font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); min-width: 2.2rem; text-align: right; font-variant-numeric: tabular-nums; }
 .cm-search-count[hidden] { display: none; }
 .cm-card.cm-hidden { display: none !important; }
 .cm-search-empty[hidden] { display: none; }
 
 .cm-card {
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 10px;
-  padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.45rem;
-  font-size: 0.85rem; cursor: pointer;
+  padding: var(--cp-chrome-card-y) var(--cp-chrome-card-x); display: flex; flex-direction: column; gap: var(--cp-chrome-card-gap);
+  font-size: var(--cp-chrome-font); cursor: pointer;
 }
 .cm-card:hover { border-color: var(--cp-accent); }
 .cm-card.active { border-color: var(--cp-warning); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25); }
 .cm-card .section {
-  font-size: 0.7rem; color: var(--cp-text-soft);
+  font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft);
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 .cm-card .section strong {
   color: var(--cp-accent); font-weight: 600;
-  text-transform: none; letter-spacing: 0; font-size: 0.78rem;
+  text-transform: none; letter-spacing: 0; font-size: var(--cp-chrome-body-font);
 }
 .cm-card .quote {
-  border-left: 3px solid var(--cp-warning); padding: 0.25rem 0.55rem;
-  color: var(--cp-text-muted); font-size: 0.8rem; line-height: 1.5;
+  border-left: 3px solid var(--cp-warning); padding: calc(var(--cp-chrome-button-y) * 0.75) var(--cp-chrome-action-x);
+  color: var(--cp-text-muted); font-size: var(--cp-chrome-body-font); line-height: 1.5;
   background: rgba(245, 158, 11, 0.06); border-radius: 0 4px 4px 0;
   overflow: hidden;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
@@ -586,13 +729,13 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   background: rgba(245, 158, 11, 0.18); padding: 0 3px; border-radius: 3px;
 }
 .cm-card .pin {
-  font-size: 0.7rem; color: var(--cp-text-soft);
+  font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft);
   font-family: Consolas, "Courier New", Courier, monospace;
 }
 .cm-card .note { color: var(--cp-text); white-space: pre-wrap; word-wrap: break-word; }
-.cm-card .meta { display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: var(--cp-text-soft); }
-.cm-card .meta .acts { display: flex; gap: 0.35rem; }
-.cm-card .meta button { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-size: 0.72rem; }
+.cm-card .meta { display: flex; align-items: center; justify-content: space-between; font-size: var(--cp-chrome-small-font); color: var(--cp-text-soft); }
+.cm-card .meta .acts { display: flex; gap: var(--cp-chrome-button-gap); }
+.cm-card .meta button { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-size: var(--cp-chrome-small-font); }
 .cm-card .meta button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cm-card .meta button.del:hover { background: rgba(220, 38, 38, 0.12); color: var(--cp-danger); }
 
@@ -603,10 +746,10 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
    "Add Comment" control is visually identical wherever it appears. */
 .cm-menu button, .cm-mermaid-add, .cm-diff-add, .cm-image-add, .cm-widget-add {
   background: var(--cp-accent); color: var(--cp-accent-fg);
-  border: none; border-radius: 999px; padding: 0.3rem 0.85rem;
-  font-family: inherit; font-size: 0.78rem; font-weight: 600; line-height: 1.2;
+  border: none; border-radius: 999px; padding: var(--cp-chrome-add-y) var(--cp-chrome-add-x);
+  font-family: inherit; font-size: var(--cp-chrome-body-font); font-weight: 600; line-height: 1.2;
   cursor: pointer; box-shadow: var(--cp-shadow);
-  display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: var(--cp-chrome-gap); white-space: nowrap;
 }
 .cm-menu button:hover, .cm-mermaid-add:hover, .cm-diff-add:hover, .cm-image-add:hover, .cm-widget-add:hover {
   background: var(--cp-accent-hover); color: var(--cp-accent-fg);
@@ -618,15 +761,15 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-composer {
   position: fixed; z-index: 210; width: 360px; max-width: 92vw;
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 12px;
-  box-shadow: var(--cp-shadow); padding: 0.85rem;
-  display: flex; flex-direction: column; gap: 0.55rem;
+  box-shadow: var(--cp-shadow); padding: var(--cp-chrome-card-y);
+  display: flex; flex-direction: column; gap: var(--cp-chrome-card-gap);
 }
 .cm-composer.dragging { user-select: none; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28); }
 .cm-composer-handle {
   display: flex; align-items: center; justify-content: space-between;
   margin: -0.35rem -0.2rem 0.1rem -0.2rem;
-  padding: 0.15rem 0.4rem; border-radius: 6px;
-  cursor: grab; color: var(--cp-text-muted); font-size: 0.75rem;
+  padding: calc(var(--cp-chrome-button-y) * 0.45) var(--cp-chrome-gap); border-radius: 6px;
+  cursor: grab; color: var(--cp-text-muted); font-size: var(--cp-chrome-small-font);
   user-select: none;
 }
 .cm-composer-handle:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
@@ -640,8 +783,8 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-composer.flash { animation: cm-composer-flash 0.6s ease-out 1; }
 .cm-composer .quote {
-  border-left: 3px solid var(--cp-warning); padding: 0.3rem 0.55rem;
-  color: var(--cp-text-muted); font-style: italic; font-size: 0.8rem; line-height: 1.5;
+  border-left: 3px solid var(--cp-warning); padding: var(--cp-chrome-quote-y) var(--cp-chrome-quote-x);
+  color: var(--cp-text-muted); font-style: italic; font-size: var(--cp-chrome-body-font); line-height: 1.5;
   background: rgba(245, 158, 11, 0.07); border-radius: 0 4px 4px 0;
   max-height: 8.5em; overflow-y: auto;
 }
@@ -651,7 +794,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-card .quote.cm-quote-code,
 .cm-composer .quote.cm-quote-code {
   font-family: Consolas, "Courier New", Courier, monospace;
-  font-size: 0.78rem;
+  font-size: var(--cp-chrome-code-font);
   font-style: normal;
   white-space: pre-wrap;
   word-break: break-word;
@@ -663,17 +806,17 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   -webkit-line-clamp: unset;
 }
 .cm-composer textarea {
-  resize: vertical; min-height: 70px; padding: 0.5rem 0.6rem;
+  resize: vertical; min-height: 70px; padding: var(--cp-chrome-shell-x) var(--cp-chrome-action-x);
   background: var(--cp-bg-elevated); border: 1px solid var(--cp-border); border-radius: 6px;
-  color: var(--cp-text); font-family: inherit; font-size: 0.88rem;
+  color: var(--cp-text); font-family: inherit; font-size: var(--cp-chrome-font);
 }
 .cm-composer textarea:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 2px var(--cp-accent-soft); }
 .cm-composer textarea.cm-invalid { border-color: var(--cp-danger); box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.14); }
-.cm-composer .row { display: flex; justify-content: flex-end; gap: 0.4rem; }
+.cm-composer .row { display: flex; justify-content: flex-end; gap: var(--cp-chrome-gap); }
 .cm-composer button {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
-  padding: 0.4rem 0.85rem; border-radius: 6px; cursor: pointer;
-  font-family: inherit; font-size: 0.85rem;
+  padding: var(--cp-chrome-control-y) var(--cp-chrome-control-x); border-radius: 6px; cursor: pointer;
+  font-family: inherit; font-size: var(--cp-chrome-font);
 }
 .cm-composer button.primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
 .cm-composer button.primary:hover { background: var(--cp-accent-hover); }
@@ -683,14 +826,13 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   position: fixed; bottom: 1.5rem; left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: var(--cp-accent); color: var(--cp-accent-fg);
-  padding: 0.7rem 1.1rem; border-radius: 999px;
-  box-shadow: var(--cp-shadow); font-size: 0.85rem; z-index: 300;
+  padding: var(--cp-chrome-card-y) var(--cp-chrome-toast-x); border-radius: 999px;
+  box-shadow: var(--cp-shadow); font-size: var(--cp-chrome-font); z-index: 300;
   opacity: 0; pointer-events: none;
   transition: opacity 0.2s, transform 0.2s;
   max-width: 90vw; text-align: center;
 }
 .cm-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
 /* --- Mermaid commenting layer (works with pre.mermaid / div.mermaid) --- */
 .cm-mermaid-host { position: relative; }
 .cm-mermaid-host svg g.node,
@@ -768,18 +910,18 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
 
 /* Icon-only "more actions" button + its dropdown menu. */
 .cm-toolbar-more { position: relative; display: inline-flex; }
-.cm-toolbar .cm-icon-btn { padding: 0.35rem 0.45rem; }
+.cm-toolbar .cm-icon-btn { padding: var(--cp-chrome-button-y) calc(var(--cp-chrome-action-x) * 0.75); }
 .cm-toolbar-menu {
   position: absolute; top: calc(100% + 0.5rem); right: 0; z-index: 120;
-  min-width: 12rem; display: flex; flex-direction: column; gap: 0.15rem;
-  padding: 0.4rem; background: var(--cp-surface); color: var(--cp-text);
+  min-width: 12rem; display: flex; flex-direction: column; gap: calc(var(--cp-chrome-button-gap) * 0.5);
+  padding: var(--cp-chrome-gap); background: var(--cp-surface); color: var(--cp-text);
   border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
 }
-.cm-toolbar-menu .cm-mode-badge { align-self: flex-start; margin: 0.1rem 0.2rem 0.35rem; }
+.cm-toolbar-menu .cm-mode-badge { align-self: flex-start; margin: var(--cp-chrome-pill-y) calc(var(--cp-chrome-button-gap) * 0.6) var(--cp-chrome-button-y); }
 .cm-toolbar-menu button {
   width: 100%; justify-content: flex-start; text-align: left;
-  display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.45rem 0.6rem; border-radius: 8px; font-size: 0.85rem;
+  display: flex; align-items: center; gap: var(--cp-chrome-gap);
+  padding: var(--cp-chrome-menu-item-y) var(--cp-chrome-action-x); border-radius: 8px; font-size: var(--cp-chrome-font);
 }
 .cm-toolbar-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 
@@ -802,7 +944,6 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
 #cmhAssetBanner .cmh-asset-dismiss:hover, #cmhAssetBanner .cmh-asset-dismiss:focus-visible {
   background: rgba(0,0,0,0.32); outline: 2px solid rgba(255,255,255,0.7); outline-offset: 2px;
 }
-
 /* --- Diff / code-review layer (pre.cmh-diff / div.cmh-diff) --- */
 .cmh-diff-host { margin: 1rem 0; }
 .cmh-diff-view {
@@ -2345,6 +2486,12 @@ const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
 // active, the layer replaces the flow-document chrome (heading anchors, collapsible
 // sections, side TOC, footer, scroll progress) with slide navigation and commenting.
 const IS_DECK = !!(root.getAttribute && root.getAttribute("data-cmh-mode") === "deck");
+const CMH_DENSITY = root.dataset.cmDensity || "";
+if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
+  document.body.setAttribute("data-cm-density", CMH_DENSITY);
+} else {
+  document.body.removeAttribute("data-cm-density");
+}
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // Comment ids are generated as "c" + base36 timestamp + 4 base36 chars and are
 // later interpolated into HTML attributes (data-cid="...") and CSS selectors.
@@ -2354,7 +2501,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.93.0";
+const CMH_VERSION = "1.94.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2442,7 +2589,6 @@ const openComposers = new Set();
 const openEditComposers = new Map();
 let lastFocusedComposer = null;
 let composerZ = 210;
-
 /* ---------- Persistence ---------- */
 function loadComments() {
   let local = [];

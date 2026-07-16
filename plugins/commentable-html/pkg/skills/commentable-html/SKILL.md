@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.93.0`
+**Version:** `1.94.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -202,12 +202,13 @@ The content root carries document identity:
 | `data-comment-key` | yes | Unique `localStorage` bucket for this document on the same origin. |
 | `data-doc-label` | yes | Human-readable name used in Copy headers and Agent Instructions. |
 | `data-doc-source` | no | Source path for Copy output and agent edits; falls back to `location.pathname`. |
+| `data-cm-density` | no | Optional runtime chrome density: `compact` or `comfortable`; omitted keeps the default. |
 
 Do not bake transient runtime classes such as `sidebar-open` into saved `<body>` markup. The runtime derives them on load, and strict validation rejects persisted UI state. See [Document layout](references/document-layout.md#per-document-configuration-example).
 
 ## Runtime chrome and document layout
 
-The runtime toolbar, sidebar, footer, Help modal, timestamps, document-type bubble, Clear-confirm dialog, and export buttons are runtime chrome. Do not re-author them in generated content. Default documents are light theme unless the user explicitly asks for dark. See [Document layout](references/document-layout.md) for runtime UI, theme behavior, TOC rules, section cards, table sorting, layout recipes, and per-document configuration.
+The runtime toolbar, sidebar, footer, Help modal, timestamps, document-type bubble, Clear-confirm dialog, and export buttons are runtime chrome. Do not re-author them in generated content. Default documents are light theme unless the user explicitly asks for dark. Use `data-cm-density` only when the author asks for compact or comfortable chrome spacing. See [Document layout](references/document-layout.md) for runtime UI, theme behavior, density, TOC rules, section cards, table sorting, layout recipes, and per-document configuration.
 
 ## Comment data and known limits
 
