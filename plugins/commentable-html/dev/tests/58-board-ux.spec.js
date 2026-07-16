@@ -103,6 +103,26 @@ const STATIC_BOARD = `
     <div class="col" data-cm-slot="Later" id="flater"></div>
   </div>`;
 
+const SLOT_DRAGGABLE_TWO_BOARDS = `
+  <h1>Slot draggable boards</h1>
+  <div class="board cm-skip" data-cm-widget="slot-board" aria-label="Slot board" id="slotBoard">
+    <div class="col" data-cm-slot="Open" data-cm-draggable id="slotOpen">
+      <div class="card" data-cm-part="alpha" data-cm-part-label="Alpha" id="cardAlpha">Alpha</div>
+      <div class="divider" id="openDivider">Divider</div>
+      <div class="card" data-cm-part="beta" data-cm-part-label="Beta" id="cardBeta">Beta</div>
+    </div>
+    <div class="col" data-cm-slot="Review" data-cm-draggable id="slotReview"></div>
+    <div class="col" data-cm-slot="Done" data-cm-draggable id="slotDone"></div>
+  </div>
+  <div class="board cm-skip" data-cm-widget="untouched" data-cm-draggable aria-label="Untouched board" id="untouchedBoard">
+    <div class="col" data-cm-slot="Todo" id="untouchedTodo">
+      <div class="card" data-cm-part="first" data-cm-part-label="First" id="untouchedFirst">First</div>
+      <div class="divider" id="untouchedDivider">Divider</div>
+      <div class="card" data-cm-part="second" data-cm-part-label="Second" id="untouchedSecond">Second</div>
+    </div>
+    <div class="col" data-cm-slot="Done" id="untouchedDone"></div>
+  </div>`;
+
 async function openContent(page, content, key) {
   await installClipboardCapture(page);
   const { html } = stageContent(content, { key });
@@ -116,6 +136,10 @@ async function move(page, part, widget, targetId) {
     document.getElementById(targetId).appendChild(card);
   }, { part, widget, targetId });
   await waitForWidgetMutationFrame(page);
+}
+
+function childElementOrder(page, selector) {
+  return page.locator(selector).evaluate((el) => Array.from(el.children).map((child) => child.id).join("|"));
 }
 
 test("a moved draggable board grows a Reset moves button that restores it (CMH-BOARD-01)", async ({ page }) => {
@@ -194,6 +218,30 @@ test("Clear restores draggable board moves to the authored baseline (CMH-BOARD-0
   await page.locator(".cm-modal .danger").click();
   await waitForWidgetMutationFrame(page);
   await expect(page.locator('#now [data-cm-part="a"]')).toHaveCount(1);
+  await expect(page.locator(".cm-card-state")).toHaveCount(0);
+  await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
+});
+
+test("Clear restores slot-level draggable boards in exact order without touching clean boards (CMH-BOARD-05)", async ({ page }) => {
+  await openContent(page, SLOT_DRAGGABLE_TWO_BOARDS, "cmh-board-slot-clear-order");
+  const initialOpen = await childElementOrder(page, "#slotOpen");
+  const initialReview = await childElementOrder(page, "#slotReview");
+  const initialDone = await childElementOrder(page, "#slotDone");
+  const untouchedInitial = await childElementOrder(page, "#untouchedTodo");
+
+  await move(page, "alpha", "slot-board", "slotReview");
+  await move(page, "beta", "slot-board", "slotDone");
+  await expect(page.locator('#slotReview [data-cm-part="alpha"]')).toHaveCount(1);
+  await expect(page.locator('#slotDone [data-cm-part="beta"]')).toHaveCount(1);
+  await expect(page.locator(".cm-card-state")).toHaveCount(1);
+
+  await page.click("#btnClearAll");
+  await page.locator(".cm-modal .danger").click();
+  await waitForWidgetMutationFrame(page);
+  await expect.poll(() => childElementOrder(page, "#slotOpen")).toBe(initialOpen);
+  await expect.poll(() => childElementOrder(page, "#slotReview")).toBe(initialReview);
+  await expect.poll(() => childElementOrder(page, "#slotDone")).toBe(initialDone);
+  await expect.poll(() => childElementOrder(page, "#untouchedTodo")).toBe(untouchedInitial);
   await expect(page.locator(".cm-card-state")).toHaveCount(0);
   await expect(page.locator("#cmTypeBadge")).toHaveText("Portable");
 });

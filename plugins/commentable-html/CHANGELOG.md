@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.96.0] - 2026-07-16
+
+### Fixed
+
+- Clear now restores slot-level draggable boards to their load-time sibling order,
+  including interleaved non-part nodes, while clean boards are left untouched.
+  (CMH-BOARD-05)
+
 ## [1.94.0] - 2026-07-16
 
 ### Added

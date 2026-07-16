@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.94.0" />
+<meta name="commentable-html-version" content="1.96.0" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.94.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.96.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (inline)</title>
 
@@ -2519,7 +2519,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.94.0";
+const CMH_VERSION = "1.96.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4245,7 +4245,7 @@ let _hadWidgetChanges = false;
 let _widgetOrder = new Map(); // Map partKey -> document order (O(1) sort lookup)
 let _lastWidgetSig = null;    // last widget state signature, to skip no-op re-renders
 let _widgetDrag = null;
-let _widgetDomBaseline = null;   // Array of {widget, part, parent}: each part's load-time DOM home, for reset.
+let _widgetDomBaseline = null;   // Resettable widgets with each load-time parent child order.
 let _widgetFirstChangeAt = null; // ISO time of the 0 -> >0 layout-change transition (null while clean).
 
 function _cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, "\\$&"); }
@@ -4308,6 +4308,9 @@ function widgetInfo(el) {
 }
 function _widgetDragOptIn(slot, widget) {
   return !!(widget && (widget.hasAttribute("data-cm-draggable") || slot.hasAttribute("data-cm-draggable")));
+}
+function _widgetResetOptIn(widget) {
+  return !!(widget && (widget.hasAttribute("data-cm-draggable") || widget.querySelector("[data-cm-slot][data-cm-draggable]")));
 }
 function _widgetDragPartFromEvent(e) {
   if (e.button !== 0 || (e.pointerType && e.pointerType !== "mouse")) return null;
@@ -4474,41 +4477,71 @@ function _snapshotWidgetState() {
     if (_widgetBaseline.has(key)) return;   // first-seen wins, matching indexWidgetParts dedupe
     _widgetBaseline.set(key, _partSlotCanon(p));
   });
-  // A parallel DOM baseline for draggable widgets: each part's element and its original
-  // parent, in document order, so resetWidgetMoves can put every card back where it loaded.
+  // A parallel DOM baseline for draggable widgets: each parent that directly held a part
+  // at load time, with full child order, so resets preserve interleaved non-part nodes.
   _widgetDomBaseline = [];
-  root.querySelectorAll("[data-cm-widget][data-cm-draggable] [data-cm-part]").forEach((p) => {
-    _widgetDomBaseline.push({ widget: p.closest("[data-cm-widget]"), part: p, parent: p.parentElement });
+  root.querySelectorAll("[data-cm-widget]").forEach((widget) => {
+    if (!_widgetResetOptIn(widget)) return;
+    const parents = [];
+    const seenParents = new Set();
+    widget.querySelectorAll("[data-cm-part]").forEach((p) => {
+      const parent = p.parentElement;
+      if (!parent || seenParents.has(parent)) return;
+      seenParents.add(parent);
+      parents.push({ parent, children: Array.from(parent.childNodes) });
+    });
+    if (parents.length) _widgetDomBaseline.push({ widget, name: widget.getAttribute("data-cm-widget") || "widget", parents });
   });
 }
 // Return the ISO time of the current widget layout change run (null when the layout matches
 // its load baseline), so the sidebar can show when a board was first edited.
 function widgetFirstChangeAt() { return _widgetFirstChangeAt; }
-// Put every recorded part of one widget back into its original parent slot in load order,
-// then re-run the mutation pass so the sidebar, badge, and reset buttons resync.
-function resetWidgetMoves(widgetEl) {
-  if (!widgetEl || !_widgetDomBaseline) return;
-  _widgetDomBaseline.forEach((rec) => {
-    if (rec.widget !== widgetEl || !rec.part || !rec.parent) return;
-    rec.parent.appendChild(rec.part);
+// Put one widget's recorded parent children back in load order, then re-run the
+// mutation pass so the sidebar, badge, and reset buttons resync.
+function _restoreWidgetDomBaseline(rec) {
+  let restored = false;
+  rec.parents.forEach((group) => {
+    if (!group.parent || !group.children) return;
+    let anchor = null;
+    for (let i = group.children.length - 1; i >= 0; i--) {
+      const child = group.children[i];
+      if (!child) continue;
+      group.parent.insertBefore(child, anchor);
+      anchor = child;
+      restored = true;
+    }
   });
-  _onWidgetMutation();
+  return restored;
+}
+function resetWidgetMoves(widgetEl) {
+  if (!widgetEl || !_widgetDomBaseline) return false;
+  const changed = new Set(widgetStateChanges().map((ch) => ch.widget));
+  const name = widgetEl.getAttribute("data-cm-widget") || "widget";
+  const rec = _widgetDomBaseline.find((item) => item.widget === widgetEl);
+  if (!rec || !changed.has(name)) return false;
+  const restored = _restoreWidgetDomBaseline(rec);
+  if (restored) _onWidgetMutation();
+  return restored;
 }
 function resetAllWidgetMoves() {
-  if (!_widgetDomBaseline || !widgetStateChanges().length) return false;
+  if (!_widgetDomBaseline) return false;
+  const changed = new Set(widgetStateChanges().map((ch) => ch.widget));
+  if (!changed.size) return false;
+  let restored = false;
   _widgetDomBaseline.forEach((rec) => {
-    if (!rec.part || !rec.parent) return;
-    rec.parent.appendChild(rec.part);
+    if (!changed.has(rec.name)) return;
+    restored = _restoreWidgetDomBaseline(rec) || restored;
   });
-  _onWidgetMutation();
-  return true;
+  if (restored) _onWidgetMutation();
+  return restored;
 }
 // Show a "Reset moves" button on each draggable widget that currently differs from its load
 // baseline, and remove it once the widget is clean again. The button is cm-skip and is not a
 // data-cm-part, so it never enters the layout signature and cannot loop the MutationObserver.
 function _syncWidgetResetButtons() {
   const changed = new Set(((typeof widgetStateChanges === "function") ? widgetStateChanges() : []).map((ch) => ch.widget));
-  root.querySelectorAll("[data-cm-widget][data-cm-draggable]").forEach((w) => {
+  root.querySelectorAll("[data-cm-widget]").forEach((w) => {
+    if (!_widgetResetOptIn(w)) return;
     const has = changed.has(w.getAttribute("data-cm-widget") || "widget");
     let btn = w.querySelector(":scope > .cm-widget-reset");
     if (has && !btn) {

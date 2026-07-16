@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.94.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.96.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.96.0] - 2026-07-16</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Clear now restores slot-level draggable boards to their load-time sibling order, including interleaved non-part nodes, while clean boards are left untouched. (CMH-BOARD-05)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.94.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Authors can set <code>data-cm-density=&quot;compact&quot;</code> or <code>data-cm-density=&quot;comfortable&quot;</code> on <code>#commentRoot</code> to tune review chrome spacing and font scale through shared <code>--cp-chrome-*</code> tokens, while documents without the attribute keep the existing default density. (CMH-DENSITY-01)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.93.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -428,8 +437,6 @@
               <li><code>tools/authoring/recommend_kind.py</code> now recommends <code>--kind report</code>, <code>--kind plan</code>, or <code>--kind slides</code> from filename and content signals, prints the evidence behind the recommendation, and emits advisory mismatch warnings when an explicit kind contradicts the signals without changing the chosen kind. (CMH-KIND-04)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.92.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -458,14 +465,7 @@
               <li><code>new_document.py --out</code> now preserves an existing target by writing the first free <code>-2</code> / <code>-3</code> suffixed sibling unless <code>--force</code> is supplied, and derives <code>--key auto</code> from that final resolved path so colliding document creations do not share keys. (CMH-TOOL-18)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.85.0] - 2026-07-16</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Updated stale shipped-doc tool paths, including the plugin README&#x27;s validation, document-creation, and handled-comment paths, to the current <code>tools/&lt;topic&gt;/...</code> buckets. Added a docs test so future tool-layout refactors cannot leave stale README paths behind. (CMH-DOC-15)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">87 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">88 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
