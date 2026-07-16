@@ -82,6 +82,9 @@ test("one command regenerates and checks all tutorial screenshots, deterministic
   const r2 = capture(outB);
   expect(r2.error, String(r2.error)).toBeFalsy();
   expect(r2.status, r2.stderr).toBe(0);
+  for (const name of SHOTS) {
+    expect(fs.readFileSync(path.join(outB, `garden-${name}.png`)).equals(firstCapture.get(name))).toBe(true);
+  }
   const cleanB = check(outB);
   expect(cleanB.error, String(cleanB.error)).toBeFalsy();
   expect(cleanB.status, cleanB.stderr).toBe(0);

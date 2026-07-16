@@ -143,8 +143,8 @@ npm run shots
 `garden-01-top-light.png` through `garden-09-copyall.png` into
 `../pkg/skills/commentable-html/docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
 capture clock, random seed, viewport, locale, timezone, reduced motion, browser font rendering flags,
-and capture fonts, then normalizes PNG output so repeated runs are reviewable on the same browser
-environment. Check committed screenshots for drift without rewriting them:
+and capture fonts, then normalizes PNG output so repeated runs produce byte-identical files on the
+same browser environment. Check committed screenshots for drift without rewriting them:
 
 ```powershell
 npm run shots:check
