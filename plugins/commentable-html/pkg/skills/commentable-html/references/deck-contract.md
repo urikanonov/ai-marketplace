@@ -69,11 +69,17 @@ vendored frontend-slides references before authoring slide layouts:
 - `vendor/frontend-slides/STYLE_PRESETS.md`
 - `vendor/frontend-slides/bold-template-pack/`
 
-Keep the style's palette, layout, spacing rhythm, and component grammar, but do not copy remote font
+Keep the style's palette, layout, spacing rhythm, and component grammar, but do not keep remote font
 loads from the vendored examples. The upstream templates and style packs can include
 `<link href="https://fonts.googleapis.com/...">`, `https://api.fontshare.com/...`, `@import`, or
-`@font-face url(https://...)` examples. Those are not allowed in commentable decks: `deck_validate.py`
-rejects remote fonts, remote CSS imports, and protocol-relative resource URLs. Use system fonts by default:
+`@font-face url(https://...)` examples. Run the deterministic fixer before validation:
+
+```bash
+python tools/deck/deck_fix_fonts.py deck.html
+```
+
+The fixer strips remote font links, remote CSS imports, and remote `@font-face` blocks, then maps copied
+font stacks to system stacks:
 
 - Serif or editorial faces: `"Iowan Old Style","Palatino Linotype","Georgia",serif`.
 - Slab, display, or script faces: `"Impact","Rockwell","Arial Black",sans-serif` with heavier

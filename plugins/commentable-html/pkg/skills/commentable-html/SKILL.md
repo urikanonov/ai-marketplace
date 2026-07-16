@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.98.0`
+**Version:** `1.100.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -41,6 +41,7 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 | --- | --- | --- |
 | New document from a content fragment | `tools/authoring/new_document.py` | Builds the shell, configures `#commentRoot`, stamps `commentable-html-kind`, bakes syntax highlighting, surfaces validator warnings, validates before writing, and suffixes a colliding `--out` unless `--force` is set. |
 | New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids), bakes highlighting, accepts the same optional `--brand`, and self-validates. This is the ONLY tool that creates a real deck. |
+| Fix copied deck web fonts | `tools/deck/deck_fix_fonts.py` | Removes remote font loaders and maps copied web-font stacks to the approved deterministic system stacks before deck validation. |
 | Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer, wraps or stamps a content root, preserves host content, bakes highlighting, accepts the same optional `--brand`, and validates before writing. |
 | Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attributes. |
 
@@ -61,6 +62,9 @@ python tools/authoring/upgrade.py existing-commentable.html
 
 # Real fixed-stage deck, not a flat slides-kind document.
 python tools/deck/deck_scaffold.py --content slides.html --label "My Deck" --source my-deck.html --out my-deck.html
+
+# Strip copied web-font loaders and map font stacks before strict deck validation.
+python tools/deck/deck_fix_fonts.py my-deck.html
 ```
 
 `--key auto` derives a stable non-demo key; an explicit key must be unique per document on the same
@@ -177,12 +181,12 @@ This skill can build a real animated slide **deck** that is also a commentable-h
 
 - Use `tools/deck/deck_scaffold.py` to create the deck. It is create-only and mints stable slide ids.
 - Edit the deck **in place** on iteration so comments, handled ids, embedded comments, and slide ids survive. Never re-run the scaffold without `--force` unless you intentionally accept new slide ids and state loss.
-- Run `python tools/deck/deck_validate.py --strict <out>` before handoff.
-- Keep the deck body free of remote fonts, remote media/resource fetches, external scripts, remote CSS imports, inline event handlers, dangerous URL schemes, and the upstream SVG host script. Use system fonts or locally embedded `data:font/woff2` fonts only.
+- Run `python tools/deck/deck_fix_fonts.py <out>` after copying a frontend-slides style, then run `python tools/deck/deck_validate.py --strict <out>` before handoff.
+- Keep the deck body free of remote fonts, remote media/resource fetches, external scripts, remote CSS imports, inline event handlers, dangerous URL schemes, and the upstream SVG host script. Use deterministic system stacks from `deck_fix_fonts.py` or locally embedded `data:font/woff2` fonts only.
 - For PPTX input, extract with the installed `pptx` skill when available, otherwise the local fallback, then pass extracted text through `tools/deck/pptx_to_fragment.py` so strings are HTML-escaped before they enter the deck.
 - Use **Export Offline** for corporate-safe sharing after mermaid diagrams and charts have rendered.
 
-See [Deck runtime interface contract](references/deck-contract.md) for author-time commands, PPTX conversion limits, slide design and font mapping, the runtime interface, stable slide-id contract, controller globals, anchoring model, script and resource restrictions, contrast validation, and limitations. Vendored engine resync is a maintainer task documented in the source repo.
+See [Deck runtime interface contract](references/deck-contract.md) for author-time commands, PPTX conversion limits, deterministic font fixing, the runtime interface, stable slide-id contract, controller globals, anchoring model, script and resource restrictions, contrast validation, and limitations. Vendored engine resync is a maintainer task documented in the source repo.
 
 ## Output modes and exports
 
