@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.117.1";
+const CMH_VERSION = "1.118.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7134,11 +7134,17 @@ function setupDeck() {
   if (current < 0) current = 0;
   let commentMode = false;
   let counter = null, prevBtn = null, nextBtn = null;
+  let edgePrevBtn = null, edgeNextBtn = null;
   let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
+  const stageFocusTarget = viewport || stage;
   const slideTitles = slides.map((slide, i) => slideTitle(slide, i));
   // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
   // the present-mode default applied below.
   root.classList.remove("cmh-deck-comment-mode");
+  if (stageFocusTarget && stageFocusTarget.setAttribute) {
+    stageFocusTarget.tabIndex = -1;
+    if (!stageFocusTarget.getAttribute("aria-label")) stageFocusTarget.setAttribute("aria-label", "Slide stage");
+  }
 
   function slideTitle(slide, index) {
     const explicit = slide.getAttribute("data-slide-title") || slide.getAttribute("aria-label");
@@ -7155,6 +7161,15 @@ function setupDeck() {
     const x = (vw - 1920 * scale) / 2;
     const y = (vh - 1080 * scale) / 2;
     stage.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
+    syncEdgeNavPosition();
+  }
+
+  function focusStage() {
+    if (!stageFocusTarget || !stageFocusTarget.focus || commentMode || hasBlockingDeckChrome()) return;
+    try { stageFocusTarget.focus({ preventScroll: true }); }
+    catch (e) {
+      try { stageFocusTarget.focus(); } catch (_e) {}
+    }
   }
 
   function slideIdAt(index) {
@@ -7210,6 +7225,7 @@ function setupDeck() {
     if (nextBtn) nextBtn.disabled = index === slides.length - 1;
     syncOverview();
     syncSlideHash();
+    hideEdgeNav();
     // Fire only on a real move (a changed active slide), never for the initial render or a
     // re-selection of the already-active slide.
     if (changed) {
@@ -7222,6 +7238,98 @@ function setupDeck() {
   function showById(id) {
     const i = indexBySlideId(id);
     return i >= 0 ? show(i) : false;
+  }
+
+  function hasBlockingDeckChrome() {
+    return !!(
+      (overview && !overview.hidden)
+      || document.querySelector(".cm-composer, .cm-modal-overlay")
+    );
+  }
+
+  function stageHasFocus() {
+    return !!stageFocusTarget && document.activeElement === stageFocusTarget;
+  }
+
+  function syncEdgeNavPosition() {
+    if (!edgePrevBtn || !edgeNextBtn || !viewport || !viewport.getBoundingClientRect) return;
+    const rect = viewport.getBoundingClientRect();
+    const top = Math.max(20, rect.top + rect.height / 2);
+    edgePrevBtn.style.top = top + "px";
+    edgeNextBtn.style.top = top + "px";
+    edgePrevBtn.style.left = Math.max(12, rect.left + 16) + "px";
+    edgeNextBtn.style.left = Math.max(12, rect.right - 64) + "px";
+  }
+
+  function hideEdgeNav() {
+    [edgePrevBtn, edgeNextBtn].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.remove("is-active");
+      btn.style.removeProperty("--cmh-deck-edge-opacity");
+    });
+  }
+
+  function syncEdgeNavButton(btn, strength, enabled) {
+    if (!btn) return;
+    const active = enabled && strength > 0;
+    btn.classList.toggle("is-active", active);
+    if (active) btn.style.setProperty("--cmh-deck-edge-opacity", String((0.2 + strength * 0.75).toFixed(3)));
+    else btn.style.removeProperty("--cmh-deck-edge-opacity");
+  }
+
+  function updateEdgeNavFromPointer(clientX, clientY) {
+    if (!edgePrevBtn || !edgeNextBtn || !viewport || commentMode || hasBlockingDeckChrome()) {
+      hideEdgeNav();
+      return;
+    }
+    const rect = viewport.getBoundingClientRect();
+    const within = clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+    if (!within) {
+      hideEdgeNav();
+      return;
+    }
+    syncEdgeNavPosition();
+    const threshold = Math.min(168, Math.max(80, rect.width * 0.12));
+    const prevStrength = Math.max(0, Math.min(1, (threshold - (clientX - rect.left)) / threshold));
+    const nextStrength = Math.max(0, Math.min(1, (threshold - (rect.right - clientX)) / threshold));
+    syncEdgeNavButton(edgePrevBtn, prevStrength, current > 0);
+    syncEdgeNavButton(edgeNextBtn, nextStrength, current < slides.length - 1);
+  }
+
+  function makeEdgeNav() {
+    if (edgePrevBtn && edgeNextBtn) return;
+    const prev = document.createElement("button");
+    prev.type = "button";
+    prev.className = "cm-skip cmh-deck-edge-nav cmh-deck-edge-nav-prev";
+    prev.textContent = "<";
+    prev.setAttribute("aria-label", "Prev slide");
+    prev.title = "Prev slide";
+    prev.addEventListener("click", () => {
+      if (show(current - 1)) focusStage();
+    });
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "cm-skip cmh-deck-edge-nav cmh-deck-edge-nav-next";
+    next.textContent = ">";
+    next.setAttribute("aria-label", "Next slide");
+    next.title = "Next slide";
+    next.addEventListener("click", () => {
+      if (show(current + 1)) focusStage();
+    });
+    edgePrevBtn = prev;
+    edgeNextBtn = next;
+    document.body.appendChild(prev);
+    document.body.appendChild(next);
+    CMH_INJECTED_CHROME.add(prev);
+    CMH_INJECTED_CHROME.add(next);
+    syncEdgeNavPosition();
+    document.addEventListener("mousemove", (e) => updateEdgeNavFromPointer(e.clientX, e.clientY));
+    viewport.addEventListener("mouseleave", hideEdgeNav);
+    viewport.addEventListener("pointerdown", (e) => {
+      if (commentMode || hasBlockingDeckChrome() || isEditableTarget(e.target)) return;
+      focusStage();
+      updateEdgeNavFromPointer(e.clientX, e.clientY);
+    });
   }
 
   function overviewCards() {
@@ -7386,8 +7494,9 @@ function setupDeck() {
     }
     document.addEventListener("click", overviewDismiss);
     syncOverview();
+    focusOverviewCard(current);
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => focusOverviewCard(current));
-    else focusOverviewCard(current);
+    hideEdgeNav();
   }
 
   function closeOverview() {
@@ -7416,6 +7525,7 @@ function setupDeck() {
 
   show(current);
   fitStage();
+  makeEdgeNav();
   if (typeof ResizeObserver === "function") {
     new ResizeObserver(fitStage).observe(viewport || document.documentElement);
   } else {
@@ -7448,8 +7558,13 @@ function setupDeck() {
       toggleOverview();
       return;
     }
-    if (commentMode || e.defaultPrevented || isEditableTarget(e.target)) return;
-    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+    if (!commentMode && !e.defaultPrevented && !hasBlockingDeckChrome() && stageHasFocus()
+      && (e.key === "Enter" || e.key === " " || e.key === "Spacebar")) {
+      if (show(current + 1)) e.preventDefault();
+      return;
+    }
+    if (commentMode || e.defaultPrevented || isEditableTarget(e.target) || hasBlockingDeckChrome()) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown") {
       if (show(current + 1)) e.preventDefault();
     } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
       if (show(current - 1)) e.preventDefault();
@@ -7482,8 +7597,17 @@ function setupDeck() {
     try { if (on) openSidebar(); else closeSidebar(); } catch (e) { /* sidebar helpers are optional */ }
     toggle.setAttribute("aria-pressed", String(on));
     toggle.classList.toggle("cmh-deck-mode-on", on);
+    hideEdgeNav();
     // Comment mode narrows the stage (the sidebar takes width); refit after layout settles.
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(fitStage); else fitStage();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        fitStage();
+        if (!on) focusStage();
+      });
+    } else {
+      fitStage();
+      if (!on) focusStage();
+    }
   }
   const toggle = document.createElement("button");
   toggle.className = "cm-skip cmh-deck-mode-toggle";
@@ -7509,7 +7633,10 @@ function setupDeck() {
   nav.className = "cm-skip cmh-deck-nav";
   const prev = document.createElement("button");
   prev.type = "button"; prev.textContent = "Prev"; prev.setAttribute("aria-label", "Prev slide");
-  prev.addEventListener("click", () => { show(current - 1); prev.blur(); });
+  prev.addEventListener("click", () => {
+    if (show(current - 1)) focusStage();
+    prev.blur();
+  });
   prevBtn = prev;
   counter = document.createElement("span");
   counter.className = "cmh-deck-count";
@@ -7527,7 +7654,10 @@ function setupDeck() {
   overviewBtn = overviewControl;
   const next = document.createElement("button");
   next.type = "button"; next.textContent = "Next"; next.setAttribute("aria-label", "Next slide");
-  next.addEventListener("click", () => { show(current + 1); next.blur(); });
+  next.addEventListener("click", () => {
+    if (show(current + 1)) focusStage();
+    next.blur();
+  });
   nextBtn = next;
   prev.disabled = current === 0;
   next.disabled = current === slides.length - 1;
@@ -7535,6 +7665,7 @@ function setupDeck() {
   // Focus order: the toggle sits at the top of the DOM (top-right visually), the nav bar at the
   // end (bottom visually), so keyboard focus flows toggle -> slide content -> navigation.
   document.body.appendChild(nav);
+  focusStage();
 }
 if (IS_DECK) {
   setupDeck();

@@ -3,7 +3,7 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { fileUrl, ready, stageDeck, addTextComment, installClipboardCapture, startStaticServer, readDownload, PYTHON, SKILL } from "./helpers.js";
+import { fileUrl, ready, stageDeck, addTextComment, openComposerFor, installClipboardCapture, startStaticServer, readDownload, PYTHON, SKILL } from "./helpers.js";
 
 // Three slides with distinct, stable ids and commentable text (CMH-DECK-05).
 const SLIDES =
@@ -107,6 +107,53 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await page.evaluate(() => { location.hash = "#slide-00000001"; });
     await expect.poll(() => activeId(page)).toBe("slide-00000001");
     await expect(page.locator(".cmh-deck-count")).toHaveText("1 / 3");
+  });
+
+  test("CMH-DECK-20: edge hover arrows reveal, click-navigate, and Enter/Space advance only from the stage", async ({ page }) => {
+    await openDeck(page);
+    const viewport = page.locator(".deck-viewport");
+    const prevEdge = page.locator(".cmh-deck-edge-nav-prev");
+    const nextEdge = page.locator(".cmh-deck-edge-nav-next");
+
+    await expect(prevEdge).toBeHidden();
+    await expect(nextEdge).toBeHidden();
+
+    const box = await viewport.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(nextEdge).toBeHidden();
+
+    await page.mouse.move(box.x + box.width - 8, box.y + box.height / 2);
+    await expect(nextEdge).toBeVisible();
+    await nextEdge.click();
+    expect(await activeId(page)).toBe("slide-00000002");
+
+    await page.mouse.move(box.x + 8, box.y + box.height / 2);
+    await expect(prevEdge).toBeVisible();
+    await prevEdge.click();
+    expect(await activeId(page)).toBe("slide-00000001");
+
+    await page.evaluate(() => {
+      const probe = document.createElement("div");
+      probe.id = "cmh-deck-enter-probe";
+      probe.tabIndex = 0;
+      document.body.appendChild(probe);
+      probe.focus();
+    });
+    await page.keyboard.press("Enter");
+    expect(await activeId(page)).toBe("slide-00000001");
+
+    await viewport.focus();
+    await page.keyboard.press("Enter");
+    expect(await activeId(page)).toBe("slide-00000002");
+    await viewport.focus();
+    await page.keyboard.press("Space");
+    expect(await activeId(page)).toBe("slide-00000003");
+
+    await page.locator(".cmh-deck-mode-toggle").click();
+    const composer = await openComposerFor(page, ".slide.active p");
+    await composer.locator("textarea").press("Enter");
+    await expect(composer).toBeVisible();
+    expect(await activeId(page)).toBe("slide-00000003");
   });
 
   test("CMH-DECK-05d: typing in an editable field does not navigate; deck chrome is installed once", async ({ page }) => {
