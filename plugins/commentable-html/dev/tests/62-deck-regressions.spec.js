@@ -334,7 +334,7 @@ test("CMH-DECK-SHOWCASE-02: showcase deck mounts in deck mode and is commentable
   try {
     await expect(page).toHaveTitle(/Commentable HTML Showcase/);
     expect(await page.evaluate(() => window.__cmhDeck.slideCount())).toBeGreaterThanOrEqual(14);
-    await expect(page.locator(".slide.active .showcase-comment-target")).toContainText(/review loop/i);
+    await expect(page.locator(".slide.active .showcase-comment-target")).toContainText(/paste one bundle back/i);
     await expect(page.locator(".cmh-deck-mode-toggle")).toBeVisible();
     await expect(page.locator(".cmh-deck-nav")).toBeVisible();
 

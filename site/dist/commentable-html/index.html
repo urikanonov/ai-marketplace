@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.124.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.125.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,6 +415,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.125.0] - 2026-07-16</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Simplified the showcase deck copy: shorter install guidance, plain-language prompts, clearer &quot;paste Copy all and press Enter&quot; review flow, and fewer repeated account/server comparisons. (deck issue #290)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.124.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -422,6 +429,8 @@
               <li>Deck table cells now animate a subtle hover highlight that keeps the cell text readable while making individual review targets easier to spot in the slide. (CMH-DECK-21)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.119.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
@@ -430,8 +439,6 @@
               <li>Deck triage board: the Locked-column Add Comment affordance no longer overlaps the Reset moves button (issue #294).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.118.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -465,15 +472,7 @@
               <li>Reworked the showcase deck&#x27;s Act 4 &quot;behind the scenes&quot; run so it now teaches the deterministic region split, the website-style portability model, how the skill is assembled from <code>SKILL.md</code>, on-demand references, and authoring/validation tools, plus the cross-platform Playwright-and-Python validation methodology behind the shipped experience. (CMH-DECK-SHOWCASE-06)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.115.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The runtime footer now shows a small copy icon that copies the creating AI agent&#x27;s session id to the clipboard when the document carries a <code>commentable-html-session-id</code> provenance stamp; the button&#x27;s accessible label and tooltip name the agent (Copilot or Claude), and the control never leaks into a Plain HTML export. (CMH-FOOT-04)</li>
-              <li>The document-producing tools (<code>new_document.py</code>, <code>deck_scaffold.py</code>) stamp that session id by default, taking it from <code>--session-id</code> or, when absent, an auto-detected environment variable (<code>COPILOT_AGENT_SESSION_ID</code> for Copilot, <code>CLAUDE_CODE_SESSION_ID</code> for Claude). <code>--agent</code> overrides the label and <code>--no-session-id</code> opts out. When several agents&#x27; session ids are visible at once (a nested launch), the agent actually running the tool wins. A local, non-CI live check that drives the real <code>copilot</code>/<code>claude</code> CLIs is at <code>dev/tests/copilot_e2e_check.py</code> and <code>dev/tests/claude_e2e_check.py</code>. (CMH-STAMP-04)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">104 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">105 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
