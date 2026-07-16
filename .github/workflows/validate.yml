@@ -152,6 +152,8 @@ jobs:
           python plugins/commentable-html/dev/tools/build.py
           --assets-dir plugins/commentable-html/dev/assets
           --out-dir plugins/commentable-html/pkg/skills/commentable-html --check --check-fixtures
+      - name: Verify commentable-html SPEC.md is in sync with spec partials
+        run: python plugins/commentable-html/dev/tools/build_spec.py --check
 
   # Lints every GitHub Actions workflow on each PR, so a broken workflow definition (bad expression,
   # undefined `needs`/context, shell mistake) is caught before it can fail a run on main - closing the
