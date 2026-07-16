@@ -192,6 +192,9 @@ from checks.theme_contrast import (  # noqa: F401,E402
     check_theme_contrast,
     theme_contrast_findings,
 )
+from checks.density import (  # noqa: F401,E402
+    check_density,
+)
 from checks.layer import (  # noqa: F401,E402
     _check_layer_descriptor,
     _layer_descriptor_data,
@@ -269,6 +272,9 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET):
         errors += e
         warnings += w
         e, w = check_theme_contrast(html)
+        errors += e
+        warnings += w
+        e, w = check_density(html)
         errors += e
         warnings += w
     return errors, warnings
