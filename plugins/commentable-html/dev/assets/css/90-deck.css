@@ -200,6 +200,9 @@ body.cmh-deck-present #menuComment {
   width: 20px;
   height: 20px;
 }
+#commentRoot[data-cmh-mode="deck"] .deck-viewport:focus {
+  outline: none;
+}
 .cmh-deck-nav {
   position: fixed;
   bottom: 16px;
@@ -239,6 +242,50 @@ body.cmh-deck-present #menuComment {
 .cmh-deck-nav button.cmh-deck-overview-on {
   border-color: var(--cp-accent, #2ecc71);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-accent, #2ecc71) 35%, transparent);
+}
+.cmh-deck-edge-nav {
+  position: fixed;
+  z-index: 100001;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--cp-border, #444);
+  background: color-mix(in srgb, var(--cp-surface, #222) 84%, transparent);
+  color: var(--cp-text, #fff);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-50%) scale(0.96);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s linear;
+}
+.cmh-deck-edge-nav.is-active {
+  opacity: var(--cmh-deck-edge-opacity, 0.72);
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+}
+.cmh-deck-edge-nav:hover,
+.cmh-deck-edge-nav:focus-visible {
+  opacity: 1;
+  border-color: var(--cp-accent, #2ecc71);
+  outline: none;
+}
+.cmh-deck-edge-nav:disabled,
+body.cmh-deck-overview-open .cmh-deck-edge-nav,
+body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 .cmh-deck-overview {
   position: fixed;
