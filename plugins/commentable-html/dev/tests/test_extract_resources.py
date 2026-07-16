@@ -568,6 +568,57 @@ class ExtractResourcesTests(unittest.TestCase):
         self.assertFalse(os.path.exists(junction), "the junction itself must be removed")
         self.assertTrue(os.path.isfile(keep), "the junction target's file must be untouched")
 
+    # CMH-PKG-08: _make_writable must NOT descend into a junction nested in the tree (os.walk would,
+    # since junctions are not symlinks), so it never chmods files under the junction's external target.
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_make_writable_does_not_descend_into_nested_junction(self):
+        import stat as _stat
+        import subprocess
+
+        tree = os.path.join(self.tmp, "tree")
+        os.makedirs(tree)
+        target = os.path.join(self.tmp, "outside")
+        os.makedirs(target)
+        ext = os.path.join(target, "ext.txt")
+        with open(ext, "w", encoding="utf-8") as fh:
+            fh.write("external\n")
+        os.chmod(ext, _stat.S_IREAD)  # read-only; _make_writable would clear this if it descended
+        self.addCleanup(lambda: os.chmod(ext, _stat.S_IWRITE))
+        rc = subprocess.run(["cmd", "/c", "mklink", "/J", os.path.join(tree, "j"), target],
+                            capture_output=True, text=True)
+        if rc.returncode != 0:
+            self.skipTest("could not create a junction: " + rc.stderr.strip())
+        before = os.stat(ext).st_mode
+        extract_resources._make_writable(tree)
+        self.assertEqual(os.stat(ext).st_mode, before,
+                         "a nested junction's external target must not be modified")
+
+    # CMH-PKG-08: a BROKEN junction (target removed) is detected via lexists and removed, not skipped
+    # (os.path.exists is False and os.path.islink is False for it, so the old guard would leak it).
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_broken_junction_is_removed_not_skipped(self):
+        import subprocess
+
+        target = os.path.join(self.tmp, "gone")
+        os.makedirs(target)
+        junction = os.path.join(self.skill, "bj")
+        rc = subprocess.run(["cmd", "/c", "mklink", "/J", junction, target],
+                            capture_output=True, text=True)
+        if rc.returncode != 0:
+            self.skipTest("could not create a junction: " + rc.stderr.strip())
+        os.rmdir(target)  # now `junction` is a broken junction
+        self.assertFalse(os.path.exists(junction), "sanity: exists is False for a broken junction")
+        self.assertTrue(os.path.lexists(junction), "sanity: lexists is True for a broken junction")
+        extract_resources._rmtree_retry(junction, 1, 0.001, lambda *_: None, None)
+        self.assertFalse(os.path.lexists(junction), "a broken junction must be removed, not skipped")
+
+    # CMH-PKG-05: clear_markers sweeps a pid-suffixed .ok.<pid>.tmp leftover (not just .ok.tmp).
+    def test_clear_markers_removes_pid_suffixed_tmp(self):
+        tmp = self._marker("1.0.0") + ".98765.tmp"
+        open(tmp, "w").close()
+        extract_resources.clear_markers(self.skill)
+        self.assertFalse(os.path.exists(tmp), "a pid-suffixed .tmp leftover must be cleared")
+
     # CMH-PKG-05: the rollback itself retries a transient lock and restores the previous version.
     def test_rollback_survives_transient_lock_during_restore(self):
         _make_zip(self.zip, {"tools/a.py": "x\n", "dist/c.html": "<html></html>\n"})

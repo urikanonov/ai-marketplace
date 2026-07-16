@@ -208,11 +208,13 @@ def _make_writable(path):
             return
         _add_write_bit(path, is_dir=True)
         for root, dirs, files in os.walk(path):
+            # Prune reparse points (symlinks/junctions) from the walk IN PLACE so os.walk does not
+            # descend into their targets - os.walk's followlinks=False only skips POSIX symlinks, not
+            # Windows junctions (os.path.islink is False for a junction), so without this it would
+            # walk into and chmod files under the junction's external target.
+            dirs[:] = [d for d in dirs if not _is_reparse(os.path.join(root, d))]
             for name in dirs:
-                p = os.path.join(root, name)
-                if _is_reparse(p):
-                    continue  # do not descend into a junction's target
-                _add_write_bit(p, is_dir=True)
+                _add_write_bit(os.path.join(root, name), is_dir=True)
             for name in files:
                 _add_write_bit(os.path.join(root, name), is_dir=False)
     except OSError:
@@ -223,7 +225,7 @@ def _rmtree_retry(path, retries, backoff, sleep, deadline):
     """Remove a directory tree, retrying a transient lock (do NOT ignore_errors, so a Defender lock
     is retried rather than silently leaving files behind). Clears read-only attributes first. A
     reparse point (symlink/junction) is unlinked as itself, never followed into its target."""
-    if not os.path.exists(path) and not os.path.islink(path):
+    if not os.path.lexists(path):  # lexists is True for a broken symlink/junction too
         return
     _make_writable(path)
 
@@ -252,7 +254,7 @@ def clear_markers(skill_dir):
     for name in names:
         if not name.startswith(MARKER_PREFIX):
             continue
-        if name.endswith(MARKER_SUFFIX) or name.endswith(MARKER_SUFFIX + ".tmp"):
+        if name.endswith(MARKER_SUFFIX) or name.endswith(".tmp"):
             p = os.path.join(skill_dir, name)
             try:
                 os.remove(p)
@@ -268,8 +270,10 @@ def _write_marker(skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_B
                   sleep=time.sleep, deadline=None):
     """Write the version marker with a no-follow temp create (so a pre-planted `.tmp` symlink cannot
     redirect the write), then move it into place, retrying a transient lock on the final rename so a
-    Defender lock on the just-written temp does not cost an unnecessary full re-extract."""
-    tmp = marker_path(skill_dir, version) + ".tmp"
+    Defender lock on the just-written temp does not cost an unnecessary full re-extract. The temp
+    name is pid-unique so a leftover `.tmp` locked from a crashed run cannot block the O_EXCL create
+    (clear_markers still sweeps any stale one)."""
+    tmp = marker_path(skill_dir, version) + ".%d.tmp" % os.getpid()
     try:
         os.remove(tmp)
     except OSError:
@@ -308,7 +312,7 @@ def _cleanup_leftovers(skill_dir, retries, backoff, sleep, deadline):
         p = os.path.join(skill_dir, name)
         if name.endswith(BACKUP_SUFFIX):
             live = os.path.join(skill_dir, name[:-len(BACKUP_SUFFIX)])
-            if not os.path.exists(live) and not os.path.islink(live):
+            if not os.path.lexists(live):  # lexists catches a broken symlink/junction at live too
                 # A crash left the live dir missing but its backup intact: restore it (retried).
                 # If the restore fails, KEEP the backup - it is the only copy - for the next run.
                 try:
@@ -345,7 +349,7 @@ def _swap_into_place(skill_dir, staging, retries, backoff, sleep, deadline):
             dst = os.path.join(skill_dir, entry)
             bak = dst + BACKUP_SUFFIX
             _rmtree_retry(bak, retries, backoff, sleep, deadline)
-            had_old = os.path.exists(dst) or os.path.islink(dst)
+            had_old = os.path.lexists(dst)  # lexists so a broken junction at dst is renamed aside too
             if had_old:
                 _retry(lambda d=dst, b=bak: os.replace(d, b), retries, backoff, sleep, deadline)
             touched.append((dst, bak if had_old else None))

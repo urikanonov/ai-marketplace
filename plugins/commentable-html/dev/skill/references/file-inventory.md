@@ -27,7 +27,9 @@ read them online:
 
 ## Runtime tools
 
-Run any tool with `python tools\<name>.py --help` from `pkg\skills\commentable-html`.
+Run any tool with `python tools/<topic>/<name>.py --help` from the skill root (the
+`skills/commentable-html/` directory this reference ships in); the tools are grouped into topic
+subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/authoring/new_document.py`).
 
 - `validate.py` - structural invariant checker for generated files. Use `--strict` before handoff.
 - `mark_handled.py` - appends handled comment ids from explicit ids or a copied bundle.

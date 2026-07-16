@@ -206,9 +206,19 @@ class HookWiringTests(unittest.TestCase):
                                 agent + ": cold run must write the marker file")
                 self.assertTrue(os.path.isfile(os.path.join(sk, "tools", "validate", "validate.py")),
                                 agent + ": cold run must extract the tools tree")
-                # Warm run: marker present -> no work, still exit 0.
+                # Warm run: marker present -> the hot path must exit BEFORE spawning Python. Prove
+                # it by swapping the extractor for a canary that would leave a sentinel if invoked.
+                extractor = os.path.join(sandbox, "hooks", "extract_resources.py")
+                real_extractor = _read(extractor)
+                sentinel = os.path.join(sandbox, "canary-ran")
+                with open(extractor, "w", encoding="utf-8") as fh:
+                    fh.write("import sys\nopen(r'" + sentinel + "', 'w').close()\n")
                 r2 = subprocess.run([bash, "-c", command], cwd=sandbox, env=env, capture_output=True)
                 self.assertEqual(r2.returncode, 0, agent + " warm hook must exit 0")
+                self.assertFalse(os.path.exists(sentinel),
+                                 agent + ": warm hot path must not spawn Python (marker present)")
+                with open(extractor, "w", encoding="utf-8") as fh:
+                    fh.write(real_extractor)  # restore the real extractor for the marker-dir case
                 # Marker-DIRECTORY: replace the marker file with a directory of the same name; the
                 # -f guard must NOT treat it as done, so extraction runs again and restores a file.
                 os.remove(os.path.join(sk, marker_name))
@@ -217,6 +227,43 @@ class HookWiringTests(unittest.TestCase):
                 self.assertEqual(r3.returncode, 0, agent + " marker-dir hook must exit 0")
                 self.assertTrue(os.path.isfile(os.path.join(sk, marker_name)),
                                 agent + ": a marker-named directory must not suppress extraction")
+
+    # CMH-PKG-09: the shipped PowerShell launcher, run verbatim, cold-extracts, is not fooled by a
+    # marker-named directory (-PathType Leaf), and always exits 0. Windows-only; skips if no usable
+    # Python is discoverable (the launcher still exits 0, it just does no work).
+    @unittest.skipUnless(os.name == "nt", "Windows PowerShell launcher")
+    def test_powershell_launcher_extracts_end_to_end(self):
+        import shutil
+        import subprocess
+        import tempfile
+        pwsh = shutil.which("powershell") or shutil.which("pwsh")
+        if not pwsh:
+            self.skipTest("no PowerShell on PATH")
+        version = _version()
+        marker_name = ".skill-resources-" + version + ".ok"
+        sandbox = tempfile.mkdtemp(prefix="cmh-ps1-")
+        self.addCleanup(shutil.rmtree, sandbox, ignore_errors=True)
+        shutil.copytree(PLUGIN_DIR, sandbox, dirs_exist_ok=True)
+        sk = os.path.join(sandbox, "skills", "commentable-html")
+        ps1 = os.path.join(sandbox, "hooks", "session-extract.ps1")
+
+        def _run():
+            return subprocess.run([pwsh, "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
+                                   "Bypass", "-File", ps1, "-Version", version],
+                                  cwd=sandbox, capture_output=True)
+        r1 = _run()
+        self.assertEqual(r1.returncode, 0, "the launcher must always exit 0")
+        if not os.path.isfile(os.path.join(sk, marker_name)):
+            self.skipTest("the launcher found no usable Python on this host")
+        self.assertTrue(os.path.isfile(os.path.join(sk, "tools", "validate", "validate.py")),
+                        "cold run must extract the tools tree")
+        # Marker-DIRECTORY: -PathType Leaf must not treat it as done, so extraction runs again.
+        os.remove(os.path.join(sk, marker_name))
+        os.mkdir(os.path.join(sk, marker_name))
+        r2 = _run()
+        self.assertEqual(r2.returncode, 0, "the launcher must exit 0 on the marker-dir case")
+        self.assertTrue(os.path.isfile(os.path.join(sk, marker_name)),
+                        "a marker-named directory must not suppress the PowerShell launcher")
 
     def _assert_marker_before_python(self, cmd, label):
         cmd = self._strip_comments(cmd)

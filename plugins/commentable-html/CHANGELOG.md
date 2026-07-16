@@ -50,6 +50,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (`SKILL.md`/`LICENSE`) is missing from the stage. Added tests execute the shipped bash hook commands
   end-to-end (cold/warm/marker-dir) and pin the junction cleanup, the legacy prune, and the missing-file
   guards.
+- Round-9 review hardening (junction/reparse robustness): `_make_writable` now prunes reparse points
+  from its `os.walk` in place so it never DESCENDS into a junction's external target (a bare `continue`
+  did not stop the walk); cleanup/swap use `os.path.lexists` so a BROKEN junction (which `os.path.exists`
+  and `os.path.islink` both miss) is detected and removed instead of causing a later `os.replace` to
+  fail with WinError 5; and the marker temp file is pid-unique so a leftover locked `.tmp` cannot block
+  the marker write. Added tests: no-descend-into-junction, broken-junction removal, pid-suffixed `.tmp`
+  cleanup, an executable PowerShell-launcher smoke test (cold/marker-dir), and a canary proving the warm
+  hot path spawns no Python. Repointed remaining stale pre-relocation doc paths.
 
 ## [1.117.1] - 2026-07-16
 
