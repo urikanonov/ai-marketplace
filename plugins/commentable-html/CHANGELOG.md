@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.106.0] - 2026-07-16
+
+### Added
+
+- `deck/deck_validate.py` now emits a non-fatal per-slide or board-card overload advisory
+  when authored content exceeds tunable line or element budgets, helping authors split dense deck
+  content before sharing. (CMH-DECK-19)
+
 ## [1.105.0] - 2026-07-16
 
 ### Changed
