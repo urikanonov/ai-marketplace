@@ -3,6 +3,7 @@
 // flash, mermaid/diff pulses, and checklist/notes flashes do not animate. Asserted by emulating
 // the media feature and reading the computed animation duration of a real keyframed animation.
 import { test, expect } from "@playwright/test";
+import { readFileSync, readdirSync } from "fs";
 import { openInline, ready } from "./helpers.js";
 
 // Probe a real layer keyframe animation (cm-composer-flash, defined in 20-chrome.css) under a
@@ -27,20 +28,36 @@ test("reduced-motion clamps a keyframe animation to near-zero, normal keeps it (
   // clamps every animation to a near-instant duration.
   expect(normal).toBe("0.6s");
   expect(parseFloat(reduced)).toBeLessThan(0.05);
+  // The reset also neutralizes animation delay and multi-iteration loops (mermaid/diff pulses
+  // run 3x, checklist/notes flashes 2x) so nothing lingers or repeats under reduced motion.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const anim = await page.evaluate(() => {
+    const el = document.createElement("div");
+    el.style.animation = "cm-composer-flash 0.6s ease-out 0.4s 3";
+    document.body.appendChild(el);
+    const s = getComputedStyle(el);
+    const out = { delay: s.animationDelay, count: s.animationIterationCount };
+    el.remove();
+    return out;
+  });
+  expect(parseFloat(anim.delay)).toBeLessThan(0.05);
+  expect(anim.count).toBe("1");
 });
 
 test("reduced-motion also clamps transitions (CMH-A11Y-07)", async ({ page }) => {
   await openInline(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const dur = await page.evaluate(() => {
+  const t = await page.evaluate(() => {
     const el = document.createElement("div");
-    el.style.transition = "opacity 0.5s ease";
+    el.style.transition = "opacity 0.5s ease 0.3s";
     document.body.appendChild(el);
-    const d = getComputedStyle(el).transitionDuration;
+    const s = getComputedStyle(el);
+    const out = { dur: s.transitionDuration, delay: s.transitionDelay };
     el.remove();
-    return d;
+    return out;
   });
-  expect(parseFloat(dur)).toBeLessThan(0.05);
+  expect(parseFloat(t.dur)).toBeLessThan(0.05);
+  expect(parseFloat(t.delay)).toBeLessThan(0.05);
 });
 
 test("programmatic smooth scrolling becomes instant under reduced motion (CMH-A11Y-07)", async ({ page }) => {
@@ -77,4 +94,23 @@ test("programmatic smooth scrolling stays smooth without the preference (CMH-A11
     return captured;
   });
   expect(behavior).toBe("smooth");
+});
+
+test("no layer JS partial hardcodes behavior:\"smooth\" - all scroll sites route through cmScrollBehavior() (CMH-A11Y-07)", async () => {
+  // Static guard: the 4 runtime tests above exercise one scroll path each, but there are ~13
+  // programmatic scroll sites. Rather than click through all of them, assert at the source that
+  // none hardcodes a smooth behavior, so any new call site is forced through the reduced-motion
+  // -aware helper and a future regression is caught without a per-site browser test.
+  const dir = new URL("../assets/js/", import.meta.url);
+  const files = readdirSync(dir).filter((f) => f.endsWith(".js"));
+  const offenders = [];
+  let helperDefined = false;
+  for (const f of files) {
+    const src = readFileSync(new URL(f, dir), "utf8");
+    if (/function\s+cmScrollBehavior\s*\(/.test(src)) helperDefined = true;
+    const m = src.match(/behavior\s*:\s*["']smooth["']/g);
+    if (m) offenders.push(`${f}: ${m.length}`);
+  }
+  expect(helperDefined).toBe(true);
+  expect(offenders).toEqual([]);
 });

@@ -1676,14 +1676,18 @@ body.cmh-deck-present #menuComment {
 }
 /* ---------- Reduced motion (CMH-A11Y-07) ---------- */
 /* Honor the OS/browser "reduce motion" preference: clamp every non-essential animation and
-   transition to near-instant so the composer flash, mermaid/diff pulses, and checklist/notes
-   flashes do not animate for users who are motion-sensitive. Durations are clamped (not set to
-   none) so animations that establish a final state via keyframes still land correctly. */
+   transition (including their delays) to near-instant so the composer flash, mermaid/diff pulses,
+   and checklist/notes flashes do not animate for users who are motion-sensitive. Durations are
+   clamped (not set to none) so animations that establish a final state via keyframes still land
+   correctly. The deck slide stage additionally carries the vendored slide engine's own
+   reduced-motion rule (animations instant, a minimal essential slide transition). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 }

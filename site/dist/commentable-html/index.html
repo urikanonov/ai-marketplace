@@ -418,7 +418,7 @@
             <div class="rel-head"><h3>[1.87.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>The layer now honors the operating-system &quot;reduce motion&quot; setting (<code>prefers-reduced-motion: reduce</code>): non-essential animations and transitions (the composer flash, the mermaid and diff pulses, the checklist and notes flashes) are clamped to near-instant so they do not animate for motion-sensitive readers, while everything still lands in its final state. Programmatic smooth scrolls (jump-to-comment, scroll-to-top/bottom, deep links) also become instant under the preference. (CMH-A11Y-07)</li>
+              <li>The layer now honors the operating-system &quot;reduce motion&quot; setting (<code>prefers-reduced-motion: reduce</code>): non-essential animations and transitions (the composer flash, the mermaid and diff pulses, the checklist and notes flashes) - including their delays and repeat loops - are clamped to a near-instant single pass so they do not animate for motion-sensitive readers, while everything still lands in its final state. Programmatic smooth scrolls (jump-to-comment, scroll-to-top/bottom, deep links) also become instant under the preference. (CMH-A11Y-07)</li>
             </ul>
           </div>
           <div class="release">
