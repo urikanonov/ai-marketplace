@@ -580,6 +580,23 @@ def _validate_candidate(text, out_path, base_dir):
             os.remove(tmp_path)
 
 
+def _partition_val_warnings(warnings):
+    """Split validator warnings into (fatal, advisory). A theme-contrast near-miss or unresolved
+    advisory (CMH-THEME-02) carries a stable prefix and stays OUT of retrofit's hard-fail path,
+    so retrofit still writes the file; a bad-contrast ERROR is not a warning and continues to
+    block the retrofit. Every OTHER validator warning stays fatal, preserving retrofit's
+    clean-result guarantee."""
+    try:
+        import validate
+        prefix = validate.ADVISORY_PREFIX
+    except Exception:
+        prefix = "theme contrast advisory: "
+    fatal, advisory = [], []
+    for w in warnings:
+        (advisory if w.startswith(prefix) else fatal).append(w)
+    return fatal, advisory
+
+
 def main(argv):
     parser = argparse.ArgumentParser(
         prog="retrofit.py",
@@ -658,9 +675,12 @@ def main(argv):
 
     for warning in warnings:
         sys.stderr.write("retrofit warning: %s\n" % warning)
-    if errors or val_warnings:
+    fatal_warnings, advisories = _partition_val_warnings(val_warnings)
+    for advisory in advisories:
+        sys.stderr.write("retrofit advisory (non-fatal): %s\n" % advisory)
+    if errors or fatal_warnings:
         sys.stderr.write("retrofit: validation failed; target left unchanged:\n")
-        for warning in val_warnings:
+        for warning in fatal_warnings:
             sys.stderr.write("  WARNING: %s\n" % warning)
         for error in errors:
             sys.stderr.write("  ERROR: %s\n" % error)
