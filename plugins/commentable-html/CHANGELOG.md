@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.108.1] - 2026-07-16
+
+### Changed
+
+- Restructured the showcase deck's narrative flow: added a dedicated header/pitch slide,
+  moved the website-style medium comparison and shipped-example prompts earlier, removed
+  the redundant recap slide, and replaced the close with a "What's next?" hub plus a
+  trailing "Questions?" slide while keeping the shipped widget defaults unchanged.
+  (CMH-DECK-SHOWCASE-05)
 ## [1.107.0] - 2026-07-16
 
 ### Changed
