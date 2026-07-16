@@ -1,4 +1,4 @@
-# ai-marketplace
+# AI Marketplace
 
 > A personal marketplace of AI-oriented plugins for Claude Code and the GitHub Copilot CLI. Install reusable skills, hooks, and MCP servers by name.
 
