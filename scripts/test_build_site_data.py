@@ -335,6 +335,69 @@ class SkillZipTests(unittest.TestCase):
                 second = fh.read()
             self.assertEqual(first, second)
 
+    def test_git_tracked_build_excludes_untracked_developer_noise(self):
+        # The primary path uses git-tracked files, so untracked noise (.DS_Store, __pycache__)
+        # dropped into the skill tree can never leak into the ZIP and break a clean-checkout --check.
+        import subprocess as sp
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e",
+                       GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
+            try:
+                sp.run(["git", "init", "-q"], cwd=root, check=True)
+                sp.run(["git", "add", "-A"], cwd=root, check=True)
+                sp.run(["git", "commit", "-qm", "init"], cwd=root, env=env, check=True)
+            except (FileNotFoundError, sp.CalledProcessError):
+                self.skipTest("git not available")
+            skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+            with open(os.path.join(skill_dir, ".DS_Store"), "wb") as fh:
+                fh.write(b"\x00")
+            os.makedirs(os.path.join(skill_dir, "__pycache__"), exist_ok=True)
+            with open(os.path.join(skill_dir, "__pycache__", "x.pyc"), "wb") as fh:
+                fh.write(b"\x00")
+            arcs = [m[0] for m in bsd.build_skill_zip_members(root, skill_rel, "demo")]
+            self.assertIn("demo/SKILL.md", arcs)
+            self.assertNotIn("demo/.DS_Store", arcs)
+            self.assertFalse(any("__pycache__" in a or a.endswith(".pyc") for a in arcs), arcs)
+
+    def test_fallback_walk_excludes_developer_noise(self):
+        # Outside a git checkout the filtered-walk fallback still drops the same noise.
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill(root)
+            skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+            with open(os.path.join(skill_dir, ".DS_Store"), "wb") as fh:
+                fh.write(b"\x00")
+            os.makedirs(os.path.join(skill_dir, "__pycache__"), exist_ok=True)
+            with open(os.path.join(skill_dir, "__pycache__", "x.pyc"), "wb") as fh:
+                fh.write(b"\x00")
+            arcs = [m[0] for m in bsd.build_skill_zip_members(root, skill_rel, "demo")]
+            self.assertIn("demo/SKILL.md", arcs)
+            self.assertNotIn("demo/.DS_Store", arcs)
+            self.assertFalse(any("__pycache__" in a or a.endswith(".pyc") for a in arcs), arcs)
+
+    def test_missing_skill_dir_raises(self):
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaises(SystemExit):
+                bsd.build_skill_zip_members(root, "plugins/nope/pkg/skills/nope", "nope")
+
+    def test_skill_without_skill_md_at_root_raises(self):
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = "plugins/demo/pkg/skills/demo"
+            skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+            os.makedirs(skill_dir)
+            with open(os.path.join(skill_dir, "notes.md"), "w", encoding="utf-8") as fh:
+                fh.write("x\n")
+            with self.assertRaises(SystemExit):
+                bsd.build_skill_zip_members(root, skill_rel, "demo")
+
+    def test_zip_logical_members_treats_a_corrupt_archive_as_unreadable(self):
+        # A malformed archive must be treated as stale (None), not crash --check.
+        with tempfile.TemporaryDirectory() as root:
+            bad = os.path.join(root, "bad.zip")
+            with open(bad, "wb") as fh:
+                fh.write(b"not a zip file at all")
+            self.assertIsNone(bsd._zip_logical_members(bad))
+
     def test_committed_commentable_html_zip_has_top_level_skill_folder(self):
         # The real committed site zip must extract to a single commentable-html/ folder with SKILL.md
         # at its root, matching what Claude Desktop's skill import expects.

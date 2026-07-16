@@ -678,7 +678,8 @@ test("a skill plugin offers a Claude Desktop ZIP-download tab; the auto-updater 
   await desktopTab.click();
   const download = page.locator("#install .install-download a[download]");
   await expect(download).toBeVisible();
-  await expect(download).toHaveAttribute("href", /skills\/commentable-html\.zip$/);
+  // Exact per-page relative path: the plugin page lives one level deep, so the ZIP is under ../.
+  await expect(download).toHaveAttribute("href", "../skills/commentable-html.zip");
   // The auto-updater page keeps only the two CLI tabs.
   await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#install .install-tab", { hasText: "GitHub Copilot" })).toBeVisible();
