@@ -10,6 +10,251 @@ const imageAddBtn = document.getElementById("imageAddBtn");
 let pendingImage = null;
 let imageAddHideTimer = null;
 let imageActiveEl = null;
+let chartTooltipEl = null;
+let chartTooltipCanvas = null;
+let chartResizeBound = false;
+
+function _chartColors(canvas) {
+  const rootStyle = getComputedStyle(document.documentElement);
+  const canvasStyle = getComputedStyle(canvas);
+  return {
+    text: canvas.getAttribute("data-cmh-chart-text") || canvasStyle.color || rootStyle.getPropertyValue("--cp-text").trim() || "#1b1f3b",
+    axis: canvas.getAttribute("data-cmh-chart-axis") || rootStyle.getPropertyValue("--cp-border-strong").trim() || "#cbb48a",
+    grid: canvas.getAttribute("data-cmh-chart-grid") || rootStyle.getPropertyValue("--cp-border").trim() || "#dedede",
+    accent: canvas.getAttribute("data-cmh-chart-accent") || rootStyle.getPropertyValue("--cp-accent").trim() || "#b11f4b",
+    background: canvas.getAttribute("data-cmh-chart-background") || "#ffffff",
+  };
+}
+function _chartStep(max) {
+  if (!Number.isFinite(max) || max <= 0) return 1;
+  const rough = max / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+  const unit = rough / pow;
+  const nice = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10;
+  return nice * pow;
+}
+function _chartConfig(canvas) {
+  const sourceId = (canvas.getAttribute("data-cmh-chart-source") || "").trim();
+  let source = null;
+  if (sourceId) {
+    const el = document.getElementById(sourceId);
+    if (el) {
+      try { source = JSON.parse((el.textContent || "").trim() || "null"); }
+      catch (e) { console.warn("Could not parse chart data source #" + sourceId + ":", e); return null; }
+    }
+  }
+  if (!source) {
+    const raw = canvas.getAttribute("data-cmh-chart-points");
+    if (!raw) return null;
+    try { source = { points: JSON.parse(raw) }; }
+    catch (e) { console.warn("Could not parse inline chart data:", e); return null; }
+  }
+  const parsed = Array.isArray(source) ? source : source.points;
+  if (!Array.isArray(parsed) || !parsed.length) return null;
+  const points = parsed.map(function (point, index) {
+    const label = point && typeof point.label === "string" ? point.label.trim() : "";
+    const value = Number(point && point.value);
+    if (!label || !Number.isFinite(value)) return null;
+    return {
+      label: label,
+      value: value,
+      fill: point && typeof point.fill === "string" && point.fill.trim() ? point.fill.trim() : (index === 1 ? "#b11f4b" : "#e08aa4"),
+    };
+  }).filter(Boolean);
+  if (!points.length) return null;
+  const attrMax = Number(source.max != null ? source.max : canvas.getAttribute("data-cmh-chart-max"));
+  const max = Number.isFinite(attrMax) && attrMax > 0 ? attrMax : Math.max.apply(null, points.map(function (point) { return point.value; }));
+  const attrStep = Number(source.step != null ? source.step : canvas.getAttribute("data-cmh-chart-step"));
+  const unit = String(source.unit != null ? source.unit : (canvas.getAttribute("data-cmh-chart-unit") || "")).trim();
+  const tooltipUnit = String(source.tooltipUnit != null ? source.tooltipUnit : (canvas.getAttribute("data-cmh-chart-tooltip-unit") || unit)).trim();
+  return {
+    points: points,
+    max: max,
+    step: Number.isFinite(attrStep) && attrStep > 0 ? attrStep : _chartStep(max),
+    unit: unit,
+    tooltipUnit: tooltipUnit,
+    colors: _chartColors(canvas),
+  };
+}
+function _chartTooltip() {
+  if (!chartTooltipEl) {
+    chartTooltipEl = document.createElement("div");
+    chartTooltipEl.className = "cm-tooltip cmh-chart-tooltip cm-skip";
+    chartTooltipEl.setAttribute("role", "tooltip");
+    document.body.appendChild(chartTooltipEl);
+  }
+  return chartTooltipEl;
+}
+function hideChartTooltip() {
+  chartTooltipCanvas = null;
+  if (chartTooltipEl) chartTooltipEl.classList.remove("is-visible", "below");
+}
+function _showChartTooltip(canvas, point) {
+  const tip = _chartTooltip();
+  const rect = canvas.getBoundingClientRect();
+  const leftAtPoint = rect.left + point.x;
+  const topAtPoint = rect.top + point.top;
+  chartTooltipCanvas = canvas;
+  tip.textContent = point.tooltip;
+  tip.classList.remove("below");
+  tip.style.visibility = "hidden";
+  tip.classList.add("is-visible");
+  const tipWidth = tip.offsetWidth;
+  const tipHeight = tip.offsetHeight;
+  let left = leftAtPoint - tipWidth / 2;
+  let top = topAtPoint - tipHeight - 12;
+  if (top < 8) {
+    top = rect.top + point.bottom + 12;
+    tip.classList.add("below");
+  }
+  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - tipHeight - 8));
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+  tip.style.setProperty("--cm-tip-arrow", Math.max(10, Math.min(tipWidth - 10, leftAtPoint - left)) + "px");
+  tip.style.visibility = "";
+}
+function _chartHit(state, x, y) {
+  if (!state || !state.points) return null;
+  return state.points.find(function (point) {
+    return x >= point.left && x <= point.right && y >= point.top && y <= point.bottom;
+  }) || null;
+}
+function _chartSetHover(canvas, point) {
+  const state = canvas._cmhChart;
+  const nextIndex = point ? point.index : -1;
+  if (state && state.activeIndex === nextIndex) {
+    if (point) _showChartTooltip(canvas, point);
+    return;
+  }
+  renderInteractiveChart(canvas, nextIndex);
+  if (point) _showChartTooltip(canvas, canvas._cmhChart.points[nextIndex]);
+  else hideChartTooltip();
+}
+function _chartEventPoint(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: (event.clientX - rect.left) * ((canvas._cmhChart && canvas._cmhChart.width) || rect.width) / rect.width,
+    y: (event.clientY - rect.top) * ((canvas._cmhChart && canvas._cmhChart.height) || rect.height) / rect.height,
+  };
+}
+function renderInteractiveChart(canvas, activeIndex) {
+  const config = _chartConfig(canvas);
+  if (!config) return false;
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(canvas.clientWidth || Number(canvas.getAttribute("width")) || canvas.width || 760));
+  const height = Math.max(1, Math.round(canvas.clientHeight || Number(canvas.getAttribute("height")) || canvas.height || 340));
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return false;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = config.colors.background;
+  ctx.fillRect(0, 0, width, height);
+  const pad = { top: 26, right: 28, bottom: 54, left: 62 };
+  const plotWidth = Math.max(10, width - pad.left - pad.right);
+  const plotHeight = Math.max(10, height - pad.top - pad.bottom);
+  const startY = pad.top + plotHeight;
+  const ticks = [];
+  for (let tick = 0; tick <= config.max + 0.0001; tick += config.step) ticks.push(tick);
+  if (ticks[ticks.length - 1] !== config.max) ticks.push(config.max);
+  ctx.strokeStyle = config.colors.axis;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, startY);
+  ctx.lineTo(width - pad.right, startY);
+  ctx.stroke();
+  ctx.font = "16px Segoe UI, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  ticks.forEach(function (tick) {
+    const y = startY - (tick / config.max) * plotHeight;
+    ctx.strokeStyle = tick === 0 ? config.colors.axis : config.colors.grid;
+    ctx.lineWidth = tick === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(width - pad.right, y);
+    ctx.stroke();
+    ctx.fillStyle = config.colors.text;
+    ctx.fillText(String(tick), pad.left - 10, y);
+  });
+  const gap = Math.max(18, Math.min(36, plotWidth * 0.08));
+  const barWidth = Math.max(34, Math.min(92, (plotWidth - gap * (config.points.length - 1)) / config.points.length));
+  const used = barWidth * config.points.length + gap * (config.points.length - 1);
+  const startX = pad.left + Math.max(0, (plotWidth - used) / 2);
+  const renderedPoints = config.points.map(function (point, index) {
+    const x = startX + index * (barWidth + gap);
+    const barHeight = Math.max(0, (point.value / config.max) * plotHeight);
+    const top = startY - barHeight;
+    ctx.fillStyle = point.fill;
+    ctx.fillRect(x, top, barWidth, barHeight);
+    if (activeIndex === index) {
+      ctx.strokeStyle = config.colors.accent;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x - 1.5, top - 1.5, barWidth + 3, barHeight + 3);
+    }
+    ctx.fillStyle = config.colors.text;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.font = "bold 20px Segoe UI, sans-serif";
+    ctx.fillText(point.value + (config.unit ? " " + config.unit.replace(/^\/?\s*/, "") : ""), x + barWidth / 2, Math.max(18, top - 8));
+    ctx.textBaseline = "top";
+    ctx.font = "18px Segoe UI, sans-serif";
+    ctx.fillText(point.label, x + barWidth / 2, startY + 12);
+    return {
+      index: index,
+      label: point.label,
+      value: point.value,
+      tooltip: point.label + ": " + point.value + (config.tooltipUnit ? " " + config.tooltipUnit : ""),
+      left: x,
+      right: x + barWidth,
+      top: top,
+      bottom: startY,
+      x: x + barWidth / 2,
+      y: top + Math.max(10, barHeight * 0.35),
+      width: barWidth,
+      height: barHeight,
+    };
+  });
+  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height };
+  return true;
+}
+function setupInteractiveCharts() {
+  const charts = Array.from(root.querySelectorAll("canvas.cmh-chart[data-cmh-chart-points], canvas.cmh-chart[data-cmh-chart-source], figure.chart canvas[data-cmh-chart-points], figure.chart canvas[data-cmh-chart-source]"));
+  charts.forEach(function (canvas) {
+    renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+    if (canvas._cmhChartBound) return;
+    canvas._cmhChartBound = true;
+    canvas.addEventListener("mousemove", function (event) {
+      const point = _chartEventPoint(canvas, event);
+      _chartSetHover(canvas, point && _chartHit(canvas._cmhChart, point.x, point.y));
+    });
+    canvas.addEventListener("mouseleave", function () {
+      if (chartTooltipCanvas === canvas) hideChartTooltip();
+      _chartSetHover(canvas, null);
+    });
+    canvas.addEventListener("blur", function () {
+      if (chartTooltipCanvas === canvas) hideChartTooltip();
+      _chartSetHover(canvas, null);
+    });
+  });
+  if (!chartResizeBound) {
+    chartResizeBound = true;
+    window.addEventListener("resize", function () {
+      root.querySelectorAll("canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]").forEach(function (canvas) {
+        renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+      });
+      if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
+        const point = chartTooltipCanvas._cmhChart.points[chartTooltipCanvas._cmhChart.activeIndex];
+        if (point) _showChartTooltip(chartTooltipCanvas, point);
+      }
+    });
+    window.addEventListener("scroll", hideChartTooltip, true);
+  }
+}
 
 function indexImages() {
   imageEls.length = 0;
@@ -121,6 +366,7 @@ function openImageComposer(info) {
 }
 function setupImageLayer() {
   if (!imageAddBtn) return;
+  setupInteractiveCharts();
   indexImages();
   imageEls.forEach(img => {
     if (!img._cmImgAttached) {
@@ -164,4 +410,3 @@ if (imageAddBtn) {
     openImageComposer(info);
   });
 }
-

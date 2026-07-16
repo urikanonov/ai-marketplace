@@ -201,6 +201,82 @@ test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({
   }
 });
 
+test("CMH-DECK-20: showcase deck chart hover shows a clipped-safe tooltip with the point label and value", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".showcase-chart-slide");
+    await expect(page.locator(".slide.active figure.chart canvas.cmh-chart")).toHaveCount(1);
+    const target = await page.evaluate(() => {
+      const canvas = document.querySelector(".slide.active #showcaseChart");
+      const chart = canvas && canvas._cmhChart;
+      if (!canvas || !chart || !chart.points || !chart.points.length) return null;
+      const point = chart.points[chart.points.length - 1];
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: rect.left + point.x * (rect.width / chart.width),
+        y: rect.top + Math.max(point.y + 4, point.top + 10) * (rect.height / chart.height),
+        text: point.tooltip,
+      };
+    });
+    expect(target).not.toBeNull();
+    await page.mouse.move(target.x, target.y);
+    const tooltip = page.locator(".cmh-chart-tooltip");
+    await expect(tooltip).toHaveText(target.text);
+    const metrics = await tooltip.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return {
+        color: style.color,
+        background: style.backgroundColor,
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+    });
+    expect(contrast(parseRgb(metrics.color), parseRgb(metrics.background))).toBeGreaterThanOrEqual(4.5);
+    expect(metrics.left).toBeGreaterThanOrEqual(0);
+    expect(metrics.top).toBeGreaterThanOrEqual(0);
+    expect(metrics.right).toBeLessThanOrEqual(metrics.width);
+    expect(metrics.bottom).toBeLessThanOrEqual(metrics.height);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losing contrast", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".showcase-chart-slide");
+    await page.locator(".cmh-deck-mode-toggle").click();
+    const cell = page.locator(".slide.active table.show-table tbody tr").nth(1).locator("td").nth(2);
+    const before = await cell.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        boxShadow: style.boxShadow,
+      };
+    });
+    await cell.hover();
+    await expect.poll(() => cell.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe(before.boxShadow);
+    const hovered = await cell.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        boxShadow: style.boxShadow,
+      };
+    });
+    expect(hovered.background).not.toBe(before.background);
+    expect(hovered.boxShadow).not.toBe("none");
+    expect(contrast(parseRgb(hovered.color), parseRgb(hovered.background))).toBeGreaterThanOrEqual(4.5);
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep readable contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {

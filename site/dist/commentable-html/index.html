@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.119.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.124.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,6 +415,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.124.0] - 2026-07-16</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Deck charts can now render from inline canvas data without a remote chart library: the showcase deck&#x27;s watering chart is drawn by the shipped runtime, hovering a bar shows a clipped-safe tooltip with the bed label and exact value, and the rendered canvas still snapshots cleanly for Offline export. (CMH-DECK-20)</li>
+              <li>Deck table cells now animate a subtle hover highlight that keeps the cell text readable while making individual review targets easier to spot in the slide. (CMH-DECK-21)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.119.0] - 2026-07-16</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -422,6 +430,8 @@
               <li>Deck triage board: the Locked-column Add Comment affordance no longer overlaps the Reset moves button (issue #294).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.118.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -429,8 +439,6 @@
               <li>Deck navigation: dimmed edge hover-arrows for previous/next slide and Enter/Space to advance when the deck stage is focused (issue #292).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.117.1] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
@@ -465,14 +473,7 @@
               <li>The document-producing tools (<code>new_document.py</code>, <code>deck_scaffold.py</code>) stamp that session id by default, taking it from <code>--session-id</code> or, when absent, an auto-detected environment variable (<code>COPILOT_AGENT_SESSION_ID</code> for Copilot, <code>CLAUDE_CODE_SESSION_ID</code> for Claude). <code>--agent</code> overrides the label and <code>--no-session-id</code> opts out. When several agents&#x27; session ids are visible at once (a nested launch), the agent actually running the tool wins. A local, non-CI live check that drives the real <code>copilot</code>/<code>claude</code> CLIs is at <code>dev/tests/copilot_e2e_check.py</code> and <code>dev/tests/claude_e2e_check.py</code>. (CMH-STAMP-04)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.108.1] - 2026-07-16</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Restructured the showcase deck&#x27;s narrative flow: added a dedicated header/pitch slide, moved the website-style medium comparison and shipped-example prompts earlier, removed the redundant recap slide, and replaced the close with a &quot;What&#x27;s next?&quot; hub plus a trailing &quot;Questions?&quot; slide while keeping the shipped widget defaults unchanged. (CMH-DECK-SHOWCASE-05)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">103 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">104 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

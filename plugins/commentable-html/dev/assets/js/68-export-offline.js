@@ -129,6 +129,7 @@ function _stripOfflineRichRenderers(doc) {
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
+    if (/\b__commentableHtmlReady\b/.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
       s.remove();
       return;
@@ -252,4 +253,3 @@ async function saveOffline() {
   const b = document.getElementById(id);
   if (b) b.addEventListener("click", saveOffline);
 });
-

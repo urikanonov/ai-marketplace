@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.119.0" />
+<meta name="commentable-html-version" content="1.124.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.119.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.124.0","mode":"portable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -1186,6 +1186,7 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
 #commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
 #commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+.cmh-chart-tooltip { z-index: 410; white-space: nowrap; }
 .cm-image-add { position: fixed; z-index: 200; }
 /* Commentable widget parts (generic opt-in via data-cm-part inside a data-cm-widget).
    Parts live inside a cm-skip widget but are individually commentable, so they get the
@@ -1254,7 +1255,6 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl:hover .cmh-sort-up, .cmh-sort-ctrl:hover .cmh-sort-dn { opacity: 0.7; }
 .cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up { opacity: 1; color: var(--cp-accent); }
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
-
 
 /* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
@@ -1591,6 +1591,22 @@ body.cmh-deck-present #menuComment {
   background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
   border-color: rgba(148, 163, 184, 0.48);
+}
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td) {
+  transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):hover,
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):focus-within {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--cp-accent, #2ecc71) 58%, transparent);
+  transform: translateY(-1px);
+}
+#commentRoot[data-cmh-mode="deck"] .slide table td:hover,
+#commentRoot[data-cmh-mode="deck"] .slide table td:focus-within {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 14%, var(--cp-surface, #fff));
+}
+#commentRoot[data-cmh-mode="deck"] .slide table thead th:hover,
+#commentRoot[data-cmh-mode="deck"] .slide table thead th:focus-within {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 84%, #111827);
 }
 #commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid),
 #commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid) code,
@@ -2653,7 +2669,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.119.0";
+const CMH_VERSION = "1.124.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4207,6 +4223,251 @@ const imageAddBtn = document.getElementById("imageAddBtn");
 let pendingImage = null;
 let imageAddHideTimer = null;
 let imageActiveEl = null;
+let chartTooltipEl = null;
+let chartTooltipCanvas = null;
+let chartResizeBound = false;
+
+function _chartColors(canvas) {
+  const rootStyle = getComputedStyle(document.documentElement);
+  const canvasStyle = getComputedStyle(canvas);
+  return {
+    text: canvas.getAttribute("data-cmh-chart-text") || canvasStyle.color || rootStyle.getPropertyValue("--cp-text").trim() || "#1b1f3b",
+    axis: canvas.getAttribute("data-cmh-chart-axis") || rootStyle.getPropertyValue("--cp-border-strong").trim() || "#cbb48a",
+    grid: canvas.getAttribute("data-cmh-chart-grid") || rootStyle.getPropertyValue("--cp-border").trim() || "#dedede",
+    accent: canvas.getAttribute("data-cmh-chart-accent") || rootStyle.getPropertyValue("--cp-accent").trim() || "#b11f4b",
+    background: canvas.getAttribute("data-cmh-chart-background") || "#ffffff",
+  };
+}
+function _chartStep(max) {
+  if (!Number.isFinite(max) || max <= 0) return 1;
+  const rough = max / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+  const unit = rough / pow;
+  const nice = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10;
+  return nice * pow;
+}
+function _chartConfig(canvas) {
+  const sourceId = (canvas.getAttribute("data-cmh-chart-source") || "").trim();
+  let source = null;
+  if (sourceId) {
+    const el = document.getElementById(sourceId);
+    if (el) {
+      try { source = JSON.parse((el.textContent || "").trim() || "null"); }
+      catch (e) { console.warn("Could not parse chart data source #" + sourceId + ":", e); return null; }
+    }
+  }
+  if (!source) {
+    const raw = canvas.getAttribute("data-cmh-chart-points");
+    if (!raw) return null;
+    try { source = { points: JSON.parse(raw) }; }
+    catch (e) { console.warn("Could not parse inline chart data:", e); return null; }
+  }
+  const parsed = Array.isArray(source) ? source : source.points;
+  if (!Array.isArray(parsed) || !parsed.length) return null;
+  const points = parsed.map(function (point, index) {
+    const label = point && typeof point.label === "string" ? point.label.trim() : "";
+    const value = Number(point && point.value);
+    if (!label || !Number.isFinite(value)) return null;
+    return {
+      label: label,
+      value: value,
+      fill: point && typeof point.fill === "string" && point.fill.trim() ? point.fill.trim() : (index === 1 ? "#b11f4b" : "#e08aa4"),
+    };
+  }).filter(Boolean);
+  if (!points.length) return null;
+  const attrMax = Number(source.max != null ? source.max : canvas.getAttribute("data-cmh-chart-max"));
+  const max = Number.isFinite(attrMax) && attrMax > 0 ? attrMax : Math.max.apply(null, points.map(function (point) { return point.value; }));
+  const attrStep = Number(source.step != null ? source.step : canvas.getAttribute("data-cmh-chart-step"));
+  const unit = String(source.unit != null ? source.unit : (canvas.getAttribute("data-cmh-chart-unit") || "")).trim();
+  const tooltipUnit = String(source.tooltipUnit != null ? source.tooltipUnit : (canvas.getAttribute("data-cmh-chart-tooltip-unit") || unit)).trim();
+  return {
+    points: points,
+    max: max,
+    step: Number.isFinite(attrStep) && attrStep > 0 ? attrStep : _chartStep(max),
+    unit: unit,
+    tooltipUnit: tooltipUnit,
+    colors: _chartColors(canvas),
+  };
+}
+function _chartTooltip() {
+  if (!chartTooltipEl) {
+    chartTooltipEl = document.createElement("div");
+    chartTooltipEl.className = "cm-tooltip cmh-chart-tooltip cm-skip";
+    chartTooltipEl.setAttribute("role", "tooltip");
+    document.body.appendChild(chartTooltipEl);
+  }
+  return chartTooltipEl;
+}
+function hideChartTooltip() {
+  chartTooltipCanvas = null;
+  if (chartTooltipEl) chartTooltipEl.classList.remove("is-visible", "below");
+}
+function _showChartTooltip(canvas, point) {
+  const tip = _chartTooltip();
+  const rect = canvas.getBoundingClientRect();
+  const leftAtPoint = rect.left + point.x;
+  const topAtPoint = rect.top + point.top;
+  chartTooltipCanvas = canvas;
+  tip.textContent = point.tooltip;
+  tip.classList.remove("below");
+  tip.style.visibility = "hidden";
+  tip.classList.add("is-visible");
+  const tipWidth = tip.offsetWidth;
+  const tipHeight = tip.offsetHeight;
+  let left = leftAtPoint - tipWidth / 2;
+  let top = topAtPoint - tipHeight - 12;
+  if (top < 8) {
+    top = rect.top + point.bottom + 12;
+    tip.classList.add("below");
+  }
+  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - tipHeight - 8));
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+  tip.style.setProperty("--cm-tip-arrow", Math.max(10, Math.min(tipWidth - 10, leftAtPoint - left)) + "px");
+  tip.style.visibility = "";
+}
+function _chartHit(state, x, y) {
+  if (!state || !state.points) return null;
+  return state.points.find(function (point) {
+    return x >= point.left && x <= point.right && y >= point.top && y <= point.bottom;
+  }) || null;
+}
+function _chartSetHover(canvas, point) {
+  const state = canvas._cmhChart;
+  const nextIndex = point ? point.index : -1;
+  if (state && state.activeIndex === nextIndex) {
+    if (point) _showChartTooltip(canvas, point);
+    return;
+  }
+  renderInteractiveChart(canvas, nextIndex);
+  if (point) _showChartTooltip(canvas, canvas._cmhChart.points[nextIndex]);
+  else hideChartTooltip();
+}
+function _chartEventPoint(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: (event.clientX - rect.left) * ((canvas._cmhChart && canvas._cmhChart.width) || rect.width) / rect.width,
+    y: (event.clientY - rect.top) * ((canvas._cmhChart && canvas._cmhChart.height) || rect.height) / rect.height,
+  };
+}
+function renderInteractiveChart(canvas, activeIndex) {
+  const config = _chartConfig(canvas);
+  if (!config) return false;
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(canvas.clientWidth || Number(canvas.getAttribute("width")) || canvas.width || 760));
+  const height = Math.max(1, Math.round(canvas.clientHeight || Number(canvas.getAttribute("height")) || canvas.height || 340));
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return false;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = config.colors.background;
+  ctx.fillRect(0, 0, width, height);
+  const pad = { top: 26, right: 28, bottom: 54, left: 62 };
+  const plotWidth = Math.max(10, width - pad.left - pad.right);
+  const plotHeight = Math.max(10, height - pad.top - pad.bottom);
+  const startY = pad.top + plotHeight;
+  const ticks = [];
+  for (let tick = 0; tick <= config.max + 0.0001; tick += config.step) ticks.push(tick);
+  if (ticks[ticks.length - 1] !== config.max) ticks.push(config.max);
+  ctx.strokeStyle = config.colors.axis;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, startY);
+  ctx.lineTo(width - pad.right, startY);
+  ctx.stroke();
+  ctx.font = "16px Segoe UI, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  ticks.forEach(function (tick) {
+    const y = startY - (tick / config.max) * plotHeight;
+    ctx.strokeStyle = tick === 0 ? config.colors.axis : config.colors.grid;
+    ctx.lineWidth = tick === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(width - pad.right, y);
+    ctx.stroke();
+    ctx.fillStyle = config.colors.text;
+    ctx.fillText(String(tick), pad.left - 10, y);
+  });
+  const gap = Math.max(18, Math.min(36, plotWidth * 0.08));
+  const barWidth = Math.max(34, Math.min(92, (plotWidth - gap * (config.points.length - 1)) / config.points.length));
+  const used = barWidth * config.points.length + gap * (config.points.length - 1);
+  const startX = pad.left + Math.max(0, (plotWidth - used) / 2);
+  const renderedPoints = config.points.map(function (point, index) {
+    const x = startX + index * (barWidth + gap);
+    const barHeight = Math.max(0, (point.value / config.max) * plotHeight);
+    const top = startY - barHeight;
+    ctx.fillStyle = point.fill;
+    ctx.fillRect(x, top, barWidth, barHeight);
+    if (activeIndex === index) {
+      ctx.strokeStyle = config.colors.accent;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x - 1.5, top - 1.5, barWidth + 3, barHeight + 3);
+    }
+    ctx.fillStyle = config.colors.text;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.font = "bold 20px Segoe UI, sans-serif";
+    ctx.fillText(point.value + (config.unit ? " " + config.unit.replace(/^\/?\s*/, "") : ""), x + barWidth / 2, Math.max(18, top - 8));
+    ctx.textBaseline = "top";
+    ctx.font = "18px Segoe UI, sans-serif";
+    ctx.fillText(point.label, x + barWidth / 2, startY + 12);
+    return {
+      index: index,
+      label: point.label,
+      value: point.value,
+      tooltip: point.label + ": " + point.value + (config.tooltipUnit ? " " + config.tooltipUnit : ""),
+      left: x,
+      right: x + barWidth,
+      top: top,
+      bottom: startY,
+      x: x + barWidth / 2,
+      y: top + Math.max(10, barHeight * 0.35),
+      width: barWidth,
+      height: barHeight,
+    };
+  });
+  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height };
+  return true;
+}
+function setupInteractiveCharts() {
+  const charts = Array.from(root.querySelectorAll("canvas.cmh-chart[data-cmh-chart-points], canvas.cmh-chart[data-cmh-chart-source], figure.chart canvas[data-cmh-chart-points], figure.chart canvas[data-cmh-chart-source]"));
+  charts.forEach(function (canvas) {
+    renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+    if (canvas._cmhChartBound) return;
+    canvas._cmhChartBound = true;
+    canvas.addEventListener("mousemove", function (event) {
+      const point = _chartEventPoint(canvas, event);
+      _chartSetHover(canvas, point && _chartHit(canvas._cmhChart, point.x, point.y));
+    });
+    canvas.addEventListener("mouseleave", function () {
+      if (chartTooltipCanvas === canvas) hideChartTooltip();
+      _chartSetHover(canvas, null);
+    });
+    canvas.addEventListener("blur", function () {
+      if (chartTooltipCanvas === canvas) hideChartTooltip();
+      _chartSetHover(canvas, null);
+    });
+  });
+  if (!chartResizeBound) {
+    chartResizeBound = true;
+    window.addEventListener("resize", function () {
+      root.querySelectorAll("canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]").forEach(function (canvas) {
+        renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+      });
+      if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
+        const point = chartTooltipCanvas._cmhChart.points[chartTooltipCanvas._cmhChart.activeIndex];
+        if (point) _showChartTooltip(chartTooltipCanvas, point);
+      }
+    });
+    window.addEventListener("scroll", hideChartTooltip, true);
+  }
+}
 
 function indexImages() {
   imageEls.length = 0;
@@ -4318,6 +4579,7 @@ function openImageComposer(info) {
 }
 function setupImageLayer() {
   if (!imageAddBtn) return;
+  setupInteractiveCharts();
   indexImages();
   imageEls.forEach(img => {
     if (!img._cmImgAttached) {
@@ -4361,7 +4623,6 @@ if (imageAddBtn) {
     openImageComposer(info);
   });
 }
-
 /* ---------- Commentable widgets and SVG nodes (generic opt-in) ----------
    Any element marked data-cm-widget declares a commentable widget. Descendants marked
    data-cm-part (with an optional data-cm-part-label) become individually commentable even
@@ -8461,6 +8722,7 @@ function _stripOfflineRichRenderers(doc) {
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
+    if (/\b__commentableHtmlReady\b/.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
       s.remove();
       return;
@@ -8584,7 +8846,6 @@ async function saveOffline() {
   const b = document.getElementById(id);
   if (b) b.addEventListener("click", saveOffline);
 });
-
 /* ---------- Mode badge + asset-version handshake ---------- */
 function assetBannerDismissKey(pageVer, runtimeVer) {
   return "commentable-html::assetBannerDismissed::" + COMMENT_KEY + "::" + String(pageVer || "")
