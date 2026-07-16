@@ -1910,6 +1910,18 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-supported-pills { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
 #commentRoot[data-cmh-mode="deck"] .show-supported-pills .show-pill { font-size: 20px; padding: 8px 14px; }
 #commentRoot[data-cmh-mode="deck"] .show-pill-muted { background: #efe8db; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-bundle-sample {
+  margin: 24px 0 0;
+  padding: 22px 26px;
+  border-radius: 18px;
+  background: #1b1f3b;
+  border: 1px solid #312d4d;
+  box-shadow: 0 18px 34px rgba(27, 31, 59, 0.16);
+  color: #fffdf8 !important;
+  font-size: 23px;
+  line-height: 1.38;
+  white-space: pre-wrap;
+}
 #commentRoot[data-cmh-mode="deck"] .show-note-field { margin-top: 16px; padding: 16px 18px; border-radius: 18px; border: 1px solid var(--show-line); background: #fffdf8; }
 #commentRoot[data-cmh-mode="deck"] .show-note-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 #commentRoot[data-cmh-mode="deck"] .show-note-label,
@@ -2003,13 +2015,13 @@ svg {
   <h2>Chat, Markdown, HTML - or a <span class="show-mark">tight loop</span>?</h2>
   <table class="show-table show-compare-table">
     <thead>
-      <tr><th>Where you plan</th><th>Rich plan</th><th>In-place review</th><th>Review loop</th></tr>
+      <tr><th>Where you plan</th><th>Rich context</th><th>Point in place</th><th>Agent-ready handoff</th></tr>
     </thead>
     <tbody>
-      <tr><td>Chat / terminal</td><td>Poor</td><td>No</td><td>Painful</td></tr>
-      <tr><td>Markdown file</td><td>Limited</td><td>No</td><td>Manual</td></tr>
-      <tr><td>Plain HTML</td><td>Rich</td><td>No</td><td>Out-of-band</td></tr>
-      <tr><td>Commentable HTML</td><td>Rich</td><td>Yes</td><td>Tight</td></tr>
+      <tr><td>Chat / terminal</td><td>Thin transcript</td><td>No</td><td>Manual paste-back</td></tr>
+      <tr><td>Markdown file</td><td>Structured text</td><td>No</td><td>Copy snippets</td></tr>
+      <tr><td>Plain HTML</td><td>Rich view</td><td>No</td><td>Out-of-band notes</td></tr>
+      <tr><td>Commentable HTML</td><td>Rich view</td><td>Yes</td><td>Copy all bundle</td></tr>
     </tbody>
   </table>
 </section>
@@ -2123,7 +2135,7 @@ Press Enter.</code></pre>
   <div class="show-four">
     <div class="show-card"><h3>Prose and cells</h3><p>Paragraphs, headings, list items, and single table cells in the garden plan.</p><p class="show-card-example">Example: the "Bed 4 / 44 L" watering cell.</p></div>
     <div class="show-card"><h3>Charts + images</h3><p>The watering chart or a bed-layout image as one visual anchor.</p><p class="show-card-example">Example: the full watering chart canvas.</p></div>
-    <div class="show-card"><h3>Mermaid diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p><p class="show-card-example">Example: the "Copy all Markdown bundle" node.</p></div>
+    <div class="show-card"><h3>Mermaid diagrams</h3><p>Individual Mermaid nodes, clusters, and task bars.</p><p class="show-card-example">Example: the "Paste the Copy all bundle" node.</p></div>
     <div class="show-card"><h3>Code, KQL, diffs</h3><p>Exact code ranges and diff rows, copied without line-number noise.</p><p class="show-card-example">Example: the rainfall skip branch in the diff.</p></div>
   </div>
   <div class="show-demo-row">
@@ -2369,6 +2381,11 @@ claude plugin install commentable-html@urikan-ai-marketplace</code></pre>
     <div class="show-card"><h3>Structural keys</h3><p>Charts, images, Mermaid nodes, and slides anchor by a stable element key, not a pixel position.</p></div>
     <div class="show-card"><h3>Widget deltas</h3><p>Board moves and checklist toggles record the before and after state as part of the bundle.</p></div>
   </div>
+  <pre class="show-bundle-sample">Quote: "Bed 4 / Squash / 44 L"
+Pinpoint: Act 2 > Evidence > watering table, row 2
+Stable id: slide-d7119544::table-bed-4-liters
+Note: make the high-water row easier to justify
+HANDLED_IDS_JSON: ["cmh-bed4-liters"]</pre>
   <p class="show-lead" style="margin-top:26px;">Stable ids let the agent mark a comment handled; on reload, handled-comment pruning clears it while unresolved notes stay put.</p>
 </section>
 

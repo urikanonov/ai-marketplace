@@ -402,6 +402,41 @@ test("CMH-DECK-SHOWCASE-03: an early install CTA shows both agents before the fi
   }
 });
 
+test("CMH-DECK-SHOWCASE-05: showcase deck front-loads the comparison and prompts, keeps widget defaults, and closes with what's next plus questions", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const ids = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".slide")).map((slide) => slide.dataset.slideId),
+    );
+    expect(ids.indexOf("slide-bdd3b1b5")).toBeGreaterThan(ids.indexOf("slide-76b2501c"));
+    expect(ids.indexOf("slide-bdd3b1b5")).toBeLessThan(ids.indexOf("slide-4bfbc689"));
+    expect(ids.indexOf("slide-4bfbc689")).toBeLessThan(ids.indexOf("slide-7e37216a"));
+    expect(ids.indexOf("slide-7e37216a")).toBeLessThan(ids.indexOf("slide-12668385"));
+    expect(ids.indexOf("slide-9a891595")).toBe(ids.indexOf("slide-90e72651") - 1);
+
+    await showSlideWith(page, '[data-slide-id="slide-bdd3b1b5"]');
+    await expect(page.locator(".slide.active")).toContainText("Chat / terminal");
+    await expect(page.locator(".slide.active")).toContainText("Commentable HTML");
+
+    await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
+    const board = page.locator(".slide.active");
+    await expect(board.locator('[data-cm-part="bed8-crop"]')).toContainText("Bed 8 crop choice");
+    await expect(board.locator('[data-cm-slot="Open"] .show-ticket')).toHaveCount(2);
+    await expect(board.locator('[data-cm-slot="Decide now"] .show-ticket')).toHaveCount(1);
+    await expect(board.locator('[data-cm-slot="Locked"] .show-ticket')).toHaveCount(1);
+
+    await showSlideWith(page, '[data-slide-id="slide-9a891595"]');
+    await expect(page.locator(".slide.active")).toContainText("What's next?");
+    await expect(page.locator(".slide.active .show-next-card")).toHaveCount(5);
+
+    await showSlideWith(page, '[data-slide-id="slide-90e72651"]');
+    await expect(page.locator(".slide.active")).toContainText("Questions?");
+    await expect(page.locator(".slide.active")).toContainText("use the deck itself as the review surface");
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portability, and test model", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
@@ -601,6 +636,29 @@ test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and a
     await expect(slide.locator(".show-note-field").first()).toContainText("Reviewer summary");
     await expect(slide.locator(".show-note-field").nth(1)).toContainText("Meeting follow-up");
     await expect(slide.locator(".show-note-toggle")).toHaveCount(2);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-09: the showcase deck shows a concrete Copy all bundle specimen", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, "text=How a comment finds the same spot on reload.");
+    const anchoring = page.locator(".slide.active");
+    const bundle = anchoring.locator(".show-bundle-sample");
+    await expect(bundle).toBeVisible();
+    await expect(bundle).toContainText("Quote:");
+    await expect(bundle).toContainText("Pinpoint:");
+    await expect(bundle).toContainText("Stable id:");
+    await expect(bundle).toContainText("Note:");
+    await expect(bundle).toContainText("HANDLED_IDS_JSON:");
+    await expect(bundle.locator("code")).toHaveCount(0);
+
+    await showSlideWith(page, "text=Comment on the actual thing, not a screenshot of it.");
+    const pointAt = page.locator(".slide.active");
+    await expect(pointAt).toContainText('Example: the "Paste the Copy all bundle" node.');
+    await expect(pointAt).not.toContainText("Copy all Markdown bundle");
   } finally {
     await server.close();
   }
