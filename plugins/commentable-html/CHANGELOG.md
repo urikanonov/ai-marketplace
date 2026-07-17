@@ -4,6 +4,79 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.139.0] - 2026-07-17
+
+### Changed
+
+- Ship the skill as a compact `skills/commentable-html/skill-resources.zip` (only `SKILL.md`,
+  `LICENSE`, and the zip in the shipped skill dir) that a SessionStart hook unpacks on first run per
+  version. This drastically cuts the number of files the plugin installer writes, working around the
+  Windows Defender install failure (`Access is denied. (os error 5)`) where the installer aborts on
+  the first transiently locked file - the extractor retries each member with backoff, which the
+  installer does not. An update ships a new zip and self-heals on the next session (the version
+  marker invalidates), which largely fixes the auto-updater silently never updating on Defender
+  machines: it now rewrites just the one zip instead of ~178 files, shrinking the transient-lock
+  surface dramatically (a lock on that single file is still possible and simply retries next
+  session). The large tutorial (`docs/`) and worked examples (`examples/`) are no longer installed;
+  they moved to the plugin top level and are linked online. `build.py` gains `--pkg-dir` /
+  `--examples-dir` and assembles the deterministic zip, and the editable + built skill tree now
+  lives under `dev/skill/`.
+
+### Fixed
+
+- Harden the first-run extractor and packager (review round): the extractor now refuses to write the
+  success marker for a zip that carries no installable runtime directory (a truncated/empty/wrong
+  zip self-heals next session instead of caching a broken install); a fully-successful swap that
+  then hits a locked orphan backup still writes the marker (the backup is reclaimed next run rather
+  than forcing a needless re-extract); `_make_writable` restores the directory execute bit on POSIX
+  (not `S_IWRITE` only) so a cleared-bit tree can still be removed; and its NTFS retry set is pinned
+  (`WinError 5/32/33/145`). The packager now fails the build if any required runtime dir is missing
+  or empty, and `--check` flags a duplicated zip member (which a name-to-bytes map would silently
+  collapse). The Windows launcher's `$PSScriptRoot` anchoring and the `-c pass` interpreter probe
+  are pinned by tests, plus a Windows-junction packager-guard test.
+- Round-7 review hardening: the version-marker fast path now tests for a real FILE (`isfile`, not
+  `exists`) and `clear_markers` removes a marker-named directory, so a directory that somehow shares
+  the marker name can no longer permanently skip extraction or block the marker write. Added tests
+  pin the orphan-backup-cleanup survival, the rename-aside rollback branch, absolute/drive-letter
+  zip-member rejection, the stale-lock sidecar cleanup, `.ok.tmp` cleanup, deterministic-zip
+  host-neutral metadata, and text LF-normalization.
+- Round-8 review hardening: the hook HOT-PATH marker check is now FILE-specific (bash `-f`, PowerShell
+  `-PathType Leaf`) so a marker-named directory cannot short-circuit the launcher before Python and
+  suppress extraction (previously the `isfile` guard in run() was unreachable behind the launchers'
+  `-e`/`Test-Path`). Cleanup now unlinks a symlink/junction as itself instead of following a reparse
+  point into its target (os.path.islink misses Windows junctions; matters on Python < 3.12). An
+  in-place upgrade prunes the obsolete `docs/` and `examples/` dirs the package no longer ships so the
+  runtime converges to the minimal tree. The packager fails closed if a required shipped file
+  (`SKILL.md`/`LICENSE`) is missing from the stage. Added tests execute the shipped bash hook commands
+  end-to-end (cold/warm/marker-dir) and pin the junction cleanup, the legacy prune, and the missing-file
+  guards.
+- Round-9 review hardening (junction/reparse robustness): `_make_writable` now prunes reparse points
+  from its `os.walk` in place so it never DESCENDS into a junction's external target (a bare `continue`
+  did not stop the walk); cleanup/swap use `os.path.lexists` so a BROKEN junction (which `os.path.exists`
+  and `os.path.islink` both miss) is detected and removed instead of causing a later `os.replace` to
+  fail with WinError 5; and the marker temp file is pid-unique so a leftover locked `.tmp` cannot block
+  the marker write. Added tests: no-descend-into-junction, broken-junction removal, pid-suffixed `.tmp`
+  cleanup, an executable PowerShell-launcher smoke test (cold/marker-dir), and a canary proving the warm
+  hot path spawns no Python. Repointed remaining stale pre-relocation doc paths.
+- Round-10 review hardening: cleanup now unlinks a junction NESTED inside a directory being removed
+  before calling `shutil.rmtree`, so rmtree can never traverse a nested junction into its external
+  target (Python < 3.12 lacked that protection - bpo-31818); a test pins it. Fixed the `.githooks/pre-push`
+  layer-dist check, which still targeted the pre-relocation `--out-dir` and always failed; made the
+  `40-package.py` build part self-contained (explicit `os`/`re` imports); and added a plugin-level
+  `.gitignore` so the extractor unpacking into the source tree during local testing can never stage a
+  polluted (non-minimal) shipped skill dir.
+- Round-11 review hardening: made the nested-junction protection robust to an unlink FAILURE.
+  `_prune_nested_reparse` now returns whether the tree is truly free of nested reparse points, and its
+  three callers only proceed to `shutil.rmtree` when it is - so a junction that could not be unlinked
+  (e.g. a transient lock) makes the removal retry (or skip) instead of ever letting `shutil.rmtree`
+  traverse the survivor into its external target on Python < 3.12. A mock-based test pins the
+  unlink-failure path.
+- Round-12 review hardening: `_prune_nested_reparse` also fails closed when `os.walk` cannot scan a
+  subtree (a junction could hide there unseen) via an `onerror` callback, so `shutil.rmtree` never runs
+  on an incompletely-inspected tree. And a crash-recovery backup restore that cannot complete now aborts
+  the extraction rather than swallowing the error and then letting the swap delete the very backup it
+  meant to keep, so the last-known-good backup survives for the next session. Tests pin both.
+
 ## [1.138.0] - 2026-07-17
 
 ### Changed

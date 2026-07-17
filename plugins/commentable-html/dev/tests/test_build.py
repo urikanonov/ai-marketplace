@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -165,7 +166,7 @@ class BuildTests(unittest.TestCase):
         # version too - otherwise a version bump leaves the Claude plugin.json behind and the
         # claude-manifest/version-bump guards fail on the next release.
         v = build.read_version()
-        stamps = build.source_stamps(v, build.ASSETS, ROOT)
+        stamps = build.source_stamps(v, build.ASSETS, ROOT, _paths.PKG_SHIPPED)
         claude_pj = [p for p in stamps
                      if p.replace("\\", "/").endswith(".claude-plugin/plugin.json")]
         claude_mkt = [p for p in stamps
@@ -189,7 +190,7 @@ class BuildTests(unittest.TestCase):
         # assertion is not vacuous). Examples that do not use mermaid are simply not required to.
         ref_re = re.compile(r"cdn\.jsdelivr\.net/npm/mermaid@([^/]+)/dist/")
         shipped = [os.path.join(DIST, "PORTABLE.html"), os.path.join(DIST, "NONPORTABLE.html")]
-        ex_dir = os.path.join(ROOT, "examples")
+        ex_dir = _paths.EXAMPLES
         if os.path.isdir(ex_dir):
             shipped += [os.path.join(ex_dir, n) for n in os.listdir(ex_dir) if n.endswith(".html")]
         seen = 0
@@ -213,7 +214,7 @@ class BuildTests(unittest.TestCase):
                 p = os.path.join(d, "examples", "guide-drift.html")
                 with open(p, "w", encoding="utf-8") as fh:
                     fh.write(drift)
-                stamps = build.example_stamps(d, mv)
+                stamps = build.example_stamps(os.path.join(d, "examples"), mv)
                 self.assertIn(p, stamps)
                 self.assertIn("mermaid@%s/dist/" % mv, stamps[p])
                 self.assertNotIn("mermaid@%s/dist/" % bad, stamps[p])
@@ -229,7 +230,7 @@ class BuildTests(unittest.TestCase):
             p = os.path.join(d, "examples", "report-drift.html")
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write(drift)
-            self.assertNotIn(p, build.example_stamps(d, mv))
+            self.assertNotIn(p, build.example_stamps(os.path.join(d, "examples"), mv))
 
     def test_example_stamps_skips_non_mermaid_and_is_idempotent(self):
         mv = build.read_mermaid_version()
@@ -244,7 +245,7 @@ class BuildTests(unittest.TestCase):
             ok_p = os.path.join(d, "examples", "guide-ok.html")
             with open(ok_p, "w", encoding="utf-8") as fh:
                 fh.write(ok)
-            stamps = build.example_stamps(d, mv)
+            stamps = build.example_stamps(os.path.join(d, "examples"), mv)
             self.assertNotIn(none_p, stamps)
             self.assertEqual(stamps[ok_p], ok)
 
@@ -262,7 +263,7 @@ class BuildTests(unittest.TestCase):
             p = os.path.join(d, "examples", "report-taxi.html")
             with open(p, "w", encoding="utf-8") as fh:
                 fh.write(drifted)
-            out = build.build_examples(portable, version, mv, d)
+            out = build.build_examples(portable, version, mv, os.path.join(d, "examples"))
             self.assertIn(p, out)
             self.assertIn("mermaid@%s/dist/" % mv, out[p])
             self.assertNotIn("mermaid@9.9.9/dist/", out[p])
@@ -632,6 +633,181 @@ class StampHelperTests(unittest.TestCase):
             open(os.path.join(mk, "marketplace.json"), "w").close()
             self.assertEqual(os.path.normcase(build._find_marketplace(sub)),
                              os.path.normcase(os.path.join(mk, "marketplace.json")))
+
+
+class PackageTests(unittest.TestCase):
+    """CMH-PKG-11: build.py assembles a deterministic skill-resources.zip and --check (check_package)
+    catches drift in the zip contents or the shipped SKILL.md/LICENSE/hook stamps."""
+
+    def test_resources_zip_is_deterministic(self):
+        a = build.build_resources_zip_bytes(_paths.PKG)
+        b = build.build_resources_zip_bytes(_paths.PKG)
+        self.assertEqual(a, b, "the zip must be byte-identical for an unchanged source tree")
+
+    def test_package_check_detects_zip_drift(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [],
+                             "a freshly packaged tree must be in sync")
+            # A drift in a shipped text stamp is caught.
+            with open(os.path.join(pkg, "SKILL.md"), "a", encoding="utf-8") as fh:
+                fh.write("\nDRIFT\n")
+            self.assertTrue(any("SKILL.md" in x for x in build.check_package(_paths.PKG, pkg, v)))
+            # A drift in a zipped source file is caught by the CONTENT comparison.
+            stage2 = os.path.join(d, "stage")
+            shutil.copytree(_paths.PKG, stage2)
+            ref = os.path.join(stage2, "references", "validation.md")
+            with open(ref, "a", encoding="utf-8") as fh:
+                fh.write("\nDRIFT\n")
+            drift = build.check_package(stage2, pkg, v)
+            self.assertTrue(any("skill-resources.zip" in x for x in drift),
+                            "a changed zipped source file must be reported as zip drift")
+
+    def test_member_bytes_normalizes_text_crlf_but_not_binary(self):
+        with tempfile.TemporaryDirectory() as d:
+            txt = os.path.join(d, "a.py")
+            with open(txt, "wb") as fh:
+                fh.write(b"line1\r\nline2\r\n")
+            self.assertEqual(build._member_bytes(txt), b"line1\nline2\n",
+                             "text members must be LF-normalized for a host-stable zip")
+            png = os.path.join(d, "img.png")
+            raw = b"\x89PNG\r\n\x1a\n\r\nbinary\r\n"
+            with open(png, "wb") as fh:
+                fh.write(raw)
+            self.assertEqual(build._member_bytes(png), raw,
+                             "binary members must be copied byte-for-byte (no CRLF rewrite)")
+
+    def test_resources_zip_metadata_is_host_neutral(self):
+        import io as _io
+        with zipfile.ZipFile(_io.BytesIO(build.build_resources_zip_bytes(_paths.PKG))) as zf:
+            for info in zf.infolist():
+                self.assertEqual(info.create_system, 3, info.filename + ": create_system must be unix(3)")
+                self.assertEqual(info.date_time, (1980, 1, 1, 0, 0, 0),
+                                 info.filename + ": timestamp must be the fixed epoch")
+                self.assertEqual(info.external_attr >> 16, 0o644,
+                                 info.filename + ": mode must be a fixed 0o644")
+
+    def test_packager_fails_on_missing_shipped_file(self):
+        # A stage missing a required shipped file (SKILL.md/LICENSE) must fail closed, so --check and
+        # write cannot silently leave a stale shipped copy in place.
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)  # has the 4 runtime dirs but no SKILL.md / LICENSE
+            with self.assertRaises(SystemExit) as cm:
+                build.package_text_stamps(stage, os.path.join(d, "pkg"), build.read_version())
+            self.assertIn("SKILL.md", str(cm.exception))
+
+    def test_packager_fails_on_missing_license(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            with open(os.path.join(stage, "SKILL.md"), "w", encoding="utf-8") as fh:
+                fh.write("# skill\n")
+            with self.assertRaises(SystemExit) as cm:
+                build.package_text_stamps(stage, os.path.join(d, "pkg"), build.read_version())
+            self.assertIn("LICENSE", str(cm.exception))
+
+    def test_package_check_detects_hook_stamp_drift(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            hook = os.path.join(d, "pkg", "hooks.json")
+            with open(hook, "w", encoding="utf-8") as fh:
+                fh.write('{"cmd": ".skill-resources-0.0.1.ok --version 0.0.1"}\n')
+            build.write_package(_paths.PKG, pkg, v)  # stamps the hook to the real version
+            self.assertEqual(build.check_package(_paths.PKG, pkg, v), [])
+            with open(hook, "w", encoding="utf-8") as fh:
+                fh.write('{"cmd": ".skill-resources-0.0.1.ok --version 0.0.1"}\n')  # re-drift
+            drift = build.check_package(_paths.PKG, pkg, v)
+            self.assertTrue(any("hooks.json" in x for x in drift),
+                            "a stale hook version stamp must be reported as drift")
+
+    def test_check_package_reports_corrupt_zip(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            with open(os.path.join(pkg, "skill-resources.zip"), "wb") as fh:
+                fh.write(b"not a zip")
+            drift = build.check_package(_paths.PKG, pkg, v)
+            self.assertTrue(any("invalid or corrupt" in x for x in drift))
+
+    @staticmethod
+    def _minimal_stage(d):
+        """A minimal but COMPLETE stage: one file in every required runtime dir, so the packager's
+        all-dirs-present guard is satisfied and a test can then perturb one thing in isolation."""
+        stage = os.path.join(d, "skill")
+        for sub in build.PACKAGE_BULKY_DIRS:
+            os.makedirs(os.path.join(stage, sub))
+            with open(os.path.join(stage, sub, "f.txt"), "w", encoding="utf-8") as fh:
+                fh.write(sub + "\n")
+        return stage
+
+    def test_packager_rejects_missing_runtime_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            shutil.rmtree(os.path.join(stage, "references"))
+            with self.assertRaises(SystemExit) as cm:
+                build.build_resources_zip_bytes(stage)
+            self.assertIn("references", str(cm.exception))
+
+    def test_packager_rejects_empty_runtime_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            os.remove(os.path.join(stage, "vendor", "f.txt"))  # dir present but contributes nothing
+            with self.assertRaises(SystemExit) as cm:
+                build.build_resources_zip_bytes(stage)
+            self.assertIn("vendor", str(cm.exception))
+
+    def test_check_flags_duplicate_zip_member(self):
+        v = build.read_version()
+        with tempfile.TemporaryDirectory() as d:
+            pkg = os.path.join(d, "pkg", "skills", "commentable-html")
+            os.makedirs(pkg)
+            build.write_package(_paths.PKG, pkg, v)
+            # Rewrite the committed zip with a duplicated member name (which a name->bytes map would
+            # silently collapse) and confirm --check refuses to treat it as in sync.
+            zp = os.path.join(pkg, "skill-resources.zip")
+            with zipfile.ZipFile(zp, "w") as zf:
+                zf.writestr("tools/a.py", "one\n")
+                zf.writestr("tools/a.py", "two\n")
+            drift = build.check_package(_paths.PKG, pkg, v)
+            self.assertTrue(any("duplicate member" in x for x in drift),
+                            "a duplicated zip member must be reported, not silently collapsed")
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_packager_rejects_a_junction_input(self):
+        # os.path.islink misses junctions; the packager's realpath containment must still reject one.
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            outside = os.path.join(d, "outside")
+            os.makedirs(outside)
+            with open(os.path.join(outside, "secret.txt"), "w", encoding="utf-8") as fh:
+                fh.write("secret\n")
+            junction = os.path.join(stage, "tools", "linked")
+            rc = subprocess.run(["cmd", "/c", "mklink", "/J", junction, outside],
+                                capture_output=True, text=True)
+            if rc.returncode != 0:
+                self.skipTest("could not create a junction: " + rc.stderr.strip())
+            with self.assertRaises(SystemExit):
+                build.build_resources_zip_bytes(stage)
+
+    def test_packager_rejects_a_symlinked_input(self):
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            outside = os.path.join(d, "secret.txt")
+            with open(outside, "w", encoding="utf-8") as fh:
+                fh.write("secret\n")
+            link = os.path.join(stage, "tools", "leak.txt")
+            try:
+                os.symlink(outside, link)
+            except (OSError, NotImplementedError):
+                self.skipTest("symlinks not creatable in this environment")
+            with self.assertRaises(SystemExit):
+                build.build_resources_zip_bytes(stage)
 
 
 if __name__ == "__main__":

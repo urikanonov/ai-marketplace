@@ -499,6 +499,13 @@ def find_markdown_files(root):
     for path in root.rglob("*.md"):
         if any(part in EXCLUDE_DIRS for part in path.relative_to(root).parts):
             continue
+        # A packaged skill ships only SKILL.md + LICENSE + skill-resources.zip; SKILL.md's relative
+        # links (references/, etc.) resolve into the zip after a SessionStart hook extracts it on
+        # first run, so they are not on disk here. The identical STAGE copy (with siblings present)
+        # is validated instead. Scope this narrowly to the shipped SKILL.md that sits beside a
+        # skill-resources.zip, so an unrelated .md is never silently skipped.
+        if path.name == "SKILL.md" and (path.parent / "skill-resources.zip").exists():
+            continue
         files.append(path)
     return sorted(files)
 

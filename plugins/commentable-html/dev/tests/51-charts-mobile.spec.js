@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import { SKILL, fileUrl, ready, stageContent } from "./helpers.js";
 
-const METRICS = path.join(SKILL, "examples", "report-metrics.html");
+const METRICS = path.join(SKILL, "..", "..", "examples", "report-metrics.html");
 
 test.use({ viewport: { width: 380, height: 820 } });
 

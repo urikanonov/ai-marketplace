@@ -5,8 +5,8 @@
   "description": "Development harness, tests, and build tooling for the commentable-html plugin. Not distributed; the shipped skill lives in ../pkg.",
   "type": "module",
   "scripts": {
-    "build": "python tools/build.py --assets-dir assets --out-dir ../pkg/skills/commentable-html",
-    "build:check": "python tools/build.py --assets-dir assets --out-dir ../pkg/skills/commentable-html --check",
+    "build": "python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples",
+    "build:check": "python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples --check",
     "fixtures": "node tests/fixtures/generate.mjs",
     "fixtures:check": "node tests/fixtures/generate.mjs --check",
     "shots": "node tools/capture_tutorial.mjs",

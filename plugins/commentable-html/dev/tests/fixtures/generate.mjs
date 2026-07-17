@@ -14,12 +14,13 @@ import { fileURLToPath } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // dev/tests/fixtures
 const DEV = path.resolve(HERE, "..", "..");                // dev
-// Marketplace pkg/dev split: the fixtures are written here under dev, but they are DERIVED
-// from the shipped skill (dist/PORTABLE.html + dist/) which lives under pkg.
-const SKILL = path.resolve(DEV, "..", "pkg", "skills", "commentable-html");
+// Marketplace pkg/dev split: the fixtures are written here under dev, and they are DERIVED
+// from the STAGE skill tree (dist/PORTABLE.html + dist/) at dev/skill, which build.py assembles
+// into the shipped skill-resources.zip.
+const SKILL = path.resolve(DEV, "skill");
 const DIST = path.join(SKILL, "dist");
-// Relative path from the nonportable fixture's own directory to the shipped dist/, so its
-// companion <link>/<script src> references resolve across the pkg/dev split over file://.
+// Relative path from the nonportable fixture's own directory to the STAGE dist/, so its
+// companion <link>/<script src> references resolve over file://.
 const DIST_REL = path.relative(path.join(HERE, "nonportable"), DIST).replace(/\\/g, "/") + "/";
 const lf = (s) => s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 const read = (p) => lf(fs.readFileSync(p, "utf8"));

@@ -10,7 +10,7 @@ const SHOTS = [
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
 ];
 
-const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
+const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
 const REPO = path.resolve(DEV, "..", "..", "..");
 const TEST_TMP = path.join(REPO, "tmp", "tutorial-shots-spec");
 const PIXEL_CHANNEL_TOLERANCE = 96;
@@ -98,8 +98,8 @@ test("one command regenerates and checks all tutorial screenshots, deterministic
   expect(dry.error, String(dry.error)).toBeFalsy();
   expect(dry.status, dry.stderr).toBe(0);
   const defaults = JSON.parse(dry.stdout);
-  expect(defaults.example.replace(/\\/g, "/")).toMatch(/pkg\/skills\/commentable-html\/examples\/report-community-garden\.html$/);
-  expect(defaults.outDir.replace(/\\/g, "/")).toMatch(/pkg\/skills\/commentable-html\/docs\/assets$/);
+  expect(defaults.example.replace(/\\/g, "/")).toMatch(/plugins\/commentable-html\/examples\/report-community-garden\.html$/);
+  expect(defaults.outDir.replace(/\\/g, "/")).toMatch(/plugins\/commentable-html\/docs\/assets$/);
   expect(defaults.prefix).toBe("garden");
   expect(defaults.check).toBe(false);
 

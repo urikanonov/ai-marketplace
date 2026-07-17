@@ -21,7 +21,7 @@ import re
 import sys
 
 HERE = Path(__file__).resolve().parent
-SKILL = HERE.parent.parent / "pkg" / "skills" / "commentable-html"
+SKILL = HERE.parent / "skill"  # relocated stage (dev/skill); was pkg/skills/commentable-html
 VENDOR = SKILL / "vendor" / "frontend-slides"
 sys.path.insert(0, str(SKILL / "tools" / "deck"))
 import deck_fix_fonts as _ff  # noqa: E402  reuse the approved font-stack mapping

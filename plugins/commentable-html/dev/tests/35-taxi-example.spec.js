@@ -10,7 +10,7 @@ import {
 // public Kusto help cluster (Samples.nyc_taxi). Like 25-example, these tests run
 // directly against the committed examples/report-taxi.html (not a fixture) so the
 // shipped artifact is proven to exercise the feature set end to end.
-const EXAMPLE = path.join(SKILL, "examples", "report-taxi.html");
+const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-taxi.html");
 
 async function openExample(page) {
   await installClipboardCapture(page);
@@ -215,7 +215,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
 
   test("the chart and mermaid pipeline nodes are commentable (served over http)", async ({ page }) => {
     test.setTimeout(60000);
-    const server = await startStaticServer(SKILL);
+    const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);
@@ -236,7 +236,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
 
   test("the enriched subgraph flowchart and the sequence diagram both render (CMH-TAXI-MERMAID-01)", async ({ page }) => {
     test.setTimeout(60000);
-    const server = await startStaticServer(SKILL);
+    const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);

@@ -41,13 +41,22 @@ def main(argv):
                         help="directory holding the canonical sources (default: <skill>/assets)")
     parser.add_argument("--out-dir", default=None,
                         help="directory that receives dist/PORTABLE.html and dist/ (default: the skill root)")
+    parser.add_argument("--pkg-dir", default=None,
+                        help="the shipped skill dir; when set, assemble skill-resources.zip and the "
+                             "unzipped SKILL.md/LICENSE copies here and stamp the hook version there")
+    parser.add_argument("--examples-dir", default=None,
+                        help="directory that receives the built example reports/prompts "
+                             "(default: <out-dir>/examples)")
     ns = parser.parse_args(argv[1:])
     assets_dir = ASSETS if ns.assets_dir is None else os.path.abspath(ns.assets_dir)
     out_dir = HERE if ns.out_dir is None else os.path.abspath(ns.out_dir)
+    pkg_dir = os.path.abspath(ns.pkg_dir) if ns.pkg_dir else None
+    examples_dir = (os.path.abspath(ns.examples_dir) if ns.examples_dir
+                    else os.path.join(out_dir, "examples"))
     dist_dir = os.path.join(out_dir, "dist")
-    outputs, version = build_all(assets_dir, out_dir)
-    stamps = source_stamps(version, assets_dir, out_dir)
-    stamps.update(example_stamps(out_dir, read_mermaid_version()))
+    outputs, version = build_all(assets_dir, out_dir, examples_dir)
+    stamps = source_stamps(version, assets_dir, out_dir, pkg_dir)
+    stamps.update(example_stamps(examples_dir, read_mermaid_version()))
     stale = _unexpected_dist_files(outputs.keys(), dist_dir)
     legacy = [p for p in _legacy_generated_files(out_dir) if os.path.exists(p)]
     if ns.check:
@@ -60,11 +69,13 @@ def main(argv):
                 drift.append(rel + " (out of date)")
         for name in stale:
             drift.append(os.path.join("dist", name) + " (stale - not produced by the current build; delete it)")
-        for name in _orphan_examples(out_dir):
+        for name in _orphan_examples(examples_dir):
             drift.append(os.path.join("examples", name)
                          + " (orphaned - no dev/examples/src source; add its source or delete it)")
         for path in legacy:
             drift.append(os.path.relpath(path, out_dir) + " (legacy generated file - delete it)")
+        if pkg_dir:
+            drift.extend(check_package(out_dir, pkg_dir, version))
         if drift:
             sys.stderr.write("build --check FAILED; run `python tools/build.py`:\n")
             for d in drift:
@@ -87,6 +98,8 @@ def main(argv):
         write(path, text)
     for path, text in stamps.items():
         write(path, text)
+    if pkg_dir:
+        write_package(out_dir, pkg_dir, version)
     if stale:
         print("removed %d stale dist file(s): %s" % (len(stale), ", ".join(stale)))
     _report(outputs, version, out_dir)

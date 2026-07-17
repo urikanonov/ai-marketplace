@@ -49,7 +49,7 @@ the new commit, diff against this commit, re-vendor the shipped subset and the d
 ## Native deck theme presets (adapted, not vendored)
 
 The deck engine ships NATIVE theme presets under
-`pkg/skills/commentable-html/tools/deck/themes/<name>.theme.json`. These are CMH-authored files, NOT
+`tools/deck/themes/<name>.theme.json` (relative to the skill root). These are CMH-authored files, NOT
 vendored copies: they re-express a frontend-slides style's palette and character as an allowlisted
 set of CMH deck CSS variables with system-font stacks, contrast-checked at build time. The shipped
 `terminal` preset is ADAPTED (color and name inspired) from the frontend-slides "Terminal Green"

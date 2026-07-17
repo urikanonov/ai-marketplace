@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify the vendored frontend-slides trees stay pristine, curated subsets.
 
-The shipped copy under ``pkg/skills/commentable-html/vendor/frontend-slides/`` and the agent-only
+The shipped copy under ``dev/skill/vendor/frontend-slides/`` (the STAGE; it ships inside skill-resources.zip) and the agent-only
 ``bold-template-pack`` under ``dev/vendor/frontend-slides/`` must remain pristine subsets of their
 recorded upstreams. This gate fails on any unknown, changed, or removed file versus each tree's
 ``MANIFEST.sha256``, and on any denylisted file (``deploy.sh``, ``export-pdf.sh``, an upstream plugin
@@ -18,7 +18,7 @@ from pathlib import Path
 import sys
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
-VENDOR_DIR = PLUGIN_ROOT / "pkg" / "skills" / "commentable-html" / "vendor" / "frontend-slides"
+VENDOR_DIR = PLUGIN_ROOT / "dev" / "skill" / "vendor" / "frontend-slides"
 DEV_VENDOR_DIR = PLUGIN_ROOT / "dev" / "vendor" / "frontend-slides" / "bold-template-pack"
 
 # Files that are ours (provenance), not upstream-derived, excluded from the hashed set.

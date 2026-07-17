@@ -7,7 +7,7 @@ import {
 
 // The shipped showcase example must exercise every feature end to end, so these tests
 // run directly against examples/report-community-garden.html (not a fixture).
-const EXAMPLE = path.join(SKILL, "examples", "report-community-garden.html");
+const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
 
 async function openExample(page) {
   await installClipboardCapture(page);
@@ -81,7 +81,7 @@ test.describe("showcase example: features work on the shipped example HTML", () 
 
   test("the chart is commentable and mermaid gantt/flowchart nodes are commentable (served over http)", async ({ page }) => {
     test.setTimeout(60000);
-    const server = await startStaticServer(SKILL);
+    const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
       await routeMermaidLocal(page);
       await installClipboardCapture(page);

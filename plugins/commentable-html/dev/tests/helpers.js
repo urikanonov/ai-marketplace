@@ -22,7 +22,10 @@ export const PYTHON = (() => {
 // (fixtures) and node_modules stay under dev. SKILL points at the shipped skill root; DEV
 // points at this dev tree.
 export const DEV = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const SKILL = path.resolve(DEV, "..", "pkg", "skills", "commentable-html");
+export const SKILL = path.resolve(DEV, "skill");
+// The tutorial and worked examples live at the plugin top level (not shipped, not in the zip).
+export const PLUGIN = path.resolve(DEV, "..");
+export const EXAMPLES = path.join(PLUGIN, "examples");
 export const DIST = path.join(SKILL, "dist");
 export const INLINE = path.join(DIST, "PORTABLE.html");
 export const NONPORTABLE = path.join(DIST, "NONPORTABLE.html");

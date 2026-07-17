@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import {
-  SKILL, ready, installClipboardCapture, storedComments, distinctCids,
+  SKILL, PLUGIN, ready, installClipboardCapture, storedComments, distinctCids,
   startStaticServer, routeMermaidLocal,
 } from "./helpers.js";
 
@@ -192,7 +192,7 @@ for (const rpt of REPORTS) {
   test.describe(`showcase example: ${rpt.name}`, () => {
     test("boots over http with its attribution footer", async ({ page }) => {
       test.setTimeout(60000);
-      const server = await startStaticServer(SKILL);
+      const server = await startStaticServer(PLUGIN);
       const errors = watchErrors(page);
       try {
         await routeMermaidLocal(page);
@@ -210,7 +210,7 @@ for (const rpt of REPORTS) {
 
     test("commenting on prose and a widget part works and survives reload", async ({ page }) => {
       test.setTimeout(60000);
-      const server = await startStaticServer(SKILL);
+      const server = await startStaticServer(PLUGIN);
       const errors = watchErrors(page);
       try {
         await routeMermaidLocal(page);
@@ -245,7 +245,7 @@ for (const rpt of REPORTS) {
 
     test("clicking UI controls and a randomized monkey pass never crash", async ({ page }) => {
       test.setTimeout(90000);
-      const server = await startStaticServer(SKILL);
+      const server = await startStaticServer(PLUGIN);
       const errors = watchErrors(page);
       try {
         await routeMermaidLocal(page);

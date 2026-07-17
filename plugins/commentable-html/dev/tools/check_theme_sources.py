@@ -21,7 +21,7 @@ import re
 import sys
 
 HERE = Path(__file__).resolve().parent
-SKILL = HERE.parent.parent / "pkg" / "skills" / "commentable-html"
+SKILL = HERE.parent / "skill"  # relocated stage (dev/skill); was pkg/skills/commentable-html
 DEFAULT_THEMES = SKILL / "tools" / "deck" / "themes"
 DEFAULT_UPSTREAM = SKILL / "vendor" / "frontend-slides" / "UPSTREAM.md"
 

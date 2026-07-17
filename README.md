@@ -124,7 +124,7 @@ The `commentable-html` plugin's built-in deck capability is powered by a curated
 subset of the [frontend-slides](https://github.com/zarazhangrui/frontend-slides) skill by
 [Zara Zhang](https://github.com/zarazhangrui), used under the MIT License (c) 2025 Zara Zhang. The
 upstream deploy and PDF-export scripts are excluded and a CI gate keeps the vendored subtree pristine;
-see `plugins/commentable-html/pkg/skills/commentable-html/vendor/frontend-slides/UPSTREAM.md`.
+see `plugins/commentable-html/dev/skill/vendor/frontend-slides/UPSTREAM.md`.
 
 ## License
 

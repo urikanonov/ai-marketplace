@@ -8,10 +8,10 @@ import { SKILL, fileUrl, ready } from "./helpers.js";
 // headroom for the floating pills, and figures/images fit the column. We assert against
 // the committed examples/*.html so the shipped artifacts are proven responsive.
 const EXAMPLES = {
-  "report-taxi.html": path.join(SKILL, "examples", "report-taxi.html"),
-  "report-community-garden.html": path.join(SKILL, "examples", "report-community-garden.html"),
-  "report-triage.html": path.join(SKILL, "examples", "report-triage.html"),
-  "report-metrics.html": path.join(SKILL, "examples", "report-metrics.html"),
+  "report-taxi.html": path.join(SKILL, "..", "..", "examples", "report-taxi.html"),
+  "report-community-garden.html": path.join(SKILL, "..", "..", "examples", "report-community-garden.html"),
+  "report-triage.html": path.join(SKILL, "..", "..", "examples", "report-triage.html"),
+  "report-metrics.html": path.join(SKILL, "..", "..", "examples", "report-metrics.html"),
 };
 const WIDTHS = [360, 390];
 

@@ -1,7 +1,7 @@
 # Resyncing the vendored frontend-slides subset (maintainer)
 
 The deck capability vendors a pristine, curated subset of the third-party `frontend-slides`
-skill under `plugins/commentable-html/pkg/skills/commentable-html/vendor/frontend-slides/`. The
+skill under `plugins/commentable-html/dev/skill/vendor/frontend-slides/`. The
 agent-only `bold-template-pack` reference material lives separately under
 `plugins/commentable-html/dev/vendor/frontend-slides/bold-template-pack/`, so it is not shipped.
 This guidance is development-only.
@@ -27,7 +27,7 @@ of pinning to a commit is that new upstream code is re-reviewed before it can sh
 3. **Diff the target commit against the recorded one** (`UPSTREAM.md` holds the current commit):
    review every changed file, especially the templates and `bold-template-pack/`.
 4. **Re-vendor both curated trees** (clean copies). Put the shipped frontend-slides subset in
-   `pkg/skills/commentable-html/vendor/frontend-slides/` and the complete `bold-template-pack`
+   `dev/skill/vendor/frontend-slides/` and the complete `bold-template-pack`
    reference in `dev/vendor/frontend-slides/bold-template-pack/`. Do not put the pack back under
    `pkg/`; it is agent-only reference material and must not enter the plugin payload or site ZIP.
    Two of the exclusions are HARD-DENIED by
@@ -44,7 +44,7 @@ of pinning to a commit is that new upstream code is re-reviewed before it can sh
    python plugins/commentable-html/dev/tools/check_vendor.py
    ```
    This updates the shipped
-   `pkg/skills/commentable-html/vendor/frontend-slides/MANIFEST.sha256` and the dev-only
+   `dev/skill/vendor/frontend-slides/MANIFEST.sha256` and the dev-only
    `dev/vendor/frontend-slides/bold-template-pack/MANIFEST.sha256`.
 6. **Re-run the deck layer tests** (`deck/` tools and the deck Playwright suite). Adjust the glue
    only if a template contract changed; the runtime and tools consume the vendored templates, so a
@@ -87,8 +87,8 @@ python plugins/commentable-html/dev/tools/fs_theme_convert.py --preset "Bold Sig
    they pass AA. Copy the finished file to `tools/deck/themes/<name>.theme.json`.
 3. Validate the port fails closed and stays contrast-clean:
    ```bash
-   python plugins/commentable-html/pkg/skills/commentable-html/tools/deck/deck_theme.py --list
-   python plugins/commentable-html/pkg/skills/commentable-html/tools/deck/deck_scaffold.py \
+   python plugins/commentable-html/dev/skill/tools/deck/deck_theme.py --list
+   python plugins/commentable-html/dev/skill/tools/deck/deck_scaffold.py \
      --theme <name> ...   # then deck_validate.py the output
    ```
    Add a golden/contrast test row under CMH-DECK-THEME-* and bump the plugin version.

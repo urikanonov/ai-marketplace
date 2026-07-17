@@ -63,13 +63,13 @@ Your agent can draft a plan in seconds; the real bottleneck is everything after 
 
 Commentable HTML turns any report into a review you can hand straight back to an AI agent, then iterate until every comment is resolved.
 
-![The self-review loop: an AI agent generates a commentable HTML report, you review it and leave inline comments, you Copy all the comments back to the agent, then reload and repeat until every comment is resolved.](skills/commentable-html/docs/assets/review-loop.svg)
+![The self-review loop: an AI agent generates a commentable HTML report, you review it and leave inline comments, you Copy all the comments back to the agent, then reload and repeat until every comment is resolved.](https://raw.githubusercontent.com/urikanonov/ai-marketplace/main/plugins/commentable-html/docs/assets/review-loop.svg)
 
 - **Self review** - generate the report, comment on it, `Copy all` back to the agent, and reload; repeat until the panel is empty.
 - **Peer review** - `Export as Portable` and share the single file; the peer comments in place and sends it back with the comments embedded, then you feed those back to the agent.
 - **Reviewing someone's plan** - convert an incoming Markdown or HTML plan into commentable HTML, comment inline, and `Export as Portable` to send it back.
 
-See the [tutorial](skills/commentable-html/docs/TUTORIAL.md) for a full walkthrough, or the live demo and review-loop diagram on the [project website](https://urikanonov.github.io/ai-marketplace/commentable-html/).
+See the [tutorial](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/docs/TUTORIAL.md) for a full walkthrough, or the live demo and review-loop diagram on the [project website](https://urikanonov.github.io/ai-marketplace/commentable-html/).
 
 ## Using the skill
 
@@ -108,5 +108,5 @@ Contributors: see the [contributing guide](https://github.com/urikanonov/ai-mark
 | `skills/commentable-html/dist/` | Generated bundle: `PORTABLE.html`, `NONPORTABLE.html`, CSS/JS/assets companions, and `manifest.json`. |
 | `skills/commentable-html/tools/` | Runtime Python tools used while generating, validating, upgrading, and processing reports. |
 | `skills/commentable-html/references/` | Detailed reference docs for anchors, layout, charts, validation, exports, and helper tools. |
-| `skills/commentable-html/docs/` | Tutorial and diagrams: `docs/TUTORIAL.md` and `docs/assets/` (tutorial screenshots plus the review-loop diagram embedded in this README). |
-| `skills/commentable-html/examples/` | Worked prompts and reports, including `prompt-community-garden.md`, `prompt-taxi.md`, `prompt-triage.md`, `prompt-metrics.md`, `report-community-garden.html`, `report-taxi.html`, `report-triage.html`, and `report-metrics.html`. |
+
+The skill installs as a compact `skills/commentable-html/skill-resources.zip` that a session-start hook unpacks on first run (retrying the transient Windows Defender file lock the installer does not), so the installed footprint stays small and the `dist/`, `tools/`, and `references/` folders above appear after that first-run extraction. If those extracted files ever go missing (for example an antivirus quarantine), delete the `skills/commentable-html/.skill-resources-*.ok` marker, `.skill-resources.lock`, and `.skill-resources-staging` files and start a new session - the hook re-extracts them. The tutorial and worked examples are not installed - read them online: the [tutorial](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/docs/TUTORIAL.md), the [worked prompts and example reports](https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/examples), and the [live demos](https://urikanonov.github.io/ai-marketplace/commentable-html/).

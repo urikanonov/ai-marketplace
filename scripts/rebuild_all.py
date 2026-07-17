@@ -28,7 +28,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_PY = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "build.py")
 BUILD_SPEC = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "build_spec.py")
 ASSETS_DIR = os.path.join(ROOT, "plugins", "commentable-html", "dev", "assets")
-OUT_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "commentable-html")
+# The full editable + built skill tree (STAGE); the shipped pkg carries only a minimal set plus the
+# skill-resources.zip that build.py assembles from the STAGE and a SessionStart hook extracts.
+STAGE_DIR = os.path.join(ROOT, "plugins", "commentable-html", "dev", "skill")
+PKG_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "commentable-html")
+# The built demo reports/prompts live at the plugin top level (not shipped, not in the zip).
+EXAMPLES_DIR = os.path.join(ROOT, "plugins", "commentable-html", "examples")
 FIXTURES_GEN = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tests", "fixtures", "generate.mjs")
 TUTORIAL_SHOTS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "capture_tutorial.mjs")
 SITE_DATA = os.path.join(ROOT, "scripts", "build_site_data.py")
@@ -51,7 +56,8 @@ def main(argv=None):
 
     steps = [
         ("commentable-html layer dist (build.py)",
-         [sys.executable, BUILD_PY, "--assets-dir", ASSETS_DIR, "--out-dir", OUT_DIR] + check),
+         [sys.executable, BUILD_PY, "--assets-dir", ASSETS_DIR, "--out-dir", STAGE_DIR,
+          "--pkg-dir", PKG_DIR, "--examples-dir", EXAMPLES_DIR] + check),
         ("commentable-html dev SPEC (build_spec.py)", [sys.executable, BUILD_SPEC] + check),
     ]
     node = shutil.which("node")

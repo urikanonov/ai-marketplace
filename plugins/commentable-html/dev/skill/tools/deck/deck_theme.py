@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover
 def _is_repo_example(path):
     norm = os.path.normpath(os.path.abspath(path)).replace("\\", "/")
     return (
-        "/pkg/skills/commentable-html/examples/" in norm
+        "/commentable-html/examples/" in norm
         or "/dev/examples/src/" in norm
     )
 
