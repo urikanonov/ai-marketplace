@@ -82,6 +82,17 @@ python plugins/commentable-html/dev/tools/fs_theme_convert.py --preset "Bold Sig
      --theme <name> ...   # then deck_validate.py the output
    ```
    Add a golden/contrast test row under CMH-DECK-THEME-* and bump the plugin version.
+4. Run the objective evaluation harness (CMH-DECK-THEME-05) before you ship the preset:
+   ```bash
+   python plugins/commentable-html/dev/eval/theme_eval.py
+   ```
+   It renders the fixed corpus (`dev/eval/corpus/*.html`) under the baseline and every shipped preset
+   and fails if any cell does not scaffold clean, raises a validator error, trips a content-overload
+   (clipping) advisory, or the theme bloats a deck past the size ceiling. A new preset that regresses
+   any of these is caught here (and by `tests/test_theme_eval.py`) before it ships.
+5. Do the one MANUAL leg the harness cannot automate: a blind visual-preference pass. Open a couple of
+   the corpus decks under the new preset and confirm they read well (hierarchy, accent restraint,
+   legibility at deck scale). The harness gates the objective metrics; this catches taste.
 
 ### Recipe: acknowledge an upstream refresh ("reviewed, no change")
 
