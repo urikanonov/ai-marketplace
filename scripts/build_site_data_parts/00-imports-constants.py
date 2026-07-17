@@ -42,8 +42,31 @@ PLUGIN_PAGES = {
 PLUGIN_DISPLAY_NAMES = {
     "commentable-html": "Commentable HTML",
     UPDATER_PLUGIN: "Auto-updater",
-    MULTI_DUCK_PLUGIN: "multi-duck",
+    MULTI_DUCK_PLUGIN: "Multi Duck",
 }
+# Human-friendly Title Case labels for the manifest category slugs, shown on the plugin-card badges
+# and the nav plugin-switcher tiles. An explicit mapping lets a slug read more descriptively (e.g.
+# "code review" -> "Code and Plan Review"); any category without an entry is Title Cased with small
+# joining words kept lowercase.
+CATEGORY_DISPLAY_NAMES = {
+    "planning and analysis": "Planning and Analysis",
+    "code review": "Code and Plan Review",
+    "infrastructure": "Infrastructure",
+}
+_CATEGORY_SMALL_WORDS = {"and", "or", "the", "a", "an", "of", "for", "to", "in", "on", "with"}
+
+
+def category_label(category):
+    """The Title Case display label for a manifest category slug (empty in, empty out)."""
+    if not category:
+        return ""
+    mapped = CATEGORY_DISPLAY_NAMES.get(category.strip().lower())
+    if mapped:
+        return mapped
+    words = category.split()
+    return " ".join(
+        w.lower() if i and w.lower() in _CATEGORY_SMALL_WORDS else w[:1].upper() + w[1:].lower()
+        for i, w in enumerate(words))
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-showcase.html"]
 EXAMPLES_REL = os.path.join("plugins", "commentable-html", "examples")

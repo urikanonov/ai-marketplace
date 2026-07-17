@@ -68,8 +68,8 @@
           <a class="nav-switcher-trigger" href="../"><svg class="nav-switcher-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Marketplace</span></a>
           <div class="nav-switcher-menu">
             <span class="nav-switcher-heading">Switch plugin</span>
-            <a class="switch-tile" href="../commentable-html/"><img class="switch-tile-icon" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /><span class="switch-tile-text"><span class="switch-tile-name">Commentable HTML</span><span class="switch-tile-sub">planning and analysis</span></span></a>
-              <a class="switch-tile" href="../urikan-ai-marketplace-auto-updater/"><img class="switch-tile-icon" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /><span class="switch-tile-text"><span class="switch-tile-name">Auto-updater</span><span class="switch-tile-sub">infrastructure</span></span></a>
+            <a class="switch-tile" href="../commentable-html/"><img class="switch-tile-icon" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /><span class="switch-tile-text"><span class="switch-tile-name">Commentable HTML</span><span class="switch-tile-sub">Planning and Analysis</span></span></a>
+              <a class="switch-tile" href="../urikan-ai-marketplace-auto-updater/"><img class="switch-tile-icon" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /><span class="switch-tile-text"><span class="switch-tile-name">Auto-updater</span><span class="switch-tile-sub">Infrastructure</span></span></a>
             <a class="switch-tile switch-tile-all" href="../"><span class="switch-tile-text"><span class="switch-tile-name">All plugins</span><span class="switch-tile-sub">Back to the hub</span></span></a>
           </div>
         </div>
@@ -92,6 +92,16 @@
         <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.0.0<!-- END:version --></span></a>
       </div>
     </header>
+
+    <section id="why">
+      <div class="wrap">
+        <div class="section-block prose">
+          <h2 class="section-title">Why a panel beats a single review</h2>
+          <p>Every model is confidently wrong in its own way. Ask the same model that wrote (or reviewed) a change to review it again and it tends to re-make the same oversight. The fix is not a bigger model - it is <strong>uncorrelated</strong> reviewers. Put an Anthropic model, an OpenAI model, a Google model, and more on the same change and the bug one family always glosses over is the one another family flags on sight.</p>
+          <p><strong>multi-duck turns that into a one-word command.</strong> It runs end to end with no extra prompt: say "multi-duck" and it discovers what to review on its own, launches the panel, waits for every duck, merges the results into one ranked list, and autonomously applies the fixes that are safe - leaving the judgment calls clearly flagged for you. The ducks are strictly review-only; every change is made by the main agent under explicit safe-fix rules.</p>
+        </div>
+      </div>
+    </section>
 
     <section id="install">
       <div class="wrap">
@@ -165,16 +175,14 @@
             </div>
         <!-- END:install -->
         <p class="section-sub install-note">Model diversity is the whole point, so the panel is strongest where several high-capability models are available to you. On the Copilot CLI each duck runs on a distinct model out of the box; on Claude Code, configure a few rubber-duck subagents pinned to different models to get the same cross-model coverage.</p>
-      </div>
-    </section>
-
-    <section id="why">
-      <div class="wrap">
-        <div class="section-block prose">
-          <h2 class="section-title">Why a panel beats a single review</h2>
-          <p>Every model is confidently wrong in its own way. Ask the same model that wrote (or reviewed) a change to review it again and it tends to re-make the same oversight. The fix is not a bigger model - it is <strong>uncorrelated</strong> reviewers. Put an Anthropic model, an OpenAI model, a Google model, and more on the same change and the bug one family always glosses over is the one another family flags on sight.</p>
-          <p><strong>multi-duck turns that into a one-word command.</strong> It runs end to end with no extra prompt: say "multi-duck" and it discovers what to review on its own, launches the panel, waits for every duck, merges the results into one ranked list, and autonomously applies the fixes that are safe - leaving the judgment calls clearly flagged for you. The ducks are strictly review-only; every change is made by the main agent under explicit safe-fix rules.</p>
-        </div>
+        <a class="install-updater-cta install-note" href="../urikan-ai-marketplace-auto-updater/#install">
+          <img class="install-updater-icon" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" />
+          <span class="install-updater-body">
+            <span class="install-updater-title">Keep it up to date automatically</span>
+            <span class="install-updater-desc">Install the <strong>auto-updater plugin</strong> to fetch new multi-duck releases on session start - always the latest fixes and features, no manual <code>plugin update</code>.</span>
+          </span>
+          <span class="install-updater-cue" aria-hidden="true">&rarr;</span>
+        </a>
       </div>
     </section>
 

@@ -79,8 +79,8 @@ class RenderPluginsTests(unittest.TestCase):
                   encoding="utf-8") as fh:
             manifest = json.load(fh)
         out = bsd.render_plugins(manifest)
-        # The commentable-html card badge renders the "planning and analysis" category.
-        self.assertIn('<span class="badge">planning and analysis</span>', out)
+        # The commentable-html card badge renders the "planning and analysis" category in Title Case.
+        self.assertIn('<span class="badge">Planning and Analysis</span>', out)
         # The keyword chips include the cmh shorthand, analysis, plan, and report.
         for chip in ("cmh", "analysis", "plan", "report"):
             self.assertIn('<span class="chip">%s</span>' % chip, out)
@@ -529,6 +529,42 @@ class RenderSwitcherTests(unittest.TestCase):
         manifest = {"name": "m", "plugins": [
             {"name": "commentable-html", "version": "1.0.0", "category": "x"}]}
         self.assertEqual(bsd.render_switcher(manifest, "commentable-html"), "")
+
+    def test_tiles_show_title_case_category_labels(self):
+        # SITE-SWITCH-02: the tile category subtitle is a Title Case label, not the lowercase
+        # manifest slug ("code review" reads "Code and Plan Review").
+        out_from_mduck = bsd.render_switcher(self._manifest(), "multi-duck")
+        self.assertIn(">Planning and Analysis<", out_from_mduck)
+        self.assertIn(">Infrastructure<", out_from_mduck)
+        self.assertNotIn(">planning and analysis<", out_from_mduck)
+        self.assertNotIn(">infrastructure<", out_from_mduck)
+        out_from_cmh = bsd.render_switcher(self._manifest(), "commentable-html")
+        self.assertIn(">Code and Plan Review<", out_from_cmh)
+        self.assertNotIn(">code review<", out_from_cmh)
+
+    def test_tile_name_uses_friendly_multi_duck_label(self):
+        # SITE-SWITCH-02: the multi-duck tile name reads "Multi Duck", not the raw slug.
+        out = bsd.render_switcher(self._manifest(), "commentable-html")
+        self.assertIn(">Multi Duck<", out)
+        self.assertNotIn(">multi-duck<", out)
+
+
+class PluginPageStructureTests(unittest.TestCase):
+    """The auto-updater CTA authored in the plugin page SOURCES under site/pages/<plugin>/index.html
+    (the generator copies these verbatim, only filling markers). The Why/Install section ordering is
+    covered by the rendered SITE-INSTALL-08 Playwright test."""
+
+    def _src(self, rel):
+        with open(os.path.join(bsd.REPO_ROOT, rel), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_every_non_updater_plugin_page_has_the_auto_updater_install_cta(self):
+        # SITE-UPDATER-13: every non-updater plugin page carries the auto-updater CTA, and the CTA
+        # links to the updater page's #install section (not just its page root).
+        for name, rel in (("commentable-html", bsd.PLUGIN_SRC), ("multi-duck", bsd.MULTI_DUCK_SRC)):
+            html = self._src(rel)
+            self.assertIn("install-updater-cta", html, name)
+            self.assertIn('href="../urikan-ai-marketplace-auto-updater/#install"', html, name)
 
 
 if __name__ == "__main__":

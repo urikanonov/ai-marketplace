@@ -67,8 +67,8 @@
           <a class="nav-switcher-trigger" href="../"><svg class="nav-switcher-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Marketplace</span></a>
           <div class="nav-switcher-menu">
             <span class="nav-switcher-heading">Switch plugin</span>
-            <a class="switch-tile" href="../commentable-html/"><img class="switch-tile-icon" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /><span class="switch-tile-text"><span class="switch-tile-name">Commentable HTML</span><span class="switch-tile-sub">planning and analysis</span></span></a>
-              <a class="switch-tile" href="../multi-duck/"><img class="switch-tile-icon" src="../assets/multi-duck.svg" alt="multi-duck logo" /><span class="switch-tile-text"><span class="switch-tile-name">multi-duck</span><span class="switch-tile-sub">code review</span></span></a>
+            <a class="switch-tile" href="../commentable-html/"><img class="switch-tile-icon" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /><span class="switch-tile-text"><span class="switch-tile-name">Commentable HTML</span><span class="switch-tile-sub">Planning and Analysis</span></span></a>
+              <a class="switch-tile" href="../multi-duck/"><img class="switch-tile-icon" src="../assets/multi-duck.svg" alt="Multi Duck logo" /><span class="switch-tile-text"><span class="switch-tile-name">Multi Duck</span><span class="switch-tile-sub">Code and Plan Review</span></span></a>
             <a class="switch-tile switch-tile-all" href="../"><span class="switch-tile-text"><span class="switch-tile-name">All plugins</span><span class="switch-tile-sub">Back to the hub</span></span></a>
           </div>
         </div>
@@ -91,6 +91,16 @@
         <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.2.3<!-- END:version --></span></a>
       </div>
     </header>
+
+    <section id="why">
+      <div class="wrap">
+        <div class="section-block prose">
+          <h2 class="section-title">Why auto-update</h2>
+          <p>Plugins move fast. New commentable-html releases ship fixes, new content types, and safer defaults on a regular cadence - but a plugin only helps you if the copy on your machine is current. Updating by hand means remembering to run <code>copilot plugin update</code> (or <code>claude plugin update</code>) for each plugin, on each machine, and noticing when a new version even exists.</p>
+          <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <a href="../"><code>urikan-ai-marketplace</code></a>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
+        </div>
+      </div>
+    </section>
 
     <section id="install">
       <div class="wrap">
@@ -153,16 +163,6 @@
             </div>
         <!-- END:install -->
         <p class="section-sub install-note">On macOS and Linux the updater needs <a href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell" target="_blank" rel="noopener noreferrer">PowerShell 7 (<code>pwsh</code>)</a> on your <code>PATH</code>; on Windows the Copilot hook runs the script under Windows PowerShell with nothing extra to install, and the Claude hook dispatches it through the shell Claude Code provides. When PowerShell is missing the hook logs a dated skip note instead of failing.</p>
-      </div>
-    </section>
-
-    <section id="why">
-      <div class="wrap">
-        <div class="section-block prose">
-          <h2 class="section-title">Why auto-update</h2>
-          <p>Plugins move fast. New commentable-html releases ship fixes, new content types, and safer defaults on a regular cadence - but a plugin only helps you if the copy on your machine is current. Updating by hand means remembering to run <code>copilot plugin update</code> (or <code>claude plugin update</code>) for each plugin, on each machine, and noticing when a new version even exists.</p>
-          <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <a href="../"><code>urikan-ai-marketplace</code></a>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
-        </div>
       </div>
     </section>
 

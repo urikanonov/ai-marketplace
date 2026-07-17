@@ -81,15 +81,6 @@
       </div>
     </header>
 
-    <section id="install">
-      <div class="wrap">
-        <h2 class="section-title">Install</h2>
-        <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI. Pick your agent, add the marketplace, then install the auto-updater. That is the whole setup.</p>
-        <!-- BEGIN:install --><!-- END:install -->
-        <p class="section-sub install-note">On macOS and Linux the updater needs <a href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell" target="_blank" rel="noopener noreferrer">PowerShell 7 (<code>pwsh</code>)</a> on your <code>PATH</code>; on Windows the Copilot hook runs the script under Windows PowerShell with nothing extra to install, and the Claude hook dispatches it through the shell Claude Code provides. When PowerShell is missing the hook logs a dated skip note instead of failing.</p>
-      </div>
-    </section>
-
     <section id="why">
       <div class="wrap">
         <div class="section-block prose">
@@ -97,6 +88,15 @@
           <p>Plugins move fast. New commentable-html releases ship fixes, new content types, and safer defaults on a regular cadence - but a plugin only helps you if the copy on your machine is current. Updating by hand means remembering to run <code>copilot plugin update</code> (or <code>claude plugin update</code>) for each plugin, on each machine, and noticing when a new version even exists.</p>
           <p><strong>The auto-updater removes that chore entirely.</strong> It registers a single session-start hook that, once per day at most, updates every plugin you installed from the <a href="../"><code>urikan-ai-marketplace</code></a>. You keep the newest version without lifting a finger, and because it is a separate opt-in plugin, automatic updates are a choice you make - not something forced on every install.</p>
         </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2 class="section-title">Install</h2>
+        <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI. Pick your agent, add the marketplace, then install the auto-updater. That is the whole setup.</p>
+        <!-- BEGIN:install --><!-- END:install -->
+        <p class="section-sub install-note">On macOS and Linux the updater needs <a href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell" target="_blank" rel="noopener noreferrer">PowerShell 7 (<code>pwsh</code>)</a> on your <code>PATH</code>; on Windows the Copilot hook runs the script under Windows PowerShell with nothing extra to install, and the Claude hook dispatches it through the shell Claude Code provides. When PowerShell is missing the hook logs a dated skip note instead of failing.</p>
       </div>
     </section>
 

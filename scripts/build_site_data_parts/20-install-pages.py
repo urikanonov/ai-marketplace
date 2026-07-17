@@ -159,7 +159,7 @@ def render_plugins(manifest, claude_names=None):
                                        "install-card-" + name,
                                        desktop_zip=desktop_zip, desktop_skill=desktop_skill)
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
-        category_badge = ('\n    <span class="badge">%s</span>' % esc(category)) if category else ""
+        category_badge = ('\n    <span class="badge">%s</span>' % esc(category_label(category))) if category else ""
         title = '<span class="name">%s</span>' % esc(name)
         if page:
             title = '<span class="name"><a href="%s">%s</a></span>' % (esc(page), esc(name))
@@ -208,7 +208,7 @@ def render_switcher(manifest, current_name, rel_prefix="../"):
         category = plugin.get("category", "")
         href = esc(safe_url(rel_prefix + name + "/"))
         icon = esc(safe_url(rel_prefix + "assets/" + name + ".svg"))
-        sub = ('<span class="switch-tile-sub">%s</span>' % esc(category)) if category else ""
+        sub = ('<span class="switch-tile-sub">%s</span>' % esc(category_label(category))) if category else ""
         tiles.append(
             '<a class="switch-tile" href="%s">'
             '<img class="switch-tile-icon" src="%s" alt="%s logo" />'
