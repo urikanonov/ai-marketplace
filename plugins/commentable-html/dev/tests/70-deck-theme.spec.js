@@ -3,7 +3,7 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { fileUrl, ready, addTextComment, installClipboardCapture, PYTHON, SKILL } from "./helpers.js";
+import { fileUrl, ready, addTextComment, installClipboardCapture, enterCommentMode, PYTHON, SKILL } from "./helpers.js";
 
 // A reference deck authored ONLY from public recipe classes and standard content - no per-deck CSS,
 // no inline style attributes - so a passing render proves the theme + recipe layer alone produce a
@@ -76,7 +76,7 @@ test.describe("deck theme presets (CMH-DECK-THEME)", () => {
     expect(await computed(page, ".cmh-pill", "color")).toBe("rgb(1, 4, 9)"); // accent-fg
   });
 
-  test("CMH-DECK-THEME-03: themed surfaces keep AA contrast in present and comment mode", async ({ page }) => {
+  test("CMH-DECK-THEME-03: themed surfaces keep AA contrast in closed and open mode", async ({ page }) => {
     await installClipboardCapture(page);
     await page.goto(fileUrl(themedDeck));
     await ready(page);
@@ -100,8 +100,8 @@ test.describe("deck theme presets (CMH-DECK-THEME)", () => {
       for (const r of ratio) expect(r, label + " pair ratio " + r).toBeGreaterThanOrEqual(4.5);
     };
     await checkAll("present");
-    // Enter comment mode and re-check (theme is mode-independent, but the stage insets).
-    await page.locator(".cmh-deck-mode-toggle").click();
+    // Open the review panel and re-check (theme is mode-independent, but the stage insets).
+    await enterCommentMode(page);
     await checkAll("comment");
   });
 
@@ -111,8 +111,8 @@ test.describe("deck theme presets (CMH-DECK-THEME)", () => {
     await ready(page);
     // Comment on slide-3 text (navigate there first so it is the active slide).
     await page.evaluate(() => window.__cmhDeck.showSlide(2));
-    // Present mode suppresses the selection popup; enter comment mode to author a comment.
-    await page.locator(".cmh-deck-mode-toggle").click();
+    // Open the review panel before authoring so the saved card is immediately reviewable.
+    await enterCommentMode(page);
     await addTextComment(page, ".slide.active td", "check this cell");
     const before = await page.evaluate(() => {
       const m = document.querySelector("mark.cm-hl");

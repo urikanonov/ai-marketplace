@@ -28,9 +28,9 @@ function _setMenuMode(mode) {
 }
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
-  // Deck present mode is a clean full-screen presentation with no commenting UI: keep the
-  // native context menu and do not raise the text/document comment menu.
-  if (document.body.classList.contains("cmh-deck-present")) return;
+  // Deck with commenting disabled ("off" state): keep the native context menu and do not raise
+  // the text/document comment menu. Commenting stays available with the panel merely closed.
+  if (document.body.classList.contains("cmh-deck-comments-off")) return;
   if (_coarsePointer) return;
   const got = selectionInRoot();
   if (got) {
@@ -70,8 +70,8 @@ document.addEventListener("mouseup", (e) => {
   // that neighbour while a valid content selection still stands. Remember it so the no-selection
   // cleanup below can skip clobbering an open menu when the release landed on chrome.
   const onSkip = !!(e.target.closest && e.target.closest(".cm-skip"));
-  // Deck present mode: no text-selection comment popup (the comment UI is hidden).
-  if (document.body.classList.contains("cmh-deck-present")) return;
+  // Deck with commenting disabled: no text-selection comment popup.
+  if (document.body.classList.contains("cmh-deck-comments-off")) return;
   setTimeout(() => {
     const got = selectionInRoot();
     if (!got) {
@@ -102,7 +102,7 @@ document.addEventListener("mouseup", (e) => {
 if (_coarsePointer) {
   let _touchSelTimer = null;
   const raiseTouchSelectionMenu = () => {
-    if (document.body.classList.contains("cmh-deck-present")) { hideMenu(); return; }
+    if (document.body.classList.contains("cmh-deck-comments-off")) { hideMenu(); return; }
     const got = selectionInRoot();
     if (!got) { hideMenu(); pendingRange = null; pendingQuote = ""; return; }
     pendingDiffSel = null;

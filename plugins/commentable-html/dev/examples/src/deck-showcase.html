@@ -1798,6 +1798,11 @@ svg {
   --slide-fg: var(--show-text);
   background: var(--slide-bg);
   padding: 64px 78px;
+  /* Center slide content vertically so it uses the full 1080px stage instead of hugging the top
+     with a large empty band at the bottom. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 #commentRoot[data-cmh-mode="deck"] .slide h1,
 #commentRoot[data-cmh-mode="deck"] .slide h2,
@@ -1807,7 +1812,7 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .slide p,
 #commentRoot[data-cmh-mode="deck"] .slide li { color: var(--show-muted); font-size: 26px; }
 #commentRoot[data-cmh-mode="deck"] .slide strong { color: var(--show-text); }
-#commentRoot[data-cmh-mode="deck"] .show-mark { background: rgba(245, 158, 11, 0.42); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.42); border-radius: 6px; padding: 0 4px; }
+#commentRoot[data-cmh-mode="deck"] .show-mark { background: rgba(245, 158, 11, 0.42); border-radius: 6px; padding: 0 0.12em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 #commentRoot[data-cmh-mode="deck"] .show-kicker { color: var(--show-accent); font-size: 24px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 18px; }
 #commentRoot[data-cmh-mode="deck"] .show-lead { font-size: 30px; color: var(--show-muted); max-width: 1480px; }
 #commentRoot[data-cmh-mode="deck"] .show-header { display: grid; grid-template-columns: 360px 1fr; gap: 44px; align-items: center; padding: 148px 120px; }
@@ -1976,7 +1981,38 @@ svg {
   background: #fffdf8 !important;
   color: #1b1f3b !important;
 }
+/* A small Commentable HTML brand mark pinned to the top-right of every slide (pitch deck only),
+   left of the runtime chrome, linking to the plugin site. */
+#commentRoot[data-cmh-mode="deck"] .show-corner-logo {
+  position: absolute;
+  top: 40px;
+  right: 150px;
+  z-index: 5;
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: #fffdf8;
+  border: 1px solid var(--show-line, #e4dccb);
+  box-shadow: 0 10px 24px rgba(120, 98, 60, 0.14);
+}
+#commentRoot[data-cmh-mode="deck"] .show-corner-logo:hover {
+  border-color: var(--show-accent, #b11f4b);
+}
+#commentRoot[data-cmh-mode="deck"] .show-corner-logo svg { width: 60px; height: 60px; }
+#commentRoot[data-cmh-mode="deck"] .show-corner-logo .logo-shell { fill: #b11f4b; }
+#commentRoot[data-cmh-mode="deck"] .show-corner-logo .logo-line { fill: #ffffff; }
+#commentRoot[data-cmh-mode="deck"] .show-corner-logo .logo-dot { fill: #f59e0b; }
 </style>
+<a class="show-corner-logo cm-skip" href="https://urikanonov.github.io/ai-marketplace/commentable-html/" target="_blank" rel="noopener noreferrer" title="Commentable HTML" aria-label="Commentable HTML site (opens in a new tab)">
+  <svg viewBox="0 0 240 240" role="presentation" focusable="false" aria-hidden="true">
+    <path class="logo-shell" d="M34 54c0-11 9-20 20-20h132c11 0 20 9 20 20v86c0 11-9 20-20 20H98l-40 31c-6 5-16 0-16-8V54z"></path>
+    <rect class="logo-line" x="66" y="79" width="108" height="16" rx="8"></rect>
+    <rect class="logo-line" x="66" y="110" width="76" height="16" rx="8"></rect>
+    <circle class="logo-dot" cx="176" cy="111" r="18"></circle>
+  </svg>
+</a>
 
 <section class="slide show-header active" data-cm-widget="showcase-title" data-cm-part-label="Header slide" data-slide-id="slide-21860f4e">
   <div class="show-logo-wrap cm-skip" aria-hidden="true">

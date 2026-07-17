@@ -2,14 +2,14 @@
 // showcase deck (examples/deck-showcase.html, a kind=slides deck). Each test serves the real
 // deck over http with mermaid routed to the vendored copy (a runtime CDN import browsers block
 // over file://) so the suite stays fully self-contained, exercises the sidebar export button
-// reached through comment mode, and asserts the deck contract survives the export.
+// reached through the open review panel, and asserts the deck contract survives the export.
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, readDownload, startStaticServer,
-  installClipboardCapture, openComposerFor, routeMermaidLocal,
+  installClipboardCapture, openComposerFor, routeMermaidLocal, enterCommentMode,
 } from "./helpers.js";
 
 const DECK = path.join(SKILL, "..", "..", "examples", "deck-showcase.html");
@@ -58,10 +58,10 @@ async function openDeck(page) {
   return { dir, server, cleanup };
 }
 
-// Enter comment mode and add one comment on the first slide, which reveals the sidebar and its
+// Open the review panel and add one comment on the first slide, which reveals the sidebar and its
 // export buttons (the proven deck export entry point, mirroring 52-deck.spec.js).
 async function enterCommentModeAndComment(page, note) {
-  await page.locator(".cmh-deck-mode-toggle").click();
+  await enterCommentMode(page);
   const composer = await openComposerFor(page, COMMENT_TARGET);
   const textarea = composer.locator("textarea");
   await textarea.fill(note);
@@ -108,7 +108,7 @@ test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reop
     expect(await page2.evaluate(() => typeof window.__cmhDeck)).toBe("object");
     expect(await page2.evaluate(() => window.__cmhDeck.activeSlideId())).toBe(firstId);
     await expect.poll(() => page2.locator("mark.cm-hl").count()).toBeGreaterThan(0);
-    await page2.locator(".cmh-deck-mode-toggle").click();
+    await enterCommentMode(page2);
     await expect(page2.locator("#commentList")).toContainText("portable deck note");
     // A Portable deck keeps only the optional mermaid library loader; the sole permitted network
     // is that CDN, never the content, comments, or a companion asset file.
@@ -150,6 +150,7 @@ test("CMH-DECK-EXPORT-01: Export Offline keeps the deck mermaid + chart live, va
     // The deck contract survives; the transient present-mode body class is NOT baked in.
     expect(exportedHtml).toContain('data-cmh-mode="deck"');
     expect(/<body[^>]*class="[^"]*cmh-deck-present/.test(exportedHtml)).toBe(false);
+    expect(/<body[^>]*class="[^"]*cmh-deck-comments-off/.test(exportedHtml)).toBe(false);
     expect(exportedHtml).not.toMatch(/<section\b[^>]*\bcmh-deck-overview\b/);
 
     const exportedPath = path.join(dir, "deck-offline.html");
@@ -169,7 +170,7 @@ test("CMH-DECK-EXPORT-01: Export Offline keeps the deck mermaid + chart live, va
     await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
     expect(await page2.evaluate(() => typeof window.__cmhDeck)).toBe("object");
     // The mermaid lives on a non-active slide, so assert it is attached with rendered graphics
-    // rather than visible in present mode.
+    // rather than visible while the first slide is active.
     await expect(page2.locator("#commentRoot pre.mermaid svg").first()).toBeAttached();
     expect(await page2.locator("#commentRoot pre.mermaid svg g").count()).toBeGreaterThan(0);
     const chartState = await page2.evaluate(() => {
@@ -182,7 +183,7 @@ test("CMH-DECK-EXPORT-01: Export Offline keeps the deck mermaid + chart live, va
     expect(chartState.tag).toBe("CANVAS");
     expect(chartState.pixel.some((value) => value !== 0)).toBe(true);
     await expect.poll(() => page2.locator("mark.cm-hl").count()).toBeGreaterThan(0);
-    await page2.locator(".cmh-deck-mode-toggle").click();
+    await enterCommentMode(page2);
     await expect(page2.locator("#commentList")).toContainText("offline deck note");
     expect(external).toEqual([]);
   } finally {
