@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.142.0] - 2026-07-17
+
+### Changed
+
+- Mobile and chrome polish from a full visual audit of the example set (the new `.github/skills/visual-audit` skill drove every example in desktop and mobile viewports; issue #353). On narrow viewports a page title flush to the top no longer renders under the fixed toolbar pill (CMH-RESP-03), the comments sidebar opens as a full-width sheet with the resize handle removed so no document sliver shows behind it (CMH-RESP-04), and the floating scroll-progress bubble is hidden so it never overlaps content (CMH-RESP-05). The compact checklist state control gains a `>=44px` invisible touch target without enlarging its glyph (CMH-RESP-06). The control that reopens the comments panel is now labeled `Comments` instead of the ambiguous `Show` that duplicated the top-bar pill (CMH-CHROME-11), and a disabled deck navigation button keeps a readable contrast instead of near-invisible gray (CMH-DECK-NAV-01).
+- Follow-up polish from the visual audit (issue #360), each with a covering test in `tests/72-followups.spec.js`:
+  - A leading lede/card (not just a bare title) also clears the fixed toolbar on mobile (CMH-RESP-03).
+  - The notes fold/toggle controls and the sidebar comment-card action buttons (jump/edit/delete) get `>=44px` touch targets on mobile without changing their look (CMH-RESP-07). Dense checklist rows also keep enough vertical rhythm (table rows via `td` padding) that adjacent tap targets never overlap into a neighbouring row (CMH-RESP-06).
+  - Small charts fit the mobile viewport instead of being force-widened to 560px, which had clipped pie/doughnut legends; wide mermaid diagrams still scroll (CMH-RESP-08).
+- `report-checklist` no longer repeats its document title verbatim as its first section heading; the first section is now `About this example`, so the sidebar breadcrumb is not doubled (CMH-CONTENT-17).
+
+### Fixed
+
+- The sidebar/Copy-all context preview no longer glues adjacent elements into a run-on ("18open incidents"): it inserts a separator at non-inline box boundaries. Display-only - the comment-anchoring offset space is unchanged (CMH-CTX-01).
+- The deck comment-mode toggle now uses a distinct annotate icon instead of the brand speech-bubble the site link uses, so the two top-corner controls are no longer identical (CMH-DECK-11, CMH-DECK-23).
+- The deck overview grid renders faithful thumbnails: slide canvases are snapshotted into images (a cloned canvas is blank), and each cloned SVG's ids are namespaced per clone (with `url(#id)`, `href`, and aria idref references rewritten) so a thumbnail's gradient/mask/filter refs resolve to its OWN defs - fixing the slide-1 logo rendering black, without duplicating a document id when two slides reuse the same id (CMH-DECK-24).
+
 ## [1.141.0] - 2026-07-17
 
 ### Changed

@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.141.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.142.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -425,12 +425,29 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.142.0] - 2026-07-17</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Mobile and chrome polish from a full visual audit of the example set (the new <code>.github/skills/visual-audit</code> skill drove every example in desktop and mobile viewports; issue #353). On narrow viewports a page title flush to the top no longer renders under the fixed toolbar pill (CMH-RESP-03), the comments sidebar opens as a full-width sheet with the resize handle removed so no document sliver shows behind it (CMH-RESP-04), and the floating scroll-progress bubble is hidden so it never overlaps content (CMH-RESP-05). The compact checklist state control gains a <code>&gt;=44px</code> invisible touch target without enlarging its glyph (CMH-RESP-06). The control that reopens the comments panel is now labeled <code>Comments</code> instead of the ambiguous <code>Show</code> that duplicated the top-bar pill (CMH-CHROME-11), and a disabled deck navigation button keeps a readable contrast instead of near-invisible gray (CMH-DECK-NAV-01).</li>
+              <li>Follow-up polish from the visual audit (issue #360), each with a covering test in <code>tests/72-followups.spec.js</code>: - A leading lede/card (not just a bare title) also clears the fixed toolbar on mobile (CMH-RESP-03). - The notes fold/toggle controls and the sidebar comment-card action buttons (jump/edit/delete) get <code>&gt;=44px</code> touch targets on mobile without changing their look (CMH-RESP-07). Dense checklist rows also keep enough vertical rhythm (table rows via <code>td</code> padding) that adjacent tap targets never overlap into a neighbouring row (CMH-RESP-06). - Small charts fit the mobile viewport instead of being force-widened to 560px, which had clipped pie/doughnut legends; wide mermaid diagrams still scroll (CMH-RESP-08).</li>
+              <li><code>report-checklist</code> no longer repeats its document title verbatim as its first section heading; the first section is now <code>About this example</code>, so the sidebar breadcrumb is not doubled (CMH-CONTENT-17).</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The sidebar/Copy-all context preview no longer glues adjacent elements into a run-on (&quot;18open incidents&quot;): it inserts a separator at non-inline box boundaries. Display-only - the comment-anchoring offset space is unchanged (CMH-CTX-01).</li>
+              <li>The deck comment-mode toggle now uses a distinct annotate icon instead of the brand speech-bubble the site link uses, so the two top-corner controls are no longer identical (CMH-DECK-11, CMH-DECK-23).</li>
+              <li>The deck overview grid renders faithful thumbnails: slide canvases are snapshotted into images (a cloned canvas is blank), and each cloned SVG&#x27;s ids are namespaced per clone (with <code>url(#id)</code>, <code>href</code>, and aria idref references rewritten) so a thumbnail&#x27;s gradient/mask/filter refs resolve to its OWN defs - fixing the slide-1 logo rendering black, without duplicating a document id when two slides reuse the same id (CMH-DECK-24).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.141.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li><code>tools/authoring/upgrade.py</code> now restamps the <code>&lt;head&gt;</code> <code>&lt;meta name=&quot;commentable-html-version&quot;&gt;</code> to the template&#x27;s runtime version during an upgrade (inserting it when a pre-version legacy document lacks it), so an upgraded document no longer self-reports the old version while running the new runtime. The restamp is scoped to <code>&lt;head&gt;</code>, so the marker-like JS export regex literal (<code>content=&quot;[^&quot;]+&quot;</code>) is never matched or rewritten. Post-upgrade validator warnings are now surfaced instead of discarded, and a new opt-in <code>--strict</code> flag treats them as a failure (leaving the target unchanged and exiting non-zero); the default still commits so a version-only upgrade is never blocked by a pre-existing content warning (CMH-TOOL-08, closes #359).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.140.0] - 2026-07-17</h3></div>
             <div class="group-label">Fixed</div>
@@ -438,8 +455,6 @@
               <li>Made the vendored rich-libraries blob (the inline gzip+base64 mermaid/Chart.js payload) reproducible across zlib implementations. <code>build.py</code> previously gzipped the libraries live via <code>deterministic_gzip</code>, but gzip DEFLATE output is not identical between stock zlib and zlib-ng (which Python 3.14 ships), so a dist built on Python 3.14 produced a different blob than CI&#x27;s stock-zlib build and failed the required <code>dist-in-sync</code>/<code>plugin-tests</code> checks with no source change. The build now reads a committed <code>assets/vendor/&lt;lib&gt;.gz</code> artifact and only base64-encodes it (deterministic on every machine); <code>build.py --regen-vendor-gz</code> regenerates those artifacts when a vendored library changes, and <code>build.py --check</code> verifies each committed <code>.gz</code> decompresses to the current source (decompression is deterministic across zlib impls, so the guard never recompresses) (CMH-BUILD-11, closes #372).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.139.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -479,14 +494,7 @@
               <li>Recorded the verified license and commit for the vendored <code>bold-template-pack</code> in <code>vendor/frontend-slides/UPSTREAM.md</code> and added an explicit <code>bold-template-pack/LICENSE</code>. The pack originates from <code>zarazhangrui/beautiful-html-templates</code> (MIT, Zara Zhang, commit <code>e5e204fb</code>), a different upstream repo than frontend-slides; both are MIT by the same author, so adapting a bold template into a native CMH deck preset is now license-cleared (unblocks the Phase 2 bold presets; issue #337).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.135.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Native deck theme presets that incorporate the frontend-slides design system directly into the deck engine, replacing per-deck hand-translation of vendored reference material. A preset is a named JSON profile under <code>tools/deck/themes/&lt;name&gt;.theme.json</code> of allowlisted, system-font, contrast-safe deck tokens; <code>deck_scaffold.py --theme &lt;name&gt;</code> builds a fully styled deck and the new <code>deck_theme.py apply --theme &lt;name&gt;</code> re-themes an existing deck in place. Re-theming is idempotent and comment-safe: the theme block is <code>cm-skip</code>, so it never shifts stored comment offsets. Ships the <code>terminal</code> preset (dark/technical, system monospace), adapted from the frontend-slides &quot;Terminal Green&quot; style (Zara Zhang, MIT). Deck component colours (syntax tokens, table headers, diff, mermaid) and the link/border are now themeable via <code>var(--token, &lt;default&gt;)</code> with byte-exact defaults, plus reusable recipe classes (<code>.cmh-slide-section</code>, <code>.cmh-slide-lede</code>, <code>.cmh-cols-2</code>, <code>.cmh-metric-grid</code>, <code>.cmh-pill</code>) so a themed deck needs no per-deck CSS. <code>deck_validate.py</code> gates every themed contrast pair (compositing the translucent diff rows for a faithful check). Supersedes the vendor-first deck design routing from issue #208; the vendored <code>frontend-slides</code> subtree is retained as design provenance and the maintainer refresh source (CMH-DECK-THEME-01/02/03, CMH-DECK-14; issue #334).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">118 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">119 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

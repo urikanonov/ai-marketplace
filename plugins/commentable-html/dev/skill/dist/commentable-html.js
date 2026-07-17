@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.141.0";
+const CMH_VERSION = "1.142.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -363,6 +363,27 @@ function captureContext(start, end, range) {
   });
   let total = 0, full = "";
   const headings = [];
+  // Display-only block boundaries: char offsets in `full` where the text crosses
+  // into a different non-inline "box" (a heading, list item, table cell, stat
+  // block, ...). Used ONLY to space out the before/after context preview so it
+  // does not read as a run-on ("18open incidents"); `full` (the char-offset space
+  // the comment anchoring depends on) is left untouched.
+  const boundaries = new Set();
+  const boxCache = new Map();
+  const boxOf = (node) => {
+    let el = node.parentElement;
+    if (el && boxCache.has(el)) return boxCache.get(el);
+    const from = el;
+    while (el && el !== root) {
+      const d = getComputedStyle(el).display;
+      if (d && d !== "inline" && d !== "contents") break;
+      el = el.parentElement;
+    }
+    const box = el || root;
+    if (from) boxCache.set(from, box);
+    return box;
+  };
+  let prevBox = null;
   let n;
   while ((n = walker.nextNode())) {
     if (n.nodeType === 1) {
@@ -373,11 +394,24 @@ function captureContext(start, end, range) {
       });
       continue;
     }
+    const box = boxOf(n);
+    if (prevBox && box !== prevBox && full.length > 0 && !/\s$/.test(full) && !/^\s/.test(n.nodeValue)) {
+      boundaries.add(full.length);
+    }
+    prevBox = box;
     full += n.nodeValue;
     total += n.nodeValue.length;
   }
-  const beforeRaw = full.slice(Math.max(0, start - CTX_PAD), start);
-  const afterRaw  = full.slice(end, Math.min(full.length, end + CTX_PAD));
+  const withSeparators = (from, to) => {
+    let out = "";
+    for (let i = from; i < to; i++) {
+      if (i > from && boundaries.has(i)) out += " ";
+      out += full[i];
+    }
+    return out;
+  };
+  const beforeRaw = withSeparators(Math.max(0, start - CTX_PAD), start);
+  const afterRaw  = withSeparators(end, Math.min(full.length, end + CTX_PAD));
   const before = (start > CTX_PAD ? "..." : "") + beforeRaw.replace(/\s+/g, " ").trimStart();
   const after  = afterRaw.replace(/\s+/g, " ").trimEnd() + (end + CTX_PAD < full.length ? "..." : "");
 
@@ -4431,7 +4465,7 @@ function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
   if (!btn) return;
   const open = document.body.classList.contains("sidebar-open");
-  btn.textContent = open ? "Hide" : "Show";
+  btn.textContent = open ? "Hide" : "Comments";
   btn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 function _syncSidebarInert() {
@@ -7627,13 +7661,67 @@ function setupDeck() {
     cards[next].focus();
   }
 
+  // Namespace every id inside a cloned inline SVG (root included) with a per-clone
+  // prefix and rewrite every reference to those ids - url(...) in presentation
+  // attributes and inline style, href / xlink:href fragment refs, and the
+  // aria-labelledby / aria-describedby idref lists. This keeps each thumbnail's
+  // gradient/mask/filter/marker refs resolving to ITS OWN defs while guaranteeing the
+  // clones never duplicate an id already in the document (which would let the browser
+  // resolve url(#id) to the wrong, first-in-document definition).
+  var overviewSvgIdSeq = 0;
+  function namespaceSvgIds(svg) {
+    var withId = [];
+    if (svg.hasAttribute("id")) withId.push(svg);
+    svg.querySelectorAll("[id]").forEach(function (el) { withId.push(el); });
+    if (!withId.length) return;
+    var prefix = "cmhov" + (overviewSvgIdSeq++) + "-";
+    var map = Object.create(null);
+    withId.forEach(function (el) {
+      var old = el.getAttribute("id");
+      var neu = prefix + old;
+      el.setAttribute("id", neu);
+      map[old] = neu;
+    });
+    var XLINK = "http://www.w3.org/1999/xlink";
+    var rewriteUrls = function (v) {
+      return v.replace(/url\(\s*(['"]?)#([^'")\s]+)\1\s*\)/g, function (m, q, id) {
+        return map[id] ? "url(#" + map[id] + ")" : m;
+      });
+    };
+    var rewriteRef = function (v) {
+      return (v && v.charAt(0) === "#" && map[v.slice(1)]) ? "#" + map[v.slice(1)] : v;
+    };
+    var rewriteIdList = function (v) {
+      return v.split(/\s+/).map(function (t) { return map[t] || t; }).join(" ");
+    };
+    var URL_ATTRS = ["fill", "stroke", "clip-path", "mask", "filter", "marker", "marker-start", "marker-mid", "marker-end"];
+    var IDLIST_ATTRS = ["aria-labelledby", "aria-describedby"];
+    var els = [svg];
+    svg.querySelectorAll("*").forEach(function (el) { els.push(el); });
+    els.forEach(function (el) {
+      if (el.hasAttribute("style")) el.setAttribute("style", rewriteUrls(el.getAttribute("style")));
+      URL_ATTRS.forEach(function (a) { if (el.hasAttribute(a)) el.setAttribute(a, rewriteUrls(el.getAttribute(a))); });
+      if (el.hasAttribute("href")) el.setAttribute("href", rewriteRef(el.getAttribute("href")));
+      var xh = el.getAttributeNS ? el.getAttributeNS(XLINK, "href") : null;
+      if (xh) el.setAttributeNS(XLINK, "href", rewriteRef(xh));
+      IDLIST_ATTRS.forEach(function (a) { if (el.hasAttribute(a)) el.setAttribute(a, rewriteIdList(el.getAttribute(a))); });
+    });
+  }
+
   function cleanOverviewClone(node) {
     if (node.removeAttribute) node.removeAttribute("id");
     if (node.classList) node.classList.remove("active", "visible");
     node.setAttribute("inert", "");
     node.inert = true;
     node.tabIndex = -1;
-    node.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+    // Strip non-SVG ids so the clones do not duplicate document ids. Ids INSIDE an
+    // <svg> are needed (it references its own gradients/masks/filters by url(#id);
+    // removing them made the reference fall back to black - the slide-1 logo bug), so
+    // instead of leaving them raw (which would duplicate ids across the thumbnails and
+    // the live slide and make url(#id) resolve to the wrong def) we namespace each
+    // SVG's ids uniquely per clone and rewrite every reference to them.
+    node.querySelectorAll("[id]").forEach((el) => { if (!el.closest("svg")) el.removeAttribute("id"); });
+    node.querySelectorAll("svg").forEach((svg) => namespaceSvgIds(svg));
     node.querySelectorAll("mark.cm-hl").forEach((mark) => {
       mark.replaceWith(...Array.prototype.slice.call(mark.childNodes));
     });
@@ -7727,7 +7815,41 @@ function setupDeck() {
       const scale = document.createElement("span");
       scale.className = "cmh-deck-overview-scale";
       const clone = slide.cloneNode(true);
+      // The overview clones live outside #commentRoot, so deck-scoped rules like
+      // `#commentRoot[data-cmh-mode="deck"] .logo-line { fill: #fff }` do not reach
+      // them and SVG shapes fall back to black. Copy each original shape's computed
+      // fill/stroke inline onto the clone (done on the fresh clone so the node order
+      // still matches the original) so scoped styling survives the move.
+      const oAll = slide.querySelectorAll("*");
+      const cAll = clone.querySelectorAll("*");
+      for (let k = 0; k < oAll.length && k < cAll.length; k++) {
+        const o = oAll[k];
+        if (o instanceof SVGElement && o.tagName.toLowerCase() !== "svg") {
+          const cs = getComputedStyle(o);
+          if (cs.fill && cs.fill !== "none") cAll[k].style.fill = cs.fill;
+          if (cs.stroke && cs.stroke !== "none") cAll[k].style.stroke = cs.stroke;
+        }
+      }
       cleanOverviewClone(clone);
+      // A cloned <canvas> is blank (the bitmap does not clone), which showed as black
+      // bars in the overview. Snapshot each original canvas into an <img> in the clone.
+      const origCanvases = slide.querySelectorAll("canvas");
+      const cloneCanvases = clone.querySelectorAll("canvas");
+      origCanvases.forEach((oc, ci) => {
+        const cc = cloneCanvases[ci];
+        if (!cc) return;
+        let url = null;
+        try { url = oc.toDataURL("image/png"); } catch (e) { url = null; }
+        if (!url) return;
+        const img = document.createElement("img");
+        img.src = url;
+        img.setAttribute("aria-hidden", "true");
+        if (cc.getAttribute("style")) img.setAttribute("style", cc.getAttribute("style"));
+        if (cc.className) img.className = cc.className;
+        img.width = cc.width || oc.width;
+        img.height = cc.height || oc.height;
+        cc.replaceWith(img);
+      });
       clone.setAttribute("aria-hidden", "true");
       scale.appendChild(clone);
       thumb.appendChild(scale);
@@ -7889,7 +8011,12 @@ function setupDeck() {
   toggle.type = "button";
   // Stable accessible name; state is conveyed by aria-pressed + the on-colour, per the ARIA
   // toggle-button pattern (a name that flips to "Present" would read "Present, pressed").
-  toggle.innerHTML = CMH_ICON_SVG;
+  // A distinct annotate (pencil) icon - NOT the brand speech-bubble the site link below uses -
+  // so the two top-corner controls are visually distinguishable, not identical bubbles.
+  toggle.innerHTML = '<svg class="cmh-deck-mode-icon" viewBox="0 0 24 24" width="20" height="20"'
+    + ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+    + ' aria-hidden="true" focusable="false"><path d="M12 20h9"/>'
+    + '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
   const toggleIcon = toggle.querySelector("svg");
   if (toggleIcon) {
     toggleIcon.setAttribute("aria-hidden", "true");
