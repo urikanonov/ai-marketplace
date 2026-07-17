@@ -123,6 +123,11 @@ DESKTOP_SKILLS = {
         "skill": "commentable-html",
         "zip": "skills/commentable-html.zip",
     },
+    MULTI_DUCK_PLUGIN: {
+        "skill_dir": "plugins/multi-duck/pkg/skills/multi-duck",
+        "skill": "multi-duck",
+        "zip": "skills/multi-duck.zip",
+    },
 }
 
 # Absolute production URLs, used for canonical/OG links (hand-authored in the page heads) and for

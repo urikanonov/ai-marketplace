@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="A multi-model rubber-duck review panel for Claude Code and the GitHub Copilot CLI. Diverse models, uncorrelated blind spots, safe fixes applied for you." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/multi-duck.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=6ad923ee7d81" />
+  <link rel="stylesheet" href="../assets/styles.css?v=2bd51329e3b6" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -102,6 +102,7 @@
               <div class="install-tablist" role="tablist" aria-label="Install with">
                 <button class="install-tab" role="tab" type="button" id="install-multi-duck-copilot-tab" data-install-target="install-multi-duck-copilot" aria-selected="true" aria-controls="install-multi-duck-copilot" tabindex="0">GitHub Copilot</button>
                 <button class="install-tab" role="tab" type="button" id="install-multi-duck-claude-tab" data-install-target="install-multi-duck-claude" aria-selected="false" aria-controls="install-multi-duck-claude" tabindex="-1">Claude Code</button>
+                <button class="install-tab" role="tab" type="button" id="install-multi-duck-desktop-tab" data-install-target="install-multi-duck-desktop" aria-selected="false" aria-controls="install-multi-duck-desktop" tabindex="-1">Claude Desktop</button>
               </div>
               <div class="install-panel" role="tabpanel" id="install-multi-duck-copilot" aria-labelledby="install-multi-duck-copilot-tab">
                 <div class="install-row">
@@ -149,6 +150,16 @@
                       <button class="copy-btn" type="button" data-copy="claude plugin install multi-duck@urikan-ai-marketplace">copy</button>
                     </div>
                   </div>
+                </div>
+              </div>
+              <div class="install-panel" role="tabpanel" id="install-multi-duck-desktop" aria-labelledby="install-multi-duck-desktop-tab" hidden>
+                <div class="install-download">
+                  <a class="btn btn-primary install-download-btn" href="../skills/multi-duck.zip" download>Download the skill (ZIP)</a>
+                  <ol class="install-desktop-steps">
+                    <li>Download the ZIP above.</li>
+                    <li>In Claude (Desktop or claude.ai), open <strong>Settings &gt; Features</strong> and enable Skills (Pro, Max, Team, or Enterprise with code execution).</li>
+                    <li>Upload the ZIP to add the <code>multi-duck</code> skill, then invoke it in any chat.</li>
+                  </ol>
                 </div>
               </div>
             </div>

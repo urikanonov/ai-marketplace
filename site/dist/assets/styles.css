@@ -467,40 +467,12 @@ main > section:nth-of-type(even) {
 #privacy .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 680px) { #privacy .grid { grid-template-columns: 1fr; } }
 
-/* The hub plugins list gives each plugin a full-width row so its description and keywords are not
-   cramped into a narrow column. Inside the row, the info (title, description, keywords, buttons)
-   and the install block sit side by side at desktop width and stack on a narrow viewport. */
+/* The hub plugins list gives each plugin a full-width row. Inside the row the content is a simple
+   vertical stack (title + version, description, tags, Learn more/Source, then the install section)
+   with compact spacing, rather than a two-column split that left a large empty gap. The flowing
+   description is capped to a comfortable measure so a full-width row stays readable. */
 #plugins .grid { grid-template-columns: 1fr; gap: 22px; }
-#plugins .plugin-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
-  grid-template-rows: auto auto auto 1fr;
-  grid-template-areas:
-    "head     install"
-    "desc     install"
-    "keywords install"
-    "foot     install";
-  align-content: start;
-  column-gap: 32px;
-  row-gap: 12px;
-}
-#plugins .plugin-card .head { grid-area: head; }
-#plugins .plugin-card .desc { grid-area: desc; }
-#plugins .plugin-card .keywords { grid-area: keywords; align-content: flex-start; align-items: flex-start; }
-#plugins .plugin-card .install { grid-area: install; align-self: start; }
-#plugins .plugin-card .foot { grid-area: foot; align-self: end; }
-@media (max-width: 760px) {
-  #plugins .plugin-card {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    grid-template-areas:
-      "head"
-      "desc"
-      "keywords"
-      "install"
-      "foot";
-  }
-}
+#plugins .plugin-card .desc { max-width: 78ch; }
 .card {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);

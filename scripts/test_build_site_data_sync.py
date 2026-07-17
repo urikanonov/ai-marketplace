@@ -154,6 +154,19 @@ class SkillZipTests(unittest.TestCase):
         for n in names:
             self.assertTrue(n.startswith("commentable-html/"), n)
 
+    def test_committed_multi_duck_zip_has_top_level_skill_folder(self):
+        # multi-duck is also an importable Claude Desktop skill (SITE-INSTALL-05/06), so its committed
+        # site zip must extract to a single multi-duck/ folder with SKILL.md at its root.
+        import zipfile as _zip
+        zip_path = os.path.join(bsd.REPO_ROOT, bsd.SITE_OUT, "skills", "multi-duck.zip")
+        if not os.path.isfile(zip_path):
+            self.skipTest("committed skill zip not generated yet")
+        with _zip.ZipFile(zip_path) as z:
+            names = z.namelist()
+        self.assertIn("multi-duck/SKILL.md", names)
+        for n in names:
+            self.assertTrue(n.startswith("multi-duck/"), n)
+
 class SyncOrphanTests(unittest.TestCase):
     def test_orphan_flagged_then_removed(self):
         import os as _os
