@@ -122,18 +122,23 @@ test("install tabs support arrow-key navigation (SITE-INSTALL-03)", async ({ pag
 
 
 test("a skill plugin offers a Claude Desktop ZIP-download tab; the auto-updater does not (SITE-INSTALL-05)", async ({ page }) => {
-  // commentable-html is a pure importable skill, so its install block has a third "Claude Desktop"
-  // tab whose panel downloads the skill ZIP (no CLI command). The auto-updater's value is a session
-  // hook a Desktop import cannot provide, so it offers CLI tabs only.
-  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const block = page.locator("#install .install-tabs");
-  const desktopTab = block.locator(".install-tab", { hasText: "Claude Desktop" });
-  await expect(desktopTab).toBeVisible();
-  await desktopTab.click();
-  const download = page.locator("#install .install-download a[download]");
-  await expect(download).toBeVisible();
-  // Exact per-page relative path: the plugin page lives one level deep, so the ZIP is under ../.
-  await expect(download).toHaveAttribute("href", "../skills/commentable-html.zip");
+  // commentable-html and multi-duck are importable skills, so their install block has a third
+  // "Claude Desktop" tab whose panel downloads the skill ZIP (no CLI command). The auto-updater's
+  // value is a session hook a Desktop import cannot provide, so it offers CLI tabs only.
+  for (const [path, zip] of [
+    ["/commentable-html/", "../skills/commentable-html.zip"],
+    ["/multi-duck/", "../skills/multi-duck.zip"],
+  ]) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    const block = page.locator("#install .install-tabs");
+    const desktopTab = block.locator(".install-tab", { hasText: "Claude Desktop" });
+    await expect(desktopTab).toBeVisible();
+    await desktopTab.click();
+    const download = page.locator("#install .install-download a[download]");
+    await expect(download).toBeVisible();
+    // Exact per-page relative path: the plugin page lives one level deep, so the ZIP is under ../.
+    await expect(download).toHaveAttribute("href", zip);
+  }
   // The auto-updater page keeps only the two CLI tabs.
   await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#install .install-tab", { hasText: "GitHub Copilot" })).toBeVisible();
@@ -143,9 +148,11 @@ test("a skill plugin offers a Claude Desktop ZIP-download tab; the auto-updater 
 
 
 test("the Claude Desktop skill ZIP is served for download (SITE-INSTALL-06)", async ({ request }) => {
-  const r = await request.get("/skills/commentable-html.zip");
-  expect(r.status()).toBeLessThan(400);
-  expect(r.headers()["content-type"]).toContain("application/zip");
+  for (const zip of ["/skills/commentable-html.zip", "/skills/multi-duck.zip"]) {
+    const r = await request.get(zip);
+    expect(r.status()).toBeLessThan(400);
+    expect(r.headers()["content-type"]).toContain("application/zip");
+  }
 });
 
 
