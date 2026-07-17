@@ -1,0 +1,12 @@
+<section class="slide">
+  <h2 class="cmh-slide-title">Diff surfaces stay readable</h2>
+  <p class="cmh-slide-lede">Add, delete, and hunk markers keep AA contrast on the themed code surface.</p>
+  <pre class="cmh-diff" data-diff-label="theme_apply.py">@@ -1,4 +1,5 @@ def apply(theme):
+   load_preset(theme)
+-  css = translate_per_deck(theme)
+-  inject(css)
++  css = render_native(theme)
++  # one reviewed, golden-tested block
++  inject(css)
+   return validate(theme)</pre>
+</section>
