@@ -409,6 +409,17 @@ the validators, the script unit tests, `check_changelog_sync`, `check_version_bu
 a required check is caught locally first. The slower, occasionally flaky browser (Playwright) suites
 are not run by default; set `RUN_E2E=1 git push` to include them (CI is their authoritative gate).
 
+The `pre-push` hook is SLOW - it runs the full script unit tests plus every plugin's Python suite, so
+`git push` legitimately takes several minutes with no early output. Do NOT mistake that for a hang: on
+PowerShell, piping the push through a buffering command (`git push ... | Select-Object -Last N` or
+`| Out-String`) hides the hook's live progress until it finishes, which makes a working hook look
+frozen - run the push WITHOUT such a pipe (or watch `.githooks/pre-push` output directly) and let it
+finish rather than killing it. `node` must be on PATH for the hook to run the node-gated fixtures
+`--check` (and for `rebuild_all` to include the node steps); if the hook fails only because node is
+absent or not on PATH, put node on PATH and re-push rather than reaching for `--no-verify`. Reserve
+`--no-verify` for a genuine, understood environment gap (for example the Playwright browsers are not
+installed locally), and only after running the substantive gates by hand.
+
 The validator (the pre-commit hook in `.githooks/pre-commit`, and the `validate` CI job which is a required
 status check on `main`) enforces:
 

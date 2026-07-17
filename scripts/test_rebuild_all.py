@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rebuild_all  # noqa: E402
@@ -22,7 +23,12 @@ class OrchestrationTests(unittest.TestCase):
         rebuild_all._run = self._orig_run
 
     def test_check_runs_build_spec_screenshots_and_site_in_order_with_check_flag(self):
-        rc = rebuild_all.main(["rebuild_all.py", "--check"])
+        # Hermetic: mock shutil.which so the node-gated screenshots/fixtures steps are always
+        # present regardless of whether node is installed on the host. Without this the test
+        # raises StopIteration on a node-less machine (no "Tutorial screenshots" label), which
+        # is exactly what made a node-less pre-push run fail spuriously and tempt a bypass.
+        with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"):
+            rc = rebuild_all.main(["rebuild_all.py", "--check"])
         self.assertEqual(rc, 0)
         labels = [c[0] for c in self.calls]
         # build.py runs first, the SPEC assembler is checked, screenshots precede the site sync,
