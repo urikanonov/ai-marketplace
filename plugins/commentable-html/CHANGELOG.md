@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.140.0] - 2026-07-17
+
+### Fixed
+
+- Made the vendored rich-libraries blob (the inline gzip+base64 mermaid/Chart.js payload) reproducible across zlib implementations. `build.py` previously gzipped the libraries live via `deterministic_gzip`, but gzip DEFLATE output is not identical between stock zlib and zlib-ng (which Python 3.14 ships), so a dist built on Python 3.14 produced a different blob than CI's stock-zlib build and failed the required `dist-in-sync`/`plugin-tests` checks with no source change. The build now reads a committed `assets/vendor/<lib>.gz` artifact and only base64-encodes it (deterministic on every machine); `build.py --regen-vendor-gz` regenerates those artifacts when a vendored library changes, and `build.py --check` verifies each committed `.gz` decompresses to the current source (decompression is deterministic across zlib impls, so the guard never recompresses) (CMH-BUILD-11, closes #372).
+
 ## [1.139.0] - 2026-07-17
 
 ### Changed

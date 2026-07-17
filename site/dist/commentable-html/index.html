@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.139.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.140.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -425,6 +425,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.140.0] - 2026-07-17</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Made the vendored rich-libraries blob (the inline gzip+base64 mermaid/Chart.js payload) reproducible across zlib implementations. <code>build.py</code> previously gzipped the libraries live via <code>deterministic_gzip</code>, but gzip DEFLATE output is not identical between stock zlib and zlib-ng (which Python 3.14 ships), so a dist built on Python 3.14 produced a different blob than CI&#x27;s stock-zlib build and failed the required <code>dist-in-sync</code>/<code>plugin-tests</code> checks with no source change. The build now reads a committed <code>assets/vendor/&lt;lib&gt;.gz</code> artifact and only base64-encodes it (deterministic on every machine); <code>build.py --regen-vendor-gz</code> regenerates those artifacts when a vendored library changes, and <code>build.py --check</code> verifies each committed <code>.gz</code> decompresses to the current source (decompression is deterministic across zlib impls, so the guard never recompresses) (CMH-BUILD-11, closes #372).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.139.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -441,6 +448,8 @@
               <li>Round-12 review hardening: <code>_prune_nested_reparse</code> also fails closed when <code>os.walk</code> cannot scan a subtree (a junction could hide there unseen) via an <code>onerror</code> callback, so <code>shutil.rmtree</code> never runs on an incompletely-inspected tree. And a crash-recovery backup restore that cannot complete now aborts the extraction rather than swallowing the error and then letting the swap delete the very backup it meant to keep, so the last-known-good backup survives for the next session. Tests pin both.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.138.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -448,8 +457,6 @@
               <li>Slimmed the shipped plugin payload and site skill ZIP by relocating the agent-only <code>bold-template-pack</code> reference material into <code>dev/vendor/frontend-slides/</code>. The shipped frontend-slides runtime assets and tooling remain in <code>pkg/</code>, while separate SHA-256 manifests now keep both vendor trees pristine (CMH-DECK-07, closes #341).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.137.0] - 2026-07-17</h3></div>
             <div class="group-label">Added</div>
@@ -479,14 +486,7 @@
               <li>Polished the showcase deck with a concrete Copy all bundle specimen in the technical section, a tighter medium-comparison table, and a corrected Mermaid-node callback so the pitch is more informative without changing the deck contract (CMH-DECK-SHOWCASE-09, closes #244).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.132.0] - 2026-07-16</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Deck design playbook: a new CHM-specific <code>references/deck-design.md</code> (fill the fixed stage, capture-safe motion, wayfinding, pain-before-mechanism narrative, review-surface patterns, card variety, contrast/clip discipline) plus SKILL.md &quot;ask first&quot; up-front questions that route deck planning to it, salvaged from the corrupted #279 branch (CMH-DECK-22, closes #332).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">116 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">117 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

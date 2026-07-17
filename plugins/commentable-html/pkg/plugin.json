@@ -1,7 +1,7 @@
 {
   "name": "commentable-html",
   "description": "Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.",
-  "version": "1.139.0",
+  "version": "1.140.0",
   "hooks": "hooks.json",
   "author": { "name": "Uri Kanonov", "email": "urikanonov@gmail.com" },
   "keywords": ["commentable", "cmh", "html", "code-review", "comments", "documentation", "kusto", "charts", "analysis", "plan", "report"],
