@@ -32,6 +32,8 @@ jobs:
         run: python scripts/validate_marketplace.py
       - name: Verify vendored frontend-slides subtree is pristine
         run: python plugins/commentable-html/dev/tools/check_vendor.py
+      - name: Verify deck theme presets acknowledge the vendored commit (staleness gate)
+        run: python plugins/commentable-html/dev/tools/check_theme_sources.py
       - name: Run script tests
         run: python -m unittest discover -s scripts -p "test_*.py"
       - name: Validate Markdown files

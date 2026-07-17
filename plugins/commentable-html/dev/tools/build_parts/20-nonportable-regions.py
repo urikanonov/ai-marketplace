@@ -26,7 +26,9 @@ _BOOTSTRAP = (
 )
 
 
-def build_nonportable(shell, version, mermaid_version):
+def build_nonportable(shell, version, mermaid_version, vendored_rich_libs_json=None):
+    if vendored_rich_libs_json is None:
+        vendored_rich_libs_json = build_vendored_rich_libs_json(ASSETS)
     css_name, js_name, assets_name = _names()
     t = shell
 
@@ -80,6 +82,7 @@ def build_nonportable(shell, version, mermaid_version):
     t = re.sub(r"\n{3,}", "\n\n", t)
     t = t.replace("{{CMH_VERSION}}", version)
     t = t.replace("{{MERMAID_VERSION}}", mermaid_version)
+    t = t.replace("{{CMH_VENDORED_RICH_LIBS}}", vendored_rich_libs_json)
     if "{{CMH_" in t or "{{MERMAID_" in t:
         raise SystemExit("build: an unresolved placeholder remains in NONPORTABLE.html")
     return t

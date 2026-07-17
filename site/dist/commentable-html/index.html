@@ -9,7 +9,7 @@
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/commentable-html/" />
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="ai-marketplace" />
+  <meta property="og:site_name" content="AI Marketplace" />
   <meta property="og:title" content="Commentable HTML - inline-comment review surface for any HTML" />
   <meta property="og:description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <meta property="og:url" content="https://urikanonov.github.io/ai-marketplace/commentable-html/" />
@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Tighten the planning loop. Inline comment on any HTML report and round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-commentable-html.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=020a85ddca9f" />
+  <link rel="stylesheet" href="../assets/styles.css?v=6ad923ee7d81" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -40,7 +40,7 @@
       {
         "@type": "BreadcrumbList",
         "itemListElement": [
-          { "@type": "ListItem", "position": 1, "name": "ai-marketplace", "item": "https://urikanonov.github.io/ai-marketplace/" },
+          { "@type": "ListItem", "position": 1, "name": "AI Marketplace", "item": "https://urikanonov.github.io/ai-marketplace/" },
           { "@type": "ListItem", "position": 2, "name": "commentable-html", "item": "https://urikanonov.github.io/ai-marketplace/commentable-html/" }
         ]
       }
@@ -64,7 +64,17 @@
         <a href="tutorial/">Tutorial</a>
         <a href="#changelog" class="hide-sm">Changelog</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html">GitHub</a>
-        <a href="../">Marketplace</a>
+        <!-- BEGIN:switcher -->
+        <div class="nav-switcher">
+          <a class="nav-switcher-trigger" href="../"><svg class="nav-switcher-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Marketplace</span></a>
+          <div class="nav-switcher-menu">
+            <span class="nav-switcher-heading">Switch plugin</span>
+            <a class="switch-tile" href="../multi-duck/"><img class="switch-tile-icon" src="../assets/multi-duck.svg" alt="multi-duck logo" /><span class="switch-tile-text"><span class="switch-tile-name">multi-duck</span><span class="switch-tile-sub">code review</span></span></a>
+              <a class="switch-tile" href="../urikan-ai-marketplace-auto-updater/"><img class="switch-tile-icon" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /><span class="switch-tile-text"><span class="switch-tile-name">Auto-updater</span><span class="switch-tile-sub">infrastructure</span></span></a>
+            <a class="switch-tile switch-tile-all" href="../"><span class="switch-tile-text"><span class="switch-tile-name">All plugins</span><span class="switch-tile-sub">Back to the hub</span></span></a>
+          </div>
+        </div>
+        <!-- END:switcher -->
       </div>
     </div>
   </nav>
@@ -80,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.132.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.139.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,7 +425,7 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.132.0] - 2026-07-16</h3></div>
+            <div class="rel-head"><h3>[1.139.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Ship the skill as a compact <code>skills/commentable-html/skill-resources.zip</code> (only <code>SKILL.md</code>, <code>LICENSE</code>, and the zip in the shipped skill dir) that a SessionStart hook unpacks on first run per version. This drastically cuts the number of files the plugin installer writes, working around the Windows Defender install failure (<code>Access is denied. (os error 5)</code>) where the installer aborts on the first transiently locked file - the extractor retries each member with backoff, which the installer does not. An update ships a new zip and self-heals on the next session (the version marker invalidates), which largely fixes the auto-updater silently never updating on Defender machines: it now rewrites just the one zip instead of ~178 files, shrinking the transient-lock surface dramatically (a lock on that single file is still possible and simply retries next session). The large tutorial (<code>docs/</code>) and worked examples (<code>examples/</code>) are no longer installed; they moved to the plugin top level and are linked online. <code>build.py</code> gains <code>--pkg-dir</code> / <code>--examples-dir</code> and assembles the deterministic zip, and the editable + built skill tree now lives under <code>dev/skill/</code>.</li>
@@ -432,56 +442,51 @@
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.117.1] - 2026-07-16</h3></div>
+            <div class="rel-head"><h3>[1.138.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>Split the shipped layer validator check module into focused assembled topic parts while preserving the public <code>check_layer</code> entry point and validation behavior.</li>
+              <li>Slimmed the shipped plugin payload and site skill ZIP by relocating the agent-only <code>bold-template-pack</code> reference material into <code>dev/vendor/frontend-slides/</code>. The shipped frontend-slides runtime assets and tooling remain in <code>pkg/</code>, while separate SHA-256 manifests now keep both vendor trees pristine (CMH-DECK-07, closes #341).</li>
             </ul>
           </div>
           <details class="older-releases">
             <summary>Show 5 older releases</summary>
           <div class="release">
-            <div class="rel-head"><h3>[1.117.0] - 2026-07-16</h3></div>
+            <div class="rel-head"><h3>[1.137.0] - 2026-07-17</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>Document-overview strip for report/plan documents: a <code>cm-skip</code> <code>div.cmh-doc-stats</code> placed directly under the <code>&lt;h1&gt;</code> title shows the section count, word count, and approximate reading time (words / 200 wpm, rounded up). <code>tools/authoring/doc_stats.py</code> computes and injects it, and <code>new_document.py</code>, <code>finalize.py</code>, and <code>retrofit.py</code> bake it by default for report/plan documents (opt out with <code>--no-stats</code>). It is idempotent (counts refresh in place), excluded from its own word count, and baked into the content so it survives Plain / Standalone export. (CMH-STATS-01)</li>
-              <li>Per-version upgrade anti-regression corpus under <code>dev/upgrade-corpus/</code>: <code>tests/test_upgrade_corpus.py</code> upgrades each checked-in fully layered snapshot with the current <code>tools/authoring/upgrade.py</code> and asserts a strict-clean, idempotent result, so a layer or tool change that breaks upgrading a document produced by an older version fails the gate. Snapshots are added per change when a version warrants one. (CMH-TOOL-20)</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The generated table of contents no longer double-numbers author-numbered sections. When a heading already begins with a section number (for example <code>1. Executive summary</code>), <code>generate_toc.py</code> strips the redundant leading number from the ordered-list entry so the <code>&lt;ol&gt;</code> supplies the single number, and <code>finalize.py</code> / <code>retrofit.py</code> de-dup an existing author <code>&lt;ol&gt;</code> <code>.cm-toc</code> in place. A <code>&lt;ul&gt;</code> <code>.cm-toc</code> (where the author supplies the number deliberately) is left untouched. (CMH-TOC-10)</li>
+              <li>Two LIGHT native deck theme presets alongside the dark <code>terminal</code>: <code>paper</code> (warm-cream, editorial-serif, crimson accent) and <code>editorial</code> (soft-cream serif, deep-teal accent), each adapted from a frontend-slides <code>STYLE_PRESETS.md</code> style (credited via <code>adaptedFrom</code> + <code>sourceCommit</code>). Both override the full component token set (the defaults are dark) and pass <code>_deck_theme.load</code> (composited effective-contrast + opaque <code>contrastPairs</code> self-check at AA) and the objective <code>theme_eval</code> harness with no validator error, no clipping advisory, and a bounded byte delta (CMH-DECK-THEME-06, issue #343). Scaffold a themed deck with <code>deck_scaffold.py --theme paper</code> (or <code>editorial</code>, <code>terminal</code>).</li>
+              <li>Made the previously hard-coded-dark deck code-control surfaces themeable so light decks stay legible: the code/KQL language + copy badge background (<code>--cmh-deck-code-badge-bg</code>), the KQL run-link hover colour (<code>--cmh-deck-code-link-hover-fg</code>), and the Mermaid subgraph cluster fill/stroke (<code>--cmh-deck-mermaid-cluster-fill</code>/<code>-stroke</code>), each with byte-exact dark defaults so unthemed and <code>terminal</code> decks are unchanged.</li>
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.116.0] - 2026-07-16</h3></div>
+            <div class="rel-head"><h3>[1.136.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>Reworked the showcase deck&#x27;s Act 4 &quot;behind the scenes&quot; run so it now teaches the deterministic region split, the website-style portability model, how the skill is assembled from <code>SKILL.md</code>, on-demand references, and authoring/validation tools, plus the cross-platform Playwright-and-Python validation methodology behind the shipped experience. (CMH-DECK-SHOWCASE-06)</li>
+              <li>Recorded the verified license and commit for the vendored <code>bold-template-pack</code> in <code>vendor/frontend-slides/UPSTREAM.md</code> and added an explicit <code>bold-template-pack/LICENSE</code>. The pack originates from <code>zarazhangrui/beautiful-html-templates</code> (MIT, Zara Zhang, commit <code>e5e204fb</code>), a different upstream repo than frontend-slides; both are MIT by the same author, so adapting a bold template into a native CMH deck preset is now license-cleared (unblocks the Phase 2 bold presets; issue #337).</li>
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.115.0] - 2026-07-16</h3></div>
+            <div class="rel-head"><h3>[1.135.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
-              <li>The runtime footer now shows a small copy icon that copies the creating AI agent&#x27;s session id to the clipboard when the document carries a <code>commentable-html-session-id</code> provenance stamp; the button&#x27;s accessible label and tooltip name the agent (Copilot or Claude), and the control never leaks into a Plain HTML export. (CMH-FOOT-04)</li>
-              <li>The document-producing tools (<code>new_document.py</code>, <code>deck_scaffold.py</code>) stamp that session id by default, taking it from <code>--session-id</code> or, when absent, an auto-detected environment variable (<code>COPILOT_AGENT_SESSION_ID</code> for Copilot, <code>CLAUDE_CODE_SESSION_ID</code> for Claude). <code>--agent</code> overrides the label and <code>--no-session-id</code> opts out. When several agents&#x27; session ids are visible at once (a nested launch), the agent actually running the tool wins. A local, non-CI live check that drives the real <code>copilot</code>/<code>claude</code> CLIs is at <code>dev/tests/copilot_e2e_check.py</code> and <code>dev/tests/claude_e2e_check.py</code>. (CMH-STAMP-04)</li>
+              <li>Native deck theme presets that incorporate the frontend-slides design system directly into the deck engine, replacing per-deck hand-translation of vendored reference material. A preset is a named JSON profile under <code>tools/deck/themes/&lt;name&gt;.theme.json</code> of allowlisted, system-font, contrast-safe deck tokens; <code>deck_scaffold.py --theme &lt;name&gt;</code> builds a fully styled deck and the new <code>deck_theme.py apply --theme &lt;name&gt;</code> re-themes an existing deck in place. Re-theming is idempotent and comment-safe: the theme block is <code>cm-skip</code>, so it never shifts stored comment offsets. Ships the <code>terminal</code> preset (dark/technical, system monospace), adapted from the frontend-slides &quot;Terminal Green&quot; style (Zara Zhang, MIT). Deck component colours (syntax tokens, table headers, diff, mermaid) and the link/border are now themeable via <code>var(--token, &lt;default&gt;)</code> with byte-exact defaults, plus reusable recipe classes (<code>.cmh-slide-section</code>, <code>.cmh-slide-lede</code>, <code>.cmh-cols-2</code>, <code>.cmh-metric-grid</code>, <code>.cmh-pill</code>) so a themed deck needs no per-deck CSS. <code>deck_validate.py</code> gates every themed contrast pair (compositing the translucent diff rows for a faithful check). Supersedes the vendor-first deck design routing from issue #208; the vendored <code>frontend-slides</code> subtree is retained as design provenance and the maintainer refresh source (CMH-DECK-THEME-01/02/03, CMH-DECK-14; issue #334).</li>
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.108.1] - 2026-07-16</h3></div>
+            <div class="rel-head"><h3>[1.134.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
             <ul>
-              <li>Restructured the showcase deck&#x27;s narrative flow: added a dedicated header/pitch slide, moved the website-style medium comparison and shipped-example prompts earlier, removed the redundant recap slide, and replaced the close with a &quot;What&#x27;s next?&quot; hub plus a trailing &quot;Questions?&quot; slide while keeping the shipped widget defaults unchanged. (CMH-DECK-SHOWCASE-05)</li>
+              <li>Polished the showcase deck with a concrete Copy all bundle specimen in the technical section, a tighter medium-comparison table, and a corrected Mermaid-node callback so the pitch is more informative without changing the deck contract (CMH-DECK-SHOWCASE-09, closes #244).</li>
             </ul>
           </div>
           <div class="release">
-            <div class="rel-head"><h3>[1.107.0] - 2026-07-16</h3></div>
-            <div class="group-label">Changed</div>
+            <div class="rel-head"><h3>[1.132.0] - 2026-07-16</h3></div>
+            <div class="group-label">Added</div>
             <ul>
-              <li>Hardened the information-density advisory (CMH-VAL-15) for authoring edge cases: an inline <code>cm-skip</code> inside a paragraph now excludes only its own text instead of splitting the paragraph; sections are tracked as a heading stack so nested and headless sections are labeled by their own heading and two distinct prose walls are each reported; a stray or unmatched <code>&lt;/section&gt;</code> no longer suppresses a genuine wall; and a <code>&lt;section&gt;</code> embedded in a layout block no longer reframes the enclosing prose section. (CMH-VAL-15)</li>
+              <li>Deck design playbook: a new CHM-specific <code>references/deck-design.md</code> (fill the fixed stage, capture-safe motion, wayfinding, pain-before-mechanism narrative, review-surface patterns, card variety, contrast/clip discipline) plus SKILL.md &quot;ask first&quot; up-front questions that route deck planning to it, salvaged from the corrupted #279 branch (CMH-DECK-22, closes #332).</li>
             </ul>
           </div>
-            <p class="changelog-more">102 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">116 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

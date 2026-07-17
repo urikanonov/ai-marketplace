@@ -119,13 +119,13 @@ test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reop
   }
 });
 
-test("CMH-DECK-EXPORT-01: Export Offline snapshots the deck mermaid + chart, validates strict, and reopens with zero network", async ({ page, browser }) => {
+test("CMH-DECK-EXPORT-01: Export Offline keeps the deck mermaid + chart live, validates strict, and reopens with zero network", async ({ page, browser }) => {
   test.setTimeout(90000);
   const { dir, cleanup } = await openDeck(page);
   let ctx2;
   try {
-    // Wait for the rich content to render so the offline export can snapshot it: mermaid to an
-    // inline SVG and the hand-drawn Chart.js-style canvas to a PNG.
+    // Wait for the rich content to render before exporting so the offline copy reopens with the
+    // same live diagram and canvas behavior.
     await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
     await page.waitForFunction(() => {
       const c = document.getElementById("showcaseChart");
@@ -141,12 +141,12 @@ test("CMH-DECK-EXPORT-01: Export Offline snapshots the deck mermaid + chart, val
     expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
     const exportedHtml = await readDownload(download);
 
-    // No remote loaders remain: the mermaid CDN import is stripped, the mermaid SVG is inlined,
-    // and the chart canvas became an inline data-image snapshot.
+    // No remote loaders remain: the mermaid CDN import is stripped, the deck stays a deck, and
+    // the live mermaid/chart surfaces stay in the file instead of being flattened.
     expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/mermaid");
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
-    expect(exportedHtml).toContain('data-cm-offline-chart="true"');
-    expect(exportedHtml).toMatch(/<pre[^>]*class="[^"]*mermaid[^"]*"[^>]*>[\s\S]*?<svg/);
+    expect(exportedHtml).not.toContain('data-cm-offline-chart="true"');
+    expect(exportedHtml).toContain('<canvas id="showcaseChart"');
     // The deck contract survives; the transient present-mode body class is NOT baked in.
     expect(exportedHtml).toContain('data-cmh-mode="deck"');
     expect(/<body[^>]*class="[^"]*cmh-deck-present/.test(exportedHtml)).toBe(false);
@@ -158,21 +158,29 @@ test("CMH-DECK-EXPORT-01: Export Offline snapshots the deck mermaid + chart, val
     execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
     execFileSync(PYTHON, ["tools/deck/deck_validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
 
-    ctx2 = await browser.newContext();
+    ctx2 = await browser.newContext({ offline: true });
     const page2 = await ctx2.newPage();
     const external = [];
-    await page2.route(/^https?:\/\//, async (route) => { external.push(route.request().url()); await route.abort(); });
+    page2.on("request", (request) => {
+      if (/^https?:\/\//.test(request.url())) external.push(request.url());
+    });
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
     await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
     expect(await page2.evaluate(() => typeof window.__cmhDeck)).toBe("object");
-    // The mermaid rendered SVG is inlined (present in the DOM with no network) and the chart
-    // canvas became an inline data-image; the mermaid lives on a non-active slide, so assert it is
-    // ATTACHED with real rendered graphics rather than visible in present mode.
+    // The mermaid lives on a non-active slide, so assert it is attached with rendered graphics
+    // rather than visible in present mode.
     await expect(page2.locator("#commentRoot pre.mermaid svg").first()).toBeAttached();
     expect(await page2.locator("#commentRoot pre.mermaid svg g").count()).toBeGreaterThan(0);
-    const chartSrc = await page2.locator('img#showcaseChart[data-cm-offline-chart="true"]').getAttribute("src");
-    expect(chartSrc || "").toMatch(/^data:image\/png;base64,/);
+    const chartState = await page2.evaluate(() => {
+      const canvas = document.getElementById("showcaseChart");
+      if (!canvas) return null;
+      const pixel = Array.from(canvas.getContext("2d").getImageData(120, 120, 1, 1).data);
+      return { tag: canvas.tagName, pixel };
+    });
+    expect(chartState).toBeTruthy();
+    expect(chartState.tag).toBe("CANVAS");
+    expect(chartState.pixel.some((value) => value !== 0)).toBe(true);
     await expect.poll(() => page2.locator("mark.cm-hl").count()).toBeGreaterThan(0);
     await page2.locator(".cmh-deck-mode-toggle").click();
     await expect(page2.locator("#commentList")).toContainText("offline deck note");

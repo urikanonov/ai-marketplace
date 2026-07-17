@@ -55,8 +55,8 @@ commentable-html document, not a flat report.
 >   comments on reload.
 > - Exports: Export as Portable, Export Offline, Plain HTML, and Markdown.
 > - Privacy and offline story: comments stay local in browser storage or embedded in the exported
->   HTML file; there is no server, account, telemetry, or upload; Offline export snapshots diagrams
->   and charts and strips loaders for zero-network review.
+>   HTML file; there is no server, account, telemetry, or upload; Offline export strips loaders and
+>   inlines vendored diagram and chart runtimes for zero-network review.
 > - Deck mode itself: fixed 16:9 slides, present mode vs comment mode, slide-bar and arrow
 >   navigation, keyboard navigation, slide-aware comment jumps, the split-screen slide-overview navigator,
 >   and the comment-mode brand-icon toggle.

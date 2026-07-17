@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.132.0] - 2026-07-16
+## [1.139.0] - 2026-07-17
 
 ### Changed
 
@@ -76,6 +76,106 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   on an incompletely-inspected tree. And a crash-recovery backup restore that cannot complete now aborts
   the extraction rather than swallowing the error and then letting the swap delete the very backup it
   meant to keep, so the last-known-good backup survives for the next session. Tests pin both.
+
+## [1.138.0] - 2026-07-17
+
+### Changed
+
+- Slimmed the shipped plugin payload and site skill ZIP by relocating the agent-only `bold-template-pack` reference material into `dev/vendor/frontend-slides/`. The shipped frontend-slides runtime assets and tooling remain in `pkg/`, while separate SHA-256 manifests now keep both vendor trees pristine (CMH-DECK-07, closes #341).
+
+## [1.137.0] - 2026-07-17
+
+### Added
+
+- Two LIGHT native deck theme presets alongside the dark `terminal`: `paper` (warm-cream, editorial-serif, crimson accent) and `editorial` (soft-cream serif, deep-teal accent), each adapted from a frontend-slides `STYLE_PRESETS.md` style (credited via `adaptedFrom` + `sourceCommit`). Both override the full component token set (the defaults are dark) and pass `_deck_theme.load` (composited effective-contrast + opaque `contrastPairs` self-check at AA) and the objective `theme_eval` harness with no validator error, no clipping advisory, and a bounded byte delta (CMH-DECK-THEME-06, issue #343). Scaffold a themed deck with `deck_scaffold.py --theme paper` (or `editorial`, `terminal`).
+- Made the previously hard-coded-dark deck code-control surfaces themeable so light decks stay legible: the code/KQL language + copy badge background (`--cmh-deck-code-badge-bg`), the KQL run-link hover colour (`--cmh-deck-code-link-hover-fg`), and the Mermaid subgraph cluster fill/stroke (`--cmh-deck-mermaid-cluster-fill`/`-stroke`), each with byte-exact dark defaults so unthemed and `terminal` decks are unchanged.
+
+## [1.136.0] - 2026-07-17
+
+### Changed
+
+- Recorded the verified license and commit for the vendored `bold-template-pack` in `vendor/frontend-slides/UPSTREAM.md` and added an explicit `bold-template-pack/LICENSE`. The pack originates from `zarazhangrui/beautiful-html-templates` (MIT, Zara Zhang, commit `e5e204fb`), a different upstream repo than frontend-slides; both are MIT by the same author, so adapting a bold template into a native CMH deck preset is now license-cleared (unblocks the Phase 2 bold presets; issue #337).
+
+## [1.135.0] - 2026-07-16
+
+### Added
+
+- Native deck theme presets that incorporate the frontend-slides design system directly into the deck engine, replacing per-deck hand-translation of vendored reference material. A preset is a named JSON profile under `tools/deck/themes/<name>.theme.json` of allowlisted, system-font, contrast-safe deck tokens; `deck_scaffold.py --theme <name>` builds a fully styled deck and the new `deck_theme.py apply --theme <name>` re-themes an existing deck in place. Re-theming is idempotent and comment-safe: the theme block is `cm-skip`, so it never shifts stored comment offsets. Ships the `terminal` preset (dark/technical, system monospace), adapted from the frontend-slides "Terminal Green" style (Zara Zhang, MIT). Deck component colours (syntax tokens, table headers, diff, mermaid) and the link/border are now themeable via `var(--token, <default>)` with byte-exact defaults, plus reusable recipe classes (`.cmh-slide-section`, `.cmh-slide-lede`, `.cmh-cols-2`, `.cmh-metric-grid`, `.cmh-pill`) so a themed deck needs no per-deck CSS. `deck_validate.py` gates every themed contrast pair (compositing the translucent diff rows for a faithful check). Supersedes the vendor-first deck design routing from issue #208; the vendored `frontend-slides` subtree is retained as design provenance and the maintainer refresh source (CMH-DECK-THEME-01/02/03, CMH-DECK-14; issue #334).
+
+## [1.134.0] - 2026-07-16
+
+### Changed
+
+- Polished the showcase deck with a concrete Copy all bundle specimen in the technical section, a tighter medium-comparison table, and a corrected Mermaid-node callback so the pitch is more informative without changing the deck contract (CMH-DECK-SHOWCASE-09, closes #244).
+
+## [1.132.0] - 2026-07-16
+
+### Added
+
+- Deck design playbook: a new CHM-specific `references/deck-design.md` (fill the fixed stage, capture-safe motion, wayfinding, pain-before-mechanism narrative, review-surface patterns, card variety, contrast/clip discipline) plus SKILL.md "ask first" up-front questions that route deck planning to it, salvaged from the corrupted #279 branch (CMH-DECK-22, closes #332).
+
+## [1.131.0] - 2026-07-16
+
+### Added
+
+- Offline export now embeds vendored copies of the rich-content JavaScript libraries (mermaid, Chart.js) so an exported Offline artifact renders diagrams and interactive charts with zero network access (issue #296).
+
+## [1.130.0] - 2026-07-16
+
+### Changed
+
+- Deck showcase polish: added the linked Commentable HTML brand button, distinct Overview/counter nav chrome, a static "make it clearer" comment mockup on the Act 1 After card, richer point-at/install pills, and a supported-languages plus notes-demo slide while preserving the restructured deck flow, the interactive chart, and the new edge-navigation runtime.
+
+## [1.129.0] - 2026-07-16
+
+### Fixed
+
+- Dark KQL caption surfaces now keep the `Run in Azure Data Explorer` link at AA contrast in both
+  report dark theme and deck mode, and deck Mermaid connectors/arrows now render darker and thicker
+  so they stay readable on the light parchment slides. (CMH-KQL-04, CMH-DECK-09, CMH-DECK-13)
+
+### Added
+
+- `tools/validate/cmhval/contrast.py` now resolves computed descendant text/background pairs and
+  low-contrast connector strokes, so `deck_validate.py` catches the old red-on-dark KQL link and
+  washed-out diagram arrows before publish. (CMH-DECK-12)
+
+## [1.126.0] - 2026-07-16
+
+### Fixed
+
+- Mermaid checker (`cmhval/mermaid.py`, CMH-SYN-01): flag a `sequenceDiagram` message whose `;` leaves an arrow-free tail (a bare word or ordinary prose, e.g. `A->>B: hi; take entities as-is`), not only an arrow-without-colon tail. Once the first `;`-segment is a real signal, any tail that is not another full signal, a keyword-led statement, or empty is a broken second statement the real parser rejects; the broadened rule stays zero-false-positive (proven against the real-parser corpus). Fixes issue #324.
+
+## [1.125.0] - 2026-07-16
+
+### Changed
+
+- Simplified the showcase deck copy: shorter install guidance, plain-language prompts,
+  clearer "paste Copy all and press Enter" review flow, and fewer repeated account/server
+  comparisons. (deck issue #290)
+
+## [1.124.0] - 2026-07-16
+
+### Added
+
+- Deck charts can now render from inline canvas data without a remote chart library: the
+  showcase deck's watering chart is drawn by the shipped runtime, hovering a bar shows a
+  clipped-safe tooltip with the bed label and exact value, and the rendered canvas still
+  snapshots cleanly for Offline export. (CMH-DECK-20)
+- Deck table cells now animate a subtle hover highlight that keeps the cell text readable
+  while making individual review targets easier to spot in the slide. (CMH-DECK-21)
+## [1.119.0] - 2026-07-16
+
+### Fixed
+
+- Deck runtime: commenting across the two cards on the "Authoring is deterministic" slide no longer paints an empty highlight over the grid gap (issue #294).
+- Deck triage board: the Locked-column Add Comment affordance no longer overlaps the Reset moves button (issue #294).
+
+## [1.118.0] - 2026-07-16
+
+### Added
+
+- Deck navigation: dimmed edge hover-arrows for previous/next slide and Enter/Space to advance when the deck stage is focused (issue #292).
 
 ## [1.117.1] - 2026-07-16
 

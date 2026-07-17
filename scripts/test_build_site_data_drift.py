@@ -29,6 +29,7 @@ class CheckDriftTests(unittest.TestCase):
         import tempfile
         try:
             tracked = subprocess.run(["git", "-C", bsd.REPO_ROOT, "ls-files", "-z"],
+                                     env=clean_git_env(),
                                      capture_output=True, check=True).stdout.decode("utf-8").split("\0")
         except (FileNotFoundError, subprocess.CalledProcessError):
             cls._template_ok = False
@@ -280,6 +281,42 @@ class CheckDriftTests(unittest.TestCase):
         version = bsd.plugin_version(manifest, "urikan-ai-marketplace-auto-updater")
         self.assertTrue(version)
         html = bsd.read_text(_os.path.join(root, bsd.UPDATER_OUT))
+        self.assertIn("v" + version, html)
+
+    def test_missing_required_multi_duck_page_source_errors_clearly(self):
+        # The multi-duck page is a REQUIRED page like the hub/plugin/updater: removing its source
+        # must raise a clear SystemExit, not a bare traceback (SITE-MDUCK-01).
+        import os as _os
+        root = self._clone_repo()
+        _os.remove(_os.path.join(root, bsd.MULTI_DUCK_SRC))
+        with self.assertRaises(SystemExit):
+            bsd.main(["build_site_data.py", "--check", "--root", root])
+
+    def test_check_flags_a_hand_edited_built_multi_duck_page(self):
+        # The multi-duck page is a pure artifact built from its independent site/pages source, so a
+        # hand-edit to its static content must fail --check (SITE-MDUCK-01, same guard as the hub).
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 0)
+        page = _os.path.join(root, bsd.MULTI_DUCK_OUT)
+        html = bsd.read_text(page)
+        with open(page, "w", encoding="utf-8", newline="") as fh:
+            fh.write(html.replace("</body>", "<p>HAND EDITED</p></body>", 1))
+        self.assertEqual(bsd.main(["build_site_data.py", "--check", "--root", root]), 1)
+
+    def test_multi_duck_page_version_badge_matches_manifest(self):
+        # The hero version badge is filled from the manifest at build time (SITE-MDUCK-02), so it
+        # never drifts from the shipped plugin version.
+        import json as _json
+        import os as _os
+        root = self._clone_repo()
+        self.assertEqual(bsd.main(["build_site_data.py", "--root", root]), 0)
+        with open(_os.path.join(root, ".github", "plugin", "marketplace.json"), encoding="utf-8") as fh:
+            manifest = _json.load(fh)
+        version = bsd.plugin_version(manifest, "multi-duck")
+        self.assertTrue(version)
+        html = bsd.read_text(_os.path.join(root, bsd.MULTI_DUCK_OUT))
         self.assertIn("v" + version, html)
 
     def test_missing_manifest_errors_clearly(self):

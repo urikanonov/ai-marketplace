@@ -12,7 +12,7 @@
     {
       "name": "commentable-html",
       "description": "Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.",
-      "version": "1.132.0",
+      "version": "1.139.0",
       "source": "./plugins/commentable-html/pkg",
       "author": {
         "name": "Uri Kanonov",
@@ -34,6 +34,33 @@
         "analysis",
         "plan",
         "report"
+      ],
+      "strict": false
+    },
+    {
+      "name": "multi-duck",
+      "description": "Convene a panel of independent rubber-duck reviewers over your in-flight work (a diff, PR, plan, tests, or commentable HTML plans with their open comments), each on a different model so their blind spots do not overlap, all in parallel, then consolidate the findings and autonomously apply the safe fixes. Two modes: prisms for wide coverage, consensus for cross-model agreement. Works on Claude Code and the GitHub Copilot CLI.",
+      "version": "1.0.0",
+      "source": "./plugins/multi-duck/pkg",
+      "author": {
+        "name": "Uri Kanonov",
+        "email": "urikanonov@gmail.com"
+      },
+      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg",
+      "repository": "https://github.com/urikanonov/ai-marketplace",
+      "license": "MIT",
+      "category": "code review",
+      "keywords": [
+        "multi-duck",
+        "rubber-duck",
+        "ducks",
+        "review",
+        "code-review",
+        "multi-model",
+        "ensemble",
+        "consensus",
+        "panel",
+        "quality"
       ],
       "strict": false
     },

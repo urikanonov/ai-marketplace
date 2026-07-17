@@ -87,6 +87,14 @@ async function dragCardToSlot(page, cardSelector, slotSelector) {
   await settle(page);
 }
 
+function boxesIntersect(a, b) {
+  return !!(a && b
+    && a.x < b.x + b.width
+    && a.x + a.width > b.x
+    && a.y < b.y + b.height
+    && a.y + a.height > b.y);
+}
+
 async function effectiveContrast(page, selector) {
   const colors = await page.locator(selector).first().evaluate((el) => {
     function rgba(value) {
@@ -157,6 +165,7 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
         nodeFill: getComputedStyle(shape).fill,
         labelColor: getComputedStyle(label).color || getComputedStyle(label).fill,
         edgeStroke: getComputedStyle(edge).stroke,
+        edgeStrokeWidth: getComputedStyle(edge).strokeWidth,
       };
     });
     const slideBg = parseRgb(metrics.slideBg);
@@ -167,6 +176,7 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
     expect(metrics.edgeCount).toBeGreaterThanOrEqual(5);
     expect(contrast(labelColor, nodeFill)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(edgeStroke, slideBg)).toBeGreaterThanOrEqual(3);
+    expect(Number.parseFloat(metrics.edgeStrokeWidth)).toBeGreaterThanOrEqual(2.4);
   } finally {
     await server.close();
   }
@@ -188,6 +198,82 @@ test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({
     const bg = composite(parseRgb(colors.background), parseRgb(colors.slideBg));
     const fg = parseRgb(colors.color);
     expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-20: showcase deck chart hover shows a clipped-safe tooltip with the point label and value", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".showcase-chart-slide");
+    await expect(page.locator(".slide.active figure.chart canvas.cmh-chart")).toHaveCount(1);
+    const target = await page.evaluate(() => {
+      const canvas = document.querySelector(".slide.active #showcaseChart");
+      const chart = canvas && canvas._cmhChart;
+      if (!canvas || !chart || !chart.points || !chart.points.length) return null;
+      const point = chart.points[chart.points.length - 1];
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: rect.left + point.x * (rect.width / chart.width),
+        y: rect.top + Math.max(point.y + 4, point.top + 10) * (rect.height / chart.height),
+        text: point.tooltip,
+      };
+    });
+    expect(target).not.toBeNull();
+    await page.mouse.move(target.x, target.y);
+    const tooltip = page.locator(".cmh-chart-tooltip");
+    await expect(tooltip).toHaveText(target.text);
+    const metrics = await tooltip.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return {
+        color: style.color,
+        background: style.backgroundColor,
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+    });
+    expect(contrast(parseRgb(metrics.color), parseRgb(metrics.background))).toBeGreaterThanOrEqual(4.5);
+    expect(metrics.left).toBeGreaterThanOrEqual(0);
+    expect(metrics.top).toBeGreaterThanOrEqual(0);
+    expect(metrics.right).toBeLessThanOrEqual(metrics.width);
+    expect(metrics.bottom).toBeLessThanOrEqual(metrics.height);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losing contrast", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".showcase-chart-slide");
+    await page.locator(".cmh-deck-mode-toggle").click();
+    const cell = page.locator(".slide.active table.show-table tbody tr").nth(1).locator("td").nth(2);
+    const before = await cell.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        boxShadow: style.boxShadow,
+      };
+    });
+    await cell.hover();
+    await expect.poll(() => cell.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe(before.boxShadow);
+    const hovered = await cell.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        boxShadow: style.boxShadow,
+      };
+    });
+    expect(hovered.background).not.toBe(before.background);
+    expect(hovered.boxShadow).not.toBe("none");
+    expect(contrast(parseRgb(hovered.color), parseRgb(hovered.background))).toBeGreaterThanOrEqual(4.5);
   } finally {
     await server.close();
   }
@@ -240,6 +326,8 @@ test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep readable contra
       expect(await effectiveContrast(page, selector)).toBeGreaterThanOrEqual(4.5);
     }
     expect(new Set(kqlTokenColors).size).toBe(kqlTokenColors.length);
+    await expect(page.locator(".slide.active .cmh-kql-run")).toBeVisible();
+    expect(await effectiveContrast(page, ".slide.active .cmh-kql-run")).toBeGreaterThanOrEqual(4.5);
   } finally {
     await server.close();
   }
@@ -250,7 +338,7 @@ test("CMH-DECK-SHOWCASE-02: showcase deck mounts in deck mode and is commentable
   try {
     await expect(page).toHaveTitle(/Commentable HTML Showcase/);
     expect(await page.evaluate(() => window.__cmhDeck.slideCount())).toBeGreaterThanOrEqual(14);
-    await expect(page.locator(".slide.active .showcase-comment-target")).toContainText(/review loop/i);
+    await expect(page.locator(".slide.active .showcase-comment-target")).toContainText(/paste one bundle back/i);
     await expect(page.locator(".cmh-deck-mode-toggle")).toBeVisible();
     await expect(page.locator(".cmh-deck-nav")).toBeVisible();
 
@@ -314,6 +402,41 @@ test("CMH-DECK-SHOWCASE-03: an early install CTA shows both agents before the fi
   }
 });
 
+test("CMH-DECK-SHOWCASE-05: showcase deck front-loads the comparison and prompts, keeps widget defaults, and closes with what's next plus questions", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const ids = await page.evaluate(() =>
+      Array.from(document.querySelectorAll(".slide")).map((slide) => slide.dataset.slideId),
+    );
+    expect(ids.indexOf("slide-bdd3b1b5")).toBeGreaterThan(ids.indexOf("slide-76b2501c"));
+    expect(ids.indexOf("slide-bdd3b1b5")).toBeLessThan(ids.indexOf("slide-4bfbc689"));
+    expect(ids.indexOf("slide-4bfbc689")).toBeLessThan(ids.indexOf("slide-7e37216a"));
+    expect(ids.indexOf("slide-7e37216a")).toBeLessThan(ids.indexOf("slide-12668385"));
+    expect(ids.indexOf("slide-9a891595")).toBe(ids.indexOf("slide-90e72651") - 1);
+
+    await showSlideWith(page, '[data-slide-id="slide-bdd3b1b5"]');
+    await expect(page.locator(".slide.active")).toContainText("Chat / terminal");
+    await expect(page.locator(".slide.active")).toContainText("Commentable HTML");
+
+    await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
+    const board = page.locator(".slide.active");
+    await expect(board.locator('[data-cm-part="bed8-crop"]')).toContainText("Bed 8 crop choice");
+    await expect(board.locator('[data-cm-slot="Open"] .show-ticket')).toHaveCount(2);
+    await expect(board.locator('[data-cm-slot="Decide now"] .show-ticket')).toHaveCount(1);
+    await expect(board.locator('[data-cm-slot="Locked"] .show-ticket')).toHaveCount(1);
+
+    await showSlideWith(page, '[data-slide-id="slide-9a891595"]');
+    await expect(page.locator(".slide.active")).toContainText("What's next?");
+    await expect(page.locator(".slide.active .show-next-card")).toHaveCount(5);
+
+    await showSlideWith(page, '[data-slide-id="slide-90e72651"]');
+    await expect(page.locator(".slide.active")).toContainText("Questions?");
+    await expect(page.locator(".slide.active")).toContainText("use the deck itself as the review surface");
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portability, and test model", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
@@ -324,15 +447,19 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portab
     await expect(anatomy).toContainText("JS region");
     await expect(anatomy).toContainText("CONTENT region");
     await expect(anatomy).toContainText("That separation is why upgrades stay deterministic");
+    await expect(anatomy).toContainText("The build swaps only the layer-owned regions and re-stamps the version");
 
     await showSlideWith(page, "text=Three portability modes explain every handoff.");
     const portability = page.locator(".slide.active");
+    await expect(portability).toContainText("Non-portable");
+    await expect(portability).toContainText("Portable");
+    await expect(portability).toContainText("Offline");
     await expect(portability).toContainText("Styles + runtime");
     await expect(portability).toContainText("skill folder");
     await expect(portability).toContainText("CDN");
+    await expect(portability).toContainText("vendored runtimes");
     await expect(portability).toContainText("browser storage");
     await expect(portability).toContainText("seeded from HTML");
-    await expect(portability).toContainText("inlined snapshots");
 
     await showSlideWith(page, "text=How the skill is built.");
     const build = page.locator(".slide.active");
@@ -350,6 +477,188 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portab
     await expect(testing).toContainText("Windows, macOS, and Linux");
     await expect(testing).toContainText("Copilot and Claude");
     await expect(testing).toContainText("test_*.py");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-20: slide 16 cross-card comments do not highlight the grid gap", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await page.locator(".cmh-deck-mode-toggle").click();
+    await showSlideWith(page, '[data-slide-id="slide-3d5c8a12"]');
+
+    await page.evaluate(() => {
+      const realTexts = (el) => {
+        const out = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = walker.nextNode())) {
+          if ((n.textContent || "").trim()) out.push(n);
+        }
+        return out;
+      };
+      const cards = document.querySelectorAll('.slide.active .show-card p');
+      const left = realTexts(cards[0])[1];
+      const right = realTexts(cards[1])[1] || realTexts(cards[1])[0];
+      const range = document.createRange();
+      range.setStart(left, 1);
+      range.setEnd(right, Math.min(right.textContent.length, 24));
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      cards[1].dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 700, clientY: 300 }));
+    });
+    await page.locator("#menuComment").click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("Keep the strict validator callout together.");
+    await composer.locator('[data-act="save"]').click();
+
+    const marks = await page.locator('mark.cm-hl').evaluateAll((els) => els.map((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        text: el.textContent || "",
+        parentClass: el.parentElement ? el.parentElement.className : "",
+        width: rect.width,
+        height: rect.height,
+      };
+    }));
+    expect(marks.some((mark) =>
+      !mark.text.trim()
+      && mark.parentClass.includes("show-two")
+      && mark.width > 20
+      && mark.height > 20,
+    )).toBe(false);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-21: deck chrome exposes the project link and distinct overview/count pills", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const brand = page.locator(".cmh-deck-brand-link");
+    await expect(brand).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
+    await expect(brand).toHaveAttribute("target", "_blank");
+    await expect(brand.locator("svg.cm-brand-icon")).toHaveCount(1);
+
+    const chrome = await page.evaluate(() => {
+      const nav = document.querySelector(".cmh-deck-nav");
+      const prev = nav.querySelector('button[aria-label="Prev slide"]');
+      const overview = nav.querySelector(".cmh-deck-overview-button");
+      const count = nav.querySelector(".cmh-deck-count");
+      const navStyle = getComputedStyle(nav);
+      const prevStyle = getComputedStyle(prev);
+      const overviewStyle = getComputedStyle(overview);
+      const countStyle = getComputedStyle(count);
+      return {
+        prevBg: prevStyle.backgroundColor,
+        overviewBg: overviewStyle.backgroundColor,
+        countBg: countStyle.backgroundColor,
+        navBg: navStyle.backgroundColor,
+        countRadius: countStyle.borderRadius,
+        countPaddingLeft: countStyle.paddingLeft,
+      };
+    });
+
+    expect(chrome.overviewBg).not.toBe(chrome.prevBg);
+    expect(chrome.countBg).not.toBe(chrome.navBg);
+    expect(parseFloat(chrome.countRadius)).toBeGreaterThanOrEqual(20);
+    expect(parseFloat(chrome.countPaddingLeft)).toBeGreaterThan(0);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-BOARD-06: the showcase Locked column Add Comment affordance avoids Reset moves", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await page.locator(".cmh-deck-mode-toggle").click();
+    await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
+
+    await dragCardToSlot(page, '[data-cm-part="bed8-crop"]', '[data-cm-slot="Locked"]');
+    await page.locator('[data-cm-part="slot-locked"]').focus();
+    await expect(page.locator("#widgetAddBtn")).toBeVisible();
+    await expect(page.locator(".show-board .cm-widget-reset")).toBeVisible();
+
+    const addBox = await page.locator("#widgetAddBtn").boundingBox();
+    const resetBox = await page.locator(".show-board .cm-widget-reset").boundingBox();
+    expect(boxesIntersect(addBox, resetBox)).toBe(false);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-07: the problem, point-at, and install slides use the new visual chrome", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-static-comment");
+    await expect(page.locator(".slide.active .show-static-target")).toHaveCount(1);
+    await expect(page.locator(".slide.active .show-static-comment")).toContainText("make it clearer");
+
+    await showSlideWith(page, ".show-card-example");
+    const pointAt = page.locator(".slide.active");
+    await expect(pointAt.locator(".show-card-example")).toHaveCount(4);
+    const titleChrome = await pointAt.locator(".show-four .show-card h3").evaluateAll((els) =>
+      els.map((el) => ({
+        whiteSpace: getComputedStyle(el).whiteSpace,
+        textOverflow: getComputedStyle(el).textOverflow,
+      })),
+    );
+    titleChrome.forEach((item) => {
+      expect(item.whiteSpace).toBe("nowrap");
+      expect(item.textOverflow).toBe("ellipsis");
+    });
+    const demo = pointAt.locator('a.show-link-pill[href="https://urikanonov.github.io/ai-marketplace/commentable-html/#demo"]');
+    await expect(demo).toContainText("View Live Demo");
+    await expect(demo.locator(".show-link-icon")).toHaveCount(1);
+
+    const cta = page.locator('[data-slide-id="slide-12668385"]');
+    await expect(cta.locator("a.show-link-pill")).toHaveCount(3);
+    await expect(cta.locator(".show-link-pill .show-link-icon")).toHaveCount(3);
+    await expect(cta.locator('a.show-link-pill[href="https://github.com/urikanonov/ai-marketplace"]')).toHaveCount(1);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and a notes demo slide", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-note-field");
+    const slide = page.locator(".slide.active");
+    await expect(slide.locator(".show-supported-pills .show-pill")).toHaveCount(11);
+    await expect(slide.locator(".show-supported-panel")).toContainText("Python");
+    await expect(slide.locator(".show-supported-panel")).toContainText("TypeScript");
+    await expect(slide.locator(".show-supported-panel")).toContainText("PowerShell");
+    await expect(slide.locator(".show-supported-panel")).toContainText("+37 more");
+    await expect(slide.locator(".show-note-field")).toHaveCount(2);
+    await expect(slide.locator(".show-note-field").first()).toContainText("Reviewer summary");
+    await expect(slide.locator(".show-note-field").nth(1)).toContainText("Meeting follow-up");
+    await expect(slide.locator(".show-note-toggle")).toHaveCount(2);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-09: the showcase deck shows a concrete Copy all bundle specimen", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, "text=How a comment finds the same spot on reload.");
+    const anchoring = page.locator(".slide.active");
+    const bundle = anchoring.locator(".show-bundle-sample");
+    await expect(bundle).toBeVisible();
+    await expect(bundle).toContainText("Quote:");
+    await expect(bundle).toContainText("Pinpoint:");
+    await expect(bundle).toContainText("Stable id:");
+    await expect(bundle).toContainText("Note:");
+    await expect(bundle).toContainText("HANDLED_IDS_JSON:");
+    await expect(bundle.locator("code")).toHaveCount(0);
+
+    await showSlideWith(page, "text=Comment on the actual thing, not a screenshot of it.");
+    const pointAt = page.locator(".slide.active");
+    await expect(pointAt).toContainText('Example: the "Paste the Copy all bundle" node.');
+    await expect(pointAt).not.toContainText("Copy all Markdown bundle");
   } finally {
     await server.close();
   }

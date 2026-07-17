@@ -13,7 +13,7 @@ import _paths  # noqa: E402  adds the tool buckets to sys.path via the shipped t
 
 # The intended bucket layout. Every shipped tool module is listed exactly once under its topic.
 EXPECTED = {
-    "deck": ["deck_common", "deck_fix_fonts", "deck_scaffold", "deck_validate", "pptx_to_fragment"],
+    "deck": ["deck_common", "deck_fix_fonts", "deck_scaffold", "deck_theme", "deck_validate", "pptx_to_fragment"],
     "kusto": ["kql_highlight", "kusto_link"],
     "checklist": ["checklist_apply", "checklist_scaffold"],
     "notes": ["notes_apply", "notes_scaffold"],

@@ -35,6 +35,85 @@
 .nav-links a:hover { color: var(--cp-text); text-decoration: none; }
 .nav-links a.gh { color: var(--cp-accent); font-weight: 600; }
 
+/* Plugin switcher: the nav "Marketplace" control links back to the hub and, on hover or keyboard
+   focus, opens a flyout of tiles for the OTHER plugins so a reader can jump between plugin pages
+   without going through the hub. Pure CSS reveal (a progressive enhancement); the trigger stays a
+   working link when hover is unavailable. */
+.nav-switcher { position: relative; display: inline-flex; }
+.nav-switcher-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cp-text-muted);
+  font-size: 0.95rem;
+}
+.nav-switcher-trigger:hover { color: var(--cp-text); text-decoration: none; }
+.nav-switcher-icon { width: 16px; height: 16px; flex: 0 0 auto; }
+.nav-switcher-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  min-width: 260px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  box-shadow: var(--cp-shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+  z-index: 70;
+}
+/* Transparent bridge over the gap between the trigger and the menu so moving the pointer down
+   does not drop the hover and close the flyout. */
+.nav-switcher-menu::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
+.nav-switcher:hover .nav-switcher-menu,
+.nav-switcher:focus-within .nav-switcher-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.nav-switcher-heading {
+  padding: 6px 10px 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cp-text-soft);
+}
+.switch-tile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--cp-text);
+}
+.switch-tile:hover { background: var(--cp-surface-soft); text-decoration: none; }
+.switch-tile:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: -1px; }
+.switch-tile-icon { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 7px; }
+.switch-tile-text { display: flex; flex-direction: column; min-width: 0; }
+.switch-tile-name { font-weight: 600; font-size: 0.92rem; }
+.switch-tile-sub { color: var(--cp-text-muted); font-size: 0.78rem; }
+.switch-tile-all {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cp-border);
+}
+.switch-tile-all .switch-tile-name { color: var(--cp-accent); }
+
 /* Hero */
 .hero {
   text-align: center;

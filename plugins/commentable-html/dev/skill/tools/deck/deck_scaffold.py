@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 import _brand_profile  # noqa: E402
+import _deck_theme  # noqa: E402
 from deck_common import esc, slide_id  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -63,11 +64,12 @@ ROOT_VARS = (
     "--font-body:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"
     "--font-display:var(--font-body);}"
     "\n.deck-stage{font-family:var(--font-body);}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(h1,h2,h3,h4){font-family:var(--font-display);}"
     "\n#commentRoot[data-cmh-mode=\"deck\"] .slide,"
     "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(h1,h2,h3,h4,h5,h6,p,li,td,th,blockquote,code,strong,em,span)"
     "{color:var(--slide-fg,#f4f4f5);}"
-    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(th,td){border-color:rgba(255,255,255,0.22);}"
-    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide a{color:#93c5fd;}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide :where(th,td){border-color:var(--slide-border,rgba(255,255,255,0.22));}"
+    "\n#commentRoot[data-cmh-mode=\"deck\"] .slide a{color:var(--slide-link,#93c5fd);}"
     # Presentation-scale typography and padding for the 1920x1080 stage (default doc sizes are
     # tiny once the stage is scaled to the viewport). A design pass overrides these per slide.
     "\n#commentRoot[data-cmh-mode=\"deck\"] .slide{padding:72px 88px;font-size:28px;line-height:1.5;}"
@@ -177,6 +179,9 @@ def main(argv=None):
     ap.add_argument("--brand", default=None,
                     help="optional brand.json profile that stamps validated --cp-* theme tokens "
                          "and local data-URI font faces")
+    ap.add_argument("--theme", default=None,
+                    help="native deck theme preset name (see tools/deck/themes/) or a path to a "
+                         "<name>.theme.json profile; recolors the deck stage and components")
     ap.add_argument("--session-id", default=None,
                     help="AI session id of the agent creating this deck, stamped as provenance and "
                          "copyable from the footer (default: auto-detected from the environment)")
@@ -207,6 +212,16 @@ def main(argv=None):
     except ValueError as exc:
         print(f"deck_scaffold: {exc}", file=sys.stderr)
         return 1
+
+    # Apply a native deck theme preset into the content region (after cmh-deck-stage), before the
+    # document is assembled, so the deck-contract and contrast checks cover the themed variables.
+    if args.theme:
+        try:
+            theme = _deck_theme.load(args.theme)
+            content = _deck_theme.insert_or_replace(content, _deck_theme.render(theme))
+        except _deck_theme.DeckThemeError as exc:
+            print(f"deck_scaffold: {exc}", file=sys.stderr)
+            return 2
 
     key = _auto_key(args.label) if args.key == "auto" else args.key
     template = TEMPLATE.read_text(encoding="utf-8")

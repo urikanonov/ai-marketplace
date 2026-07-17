@@ -27,7 +27,7 @@ Your content stays with you. Commentable HTML runs entirely in your browser as a
 
 Your document text and your comments are never uploaded, transmitted, or sent to any external service - not to us, and not to anyone else. They travel only when you choose to share the exported file or paste the `Copy all` bundle yourself. The HTML file is the single source of truth; keep it, archive it, or delete it and the data is gone.
 
-The only optional network activity is loading the Mermaid and Chart.js rendering libraries from a public CDN in the Non-portable and Portable modes (library code only - no document data is sent). **Export Offline** snapshots those visuals and strips every remote loader, so the file opens with zero network, suitable for air-gapped, sensitive, or regulated material.
+The only optional network activity is loading the Mermaid and Chart.js rendering libraries from a public CDN in the Non-portable and Portable modes (library code only - no document data is sent). **Export Offline** strips every remote loader and inlines vendored Mermaid and Chart.js only when the document uses them, so the file opens with zero network while live diagrams and chart tooltips still work - suitable for air-gapped, sensitive, or regulated material.
 
 ## Why not just plan in chat, Markdown, or plain HTML?
 

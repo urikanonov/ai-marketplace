@@ -447,3 +447,30 @@ test("demo slider exposes and loads the Showcase deck (SITE-DEMO-10)", async ({ 
   await expect(frame.locator(".cmh-deck-mode-toggle")).toBeVisible();
 });
 
+
+
+test("the commentable-html nav has a Marketplace switcher that reveals tiles to the other plugins (SITE-SWITCH-01)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const trigger = page.locator(".nav-switcher-trigger");
+  await expect(trigger).toHaveAttribute("href", "../");
+  const menu = page.locator(".nav-switcher-menu");
+  // Hidden until the control is hovered or focused (progressive enhancement).
+  await expect(menu).toBeHidden();
+  await trigger.hover();
+  await expect(menu).toBeVisible();
+  // Tiles link to the OTHER plugins, not to the current commentable-html page.
+  await expect(menu.locator("a[href=\"../multi-duck/\"]")).toHaveCount(1);
+  await expect(menu.locator("a[href=\"../urikan-ai-marketplace-auto-updater/\"]")).toHaveCount(1);
+  await expect(menu.locator("a[href=\"../commentable-html/\"]")).toHaveCount(0);
+  // And an all-plugins link back to the hub.
+  await expect(menu.locator("a.switch-tile-all")).toHaveAttribute("href", "../");
+});
+
+
+test("the plugin switcher flyout also reveals on keyboard focus (SITE-SWITCH-01)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const menu = page.locator(".nav-switcher-menu");
+  await expect(menu).toBeHidden();
+  await page.locator(".nav-switcher-trigger").focus();
+  await expect(menu).toBeVisible();
+});

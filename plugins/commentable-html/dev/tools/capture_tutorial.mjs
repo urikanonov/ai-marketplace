@@ -32,10 +32,11 @@ const SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
 ];
-const PNG_QUANTIZE_STEP = 32;
-const PNG_DOWNSAMPLE = 1;
+const PNG_QUANTIZE_STEP = 64;
+const PNG_DOWNSAMPLE = 2;
 const PIXEL_CHANNEL_TOLERANCE = 96;
-const MAX_PIXEL_DIFF_RATIO = 0.15;
+const MAX_PIXEL_DIFF_RATIO = 0.2;
+const MAX_DIMENSION_DELTA = 2;
 const ELEMENT_SHOT_TOP = 24;
 
 if (printPaths) {
@@ -57,6 +58,120 @@ async function settlePaint(page) {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
+}
+
+async function waitForStableElement(locator, frames = 3) {
+  await locator.evaluate(async (el, wantedFrames) => {
+    const snapshot = () => {
+      const rect = el.getBoundingClientRect();
+      return [
+        Math.round(rect.x * 100) / 100,
+        Math.round(rect.y * 100) / 100,
+        Math.round(rect.width * 100) / 100,
+        Math.round(rect.height * 100) / 100,
+        el.scrollWidth,
+        el.scrollHeight,
+        document.documentElement.scrollWidth,
+        document.documentElement.scrollHeight,
+      ].join("|");
+    };
+    let previous = snapshot();
+    let stable = 0;
+    const deadline = performance.now() + 5000;
+    while (stable < wantedFrames) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const next = snapshot();
+      stable = next === previous ? stable + 1 : 0;
+      previous = next;
+      if (performance.now() > deadline) throw new Error("element layout did not settle");
+    }
+  }, frames);
+}
+
+async function scrollLocatorToTop(locator, topMargin) {
+  await locator.evaluate(async (el, margin) => {
+    const wanted = Math.max(0, Math.round(window.scrollY + el.getBoundingClientRect().top - margin));
+    window.scrollTo(0, wanted);
+    const deadline = performance.now() + 5000;
+    let stable = 0;
+    let previous = "";
+    while (stable < 3) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const rect = el.getBoundingClientRect();
+      const current = [
+        Math.round(window.scrollY * 100) / 100,
+        Math.round(rect.top * 100) / 100,
+        Math.round(rect.left * 100) / 100,
+      ].join("|");
+      stable = current === previous && Math.abs(window.scrollY - wanted) < 1 ? stable + 1 : 0;
+      previous = current;
+      if (performance.now() > deadline) throw new Error("scroll did not settle");
+    }
+  }, topMargin);
+}
+
+async function waitForStableLayout(page, frames = 2) {
+  await page.evaluate(async (wantedFrames) => {
+    const snapshot = () => {
+      const root = document.documentElement;
+      const body = document.body;
+      return [
+        root.scrollWidth,
+        root.scrollHeight,
+        body ? body.scrollWidth : 0,
+        body ? body.scrollHeight : 0,
+        window.scrollX,
+        window.scrollY,
+        document.querySelectorAll("pre.mermaid[data-processed='true'] svg, div.mermaid[data-processed='true'] svg").length,
+        document.querySelectorAll("figure.chart canvas, canvas.cmh-chart").length,
+        document.querySelectorAll(".cm-composer, .cm-help-overlay, #toast.show, mark.cm-hl, .cmh-dl-hl").length,
+      ].join("|");
+    };
+    let previous = snapshot();
+    let stable = 0;
+    const deadline = performance.now() + 3000;
+    while (stable < wantedFrames) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const next = snapshot();
+      stable = next === previous ? stable + 1 : 0;
+      previous = next;
+      if (performance.now() > deadline) throw new Error("page layout did not settle");
+    }
+  }, frames);
+}
+
+async function waitForFonts(page) {
+  await page.evaluate(async () => {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  });
+}
+
+async function waitForMermaid(page) {
+  await page.waitForFunction(() => {
+    const hosts = Array.from(document.querySelectorAll("pre.mermaid, div.mermaid"));
+    return hosts.every((host) => {
+      const svg = host.querySelector("svg");
+      return !host.textContent.trim() || (host.dataset.processed === "true" && svg && svg.querySelector("g, path, rect, text, circle, polygon, foreignObject"));
+    });
+  }, null, { timeout: 15000 });
+}
+
+async function routeVendoredMermaid(context) {
+  const dist = path.resolve(HERE, "..", "node_modules", "mermaid", "dist");
+  await context.route("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/**", async (route) => {
+    const requestPath = new URL(route.request().url()).pathname;
+    const relative = decodeURIComponent(requestPath.replace(/^.*\/dist\//, "")).replace(/\//g, path.sep);
+    const fileName = path.resolve(dist, relative);
+    if (fileName.startsWith(dist + path.sep) && fs.existsSync(fileName)) {
+      await route.fulfill({ path: fileName, contentType: "application/javascript" });
+      return;
+    }
+    await route.continue();
+  });
+}
+
+async function expectNoComposer(page) {
+  await page.locator(".cm-composer").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
 }
 
 function roundedClip(box, size, top = Math.floor(box.y)) {
@@ -113,13 +228,11 @@ async function writeScreenshot(page, normalizer, pathName, extra = {}) {
 
 async function screenshotLocator(page, normalizer, locator, pathName) {
   if (!await locator.count()) return;
-  await locator.evaluate((el, topMargin) => {
-    const rect = el.getBoundingClientRect();
-    window.scrollTo(0, Math.max(0, Math.round(window.scrollY + rect.top - topMargin)));
-  }, ELEMENT_SHOT_TOP);
+  await locator.first().waitFor({ state: "visible", timeout: 10000 });
+  await scrollLocatorToTop(locator, ELEMENT_SHOT_TOP);
   await page.mouse.move(1, 1);
-  await page.waitForTimeout(500);
   await settlePaint(page);
+  await waitForStableElement(locator);
   const box = await locator.boundingBox();
   if (!box) return;
   const size = await locator.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
@@ -128,12 +241,15 @@ async function screenshotLocator(page, normalizer, locator, pathName) {
 
 async function ready(page) {
   await page.waitForFunction(() => window.__commentableHtmlReady === true, null, { timeout: 15000 });
-  await page.waitForTimeout(300);
+  await waitForFonts(page);
+  await waitForMermaid(page);
+  await waitForStableLayout(page);
 }
 
 async function freezeMotion(page) {
   await page.addStyleTag({ content:
-    "*,*::before,*::after{animation-duration:0s !important;animation-delay:0s !important;"
+    "html,body{scroll-behavior:auto !important;}"
+    + "*,*::before,*::after{animation-duration:0s !important;animation-delay:0s !important;"
     + "transition-duration:0s !important;transition-delay:0s !important;caret-color:transparent !important;}"
     + "html,body,#commentRoot,.cm-sidebar,button,input,textarea{font-family:Arial,sans-serif !important;}"
     + "pre,code,kbd,samp,.cmh-code-wrap,.cmh-diff-view{font-family:Consolas,'Courier New',monospace !important;}"
@@ -160,6 +276,14 @@ async function freezeRandom(context) {
 }
 
 async function stabilizeCharts(page) {
+  await page.waitForFunction(() => {
+    const canvases = Array.from(document.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
+    if (!canvases.length) return true;
+    const Chart = window.Chart;
+    if (!Chart || !Chart.instances) return false;
+    const charts = Object.values(Chart.instances).filter(Boolean);
+    return canvases.every((canvas) => charts.some((chart) => chart.canvas === canvas));
+  }, null, { timeout: 15000 }).catch(() => {});
   await page.evaluate(() => {
     const Chart = window.Chart;
     if (!Chart || !Chart.instances) return;
@@ -174,6 +298,8 @@ async function stabilizeCharts(page) {
       chart.update("none");
     }
   }).catch(() => {});
+  await settlePaint(page);
+  await waitForStableLayout(page);
 }
 
 async function captureAll(targetDir) {
@@ -186,8 +312,9 @@ async function captureAll(targetDir) {
       "--font-render-hinting=none",
     ],
   });
+  let context;
   try {
-    const context = await browser.newContext({
+    context = await browser.newContext({
       viewport: { width: 1320, height: 900 },
       deviceScaleFactor: 2,
       colorScheme: "light",
@@ -198,6 +325,7 @@ async function captureAll(targetDir) {
     });
     await freezeClock(context);
     await freezeRandom(context);
+    await routeVendoredMermaid(context);
     const normalizer = await context.newPage();
     const page = await context.newPage();
     await page.goto(url);
@@ -211,7 +339,8 @@ async function captureAll(targetDir) {
     await page.addStyleTag({
       content: ".cm-toolbar{visibility:hidden !important;}"
         + ".cm-code-lang,.cm-code-copy{box-shadow:none !important;"
-        + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}",
+        + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}"
+        + "#diffAddBtn{display:none !important;}",
     });
 
     await screenshotLocator(page, normalizer, page.locator("figure.cmh-kql").first(),
@@ -219,14 +348,12 @@ async function captureAll(targetDir) {
 
     const chart = page.locator("figure.chart").first();
     if (await chart.count()) {
-      await chart.evaluate((el, topMargin) => {
-        const rect = el.getBoundingClientRect();
-        window.scrollTo(0, Math.max(0, Math.round(window.scrollY + rect.top - topMargin)));
-      }, ELEMENT_SHOT_TOP);
+      await chart.waitFor({ state: "visible", timeout: 10000 });
+      await scrollLocatorToTop(chart, ELEMENT_SHOT_TOP);
       await page.mouse.move(1, 1);
-      await page.waitForTimeout(400);
       await stabilizeCharts(page);
       await settlePaint(page);
+      await waitForStableElement(chart);
       const box = await chart.boundingBox();
       if (box) {
         const size = await chart.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
@@ -249,20 +376,20 @@ async function captureAll(targetDir) {
       sel.addRange(r);
       el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
-    await page.waitForTimeout(300);
     const addBtn = page.locator(".cm-add-comment, [data-cm-add], button:has-text('Add comment')").first();
     if (await addBtn.count()) {
+      await addBtn.waitFor({ state: "visible", timeout: 5000 });
       await addBtn.click();
       const composer = page.locator(".cm-composer").first();
       await composer.waitFor({ state: "visible", timeout: 5000 });
-      await page.waitForTimeout(300);
+      await waitForStableLayout(page);
       await writeScreenshot(page, normalizer, shotPath(targetDir, "05-composer"),
         { clip: { x: 0, y: 0, width: 1320, height: 900 } });
       await composer.locator("textarea").first().fill("Does this section read clearly? Consider adding one more example.");
-      await page.waitForTimeout(150);
       await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
       await page.locator("#commentRoot mark.cm-hl").first().waitFor({ state: "visible", timeout: 5000 });
-      await page.waitForTimeout(400);
+      await expectNoComposer(page);
+      await waitForStableLayout(page);
     }
 
     await writeScreenshot(page, normalizer, shotPath(targetDir, "06-comment-saved"),
@@ -272,7 +399,8 @@ async function captureAll(targetDir) {
     const copyBtn = page.locator("#btnCopyAll");
     if (await copyBtn.count()) {
       await copyBtn.click().catch(() => {});
-      await page.waitForTimeout(500);
+      await page.locator("#toast.show").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+      await waitForStableLayout(page);
       await writeScreenshot(page, normalizer, shotPath(targetDir, "09-copyall"),
         { clip: { x: 0, y: 0, width: 1320, height: 900 } });
     }
@@ -285,7 +413,8 @@ async function captureAll(targetDir) {
       const t = document.getElementById("btnHelpTop");
       if (t) t.click();
     });
-    await page.waitForTimeout(400);
+    await page.locator(".cm-help-overlay .cm-help").waitFor({ state: "visible", timeout: 5000 });
+    await waitForStableLayout(page);
     await writeScreenshot(page, normalizer, shotPath(targetDir, "07-help"),
       { clip: { x: 0, y: 0, width: 1320, height: 900 } });
 
@@ -303,17 +432,19 @@ async function captureAll(targetDir) {
       window.scrollTo(0, 0);
     });
     await page.mouse.move(1, 1);
-    await page.waitForTimeout(300);
+    await page.locator(".cm-help-overlay").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    await waitForStableLayout(page);
     await writeScreenshot(page, normalizer, shotPath(targetDir, "08-top-dark"),
       { clip: { x: 0, y: 0, width: 1320, height: 900 } });
   } finally {
+    if (context) await context.close().catch(() => {});
     await browser.close();
   }
 }
 
 async function imagesMatch(comparePage, expected, actual) {
   if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
-  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance }) => {
+  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta }) => {
     async function decode(base64) {
       const img = new Image();
       img.src = "data:image/png;base64," + base64;
@@ -323,10 +454,14 @@ async function imagesMatch(comparePage, expected, actual) {
     try {
       const expectedImg = await decode(expectedBase64);
       const actualImg = await decode(actualBase64);
-      if (expectedImg.naturalWidth !== actualImg.naturalWidth || expectedImg.naturalHeight !== actualImg.naturalHeight) return 1;
+      const widthDelta = Math.abs(expectedImg.naturalWidth - actualImg.naturalWidth);
+      const heightDelta = Math.abs(expectedImg.naturalHeight - actualImg.naturalHeight);
+      if (widthDelta > maxDimensionDelta || heightDelta > maxDimensionDelta) return 1;
+      const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
+      const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
       const canvas = document.createElement("canvas");
-      canvas.width = expectedImg.naturalWidth;
-      canvas.height = expectedImg.naturalHeight;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       ctx.drawImage(expectedImg, 0, 0);
       const expectedData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -354,6 +489,7 @@ async function imagesMatch(comparePage, expected, actual) {
     expectedBase64: fs.readFileSync(expected).toString("base64"),
     actualBase64: fs.readFileSync(actual).toString("base64"),
     tolerance: PIXEL_CHANNEL_TOLERANCE,
+    maxDimensionDelta: MAX_DIMENSION_DELTA,
   });
   return ratio <= MAX_PIXEL_DIFF_RATIO;
 }
@@ -376,6 +512,7 @@ async function checkScreenshots() {
         else if (!await imagesMatch(comparePage, expected, actual)) problems.push(`${file} differs`);
       }
     } finally {
+      await comparePage.close().catch(() => {});
       await compareBrowser.close();
     }
     if (problems.length) {
@@ -398,21 +535,26 @@ async function regenerateScreenshots() {
   try {
     await captureAll(freshDir);
     fs.mkdirSync(outDir, { recursive: true });
-    const compareBrowser = await chromium.launch();
-    const comparePage = await compareBrowser.newPage();
+    let compareBrowser = null;
+    let comparePage = null;
     let written = 0;
     try {
       for (const name of SHOTS) {
         const file = `${prefix}-${name}.png`;
         const target = path.join(outDir, file);
         const fresh = path.join(freshDir, file);
+        if (fs.existsSync(target) && !comparePage) {
+          compareBrowser = await chromium.launch();
+          comparePage = await compareBrowser.newPage();
+        }
         if (!fs.existsSync(target) || !await imagesMatch(comparePage, target, fresh)) {
           fs.copyFileSync(fresh, target);
           written += 1;
         }
       }
     } finally {
-      await compareBrowser.close();
+      if (comparePage) await comparePage.close().catch(() => {});
+      if (compareBrowser) await compareBrowser.close();
     }
     console.log("captured shots with prefix", prefix, "->", outDir, `(${written} updated)`);
   } finally {

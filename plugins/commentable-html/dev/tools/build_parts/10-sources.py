@@ -78,14 +78,32 @@ def _names():
 # --------------------------------------------------------------------------- #
 # Output builders
 # --------------------------------------------------------------------------- #
-def build_inline(css, js, shell, version, mermaid_version):
-    for ph in ("{{CMH_CSS}}", "{{CMH_JS}}", "{{CMH_VERSION}}", "{{MERMAID_VERSION}}"):
+def build_vendored_rich_libs_json(assets_dir):
+    vendor_dir = os.path.join(assets_dir, "vendor")
+    mermaid = read_vendor_script(os.path.join(vendor_dir, "mermaid.min.js")).encode("utf-8")
+    chartjs = read_vendor_script(os.path.join(vendor_dir, "chart.umd.min.js")).encode("utf-8")
+    payload = {
+        "encoding": "gzip+base64",
+        "mermaidGzipBase64": base64.b64encode(deterministic_gzip(mermaid, compresslevel=9)).decode("ascii"),
+        "chartjsGzipBase64": base64.b64encode(deterministic_gzip(chartjs, compresslevel=9)).decode("ascii"),
+    }
+    return (json.dumps(payload, separators=(",", ":"))
+            .replace("<", "\\u003C")
+            .replace(">", "\\u003E")
+            .replace("&", "\\u0026"))
+
+
+def build_inline(css, js, shell, version, mermaid_version, vendored_rich_libs_json=None):
+    if vendored_rich_libs_json is None:
+        vendored_rich_libs_json = build_vendored_rich_libs_json(ASSETS)
+    for ph in ("{{CMH_CSS}}", "{{CMH_JS}}", "{{CMH_VERSION}}", "{{MERMAID_VERSION}}", "{{CMH_VENDORED_RICH_LIBS}}"):
         if ph not in shell:
             raise SystemExit("build: shell is missing placeholder " + ph)
     return (shell.replace("{{CMH_CSS}}", css)
                  .replace("{{CMH_JS}}", js)
                  .replace("{{CMH_VERSION}}", version)
-                 .replace("{{MERMAID_VERSION}}", mermaid_version))
+                 .replace("{{MERMAID_VERSION}}", mermaid_version)
+                 .replace("{{CMH_VENDORED_RICH_LIBS}}", vendored_rich_libs_json))
 
 
 def build_assets_js(css, js, version):

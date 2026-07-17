@@ -13,6 +13,8 @@ _spec = importlib.util.spec_from_file_location("check_dependency_cooldown", _MOD
 cdc = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cdc)
 
+from _git_test_env import clean_git_env  # noqa: E402  (scripts/ is on sys.path under discover)
+
 
 def dep(name, version):
     return cdc.DependencyVersion(name, version)
@@ -184,6 +186,7 @@ class TestLockfileDiff(unittest.TestCase):
         result = subprocess.run(
             ["git", "ls-files"],
             cwd=repo,
+            env=clean_git_env(),
             capture_output=True,
             text=True,
             check=True,

@@ -29,9 +29,20 @@ import zipfile
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 UPDATER_PLUGIN = "urikan-ai-marketplace-auto-updater"
+MULTI_DUCK_PLUGIN = "multi-duck"
 PLUGIN_PAGES = {
     "commentable-html": "./commentable-html/",
     UPDATER_PLUGIN: "./" + UPDATER_PLUGIN + "/",
+    MULTI_DUCK_PLUGIN: "./" + MULTI_DUCK_PLUGIN + "/",
+}
+# Human-friendly display labels for the nav plugin-switcher tiles (the raw manifest name is the
+# fallback). These mirror each plugin page's nav brand label and, importantly, avoid the word
+# "Marketplace" in a tile so the nav's single "Marketplace" control stays the only element that
+# carries that text.
+PLUGIN_DISPLAY_NAMES = {
+    "commentable-html": "Commentable HTML",
+    UPDATER_PLUGIN: "Auto-updater",
+    MULTI_DUCK_PLUGIN: "multi-duck",
 }
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-showcase.html"]
@@ -64,6 +75,11 @@ PLUGIN_OUT = os.path.join(SITE_OUT, "commentable-html", "index.html")
 # the manifest so it never drifts from the shipped plugin version.
 UPDATER_SRC = os.path.join(SITE_PAGES, UPDATER_PLUGIN, "index.html")
 UPDATER_OUT = os.path.join(SITE_OUT, UPDATER_PLUGIN, "index.html")
+# The multi-duck plugin page: another REQUIRED page like the hub and the commentable-html page (its
+# source must exist), built from its own site/pages source with the version badge, install block, and
+# per-plugin changelog filled from the manifest and the plugin CHANGELOG.md so it never drifts.
+MULTI_DUCK_SRC = os.path.join(SITE_PAGES, MULTI_DUCK_PLUGIN, "index.html")
+MULTI_DUCK_OUT = os.path.join(SITE_OUT, MULTI_DUCK_PLUGIN, "index.html")
 TUTORIAL_PAGE_SRC = os.path.join(SITE_PAGES, "commentable-html", "tutorial", "index.html")
 
 # The commentable-html skill root. The tutorial references example files with
@@ -113,6 +129,6 @@ DESKTOP_SKILLS = {
 # the JSON-LD graph, sitemap, and llms.txt generated below. The site is served from this fixed
 # project sub-path on github.io, so these never vary per environment.
 SITE_BASE_URL = "https://urikanonov.github.io/ai-marketplace/"
-SITE_NAME = "ai-marketplace"
+SITE_NAME = "AI Marketplace"
 OWNER_GITHUB_URL = "https://github.com/urikanonov"
 OWNER_LINKEDIN_URL = "https://www.linkedin.com/in/uri-kanonov-946761119"

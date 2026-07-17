@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.132.0";
+const CMH_VERSION = "1.139.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -474,6 +474,7 @@ function wrapRangeWithMark(range, id) {
     if (s > 0) target = tn.splitText(s);
     const m = document.createElement("mark");
     m.className = "cm-hl";
+    if (!(target.nodeValue || "").trim()) m.classList.add("cm-hl-gap");
     m.dataset.cid = id;
     target.parentNode.insertBefore(m, target);
     m.appendChild(target);
@@ -496,7 +497,6 @@ function removeHighlight(comment) {
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }
-
 /* ---------- Mermaid commenting layer ----------
    Lets the user click rendered diagram nodes inside
    pre.mermaid / div.mermaid blocks and attach a comment.
@@ -1608,6 +1608,251 @@ const imageAddBtn = document.getElementById("imageAddBtn");
 let pendingImage = null;
 let imageAddHideTimer = null;
 let imageActiveEl = null;
+let chartTooltipEl = null;
+let chartTooltipCanvas = null;
+let chartResizeBound = false;
+
+function _chartColors(canvas) {
+  const rootStyle = getComputedStyle(document.documentElement);
+  const canvasStyle = getComputedStyle(canvas);
+  return {
+    text: canvas.getAttribute("data-cmh-chart-text") || canvasStyle.color || rootStyle.getPropertyValue("--cp-text").trim() || "#1b1f3b",
+    axis: canvas.getAttribute("data-cmh-chart-axis") || rootStyle.getPropertyValue("--cp-border-strong").trim() || "#cbb48a",
+    grid: canvas.getAttribute("data-cmh-chart-grid") || rootStyle.getPropertyValue("--cp-border").trim() || "#dedede",
+    accent: canvas.getAttribute("data-cmh-chart-accent") || rootStyle.getPropertyValue("--cp-accent").trim() || "#b11f4b",
+    background: canvas.getAttribute("data-cmh-chart-background") || "#ffffff",
+  };
+}
+function _chartStep(max) {
+  if (!Number.isFinite(max) || max <= 0) return 1;
+  const rough = max / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+  const unit = rough / pow;
+  const nice = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10;
+  return nice * pow;
+}
+function _chartConfig(canvas) {
+  const sourceId = (canvas.getAttribute("data-cmh-chart-source") || "").trim();
+  let source = null;
+  if (sourceId) {
+    const el = document.getElementById(sourceId);
+    if (el) {
+      try { source = JSON.parse((el.textContent || "").trim() || "null"); }
+      catch (e) { console.warn("Could not parse chart data source #" + sourceId + ":", e); return null; }
+    }
+  }
+  if (!source) {
+    const raw = canvas.getAttribute("data-cmh-chart-points");
+    if (!raw) return null;
+    try { source = { points: JSON.parse(raw) }; }
+    catch (e) { console.warn("Could not parse inline chart data:", e); return null; }
+  }
+  const parsed = Array.isArray(source) ? source : source.points;
+  if (!Array.isArray(parsed) || !parsed.length) return null;
+  const points = parsed.map(function (point, index) {
+    const label = point && typeof point.label === "string" ? point.label.trim() : "";
+    const value = Number(point && point.value);
+    if (!label || !Number.isFinite(value)) return null;
+    return {
+      label: label,
+      value: value,
+      fill: point && typeof point.fill === "string" && point.fill.trim() ? point.fill.trim() : (index === 1 ? "#b11f4b" : "#e08aa4"),
+    };
+  }).filter(Boolean);
+  if (!points.length) return null;
+  const attrMax = Number(source.max != null ? source.max : canvas.getAttribute("data-cmh-chart-max"));
+  const max = Number.isFinite(attrMax) && attrMax > 0 ? attrMax : Math.max.apply(null, points.map(function (point) { return point.value; }));
+  const attrStep = Number(source.step != null ? source.step : canvas.getAttribute("data-cmh-chart-step"));
+  const unit = String(source.unit != null ? source.unit : (canvas.getAttribute("data-cmh-chart-unit") || "")).trim();
+  const tooltipUnit = String(source.tooltipUnit != null ? source.tooltipUnit : (canvas.getAttribute("data-cmh-chart-tooltip-unit") || unit)).trim();
+  return {
+    points: points,
+    max: max,
+    step: Number.isFinite(attrStep) && attrStep > 0 ? attrStep : _chartStep(max),
+    unit: unit,
+    tooltipUnit: tooltipUnit,
+    colors: _chartColors(canvas),
+  };
+}
+function _chartTooltip() {
+  if (!chartTooltipEl) {
+    chartTooltipEl = document.createElement("div");
+    chartTooltipEl.className = "cm-tooltip cmh-chart-tooltip cm-skip";
+    chartTooltipEl.setAttribute("role", "tooltip");
+    document.body.appendChild(chartTooltipEl);
+  }
+  return chartTooltipEl;
+}
+function hideChartTooltip() {
+  chartTooltipCanvas = null;
+  if (chartTooltipEl) chartTooltipEl.classList.remove("is-visible", "below");
+}
+function _showChartTooltip(canvas, point) {
+  const tip = _chartTooltip();
+  const rect = canvas.getBoundingClientRect();
+  const leftAtPoint = rect.left + point.x;
+  const topAtPoint = rect.top + point.top;
+  chartTooltipCanvas = canvas;
+  tip.textContent = point.tooltip;
+  tip.classList.remove("below");
+  tip.style.visibility = "hidden";
+  tip.classList.add("is-visible");
+  const tipWidth = tip.offsetWidth;
+  const tipHeight = tip.offsetHeight;
+  let left = leftAtPoint - tipWidth / 2;
+  let top = topAtPoint - tipHeight - 12;
+  if (top < 8) {
+    top = rect.top + point.bottom + 12;
+    tip.classList.add("below");
+  }
+  left = Math.max(8, Math.min(left, window.innerWidth - tipWidth - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - tipHeight - 8));
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+  tip.style.setProperty("--cm-tip-arrow", Math.max(10, Math.min(tipWidth - 10, leftAtPoint - left)) + "px");
+  tip.style.visibility = "";
+}
+function _chartHit(state, x, y) {
+  if (!state || !state.points) return null;
+  return state.points.find(function (point) {
+    return x >= point.left && x <= point.right && y >= point.top && y <= point.bottom;
+  }) || null;
+}
+function _chartSetHover(canvas, point) {
+  const state = canvas._cmhChart;
+  const nextIndex = point ? point.index : -1;
+  if (state && state.activeIndex === nextIndex) {
+    if (point) _showChartTooltip(canvas, point);
+    return;
+  }
+  renderInteractiveChart(canvas, nextIndex);
+  if (point) _showChartTooltip(canvas, canvas._cmhChart.points[nextIndex]);
+  else hideChartTooltip();
+}
+function _chartEventPoint(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: (event.clientX - rect.left) * ((canvas._cmhChart && canvas._cmhChart.width) || rect.width) / rect.width,
+    y: (event.clientY - rect.top) * ((canvas._cmhChart && canvas._cmhChart.height) || rect.height) / rect.height,
+  };
+}
+function renderInteractiveChart(canvas, activeIndex) {
+  const config = _chartConfig(canvas);
+  if (!config) return false;
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(1, Math.round(canvas.clientWidth || Number(canvas.getAttribute("width")) || canvas.width || 760));
+  const height = Math.max(1, Math.round(canvas.clientHeight || Number(canvas.getAttribute("height")) || canvas.height || 340));
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return false;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = config.colors.background;
+  ctx.fillRect(0, 0, width, height);
+  const pad = { top: 26, right: 28, bottom: 54, left: 62 };
+  const plotWidth = Math.max(10, width - pad.left - pad.right);
+  const plotHeight = Math.max(10, height - pad.top - pad.bottom);
+  const startY = pad.top + plotHeight;
+  const ticks = [];
+  for (let tick = 0; tick <= config.max + 0.0001; tick += config.step) ticks.push(tick);
+  if (ticks[ticks.length - 1] !== config.max) ticks.push(config.max);
+  ctx.strokeStyle = config.colors.axis;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, startY);
+  ctx.lineTo(width - pad.right, startY);
+  ctx.stroke();
+  ctx.font = "16px Segoe UI, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  ticks.forEach(function (tick) {
+    const y = startY - (tick / config.max) * plotHeight;
+    ctx.strokeStyle = tick === 0 ? config.colors.axis : config.colors.grid;
+    ctx.lineWidth = tick === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(width - pad.right, y);
+    ctx.stroke();
+    ctx.fillStyle = config.colors.text;
+    ctx.fillText(String(tick), pad.left - 10, y);
+  });
+  const gap = Math.max(18, Math.min(36, plotWidth * 0.08));
+  const barWidth = Math.max(34, Math.min(92, (plotWidth - gap * (config.points.length - 1)) / config.points.length));
+  const used = barWidth * config.points.length + gap * (config.points.length - 1);
+  const startX = pad.left + Math.max(0, (plotWidth - used) / 2);
+  const renderedPoints = config.points.map(function (point, index) {
+    const x = startX + index * (barWidth + gap);
+    const barHeight = Math.max(0, (point.value / config.max) * plotHeight);
+    const top = startY - barHeight;
+    ctx.fillStyle = point.fill;
+    ctx.fillRect(x, top, barWidth, barHeight);
+    if (activeIndex === index) {
+      ctx.strokeStyle = config.colors.accent;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x - 1.5, top - 1.5, barWidth + 3, barHeight + 3);
+    }
+    ctx.fillStyle = config.colors.text;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.font = "bold 20px Segoe UI, sans-serif";
+    ctx.fillText(point.value + (config.unit ? " " + config.unit.replace(/^\/?\s*/, "") : ""), x + barWidth / 2, Math.max(18, top - 8));
+    ctx.textBaseline = "top";
+    ctx.font = "18px Segoe UI, sans-serif";
+    ctx.fillText(point.label, x + barWidth / 2, startY + 12);
+    return {
+      index: index,
+      label: point.label,
+      value: point.value,
+      tooltip: point.label + ": " + point.value + (config.tooltipUnit ? " " + config.tooltipUnit : ""),
+      left: x,
+      right: x + barWidth,
+      top: top,
+      bottom: startY,
+      x: x + barWidth / 2,
+      y: top + Math.max(10, barHeight * 0.35),
+      width: barWidth,
+      height: barHeight,
+    };
+  });
+  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height };
+  return true;
+}
+function setupInteractiveCharts() {
+  const charts = Array.from(root.querySelectorAll("canvas.cmh-chart[data-cmh-chart-points], canvas.cmh-chart[data-cmh-chart-source], figure.chart canvas[data-cmh-chart-points], figure.chart canvas[data-cmh-chart-source]"));
+  charts.forEach(function (canvas) {
+    renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+    if (canvas._cmhChartBound) return;
+    canvas._cmhChartBound = true;
+    canvas.addEventListener("mousemove", function (event) {
+      const point = _chartEventPoint(canvas, event);
+      _chartSetHover(canvas, point && _chartHit(canvas._cmhChart, point.x, point.y));
+    });
+    canvas.addEventListener("mouseleave", function () {
+      if (chartTooltipCanvas === canvas) hideChartTooltip();
+      _chartSetHover(canvas, null);
+    });
+    canvas.addEventListener("blur", function () {
+      if (chartTooltipCanvas === canvas) hideChartTooltip();
+      _chartSetHover(canvas, null);
+    });
+  });
+  if (!chartResizeBound) {
+    chartResizeBound = true;
+    window.addEventListener("resize", function () {
+      root.querySelectorAll("canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]").forEach(function (canvas) {
+        renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+      });
+      if (chartTooltipCanvas && chartTooltipCanvas._cmhChart && chartTooltipCanvas._cmhChart.activeIndex >= 0) {
+        const point = chartTooltipCanvas._cmhChart.points[chartTooltipCanvas._cmhChart.activeIndex];
+        if (point) _showChartTooltip(chartTooltipCanvas, point);
+      }
+    });
+    window.addEventListener("scroll", hideChartTooltip, true);
+  }
+}
 
 function indexImages() {
   imageEls.length = 0;
@@ -1719,6 +1964,7 @@ function openImageComposer(info) {
 }
 function setupImageLayer() {
   if (!imageAddBtn) return;
+  setupInteractiveCharts();
   indexImages();
   imageEls.forEach(img => {
     if (!img._cmImgAttached) {
@@ -1762,7 +2008,6 @@ if (imageAddBtn) {
     openImageComposer(info);
   });
 }
-
 /* ---------- Commentable widgets and SVG nodes (generic opt-in) ----------
    Any element marked data-cm-widget declares a commentable widget. Descendants marked
    data-cm-part (with an optional data-cm-part-label) become individually commentable even
@@ -1975,9 +2220,27 @@ function positionWidgetAdd(el) {
   if (!visible) return false;
   const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
-  const left = visible.right - bw - 6, top = visible.top + 6;
-  widgetAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
-  widgetAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
+  const widget = el.closest("[data-cm-widget]");
+  const reset = widget && widget.matches("[data-cm-draggable]") ? widget.querySelector(".cm-widget-reset") : null;
+  const resetRect = reset && !reset.hidden ? reset.getBoundingClientRect() : null;
+  const candidates = [
+    { left: visible.right - bw - 6, top: visible.top + 6 },
+    { left: visible.left + 6, top: visible.top + 6 },
+    { left: visible.right - bw - 6, top: visible.bottom - bh - 6 },
+    { left: visible.left + 6, top: visible.bottom - bh - 6 },
+  ].map((pos) => ({
+    left: _clamp(pos.left, bounds.left, bounds.right - bw),
+    top: _clamp(pos.top, bounds.top, bounds.bottom - bh),
+  }));
+  const placed = candidates.find((pos) => {
+    if (!resetRect) return true;
+    return !_intersectRects(
+      { left: pos.left, right: pos.left + bw, top: pos.top, bottom: pos.top + bh },
+      resetRect,
+    );
+  }) || candidates[0];
+  widgetAddBtn.style.left = placed.left + "px";
+  widgetAddBtn.style.top = placed.top + "px";
   return true;
 }
 function showWidgetAddFor(el) {
@@ -5713,17 +5976,12 @@ async function saveStandalone() {
   showToast(`Downloaded ${filename} - one portable file, ${n} comment${n === 1 ? "" : "s"} embedded, no companion files needed.`);
 }
 
-/* ---------- Export Offline (portable + rendered rich-content snapshots) ---------- */
+/* ---------- Export Offline (portable + zero-network rich-content embedding) ---------- */
 function _offlineDocFromHtml(html) {
   return new DOMParser().parseFromString(String(html || ""), "text/html");
 }
 function _serializeOfflineDoc(doc) {
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
-}
-function _offlineTemplateNode(doc, html) {
-  const tpl = doc.createElement("template");
-  tpl.innerHTML = String(html || "").trim();
-  return tpl.content.firstElementChild;
 }
 function _offlineIsNetworkUrl(v) {
   return /^(?:https?:)?\/\//i.test(String(v || "").trim());
@@ -5775,7 +6033,7 @@ function _stripOfflineNetworkLoads(doc) {
   });
   doc.querySelectorAll("script").forEach(function (s) {
     const id = s.getAttribute("id") || "";
-    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer)$/.test(id)) return;
+    if (/^(?:embeddedComments|handledCommentIds|commentableHtmlLayer|cmhVendoredRichLibs)$/.test(id)) return;
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
@@ -5826,13 +6084,6 @@ function _stripOfflineNetworkLoads(doc) {
   });
 }
 function _stripOfflineRichRenderers(doc) {
-  const offlineChartIds = Array.from(doc.querySelectorAll("[data-cm-offline-chart][id]"))
-    .map(function (el) { return el.getAttribute("id") || ""; })
-    .filter(Boolean);
-  const referencesOfflineChart = function (body) {
-    return /\b(?:cmh-chart|figure\.chart|data-cm-offline-chart)\b/i.test(body) ||
-      offlineChartIds.some(function (id) { return new RegExp(_cmhEscapeRegExp(id)).test(body); });
-  };
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
@@ -5844,101 +6095,125 @@ function _stripOfflineRichRenderers(doc) {
     const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
     if (type && type !== "module" && type !== "text/javascript" && type !== "application/javascript") return;
     const body = s.textContent || "";
+    if (/__commentableHtmlReady|const CMH_VERSION|COMMENT_KEY = /.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
       s.remove();
       return;
     }
-    if (/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) ||
-        (/\.getContext\s*\(/.test(body) && referencesOfflineChart(body))) {
+    if (!/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(body) &&
+        /chart(?:\.umd)?(?:\.min)?\.js|chart\.js@|window\.Chart\s*=\s*undefined/i.test(body)) {
       s.remove();
     }
   });
 }
-function _offlineMermaidSnapshots() {
-  return Array.from(root.querySelectorAll("pre.mermaid, div.mermaid")).map(function (host) {
-    if (!host.querySelector("svg")) {
-      throw new Error("Offline export needs mermaid diagrams to finish rendering first.");
-    }
-    const clone = host.cloneNode(true);
-    clone.classList.add("cm-skip");
-    clone.setAttribute("data-processed", "true");
-    const src = host.getAttribute("data-cmh-md-src");
-    if (src && !clone.hasAttribute("data-cmh-md-src")) clone.setAttribute("data-cmh-md-src", src);
-    return clone.outerHTML;
-  });
+let _offlineVendoredRichLibsPromise = null;
+function _offlineLiveDocNeedsRichLibs() {
+  return !!root.querySelector("pre.mermaid, div.mermaid, figure.chart canvas, canvas.cmh-chart");
 }
-function _replaceOfflineMermaid(doc, snapshots) {
-  const docRoot = doc.getElementById("commentRoot") || doc.body;
-  const targets = Array.from(docRoot.querySelectorAll("pre.mermaid, div.mermaid"));
-  if (targets.length !== snapshots.length) {
-    throw new Error("Offline export could not match every mermaid diagram in the source HTML.");
-  }
-  targets.forEach(function (target, i) {
-    const next = _offlineTemplateNode(doc, snapshots[i]);
-    if (!next) throw new Error("Offline export could not serialize a rendered mermaid diagram.");
-    target.replaceWith(next);
-  });
-}
-function _offlineChartSnapshots() {
-  return Array.from(root.querySelectorAll("figure.chart canvas, canvas.cmh-chart")).map(function (canvas) {
-    let src = "";
-    try { src = canvas.toDataURL("image/png"); }
-    catch (e) { throw new Error("Offline export could not snapshot a chart canvas. It may contain cross-origin pixels."); }
-    if (!/^data:image\/png;base64,/i.test(src)) {
-      throw new Error("Offline export could not snapshot a chart canvas as PNG.");
-    }
-    const rect = canvas.getBoundingClientRect();
-    const rawClass = (canvas.getAttribute("class") || "").split(/\s+/)
-      .filter(function (c) { return c && !/^cm-img-/.test(c); });
-    if (!rawClass.includes("cmh-chart")) rawClass.push("cmh-chart");
+function _ensureOfflineVendoredRichLibsPromise() {
+  if (_offlineVendoredRichLibsPromise) return _offlineVendoredRichLibsPromise;
+  _offlineVendoredRichLibsPromise = (async function () {
+    const el = document.getElementById("cmhVendoredRichLibs");
+    if (!el) return {};
+    const payload = JSON.parse(el.textContent || "{}");
     return {
-      id: canvas.getAttribute("id") || "",
-      src,
-      alt: (canvas.getAttribute("aria-label") || canvas.getAttribute("alt") || "Chart snapshot").trim() || "Chart snapshot",
-      width: canvas.getAttribute("width") || String(canvas.width || Math.max(1, Math.round(rect.width))),
-      height: canvas.getAttribute("height") || String(canvas.height || Math.max(1, Math.round(rect.height))),
-      className: rawClass.join(" "),
+      mermaid: await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
+      chartjs: await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
     };
-  });
+  })();
+  return _offlineVendoredRichLibsPromise;
 }
-function _replaceOfflineCharts(doc, snapshots) {
-  const docRoot = doc.getElementById("commentRoot") || doc.body;
-  const targets = Array.from(docRoot.querySelectorAll("figure.chart canvas, canvas.cmh-chart"));
-  if (targets.length !== snapshots.length) {
-    throw new Error("Offline export could not match every chart canvas in the source HTML.");
+async function _offlineInflateVendoredScript(b64) {
+  const raw = String(b64 || "").trim();
+  if (!raw) return "";
+  if (typeof DecompressionStream !== "function") {
+    throw new Error("Offline export needs DecompressionStream support to unpack its vendored rich-content bundle.");
   }
-  targets.forEach(function (canvas, i) {
-    const s = snapshots[i];
-    const img = doc.createElement("img");
-    if (s.id) img.setAttribute("id", s.id);
-    img.setAttribute("class", s.className);
-    img.setAttribute("src", s.src);
-    img.setAttribute("alt", s.alt);
-    img.setAttribute("role", "img");
-    img.setAttribute("aria-label", s.alt);
-    img.setAttribute("width", s.width);
-    img.setAttribute("height", s.height);
-    img.setAttribute("data-cm-offline-chart", "true");
-    canvas.replaceWith(img);
-  });
+  const bytes = Uint8Array.from(atob(raw), function (ch) { return ch.charCodeAt(0); });
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(stream).text();
 }
-function _insertOfflineChartGuard(doc) {
-  const head = doc.head || doc.querySelector("head");
-  if (!head) return;
+async function _offlineVendoredRichLibs() {
+  try { return await _ensureOfflineVendoredRichLibsPromise(); }
+  catch (e) { throw new Error("Offline export could not parse the vendored rich-content bundle."); }
+}
+function _primeOfflineVendoredRichLibs() {
+  if (!_offlineLiveDocNeedsRichLibs()) return;
+  const warm = function () { _ensureOfflineVendoredRichLibsPromise().catch(function () {}); };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2000 });
+  else setTimeout(warm, 0);
+}
+function _offlineDocUsesMermaid(doc) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  return !!(docRoot && docRoot.querySelector("pre.mermaid, div.mermaid"));
+}
+function _offlineDocUsesCharts(doc) {
+  const docRoot = doc.getElementById("commentRoot") || doc.body;
+  return !!(docRoot && docRoot.querySelector("figure.chart canvas, canvas.cmh-chart"));
+}
+function _offlineAppendInlineScript(doc, head, code, attrs) {
   const s = doc.createElement("script");
-  s.textContent = "window.Chart = undefined;";
+  Object.keys(attrs || {}).forEach(function (name) { s.setAttribute(name, attrs[name]); });
+  s.textContent = _escClose(String(code || ""));
   head.appendChild(s);
 }
-function _buildOfflineHtml(portableHtml) {
-  const mermaid = _offlineMermaidSnapshots();
-  const charts = _offlineChartSnapshots();
+function _offlineHoistChartScripts(doc) {
+  const body = doc.body || doc.querySelector("body");
+  if (!body) return;
+  const scripts = Array.from(doc.querySelectorAll("script")).filter(function (s) {
+    const type = (s.getAttribute("type") || "").split(";")[0].trim().toLowerCase();
+    if (type && type !== "text/javascript" && type !== "application/javascript") return false;
+    return /\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/.test(s.textContent || "");
+  });
+  scripts.forEach(function (s) { body.appendChild(s); });
+}
+function _offlineRemoveVendoredBundleScript(doc) {
+  const el = doc.getElementById("cmhVendoredRichLibs");
+  if (el) el.remove();
+}
+async function _offlineInlineRichLibs(doc) {
+  const head = doc.head || doc.querySelector("head");
+  if (!head) return;
+  const needMermaid = _offlineDocUsesMermaid(doc);
+  const needCharts = _offlineDocUsesCharts(doc);
+  if (!needMermaid && !needCharts) {
+    _offlineRemoveVendoredBundleScript(doc);
+    return;
+  }
+  const bundle = await _offlineVendoredRichLibs();
+  if (needCharts) {
+    if (!bundle.chartjs) throw new Error("Offline export is missing the vendored Chart.js bundle.");
+    _offlineAppendInlineScript(doc, head, bundle.chartjs, { "data-cmh-offline-lib": "chartjs" });
+  }
+  if (needMermaid) {
+    if (!bundle.mermaid) throw new Error("Offline export is missing the vendored mermaid bundle.");
+    _offlineAppendInlineScript(doc, head, bundle.mermaid, { "data-cmh-offline-lib": "mermaid" });
+    _offlineAppendInlineScript(doc, head,
+      "(function(){\n"
+      + "  if (!window.mermaid || !window.mermaid.initialize || !window.mermaid.run) return;\n"
+      + "  var run = function () {\n"
+      + "    var theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';\n"
+      + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', flowchart: { htmlLabels: true, curve: 'basis' } }); }\n"
+      + "    catch (e) { return; }\n"
+      + "    try {\n"
+      + "      var result = window.mermaid.run();\n"
+      + "      if (result && result.catch) result.catch(function () {});\n"
+      + "    } catch (e) {}\n"
+      + "  };\n"
+      + "  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });\n"
+      + "  else run();\n"
+      + "})();",
+      { "data-cmh-offline-lib-init": "mermaid" });
+  }
+  _offlineRemoveVendoredBundleScript(doc);
+}
+async function _buildOfflineHtml(portableHtml) {
   const doc = _offlineDocFromHtml(portableHtml);
-  _replaceOfflineMermaid(doc, mermaid);
-  _replaceOfflineCharts(doc, charts);
   _stripOfflineRichRenderers(doc);
   _stripOfflineNetworkLoads(doc);
   _stripOfflineEventHandlers(doc);
-  if (charts.length) _insertOfflineChartGuard(doc);
+  _offlineHoistChartScripts(doc);
+  await _offlineInlineRichLibs(doc);
   _ensureOfflineCsp(doc);
   return _retargetLayerDescriptor(_serializeOfflineDoc(doc), "offline").replace(/\n{3,}/g, "\n\n");
 }
@@ -5957,17 +6232,17 @@ async function saveOffline() {
       : _buildSavedHtml(baseHtml, exportComments);
   } catch (e) { showToast(e.message); return; }
   let text;
-  try { text = _buildOfflineHtml(portable); }
+  try { text = await _buildOfflineHtml(portable); }
   catch (e) { showToast(e.message); return; }
   const filename = _suggestedOfflineFilename();
   _downloadHtml(text, filename);
-  showToast("Downloaded " + filename + " - offline HTML with rendered mermaid and chart snapshots.");
+  showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded.");
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
   const b = document.getElementById(id);
   if (b) b.addEventListener("click", saveOffline);
 });
-
+_primeOfflineVendoredRichLibs();
 /* ---------- Mode badge + asset-version handshake ---------- */
 function assetBannerDismissKey(pageVer, runtimeVer) {
   return "commentable-html::assetBannerDismissed::" + COMMENT_KEY + "::" + String(pageVer || "")
@@ -6255,14 +6530,14 @@ function showHelp(restoreEl) {
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
         '<ul>' +
           '<li><strong>Portable</strong> - self-contained: assets are embedded and every comment is embedded in the file, so a recipient sees exactly what you see.</li>' +
-          '<li><strong>Offline</strong> - portable plus rendered mermaid diagrams and chart snapshots embedded, with remote loaders removed for no-network review.</li>' +
+          '<li><strong>Offline</strong> - portable plus vendored mermaid and Chart.js embedded on demand, with remote loaders removed for zero-network review.</li>' +
           '<li><strong>Not portable</strong> - the file references external companion resources, or has comments that are not embedded yet, or has embedded comments you deleted this session that are still in the file until you re-export. Hover the bubble for the exact reason.</li>' +
         '</ul>' +
           '<p>Use <em>Export as Portable</em> to produce a portable copy. Use <em>Export Offline</em> when rendered mermaid diagrams and charts must also work with no network.</p>') +
       T('Exporting and sharing',
         '<ul>' +
           '<li><strong>Export as Portable</strong> downloads one self-contained HTML (named with a <code>-portable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>' +
-          '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the portable file, then saves rendered mermaid diagrams as inline SVG and chart canvases as PNG images, with remote loaders removed.</li>' +
+          '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the portable file, then inlines the vendored mermaid and Chart.js bundles only when the document uses them, with remote loaders removed.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
           '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
@@ -6306,7 +6581,7 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('Self-contained and privacy',
         '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
-        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> after those features render to snapshot them into a zero-network file.</p>') +
+        '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> to inline the vendored rich-content libraries into a zero-network file.</p>') +
       '<div class="cm-help-about"><h3>About</h3>' +
         '<p>' + CMH_ICON_SVG + ' Commentable HTML <strong>v' + CMH_VERSION + '</strong>, authored by <a class="cm-brand-link" href="https://github.com/urikanonov" target="_blank" rel="noopener noreferrer">Uri Kanonov</a>.</p>' +
         '<ul>' +
@@ -7134,11 +7409,17 @@ function setupDeck() {
   if (current < 0) current = 0;
   let commentMode = false;
   let counter = null, prevBtn = null, nextBtn = null;
+  let edgePrevBtn = null, edgeNextBtn = null;
   let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
+  const stageFocusTarget = viewport || stage;
   const slideTitles = slides.map((slide, i) => slideTitle(slide, i));
   // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
   // the present-mode default applied below.
   root.classList.remove("cmh-deck-comment-mode");
+  if (stageFocusTarget && stageFocusTarget.setAttribute) {
+    stageFocusTarget.tabIndex = -1;
+    if (!stageFocusTarget.getAttribute("aria-label")) stageFocusTarget.setAttribute("aria-label", "Slide stage");
+  }
 
   function slideTitle(slide, index) {
     const explicit = slide.getAttribute("data-slide-title") || slide.getAttribute("aria-label");
@@ -7155,6 +7436,15 @@ function setupDeck() {
     const x = (vw - 1920 * scale) / 2;
     const y = (vh - 1080 * scale) / 2;
     stage.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
+    syncEdgeNavPosition();
+  }
+
+  function focusStage() {
+    if (!stageFocusTarget || !stageFocusTarget.focus || commentMode || hasBlockingDeckChrome()) return;
+    try { stageFocusTarget.focus({ preventScroll: true }); }
+    catch (e) {
+      try { stageFocusTarget.focus(); } catch (_e) {}
+    }
   }
 
   function slideIdAt(index) {
@@ -7210,6 +7500,7 @@ function setupDeck() {
     if (nextBtn) nextBtn.disabled = index === slides.length - 1;
     syncOverview();
     syncSlideHash();
+    hideEdgeNav();
     // Fire only on a real move (a changed active slide), never for the initial render or a
     // re-selection of the already-active slide.
     if (changed) {
@@ -7222,6 +7513,98 @@ function setupDeck() {
   function showById(id) {
     const i = indexBySlideId(id);
     return i >= 0 ? show(i) : false;
+  }
+
+  function hasBlockingDeckChrome() {
+    return !!(
+      (overview && !overview.hidden)
+      || document.querySelector(".cm-composer, .cm-modal-overlay")
+    );
+  }
+
+  function stageHasFocus() {
+    return !!stageFocusTarget && document.activeElement === stageFocusTarget;
+  }
+
+  function syncEdgeNavPosition() {
+    if (!edgePrevBtn || !edgeNextBtn || !viewport || !viewport.getBoundingClientRect) return;
+    const rect = viewport.getBoundingClientRect();
+    const top = Math.max(20, rect.top + rect.height / 2);
+    edgePrevBtn.style.top = top + "px";
+    edgeNextBtn.style.top = top + "px";
+    edgePrevBtn.style.left = Math.max(12, rect.left + 16) + "px";
+    edgeNextBtn.style.left = Math.max(12, rect.right - 64) + "px";
+  }
+
+  function hideEdgeNav() {
+    [edgePrevBtn, edgeNextBtn].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.remove("is-active");
+      btn.style.removeProperty("--cmh-deck-edge-opacity");
+    });
+  }
+
+  function syncEdgeNavButton(btn, strength, enabled) {
+    if (!btn) return;
+    const active = enabled && strength > 0;
+    btn.classList.toggle("is-active", active);
+    if (active) btn.style.setProperty("--cmh-deck-edge-opacity", String((0.2 + strength * 0.75).toFixed(3)));
+    else btn.style.removeProperty("--cmh-deck-edge-opacity");
+  }
+
+  function updateEdgeNavFromPointer(clientX, clientY) {
+    if (!edgePrevBtn || !edgeNextBtn || !viewport || commentMode || hasBlockingDeckChrome()) {
+      hideEdgeNav();
+      return;
+    }
+    const rect = viewport.getBoundingClientRect();
+    const within = clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+    if (!within) {
+      hideEdgeNav();
+      return;
+    }
+    syncEdgeNavPosition();
+    const threshold = Math.min(168, Math.max(80, rect.width * 0.12));
+    const prevStrength = Math.max(0, Math.min(1, (threshold - (clientX - rect.left)) / threshold));
+    const nextStrength = Math.max(0, Math.min(1, (threshold - (rect.right - clientX)) / threshold));
+    syncEdgeNavButton(edgePrevBtn, prevStrength, current > 0);
+    syncEdgeNavButton(edgeNextBtn, nextStrength, current < slides.length - 1);
+  }
+
+  function makeEdgeNav() {
+    if (edgePrevBtn && edgeNextBtn) return;
+    const prev = document.createElement("button");
+    prev.type = "button";
+    prev.className = "cm-skip cmh-deck-edge-nav cmh-deck-edge-nav-prev";
+    prev.textContent = "<";
+    prev.setAttribute("aria-label", "Prev slide");
+    prev.title = "Prev slide";
+    prev.addEventListener("click", () => {
+      if (show(current - 1)) focusStage();
+    });
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "cm-skip cmh-deck-edge-nav cmh-deck-edge-nav-next";
+    next.textContent = ">";
+    next.setAttribute("aria-label", "Next slide");
+    next.title = "Next slide";
+    next.addEventListener("click", () => {
+      if (show(current + 1)) focusStage();
+    });
+    edgePrevBtn = prev;
+    edgeNextBtn = next;
+    document.body.appendChild(prev);
+    document.body.appendChild(next);
+    CMH_INJECTED_CHROME.add(prev);
+    CMH_INJECTED_CHROME.add(next);
+    syncEdgeNavPosition();
+    document.addEventListener("mousemove", (e) => updateEdgeNavFromPointer(e.clientX, e.clientY));
+    viewport.addEventListener("mouseleave", hideEdgeNav);
+    viewport.addEventListener("pointerdown", (e) => {
+      if (commentMode || hasBlockingDeckChrome() || isEditableTarget(e.target)) return;
+      focusStage();
+      updateEdgeNavFromPointer(e.clientX, e.clientY);
+    });
   }
 
   function overviewCards() {
@@ -7386,8 +7769,9 @@ function setupDeck() {
     }
     document.addEventListener("click", overviewDismiss);
     syncOverview();
+    focusOverviewCard(current);
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => focusOverviewCard(current));
-    else focusOverviewCard(current);
+    hideEdgeNav();
   }
 
   function closeOverview() {
@@ -7416,6 +7800,7 @@ function setupDeck() {
 
   show(current);
   fitStage();
+  makeEdgeNav();
   if (typeof ResizeObserver === "function") {
     new ResizeObserver(fitStage).observe(viewport || document.documentElement);
   } else {
@@ -7448,8 +7833,13 @@ function setupDeck() {
       toggleOverview();
       return;
     }
-    if (commentMode || e.defaultPrevented || isEditableTarget(e.target)) return;
-    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+    if (!commentMode && !e.defaultPrevented && !hasBlockingDeckChrome() && stageHasFocus()
+      && (e.key === "Enter" || e.key === " " || e.key === "Spacebar")) {
+      if (show(current + 1)) e.preventDefault();
+      return;
+    }
+    if (commentMode || e.defaultPrevented || isEditableTarget(e.target) || hasBlockingDeckChrome()) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown") {
       if (show(current + 1)) e.preventDefault();
     } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
       if (show(current - 1)) e.preventDefault();
@@ -7482,8 +7872,17 @@ function setupDeck() {
     try { if (on) openSidebar(); else closeSidebar(); } catch (e) { /* sidebar helpers are optional */ }
     toggle.setAttribute("aria-pressed", String(on));
     toggle.classList.toggle("cmh-deck-mode-on", on);
+    hideEdgeNav();
     // Comment mode narrows the stage (the sidebar takes width); refit after layout settles.
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(fitStage); else fitStage();
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        fitStage();
+        if (!on) focusStage();
+      });
+    } else {
+      fitStage();
+      if (!on) focusStage();
+    }
   }
   const toggle = document.createElement("button");
   toggle.className = "cm-skip cmh-deck-mode-toggle";
@@ -7504,12 +7903,32 @@ function setupDeck() {
   toggle.setAttribute("aria-pressed", "false");
   toggle.addEventListener("click", () => { setCommentMode(!commentMode); toggle.blur(); });
   document.body.prepend(toggle);
+  const brandLink = document.createElement("a");
+  brandLink.className = "cm-skip cm-brand-link cmh-deck-brand-link";
+  brandLink.href = CMH_SITE_URL;
+  brandLink.target = "_blank";
+  brandLink.rel = "noopener noreferrer";
+  brandLink.title = "Commentable HTML site";
+  brandLink.setAttribute("aria-label", "Commentable HTML site (opens in a new tab)");
+  brandLink.innerHTML = CMH_ICON_SVG;
+  const brandIcon = brandLink.querySelector("svg");
+  if (brandIcon) {
+    brandIcon.setAttribute("aria-hidden", "true");
+    brandIcon.setAttribute("focusable", "false");
+    brandIcon.removeAttribute("role");
+    brandIcon.removeAttribute("aria-label");
+    brandIcon.removeAttribute("data-cmh-tip");
+  }
+  toggle.after(brandLink);
 
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";
   const prev = document.createElement("button");
   prev.type = "button"; prev.textContent = "Prev"; prev.setAttribute("aria-label", "Prev slide");
-  prev.addEventListener("click", () => { show(current - 1); prev.blur(); });
+  prev.addEventListener("click", () => {
+    if (show(current - 1)) focusStage();
+    prev.blur();
+  });
   prevBtn = prev;
   counter = document.createElement("span");
   counter.className = "cmh-deck-count";
@@ -7517,6 +7936,7 @@ function setupDeck() {
   counter.textContent = (current + 1) + " / " + slides.length;
   counter.setAttribute("aria-label", "Slide " + (current + 1) + " of " + slides.length);
   const overviewControl = document.createElement("button");
+  overviewControl.className = "cmh-deck-overview-button";
   overviewControl.type = "button";
   overviewControl.textContent = "Overview";
   overviewControl.title = "Slide overview";
@@ -7527,7 +7947,10 @@ function setupDeck() {
   overviewBtn = overviewControl;
   const next = document.createElement("button");
   next.type = "button"; next.textContent = "Next"; next.setAttribute("aria-label", "Next slide");
-  next.addEventListener("click", () => { show(current + 1); next.blur(); });
+  next.addEventListener("click", () => {
+    if (show(current + 1)) focusStage();
+    next.blur();
+  });
   nextBtn = next;
   prev.disabled = current === 0;
   next.disabled = current === slides.length - 1;
@@ -7535,6 +7958,7 @@ function setupDeck() {
   // Focus order: the toggle sits at the top of the DOM (top-right visually), the nav bar at the
   // end (bottom visually), so keyboard focus flows toggle -> slide content -> navigation.
   document.body.appendChild(nav);
+  focusStage();
 }
 if (IS_DECK) {
   setupDeck();

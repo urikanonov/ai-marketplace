@@ -200,6 +200,14 @@ class DeckValidateTests(unittest.TestCase):
         errs = _errors(bad)
         self.assertTrue(any("--slide-fg/--slide-bg" in e for e in errs), errs)
 
+    def test_cmh_deck_theme_03_component_variable_pair_fails(self):
+        # deck_validate.py's DECK_CONTRAST_VARIABLE_PAIRS gates the new themed component surfaces
+        # directly (not only via the theme loader): a collapsed code text/bg pair fails.
+        bad = _inject(self.html,
+                      "<style>:root{--cmh-deck-code-text:#777;--cmh-deck-code-bg:#777;}</style>")
+        errs = _errors(bad)
+        self.assertTrue(any("code text/bg" in e for e in errs), errs)
+
     def test_cmh_deck_12_non_finite_rgb_does_not_crash(self):
         self.assertEqual(_errors(_inject(
             self.html, '<p style="color:#000; background:rgb(inf 0 0)">Bad color</p>')), [])
@@ -244,6 +252,25 @@ class DeckValidateTests(unittest.TestCase):
             "</article></div></div>")
         warnings = _warnings(_inject(self.html, card), max_board_card_lines=3, max_board_card_elements=3)
         self.assertTrue(any("board card Heavy card" in w for w in warnings), warnings)
+
+    def test_cmh_deck_12_kql_run_link_with_computed_background_fails(self):
+        bad = _inject(
+            self.html,
+            '<style>.cmh-kql-cap{background:#111827}.cmh-kql-run{color:#b11f4b}</style>'
+            '<figure class="cmh-kql"><figcaption class="cmh-kql-cap">'
+            '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/">Run in Azure Data Explorer</a>'
+            '</figcaption><pre><code class="language-kusto">T | take 1</code></pre></figure>')
+        errs = _errors(bad)
+        self.assertTrue(any("cmh-kql-run" in e and "low text contrast" in e for e in errs), errs)
+
+    def test_cmh_deck_12_low_contrast_connector_stroke_fails(self):
+        bad = _inject(
+            self.html,
+            '<style>.slide-shell{background:#f7f4ef}.connector{stroke:#cbd5e1;stroke-width:1.5;fill:none}</style>'
+            '<div class="slide-shell"><svg viewBox="0 0 100 20" aria-hidden="true">'
+            '<path class="connector" d="M 0 10 L 100 10"></path></svg></div>')
+        errs = _errors(bad)
+        self.assertTrue(any("connector" in e and "stroke contrast" in e for e in errs), errs)
 
     def test_local_media_and_data_uri_pass(self):
         # A local relative image and a data: URI are NOT egress and must not trip the media check.

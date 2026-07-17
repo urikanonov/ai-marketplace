@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Verify the vendored frontend-slides subtree stays a pristine, curated subset.
+"""Verify the vendored frontend-slides trees stay pristine, curated subsets.
 
-The vendored copy under ``dev/skill/vendor/frontend-slides/`` (the STAGE; it ships inside
-``skill-resources.zip``) must remain a
-pristine subset of upstream (github.com/zarazhangrui/frontend-slides at the commit recorded in
-``UPSTREAM.md``). This gate fails on any unknown, changed, or removed file versus the recorded
-``MANIFEST.sha256``, and on any denylisted file (``deploy.sh``, ``export-pdf.sh``, an upstream
-plugin manifest) being reintroduced by a resync. It is the enforceable stand-in for "re-review
-on every resync": run ``--update`` only after an intentional, security-reviewed resync.
+The shipped copy under ``dev/skill/vendor/frontend-slides/`` (the STAGE; it ships inside skill-resources.zip) and the agent-only
+``bold-template-pack`` under ``dev/vendor/frontend-slides/`` must remain pristine subsets of their
+recorded upstreams. This gate fails on any unknown, changed, or removed file versus each tree's
+``MANIFEST.sha256``, and on any denylisted file (``deploy.sh``, ``export-pdf.sh``, an upstream plugin
+manifest) being reintroduced by a resync. It is the enforceable stand-in for "re-review on every
+resync": run ``--update`` only after an intentional, security-reviewed resync.
 
 Usage (run from anywhere):
     python dev/tools/check_vendor.py            # verify (CI / pre-push); exits non-zero on drift
@@ -20,6 +19,7 @@ import sys
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
 VENDOR_DIR = PLUGIN_ROOT / "dev" / "skill" / "vendor" / "frontend-slides"
+DEV_VENDOR_DIR = PLUGIN_ROOT / "dev" / "vendor" / "frontend-slides" / "bold-template-pack"
 
 # Files that are ours (provenance), not upstream-derived, excluded from the hashed set.
 SELF_FILES = {"MANIFEST.sha256", "UPSTREAM.md"}
@@ -124,11 +124,12 @@ def run(vendor_dir: Path, update: bool = False) -> int:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Verify the pristine vendored frontend-slides subtree.")
-    ap.add_argument("--update", action="store_true", help="regenerate MANIFEST.sha256 from the current tree")
-    ap.add_argument("--vendor-dir", default=str(VENDOR_DIR), help="override the vendored subtree path (testing)")
+    ap = argparse.ArgumentParser(description="Verify the pristine vendored frontend-slides trees.")
+    ap.add_argument("--update", action="store_true", help="regenerate each MANIFEST.sha256")
+    ap.add_argument("--vendor-dir", help="verify one vendored subtree instead of both (testing)")
     args = ap.parse_args(argv)
-    return run(Path(args.vendor_dir), update=args.update)
+    vendor_dirs = (Path(args.vendor_dir),) if args.vendor_dir else (VENDOR_DIR, DEV_VENDOR_DIR)
+    return max(run(vendor_dir, update=args.update) for vendor_dir in vendor_dirs)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -210,9 +210,27 @@ function positionWidgetAdd(el) {
   if (!visible) return false;
   const bw = widgetAddBtn.offsetWidth || 96, bh = widgetAddBtn.offsetHeight || 26;
   const bounds = _floatingBounds(el);
-  const left = visible.right - bw - 6, top = visible.top + 6;
-  widgetAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
-  widgetAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
+  const widget = el.closest("[data-cm-widget]");
+  const reset = widget && widget.matches("[data-cm-draggable]") ? widget.querySelector(".cm-widget-reset") : null;
+  const resetRect = reset && !reset.hidden ? reset.getBoundingClientRect() : null;
+  const candidates = [
+    { left: visible.right - bw - 6, top: visible.top + 6 },
+    { left: visible.left + 6, top: visible.top + 6 },
+    { left: visible.right - bw - 6, top: visible.bottom - bh - 6 },
+    { left: visible.left + 6, top: visible.bottom - bh - 6 },
+  ].map((pos) => ({
+    left: _clamp(pos.left, bounds.left, bounds.right - bw),
+    top: _clamp(pos.top, bounds.top, bounds.bottom - bh),
+  }));
+  const placed = candidates.find((pos) => {
+    if (!resetRect) return true;
+    return !_intersectRects(
+      { left: pos.left, right: pos.left + bw, top: pos.top, bottom: pos.top + bh },
+      resetRect,
+    );
+  }) || candidates[0];
+  widgetAddBtn.style.left = placed.left + "px";
+  widgetAddBtn.style.top = placed.top + "px";
   return true;
 }
 function showWidgetAddFor(el) {

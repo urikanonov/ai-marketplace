@@ -11,6 +11,13 @@ mark.cm-hl {
 }
 mark.cm-hl:hover { background: rgba(245, 158, 11, 0.5); }
 mark.cm-hl.active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+mark.cm-hl.cm-hl-gap {
+  display: contents;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  cursor: inherit;
+}
 html[data-theme="dark"] mark.cm-hl { background: rgba(251, 191, 36, 0.28); }
 html[data-theme="dark"] mark.cm-hl:hover { background: rgba(251, 191, 36, 0.42); }
 html[data-theme="dark"] mark.cm-hl.active { background: rgba(251, 191, 36, 0.6); }
@@ -1055,6 +1062,7 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
 #commentRoot img.cm-img-hl, #commentRoot canvas.cm-img-hl { outline: 3px solid var(--cp-warning); outline-offset: 2px; border-radius: 3px; }
 #commentRoot img.cm-img-hl.cm-img-active, #commentRoot canvas.cm-img-hl.cm-img-active { outline-width: 4px; box-shadow: 0 0 0 4px var(--cp-accent-soft); }
+.cmh-chart-tooltip { z-index: 410; white-space: nowrap; }
 .cm-image-add { position: fixed; z-index: 200; }
 /* Commentable widget parts (generic opt-in via data-cm-part inside a data-cm-widget).
    Parts live inside a cm-skip widget but are individually commentable, so they get the
@@ -1124,7 +1132,6 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up { opacity: 1; color: var(--cp-accent); }
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
 
-
 /* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
    syntax highlighting. The .cmh-kql-* token spans are baked into the code by
@@ -1150,6 +1157,8 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
   flex: none; white-space: nowrap; font-weight: 600; text-decoration: none; color: var(--cp-link);
 }
 #commentRoot figure.cmh-kql .cmh-kql-run:hover { text-decoration: underline; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run { color: #f8fafc; }
+html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: #dbeafe; }
 /* On a narrow screen the cluster title and the "Run in ..." link cannot sit side by
    side without cramping, so stack them on their own lines. */
 @media (max-width: 700px) {
@@ -1443,6 +1452,9 @@ body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
 body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle {
   display: none !important;
 }
+body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-brand-link {
+  display: none !important;
+}
 /* In present mode, suppress the text-selection popup so a selection is not a dead end
    (the composer/sidebar are hidden; the user enters comment mode to review). */
 body.cmh-deck-present #menuComment {
@@ -1457,9 +1469,25 @@ body.cmh-deck-present #menuComment {
   --cmh-deck-code-soft: #94a3b8;
 }
 #commentRoot[data-cmh-mode="deck"] .slide table thead th {
-  background: rgba(15, 23, 42, 0.92);
-  color: #f8fafc;
-  border-color: rgba(148, 163, 184, 0.48);
+  background: var(--cmh-deck-table-head-bg, rgba(15, 23, 42, 0.92));
+  color: var(--cmh-deck-table-head-fg, #f8fafc);
+  border-color: var(--cmh-deck-table-head-border, rgba(148, 163, 184, 0.48));
+}
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td) {
+  transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):hover,
+#commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):focus-within {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--cp-accent, #2ecc71) 58%, transparent);
+  transform: translateY(-1px);
+}
+#commentRoot[data-cmh-mode="deck"] .slide table td:hover,
+#commentRoot[data-cmh-mode="deck"] .slide table td:focus-within {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 14%, var(--cp-surface, #fff));
+}
+#commentRoot[data-cmh-mode="deck"] .slide table thead th:hover,
+#commentRoot[data-cmh-mode="deck"] .slide table thead th:focus-within {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 84%, #111827);
 }
 #commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid),
 #commentRoot[data-cmh-mode="deck"] .slide pre:not(.mermaid) code,
@@ -1485,25 +1513,31 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-label {
   color: var(--cmh-deck-code-text);
 }
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run {
+  color: var(--cmh-deck-code-text);
+}
+#commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run:hover {
+  color: var(--cmh-deck-code-link-hover-fg, #dbeafe);
+}
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: var(--cmh-deck-tok-kw, #d8b4fe); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-fn { color: #93c5fd; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-fn { color: var(--cmh-deck-tok-fn, #93c5fd); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-str,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-str { color: #86efac; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-str { color: var(--cmh-deck-tok-str, #86efac); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-num,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-num { color: #fbbf24; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-num { color: var(--cmh-deck-tok-num, #fbbf24); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-com,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-com { color: #94a3b8; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-com { color: var(--cmh-deck-tok-com, #94a3b8); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-op,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-op { color: #cbd5e1; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-op { color: var(--cmh-deck-tok-op, #cbd5e1); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line::before,
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
   color: var(--cmh-deck-code-soft);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-code-lang,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-code-copy {
-  background: rgba(15, 23, 42, 0.88);
+  background: var(--cmh-deck-code-badge-bg, rgba(15, 23, 42, 0.88));
   border-color: var(--cmh-deck-code-border);
   color: var(--cmh-deck-code-text);
 }
@@ -1537,19 +1571,19 @@ body.cmh-deck-present #menuComment {
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-hunk {
   background: rgba(96, 165, 250, 0.16);
-  color: #bfdbfe;
+  color: var(--cmh-deck-diff-hunk-fg, #bfdbfe);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add {
   background: rgba(34, 197, 94, 0.20);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add .cmh-dl-sign {
-  color: #86efac;
+  color: var(--cmh-deck-diff-add-fg, #86efac);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del {
   background: rgba(248, 113, 113, 0.22);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del .cmh-dl-sign {
-  color: #fca5a5;
+  color: var(--cmh-deck-diff-del-fg, #fca5a5);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add:hover,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del:hover,
@@ -1560,26 +1594,30 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node polygon,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node circle,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node ellipse {
-  fill: #1e293b !important;
-  stroke: #93c5fd !important;
+  fill: var(--cmh-deck-mermaid-node-fill, #1e293b) !important;
+  stroke: var(--cmh-deck-mermaid-node-stroke, #93c5fd) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .cluster rect,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .cluster polygon {
-  fill: rgba(30, 41, 59, 0.78) !important;
-  stroke: rgba(147, 197, 253, 0.7) !important;
+  fill: var(--cmh-deck-mermaid-cluster-fill, rgba(30, 41, 59, 0.78)) !important;
+  stroke: var(--cmh-deck-mermaid-cluster-stroke, rgba(147, 197, 253, 0.7)) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.nodeLabel, .label, text, foreignObject, foreignObject *) {
-  color: #f8fafc !important;
-  fill: #f8fafc !important;
+  color: var(--cmh-deck-mermaid-label, #f8fafc) !important;
+  fill: var(--cmh-deck-mermaid-label, #f8fafc) !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link, marker path) {
-  stroke: #cbd5e1 !important;
-  fill: #cbd5e1 !important;
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
+  stroke: var(--cmh-deck-mermaid-edge, #334155) !important;
+  stroke-width: 2.4px !important;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg marker path {
+  stroke: var(--cmh-deck-mermaid-edge, #334155) !important;
+  fill: var(--cmh-deck-mermaid-edge, #334155) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel p {
-  background: #111827 !important;
-  color: #f8fafc !important;
+  background: var(--cmh-deck-mermaid-edge-label-bg, #111827) !important;
+  color: var(--cmh-deck-mermaid-edge-label-fg, #f8fafc) !important;
 }
 /* In comment mode on a wide screen, narrow the stage so the OPEN sidebar does not overlap it
    (the deck runtime refits the stage to the reduced viewport width via a ResizeObserver), and
@@ -1600,10 +1638,10 @@ body.cmh-deck-present #menuComment {
   visibility: visible !important;
   transform: none !important;
 }
+.cmh-deck-brand-link,
 .cmh-deck-mode-toggle {
   position: fixed;
   top: 14px;
-  right: 14px;
   z-index: 100001;
   display: inline-flex;
   align-items: center;
@@ -1620,6 +1658,24 @@ body.cmh-deck-present #menuComment {
   /* Lift the chrome off arbitrary slide backgrounds so it stays legible over any slide colour. */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
+.cmh-deck-brand-link {
+  right: 14px;
+  color: var(--cp-text, #fff);
+  text-decoration: none;
+}
+.cmh-deck-brand-link:hover {
+  text-decoration: none;
+  border-color: var(--cp-accent, #2ecc71);
+  background: var(--cp-surface-soft, #333);
+}
+.cmh-deck-brand-link .cm-brand-icon {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.cmh-deck-mode-toggle {
+  right: 64px;
+}
 .cmh-deck-mode-toggle.cmh-deck-mode-on {
   background: var(--cp-accent, #2ecc71);
   color: #000;
@@ -1627,6 +1683,9 @@ body.cmh-deck-present #menuComment {
 .cmh-deck-mode-toggle .cm-brand-icon {
   width: 20px;
   height: 20px;
+}
+#commentRoot[data-cmh-mode="deck"] .deck-viewport:focus {
+  outline: none;
 }
 .cmh-deck-nav {
   position: fixed;
@@ -1644,11 +1703,22 @@ body.cmh-deck-present #menuComment {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 .cmh-deck-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 16%, var(--cp-surface-soft, #333));
+  border: 1px solid color-mix(in srgb, var(--cp-accent, #2ecc71) 34%, var(--cp-border, #444));
   color: var(--cp-text, #fff);
   font: inherit;
   min-width: 56px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+.cmh-deck-nav .cmh-deck-overview-button {
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 22%, var(--cp-surface-soft, #333));
+  border-color: color-mix(in srgb, var(--cp-accent, #2ecc71) 40%, var(--cp-border, #444));
 }
 .cmh-deck-nav button {
   padding: 6px 12px;
@@ -1667,6 +1737,50 @@ body.cmh-deck-present #menuComment {
 .cmh-deck-nav button.cmh-deck-overview-on {
   border-color: var(--cp-accent, #2ecc71);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-accent, #2ecc71) 35%, transparent);
+}
+.cmh-deck-edge-nav {
+  position: fixed;
+  z-index: 100001;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--cp-border, #444);
+  background: color-mix(in srgb, var(--cp-surface, #222) 84%, transparent);
+  color: var(--cp-text, #fff);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-50%) scale(0.96);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s linear;
+}
+.cmh-deck-edge-nav.is-active {
+  opacity: var(--cmh-deck-edge-opacity, 0.72);
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+}
+.cmh-deck-edge-nav:hover,
+.cmh-deck-edge-nav:focus-visible {
+  opacity: 1;
+  border-color: var(--cp-accent, #2ecc71);
+  outline: none;
+}
+.cmh-deck-edge-nav:disabled,
+body.cmh-deck-overview-open .cmh-deck-edge-nav,
+body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 .cmh-deck-overview {
   position: fixed;
@@ -1829,6 +1943,78 @@ body.cmh-deck-present #menuComment {
   body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-nav {
     display: none;
   }
+}
+
+/* Layer-2 slide recipes: reusable, theme-coloured archetype classes the agent composes so a themed
+   deck needs no per-deck CSS. Each recipe consumes the deck theme tokens (--slide-accent,
+   --slide-fg-muted, --slide-border, --slide-accent-fg) with generic-dark defaults, so the classes
+   are coherent on an unthemed deck and recolour automatically under any preset. Content budgets are
+   documented in references/deck-contract.md. */
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-slide-lede {
+  color: var(--slide-fg-muted, #a1a1aa);
+  font-size: 34px;
+  line-height: 1.4;
+  max-width: 26ch;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-section .cmh-slide-kicker {
+  color: var(--slide-accent, #93c5fd);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 0.3em;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-section::before {
+  content: "";
+  display: block;
+  width: 120px;
+  height: 8px;
+  margin-bottom: 28px;
+  border-radius: 999px;
+  background: var(--slide-accent, #93c5fd);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-cols-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 28px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric {
+  padding: 28px 32px;
+  border: 1px solid var(--slide-border, rgba(255, 255, 255, 0.22));
+  border-radius: 16px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-value {
+  display: block;
+  color: var(--slide-accent, #93c5fd);
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-label {
+  display: block;
+  color: var(--slide-fg-muted, #a1a1aa);
+  font-size: 24px;
+  margin-top: 8px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill {
+  display: inline-block;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: var(--slide-accent, #93c5fd);
+  color: var(--slide-accent-fg, #0b0b0f);
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 .cmh-print-comments,
 .cmh-print-noscript {
