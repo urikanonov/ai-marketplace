@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.140.0`
+**Version:** `1.141.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -43,7 +43,7 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 | New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids), bakes highlighting, accepts the same optional `--brand`, self-validates, and stamps the creating agent's session id (same `--session-id`/`--agent`/`--no-session-id` behavior as `new_document.py`). This is the ONLY tool that creates a real deck. |
 | Fix copied deck web fonts | `tools/deck/deck_fix_fonts.py` | Removes remote font loaders and maps copied web-font stacks to the approved deterministic system stacks before deck validation. |
 | Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer, wraps or stamps a content root, preserves host content, bakes highlighting, accepts the same optional `--brand`, and validates before writing. |
-| Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attributes. |
+| Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attributes. Restamps the `<head>` version meta to the new runtime and surfaces post-upgrade validator warnings; pass `--strict` to fail on them. Run `finalize.py --strict` afterwards to resolve any content warnings a newer validator now flags. |
 
 Canonical commands:
 
