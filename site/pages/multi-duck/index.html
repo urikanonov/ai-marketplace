@@ -62,7 +62,7 @@
         <a href="#install">Install</a>
         <a href="#changelog" class="hide-sm">Changelog</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">GitHub</a>
-        <a href="../">Marketplace</a>
+        <!-- BEGIN:switcher --><!-- END:switcher -->
       </div>
     </div>
   </nav>
@@ -81,6 +81,15 @@
         <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version --><!-- END:version --></span></a>
       </div>
     </header>
+
+    <section id="install">
+      <div class="wrap">
+        <h2 class="section-title">Install</h2>
+        <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI. Add the marketplace, install multi-duck, and say "multi-duck".</p>
+        <!-- BEGIN:install --><!-- END:install -->
+        <p class="section-sub install-note">Model diversity is the whole point, so the panel is strongest where several high-capability models are available to you. On the Copilot CLI each duck runs on a distinct model out of the box; on Claude Code, configure a few rubber-duck subagents pinned to different models to get the same cross-model coverage.</p>
+      </div>
+    </section>
 
     <section id="why">
       <div class="wrap">
@@ -129,15 +138,10 @@
           <div class="step"><h3>Consolidate the findings</h3><p>Cluster duplicate findings, weigh agreement, rank by severity, and adjudicate conflicts by reading the code - because agreement across models that read the same bundle is corroboration to verify, never proof.</p></div>
           <div class="step"><h3>Act on the safe ones</h3><p>Apply the local, non-destructive, independently-verified fixes and check them with the narrowest test. Defer anything risky - API, dependency, migration, security, infrastructure, history-rewriting - with a clear recommendation.</p></div>
         </div>
-      </div>
-    </section>
-
-    <section id="install">
-      <div class="wrap">
-        <h2 class="section-title">Install</h2>
-        <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI. Add the marketplace, install multi-duck, and say "multi-duck".</p>
-        <!-- BEGIN:install --><!-- END:install -->
-        <p class="section-sub install-note">Model diversity is the whole point, so the panel is strongest where several high-capability models are available to you. On the Copilot CLI each duck runs on a distinct model out of the box; on Claude Code, configure a few rubber-duck subagents pinned to different models to get the same cross-model coverage.</p>
+        <div class="callout" role="note">
+          <h3 class="callout-title">Run it more than once for complex work</h3>
+          <p>Scale the number of rounds to the complexity of the change. Each round applies the safe fixes and reshapes the code, so a fresh panel over the updated work almost always finds something the previous round could not see yet. For anything non-trivial, run multi-duck across several rounds - the later passes are where the subtle issues surface, and the subsequent rounds almost always turn up something useful.</p>
+        </div>
       </div>
     </section>
 

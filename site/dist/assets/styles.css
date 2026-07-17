@@ -122,6 +122,85 @@ code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
 .nav-links a:hover { color: var(--cp-text); text-decoration: none; }
 .nav-links a.gh { color: var(--cp-accent); font-weight: 600; }
 
+/* Plugin switcher: the nav "Marketplace" control links back to the hub and, on hover or keyboard
+   focus, opens a flyout of tiles for the OTHER plugins so a reader can jump between plugin pages
+   without going through the hub. Pure CSS reveal (a progressive enhancement); the trigger stays a
+   working link when hover is unavailable. */
+.nav-switcher { position: relative; display: inline-flex; }
+.nav-switcher-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cp-text-muted);
+  font-size: 0.95rem;
+}
+.nav-switcher-trigger:hover { color: var(--cp-text); text-decoration: none; }
+.nav-switcher-icon { width: 16px; height: 16px; flex: 0 0 auto; }
+.nav-switcher-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  min-width: 260px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  box-shadow: var(--cp-shadow);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+  z-index: 70;
+}
+/* Transparent bridge over the gap between the trigger and the menu so moving the pointer down
+   does not drop the hover and close the flyout. */
+.nav-switcher-menu::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+}
+.nav-switcher:hover .nav-switcher-menu,
+.nav-switcher:focus-within .nav-switcher-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.nav-switcher-heading {
+  padding: 6px 10px 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cp-text-soft);
+}
+.switch-tile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--cp-text);
+}
+.switch-tile:hover { background: var(--cp-surface-soft); text-decoration: none; }
+.switch-tile:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: -1px; }
+.switch-tile-icon { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 7px; }
+.switch-tile-text { display: flex; flex-direction: column; min-width: 0; }
+.switch-tile-name { font-weight: 600; font-size: 0.92rem; }
+.switch-tile-sub { color: var(--cp-text-muted); font-size: 0.78rem; }
+.switch-tile-all {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cp-border);
+}
+.switch-tile-all .switch-tile-name { color: var(--cp-accent); }
+
 /* Hero */
 .hero {
   text-align: center;
@@ -387,6 +466,41 @@ main > section:nth-of-type(even) {
 /* The privacy section has four cards; lay them out 2x2 so there is no orphan third-row card. */
 #privacy .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 680px) { #privacy .grid { grid-template-columns: 1fr; } }
+
+/* The hub plugins list gives each plugin a full-width row so its description and keywords are not
+   cramped into a narrow column. Inside the row, the info (title, description, keywords, buttons)
+   and the install block sit side by side at desktop width and stack on a narrow viewport. */
+#plugins .grid { grid-template-columns: 1fr; gap: 22px; }
+#plugins .plugin-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-rows: auto auto auto 1fr;
+  grid-template-areas:
+    "head     install"
+    "desc     install"
+    "keywords install"
+    "foot     install";
+  align-content: start;
+  column-gap: 32px;
+  row-gap: 12px;
+}
+#plugins .plugin-card .head { grid-area: head; }
+#plugins .plugin-card .desc { grid-area: desc; }
+#plugins .plugin-card .keywords { grid-area: keywords; align-content: flex-start; align-items: flex-start; }
+#plugins .plugin-card .install { grid-area: install; align-self: start; }
+#plugins .plugin-card .foot { grid-area: foot; align-self: end; }
+@media (max-width: 760px) {
+  #plugins .plugin-card {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas:
+      "head"
+      "desc"
+      "keywords"
+      "install"
+      "foot";
+  }
+}
 .card {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);
@@ -511,6 +625,19 @@ main > section:nth-of-type(even) {
 }
 .step h3, .step h4 { font-size: 1.02rem; margin-bottom: 4px; }
 .step p { color: var(--cp-text-muted); font-size: 0.93rem; }
+
+/* Accent callout: a highlighted note that stands out from body prose (e.g. the multi-duck
+   "run it more than once" recommendation). */
+.callout {
+  margin-top: 24px;
+  padding: 18px 20px;
+  background: var(--cp-accent-soft);
+  border: 1px solid var(--cp-accent);
+  border-left-width: 4px;
+  border-radius: var(--cp-radius);
+}
+.callout-title { margin: 0 0 6px; font-size: 1.05rem; color: var(--cp-accent); }
+.callout p { margin: 0; color: var(--cp-text-muted); font-size: 0.95rem; line-height: 1.6; }
 /* Demo preview */
 .demo-frame {
   border: 1px solid var(--cp-border);

@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Install reusable skills, session hooks, and MCP servers by name in Claude Code or the GitHub Copilot CLI." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
-  <link rel="stylesheet" href="assets/styles.css?v=f6b9e96ed845" />
+  <link rel="stylesheet" href="assets/styles.css?v=9d718533b1ce" />
   <!-- BEGIN:jsonld -->
   <script type="application/ld+json">
   {
@@ -74,23 +74,6 @@
             "position": 2,
             "item": {
               "@type": "SoftwareApplication",
-              "name": "urikan-ai-marketplace-auto-updater",
-              "applicationCategory": "DeveloperApplication",
-              "operatingSystem": "Cross-platform (Claude Code, GitHub Copilot CLI)",
-              "offers": {
-                "@type": "Offer",
-                "price": "0",
-                "priceCurrency": "USD"
-              },
-              "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
-              "url": "https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/"
-            }
-          },
-          {
-            "@type": "ListItem",
-            "position": 3,
-            "item": {
-              "@type": "SoftwareApplication",
               "name": "multi-duck",
               "applicationCategory": "DeveloperApplication",
               "operatingSystem": "Cross-platform (Claude Code, GitHub Copilot CLI)",
@@ -101,6 +84,23 @@
               },
               "description": "Convene a panel of independent rubber-duck reviewers over your in-flight work (a diff, PR, plan, tests, or commentable HTML plans with their open comments), each on a different model so their blind spots do not overlap, all in parallel, then consolidate the findings and autonomously apply the safe fixes. Two modes: prisms for wide coverage, consensus for cross-model agreement. Works on Claude Code and the GitHub Copilot CLI.",
               "url": "https://urikanonov.github.io/ai-marketplace/multi-duck/"
+            }
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "item": {
+              "@type": "SoftwareApplication",
+              "name": "urikan-ai-marketplace-auto-updater",
+              "applicationCategory": "DeveloperApplication",
+              "operatingSystem": "Cross-platform (Claude Code, GitHub Copilot CLI)",
+              "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+              },
+              "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
+              "url": "https://urikanonov.github.io/ai-marketplace/urikan-ai-marketplace-auto-updater/"
             }
           }
         ]
@@ -266,72 +266,6 @@
           </article>
           <article class="card plugin-card">
             <div class="head">
-              <span class="name"><a href="./urikan-ai-marketplace-auto-updater/">urikan-ai-marketplace-auto-updater</a></span>
-              <span class="badge version">v1.2.3</span>
-              <span class="badge">infrastructure</span>
-            </div>
-            <p class="desc">Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.</p>
-            <div class="keywords"><span class="chip">auto-update</span><span class="chip">marketplace</span><span class="chip">hooks</span><span class="chip">session-start</span></div>
-            <div class="install">
-              <div class="install-block install-tabs" data-install-tabs>
-                <div class="install-tablist" role="tablist" aria-label="Install with">
-                  <button class="install-tab" role="tab" type="button" id="install-card-urikan-ai-marketplace-auto-updater-copilot-tab" data-install-target="install-card-urikan-ai-marketplace-auto-updater-copilot" aria-selected="true" aria-controls="install-card-urikan-ai-marketplace-auto-updater-copilot" tabindex="0">GitHub Copilot</button>
-                  <button class="install-tab" role="tab" type="button" id="install-card-urikan-ai-marketplace-auto-updater-claude-tab" data-install-target="install-card-urikan-ai-marketplace-auto-updater-claude" aria-selected="false" aria-controls="install-card-urikan-ai-marketplace-auto-updater-claude" tabindex="-1">Claude Code</button>
-                </div>
-                <div class="install-panel" role="tabpanel" id="install-card-urikan-ai-marketplace-auto-updater-copilot" aria-labelledby="install-card-urikan-ai-marketplace-auto-updater-copilot-tab">
-                  <div class="install-row">
-                    <span class="install-step" aria-hidden="true">1</span>
-                    <div class="install-cmd">
-                      <span class="install-label">Install marketplace</span>
-                      <div class="cmd">
-                        <span class="prompt">$</span>
-                        <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
-                        <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="install-row">
-                    <span class="install-step" aria-hidden="true">2</span>
-                    <div class="install-cmd">
-                      <span class="install-label">Install plugin</span>
-                      <div class="cmd">
-                        <span class="prompt">$</span>
-                        <pre>copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</pre>
-                        <button class="copy-btn" type="button" data-copy="copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace">copy</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="install-panel" role="tabpanel" id="install-card-urikan-ai-marketplace-auto-updater-claude" aria-labelledby="install-card-urikan-ai-marketplace-auto-updater-claude-tab" hidden>
-                  <div class="install-row">
-                    <span class="install-step" aria-hidden="true">1</span>
-                    <div class="install-cmd">
-                      <span class="install-label">Install marketplace</span>
-                      <div class="cmd">
-                        <span class="prompt">$</span>
-                        <pre>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
-                        <button class="copy-btn" type="button" data-copy="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="install-row">
-                    <span class="install-step" aria-hidden="true">2</span>
-                    <div class="install-cmd">
-                      <span class="install-label">Install plugin</span>
-                      <div class="cmd">
-                        <span class="prompt">$</span>
-                        <pre>claude plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</pre>
-                        <button class="copy-btn" type="button" data-copy="claude plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace">copy</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="foot"><a class="btn learn-more" href="./urikan-ai-marketplace-auto-updater/">Learn more</a><a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">Source</a></div>
-          </article>
-          <article class="card plugin-card">
-            <div class="head">
               <span class="name"><a href="./multi-duck/">multi-duck</a></span>
               <span class="badge version">v1.0.0</span>
               <span class="badge">code review</span>
@@ -395,6 +329,72 @@
               </div>
             </div>
             <div class="foot"><a class="btn learn-more" href="./multi-duck/">Learn more</a><a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">Source</a></div>
+          </article>
+          <article class="card plugin-card">
+            <div class="head">
+              <span class="name"><a href="./urikan-ai-marketplace-auto-updater/">urikan-ai-marketplace-auto-updater</a></span>
+              <span class="badge version">v1.2.3</span>
+              <span class="badge">infrastructure</span>
+            </div>
+            <p class="desc">Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.</p>
+            <div class="keywords"><span class="chip">auto-update</span><span class="chip">marketplace</span><span class="chip">hooks</span><span class="chip">session-start</span></div>
+            <div class="install">
+              <div class="install-block install-tabs" data-install-tabs>
+                <div class="install-tablist" role="tablist" aria-label="Install with">
+                  <button class="install-tab" role="tab" type="button" id="install-card-urikan-ai-marketplace-auto-updater-copilot-tab" data-install-target="install-card-urikan-ai-marketplace-auto-updater-copilot" aria-selected="true" aria-controls="install-card-urikan-ai-marketplace-auto-updater-copilot" tabindex="0">GitHub Copilot</button>
+                  <button class="install-tab" role="tab" type="button" id="install-card-urikan-ai-marketplace-auto-updater-claude-tab" data-install-target="install-card-urikan-ai-marketplace-auto-updater-claude" aria-selected="false" aria-controls="install-card-urikan-ai-marketplace-auto-updater-claude" tabindex="-1">Claude Code</button>
+                </div>
+                <div class="install-panel" role="tabpanel" id="install-card-urikan-ai-marketplace-auto-updater-copilot" aria-labelledby="install-card-urikan-ai-marketplace-auto-updater-copilot-tab">
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">1</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install marketplace</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">2</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install plugin</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="install-panel" role="tabpanel" id="install-card-urikan-ai-marketplace-auto-updater-claude" aria-labelledby="install-card-urikan-ai-marketplace-auto-updater-claude-tab" hidden>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">1</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install marketplace</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>claude plugin marketplace add https://github.com/urikanonov/ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="claude plugin marketplace add https://github.com/urikanonov/ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="install-row">
+                    <span class="install-step" aria-hidden="true">2</span>
+                    <div class="install-cmd">
+                      <span class="install-label">Install plugin</span>
+                      <div class="cmd">
+                        <span class="prompt">$</span>
+                        <pre>claude plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</pre>
+                        <button class="copy-btn" type="button" data-copy="claude plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace">copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="foot"><a class="btn learn-more" href="./urikan-ai-marketplace-auto-updater/">Learn more</a><a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">Source</a></div>
           </article>
           <!-- END:plugins -->
         </div>

@@ -246,3 +246,25 @@ test("the plugin page footer links to contribute, feature request, issues, sourc
   await expect(footer.locator("a", { hasText: "Uri Kanonov" })).toHaveAttribute("href", /linkedin\.com\/in\/uri-kanonov/);
 });
 
+
+
+test("the auto-updater and multi-duck pages lead with the Install section right after the hero (SITE-INSTALL-08)", async ({ page }) => {
+  for (const path of ["/urikan-ai-marketplace-auto-updater/", "/multi-duck/"]) {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    const ids = await page.locator("main > section").evaluateAll((els) => els.map((e) => e.id));
+    // The install section is the first section after the hero header.
+    expect(ids[0]).toBe("install");
+    // ...and it comes before the Why/Features rationale sections.
+    expect(ids.indexOf("install")).toBeLessThan(ids.indexOf("why"));
+    expect(ids.indexOf("install")).toBeLessThan(ids.indexOf("features"));
+  }
+});
+
+
+test("the multi-duck page recommends running multiple rounds for complex work (SITE-MDUCK-04)", async ({ page }) => {
+  await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
+  const callout = page.locator(".callout", { hasText: "Run it more than once" });
+  await expect(callout).toBeVisible();
+  await expect(callout).toContainText(/several rounds|multiple rounds|number of rounds/i);
+  await expect(callout).toContainText(/complex/i);
+});

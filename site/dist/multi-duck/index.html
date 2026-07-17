@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="A multi-model rubber-duck review panel for Claude Code and the GitHub Copilot CLI. Diverse models, uncorrelated blind spots, safe fixes applied for you." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/multi-duck.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=f6b9e96ed845" />
+  <link rel="stylesheet" href="../assets/styles.css?v=9d718533b1ce" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -63,7 +63,17 @@
         <a href="#install">Install</a>
         <a href="#changelog" class="hide-sm">Changelog</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">GitHub</a>
-        <a href="../">Marketplace</a>
+        <!-- BEGIN:switcher -->
+        <div class="nav-switcher">
+          <a class="nav-switcher-trigger" href="../"><svg class="nav-switcher-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Marketplace</span></a>
+          <div class="nav-switcher-menu">
+            <span class="nav-switcher-heading">Switch plugin</span>
+            <a class="switch-tile" href="../commentable-html/"><img class="switch-tile-icon" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /><span class="switch-tile-text"><span class="switch-tile-name">Commentable HTML</span><span class="switch-tile-sub">planning and analysis</span></span></a>
+              <a class="switch-tile" href="../urikan-ai-marketplace-auto-updater/"><img class="switch-tile-icon" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /><span class="switch-tile-text"><span class="switch-tile-name">Auto-updater</span><span class="switch-tile-sub">infrastructure</span></span></a>
+            <a class="switch-tile switch-tile-all" href="../"><span class="switch-tile-text"><span class="switch-tile-name">All plugins</span><span class="switch-tile-sub">Back to the hub</span></span></a>
+          </div>
+        </div>
+        <!-- END:switcher -->
       </div>
     </div>
   </nav>
@@ -82,56 +92,6 @@
         <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.0.0<!-- END:version --></span></a>
       </div>
     </header>
-
-    <section id="why">
-      <div class="wrap">
-        <div class="section-block prose">
-          <h2 class="section-title">Why a panel beats a single review</h2>
-          <p>Every model is confidently wrong in its own way. Ask the same model that wrote (or reviewed) a change to review it again and it tends to re-make the same oversight. The fix is not a bigger model - it is <strong>uncorrelated</strong> reviewers. Put an Anthropic model, an OpenAI model, a Google model, and more on the same change and the bug one family always glosses over is the one another family flags on sight.</p>
-          <p><strong>multi-duck turns that into a one-word command.</strong> It runs end to end with no extra prompt: say "multi-duck" and it discovers what to review on its own, launches the panel, waits for every duck, merges the results into one ranked list, and autonomously applies the fixes that are safe - leaving the judgment calls clearly flagged for you. The ducks are strictly review-only; every change is made by the main agent under explicit safe-fix rules.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="features">
-      <div class="wrap">
-        <h2 class="section-title">What it is good for</h2>
-        <p class="section-sub">A second, third, and fourth opinion - on demand, before you ship.</p>
-        <div class="grid">
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg></span><h3>A go/no-go before you merge</h3><p>Point it at a branch, an open PR, or a design and get a cross-model read on whether it is safe to ship, with the top agreed risks called out.</p></div>
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.2-3 7.4-7 8.5C8 19.4 5 16.2 5 12V7z"/><path d="M9 12l2 2 4-4"/></svg></span><h3>Catches the bug one model misses</h3><p>Model diversity is uncorrelated failure: correctness slips, edge cases, race conditions, security and data-safety issues, missing tests, and migration risks that a single reviewer waves through.</p></div>
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 3z"/><path d="M8 9h8M8 12h5"/></svg></span><h3>Reviews plans, not just code</h3><p>It discovers active HTML and commentable-HTML plans and mines their open inline comments, so the panel reviews the proposal and the feedback already on it.</p></div>
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></span><h3>High-confidence verification</h3><p>In consensus mode every duck answers the same question ("is this migration safe?"), so agreement across independent models becomes a real confidence signal.</p></div>
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="2.5"/></svg></span><h3>Autonomous, safe cleanup</h3><p>The safe, local, well-verified fixes get applied and verified with the narrowest test; the risky ones are surfaced with a recommended action and why they were held back.</p></div>
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 20h8"/></svg></span><h3>Works where you work</h3><p>The same panel runs on both Claude Code and the GitHub Copilot CLI, with a host mapping for launching reviewers, picking models, and collecting results.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="modes">
-      <div class="wrap">
-        <h2 class="section-title">Two modes, one command</h2>
-        <p class="section-sub">Pick breadth or agreement - or let the default (prisms) choose breadth for you.</p>
-        <div class="grid">
-          <div class="card feature"><h3>Prisms (default)</h3><p>The panel is split by review aspect - correctness, edge cases, security, tests, performance, migration - with at least two differently-modeled ducks per aspect. Every aspect gets two independent opinions, so coverage spreads wide across a large change.</p></div>
-          <div class="card feature"><h3>Consensus</h3><p>Every duck chases the same goal, so cross-model agreement (k of N) is a strong confidence signal. Best for a focused question or a high-confidence go/no-go: a critical flagged by most of the panel is near-certain.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="how">
-      <div class="wrap">
-        <h2 class="section-title">How it works</h2>
-        <p class="section-sub">Discover, diversify, launch, consolidate, act - autonomously and safely.</p>
-        <div class="steps steps-vertical">
-          <div class="step"><h3>Discover the work in flight</h3><p>It gathers the diff, the PR and its open comments, any markdown plan, the tests, and active commentable-HTML plans with their open inline comments into one self-contained bundle every reviewer can read.</p></div>
-          <div class="step"><h3>Pick a model-diverse roster</h3><p>The strongest, most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p></div>
-          <div class="step"><h3>Launch the panel in parallel</h3><p>Every duck runs at once as a strictly review-only reviewer. Running many in parallel is safe because no duck can change anything.</p></div>
-          <div class="step"><h3>Consolidate the findings</h3><p>Cluster duplicate findings, weigh agreement, rank by severity, and adjudicate conflicts by reading the code - because agreement across models that read the same bundle is corroboration to verify, never proof.</p></div>
-          <div class="step"><h3>Act on the safe ones</h3><p>Apply the local, non-destructive, independently-verified fixes and check them with the narrowest test. Defer anything risky - API, dependency, migration, security, infrastructure, history-rewriting - with a clear recommendation.</p></div>
-        </div>
-      </div>
-    </section>
 
     <section id="install">
       <div class="wrap">
@@ -194,6 +154,60 @@
             </div>
         <!-- END:install -->
         <p class="section-sub install-note">Model diversity is the whole point, so the panel is strongest where several high-capability models are available to you. On the Copilot CLI each duck runs on a distinct model out of the box; on Claude Code, configure a few rubber-duck subagents pinned to different models to get the same cross-model coverage.</p>
+      </div>
+    </section>
+
+    <section id="why">
+      <div class="wrap">
+        <div class="section-block prose">
+          <h2 class="section-title">Why a panel beats a single review</h2>
+          <p>Every model is confidently wrong in its own way. Ask the same model that wrote (or reviewed) a change to review it again and it tends to re-make the same oversight. The fix is not a bigger model - it is <strong>uncorrelated</strong> reviewers. Put an Anthropic model, an OpenAI model, a Google model, and more on the same change and the bug one family always glosses over is the one another family flags on sight.</p>
+          <p><strong>multi-duck turns that into a one-word command.</strong> It runs end to end with no extra prompt: say "multi-duck" and it discovers what to review on its own, launches the panel, waits for every duck, merges the results into one ranked list, and autonomously applies the fixes that are safe - leaving the judgment calls clearly flagged for you. The ducks are strictly review-only; every change is made by the main agent under explicit safe-fix rules.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2 class="section-title">What it is good for</h2>
+        <p class="section-sub">A second, third, and fourth opinion - on demand, before you ship.</p>
+        <div class="grid">
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg></span><h3>A go/no-go before you merge</h3><p>Point it at a branch, an open PR, or a design and get a cross-model read on whether it is safe to ship, with the top agreed risks called out.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.2-3 7.4-7 8.5C8 19.4 5 16.2 5 12V7z"/><path d="M9 12l2 2 4-4"/></svg></span><h3>Catches the bug one model misses</h3><p>Model diversity is uncorrelated failure: correctness slips, edge cases, race conditions, security and data-safety issues, missing tests, and migration risks that a single reviewer waves through.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 3z"/><path d="M8 9h8M8 12h5"/></svg></span><h3>Reviews plans, not just code</h3><p>It discovers active HTML and commentable-HTML plans and mines their open inline comments, so the panel reviews the proposal and the feedback already on it.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></span><h3>High-confidence verification</h3><p>In consensus mode every duck answers the same question ("is this migration safe?"), so agreement across independent models becomes a real confidence signal.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><circle cx="12" cy="12" r="2.5"/></svg></span><h3>Autonomous, safe cleanup</h3><p>The safe, local, well-verified fixes get applied and verified with the narrowest test; the risky ones are surfaced with a recommended action and why they were held back.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 20h8"/></svg></span><h3>Works where you work</h3><p>The same panel runs on both Claude Code and the GitHub Copilot CLI, with a host mapping for launching reviewers, picking models, and collecting results.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="modes">
+      <div class="wrap">
+        <h2 class="section-title">Two modes, one command</h2>
+        <p class="section-sub">Pick breadth or agreement - or let the default (prisms) choose breadth for you.</p>
+        <div class="grid">
+          <div class="card feature"><h3>Prisms (default)</h3><p>The panel is split by review aspect - correctness, edge cases, security, tests, performance, migration - with at least two differently-modeled ducks per aspect. Every aspect gets two independent opinions, so coverage spreads wide across a large change.</p></div>
+          <div class="card feature"><h3>Consensus</h3><p>Every duck chases the same goal, so cross-model agreement (k of N) is a strong confidence signal. Best for a focused question or a high-confidence go/no-go: a critical flagged by most of the panel is near-certain.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <h2 class="section-title">How it works</h2>
+        <p class="section-sub">Discover, diversify, launch, consolidate, act - autonomously and safely.</p>
+        <div class="steps steps-vertical">
+          <div class="step"><h3>Discover the work in flight</h3><p>It gathers the diff, the PR and its open comments, any markdown plan, the tests, and active commentable-HTML plans with their open inline comments into one self-contained bundle every reviewer can read.</p></div>
+          <div class="step"><h3>Pick a model-diverse roster</h3><p>The strongest, most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p></div>
+          <div class="step"><h3>Launch the panel in parallel</h3><p>Every duck runs at once as a strictly review-only reviewer. Running many in parallel is safe because no duck can change anything.</p></div>
+          <div class="step"><h3>Consolidate the findings</h3><p>Cluster duplicate findings, weigh agreement, rank by severity, and adjudicate conflicts by reading the code - because agreement across models that read the same bundle is corroboration to verify, never proof.</p></div>
+          <div class="step"><h3>Act on the safe ones</h3><p>Apply the local, non-destructive, independently-verified fixes and check them with the narrowest test. Defer anything risky - API, dependency, migration, security, infrastructure, history-rewriting - with a clear recommendation.</p></div>
+        </div>
+        <div class="callout" role="note">
+          <h3 class="callout-title">Run it more than once for complex work</h3>
+          <p>Scale the number of rounds to the complexity of the change. Each round applies the safe fixes and reshapes the code, so a fresh panel over the updated work almost always finds something the previous round could not see yet. For anything non-trivial, run multi-duck across several rounds - the later passes are where the subtle issues surface, and the subsequent rounds almost always turn up something useful.</p>
+        </div>
       </div>
     </section>
 
