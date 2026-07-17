@@ -805,6 +805,20 @@ main > section:nth-of-type(even) .section-block { background: var(--cp-bg); }
 .why-list { margin: 14px 0 0; padding-left: 20px; }
 .why-list li { margin-bottom: 10px; color: var(--cp-text); }
 .why-list li:last-child { margin-bottom: 0; }
+/* Inline comment-style highlight: mirrors the runtime comment mark (amber) so prose can show
+   what commenting "in place" looks like. */
+.hl-comment {
+  background: rgba(245, 158, 11, 0.32);
+  color: inherit;
+  padding: 1px 3px;
+  border-radius: 2px;
+  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+@media (prefers-color-scheme: dark) {
+  .hl-comment { background: rgba(251, 191, 36, 0.28); }
+}
 /* Tutorial page (content generated at build time from TUTORIAL.md) */
 .tutorial { max-width: 860px; margin: 0 auto; }
 .tutorial h2 { font-size: 1.5rem; margin: 28px 0 10px; letter-spacing: -0.4px; }

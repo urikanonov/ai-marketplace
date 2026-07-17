@@ -126,6 +126,21 @@ test("the Why section states commentable-html shortens the AI planning loop", as
 });
 
 
+test("the 'With Commentable HTML' bullet says an even richer HTML and highlights 'review in place' (SITE-WHY-10)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const bullet = page.locator(".why-list li", { hasText: "With Commentable HTML" });
+  await expect(bullet).toHaveCount(1);
+  await expect(bullet).toContainText(/even richer HTML/i);
+  await expect(bullet).not.toContainText(/the same rich HTML/i);
+  // "review in place" is wrapped in a comment-style highlight mark with a visible (amber) fill.
+  const mark = bullet.locator("mark.hl-comment");
+  await expect(mark).toHaveText("review in place");
+  const bg = await mark.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(bg).not.toBe("transparent");
+});
+
+
 test("the Why section frames HTML as the de-facto standard for AI planning and reporting (SITE-WHY-07)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const why = page.locator("#why");
