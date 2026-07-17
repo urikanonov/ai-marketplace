@@ -37,6 +37,31 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertIn('<a class="btn" href="https://example.com/source">Source</a>', out)
         self.assertNotIn("card-link", out)
 
+    def test_actions_render_in_a_box_beside_the_description(self):
+        # SITE-HUB-09: desc and keywords live in a .body-main column and the Learn more/Source
+        # actions sit in a .foot box as its sibling inside a .body-row, so CSS can place the box
+        # to the right of the description instead of stacking it below.
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "plugins": [{
+                "name": "commentable-html",
+                "version": "1.0.0",
+                "description": "Review HTML",
+                "keywords": ["a"],
+                "homepage": "https://example.com/source",
+            }],
+        }
+        out = bsd.render_plugins(manifest)
+        self.assertIn(
+            '  <div class="body-row">\n'
+            '    <div class="body-main">\n'
+            '      <p class="desc">Review HTML</p>\n'
+            '      <div class="keywords"><span class="chip">a</span></div>\n'
+            '    </div>\n'
+            '    <div class="foot">', out)
+        # The install block sits after the body-row, not inside it.
+        self.assertIn('  </div>\n  <div class="install">', out)
+
     def test_card_without_page_has_no_learn_more(self):
         manifest = {
             "name": "urikan-ai-marketplace",
@@ -45,6 +70,8 @@ class RenderPluginsTests(unittest.TestCase):
         out = bsd.render_plugins(manifest)
         self.assertNotIn("learn-more", out)
         self.assertIn('<span class="name">no-page</span>', out)
+        # A card with no page and no homepage has no actions, so no empty box is rendered.
+        self.assertNotIn('<div class="foot">', out)
 
     def test_real_manifest_commentable_badge_and_chips(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

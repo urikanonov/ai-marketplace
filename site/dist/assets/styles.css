@@ -467,12 +467,43 @@ main > section:nth-of-type(even) {
 #privacy .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 680px) { #privacy .grid { grid-template-columns: 1fr; } }
 
-/* The hub plugins list gives each plugin a full-width row. Inside the row the content is a simple
-   vertical stack (title + version, description, tags, Learn more/Source, then the install section)
-   with compact spacing, rather than a two-column split that left a large empty gap. The flowing
-   description is capped to a comfortable measure so a full-width row stays readable. */
+/* The hub plugins list gives each plugin a full-width row. Inside the row the description, tags,
+   and install section stack vertically with compact spacing, while the Learn more/Source actions
+   sit in a small boxed column to the RIGHT of the description (see .body-row below), using the
+   horizontal space the capped-width description leaves rather than stacking under the tags. */
 #plugins .grid { grid-template-columns: 1fr; gap: 22px; }
 #plugins .plugin-card .desc { max-width: 78ch; }
+/* Description + tags on the left, the boxed actions on the right of the same row (SITE-HUB-09). */
+#plugins .plugin-card .body-row {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  position: relative;
+  z-index: 2;
+}
+#plugins .plugin-card .body-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#plugins .plugin-card .foot {
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  background: var(--cp-surface-soft);
+}
+#plugins .plugin-card .foot .btn { justify-content: center; white-space: nowrap; }
+/* On a narrow row the box drops below the description and its buttons flow side by side. */
+@media (max-width: 560px) {
+  #plugins .plugin-card .body-row { flex-direction: column; }
+  #plugins .plugin-card .foot { align-self: stretch; flex-direction: row; flex-wrap: wrap; }
+}
 .card {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);
