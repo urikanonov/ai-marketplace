@@ -5,7 +5,7 @@ apply a **native CMH deck theme preset** (`tools/deck/themes/`, via `deck_scaffo
 `deck_theme.py apply`) and compose the native recipe classes (see the
 [deck runtime contract](deck-contract.md)) - that is the default, corporate-safe path and needs no
 per-deck CSS. The vendored `vendor/frontend-slides/` design system (`STYLE_PRESETS.md`,
-`html-template.md`, `animation-patterns.md`, `bold-template-pack/selection-index.json`) is design
+`html-template.md`, `animation-patterns.md`) is design
 provenance and a source of ideas for a bespoke, non-preset look a user explicitly asks for. This file
 is the CHM-specific narrative and layout delta on top of either path: a CHM deck is a **local-first
 commentable review surface**, it renders on a **fixed 1920x1080 stage gated by a strict validator** (no

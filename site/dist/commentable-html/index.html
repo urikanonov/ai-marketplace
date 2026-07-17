@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.137.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.138.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -425,6 +425,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.138.0] - 2026-07-17</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Slimmed the shipped plugin payload and site skill ZIP by relocating the agent-only <code>bold-template-pack</code> reference material into <code>dev/vendor/frontend-slides/</code>. The shipped frontend-slides runtime assets and tooling remain in <code>pkg/</code>, while separate SHA-256 manifests now keep both vendor trees pristine (CMH-DECK-07, closes #341).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.137.0] - 2026-07-17</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -432,6 +439,8 @@
               <li>Made the previously hard-coded-dark deck code-control surfaces themeable so light decks stay legible: the code/KQL language + copy badge background (<code>--cmh-deck-code-badge-bg</code>), the KQL run-link hover colour (<code>--cmh-deck-code-link-hover-fg</code>), and the Mermaid subgraph cluster fill/stroke (<code>--cmh-deck-mermaid-cluster-fill</code>/<code>-stroke</code>), each with byte-exact dark defaults so unthemed and <code>terminal</code> decks are unchanged.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.136.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -439,8 +448,6 @@
               <li>Recorded the verified license and commit for the vendored <code>bold-template-pack</code> in <code>vendor/frontend-slides/UPSTREAM.md</code> and added an explicit <code>bold-template-pack/LICENSE</code>. The pack originates from <code>zarazhangrui/beautiful-html-templates</code> (MIT, Zara Zhang, commit <code>e5e204fb</code>), a different upstream repo than frontend-slides; both are MIT by the same author, so adapting a bold template into a native CMH deck preset is now license-cleared (unblocks the Phase 2 bold presets; issue #337).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.135.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -469,14 +476,7 @@
               <li>Offline export now embeds vendored copies of the rich-content JavaScript libraries (mermaid, Chart.js) so an exported Offline artifact renders diagrams and interactive charts with zero network access (issue #296).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.130.0] - 2026-07-16</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Deck showcase polish: added the linked Commentable HTML brand button, distinct Overview/counter nav chrome, a static &quot;make it clearer&quot; comment mockup on the Act 1 After card, richer point-at/install pills, and a supported-languages plus notes-demo slide while preserving the restructured deck flow, the interactive chart, and the new edge-navigation runtime.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">114 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">115 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

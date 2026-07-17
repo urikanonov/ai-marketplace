@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.138.0] - 2026-07-17
+
+### Changed
+
+- Slimmed the shipped plugin payload and site skill ZIP by relocating the agent-only `bold-template-pack` reference material into `dev/vendor/frontend-slides/`. The shipped frontend-slides runtime assets and tooling remain in `pkg/`, while separate SHA-256 manifests now keep both vendor trees pristine (CMH-DECK-07, closes #341).
+
 ## [1.137.0] - 2026-07-17
 
 ### Added

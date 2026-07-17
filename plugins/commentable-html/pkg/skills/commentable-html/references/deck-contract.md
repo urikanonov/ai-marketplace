@@ -88,7 +88,6 @@ references before authoring slide layouts:
 - `vendor/frontend-slides/viewport-base.css`
 - `vendor/frontend-slides/animation-patterns.md`
 - `vendor/frontend-slides/STYLE_PRESETS.md`
-- `vendor/frontend-slides/bold-template-pack/`
 
 Keep the style's palette, layout, spacing rhythm, and component grammar, but do not keep remote font
 loads from the vendored examples. The upstream templates and style packs can include
