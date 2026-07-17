@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.136.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.137.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -425,12 +425,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.137.0] - 2026-07-17</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Two LIGHT native deck theme presets alongside the dark <code>terminal</code>: <code>paper</code> (warm-cream, editorial-serif, crimson accent) and <code>editorial</code> (soft-cream serif, deep-teal accent), each adapted from a frontend-slides <code>STYLE_PRESETS.md</code> style (credited via <code>adaptedFrom</code> + <code>sourceCommit</code>). Both override the full component token set (the defaults are dark) and pass <code>_deck_theme.load</code> (composited effective-contrast + opaque <code>contrastPairs</code> self-check at AA) and the objective <code>theme_eval</code> harness with no validator error, no clipping advisory, and a bounded byte delta (CMH-DECK-THEME-06, issue #343). Scaffold a themed deck with <code>deck_scaffold.py --theme paper</code> (or <code>editorial</code>, <code>terminal</code>).</li>
+              <li>Made the previously hard-coded-dark deck code-control surfaces themeable so light decks stay legible: the code/KQL language + copy badge background (<code>--cmh-deck-code-badge-bg</code>), the KQL run-link hover colour (<code>--cmh-deck-code-link-hover-fg</code>), and the Mermaid subgraph cluster fill/stroke (<code>--cmh-deck-mermaid-cluster-fill</code>/<code>-stroke</code>), each with byte-exact dark defaults so unthemed and <code>terminal</code> decks are unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.136.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Recorded the verified license and commit for the vendored <code>bold-template-pack</code> in <code>vendor/frontend-slides/UPSTREAM.md</code> and added an explicit <code>bold-template-pack/LICENSE</code>. The pack originates from <code>zarazhangrui/beautiful-html-templates</code> (MIT, Zara Zhang, commit <code>e5e204fb</code>), a different upstream repo than frontend-slides; both are MIT by the same author, so adapting a bold template into a native CMH deck preset is now license-cleared (unblocks the Phase 2 bold presets; issue #337).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.135.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -438,8 +448,6 @@
               <li>Native deck theme presets that incorporate the frontend-slides design system directly into the deck engine, replacing per-deck hand-translation of vendored reference material. A preset is a named JSON profile under <code>tools/deck/themes/&lt;name&gt;.theme.json</code> of allowlisted, system-font, contrast-safe deck tokens; <code>deck_scaffold.py --theme &lt;name&gt;</code> builds a fully styled deck and the new <code>deck_theme.py apply --theme &lt;name&gt;</code> re-themes an existing deck in place. Re-theming is idempotent and comment-safe: the theme block is <code>cm-skip</code>, so it never shifts stored comment offsets. Ships the <code>terminal</code> preset (dark/technical, system monospace), adapted from the frontend-slides &quot;Terminal Green&quot; style (Zara Zhang, MIT). Deck component colours (syntax tokens, table headers, diff, mermaid) and the link/border are now themeable via <code>var(--token, &lt;default&gt;)</code> with byte-exact defaults, plus reusable recipe classes (<code>.cmh-slide-section</code>, <code>.cmh-slide-lede</code>, <code>.cmh-cols-2</code>, <code>.cmh-metric-grid</code>, <code>.cmh-pill</code>) so a themed deck needs no per-deck CSS. <code>deck_validate.py</code> gates every themed contrast pair (compositing the translucent diff rows for a faithful check). Supersedes the vendor-first deck design routing from issue #208; the vendored <code>frontend-slides</code> subtree is retained as design provenance and the maintainer refresh source (CMH-DECK-THEME-01/02/03, CMH-DECK-14; issue #334).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.134.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
@@ -468,18 +476,7 @@
               <li>Deck showcase polish: added the linked Commentable HTML brand button, distinct Overview/counter nav chrome, a static &quot;make it clearer&quot; comment mockup on the Act 1 After card, richer point-at/install pills, and a supported-languages plus notes-demo slide while preserving the restructured deck flow, the interactive chart, and the new edge-navigation runtime.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.129.0] - 2026-07-16</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Dark KQL caption surfaces now keep the <code>Run in Azure Data Explorer</code> link at AA contrast in both report dark theme and deck mode, and deck Mermaid connectors/arrows now render darker and thicker so they stay readable on the light parchment slides. (CMH-KQL-04, CMH-DECK-09, CMH-DECK-13)</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li><code>tools/validate/cmhval/contrast.py</code> now resolves computed descendant text/background pairs and low-contrast connector strokes, so <code>deck_validate.py</code> catches the old red-on-dark KQL link and washed-out diagram arrows before publish. (CMH-DECK-12)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">113 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">114 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

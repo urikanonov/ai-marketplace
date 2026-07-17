@@ -33,11 +33,13 @@ _COLOR_TOKENS = frozenset({
     "--slide-accent-fg", "--slide-border", "--slide-link",
     "--cmh-deck-code-bg", "--cmh-deck-code-bg-soft", "--cmh-deck-code-border",
     "--cmh-deck-code-text", "--cmh-deck-code-muted", "--cmh-deck-code-soft",
+    "--cmh-deck-code-badge-bg", "--cmh-deck-code-link-hover-fg",
     "--cmh-deck-tok-kw", "--cmh-deck-tok-fn", "--cmh-deck-tok-str", "--cmh-deck-tok-num",
     "--cmh-deck-tok-com", "--cmh-deck-tok-op",
     "--cmh-deck-table-head-bg", "--cmh-deck-table-head-fg", "--cmh-deck-table-head-border",
     "--cmh-deck-diff-add-fg", "--cmh-deck-diff-del-fg", "--cmh-deck-diff-hunk-fg",
     "--cmh-deck-mermaid-node-fill", "--cmh-deck-mermaid-node-stroke", "--cmh-deck-mermaid-label",
+    "--cmh-deck-mermaid-cluster-fill", "--cmh-deck-mermaid-cluster-stroke",
     "--cmh-deck-mermaid-edge", "--cmh-deck-mermaid-edge-label-bg", "--cmh-deck-mermaid-edge-label-fg",
 })
 ALLOWED_TOKENS = _FONT_TOKENS | _COLOR_TOKENS
