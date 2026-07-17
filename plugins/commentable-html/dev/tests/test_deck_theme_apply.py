@@ -124,7 +124,7 @@ class DeckThemeApplyTests(unittest.TestCase):
 
     def test_refuses_repo_example_without_force(self):
         # A path under a repo examples/ dir is refused unless --force (it is rebuilt from dev/src).
-        ex_dir = os.path.join(self.tmp, "pkg", "skills", "commentable-html", "examples")
+        ex_dir = os.path.join(self.tmp, "plugins", "commentable-html", "examples")
         os.makedirs(ex_dir)
         ex = os.path.join(ex_dir, "deck-showcase.html")
         html0 = _scaffold(ex, "--slides", "1")

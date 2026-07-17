@@ -29,7 +29,7 @@ import sys
 import tempfile
 
 HERE = Path(__file__).resolve().parent
-PKG = Path(os.environ.get("CMH_PKG_DIR") or (HERE.parent.parent / "pkg" / "skills" / "commentable-html"))
+PKG = Path(os.environ.get("CMH_PKG_DIR") or (HERE.parent / "skill"))  # relocated stage (dev/skill)
 TOOLS = PKG / "tools"
 if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
