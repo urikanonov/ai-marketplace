@@ -47,12 +47,23 @@ def build_skill_zip_members(root, skill_dir_rel, skill_name):
         if not os.path.isfile(full):
             continue
         with open(full, "rb") as fh:
-            members.append(("%s/%s" % (skill_name, rel), fh.read()))
+            members.append(("%s/%s" % (skill_name, rel), _normalize_zip_member(fh.read())))
     members.sort(key=lambda m: m[0])
     if not any(arcname == "%s/SKILL.md" % skill_name for arcname, _ in members):
         raise SystemExit("Claude Desktop skill ZIP: %s has no SKILL.md at the root of %s"
                          % (skill_name, skill_dir_rel))
     return members
+
+
+def _normalize_zip_member(data):
+    """Normalize a skill-ZIP member for cross-platform byte reproducibility. A text file's line
+    endings are folded to LF so the packaged bytes do not depend on the checkout's line-ending
+    config (a CRLF checkout, for example a Windows one where `.gitattributes eol=lf` is not honored,
+    then produces the same ZIP as a Linux CI rebuild). A binary file - detected by a NUL byte - is
+    returned byte-for-byte, since its CR/LF bytes are data, not line endings."""
+    if b"\x00" in data:
+        return data
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
 # Untracked developer noise that must never be packaged into a skill ZIP (the git-tracked path
