@@ -43,8 +43,8 @@ Usage (flat layout, run from the skill root):
 
 Split layout (canonical assets and generated outputs in different directories, e.g.
 the ai-marketplace pkg/dev split - run from dev/):
-  python tools/build.py --assets-dir assets --out-dir ../pkg/skills/commentable-html
-  python tools/build.py --assets-dir assets --out-dir ../pkg/skills/commentable-html --check
+  python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples
+  python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples --check
 
 --assets-dir defaults to <skill>/assets and --out-dir defaults to the skill root (the
 directory that receives dist/PORTABLE.html and dist/). --check compares the files already
