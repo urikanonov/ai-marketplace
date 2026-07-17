@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.140.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.141.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -425,12 +425,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.141.0] - 2026-07-17</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li><code>tools/authoring/upgrade.py</code> now restamps the <code>&lt;head&gt;</code> <code>&lt;meta name=&quot;commentable-html-version&quot;&gt;</code> to the template&#x27;s runtime version during an upgrade (inserting it when a pre-version legacy document lacks it), so an upgraded document no longer self-reports the old version while running the new runtime. The restamp is scoped to <code>&lt;head&gt;</code>, so the marker-like JS export regex literal (<code>content=&quot;[^&quot;]+&quot;</code>) is never matched or rewritten. Post-upgrade validator warnings are now surfaced instead of discarded, and a new opt-in <code>--strict</code> flag treats them as a failure (leaving the target unchanged and exiting non-zero); the default still commits so a version-only upgrade is never blocked by a pre-existing content warning (CMH-TOOL-08, closes #359).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.140.0] - 2026-07-17</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Made the vendored rich-libraries blob (the inline gzip+base64 mermaid/Chart.js payload) reproducible across zlib implementations. <code>build.py</code> previously gzipped the libraries live via <code>deterministic_gzip</code>, but gzip DEFLATE output is not identical between stock zlib and zlib-ng (which Python 3.14 ships), so a dist built on Python 3.14 produced a different blob than CI&#x27;s stock-zlib build and failed the required <code>dist-in-sync</code>/<code>plugin-tests</code> checks with no source change. The build now reads a committed <code>assets/vendor/&lt;lib&gt;.gz</code> artifact and only base64-encodes it (deterministic on every machine); <code>build.py --regen-vendor-gz</code> regenerates those artifacts when a vendored library changes, and <code>build.py --check</code> verifies each committed <code>.gz</code> decompresses to the current source (decompression is deterministic across zlib impls, so the guard never recompresses) (CMH-BUILD-11, closes #372).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.139.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -448,8 +457,6 @@
               <li>Round-12 review hardening: <code>_prune_nested_reparse</code> also fails closed when <code>os.walk</code> cannot scan a subtree (a junction could hide there unseen) via an <code>onerror</code> callback, so <code>shutil.rmtree</code> never runs on an incompletely-inspected tree. And a crash-recovery backup restore that cannot complete now aborts the extraction rather than swallowing the error and then letting the swap delete the very backup it meant to keep, so the last-known-good backup survives for the next session. Tests pin both.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.138.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -479,14 +486,7 @@
               <li>Native deck theme presets that incorporate the frontend-slides design system directly into the deck engine, replacing per-deck hand-translation of vendored reference material. A preset is a named JSON profile under <code>tools/deck/themes/&lt;name&gt;.theme.json</code> of allowlisted, system-font, contrast-safe deck tokens; <code>deck_scaffold.py --theme &lt;name&gt;</code> builds a fully styled deck and the new <code>deck_theme.py apply --theme &lt;name&gt;</code> re-themes an existing deck in place. Re-theming is idempotent and comment-safe: the theme block is <code>cm-skip</code>, so it never shifts stored comment offsets. Ships the <code>terminal</code> preset (dark/technical, system monospace), adapted from the frontend-slides &quot;Terminal Green&quot; style (Zara Zhang, MIT). Deck component colours (syntax tokens, table headers, diff, mermaid) and the link/border are now themeable via <code>var(--token, &lt;default&gt;)</code> with byte-exact defaults, plus reusable recipe classes (<code>.cmh-slide-section</code>, <code>.cmh-slide-lede</code>, <code>.cmh-cols-2</code>, <code>.cmh-metric-grid</code>, <code>.cmh-pill</code>) so a themed deck needs no per-deck CSS. <code>deck_validate.py</code> gates every themed contrast pair (compositing the translucent diff rows for a faithful check). Supersedes the vendor-first deck design routing from issue #208; the vendored <code>frontend-slides</code> subtree is retained as design provenance and the maintainer refresh source (CMH-DECK-THEME-01/02/03, CMH-DECK-14; issue #334).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.134.0] - 2026-07-16</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Polished the showcase deck with a concrete Copy all bundle specimen in the technical section, a tighter medium-comparison table, and a corrected Mermaid-node callback so the pitch is more informative without changing the deck contract (CMH-DECK-SHOWCASE-09, closes #244).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">117 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">118 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

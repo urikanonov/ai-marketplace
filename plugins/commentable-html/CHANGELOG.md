@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.141.0] - 2026-07-17
+
+### Changed
+
+- `tools/authoring/upgrade.py` now restamps the `<head>` `<meta name="commentable-html-version">` to the template's runtime version during an upgrade (inserting it when a pre-version legacy document lacks it), so an upgraded document no longer self-reports the old version while running the new runtime. The restamp is scoped to `<head>`, so the marker-like JS export regex literal (`content="[^"]+"`) is never matched or rewritten. Post-upgrade validator warnings are now surfaced instead of discarded, and a new opt-in `--strict` flag treats them as a failure (leaving the target unchanged and exiting non-zero); the default still commits so a version-only upgrade is never blocked by a pre-existing content warning (CMH-TOOL-08, closes #359).
+
 ## [1.140.0] - 2026-07-17
 
 ### Fixed

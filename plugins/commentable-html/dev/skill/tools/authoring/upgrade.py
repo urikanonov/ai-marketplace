@@ -96,6 +96,56 @@ def _insert_kind_meta(html, kind):
     return html, False
 
 
+# The head version meta. Region swaps leave <head> alone, so an upgraded document keeps
+# self-reporting its OLD runtime version unless we restamp this to the template's version
+# (the same value the build stamps into a fresh document). Matched order-independently so a
+# reordered content/name attribute pair still counts. Scoped to <head> so the marker-like
+# text inside the JS export regex literal (content="[^"]+") is never matched or rewritten.
+_HEAD_RE = re.compile(r"<head\b[^>]*>.*?</head>", re.IGNORECASE | re.DOTALL)
+_VERSION_META_TAG_RE = re.compile(
+    r'<meta\b[^>]*\bname="commentable-html-version"[^>]*>', re.IGNORECASE)
+_CONTENT_ATTR_RE = re.compile(r'(\bcontent=")([^"]*)(")', re.IGNORECASE)
+
+
+def _meta_version(html):
+    """Return the <head> commentable-html-version meta content, or None when absent."""
+    head = _HEAD_RE.search(html or "")
+    if not head:
+        return None
+    m = _VERSION_META_TAG_RE.search(head.group(0))
+    if not m:
+        return None
+    cm = _CONTENT_ATTR_RE.search(m.group(0))
+    return cm.group(2).strip() if cm else None
+
+
+def _set_version_meta(html, version):
+    """Restamp (or insert) the <head> commentable-html-version meta to `version`.
+    Returns (new_html, changed?). Only <head> is touched: content, state, the #commentRoot
+    wrapper, and the JS export regex literal are all left alone."""
+    head = _HEAD_RE.search(html)
+    if not head:
+        return html, False
+    hs, he = head.start(), head.end()
+    head_text = head.group(0)
+    m = _VERSION_META_TAG_RE.search(head_text)
+    if m:
+        tag = m.group(0)
+        cm = _CONTENT_ATTR_RE.search(tag)
+        if cm:
+            if cm.group(2).strip() == version:
+                return html, False
+            new_tag = tag[:cm.start()] + cm.group(1) + version + cm.group(3) + tag[cm.end():]
+        else:
+            new_tag = re.sub(r"\s*/?>$", ' content="%s" />' % version, tag)
+        new_head = head_text[:m.start()] + new_tag + head_text[m.end():]
+        return html[:hs] + new_head + html[he:], True
+    tag = '<meta name="commentable-html-version" content="%s" />\n' % version
+    hm = re.match(r"<head\b[^>]*>", head_text, re.IGNORECASE)
+    new_head = head_text[:hm.end()] + "\n" + tag + head_text[hm.end():]
+    return html[:hs] + new_head + html[he:], True
+
+
 class _MarkerMatch:
     def __init__(self, marker_start, marker_end):
         self._marker_start = marker_start
@@ -203,6 +253,14 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         if out[db:de] != new_inner:
             out = out[:db] + new_inner + out[de:]
             changed.append(name)
+    # Restamp the head version meta to the template's runtime version so an upgraded
+    # document no longer self-reports the old version (region swaps leave <head> alone).
+    # Purely a <head> meta rewrite: content, state, and the #commentRoot wrapper are untouched.
+    tpl_version = _meta_version(template_html)
+    if tpl_version:
+        out, bumped = _set_version_meta(out, tpl_version)
+        if bumped:
+            changed.append("version meta")
     # Migrate a pre-kind document: add the mandatory document-kind meta if it is missing.
     # Detection is order-independent so a reordered existing meta is never duplicated.
     if not _has_kind_meta(out):
@@ -223,6 +281,10 @@ def main(argv):
     p.add_argument("--template", default=DEFAULT_TEMPLATE, help="template to upgrade from (default: skill dist/PORTABLE.html)")
     p.add_argument("--out", default=None, help="write result here instead of in place")
     p.add_argument("--check", action="store_true", help="do not write; exit 1 if any region is stale")
+    p.add_argument("--strict", action="store_true",
+                   help="treat post-upgrade validator warnings as failures: leave the target unchanged "
+                        "and exit non-zero (errors already do this). Off by default so a version-only "
+                        "upgrade is never blocked by a pre-existing content warning.")
     args = p.parse_args(argv[1:])
 
     try:
@@ -254,6 +316,7 @@ def main(argv):
     # validate that, and only atomically replace the target on success. This guarantees
     # a failed validation never clobbers the source/target with a broken document.
     out_dir = os.path.dirname(os.path.abspath(out_path)) or "."
+    warnings = []
     fd, tmp_path = tempfile.mkstemp(prefix=".cmh-upgrade-", suffix=".html", dir=out_dir)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
@@ -270,13 +333,17 @@ def main(argv):
             validate = None
         if validate is not None:
             try:
-                errors, _warnings = validate.validate(tmp_path)
+                errors, warnings = validate.validate(tmp_path)
             except Exception as exc:  # noqa: BLE001
                 sys.stderr.write("upgrade aborted: validator crashed on the new %s: %s\n" % (out_path, exc))
                 return 1
             if errors:
                 sys.stderr.write("upgrade aborted: the new %s would FAIL validation (target left unchanged):\n  %s\n"
                                  % (out_path, "\n  ".join(errors)))
+                return 1
+            if warnings and args.strict:
+                sys.stderr.write("upgrade aborted (--strict): the new %s has validator warning(s) "
+                                 "(target left unchanged):\n  %s\n" % (out_path, "\n  ".join(warnings)))
                 return 1
 
         os.replace(tmp_path, out_path)
@@ -287,6 +354,12 @@ def main(argv):
 
     print("Upgraded %s (regions: %s)%s" % (out_path, ", ".join(changed),
           "" if out_path == args.file else " from " + args.file))
+    # Surface (non-blocking) any validator warnings the upgrade did not abort on, so the
+    # agent can resolve them with a finalize/validate pass instead of shipping them unseen.
+    if warnings:
+        print("%d validator warning(s) remain (run finalize.py --strict to resolve):" % len(warnings))
+        for item in warnings:
+            print("  WARNING: %s" % item)
     return 0
 
 
