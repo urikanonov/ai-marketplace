@@ -47,6 +47,8 @@ def main(argv):
                              "to rebuild from; restore it)" % src_rel.replace(os.sep, "/"))
 
     hub_out = build_page(root, HUB_SRC, [
+        ("block", "nav-plugins", render_nav_plugins(manifest)),
+        ("block", "hero-pills", render_hero_pills(manifest)),
         ("block", "plugins", plugins_html),
         ("block", "install", render_install(
             "", suffix, bool(claude_names), "install-hub", marketplace_only=True)),

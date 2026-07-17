@@ -85,6 +85,9 @@
   visibility: visible;
   transform: translateY(0);
 }
+/* The hub 'Plugins' dropdown is the FIRST nav item, so its flyout opens to the RIGHT of the
+   trigger (left-aligned) rather than the left, keeping it on screen. */
+.nav-switcher-start .nav-switcher-menu { left: 0; right: auto; }
 .nav-switcher-heading {
   padding: 6px 10px 4px;
   font-size: 0.72rem;
@@ -160,4 +163,31 @@
   flex-wrap: wrap;
 }
 .gh-star { display: inline-flex; align-items: center; min-height: 28px; }
+
+/* Hero plugin pills: a row of quick links under the CTAs, one per plugin, that scroll to that
+   plugin's card on the page. */
+.hero-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 18px;
+}
+.hero-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--cp-border);
+  background: var(--cp-surface);
+  color: var(--cp-text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.hero-pill:hover {
+  border-color: var(--cp-accent);
+  color: var(--cp-text);
+  text-decoration: none;
+}
+.hero-pill:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
 
