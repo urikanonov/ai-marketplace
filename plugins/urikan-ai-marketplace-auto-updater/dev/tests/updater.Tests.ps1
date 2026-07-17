@@ -247,7 +247,15 @@ try {
     Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-08: a stale stamp lets the pass run"
     $written = [datetimeoffset]::Parse((Get-Content -Raw $stampB).Trim())
     Assert-True ((([datetimeoffset]::Now - $written).TotalMinutes) -lt 5) "UPD-08: the pass refreshes the stamp"
-    Remove-Item -Recurse -Force $home8, $home8b
+
+    # The default cadence is 24h: with no config a 22h-old pass is still throttled (it would run
+    # under the previous 20h default).
+    Reset-Mock
+    $home8c = New-Sandbox -plugins @("alpha")
+    Set-Stamp $home8c 22
+    Invoke-Hook $home8c
+    Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-08: the default cadence is 24h (a 22h-old pass is throttled)"
+    Remove-Item -Recurse -Force $home8, $home8b, $home8c
 } catch { $script:failures += "UPD-08 threw: $_" }
 
 Write-Host "== UPD-09 Claude enumerates enabledPlugins and excludes self =="
@@ -414,6 +422,20 @@ try {
     Assert-True ($skill -like "*$self.config.json*") "UPD-18: skill writes the persistent config file"
     Assert-True ($skill -match "throttleHours") "UPD-18: skill sets the throttleHours key"
 } catch { $script:failures += "UPD-18 threw: $_" }
+
+Write-Host "== UPD-19 the skill offers a four-way cadence choice with a 24h default =="
+try {
+    $skillMd = Join-Path (Join-Path (Join-Path $pkgRoot "skills") "marketplace-update") "SKILL.md"
+    $skill = Get-Content -Path $skillMd -Raw
+    # When the user asks to change the schedule WITHOUT naming a value (e.g. "change update
+    # schedule"), the agent presents the same four-way choice, with 24h as the default.
+    Assert-True ($skill -match "(?i)change update (schedule|cadence|frequency)") "UPD-19: skill triggers on 'change update schedule/cadence/frequency'"
+    Assert-True ($skill -match "(?i)each session") "UPD-19: skill offers the 'each session' choice"
+    Assert-True ($skill -match "(?i)every 1 hour") "UPD-19: skill offers the 'every 1 hour' choice"
+    Assert-True ($skill -match "(?i)every 24 hours") "UPD-19: skill offers the 'every 24 hours' choice"
+    Assert-True ($skill -match "(?i)custom") "UPD-19: skill offers a custom interval"
+    Assert-True ($skill -match "(?im)24 hours.*default") "UPD-19: 24 hours is presented as the default"
+} catch { $script:failures += "UPD-19 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue
