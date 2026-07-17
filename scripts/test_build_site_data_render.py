@@ -37,6 +37,17 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertIn('<a class="btn" href="https://example.com/source">Source</a>', out)
         self.assertNotIn("card-link", out)
 
+    def test_card_has_a_stable_slugged_anchor_id(self):
+        # SITE-HUB-11: each card carries a stable id so the nav dropdown and hero pills can scroll
+        # to it; the id is slugged from the plugin name so it is always a valid, injection-proof
+        # attribute value.
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "plugins": [{"name": "commentable-html", "version": "1.0.0", "description": "d"}],
+        }
+        out = bsd.render_plugins(manifest)
+        self.assertIn('<article class="card plugin-card" id="plugin-commentable-html">', out)
+
     def test_actions_render_in_a_box_beside_the_description(self):
         # SITE-HUB-09: desc and keywords live in a .body-main column and the Learn more/Source
         # actions sit in a .foot box as its sibling inside a .body-row, so CSS can place the box
@@ -565,6 +576,75 @@ class PluginPageStructureTests(unittest.TestCase):
             html = self._src(rel)
             self.assertIn("install-updater-cta", html, name)
             self.assertIn('href="../urikan-ai-marketplace-auto-updater/#install"', html, name)
+
+
+class RenderNavPluginsTests(unittest.TestCase):
+    """SITE-NAV-02: the hub nav 'Plugins' entry is a plugin dropdown (mirroring the plugin-page
+    Marketplace switcher). The trigger still links to '#plugins' (scrolls to the section as before);
+    the flyout lists every plugin, each linking to its own card anchor '#plugin-<slug>' on the
+    page."""
+
+    def _manifest(self):
+        return {
+            "name": "urikan-ai-marketplace",
+            "plugins": [
+                {"name": "commentable-html", "version": "1.0.0", "category": "planning and analysis"},
+                {"name": "multi-duck", "version": "1.0.0", "category": "code review"},
+                {"name": bsd.UPDATER_PLUGIN, "version": "1.0.0", "category": "infrastructure"},
+            ],
+        }
+
+    def test_is_a_left_aligned_switcher_whose_trigger_scrolls_to_the_plugins_section(self):
+        out = bsd.render_nav_plugins(self._manifest())
+        # A nav-switcher flyout like the plugin pages, but left-aligned (Plugins is the FIRST nav
+        # item, so the menu must open to the right of the trigger, not the left).
+        self.assertIn('class="nav-switcher nav-switcher-start"', out)
+        # The trigger is still a working link to the plugins section (click scrolls there as before).
+        self.assertIn('class="nav-switcher-trigger" href="#plugins"', out)
+        self.assertIn(">Plugins<", out)
+
+    def test_lists_every_plugin_linking_to_its_card_anchor_in_manifest_order(self):
+        out = bsd.render_nav_plugins(self._manifest())
+        order = re.findall(r'class="switch-tile" href="#plugin-([^"]+)"', out)
+        self.assertEqual(order,
+                         ["commentable-html", "multi-duck", bsd.UPDATER_PLUGIN])
+        # An all-plugins tile returns to the full list (the section top).
+        self.assertIn('class="switch-tile switch-tile-all" href="#plugins"', out)
+
+    def test_uses_friendly_display_labels(self):
+        out = bsd.render_nav_plugins(self._manifest())
+        self.assertIn(">Auto-updater<", out)
+        self.assertNotIn(">urikan-ai-marketplace-auto-updater<", out)
+
+
+class RenderHeroPillsTests(unittest.TestCase):
+    """SITE-HUB-12: the hub hero shows a row of plugin pills, one per plugin, each scrolling to that
+    plugin's card anchor '#plugin-<slug>'."""
+
+    def _manifest(self):
+        return {
+            "name": "urikan-ai-marketplace",
+            "plugins": [
+                {"name": "commentable-html", "version": "1.0.0", "category": "planning and analysis"},
+                {"name": "multi-duck", "version": "1.0.0", "category": "code review"},
+                {"name": bsd.UPDATER_PLUGIN, "version": "1.0.0", "category": "infrastructure"},
+            ],
+        }
+
+    def test_one_pill_per_plugin_in_order_linking_to_card_anchors(self):
+        out = bsd.render_hero_pills(self._manifest())
+        self.assertIn('class="hero-pills"', out)
+        order = re.findall(r'class="hero-pill" href="#plugin-([^"]+)"', out)
+        self.assertEqual(order,
+                         ["commentable-html", "multi-duck", bsd.UPDATER_PLUGIN])
+
+    def test_uses_friendly_display_labels(self):
+        out = bsd.render_hero_pills(self._manifest())
+        self.assertIn(">Commentable HTML<", out)
+        self.assertIn(">Auto-updater<", out)
+
+    def test_empty_when_no_plugins(self):
+        self.assertEqual(bsd.render_hero_pills({"name": "m", "plugins": []}), "")
 
 
 if __name__ == "__main__":

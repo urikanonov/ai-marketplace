@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Install reusable skills, session hooks, and MCP servers by name in Claude Code or the GitHub Copilot CLI." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
-  <link rel="stylesheet" href="assets/styles.css?v=45b05203d541" />
+  <link rel="stylesheet" href="assets/styles.css?v=810e33d8bc6c" />
   <!-- BEGIN:jsonld -->
   <script type="application/ld+json">
   {
@@ -119,7 +119,18 @@
         <span>AI Marketplace</span>
       </a>
       <div class="nav-links">
-        <a href="#plugins">Plugins</a>
+        <!-- BEGIN:nav-plugins -->
+        <div class="nav-switcher nav-switcher-start">
+          <a class="nav-switcher-trigger" href="#plugins"><svg class="nav-switcher-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Plugins</span></a>
+          <div class="nav-switcher-menu">
+            <span class="nav-switcher-heading">Jump to plugin</span>
+            <a class="switch-tile" href="#plugin-commentable-html"><img class="switch-tile-icon" src="assets/commentable-html.svg" alt="Commentable HTML logo" /><span class="switch-tile-text"><span class="switch-tile-name">Commentable HTML</span><span class="switch-tile-sub">planning and analysis</span></span></a>
+              <a class="switch-tile" href="#plugin-multi-duck"><img class="switch-tile-icon" src="assets/multi-duck.svg" alt="Multi Duck logo" /><span class="switch-tile-text"><span class="switch-tile-name">Multi Duck</span><span class="switch-tile-sub">code review</span></span></a>
+              <a class="switch-tile" href="#plugin-urikan-ai-marketplace-auto-updater"><img class="switch-tile-icon" src="assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /><span class="switch-tile-text"><span class="switch-tile-name">Auto-updater</span><span class="switch-tile-sub">infrastructure</span></span></a>
+            <a class="switch-tile switch-tile-all" href="#plugins"><span class="switch-tile-text"><span class="switch-tile-name">All plugins</span><span class="switch-tile-sub">View the full list</span></span></a>
+          </div>
+        </div>
+        <!-- END:nav-plugins -->
         <a href="#install">Install</a>
         <a href="#how" class="hide-sm">How it works</a>
         <a class="gh" href="https://github.com/urikanonov/ai-marketplace">GitHub</a>
@@ -139,6 +150,13 @@
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
         </div>
+        <!-- BEGIN:hero-pills -->
+        <div class="hero-pills" aria-label="Jump to a plugin">
+              <a class="hero-pill" href="#plugin-commentable-html">Commentable HTML</a>
+              <a class="hero-pill" href="#plugin-multi-duck">Multi Duck</a>
+              <a class="hero-pill" href="#plugin-urikan-ai-marketplace-auto-updater">Auto-updater</a>
+            </div>
+        <!-- END:hero-pills -->
       </div>
     </header>
 
@@ -187,7 +205,7 @@
         <p class="section-sub">Everything published in this marketplace.</p>
         <div class="grid">
           <!-- BEGIN:plugins -->
-          <article class="card plugin-card">
+          <article class="card plugin-card" id="plugin-commentable-html">
             <div class="head">
               <span class="name"><a href="./commentable-html/">commentable-html</a></span>
               <span class="badge version">v1.139.0</span>
@@ -268,7 +286,7 @@
               </div>
             </div>
           </article>
-          <article class="card plugin-card">
+          <article class="card plugin-card" id="plugin-multi-duck">
             <div class="head">
               <span class="name"><a href="./multi-duck/">multi-duck</a></span>
               <span class="badge version">v1.0.0</span>
@@ -349,7 +367,7 @@
               </div>
             </div>
           </article>
-          <article class="card plugin-card">
+          <article class="card plugin-card" id="plugin-urikan-ai-marketplace-auto-updater">
             <div class="head">
               <span class="name"><a href="./urikan-ai-marketplace-auto-updater/">urikan-ai-marketplace-auto-updater</a></span>
               <span class="badge version">v1.3.0</span>

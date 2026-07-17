@@ -168,7 +168,7 @@ def render_plugins(manifest, claude_names=None):
         foot = learn_more + source
         actions = ('    <div class="foot">%s</div>\n' % foot) if foot else ""
         card = (
-            '<article class="card plugin-card">\n'
+            '<article class="card plugin-card" id="plugin-%s">\n'
             '  <div class="head">\n'
             '    %s\n'
             '    <span class="badge version">v%s</span>%s\n'
@@ -184,7 +184,7 @@ def render_plugins(manifest, claude_names=None):
             '    %s\n'
             '  </div>\n'
             '</article>'
-        ) % (title, esc(version), category_badge, esc(description), chips,
+        ) % (_slug_id(name), title, esc(version), category_badge, esc(description), chips,
              actions, install_block)
         cards.append(card)
     return "\n".join(cards)
@@ -235,6 +235,81 @@ def render_switcher(manifest, current_name, rel_prefix="../"):
         '  </div>\n'
         '</div>'
     ) % (hub_href, icon_svg, tile_html, hub_href)
+
+
+def _nav_grid_icon():
+    """The 2x2 grid glyph shared by the plugin-page 'Marketplace' switcher and the hub 'Plugins'
+    dropdown trigger, so the two nav controls read as the same kind of control."""
+    return (
+        '<svg class="nav-switcher-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+        '<rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
+        '</svg>')
+
+
+def render_nav_plugins(manifest):
+    """The hub nav 'Plugins' control: like the plugin-page 'Marketplace' switcher, but instead of
+    linking to other plugin PAGES it lists every published plugin and, on hover or keyboard focus,
+    reveals a flyout of tiles that scroll to each plugin's CARD on this page ('#plugin-<slug>'). The
+    trigger itself stays a working link to the plugins SECTION ('#plugins'), so clicking it scrolls
+    there exactly as the old plain link did (a pure-CSS progressive enhancement). The menu is
+    left-aligned ('.nav-switcher-start') because 'Plugins' is the first nav item, so it opens to the
+    right of the trigger. Tile labels come from PLUGIN_DISPLAY_NAMES; the per-plugin icon is shown
+    only for a plugin that has its own page (and thus a committed brand SVG) so a link never 404s."""
+    tiles = []
+    for plugin in manifest.get("plugins", []):
+        name = plugin.get("name", "")
+        if not name:
+            continue
+        label = PLUGIN_DISPLAY_NAMES.get(name, name)
+        category = plugin.get("category", "")
+        href = "#plugin-" + _slug_id(name)
+        sub = ('<span class="switch-tile-sub">%s</span>' % esc(category)) if category else ""
+        if name in PLUGIN_PAGES:
+            icon = esc(safe_url("assets/" + name + ".svg"))
+            icon_html = '<img class="switch-tile-icon" src="%s" alt="%s logo" />' % (icon, esc(label))
+        else:
+            icon_html = ""
+        tiles.append(
+            '<a class="switch-tile" href="%s">'
+            '%s'
+            '<span class="switch-tile-text"><span class="switch-tile-name">%s</span>%s</span>'
+            '</a>' % (esc(href), icon_html, esc(label), sub))
+    if not tiles:
+        return '<a href="#plugins">Plugins</a>'
+    tile_html = "\n      ".join(tiles)
+    return (
+        '<div class="nav-switcher nav-switcher-start">\n'
+        '  <a class="nav-switcher-trigger" href="#plugins">%s<span>Plugins</span></a>\n'
+        '  <div class="nav-switcher-menu">\n'
+        '    <span class="nav-switcher-heading">Jump to plugin</span>\n'
+        '    %s\n'
+        '    <a class="switch-tile switch-tile-all" href="#plugins"><span class="switch-tile-text">'
+        '<span class="switch-tile-name">All plugins</span>'
+        '<span class="switch-tile-sub">View the full list</span></span></a>\n'
+        '  </div>\n'
+        '</div>'
+    ) % (_nav_grid_icon(), tile_html)
+
+
+def render_hero_pills(manifest):
+    """A row of hero pills under the CTAs, one per published plugin, each a link that scrolls to that
+    plugin's card ('#plugin-<slug>'), so a reader can jump straight to a specific plugin from the
+    top of the hub. Labels come from PLUGIN_DISPLAY_NAMES. Returns an empty string when there are no
+    plugins so the hero simply omits the row."""
+    pills = []
+    for plugin in manifest.get("plugins", []):
+        name = plugin.get("name", "")
+        if not name:
+            continue
+        label = PLUGIN_DISPLAY_NAMES.get(name, name)
+        href = "#plugin-" + _slug_id(name)
+        pills.append('<a class="hero-pill" href="%s">%s</a>' % (esc(href), esc(label)))
+    if not pills:
+        return ""
+    return ('<div class="hero-pills" aria-label="Jump to a plugin">\n      %s\n    </div>'
+            % "\n      ".join(pills))
 
 
 def _plugin_app_url(plugin):

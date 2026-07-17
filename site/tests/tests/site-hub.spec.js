@@ -127,3 +127,59 @@ test("the hub plugin cards are ordered commentable-html, multi-duck, then the au
     "urikan-ai-marketplace-auto-updater",
   ]);
 });
+
+
+test("each hub plugin card has a stable anchor id and clears the sticky nav (SITE-HUB-11)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // Every card carries id="plugin-<name>" so the nav dropdown and hero pills can target it.
+  await expect(page.locator("#plugin-commentable-html.plugin-card")).toHaveCount(1);
+  await expect(page.locator("#plugin-multi-duck.plugin-card")).toHaveCount(1);
+  await expect(page.locator("#plugin-urikan-ai-marketplace-auto-updater.plugin-card")).toHaveCount(1);
+  // scroll-margin-top keeps a jumped-to card from hiding under the sticky navbar.
+  const margin = await page.locator("#plugin-multi-duck").evaluate(
+    (el) => parseFloat(getComputedStyle(el).scrollMarginTop));
+  expect(margin).toBeGreaterThan(0);
+});
+
+
+test("the hub nav 'Plugins' is a dropdown that lists each plugin and scrolls to its card (SITE-NAV-02)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const trigger = page.locator(".nav-switcher-start .nav-switcher-trigger");
+  await expect(trigger).toHaveText(/Plugins/);
+  // Clicking the trigger still scrolls to the plugins section, exactly like the old plain link.
+  await expect(trigger).toHaveAttribute("href", "#plugins");
+  const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
+  // Hidden until the control is hovered or focused (progressive enhancement).
+  await expect(menu).toBeHidden();
+  await trigger.hover();
+  await expect(menu).toBeVisible();
+  // One tile per plugin, each scrolling to that plugin's card on the page.
+  await expect(menu.locator('a[href="#plugin-commentable-html"]')).toHaveCount(1);
+  await expect(menu.locator('a[href="#plugin-multi-duck"]')).toHaveCount(1);
+  await expect(menu.locator('a[href="#plugin-urikan-ai-marketplace-auto-updater"]')).toHaveCount(1);
+  // Clicking a tile jumps to that card.
+  await menu.locator('a[href="#plugin-multi-duck"]').click();
+  await expect(page).toHaveURL(/#plugin-multi-duck$/);
+  await expect(page.locator("#plugin-multi-duck")).toBeInViewport();
+});
+
+
+test("the hub nav 'Plugins' dropdown also reveals on keyboard focus (SITE-NAV-02)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const menu = page.locator(".nav-switcher-start .nav-switcher-menu");
+  await expect(menu).toBeHidden();
+  await page.locator(".nav-switcher-start .nav-switcher-trigger").focus();
+  await expect(menu).toBeVisible();
+});
+
+
+test("the hero shows a pill per plugin that scrolls to its card (SITE-HUB-12)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const pills = page.locator(".hero-pills .hero-pill");
+  expect(await pills.count()).toBe(3);
+  await expect(page.locator('.hero-pill[href="#plugin-commentable-html"]')).toBeVisible();
+  const updaterPill = page.locator('.hero-pill[href="#plugin-urikan-ai-marketplace-auto-updater"]');
+  await updaterPill.click();
+  await expect(page).toHaveURL(/#plugin-urikan-ai-marketplace-auto-updater$/);
+  await expect(page.locator("#plugin-urikan-ai-marketplace-auto-updater")).toBeInViewport();
+});
