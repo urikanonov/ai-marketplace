@@ -166,21 +166,26 @@ def render_plugins(manifest, claude_names=None):
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
         learn_more = ('<a class="btn learn-more" href="%s">Learn more</a>' % esc(page)) if page else ""
         foot = learn_more + source
+        actions = ('    <div class="foot">%s</div>\n' % foot) if foot else ""
         card = (
             '<article class="card plugin-card">\n'
             '  <div class="head">\n'
             '    %s\n'
             '    <span class="badge version">v%s</span>%s\n'
             '  </div>\n'
-            '  <p class="desc">%s</p>\n'
-            '  <div class="keywords">%s</div>\n'
-            '  <div class="foot">%s</div>\n'
+            '  <div class="body-row">\n'
+            '    <div class="body-main">\n'
+            '      <p class="desc">%s</p>\n'
+            '      <div class="keywords">%s</div>\n'
+            '    </div>\n'
+            '%s'
+            '  </div>\n'
             '  <div class="install">\n'
             '    %s\n'
             '  </div>\n'
             '</article>'
         ) % (title, esc(version), category_badge, esc(description), chips,
-             foot, install_block)
+             actions, install_block)
         cards.append(card)
     return "\n".join(cards)
 

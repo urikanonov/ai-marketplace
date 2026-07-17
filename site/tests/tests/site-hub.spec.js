@@ -79,7 +79,7 @@ test("the hub Learn more button uses the brand accent color, not yellow (SITE-HU
 
 
 
-test("the hub lays each plugin out as a full-width vertical-stack row (SITE-HUB-09)", async ({ page }) => {
+test("the hub lays each plugin out as a full-width row with the actions boxed beside the description (SITE-HUB-09)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const grid = page.locator("#plugins .grid");
@@ -95,17 +95,25 @@ test("the hub lays each plugin out as a full-width vertical-stack row (SITE-HUB-
   // Each card spans (nearly) the full grid width and the cards are stacked vertically.
   expect(firstBox.width).toBeGreaterThan(gridBox.width * 0.9);
   expect(secondBox.y).toBeGreaterThan(firstBox.y + firstBox.height - 5);
-  // The card content is a single vertical stack: description, then tags, then the Learn more/Source
-  // buttons, then the install section - each below the previous, not split into a second column.
+  // The card info is a vertical stack: description, then tags, then the install section - each below
+  // the previous and sharing the left edge, not split into a second install column off to the right.
   const desc = await first.locator(".desc").boundingBox();
   const keywords = await first.locator(".keywords").boundingBox();
   const foot = await first.locator(".foot").boundingBox();
   const install = await first.locator(".install").boundingBox();
   expect(keywords.y).toBeGreaterThan(desc.y + desc.height - 5);
-  expect(foot.y).toBeGreaterThan(keywords.y + keywords.height - 5);
-  expect(install.y).toBeGreaterThan(foot.y + foot.height - 5);
-  // The install block is stacked below (shares the left edge with), not off to the right of, the info.
+  expect(install.y).toBeGreaterThan(keywords.y + keywords.height - 5);
   expect(install.x).toBeLessThan(desc.x + 5);
+  // The Learn more/Source actions no longer stack below the tags: they sit in a bordered box to the
+  // RIGHT of the description, using the space the capped-width description leaves on a full-width row.
+  expect(foot.x).toBeGreaterThanOrEqual(desc.x + desc.width);
+  expect(foot.y).toBeLessThan(desc.y + desc.height);
+  const footEl = first.locator(".foot");
+  const border = await footEl.evaluate((el) => parseFloat(getComputedStyle(el).borderTopWidth));
+  expect(border).toBeGreaterThan(0);
+  const bg = await footEl.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(bg).not.toBe("transparent");
 });
 
 
