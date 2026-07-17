@@ -1,8 +1,10 @@
 # Vendored upstream: frontend-slides
 
 This directory is a **pristine, curated subset** of the third-party `frontend-slides` skill,
-vendored into the commentable-html skill to power its built-in deck capability. Do not hand-edit
-these files; they are replaced wholesale on resync (see the sync playbook below).
+vendored into the commentable-html skill to power its built-in deck capability. The agent-only
+`bold-template-pack` reference is kept separately under
+`plugins/commentable-html/dev/vendor/frontend-slides/bold-template-pack/` so it is not shipped. Do
+not hand-edit these files; they are replaced wholesale on resync (see the sync playbook below).
 
 ## Provenance
 
@@ -16,9 +18,10 @@ these files; they are replaced wholesale on resync (see the sync playbook below)
 ## What is vendored (curated subset)
 
 - `viewport-base.css`, `html-template.md`, `animation-patterns.md`, `STYLE_PRESETS.md`
-- `bold-template-pack/` (all styles, plus `deck-stage.js` as inert reference only - it is NOT
-  emitted into generated decks)
 - `scripts/extract-pptx.py`
+
+The complete `bold-template-pack/`, including its own `LICENSE`, is vendored separately under
+`plugins/commentable-html/dev/vendor/frontend-slides/` as inert agent-only reference material.
 
 ## What is deliberately excluded (never vendored)
 
@@ -30,16 +33,18 @@ these files; they are replaced wholesale on resync (see the sync playbook below)
 
 ## Integrity
 
-- `MANIFEST.sha256` records the SHA-256 of every vendored file. The required CI check
-  `dev/tools/check_vendor.py` fails on any unknown, changed, removed, or denylisted file (for
-  example a resync that reintroduces `deploy.sh`).
+- This directory's `MANIFEST.sha256` records the SHA-256 of every shipped vendored file. The
+  relocated pack has its own
+  `plugins/commentable-html/dev/vendor/frontend-slides/bold-template-pack/MANIFEST.sha256`. The
+  required CI check `dev/tools/check_vendor.py` verifies both and fails on any unknown, changed,
+  removed, or denylisted file (for example a resync that reintroduces `deploy.sh`).
 
 ## Resync
 
 See `dev/frontend-slides-upstream-sync.md`. In short: fetch upstream, re-run the security scan on
-the new commit, diff against this commit, re-vendor the curated subset (exclusions preserved),
-run `python dev/tools/check_vendor.py --update`, update this file's commit + the site credit +
-CHANGELOG, bump the plugin version, and run the validators.
+the new commit, diff against this commit, re-vendor the shipped subset and the dev-only pack
+(exclusions preserved), run `python dev/tools/check_vendor.py --update`, update this file's commit
++ the site credit + CHANGELOG, bump the plugin version, and run the validators.
 
 ## Native deck theme presets (adapted, not vendored)
 
@@ -73,13 +78,14 @@ CI gate keyed on each preset's `sourceCommit`.
 
 ### Licensing note: bold-template-pack
 
-The vendored `bold-template-pack/` originates from `zarazhangrui/beautiful-html-templates` (a DIFFERENT
-upstream repo than frontend-slides), as declared by `bold-template-pack/selection-index.json`
+The dev-only `bold-template-pack/` originates from `zarazhangrui/beautiful-html-templates` (a
+DIFFERENT upstream repo than frontend-slides), as declared by
+`plugins/commentable-html/dev/vendor/frontend-slides/bold-template-pack/selection-index.json`
 (`source_repo`). Its license has been independently verified:
 
 - Upstream repo: https://github.com/zarazhangrui/beautiful-html-templates
 - Author: Zara Zhang (https://github.com/zarazhangrui)
-- License: MIT - Copyright (c) 2026 Zara Zhang (kept verbatim as `bold-template-pack/LICENSE`)
+- License: MIT - Copyright (c) 2026 Zara Zhang (kept verbatim in the pack as `LICENSE`)
 - Verified commit: `e5e204fb1f3b06290846e7dcd7aceddabeceec8c` (2026-06-09)
 
 Both frontend-slides and beautiful-html-templates are MIT by the same author, so the top-level

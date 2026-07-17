@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for dev/tools/check_vendor.py (CMH-DECK-07).
 
-The vendor gate must pass on the real pristine subtree and fail closed on drift: a changed file,
+The vendor gate must pass on both real pristine subtrees and fail closed on drift: a changed file,
 an unknown extra file, a removed file, and a reintroduced denylisted file (deploy.sh) or a
 .claude-plugin/ dir. Written as unittest so CI's `unittest discover` gates it.
 """
@@ -13,6 +13,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
@@ -21,6 +22,7 @@ sys.path.insert(0, _paths.DEV_TOOLS)
 import check_vendor  # noqa: E402
 
 REAL_VENDOR = check_vendor.VENDOR_DIR
+REAL_DEV_PACK = check_vendor.DEV_VENDOR_DIR
 
 
 def _run(vendor_dir, update=False):
@@ -31,17 +33,36 @@ def _run(vendor_dir, update=False):
 
 
 class CheckVendorTests(unittest.TestCase):
-    def test_real_vendor_matches_manifest(self):
-        code, _ = _run(REAL_VENDOR)
-        self.assertEqual(code, 0)
+    def test_real_split_vendor_trees_match_manifests(self):
+        self.assertEqual(_run(REAL_VENDOR)[0], 0)
+        self.assertEqual(_run(REAL_DEV_PACK)[0], 0)
 
-    def _copy(self):
+    def test_pkg_manifest_excludes_bold_template_pack(self):
+        self.assertFalse((REAL_VENDOR / "bold-template-pack").exists())
+        manifest = (REAL_VENDOR / "MANIFEST.sha256").read_text(encoding="utf-8")
+        self.assertNotIn("bold-template-pack/", manifest)
+
+    def _copy(self, source=REAL_VENDOR):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
-        dst = Path(tmp) / "frontend-slides"
-        shutil.copytree(REAL_VENDOR, dst)
+        dst = Path(tmp) / source.name
+        shutil.copytree(source, dst)
         self.assertEqual(_run(dst)[0], 0)  # sanity: the copy is clean
         return dst
+
+    def test_default_cli_verifies_dev_pack_drift(self):
+        vendor = self._copy()
+        dev_pack = self._copy(REAL_DEV_PACK)
+        with (
+            mock.patch.object(check_vendor, "VENDOR_DIR", vendor),
+            mock.patch.object(check_vendor, "DEV_VENDOR_DIR", dev_pack),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(check_vendor.main([]), 0)
+            target = dev_pack / "LICENSE"
+            target.write_text(target.read_text(encoding="utf-8") + "\ntamper\n", encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(check_vendor.main([]), 1)
 
     def test_changed_file_fails(self):
         d = self._copy()
@@ -53,10 +74,10 @@ class CheckVendorTests(unittest.TestCase):
 
     def test_unknown_file_fails(self):
         d = self._copy()
-        (d / "bold-template-pack" / "sneaky.js").write_text("evil()", encoding="utf-8")
+        (d / "sneaky.js").write_text("evil()", encoding="utf-8")
         code, err = _run(d)
         self.assertEqual(code, 1)
-        self.assertIn("UNKNOWN bold-template-pack/sneaky.js", err)
+        self.assertIn("UNKNOWN sneaky.js", err)
 
     def test_removed_file_fails(self):
         d = self._copy()
@@ -84,11 +105,10 @@ class CheckVendorTests(unittest.TestCase):
 
     def test_update_regenerates_manifest(self):
         d = self._copy()
-        (d / "bold-template-pack" / "new-style.css").write_text("body{}", encoding="utf-8")
+        (d / "new-style.css").write_text("body{}", encoding="utf-8")
         self.assertEqual(_run(d)[0], 1)              # unknown before update
         self.assertEqual(_run(d, update=True)[0], 0)  # regenerate
         self.assertEqual(_run(d)[0], 0)              # accepted after update
-
 
     def test_no_manifest_fails(self):
         d = self._copy()
@@ -108,7 +128,7 @@ class CheckVendorTests(unittest.TestCase):
         d = self._copy()
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(check_vendor.main(["--vendor-dir", str(d)]), 0)
-        (d / "bold-template-pack" / "x.css").write_text("body{}", encoding="utf-8")
+        (d / "x.css").write_text("body{}", encoding="utf-8")
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(check_vendor.main(["--vendor-dir", str(d)]), 1)
         with contextlib.redirect_stdout(io.StringIO()):
