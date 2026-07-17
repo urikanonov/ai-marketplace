@@ -67,6 +67,37 @@ function Get-Throttle([string]$copilotHome) {
     return Join-Path (Join-Path $copilotHome "plugin-data") "$self.last-run"
 }
 
+# --- Cadence helpers (the configurable per-agent update interval read by the throttle) ---
+
+function Get-CadenceFile([string]$copilotHome) {
+    return Join-Path (Join-Path $copilotHome "plugin-data") "$self.cadence"
+}
+
+function Set-CadenceFile([string]$copilotHome, [double]$hours, [string]$label) {
+    $f = Get-CadenceFile $copilotHome
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $f) | Out-Null
+    (@{ cadence = $label; hours = $hours } | ConvertTo-Json -Compress) | Set-Content -Path $f -Encoding utf8
+}
+
+function Set-Stamp([string]$copilotHome, [double]$hoursAgo) {
+    $stamp = Get-Throttle $copilotHome
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stamp) | Out-Null
+    ([datetimeoffset]::Now.AddHours(-$hoursAgo)).ToString("o") | Set-Content -Path $stamp -Encoding utf8
+}
+
+function Invoke-CadenceMode([string]$copilotHome, [hashtable]$params) {
+    $savedPath = $env:PATH
+    $savedHome = $env:COPILOT_HOME
+    try {
+        $env:PATH = ""
+        $env:COPILOT_HOME = $copilotHome
+        return (& $hookScript @params 2>&1 | Out-String)
+    } finally {
+        $env:PATH = $savedPath
+        if ($null -eq $savedHome) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $savedHome }
+    }
+}
+
 # --- Claude-branch helpers (Agent=claude reads settings.json enabledPlugins under CLAUDE_CONFIG_DIR) ---
 
 function New-ClaudeSandbox([hashtable]$enabledPlugins) {
@@ -339,6 +370,134 @@ try {
     $body = Get-Content -Path $ps1 -Raw
     Assert-True ($body -match "pass complete") "UPD-16: a completed pass is written to the log (not only failures/skips)"
 } catch { $script:failures += "UPD-16 threw: $_" }
+
+Write-Host "== UPD-17 configurable cadence drives the throttle (default 24h) =="
+try {
+    # A small configured cadence lets a recent-but-older-than-cadence pass run.
+    Reset-Mock
+    $h17a = New-Sandbox -plugins @("alpha")
+    Set-CadenceFile $h17a 1 "1h"
+    Set-Stamp $h17a 2
+    Invoke-Hook $h17a
+    Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-17: a 1h cadence runs when the last pass was 2h ago"
+
+    # A large configured cadence throttles a pass that a shorter default would have allowed.
+    Reset-Mock
+    $h17b = New-Sandbox -plugins @("alpha")
+    Set-CadenceFile $h17b 48 "48h"
+    Set-Stamp $h17b 30
+    Invoke-Hook $h17b
+    Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-17: a 48h cadence throttles a pass 30h ago"
+    Assert-True ((Get-Log $h17b) -like "*throttle 48h*") "UPD-17: the configured cadence is used in the throttle log"
+
+    # No cadence file -> default 24h: a 22h-old stamp is still throttled (would run under the old 20h).
+    Reset-Mock
+    $h17c = New-Sandbox -plugins @("alpha")
+    Set-Stamp $h17c 22
+    Invoke-Hook $h17c
+    Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-17: the default cadence is 24h (a 22h-old pass is throttled)"
+    Remove-Item -Recurse -Force $h17a, $h17b, $h17c
+} catch { $script:failures += "UPD-17 threw: $_" }
+
+Write-Host "== UPD-18 'each session' cadence disables the throttle =="
+try {
+    Reset-Mock
+    $h18 = New-Sandbox -plugins @("alpha")
+    Set-CadenceFile $h18 0 "session"
+    Set-Stamp $h18 0            # stamped just now
+    Invoke-Hook $h18
+    Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-18: a session cadence runs even with a fresh stamp"
+    Assert-True (-not ((Get-Log $h18) -like "*skipping auto-update*")) "UPD-18: no throttle-skip is logged under a session cadence"
+    Remove-Item -Recurse -Force $h18
+} catch { $script:failures += "UPD-18 threw: $_" }
+
+Write-Host "== UPD-19 -SetCadence persists the choice without running updates =="
+try {
+    # 24h
+    Reset-Mock
+    $h19 = New-Sandbox -plugins @("alpha")
+    $out = Invoke-CadenceMode $h19 @{ SetCadence = "24h" }
+    Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-19: -SetCadence does not run any plugin updates"
+    $cf = Get-CadenceFile $h19
+    Assert-True (Test-Path $cf) "UPD-19: -SetCadence writes the cadence file"
+    $cj = (Get-Content -Raw $cf) | ConvertFrom-Json
+    Assert-True (([double]$cj.hours) -eq 24 -and $cj.cadence -eq "24h") "UPD-19: 24h persists hours=24"
+    Assert-True ($out -like "*cadence set to 24h*") "UPD-19: -SetCadence confirms the new cadence"
+
+    # session / 1h / custom numeric normalization
+    Reset-Mock; $h19b = New-Sandbox -plugins @("alpha"); Invoke-CadenceMode $h19b @{ SetCadence = "session" } | Out-Null
+    $cj = (Get-Content -Raw (Get-CadenceFile $h19b)) | ConvertFrom-Json
+    Assert-True (([double]$cj.hours) -eq 0 -and $cj.cadence -eq "session") "UPD-19: 'session' persists hours=0"
+
+    Reset-Mock; $h19c = New-Sandbox -plugins @("alpha"); Invoke-CadenceMode $h19c @{ SetCadence = "1h" } | Out-Null
+    $cj = (Get-Content -Raw (Get-CadenceFile $h19c)) | ConvertFrom-Json
+    Assert-True (([double]$cj.hours) -eq 1 -and $cj.cadence -eq "1h") "UPD-19: '1h' persists hours=1"
+
+    Reset-Mock; $h19d = New-Sandbox -plugins @("alpha"); Invoke-CadenceMode $h19d @{ SetCadence = "6" } | Out-Null
+    $cj = (Get-Content -Raw (Get-CadenceFile $h19d)) | ConvertFrom-Json
+    Assert-True (([double]$cj.hours) -eq 6 -and $cj.cadence -eq "6h") "UPD-19: a bare custom number '6' persists hours=6 (6h)"
+
+    # invalid value is rejected without writing a cadence file
+    Reset-Mock; $h19e = New-Sandbox -plugins @("alpha")
+    $outBad = Invoke-CadenceMode $h19e @{ SetCadence = "nonsense" }
+    Assert-True (-not (Test-Path (Get-CadenceFile $h19e))) "UPD-19: an invalid cadence is not persisted"
+    Assert-True ($outBad -like "*invalid cadence*") "UPD-19: an invalid cadence is reported"
+    Remove-Item -Recurse -Force $h19, $h19b, $h19c, $h19d, $h19e
+} catch { $script:failures += "UPD-19 threw: $_" }
+
+Write-Host "== UPD-20 -ShowCadence reports the current or default cadence =="
+try {
+    Reset-Mock
+    $h20 = New-Sandbox -plugins @("alpha")
+    $outDefault = Invoke-CadenceMode $h20 @{ ShowCadence = $true }
+    Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-20: -ShowCadence runs no updates"
+    Assert-True ($outDefault -like "*hours=24*" -and $outDefault -like "*source=default*") "UPD-20: with no config the default (24h) is reported"
+    Invoke-CadenceMode $h20 @{ SetCadence = "1h" } | Out-Null
+    $outSet = Invoke-CadenceMode $h20 @{ ShowCadence = $true }
+    Assert-True ($outSet -like "*hours=1*" -and $outSet -like "*source=configured*") "UPD-20: after setting, the configured cadence is reported"
+    Remove-Item -Recurse -Force $h20
+} catch { $script:failures += "UPD-20 threw: $_" }
+
+Write-Host "== UPD-21 update-schedule cadence skill =="
+try {
+    $skillMd = Join-Path (Join-Path (Join-Path $pkgRoot "skills") "update-schedule") "SKILL.md"
+    Assert-True (Test-Path $skillMd) "UPD-21: update-schedule SKILL.md ships"
+    $skill = Get-Content -Path $skillMd -Raw
+    Assert-True ($skill -match "(?m)^name:\s*update-schedule\s*$") "UPD-21: SKILL.md front matter name is update-schedule"
+    Assert-True ($skill -match "(?m)^description:\s*\S") "UPD-21: SKILL.md front matter has a non-empty description"
+    Assert-True ($skill -match "change update (schedule|cadence|frequency)") "UPD-21: skill triggers on 'change update schedule/cadence/frequency'"
+    Assert-True ($skill -like "*each session*" -and $skill -like "*24*" -and $skill -like "*custom*") "UPD-21: skill offers the four-way choice including a custom interval"
+    Assert-True ($skill -like "*-SetCadence*") "UPD-21: skill persists the choice via the hook's -SetCadence mode"
+    # front matter must carry only loader-safe keys (name/description) so the skill is not dropped
+    $fm = if ($skill -match "(?s)^---\r?\n(.*?)\r?\n---") { $Matches[1] } else { "" }
+    $fmKeys = @(($fm -split "\r?\n") | ForEach-Object { if ($_ -match "^([A-Za-z0-9_-]+):") { $Matches[1] } } | Where-Object { $_ })
+    Assert-True ((@($fmKeys | Where-Object { $_ -notin @("name", "description") })).Count -eq 0) "UPD-21: SKILL.md front matter has only name/description keys"
+} catch { $script:failures += "UPD-21 threw: $_" }
+
+Write-Host "== UPD-22 cadence is per-agent (Claude cadence file is independent) =="
+try {
+    Reset-ClaudeMock
+    $c22 = New-ClaudeSandbox @{ "commentable-html@$marketplace" = $true }
+    # set the Claude cadence to 'each session'
+    $savedPath = $env:PATH; $savedHome = $env:CLAUDE_CONFIG_DIR
+    try {
+        $env:PATH = ""; $env:CLAUDE_CONFIG_DIR = $c22
+        & $hookScript -Agent claude -SetCadence session 2>&1 | Out-Null
+    } finally {
+        $env:PATH = $savedPath
+        if ($null -eq $savedHome) { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue } else { $env:CLAUDE_CONFIG_DIR = $savedHome }
+    }
+    $claudeCadence = Join-Path (Join-Path $c22 "plugin-data") "$self.claude.cadence"
+    $copilotCadence = Join-Path (Join-Path $c22 "plugin-data") "$self.cadence"
+    Assert-True (Test-Path $claudeCadence) "UPD-22: Claude -SetCadence writes the claude-scoped cadence file"
+    Assert-True (-not (Test-Path $copilotCadence)) "UPD-22: the Copilot cadence file is not written under -Agent claude"
+    # a fresh Claude throttle stamp is ignored because the cadence is 'each session'
+    $stamp = Join-Path (Join-Path $c22 "plugin-data") "$self.claude.last-run"
+    ([datetimeoffset]::Now).ToString("o") | Set-Content -Path $stamp -Encoding utf8
+    Invoke-ClaudeHook $c22
+    Assert-True ($global:ClaudeCalls.Count -eq 1) "UPD-22: a session cadence runs the Claude pass despite a fresh stamp"
+    Remove-Item -Recurse -Force $c22
+} catch { $script:failures += "UPD-22 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue

@@ -4,6 +4,24 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-17
+
+### Added
+
+- Configurable update cadence: you choose how often the auto-updater checks for updates - each session,
+  every 1 hour, every 24 hours (the default), or a custom number of hours - and can change it any time
+  in free text (for example "change update schedule"). The choice is persisted per agent in a
+  `plugin-data` cadence file and read by the session-start hook as its throttle interval; an "each
+  session" cadence disables the throttle so the pass runs on every session start. The shared
+  `marketplace-update.ps1` gains `-SetCadence <session|1h|24h|Nh>` (persist, no updates) and
+  `-ShowCadence` (report current/default) modes, and a new agent-agnostic `update-schedule` skill asks
+  the four-way choice and persists it. (UPD-17, UPD-18, UPD-19, UPD-20, UPD-21, UPD-22)
+
+### Changed
+
+- The default session-start throttle is now 24 hours (previously ~20 hours), matching the default
+  cadence. (UPD-08)
+
 ## [1.2.3] - 2026-07-15
 
 ### Fixed
