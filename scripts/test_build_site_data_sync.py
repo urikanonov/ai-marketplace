@@ -20,6 +20,46 @@ class SkillZipTests(unittest.TestCase):
     def _descriptor(self, skill_rel):
         return [{"skill_dir": skill_rel, "skill": "demo", "zip": "skills/demo.zip"}]
 
+    def _make_skill_bytes(self, root, text_eol=b"\n"):
+        """A skill dir written with EXPLICIT byte line endings (bypassing Python's text-mode newline
+        translation): SKILL.md and a text file use `text_eol`, plus a binary asset carrying a NUL
+        byte and literal CR/LF bytes that must survive verbatim. Not a git repo, so
+        build_skill_zip_members exercises the filtered-walk fallback that reads working-tree bytes."""
+        skill_rel = "plugins/demo/pkg/skills/demo"
+        skill_dir = os.path.join(root, skill_rel.replace("/", os.sep))
+        os.makedirs(skill_dir, exist_ok=True)
+
+        def w(rel, data):
+            with open(os.path.join(skill_dir, rel.replace("/", os.sep)), "wb") as fh:
+                fh.write(data)
+
+        eol = text_eol
+        w("SKILL.md", b"---" + eol + b"name: demo" + eol + b"description: d" + eol + b"---" + eol + b"# Demo" + eol)
+        w("notes.md", b"line one" + eol + b"line two" + eol)
+        w("logo.png", b"\x89PNG\x00\r\ndata\x00\r\n")
+        return skill_rel
+
+    def test_text_members_are_line_ending_normalized_for_cross_platform_determinism(self):
+        # A CRLF checkout (for example Windows where eol=lf is not honored) must still yield LF text
+        # members so the committed ZIP is byte-identical to a Linux CI rebuild (SITE-BUILD-16).
+        with tempfile.TemporaryDirectory() as root:
+            skill_rel = self._make_skill_bytes(root, text_eol=b"\r\n")
+            members = dict(bsd.build_skill_zip_members(root, skill_rel, "demo"))
+            self.assertNotIn(b"\r", members["demo/SKILL.md"])
+            self.assertNotIn(b"\r", members["demo/notes.md"])
+            # The binary asset is left byte-for-byte: its CR/LF/NUL bytes are data, not line endings.
+            self.assertEqual(members["demo/logo.png"], b"\x89PNG\x00\r\ndata\x00\r\n")
+
+    def test_zip_bytes_identical_from_crlf_and_lf_checkouts(self):
+        # The whole skill ZIP is byte-reproducible regardless of the checkout's line-ending config,
+        # so the required `site` --check gate cannot fail merely because a commit was built off-Linux.
+        with tempfile.TemporaryDirectory() as lf_root, tempfile.TemporaryDirectory() as crlf_root:
+            lf_rel = self._make_skill_bytes(lf_root, text_eol=b"\n")
+            crlf_rel = self._make_skill_bytes(crlf_root, text_eol=b"\r\n")
+            lf_zip = bsd._skill_zip_bytes(bsd.build_skill_zip_members(lf_root, lf_rel, "demo"))
+            crlf_zip = bsd._skill_zip_bytes(bsd.build_skill_zip_members(crlf_root, crlf_rel, "demo"))
+            self.assertEqual(lf_zip, crlf_zip)
+
     def test_members_have_top_level_skill_folder_with_skill_md(self):
         with tempfile.TemporaryDirectory() as root:
             skill_rel = self._make_skill(root)
