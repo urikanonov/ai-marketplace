@@ -3,7 +3,7 @@ function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
   if (!btn) return;
   const open = document.body.classList.contains("sidebar-open");
-  btn.textContent = open ? "Hide" : "Show";
+  btn.textContent = open ? "Hide" : "Comments";
   btn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 function _syncSidebarInert() {

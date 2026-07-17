@@ -132,7 +132,7 @@ test.describe("attribution footer + Show affordance", () => {
     expect(out).not.toContain("Copy Copilot session id");
   });
 
-  test("the overflow-menu Show button reopens the panel", async ({ page }) => {
+  test("the overflow-menu Comments button reopens the panel", async ({ page }) => {
     await openInline(page);
     // Ensure the panel is closed first (the toolbar toggle is hidden while it is open).
     if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
@@ -144,14 +144,14 @@ test.describe("attribution footer + Show affordance", () => {
     await expect(page.locator("body")).toHaveClass(/sidebar-open/);
   });
 
-  test("the collapsed toolbar toggle reads Show and gets a filled bubble", async ({ page }) => {
+  test("the collapsed toolbar toggle reads Comments and gets a filled bubble", async ({ page }) => {
     await openInline(page);
     if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
       await page.click("#btnCloseSidebar");
     }
     const toggle = page.locator("#btnToggleSidebar");
-    await expect(toggle).toHaveText("Show");
-    // Collapsed Show button is filled (a non-transparent background) so it stands out.
+    await expect(toggle).toHaveText("Comments");
+    // Collapsed reopen button is filled (a non-transparent background) so it stands out.
     const bg = await toggle.evaluate(el => getComputedStyle(el).backgroundColor);
     expect(bg).not.toBe("rgba(0, 0, 0, 0)");
     expect(bg).not.toBe("transparent");

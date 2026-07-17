@@ -133,8 +133,10 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
   test("the sidebar minimum width keeps every action button label legible (CMH-SIDE-06)", async ({ page }) => {
     // The resize floor is 256px - the empirically measured minimum at which the two-per-row export
     // button labels ("Portable", "Offline", "Markdown", "Plain HTML") and Copy all stay fully shown
-    // (below ~240px they clip). The same floor applies on wide and narrow viewports.
-    for (const vw of [1400, 640]) {
+    // (below ~240px they clip). The same floor applies on wide and narrow viewports. Below the 640px
+    // phone breakpoint the sidebar is instead a non-resizable full-width sheet (CMH-RESP-04), so the
+    // narrow-viewport case uses 700px, where the panel is still a resizable side panel.
+    for (const vw of [1400, 700]) {
       await page.setViewportSize({ width: vw, height: 800 });
       await openKitchenSink(page);
       await openSidebarPanel(page);

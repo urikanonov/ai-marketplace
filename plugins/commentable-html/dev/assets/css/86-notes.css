@@ -104,3 +104,14 @@
   -webkit-box-orient: vertical;
 }
 .cm-card-note .cmh-note-arrow { color: var(--cp-text-soft); }
+
+/* On phones the compact note controls keep their small glyphs but expose a >=44px
+   touch target (the fold via an overlaid pseudo-element, the toggle via min-height). */
+@media (max-width: 640px) {
+  #commentRoot .cmh-note-fold { position: relative; }
+  #commentRoot .cmh-note-fold::after {
+    content: ""; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+  #commentRoot .cmh-note-toggle { min-height: 44px; }
+}

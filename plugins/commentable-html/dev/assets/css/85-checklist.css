@@ -23,6 +23,24 @@
 #commentRoot table.cmh-checklist td .cmh-check { margin-right: 0; }
 #commentRoot table.cmh-checklist.cmh-checklist-ready td:first-child { width: 1.8rem; text-align: center; }
 
+/* On touch/narrow screens the compact state control keeps its small glyph but gets a
+   >=44px invisible tap target (an overlaid pseudo-element), so it is comfortable to hit
+   without enlarging the visible icon or disturbing dense rows/nested lists. */
+@media (max-width: 640px) {
+  .cmh-check { position: relative; }
+  .cmh-check::after {
+    content: ""; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+  /* Give dense checklist rows enough vertical rhythm that neighbouring 44px tap
+     targets do not overlap into each other. */
+  #commentRoot li.cmh-check-item { margin-block: 0.4rem; }
+  /* Table-mode checklists have no list-item margin, so pad each row instead: this
+     keeps the row pitch at least ~44px so the vertically centred tap overlays map to
+     their own row and cannot steal a neighbouring row's hit area. */
+  #commentRoot table.cmh-checklist.cmh-checklist-ready td { padding-block: 0.75rem; }
+}
+
 /* Jump-flash when a change card's jump button targets a checklist. */
 @keyframes cmh-check-flash-kf { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px var(--cp-accent-soft); } }
 #commentRoot .cmh-check-flash { animation: cmh-check-flash-kf 0.7s ease-in-out 2; border-radius: 8px; }

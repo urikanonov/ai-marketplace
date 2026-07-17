@@ -15,6 +15,27 @@ function captureContext(start, end, range) {
   });
   let total = 0, full = "";
   const headings = [];
+  // Display-only block boundaries: char offsets in `full` where the text crosses
+  // into a different non-inline "box" (a heading, list item, table cell, stat
+  // block, ...). Used ONLY to space out the before/after context preview so it
+  // does not read as a run-on ("18open incidents"); `full` (the char-offset space
+  // the comment anchoring depends on) is left untouched.
+  const boundaries = new Set();
+  const boxCache = new Map();
+  const boxOf = (node) => {
+    let el = node.parentElement;
+    if (el && boxCache.has(el)) return boxCache.get(el);
+    const from = el;
+    while (el && el !== root) {
+      const d = getComputedStyle(el).display;
+      if (d && d !== "inline" && d !== "contents") break;
+      el = el.parentElement;
+    }
+    const box = el || root;
+    if (from) boxCache.set(from, box);
+    return box;
+  };
+  let prevBox = null;
   let n;
   while ((n = walker.nextNode())) {
     if (n.nodeType === 1) {
@@ -25,11 +46,24 @@ function captureContext(start, end, range) {
       });
       continue;
     }
+    const box = boxOf(n);
+    if (prevBox && box !== prevBox && full.length > 0 && !/\s$/.test(full) && !/^\s/.test(n.nodeValue)) {
+      boundaries.add(full.length);
+    }
+    prevBox = box;
     full += n.nodeValue;
     total += n.nodeValue.length;
   }
-  const beforeRaw = full.slice(Math.max(0, start - CTX_PAD), start);
-  const afterRaw  = full.slice(end, Math.min(full.length, end + CTX_PAD));
+  const withSeparators = (from, to) => {
+    let out = "";
+    for (let i = from; i < to; i++) {
+      if (i > from && boundaries.has(i)) out += " ";
+      out += full[i];
+    }
+    return out;
+  };
+  const beforeRaw = withSeparators(Math.max(0, start - CTX_PAD), start);
+  const afterRaw  = withSeparators(end, Math.min(full.length, end + CTX_PAD));
   const before = (start > CTX_PAD ? "..." : "") + beforeRaw.replace(/\s+/g, " ").trimStart();
   const after  = afterRaw.replace(/\s+/g, " ").trimEnd() + (end + CTX_PAD < full.length ? "..." : "");
 

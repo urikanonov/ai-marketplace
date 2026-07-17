@@ -64,8 +64,10 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 @media (max-width: 480px) {
+  /* Keep wide mermaid diagrams legible (they scroll inside their box), but do NOT
+     force charts to 560px - that clipped small pie/doughnut charts and pushed their
+     legend off-screen. A responsive Chart.js canvas fits the viewport on its own. */
   #commentRoot pre.mermaid svg { min-width: 560px; }
-  #commentRoot figure.chart > .chart-wrap { min-width: 560px; max-width: none; }
 }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */

@@ -233,6 +233,19 @@ body.cm-sidebar-resizing .cm-sidebar { transition: none; }
    offers is present in the panel header, so there is no reason to keep a pill
    hovering over the document content. It returns when the panel is closed. */
 body.sidebar-open .cm-toolbar { display: none; }
+
+/* Mobile chrome polish (visual-audit findings):
+   - Reserve space under the fixed toolbar so a flush page title is never drawn
+     beneath the pill (only affects a title that sits at the very top).
+   - Open the comments panel as a full-width sheet (no unreadable document sliver
+     behind it) and drop the resize handle, which is meaningless at full width. */
+@media (max-width: 700px) {
+  body #commentRoot:not([data-cmh-mode="deck"]) > :first-child { margin-top: 3.2rem; }
+}
+@media (max-width: 640px) {
+  .cm-sidebar { width: 100%; min-width: 100%; max-width: 100%; }
+  .cm-sidebar-resize { display: none; }
+}
 /* === Layout recipe (centered max-width). Swap as needed. === */
 body.sidebar-open .app { padding-right: 1.5rem; }
 @media (min-width: 1100px) {
@@ -476,7 +489,9 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   min-width: 2.6rem; text-align: center; pointer-events: none;
 }
 body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) + 1rem); }
-@media (max-width: 700px) { body.sidebar-open .cm-scroll-progress { right: 1rem; } }
+/* On narrow screens the bubble floats over body content (and the full-width sidebar
+   sheet), so hide it there - the scroll bar is already the position cue on mobile. */
+@media (max-width: 700px) { .cm-scroll-progress { display: none; } }
 /* Collapsed: shrink to a single clear chevron box (the >> expand affordance). */
 .cm-side-toc.is-collapsed { width: auto; padding: 0.25rem; }
 .cm-side-toc.is-collapsed .cm-side-toc-head { margin-bottom: 0; }
@@ -630,6 +645,12 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-card .meta button { background: transparent; border: none; color: var(--cp-text-soft); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-size: var(--cp-chrome-small-font); }
 .cm-card .meta button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cm-card .meta button.del:hover { background: rgba(220, 38, 38, 0.12); color: var(--cp-danger); }
+
+/* On phones the card action buttons (jump/edit/delete) get a comfortable >=44px
+   touch height without changing their compact look on desktop. */
+@media (max-width: 640px) {
+  .cm-card .meta .acts button { min-height: 44px; padding: 0.4rem 0.7rem; }
+}
 
 .cm-menu { position: fixed; z-index: 200; }
 
@@ -1198,8 +1219,10 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 @media (max-width: 480px) {
+  /* Keep wide mermaid diagrams legible (they scroll inside their box), but do NOT
+     force charts to 560px - that clipped small pie/doughnut charts and pushed their
+     legend off-screen. A responsive Chart.js canvas fits the viewport on its own. */
   #commentRoot pre.mermaid svg { min-width: 560px; }
-  #commentRoot figure.chart > .chart-wrap { min-width: 560px; max-width: none; }
 }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */
@@ -1279,6 +1302,24 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
 .cmh-check svg { display: block; }
 #commentRoot table.cmh-checklist td .cmh-check { margin-right: 0; }
 #commentRoot table.cmh-checklist.cmh-checklist-ready td:first-child { width: 1.8rem; text-align: center; }
+
+/* On touch/narrow screens the compact state control keeps its small glyph but gets a
+   >=44px invisible tap target (an overlaid pseudo-element), so it is comfortable to hit
+   without enlarging the visible icon or disturbing dense rows/nested lists. */
+@media (max-width: 640px) {
+  .cmh-check { position: relative; }
+  .cmh-check::after {
+    content: ""; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+  /* Give dense checklist rows enough vertical rhythm that neighbouring 44px tap
+     targets do not overlap into each other. */
+  #commentRoot li.cmh-check-item { margin-block: 0.4rem; }
+  /* Table-mode checklists have no list-item margin, so pad each row instead: this
+     keeps the row pitch at least ~44px so the vertically centred tap overlays map to
+     their own row and cannot steal a neighbouring row's hit area. */
+  #commentRoot table.cmh-checklist.cmh-checklist-ready td { padding-block: 0.75rem; }
+}
 
 /* Jump-flash when a change card's jump button targets a checklist. */
 @keyframes cmh-check-flash-kf { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px var(--cp-accent-soft); } }
@@ -1396,6 +1437,17 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
   -webkit-box-orient: vertical;
 }
 .cm-card-note .cmh-note-arrow { color: var(--cp-text-soft); }
+
+/* On phones the compact note controls keep their small glyphs but expose a >=44px
+   touch target (the fold via an overlaid pseudo-element, the toggle via min-height). */
+@media (max-width: 640px) {
+  #commentRoot .cmh-note-fold { position: relative; }
+  #commentRoot .cmh-note-fold::after {
+    content: ""; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+  #commentRoot .cmh-note-toggle { min-height: 44px; }
+}
 /* Unvalidated-document fallback banner (CMH-STAMP-03): a small, dismissible amber strip shown when a
    document carries a created stamp but no current validated stamp. It is cm-skip chrome and never
    bakes into an export. A high z-index keeps it visible on a fixed-stage deck too. */
@@ -1680,7 +1732,8 @@ body.cmh-deck-present #menuComment {
   background: var(--cp-accent, #2ecc71);
   color: #000;
 }
-.cmh-deck-mode-toggle .cm-brand-icon {
+.cmh-deck-mode-toggle .cm-brand-icon,
+.cmh-deck-mode-toggle .cmh-deck-mode-icon {
   width: 20px;
   height: 20px;
 }
@@ -1730,8 +1783,8 @@ body.cmh-deck-present #menuComment {
   cursor: pointer;
 }
 .cmh-deck-nav button:disabled {
-  opacity: 0.55;
-  color: var(--cp-text-muted, #9aa0a6);
+  opacity: 0.9;
+  color: var(--cp-text-soft, #55606b);
   cursor: default;
 }
 .cmh-deck-nav button.cmh-deck-overview-on {

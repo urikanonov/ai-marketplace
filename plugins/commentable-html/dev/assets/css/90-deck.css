@@ -243,7 +243,8 @@ body.cmh-deck-present #menuComment {
   background: var(--cp-accent, #2ecc71);
   color: #000;
 }
-.cmh-deck-mode-toggle .cm-brand-icon {
+.cmh-deck-mode-toggle .cm-brand-icon,
+.cmh-deck-mode-toggle .cmh-deck-mode-icon {
   width: 20px;
   height: 20px;
 }
@@ -293,8 +294,8 @@ body.cmh-deck-present #menuComment {
   cursor: pointer;
 }
 .cmh-deck-nav button:disabled {
-  opacity: 0.55;
-  color: var(--cp-text-muted, #9aa0a6);
+  opacity: 0.9;
+  color: var(--cp-text-soft, #55606b);
   cursor: default;
 }
 .cmh-deck-nav button.cmh-deck-overview-on {

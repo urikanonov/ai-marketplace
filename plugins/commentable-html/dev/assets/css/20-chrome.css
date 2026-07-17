@@ -145,6 +145,12 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-card .meta button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cm-card .meta button.del:hover { background: rgba(220, 38, 38, 0.12); color: var(--cp-danger); }
 
+/* On phones the card action buttons (jump/edit/delete) get a comfortable >=44px
+   touch height without changing their compact look on desktop. */
+@media (max-width: 640px) {
+  .cm-card .meta .acts button { min-height: 44px; padding: 0.4rem 0.7rem; }
+}
+
 .cm-menu { position: fixed; z-index: 200; }
 
 /* Add-comment affordances: the text-selection menu button and the floating

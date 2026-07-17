@@ -380,14 +380,14 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#menuDocComment")).toBeVisible();
   });
 
-  test("CMH-DECK-11: comment-mode toggle uses the brand icon label and still toggles", async ({ page }) => {
+  test("CMH-DECK-11: comment-mode toggle uses a distinct annotate icon and still toggles", async ({ page }) => {
     await openDeck(page);
     const toggle = page.getByRole("button", { name: "Comment Mode" });
     await expect(toggle).toHaveAttribute("title", "Comment Mode");
     await expect(toggle).toHaveAttribute("aria-label", "Comment Mode");
-    await expect(toggle.locator("svg.cm-brand-icon")).toHaveCount(1);
-    await expect(toggle.locator("svg.cm-brand-icon")).toHaveAttribute("aria-hidden", "true");
-    await expect(toggle.locator("svg.cm-brand-icon")).not.toHaveAttribute("data-cmh-tip");
+    await expect(toggle.locator("svg.cmh-deck-mode-icon")).toHaveCount(1);
+    await expect(toggle.locator("svg.cmh-deck-mode-icon")).toHaveAttribute("aria-hidden", "true");
+    await expect(toggle.locator("svg.cmh-deck-mode-icon")).not.toHaveAttribute("data-cmh-tip");
     await expect(toggle).not.toHaveText(/Comment mode/i);
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
     await toggle.hover();

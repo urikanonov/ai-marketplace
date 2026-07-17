@@ -241,7 +241,9 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   min-width: 2.6rem; text-align: center; pointer-events: none;
 }
 body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) + 1rem); }
-@media (max-width: 700px) { body.sidebar-open .cm-scroll-progress { right: 1rem; } }
+/* On narrow screens the bubble floats over body content (and the full-width sidebar
+   sheet), so hide it there - the scroll bar is already the position cue on mobile. */
+@media (max-width: 700px) { .cm-scroll-progress { display: none; } }
 /* Collapsed: shrink to a single clear chevron box (the >> expand affordance). */
 .cm-side-toc.is-collapsed { width: auto; padding: 0.25rem; }
 .cm-side-toc.is-collapsed .cm-side-toc-head { margin-bottom: 0; }
