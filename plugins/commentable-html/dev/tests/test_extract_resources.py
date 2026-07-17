@@ -661,6 +661,21 @@ class ExtractResourcesTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(external),
                         "rmtree must not run (and traverse the junction) when unlink failed")
 
+    # CMH-PKG-08: if os.walk cannot scan a subtree (a junction could hide there unseen),
+    # _prune_nested_reparse must fail CLOSED (return False) so the caller never rmtree-traverses it.
+    def test_prune_nested_reparse_fails_closed_on_scan_error(self):
+        victim = os.path.join(self.tmp, "victim3")
+        os.makedirs(victim)
+
+        def _walk_with_error(p, topdown=True, onerror=None, followlinks=False):
+            if onerror is not None:
+                onerror(OSError("cannot scan directory"))
+            return iter(())  # yield nothing, as os.walk does when the top dir cannot be scanned
+
+        with unittest.mock.patch("os.walk", _walk_with_error):
+            self.assertFalse(extract_resources._prune_nested_reparse(victim),
+                             "an os.walk scan error must make prune fail closed (not clean)")
+
     # CMH-PKG-05: clear_markers sweeps a pid-suffixed .ok.<pid>.tmp leftover (not just .ok.tmp).
     def test_clear_markers_removes_pid_suffixed_tmp(self):
         tmp = self._marker("1.0.0") + ".98765.tmp"
@@ -731,8 +746,11 @@ class ExtractResourcesTests(unittest.TestCase):
                 raise PermissionError("restore locked")
             return real_replace(src, dst, *a, **k)
 
+        # A restore that cannot complete must ABORT cleanup (raise) rather than swallow: swallowing
+        # would let the subsequent swap delete this backup, so failing fast is what actually keeps it.
         with unittest.mock.patch.object(extract_resources.os, "replace", _fail_restore):
-            extract_resources._cleanup_leftovers(self.skill, 1, 0.001, lambda *_: None, None)
+            with self.assertRaises(OSError):
+                extract_resources._cleanup_leftovers(self.skill, 1, 0.001, lambda *_: None, None)
         self.assertTrue(os.path.isdir(bak),
                         "a failed restore must NOT delete the backup (the only recoverable copy)")
         self.assertTrue(os.path.isfile(os.path.join(bak, "a.py")))

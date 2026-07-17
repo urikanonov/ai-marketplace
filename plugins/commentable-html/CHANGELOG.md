@@ -71,6 +71,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   (e.g. a transient lock) makes the removal retry (or skip) instead of ever letting `shutil.rmtree`
   traverse the survivor into its external target on Python < 3.12. A mock-based test pins the
   unlink-failure path.
+- Round-12 review hardening: `_prune_nested_reparse` also fails closed when `os.walk` cannot scan a
+  subtree (a junction could hide there unseen) via an `onerror` callback, so `shutil.rmtree` never runs
+  on an incompletely-inspected tree. And a crash-recovery backup restore that cannot complete now aborts
+  the extraction rather than swallowing the error and then letting the swap delete the very backup it
+  meant to keep, so the last-known-good backup survives for the next session. Tests pin both.
 
 ## [1.117.1] - 2026-07-16
 

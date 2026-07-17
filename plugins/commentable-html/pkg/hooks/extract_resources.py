@@ -204,23 +204,29 @@ def _prune_nested_reparse(path):
     after unlinking it.
 
     Returns True only if the tree is now FREE of nested reparse points (safe to shutil.rmtree). If a
-    junction could not be unlinked (e.g. a transient lock), returns False - the caller MUST NOT call
-    shutil.rmtree, or it could traverse the surviving junction into its external target."""
+    junction could not be unlinked (e.g. a transient lock), OR a subtree could not be scanned (so a
+    junction might hide there unseen), returns False - the caller MUST NOT call shutil.rmtree, or it
+    could traverse a surviving junction into its external target."""
     if _is_reparse(path):
         return True  # the caller handles a top-level reparse point itself; nothing nested to prune
-    clean = True
-    for root, dirs, files in os.walk(path, topdown=True):
+    state = {"clean": True}
+
+    def _onerr(_exc):
+        # os.walk cannot scan a directory: a junction could hide unseen inside it, so fail closed.
+        state["clean"] = False
+
+    for root, dirs, files in os.walk(path, topdown=True, onerror=_onerr):
         keep = []
         for d in dirs:
             p = os.path.join(root, d)
             if _is_reparse(p):
                 _unlink_reparse(p)  # remove the junction; do NOT descend into its target
                 if os.path.lexists(p):
-                    clean = False  # unlink failed (locked); leave it, and do not let rmtree follow it
+                    state["clean"] = False  # unlink failed (locked); do not let rmtree follow it
             else:
                 keep.append(d)
         dirs[:] = keep
-    return clean
+    return state["clean"]
 
 
 def _make_writable(path):
@@ -347,13 +353,13 @@ def _cleanup_leftovers(skill_dir, retries, backoff, sleep, deadline):
         if name.endswith(BACKUP_SUFFIX):
             live = os.path.join(skill_dir, name[:-len(BACKUP_SUFFIX)])
             if not os.path.lexists(live):  # lexists catches a broken symlink/junction at live too
-                # A crash left the live dir missing but its backup intact: restore it (retried).
-                # If the restore fails, KEEP the backup - it is the only copy - for the next run.
-                try:
-                    _retry(lambda p=p, live=live: os.replace(p, live),
-                           retries, backoff, sleep, deadline)
-                except Exception:  # noqa: BLE001 - never delete the only recoverable copy
-                    pass
+                # A crash left the live dir missing but its backup intact: restore it (retried). Do
+                # NOT swallow a restore failure - if we did, the swap below would still delete this
+                # backup via its pre-loop _rmtree_retry(bak), so the "keep the only copy" intent
+                # would be a lie. Instead let the exception abort this extraction so the backup
+                # survives for the next session to retry (which re-extracts from the zip regardless).
+                _retry(lambda p=p, live=live: os.replace(p, live),
+                       retries, backoff, sleep, deadline)
                 continue
             # The live dir exists, so the swap completed and this backup is orphan cruft: remove it.
             _rmtree_retry(p, retries, backoff, sleep, deadline)
