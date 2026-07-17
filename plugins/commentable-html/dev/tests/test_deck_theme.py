@@ -241,5 +241,62 @@ class DeckThemeScaffoldTests(unittest.TestCase):
         self.assertRegex(proc.stderr, r"code text/bg|below AA")
 
 
+def _rel_luminance(hex_color):
+    v = hex_color.lstrip("#")
+    r, g, b = (int(v[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+    def lin(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+class LightPresetTests(unittest.TestCase):
+    """CMH-DECK-THEME-06: the shipped light presets (paper, editorial) load, self-check AA, and are
+    genuinely light (a distinct family from the dark terminal preset)."""
+
+    NEW_PRESETS = ("paper", "editorial")
+
+    def test_new_light_presets_ship_and_list(self):
+        listed = _deck_theme.list_presets()
+        for name in self.NEW_PRESETS:
+            self.assertIn(name, listed)
+            self.assertTrue(os.path.isfile(os.path.join(THEMES_DIR, name + ".theme.json")))
+
+    def test_every_shipped_preset_loads_and_self_checks(self):
+        # load() runs both the composited effective-contrast check and the preset's own contrastPairs
+        # self-check, so a clean load IS the per-preset AA "golden". Covers any future preset too.
+        for name in _deck_theme.list_presets():
+            with self.subTest(preset=name):
+                theme = _deck_theme.load(name)  # raises DeckThemeError on any AA/opacity violation
+                self.assertTrue(theme.tokens)
+
+    def test_new_presets_are_light(self):
+        # A light preset has a high-luminance slide background and a low-luminance foreground - the
+        # opposite of the dark terminal preset, pinning the new family so a regression to dark fails.
+        for name in self.NEW_PRESETS:
+            with self.subTest(preset=name):
+                tokens = json.loads(Path(os.path.join(THEMES_DIR, name + ".theme.json")).read_text(
+                    encoding="utf-8"))["tokens"]
+                self.assertGreater(_rel_luminance(tokens["--slide-bg"]), 0.7)
+                self.assertLess(_rel_luminance(tokens["--slide-fg"]), 0.15)
+
+    def test_new_presets_carry_frontend_slides_provenance(self):
+        for name in self.NEW_PRESETS:
+            with self.subTest(preset=name):
+                data = json.loads(Path(os.path.join(THEMES_DIR, name + ".theme.json")).read_text(encoding="utf-8"))
+                self.assertIn("frontend-slides", data.get("adaptedFrom", ""))
+                self.assertRegex(str(data.get("sourceCommit", "")), r"^[0-9a-f]{7,40}$")
+
+    def test_new_presets_render_a_scoped_labelled_block(self):
+        for name in self.NEW_PRESETS:
+            with self.subTest(preset=name):
+                css = _deck_theme.render(_deck_theme.load(name))
+                self.assertIn('id="cmh-deck-theme"', css)
+                self.assertIn("cm-skip", css)
+                self.assertIn('data-cmh-deck-theme="%s"' % name, css)
+                for token in ("--slide-bg", "--slide-fg", "--cmh-deck-code-bg", "--cmh-deck-table-head-bg"):
+                    self.assertIn(token, css)
+
+
 if __name__ == "__main__":
     unittest.main()

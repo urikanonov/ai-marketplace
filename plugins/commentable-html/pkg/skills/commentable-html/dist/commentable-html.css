@@ -1517,7 +1517,7 @@ body.cmh-deck-present #menuComment {
   color: var(--cmh-deck-code-text);
 }
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-run:hover {
-  color: #dbeafe;
+  color: var(--cmh-deck-code-link-hover-fg, #dbeafe);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: var(--cmh-deck-tok-kw, #d8b4fe); }
@@ -1537,7 +1537,7 @@ body.cmh-deck-present #menuComment {
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-code-lang,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-code-copy {
-  background: rgba(15, 23, 42, 0.88);
+  background: var(--cmh-deck-code-badge-bg, rgba(15, 23, 42, 0.88));
   border-color: var(--cmh-deck-code-border);
   color: var(--cmh-deck-code-text);
 }
@@ -1599,8 +1599,8 @@ body.cmh-deck-present #menuComment {
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .cluster rect,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .cluster polygon {
-  fill: rgba(30, 41, 59, 0.78) !important;
-  stroke: rgba(147, 197, 253, 0.7) !important;
+  fill: var(--cmh-deck-mermaid-cluster-fill, rgba(30, 41, 59, 0.78)) !important;
+  stroke: var(--cmh-deck-mermaid-cluster-stroke, rgba(147, 197, 253, 0.7)) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.nodeLabel, .label, text, foreignObject, foreignObject *) {
   color: var(--cmh-deck-mermaid-label, #f8fafc) !important;

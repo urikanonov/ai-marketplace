@@ -1,0 +1,10 @@
+<section class="slide">
+  <h2 class="cmh-slide-title">Highlighted code reads on the themed panel</h2>
+  <p class="cmh-slide-lede">The language badge, gutter, and syntax tokens all take their colours from the theme.</p>
+  <pre><code class="language-python">def theme_tokens(preset):
+    # resolve every deck surface from one reviewed preset
+    tokens = load_preset(preset)
+    return {name: tokens.get(name, DEFAULTS[name])
+            for name in ALLOWED_TOKENS}
+</code></pre>
+</section>

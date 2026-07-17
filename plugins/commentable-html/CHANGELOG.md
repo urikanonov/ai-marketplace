@@ -4,6 +4,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.137.0] - 2026-07-17
+
+### Added
+
+- Two LIGHT native deck theme presets alongside the dark `terminal`: `paper` (warm-cream, editorial-serif, crimson accent) and `editorial` (soft-cream serif, deep-teal accent), each adapted from a frontend-slides `STYLE_PRESETS.md` style (credited via `adaptedFrom` + `sourceCommit`). Both override the full component token set (the defaults are dark) and pass `_deck_theme.load` (composited effective-contrast + opaque `contrastPairs` self-check at AA) and the objective `theme_eval` harness with no validator error, no clipping advisory, and a bounded byte delta (CMH-DECK-THEME-06, issue #343). Scaffold a themed deck with `deck_scaffold.py --theme paper` (or `editorial`, `terminal`).
+- Made the previously hard-coded-dark deck code-control surfaces themeable so light decks stay legible: the code/KQL language + copy badge background (`--cmh-deck-code-badge-bg`), the KQL run-link hover colour (`--cmh-deck-code-link-hover-fg`), and the Mermaid subgraph cluster fill/stroke (`--cmh-deck-mermaid-cluster-fill`/`-stroke`), each with byte-exact dark defaults so unthemed and `terminal` decks are unchanged.
+
 ## [1.136.0] - 2026-07-17
 
 ### Changed
