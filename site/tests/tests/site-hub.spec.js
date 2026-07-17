@@ -79,7 +79,7 @@ test("the hub Learn more button uses the brand accent color, not yellow (SITE-HU
 
 
 
-test("the hub lays each plugin out as a full-width row with the install block beside the info (SITE-HUB-09)", async ({ page }) => {
+test("the hub lays each plugin out as a full-width vertical-stack row (SITE-HUB-09)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const grid = page.locator("#plugins .grid");
@@ -95,10 +95,17 @@ test("the hub lays each plugin out as a full-width row with the install block be
   // Each card spans (nearly) the full grid width and the cards are stacked vertically.
   expect(firstBox.width).toBeGreaterThan(gridBox.width * 0.9);
   expect(secondBox.y).toBeGreaterThan(firstBox.y + firstBox.height - 5);
-  // Inside a card, the install block sits to the RIGHT of the description at desktop width.
+  // The card content is a single vertical stack: description, then tags, then the Learn more/Source
+  // buttons, then the install section - each below the previous, not split into a second column.
   const desc = await first.locator(".desc").boundingBox();
+  const keywords = await first.locator(".keywords").boundingBox();
+  const foot = await first.locator(".foot").boundingBox();
   const install = await first.locator(".install").boundingBox();
-  expect(install.x).toBeGreaterThan(desc.x + desc.width - 5);
+  expect(keywords.y).toBeGreaterThan(desc.y + desc.height - 5);
+  expect(foot.y).toBeGreaterThan(keywords.y + keywords.height - 5);
+  expect(install.y).toBeGreaterThan(foot.y + foot.height - 5);
+  // The install block is stacked below (shares the left edge with), not off to the right of, the info.
+  expect(install.x).toBeLessThan(desc.x + 5);
 });
 
 

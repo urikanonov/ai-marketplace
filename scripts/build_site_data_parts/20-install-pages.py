@@ -174,13 +174,13 @@ def render_plugins(manifest, claude_names=None):
             '  </div>\n'
             '  <p class="desc">%s</p>\n'
             '  <div class="keywords">%s</div>\n'
+            '  <div class="foot">%s</div>\n'
             '  <div class="install">\n'
             '    %s\n'
             '  </div>\n'
-            '  <div class="foot">%s</div>\n'
             '</article>'
         ) % (title, esc(version), category_badge, esc(description), chips,
-             install_block, foot)
+             foot, install_block)
         cards.append(card)
     return "\n".join(cards)
 

@@ -72,7 +72,9 @@ def main(argv):
     multi_duck_out = build_page(root, MULTI_DUCK_SRC, [
         ("inline", "version", "v" + esc(multi_duck_version)),
         ("block", "install", render_install(
-            MULTI_DUCK_PLUGIN, suffix, MULTI_DUCK_PLUGIN in claude_names, "install-multi-duck")),
+            MULTI_DUCK_PLUGIN, suffix, MULTI_DUCK_PLUGIN in claude_names, "install-multi-duck",
+            desktop_zip=_desktop_install_args(MULTI_DUCK_PLUGIN, "../")[0],
+            desktop_skill=_desktop_install_args(MULTI_DUCK_PLUGIN, "../")[1])),
         ("block", "switcher", render_switcher(manifest, MULTI_DUCK_PLUGIN)),
         ("block", "changelog", render_plugin_changelog(root, MULTI_DUCK_PLUGIN)),
     ])
