@@ -23,16 +23,16 @@ The plugin registers a session-start hook for each agent, both of which run the 
 The hook is non-blocking by design: all work is wrapped in `try/catch`, failures are logged and never
 surfaced to the session, and each plugin is updated in isolation so one failure does not stop the rest.
 Plugins are processed in name-sorted order for a deterministic log. A per-agent last-run throttle skips
-the whole pass when the previous pass for that agent ran less than the configured cadence (20 hours by
+the whole pass when the previous pass for that agent ran less than the configured cadence (24 hours by
 default) ago. The plugin always excludes itself (a plugin cannot update itself while its own hook is
 running).
 
 ## Update cadence (persistent across updates)
 
 How often the updater runs is controlled by a `throttleHours` value: the session-start pass is skipped
-when the previous pass ran less than that many hours ago. It defaults to `20`, and you set your own
-cadence in a config file that SURVIVES plugin updates, because it lives under `plugin-data/` (outside the
-`installed-plugins/` subtree a plugin update replaces):
+when the previous pass ran less than that many hours ago. It defaults to `24` (once a day), and you set
+your own cadence in a config file that SURVIVES plugin updates, because it lives under `plugin-data/`
+(outside the `installed-plugins/` subtree a plugin update replaces):
 
 - GitHub Copilot CLI: `<COPILOT_HOME or ~/.copilot>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
 - Claude Code: `<CLAUDE_CONFIG_DIR or ~/.claude>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
@@ -43,12 +43,13 @@ Write it as:
 { "throttleHours": 0 }
 ```
 
-`0` means "no throttle" - update on every session start. Use `12` for twice a day, `24` for daily, `168`
-for weekly, and so on. The easiest way to set it is to just ask in free text ("update every session",
-"set update frequency to 12 hours"); the bundled `marketplace-update` skill writes this file for you. A
-one-off override without editing the file is the `URIKAN_AI_MARKETPLACE_THROTTLE_HOURS` environment
-variable, which takes precedence for that session. Any invalid or unreadable value falls back to the 20h
-default and never blocks the hook.
+`0` means "no throttle" - update on every session start. Use `1` for hourly, `12` for twice a day, `24`
+for daily (the default), `168` for weekly, and so on. The easiest way to set it is to just ask in free
+text ("change update schedule", "update every session", "set update frequency to 12 hours"); the bundled
+`marketplace-update` skill offers a four-way choice (each session / every 1 hour / every 24 hours / a
+custom interval) and writes this file for you. A one-off override without editing the file is the
+`URIKAN_AI_MARKETPLACE_THROTTLE_HOURS` environment variable, which takes precedence for that session. Any
+invalid or unreadable value falls back to the 24h default and never blocks the hook.
 
 ## Prerequisite on macOS and Linux: PowerShell 7 (`pwsh`)
 

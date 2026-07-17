@@ -1,6 +1,6 @@
 ---
 name: marketplace-update
-description: Update installed urikan-ai-marketplace plugins on demand, or set how often the auto-updater runs. Use when the user asks to update or force-update a marketplace plugin, for example "update commentable-html", "update cmh", "update the marketplace plugins", "force update", "get the latest commentable html", or "refresh my plugins"; OR when the user asks to change the auto-update cadence, for example "update every session", "set update frequency to 12 hours", "check for updates once a day", or "stop auto-updating". Runs the plugin update command, or writes the persistent cadence config, for whichever agent CLI is in use.
+description: Update installed urikan-ai-marketplace plugins on demand, or set how often the auto-updater runs. Use when the user asks to update or force-update a marketplace plugin, for example "update commentable-html", "update cmh", "update the marketplace plugins", "force update", "get the latest commentable html", or "refresh my plugins"; OR when the user asks to change the auto-update cadence, for example "change update schedule", "change update cadence", "change update frequency", "update every session", "set update frequency to 12 hours", "check for updates once a day", or "stop auto-updating". Runs the plugin update command, or writes the persistent cadence config, for whichever agent CLI is in use.
 ---
 
 # Marketplace update (on demand)
@@ -12,7 +12,7 @@ Update one or more plugins installed from the `urikan-ai-marketplace` immediatel
 Trigger when the user asks, in free text, to:
 
 - Update a marketplace plugin now - for example: "update cmh", "update commentable html", "update commentable-html", "update the marketplace plugins", "force update", "get the latest commentable html", "refresh my plugins". Do the "Update now" steps below.
-- Change how often the auto-updater runs - for example: "update every session", "set update frequency to 12 hours", "check for updates once a day", "update weekly", "stop auto-updating". Do the "Set the update cadence" steps below.
+- Change how often the auto-updater runs - for example: "change update schedule", "change update cadence", "change update frequency", "update every session", "set update frequency to 12 hours", "check for updates once a day", "update weekly", "stop auto-updating". Do the "Set the update cadence" steps below.
 
 ## Update now
 
@@ -30,11 +30,19 @@ Trigger when the user asks, in free text, to:
 
 ## Set the update cadence
 
-The auto-updater skips its session-start pass when the previous pass ran less than `throttleHours` hours ago (default 20). Set a user-chosen cadence by writing a persistent config file. It lives under `plugin-data/`, which is OUTSIDE the installed-plugins subtree a plugin update replaces, so the cadence is NOT reset when the plugin updates itself.
+The auto-updater skips its session-start pass when the previous pass ran less than `throttleHours` hours ago (default 24). Set a user-chosen cadence by writing a persistent config file. It lives under `plugin-data/`, which is OUTSIDE the installed-plugins subtree a plugin update replaces, so the cadence is NOT reset when the plugin updates itself.
 
-1. Map the request to a number of hours (`throttleHours`), a decimal `>= 0`:
-   - "every session", "always", "no throttle" -> `0`
-   - "every N hours" -> `N`; "twice a day" -> `12`; "once a day", "daily" -> `24`; "weekly" -> `168`
+1. Figure out the target hours (`throttleHours`, a decimal `>= 0`):
+   - If the user already named a value, map it directly: "every session", "always", "no throttle" -> `0`; "every N hours" -> `N`; "twice a day" -> `12`; "once a day", "daily" -> `24`; "weekly" -> `168`.
+   - If the user asked to change the schedule WITHOUT naming a value (for example "change update schedule", "change the update cadence", "change update frequency", "how often should it update?"), ask them this four-way choice and wait for their answer:
+
+     > How often should the auto-updater check for plugin updates?
+     > 1. Each session (check on every session start)
+     > 2. Every 1 hour
+     > 3. Every 24 hours (the default)
+     > 4. Custom - a number of hours you choose
+
+     Map the answer to `throttleHours`: choice 1 -> `0`, choice 2 -> `1`, choice 3 -> `24`, choice 4 -> the number of hours they give (a positive number; decimals are allowed).
 2. Pick the config path for the current agent's config home:
    - GitHub Copilot CLI: `<COPILOT_HOME or ~/.copilot>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
    - Claude Code: `<CLAUDE_CONFIG_DIR or ~/.claude>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`

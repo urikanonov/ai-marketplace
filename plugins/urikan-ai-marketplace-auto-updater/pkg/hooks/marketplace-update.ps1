@@ -15,7 +15,7 @@ $self = "urikan-ai-marketplace-auto-updater"
 
 # Default throttle when the user has not set a cadence. A user-set cadence is read at runtime from a
 # persistent config file (and an env override) so it survives plugin updates - see Get-ThrottleHours.
-$defaultThrottleHours = 20
+$defaultThrottleHours = 24
 $envThrottleVar = "URIKAN_AI_MARKETPLACE_THROTTLE_HOURS"
 
 # Per-agent config: the CLI binary, the config-home dir, and how installed marketplace plugins are

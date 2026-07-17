@@ -4,6 +4,20 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-17
+
+### Changed
+
+- The default update cadence is now 24 hours (once a day), up from 20 (UPD-08, UPD-17). A user-set
+  cadence and the `URIKAN_AI_MARKETPLACE_THROTTLE_HOURS` override are unchanged.
+
+### Added
+
+- The `marketplace-update` skill now presents an explicit four-way choice when the user asks to change
+  the schedule without naming a value (for example "change update schedule"): each session, every 1
+  hour, every 24 hours (the default), or a custom interval, mapped to `throttleHours` 0 / 1 / 24 / N.
+  (UPD-19)
+
 ## [1.3.0] - 2026-07-17
 
 ### Added
