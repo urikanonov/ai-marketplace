@@ -34,6 +34,9 @@ def main(argv):
     parser = argparse.ArgumentParser(prog="build.py", description="Build the commentable-html distributable set.")
     parser.add_argument("--check", action="store_true",
                         help="verify the generated files in --out-dir match a fresh build (no writes)")
+    parser.add_argument("--regen-vendor-gz", action="store_true",
+                        help="recompress the vendored rich libraries to their committed .gz artifacts "
+                             "(run when a vendored library changes; the ONLY step that gzips) then exit")
     parser.add_argument("--check-fixtures", action="store_true",
                         help="with --check, also verify the Playwright fixtures are in sync "
                              "(runs generate.mjs --check; skipped when node is absent)")
@@ -50,6 +53,12 @@ def main(argv):
     ns = parser.parse_args(argv[1:])
     assets_dir = ASSETS if ns.assets_dir is None else os.path.abspath(ns.assets_dir)
     out_dir = HERE if ns.out_dir is None else os.path.abspath(ns.out_dir)
+    if ns.regen_vendor_gz:
+        vendor_dir = os.path.join(assets_dir, "vendor")
+        for name in VENDORED_LIB_SCRIPTS:
+            regen_vendored_gz(vendor_dir, name)
+            print("regenerated %s.gz" % name)
+        return 0
     pkg_dir = os.path.abspath(ns.pkg_dir) if ns.pkg_dir else None
     examples_dir = (os.path.abspath(ns.examples_dir) if ns.examples_dir
                     else os.path.join(out_dir, "examples"))
@@ -61,6 +70,11 @@ def main(argv):
     legacy = [p for p in _legacy_generated_files(out_dir) if os.path.exists(p)]
     if ns.check:
         drift = []
+        vendor_dir = os.path.join(assets_dir, "vendor")
+        for name in VENDORED_LIB_SCRIPTS:
+            msg = vendored_gz_drift(vendor_dir, name)
+            if msg:
+                drift.append(os.path.join("assets", "vendor", msg))
         for path, text in list(outputs.items()) + list(stamps.items()):
             rel = os.path.relpath(path, out_dir)
             if not os.path.exists(path):

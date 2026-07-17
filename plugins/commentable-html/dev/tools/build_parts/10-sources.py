@@ -80,12 +80,10 @@ def _names():
 # --------------------------------------------------------------------------- #
 def build_vendored_rich_libs_json(assets_dir):
     vendor_dir = os.path.join(assets_dir, "vendor")
-    mermaid = read_vendor_script(os.path.join(vendor_dir, "mermaid.min.js")).encode("utf-8")
-    chartjs = read_vendor_script(os.path.join(vendor_dir, "chart.umd.min.js")).encode("utf-8")
     payload = {
         "encoding": "gzip+base64",
-        "mermaidGzipBase64": base64.b64encode(deterministic_gzip(mermaid, compresslevel=9)).decode("ascii"),
-        "chartjsGzipBase64": base64.b64encode(deterministic_gzip(chartjs, compresslevel=9)).decode("ascii"),
+        "mermaidGzipBase64": base64.b64encode(read_vendored_gz(vendor_dir, "mermaid.min.js")).decode("ascii"),
+        "chartjsGzipBase64": base64.b64encode(read_vendored_gz(vendor_dir, "chart.umd.min.js")).decode("ascii"),
     }
     return (json.dumps(payload, separators=(",", ":"))
             .replace("<", "\\u003C")
