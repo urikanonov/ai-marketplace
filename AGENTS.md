@@ -23,6 +23,18 @@ These rules are the ones most often forgotten. They are a MUST on every change, 
    worktree.) The primary checkout at the repo root is OFF-LIMITS: never create, edit, or commit any file
    in it - not code, not docs, not generated artifacts. Never develop on a stale branch or edit the
    primary tree in place. See "Parallel work: use git worktrees under the repo root" for the full mechanics.
+   **Unless the user EXPLICITLY says otherwise, this is mandatory for every task, no exceptions** - if you
+   catch yourself about to touch a file at the repo root, stop and move to a worktree first.
+   - **This applies to EVERY process you drive, not just your own edits - including sub-agents,
+     background agents, and review/rubber-duck agents you launch, and any shell/test command they or you
+     run.** Their working directory often defaults to the repo root, so a relative-path command (a test
+     that writes `test.txt`, an extractor that unpacks in place, a script that creates a junction) will
+     silently dirty the PRIMARY checkout. Always point such agents and commands at the worktree
+     (`cd .worktrees/<name>` or an absolute worktree path) and tell them so explicitly.
+   - **Put ALL scratch and test artifacts under the worktree's gitignored `tmp/` or the OS temp dir -
+     NEVER at the repo root** (of either the primary tree or the worktree). Sandbox copies, generated
+     HTML you are not committing, one-off probes, and junction/symlink test fixtures must be created in a
+     temp directory and cleaned up, so neither checkout is ever polluted.
 2. **Track the work as a GitHub Issue before any code (issue-first).** Before touching code, use the `gh`
    CLI to search existing issues and create or claim one, label it `task`, set it `In Progress`, and
    assign it to yourself. An issue exists on GitHub the moment you file it - decoupled from any branch,
