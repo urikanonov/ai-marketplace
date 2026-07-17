@@ -120,24 +120,29 @@ test("the auto-updater page describes the session-start hook for both agents (SI
 });
 
 
-test("the auto-updater hero gives a complete self-update command for both agents (SITE-UPDATER-11)", async ({ page }) => {
+test("the auto-updater install section gives a complete self-update command for both agents (SITE-UPDATER-11)", async ({ page }) => {
   await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
-  // The updater excludes itself, so the hero must show the FULL self-update command for each agent
-  // (binary + plugin name + marketplace), not a bare/invalid `plugin update`.
+  // The updater excludes itself, so the page must show the FULL self-update command for each agent
+  // (binary + plugin name + marketplace), not a bare/invalid `plugin update`. It lives in the
+  // Install-section note, not the hero, so the hero pitch stays short.
+  const note = page.locator("#install .install-selfupdate");
+  await expect(note).toContainText("copilot plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
+  await expect(note).toContainText("claude plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
+  // The hero no longer crams the commands into its pitch.
   const heroText = await page.locator(".hero").innerText();
-  expect(heroText).toContain("copilot plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
-  expect(heroText).toContain("claude plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace");
+  expect(heroText).not.toContain("plugin update urikan-ai-marketplace-auto-updater");
 });
 
 
-test("the auto-updater hero states the accurate Claude update-apply timing (SITE-UPDATER-12)", async ({ page }) => {
+test("the auto-updater states the accurate Claude update-apply timing (SITE-UPDATER-12)", async ({ page }) => {
   await page.goto("/urikan-ai-marketplace-auto-updater/", { waitUntil: "domcontentloaded" });
   // The hook FETCHES updates on session start; Claude Code applies a plugin update on the next
-  // restart (see the marketplace-update SKILL.md). The hero must not overstate this as updates being
-  // instantly "already there next time you open" - it must note the next-restart apply timing.
-  const heroText = await page.locator(".hero").innerText();
-  expect(heroText).toContain("next restart");
-  expect(heroText).not.toContain("already there next time you open");
+  // restart (see the marketplace-update SKILL.md). The Install-section self-update note states this,
+  // and the page must not overstate updates as instantly "already there next time you open".
+  const note = page.locator("#install .install-selfupdate");
+  await expect(note).toContainText("next restart");
+  const bodyText = await page.locator("body").innerText();
+  expect(bodyText).not.toContain("already there next time you open");
 });
 
 
