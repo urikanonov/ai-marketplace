@@ -13,8 +13,10 @@ param(
 $marketplace = "urikan-ai-marketplace"
 $self = "urikan-ai-marketplace-auto-updater"
 
-# Skip the whole update pass when the previous pass ran within this many hours.
-$throttleHours = 20
+# Default throttle when the user has not set a cadence. A user-set cadence is read at runtime from a
+# persistent config file (and an env override) so it survives plugin updates - see Get-ThrottleHours.
+$defaultThrottleHours = 20
+$envThrottleVar = "URIKAN_AI_MARKETPLACE_THROTTLE_HOURS"
 
 # Per-agent config: the CLI binary, the config-home dir, and how installed marketplace plugins are
 # enumerated. Copilot lists installed-plugins/<marketplace>/<plugin> dirs; Claude reads the
@@ -34,6 +36,9 @@ if ($Agent -eq "claude") {
 $pluginData = Join-Path $agentHome "plugin-data"
 $logFile = Join-Path $pluginData "$self.log"
 $throttleFile = Join-Path $pluginData $throttleName
+# Persistent, update-safe cadence: plugin-data lives outside the installed-plugins subtree that a
+# plugin update replaces, so a throttle set here is not reset when the plugin updates itself.
+$configFile = Join-Path $pluginData "$self.config.json"
 
 function Write-UpdaterLog($message) {
     try {
@@ -41,6 +46,44 @@ function Write-UpdaterLog($message) {
         if (-Not (Test-Path $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
         "$(Get-Date -Format o)  [$Agent] $message" | Add-Content -Path $logFile -Encoding utf8
     } catch { }
+}
+
+# Resolve the throttle interval (hours between update passes). Precedence, so a user-set cadence
+# survives plugin updates: env override > persistent plugin-data config file > default. Any bad,
+# missing, or unreadable value falls back safely to the default and never blocks the pass.
+function Get-ThrottleHours {
+    $parsed = 0.0
+    $numStyle = [Globalization.NumberStyles]::Float
+    $invariant = [Globalization.CultureInfo]::InvariantCulture
+
+    $envValue = [Environment]::GetEnvironmentVariable($envThrottleVar)
+    if (-Not [string]::IsNullOrWhiteSpace($envValue)) {
+        if ([double]::TryParse($envValue.Trim(), $numStyle, $invariant, [ref]$parsed) -and $parsed -ge 0) {
+            return $parsed
+        }
+        Write-UpdaterLog "ignoring invalid $envThrottleVar='$envValue'; using config/default."
+    }
+
+    if (Test-Path $configFile) {
+        try {
+            $cfg = Get-Content -Path $configFile -Raw | ConvertFrom-Json
+            $prop = $cfg.PSObject.Properties['throttleHours']
+            if ($null -ne $prop -and $null -ne $prop.Value) {
+                $value = $prop.Value
+                if ($value -is [ValueType]) {
+                    $num = [double]$value
+                    if ($num -ge 0) { return $num }
+                } elseif ([double]::TryParse([string]$value, $numStyle, $invariant, [ref]$parsed) -and $parsed -ge 0) {
+                    return $parsed
+                }
+                Write-UpdaterLog "ignoring invalid throttleHours in config; using default ${defaultThrottleHours}h."
+            }
+        } catch {
+            Write-UpdaterLog "could not parse config ${configFile}; using default: $($_.Exception.Message)"
+        }
+    }
+
+    return $defaultThrottleHours
 }
 
 # The installed urikan-ai-marketplace plugins for this agent, excluding self, name-sorted so the log
@@ -80,6 +123,7 @@ try {
 
     # Last-run throttle: a corrupt or unreadable stamp must never block updates.
     try {
+        $throttleHours = Get-ThrottleHours
         if (Test-Path $throttleFile) {
             $raw = (Get-Content -Path $throttleFile -Raw).Trim()
             $last = [datetimeoffset]::Parse($raw, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)

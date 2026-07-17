@@ -67,6 +67,20 @@ function Get-Throttle([string]$copilotHome) {
     return Join-Path (Join-Path $copilotHome "plugin-data") "$self.last-run"
 }
 
+function Set-Config([string]$copilotHome, $config) {
+    $pd = Join-Path $copilotHome "plugin-data"
+    New-Item -ItemType Directory -Force -Path $pd | Out-Null
+    $path = Join-Path $pd "$self.config.json"
+    if ($config -is [string]) { $config | Set-Content -Path $path -Encoding utf8 }
+    else { ($config | ConvertTo-Json) | Set-Content -Path $path -Encoding utf8 }
+}
+
+function Set-Stamp([string]$copilotHome, [double]$hoursAgo) {
+    $stamp = Get-Throttle $copilotHome
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stamp) | Out-Null
+    ([datetimeoffset]::Now.AddHours(-$hoursAgo)).ToString("o") | Set-Content -Path $stamp -Encoding utf8
+}
+
 # --- Claude-branch helpers (Agent=claude reads settings.json enabledPlugins under CLAUDE_CONFIG_DIR) ---
 
 function New-ClaudeSandbox([hashtable]$enabledPlugins) {
@@ -339,6 +353,67 @@ try {
     $body = Get-Content -Path $ps1 -Raw
     Assert-True ($body -match "pass complete") "UPD-16: a completed pass is written to the log (not only failures/skips)"
 } catch { $script:failures += "UPD-16 threw: $_" }
+
+Write-Host "== UPD-17 persistent, update-safe throttle cadence (config file + env override) =="
+try {
+    # A user-set cadence lives in plugin-data/<self>.config.json, which is OUTSIDE the shipped
+    # installed-plugins subtree a plugin update replaces, so the cadence survives updates.
+    $ps1 = Join-Path (Join-Path $pkgRoot "hooks") "marketplace-update.ps1"
+    $body = Get-Content -Path $ps1 -Raw
+    Assert-True ($body -match "\.config\.json") "UPD-17: throttle is read from a persistent config file"
+    Assert-True ($body -match "plugin-data") "UPD-17: the config file lives under plugin-data (survives plugin updates)"
+
+    # Config throttleHours = 0 means no throttle: a recent stamp still lets the pass run every session.
+    Reset-Mock
+    $h17a = New-Sandbox -plugins @("alpha")
+    Set-Config $h17a @{ throttleHours = 0 }
+    Set-Stamp $h17a 0.1
+    Invoke-Hook $h17a
+    Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-17: throttleHours=0 disables the throttle (runs on every session)"
+
+    # A larger custom throttle skips a pass a recent-ish stamp would otherwise allow at the default.
+    Reset-Mock
+    $h17b = New-Sandbox -plugins @("alpha")
+    Set-Config $h17b @{ throttleHours = 100 }
+    Set-Stamp $h17b 48
+    Invoke-Hook $h17b
+    Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-17: a custom throttleHours=100 throttles a 48h-old stamp"
+    Assert-True ((Get-Log $h17b) -like "*skipping auto-update*") "UPD-17: the custom-throttle skip is logged"
+
+    # The env override wins over the config file.
+    Reset-Mock
+    $h17c = New-Sandbox -plugins @("alpha")
+    Set-Config $h17c @{ throttleHours = 100 }
+    Set-Stamp $h17c 0.1
+    $savedEnv = $env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS
+    try {
+        $env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS = "0"
+        Invoke-Hook $h17c
+    } finally {
+        if ($null -eq $savedEnv) { Remove-Item Env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS -ErrorAction SilentlyContinue } else { $env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS = $savedEnv }
+    }
+    Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-17: the env override beats the config file"
+
+    # A corrupt config never breaks the hook; it falls back to the 20h default.
+    Reset-Mock
+    $h17d = New-Sandbox -plugins @("alpha")
+    Set-Config $h17d "this is not json {"
+    Set-Stamp $h17d 48
+    Invoke-Hook $h17d
+    Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-17: a corrupt config falls back to the default and still runs a due pass"
+
+    Remove-Item -Recurse -Force $h17a, $h17b, $h17c, $h17d
+} catch { $script:failures += "UPD-17 threw: $_" }
+
+Write-Host "== UPD-18 the skill can set the cadence in free text =="
+try {
+    $skillMd = Join-Path (Join-Path (Join-Path $pkgRoot "skills") "marketplace-update") "SKILL.md"
+    $skill = Get-Content -Path $skillMd -Raw
+    Assert-True ($skill -match "(?i)set (the )?(update )?(cadence|frequency)") "UPD-18: skill documents setting the update cadence/frequency"
+    Assert-True ($skill -like "*every session*") "UPD-18: skill handles the 'every session' phrasing"
+    Assert-True ($skill -like "*$self.config.json*") "UPD-18: skill writes the persistent config file"
+    Assert-True ($skill -match "throttleHours") "UPD-18: skill sets the throttleHours key"
+} catch { $script:failures += "UPD-18 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue

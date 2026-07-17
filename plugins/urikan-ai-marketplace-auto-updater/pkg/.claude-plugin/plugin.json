@@ -1,7 +1,7 @@
 {
   "name": "urikan-ai-marketplace-auto-updater",
   "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "author": { "name": "Uri Kanonov", "email": "urikanonov@gmail.com" },
   "keywords": ["auto-update", "marketplace", "hooks", "session-start"],
   "license": "MIT",
