@@ -42,9 +42,9 @@ test("the auto-updater page keeps the user on the page and links back to the mar
 });
 
 
-test("the commentable-html Install section links to the auto-updater page (SITE-UPDATER-06)", async ({ page }) => {
+test("the commentable-html Install section links to the auto-updater install section (SITE-UPDATER-06)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const link = page.locator('#install a[href="../urikan-ai-marketplace-auto-updater/"]');
+  const link = page.locator('#install a[href="../urikan-ai-marketplace-auto-updater/#install"]');
   await expect(link).toHaveCount(1);
   await expect(link).toHaveText(/auto-updater/i);
   // The note explains the auto-updater keeps commentable-html up to date on session start.
@@ -54,7 +54,7 @@ test("the commentable-html Install section links to the auto-updater page (SITE-
   await expect(icon).toHaveAttribute("src", /urikan-ai-marketplace-auto-updater\.svg$/);
   await expect(icon).toHaveAttribute("alt", /auto-updater/i);
   await link.click();
-  await expect(page).toHaveURL(/\/urikan-ai-marketplace-auto-updater\/$/);
+  await expect(page).toHaveURL(/\/urikan-ai-marketplace-auto-updater\/#install$/);
 });
 
 
@@ -248,15 +248,14 @@ test("the plugin page footer links to contribute, feature request, issues, sourc
 
 
 
-test("the auto-updater and multi-duck pages lead with the Install section right after the hero (SITE-INSTALL-08)", async ({ page }) => {
+test("the auto-updater and multi-duck pages lead with the Why section and place Install below it (SITE-INSTALL-08)", async ({ page }) => {
   for (const path of ["/urikan-ai-marketplace-auto-updater/", "/multi-duck/"]) {
     await page.goto(path, { waitUntil: "domcontentloaded" });
     const ids = await page.locator("main > section").evaluateAll((els) => els.map((e) => e.id));
-    // The install section is the first section after the hero header.
-    expect(ids[0]).toBe("install");
-    // ...and it comes before the Why/Features rationale sections.
-    expect(ids.indexOf("install")).toBeLessThan(ids.indexOf("why"));
-    expect(ids.indexOf("install")).toBeLessThan(ids.indexOf("features"));
+    // The rationale (Why) section comes first, right after the hero header.
+    expect(ids[0]).toBe("why");
+    // ...and the Install section sits below it (not above the rationale).
+    expect(ids.indexOf("why")).toBeLessThan(ids.indexOf("install"));
   }
 });
 
