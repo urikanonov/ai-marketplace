@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.136.0] - 2026-07-17
+
+### Changed
+
+- Recorded the verified license and commit for the vendored `bold-template-pack` in `vendor/frontend-slides/UPSTREAM.md` and added an explicit `bold-template-pack/LICENSE`. The pack originates from `zarazhangrui/beautiful-html-templates` (MIT, Zara Zhang, commit `e5e204fb`), a different upstream repo than frontend-slides; both are MIT by the same author, so adapting a bold template into a native CMH deck preset is now license-cleared (unblocks the Phase 2 bold presets; issue #337).
+
 ## [1.135.0] - 2026-07-16
 
 ### Added

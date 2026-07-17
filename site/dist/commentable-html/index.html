@@ -80,7 +80,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.135.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.136.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -415,12 +415,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.136.0] - 2026-07-17</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Recorded the verified license and commit for the vendored <code>bold-template-pack</code> in <code>vendor/frontend-slides/UPSTREAM.md</code> and added an explicit <code>bold-template-pack/LICENSE</code>. The pack originates from <code>zarazhangrui/beautiful-html-templates</code> (MIT, Zara Zhang, commit <code>e5e204fb</code>), a different upstream repo than frontend-slides; both are MIT by the same author, so adapting a bold template into a native CMH deck preset is now license-cleared (unblocks the Phase 2 bold presets; issue #337).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.135.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Native deck theme presets that incorporate the frontend-slides design system directly into the deck engine, replacing per-deck hand-translation of vendored reference material. A preset is a named JSON profile under <code>tools/deck/themes/&lt;name&gt;.theme.json</code> of allowlisted, system-font, contrast-safe deck tokens; <code>deck_scaffold.py --theme &lt;name&gt;</code> builds a fully styled deck and the new <code>deck_theme.py apply --theme &lt;name&gt;</code> re-themes an existing deck in place. Re-theming is idempotent and comment-safe: the theme block is <code>cm-skip</code>, so it never shifts stored comment offsets. Ships the <code>terminal</code> preset (dark/technical, system monospace), adapted from the frontend-slides &quot;Terminal Green&quot; style (Zara Zhang, MIT). Deck component colours (syntax tokens, table headers, diff, mermaid) and the link/border are now themeable via <code>var(--token, &lt;default&gt;)</code> with byte-exact defaults, plus reusable recipe classes (<code>.cmh-slide-section</code>, <code>.cmh-slide-lede</code>, <code>.cmh-cols-2</code>, <code>.cmh-metric-grid</code>, <code>.cmh-pill</code>) so a themed deck needs no per-deck CSS. <code>deck_validate.py</code> gates every themed contrast pair (compositing the translucent diff rows for a faithful check). Supersedes the vendor-first deck design routing from issue #208; the vendored <code>frontend-slides</code> subtree is retained as design provenance and the maintainer refresh source (CMH-DECK-THEME-01/02/03, CMH-DECK-14; issue #334).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.134.0] - 2026-07-16</h3></div>
             <div class="group-label">Changed</div>
@@ -428,8 +437,6 @@
               <li>Polished the showcase deck with a concrete Copy all bundle specimen in the technical section, a tighter medium-comparison table, and a corrected Mermaid-node callback so the pitch is more informative without changing the deck contract (CMH-DECK-SHOWCASE-09, closes #244).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.132.0] - 2026-07-16</h3></div>
             <div class="group-label">Added</div>
@@ -462,14 +469,7 @@
               <li><code>tools/validate/cmhval/contrast.py</code> now resolves computed descendant text/background pairs and low-contrast connector strokes, so <code>deck_validate.py</code> catches the old red-on-dark KQL link and washed-out diagram arrows before publish. (CMH-DECK-12)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.126.0] - 2026-07-16</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Mermaid checker (<code>cmhval/mermaid.py</code>, CMH-SYN-01): flag a <code>sequenceDiagram</code> message whose <code>;</code> leaves an arrow-free tail (a bare word or ordinary prose, e.g. <code>A-&gt;&gt;B: hi; take entities as-is</code>), not only an arrow-without-colon tail. Once the first <code>;</code>-segment is a real signal, any tail that is not another full signal, a keyword-led statement, or empty is a broken second statement the real parser rejects; the broadened rule stays zero-false-positive (proven against the real-parser corpus). Fixes issue #324.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">112 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">113 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

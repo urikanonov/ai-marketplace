@@ -73,8 +73,16 @@ CI gate keyed on each preset's `sourceCommit`.
 
 ### Licensing note: bold-template-pack
 
-The vendored `bold-template-pack/` declares `source_repo: zarazhangrui/beautiful-html-templates`
-(a DIFFERENT upstream repo than frontend-slides), and this tree records only the frontend-slides MIT
-`LICENSE`. Before adapting ANY bold-template-pack design into a native preset, independently verify
-`beautiful-html-templates`' license + commit and record it here. The current `terminal` preset is
-adapted only from a `STYLE_PRESETS.md` entry, which the frontend-slides `LICENSE` covers.
+The vendored `bold-template-pack/` originates from `zarazhangrui/beautiful-html-templates` (a DIFFERENT
+upstream repo than frontend-slides), as declared by `bold-template-pack/selection-index.json`
+(`source_repo`). Its license has been independently verified:
+
+- Upstream repo: https://github.com/zarazhangrui/beautiful-html-templates
+- Author: Zara Zhang (https://github.com/zarazhangrui)
+- License: MIT - Copyright (c) 2026 Zara Zhang (kept verbatim as `bold-template-pack/LICENSE`)
+- Verified commit: `e5e204fb1f3b06290846e7dcd7aceddabeceec8c` (2026-06-09)
+
+Both frontend-slides and beautiful-html-templates are MIT by the same author, so the top-level
+frontend-slides `LICENSE` and the `bold-template-pack/LICENSE` grant the same permissions. Adapting a
+bold-template-pack design into a native CMH deck preset is therefore permitted; keep the `adaptedFrom`
+provenance in each preset JSON and preserve both `LICENSE` files on resync.
