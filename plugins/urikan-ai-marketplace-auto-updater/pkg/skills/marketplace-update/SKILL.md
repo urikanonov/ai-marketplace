@@ -1,17 +1,20 @@
 ---
 name: marketplace-update
-description: Update installed urikan-ai-marketplace plugins on demand. Use when the user asks to update or force-update a marketplace plugin, for example "update commentable-html", "update cmh", "update the marketplace plugins", "force update", "get the latest commentable html", or "refresh my plugins". Runs the plugin update command for whichever agent CLI is in use.
+description: Update installed urikan-ai-marketplace plugins on demand, or set how often the auto-updater runs. Use when the user asks to update or force-update a marketplace plugin, for example "update commentable-html", "update cmh", "update the marketplace plugins", "force update", "get the latest commentable html", or "refresh my plugins"; OR when the user asks to change the auto-update cadence, for example "update every session", "set update frequency to 12 hours", "check for updates once a day", or "stop auto-updating". Runs the plugin update command, or writes the persistent cadence config, for whichever agent CLI is in use.
 ---
 
 # Marketplace update (on demand)
 
-Update one or more plugins installed from the `urikan-ai-marketplace` immediately, without waiting for the auto-updater's throttled session-start pass.
+Update one or more plugins installed from the `urikan-ai-marketplace` immediately, without waiting for the auto-updater's throttled session-start pass. This skill also sets the auto-updater's cadence (how often it runs) in a way that survives plugin updates.
 
 ## When to use
 
-Trigger when the user asks, in free text, to update a marketplace plugin now - for example: "update cmh", "update commentable html", "update commentable-html", "update the marketplace plugins", "force update", "get the latest commentable html", "refresh my plugins".
+Trigger when the user asks, in free text, to:
 
-## What to do
+- Update a marketplace plugin now - for example: "update cmh", "update commentable html", "update commentable-html", "update the marketplace plugins", "force update", "get the latest commentable html", "refresh my plugins". Do the "Update now" steps below.
+- Change how often the auto-updater runs - for example: "update every session", "set update frequency to 12 hours", "check for updates once a day", "update weekly", "stop auto-updating". Do the "Set the update cadence" steps below.
+
+## Update now
 
 1. Determine which CLI runs this session: the GitHub Copilot CLI (`copilot`) or Claude Code (`claude`). Use the agent you are running inside; if only one of the two is on `PATH`, use that one.
 2. Resolve the target plugin(s) from the request:
@@ -25,7 +28,27 @@ Trigger when the user asks, in free text, to update a marketplace plugin now - f
    To update every installed marketplace plugin, first list them (`copilot plugin list` or `claude plugin list`), then update each `<name>@urikan-ai-marketplace` in turn.
 4. Report the result briefly: which plugins were updated and their new version. Note that Claude Code applies a plugin update on the next restart.
 
+## Set the update cadence
+
+The auto-updater skips its session-start pass when the previous pass ran less than `throttleHours` hours ago (default 20). Set a user-chosen cadence by writing a persistent config file. It lives under `plugin-data/`, which is OUTSIDE the installed-plugins subtree a plugin update replaces, so the cadence is NOT reset when the plugin updates itself.
+
+1. Map the request to a number of hours (`throttleHours`), a decimal `>= 0`:
+   - "every session", "always", "no throttle" -> `0`
+   - "every N hours" -> `N`; "twice a day" -> `12`; "once a day", "daily" -> `24`; "weekly" -> `168`
+2. Pick the config path for the current agent's config home:
+   - GitHub Copilot CLI: `<COPILOT_HOME or ~/.copilot>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
+   - Claude Code: `<CLAUDE_CONFIG_DIR or ~/.claude>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
+3. Write (creating the folder if needed) that file with exactly:
+
+   ```json
+   { "throttleHours": <N> }
+   ```
+
+   Preserve any other keys already in the file; only set `throttleHours`.
+4. Report the new cadence back to the user (for example "the auto-updater will now run on every session" for `0`, or "at most once every 12 hours"). It takes effect on the next session start.
+
 ## Notes
 
-- This is the manual counterpart to the plugin's automatic session-start hook; running it on demand does not disturb the auto-update throttle.
+- The on-demand update is the manual counterpart to the plugin's automatic session-start hook; running it on demand does not disturb the auto-update throttle.
 - A plugin update is idempotent, so it is safe to re-run: an already-current plugin is a no-op.
+- A one-off override without editing the config: set the `URIKAN_AI_MARKETPLACE_THROTTLE_HOURS` environment variable, which takes precedence over the config file for that session.

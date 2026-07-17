@@ -88,7 +88,7 @@
           <a class="btn" href="#how">How it works</a>
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">View source</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.2.3<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.3.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -213,6 +213,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.3.0] - 2026-07-17</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Persistent, update-safe update cadence. The session-start throttle is no longer a hardcoded constant in the shipped script (which a plugin update reset); it is now read at runtime from <code>&lt;config-home&gt;/plugin-data/urikan-ai-marketplace-auto-updater.config.json</code> (<code>{ &quot;throttleHours&quot;: N }</code>). Because <code>plugin-data/</code> lives outside the <code>installed-plugins/</code> subtree a plugin update replaces, a user-set cadence survives updates. <code>throttleHours=0</code> disables the throttle (updates on every session); a one-off <code>URIKAN_AI_MARKETPLACE_THROTTLE_HOURS</code> env var takes precedence. Any invalid, missing, or unreadable value falls back to the 20h default and never blocks the non-blocking hook. (UPD-17)</li>
+              <li>The <code>marketplace-update</code> skill can now SET the cadence from free text (for example &quot;update every session&quot;, &quot;set update frequency to 12 hours&quot;, &quot;once a day&quot;) by writing that persistent config for the current agent, alongside its existing on-demand update role. (UPD-18)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.2.3] - 2026-07-15</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -223,6 +231,8 @@
               <li>The update pass now logs a <code>pass complete: N plugin(s) checked</code> line so a completed pass is visible in the log (previously only failures and skips were logged), matching the documented logging behavior. (UPD-16)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.2.2] - 2026-07-15</h3></div>
             <div class="group-label">Changed</div>
@@ -234,8 +244,6 @@
               <li>The Claude <code>SessionStart</code> hook could run the update twice on Windows when both Git Bash and a PowerShell were present (the bash and powershell handlers both fired). The bash handler now no-ops on Windows (<code>uname</code> MINGW/MSYS/CYGWIN), so exactly one handler runs per platform: powershell on Windows, bash+pwsh on macOS/Linux. Updates are idempotent and throttled, so this was harmless but is now clean. (UPD-15)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.2.1] - 2026-07-15</h3></div>
             <div class="group-label">Fixed</div>
@@ -265,24 +273,7 @@
               <li>Aligned the shipped plugin description with the marketplace manifest so the validator can enforce metadata parity.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.0.2] - 2026-07-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Windows session-start invocation now runs <code>powershell -NoProfile -ExecutionPolicy Bypass -File</code>. A bare <code>.ps1</code> path was silently blocked by the default <code>Restricted</code> execution policy, so the updater never ran on a default Windows setup.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>On macOS/Linux, when <code>pwsh</code> (PowerShell 7) is missing the bash hook now appends a dated skip note to the plugin-data log instead of silently no-opping, so the skip is discoverable. Added a README documenting the PowerShell 7 prerequisite.</li>
-              <li>A last-run throttle: the update pass is skipped (and logged) when the previous pass ran less than about 20 hours ago, and a completed pass stamps <code>urikan-ai-marketplace-auto-updater.last-run</code>.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Installed plugins are now iterated in name-sorted order (<code>Sort-Object Name</code>) for a deterministic log.</li>
-              <li>The plugin now uses the <code>pkg/</code> shipped-source layout with a sibling <code>dev/</code> folder holding the feature spec and an automated pwsh test suite (not distributed).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">2 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">3 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -4,6 +4,22 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-17
+
+### Added
+
+- Persistent, update-safe update cadence. The session-start throttle is no longer a hardcoded constant
+  in the shipped script (which a plugin update reset); it is now read at runtime from
+  `<config-home>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
+  (`{ "throttleHours": N }`). Because `plugin-data/` lives outside the `installed-plugins/` subtree a
+  plugin update replaces, a user-set cadence survives updates. `throttleHours=0` disables the throttle
+  (updates on every session); a one-off `URIKAN_AI_MARKETPLACE_THROTTLE_HOURS` env var takes
+  precedence. Any invalid, missing, or unreadable value falls back to the 20h default and never blocks
+  the non-blocking hook. (UPD-17)
+- The `marketplace-update` skill can now SET the cadence from free text (for example "update every
+  session", "set update frequency to 12 hours", "once a day") by writing that persistent config for the
+  current agent, alongside its existing on-demand update role. (UPD-18)
+
 ## [1.2.3] - 2026-07-15
 
 ### Fixed
