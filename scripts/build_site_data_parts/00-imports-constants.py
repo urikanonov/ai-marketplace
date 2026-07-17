@@ -35,6 +35,15 @@ PLUGIN_PAGES = {
     UPDATER_PLUGIN: "./" + UPDATER_PLUGIN + "/",
     MULTI_DUCK_PLUGIN: "./" + MULTI_DUCK_PLUGIN + "/",
 }
+# Human-friendly display labels for the nav plugin-switcher tiles (the raw manifest name is the
+# fallback). These mirror each plugin page's nav brand label and, importantly, avoid the word
+# "Marketplace" in a tile so the nav's single "Marketplace" control stays the only element that
+# carries that text.
+PLUGIN_DISPLAY_NAMES = {
+    "commentable-html": "Commentable HTML",
+    UPDATER_PLUGIN: "Auto-updater",
+    MULTI_DUCK_PLUGIN: "multi-duck",
+}
 CHANGELOG_PLUGIN = "commentable-html"
 DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-showcase.html"]
 EXAMPLES_REL = os.path.join(

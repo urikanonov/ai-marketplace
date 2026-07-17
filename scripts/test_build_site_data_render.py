@@ -442,5 +442,67 @@ class MultiDuckPageTests(unittest.TestCase):
         self.assertIn("[1.0.0]", html)
 
 
+class HubPluginOrderTests(unittest.TestCase):
+    """SITE-HUB-10: the hub plugins grid lists commentable-html, then multi-duck, then the
+    auto-updater (driven by the manifest order), so the two flagship skills lead and the
+    infrastructure updater trails."""
+
+    def _real_manifest(self):
+        with open(os.path.join(bsd.REPO_ROOT, ".github", "plugin", "marketplace.json"),
+                  encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_render_plugins_orders_cmh_then_multiduck_then_updater(self):
+        out = bsd.render_plugins(self._real_manifest())
+        order = re.findall(r'class="name"><a href="\./([^/"]+)/"', out)
+        self.assertEqual(order,
+                         ["commentable-html", "multi-duck", "urikan-ai-marketplace-auto-updater"])
+
+
+class RenderSwitcherTests(unittest.TestCase):
+    """SITE-SWITCH-01: the nav plugin switcher on a plugin page links to the OTHER plugins
+    (excluding the current one) plus an all-plugins link back to the hub, and the trigger stays
+    the only element carrying the word 'Marketplace'."""
+
+    def _manifest(self):
+        return {
+            "name": "urikan-ai-marketplace",
+            "plugins": [
+                {"name": "commentable-html", "version": "1.0.0", "category": "planning and analysis"},
+                {"name": "multi-duck", "version": "1.0.0", "category": "code review"},
+                {"name": bsd.UPDATER_PLUGIN, "version": "1.0.0", "category": "infrastructure"},
+            ],
+        }
+
+    def test_excludes_current_and_links_the_other_plugins(self):
+        out = bsd.render_switcher(self._manifest(), "commentable-html")
+        self.assertIn('class="nav-switcher"', out)
+        # Tiles link to the other two plugins, not to the current one.
+        self.assertIn('href="../multi-duck/"', out)
+        self.assertIn('href="../%s/"' % bsd.UPDATER_PLUGIN, out)
+        self.assertNotIn('href="../commentable-html/"', out)
+        # An all-plugins link returns to the hub.
+        self.assertIn('class="switch-tile switch-tile-all" href="../"', out)
+
+    def test_uses_display_labels_so_only_the_trigger_says_marketplace(self):
+        out = bsd.render_switcher(self._manifest(), "commentable-html")
+        # The auto-updater tile shows a friendly label, never its marketplace-bearing raw name,
+        # so the trigger link is the single element carrying the word "Marketplace".
+        self.assertIn(">Auto-updater<", out)
+        self.assertNotIn(">urikan-ai-marketplace-auto-updater<", out)
+        # Exactly one visible "Marketplace" label (the trigger); tile text never repeats it.
+        self.assertEqual(out.count(">Marketplace<"), 1)
+
+    def test_ordered_cmh_multiduck_updater_minus_current(self):
+        out = bsd.render_switcher(self._manifest(), bsd.UPDATER_PLUGIN)
+        order = re.findall(r'class="switch-tile" href="\.\./([^/"]+)/"', out)
+        self.assertEqual(order, ["commentable-html", "multi-duck"])
+
+    def test_empty_when_no_other_plugin_has_a_page(self):
+        manifest = {"name": "m", "plugins": [
+            {"name": "commentable-html", "version": "1.0.0", "category": "x"}]}
+        self.assertEqual(bsd.render_switcher(manifest, "commentable-html"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

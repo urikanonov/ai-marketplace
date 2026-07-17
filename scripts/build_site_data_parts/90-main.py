@@ -58,6 +58,7 @@ def main(argv):
             CHANGELOG_PLUGIN, suffix, CHANGELOG_PLUGIN in claude_names, "install-cmh",
             desktop_zip=_desktop_install_args(CHANGELOG_PLUGIN, "../")[0],
             desktop_skill=_desktop_install_args(CHANGELOG_PLUGIN, "../")[1])),
+        ("block", "switcher", render_switcher(manifest, CHANGELOG_PLUGIN)),
         ("block", "changelog", changelog_html),
         ("inline", "demo-fullscreen", render_demo_fullscreen_link()),
     ])
@@ -65,12 +66,14 @@ def main(argv):
         ("inline", "version", "v" + esc(updater_version)),
         ("block", "install", render_install(
             UPDATER_PLUGIN, suffix, UPDATER_PLUGIN in claude_names, "install-updater")),
+        ("block", "switcher", render_switcher(manifest, UPDATER_PLUGIN)),
         ("block", "changelog", render_plugin_changelog(root, UPDATER_PLUGIN)),
     ])
     multi_duck_out = build_page(root, MULTI_DUCK_SRC, [
         ("inline", "version", "v" + esc(multi_duck_version)),
         ("block", "install", render_install(
             MULTI_DUCK_PLUGIN, suffix, MULTI_DUCK_PLUGIN in claude_names, "install-multi-duck")),
+        ("block", "switcher", render_switcher(manifest, MULTI_DUCK_PLUGIN)),
         ("block", "changelog", render_plugin_changelog(root, MULTI_DUCK_PLUGIN)),
     ])
     hub_out_path = os.path.join(root, HUB_OUT)

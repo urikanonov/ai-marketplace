@@ -185,6 +185,53 @@ def render_plugins(manifest, claude_names=None):
     return "\n".join(cards)
 
 
+def render_switcher(manifest, current_name, rel_prefix="../"):
+    """The nav 'Marketplace' control on a plugin page: a link back to the hub that, on hover or
+    keyboard focus, reveals a small flyout of tiles linking to the OTHER plugins, so a reader can
+    jump straight between plugin pages without going through the hub. The current plugin is
+    excluded, and only plugins that have their own generated page are listed. Returns an empty
+    string when there is no other plugin to switch to. Tile labels come from PLUGIN_DISPLAY_NAMES
+    (never containing the word 'Marketplace'), so the trigger link stays the only nav element with
+    that text."""
+    hub_href = esc(safe_url(rel_prefix or "./"))
+    tiles = []
+    for plugin in manifest.get("plugins", []):
+        name = plugin.get("name", "")
+        if not name or name == current_name or name not in PLUGIN_PAGES:
+            continue
+        label = PLUGIN_DISPLAY_NAMES.get(name, name)
+        category = plugin.get("category", "")
+        href = esc(safe_url(rel_prefix + name + "/"))
+        icon = esc(safe_url(rel_prefix + "assets/" + name + ".svg"))
+        sub = ('<span class="switch-tile-sub">%s</span>' % esc(category)) if category else ""
+        tiles.append(
+            '<a class="switch-tile" href="%s">'
+            '<img class="switch-tile-icon" src="%s" alt="%s logo" />'
+            '<span class="switch-tile-text"><span class="switch-tile-name">%s</span>%s</span>'
+            '</a>' % (href, icon, esc(label), esc(label), sub))
+    if not tiles:
+        return ""
+    tile_html = "\n      ".join(tiles)
+    icon_svg = (
+        '<svg class="nav-switcher-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+        '<rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'
+        '</svg>')
+    return (
+        '<div class="nav-switcher">\n'
+        '  <a class="nav-switcher-trigger" href="%s">%s<span>Marketplace</span></a>\n'
+        '  <div class="nav-switcher-menu">\n'
+        '    <span class="nav-switcher-heading">Switch plugin</span>\n'
+        '    %s\n'
+        '    <a class="switch-tile switch-tile-all" href="%s"><span class="switch-tile-text">'
+        '<span class="switch-tile-name">All plugins</span>'
+        '<span class="switch-tile-sub">Back to the hub</span></span></a>\n'
+        '  </div>\n'
+        '</div>'
+    ) % (hub_href, icon_svg, tile_html, hub_href)
+
+
 def _plugin_app_url(plugin):
     """The canonical URL for a plugin: its own generated site page when it has one, else its
     manifest homepage (allowlisted), falling back to the site root."""

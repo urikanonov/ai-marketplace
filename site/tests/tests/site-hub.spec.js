@@ -77,3 +77,38 @@ test("the hub Learn more button uses the brand accent color, not yellow (SITE-HU
   expect(bg).not.toBe("rgb(255, 193, 7)");
 });
 
+
+
+test("the hub lays each plugin out as a full-width row with the install block beside the info (SITE-HUB-09)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const grid = page.locator("#plugins .grid");
+  // The plugins grid is a single column, so each plugin card is a full-width row (not a cramped 1/3 column).
+  const columns = await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+  expect(columns.trim().split(/\s+/).length).toBe(1);
+  const cards = page.locator("#plugins .plugin-card");
+  const first = cards.nth(0);
+  const second = cards.nth(1);
+  const gridBox = await grid.boundingBox();
+  const firstBox = await first.boundingBox();
+  const secondBox = await second.boundingBox();
+  // Each card spans (nearly) the full grid width and the cards are stacked vertically.
+  expect(firstBox.width).toBeGreaterThan(gridBox.width * 0.9);
+  expect(secondBox.y).toBeGreaterThan(firstBox.y + firstBox.height - 5);
+  // Inside a card, the install block sits to the RIGHT of the description at desktop width.
+  const desc = await first.locator(".desc").boundingBox();
+  const install = await first.locator(".install").boundingBox();
+  expect(install.x).toBeGreaterThan(desc.x + desc.width - 5);
+});
+
+
+test("the hub plugin cards are ordered commentable-html, multi-duck, then the auto-updater (SITE-HUB-10)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const names = await page.locator("#plugins .plugin-card .name").allTextContents();
+  const trimmed = names.map((n) => n.trim());
+  expect(trimmed.slice(0, 3)).toEqual([
+    "commentable-html",
+    "multi-duck",
+    "urikan-ai-marketplace-auto-updater",
+  ]);
+});

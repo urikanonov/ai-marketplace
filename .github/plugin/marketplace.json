@@ -38,27 +38,6 @@
       "strict": false
     },
     {
-      "name": "urikan-ai-marketplace-auto-updater",
-      "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
-      "version": "1.2.3",
-      "source": "./plugins/urikan-ai-marketplace-auto-updater/pkg",
-      "author": {
-        "name": "Uri Kanonov",
-        "email": "urikanonov@gmail.com"
-      },
-      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater",
-      "repository": "https://github.com/urikanonov/ai-marketplace",
-      "license": "MIT",
-      "category": "infrastructure",
-      "keywords": [
-        "auto-update",
-        "marketplace",
-        "hooks",
-        "session-start"
-      ],
-      "strict": false
-    },
-    {
       "name": "multi-duck",
       "description": "Convene a panel of independent rubber-duck reviewers over your in-flight work (a diff, PR, plan, tests, or commentable HTML plans with their open comments), each on a different model so their blind spots do not overlap, all in parallel, then consolidate the findings and autonomously apply the safe fixes. Two modes: prisms for wide coverage, consensus for cross-model agreement. Works on Claude Code and the GitHub Copilot CLI.",
       "version": "1.0.0",
@@ -82,6 +61,27 @@
         "consensus",
         "panel",
         "quality"
+      ],
+      "strict": false
+    },
+    {
+      "name": "urikan-ai-marketplace-auto-updater",
+      "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
+      "version": "1.2.3",
+      "source": "./plugins/urikan-ai-marketplace-auto-updater/pkg",
+      "author": {
+        "name": "Uri Kanonov",
+        "email": "urikanonov@gmail.com"
+      },
+      "homepage": "https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater",
+      "repository": "https://github.com/urikanonov/ai-marketplace",
+      "license": "MIT",
+      "category": "infrastructure",
+      "keywords": [
+        "auto-update",
+        "marketplace",
+        "hooks",
+        "session-start"
       ],
       "strict": false
     }
