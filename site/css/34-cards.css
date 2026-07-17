@@ -15,7 +15,7 @@
    NOT a boxed column floated to the right of the description, so there is no dead whitespace gap
    between the prose and the buttons (SITE-HUB-09). */
 #plugins .grid { grid-template-columns: 1fr; gap: 22px; }
-#plugins .plugin-card .desc { max-width: 90ch; }
+#plugins .plugin-card .desc { max-width: 84ch; }
 #plugins .plugin-card .foot .btn { white-space: nowrap; }
 .card {
   background: var(--cp-surface);

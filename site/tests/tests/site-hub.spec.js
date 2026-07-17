@@ -102,6 +102,8 @@ test("the hub lays each plugin out as a full-width row with the actions in a pla
   const foot = await first.locator(".foot").boundingBox();
   const install = await first.locator(".install").boundingBox();
   expect(keywords.y).toBeGreaterThan(desc.y + desc.height - 5);
+  // The description is capped to a comfortable measure, not stretched to the full card width.
+  expect(desc.width).toBeLessThan(firstBox.width * 0.8);
   // The Learn more/Source actions sit in a plain row UNDER the tags (not a box floated to the right
   // of the description), sharing the left edge - so there is no dead whitespace gap beside the prose.
   expect(foot.y).toBeGreaterThan(keywords.y + keywords.height - 5);
@@ -114,6 +116,19 @@ test("the hub lays each plugin out as a full-width row with the actions in a pla
   expect(border).toBe(0);
   const bg = await footEl.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(bg);
+  // On a narrow (mobile) viewport the actions row wraps within the card without horizontal overflow
+  // (the old boxed 560px .foot override is gone; the shared flex-wrap rule covers it), and both
+  // buttons stay reachable and keyboard-focusable.
+  await page.setViewportSize({ width: 375, height: 900 });
+  const narrow = page.locator("#plugins .plugin-card").first();
+  await narrow.scrollIntoViewIfNeeded();
+  const narrowFoot = narrow.locator(".foot");
+  const noOverflow = await narrowFoot.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(noOverflow).toBe(true);
+  const narrowLearn = narrowFoot.locator("a.learn-more");
+  await expect(narrowLearn).toBeVisible();
+  await narrowLearn.focus();
+  await expect(narrowLearn).toBeFocused();
 });
 
 
@@ -157,6 +172,10 @@ test("the hub nav 'Plugins' is a dropdown that lists each plugin and scrolls to 
   await expect(menu.locator('a[href="#plugin-commentable-html"]')).toHaveCount(1);
   await expect(menu.locator('a[href="#plugin-multi-duck"]')).toHaveCount(1);
   await expect(menu.locator('a[href="#plugin-urikan-ai-marketplace-auto-updater"]')).toHaveCount(1);
+  // The tile category sub-labels are Title Case (matching the card badges), not lowercase slugs.
+  await expect(menu.locator(".switch-tile-sub", { hasText: "Planning and Analysis" })).toHaveCount(1);
+  await expect(menu.locator(".switch-tile-sub", { hasText: "Code and Plan Review" })).toHaveCount(1);
+  await expect(menu.locator(".switch-tile-sub", { hasText: "Infrastructure" })).toHaveCount(1);
   // Clicking a tile jumps to that card.
   await menu.locator('a[href="#plugin-multi-duck"]').click();
   await expect(page).toHaveURL(/#plugin-multi-duck$/);
