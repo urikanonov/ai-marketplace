@@ -32,9 +32,9 @@ body.cmh-deck-present #menuComment {
   --cmh-deck-code-soft: #94a3b8;
 }
 #commentRoot[data-cmh-mode="deck"] .slide table thead th {
-  background: rgba(15, 23, 42, 0.92);
-  color: #f8fafc;
-  border-color: rgba(148, 163, 184, 0.48);
+  background: var(--cmh-deck-table-head-bg, rgba(15, 23, 42, 0.92));
+  color: var(--cmh-deck-table-head-fg, #f8fafc);
+  border-color: var(--cmh-deck-table-head-border, rgba(148, 163, 184, 0.48));
 }
 #commentRoot[data-cmh-mode="deck"] .slide table :is(th, td) {
   transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
@@ -83,17 +83,17 @@ body.cmh-deck-present #menuComment {
   color: #dbeafe;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-kw,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: #d8b4fe; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-kw { color: var(--cmh-deck-tok-kw, #d8b4fe); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-fn,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-fn { color: #93c5fd; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-fn { color: var(--cmh-deck-tok-fn, #93c5fd); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-str,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-str { color: #86efac; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-str { color: var(--cmh-deck-tok-str, #86efac); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-num,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-num { color: #fbbf24; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-num { color: var(--cmh-deck-tok-num, #fbbf24); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-com,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-com { color: #94a3b8; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-com { color: var(--cmh-deck-tok-com, #94a3b8); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-op,
-#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-op { color: #cbd5e1; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-kql-op { color: var(--cmh-deck-tok-op, #cbd5e1); }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap .cmh-code-lined > .cmh-code-gutter > .cmh-code-line::before,
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
   color: var(--cmh-deck-code-soft);
@@ -134,19 +134,19 @@ body.cmh-deck-present #menuComment {
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-hunk {
   background: rgba(96, 165, 250, 0.16);
-  color: #bfdbfe;
+  color: var(--cmh-deck-diff-hunk-fg, #bfdbfe);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add {
   background: rgba(34, 197, 94, 0.20);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add .cmh-dl-sign {
-  color: #86efac;
+  color: var(--cmh-deck-diff-add-fg, #86efac);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del {
   background: rgba(248, 113, 113, 0.22);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del .cmh-dl-sign {
-  color: #fca5a5;
+  color: var(--cmh-deck-diff-del-fg, #fca5a5);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-add:hover,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-dl-del:hover,
@@ -157,8 +157,8 @@ body.cmh-deck-present #menuComment {
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node polygon,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node circle,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .node ellipse {
-  fill: #1e293b !important;
-  stroke: #93c5fd !important;
+  fill: var(--cmh-deck-mermaid-node-fill, #1e293b) !important;
+  stroke: var(--cmh-deck-mermaid-node-stroke, #93c5fd) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .cluster rect,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .cluster polygon {
@@ -166,21 +166,21 @@ body.cmh-deck-present #menuComment {
   stroke: rgba(147, 197, 253, 0.7) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.nodeLabel, .label, text, foreignObject, foreignObject *) {
-  color: #f8fafc !important;
-  fill: #f8fafc !important;
+  color: var(--cmh-deck-mermaid-label, #f8fafc) !important;
+  fill: var(--cmh-deck-mermaid-label, #f8fafc) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
-  stroke: #334155 !important;
+  stroke: var(--cmh-deck-mermaid-edge, #334155) !important;
   stroke-width: 2.4px !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg marker path {
-  stroke: #334155 !important;
-  fill: #334155 !important;
+  stroke: var(--cmh-deck-mermaid-edge, #334155) !important;
+  fill: var(--cmh-deck-mermaid-edge, #334155) !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel,
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg .edgeLabel p {
-  background: #111827 !important;
-  color: #f8fafc !important;
+  background: var(--cmh-deck-mermaid-edge-label-bg, #111827) !important;
+  color: var(--cmh-deck-mermaid-edge-label-fg, #f8fafc) !important;
 }
 /* In comment mode on a wide screen, narrow the stage so the OPEN sidebar does not overlap it
    (the deck runtime refits the stage to the reduced viewport width via a ResizeObserver), and
@@ -506,4 +506,76 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-nav {
     display: none;
   }
+}
+
+/* Layer-2 slide recipes: reusable, theme-coloured archetype classes the agent composes so a themed
+   deck needs no per-deck CSS. Each recipe consumes the deck theme tokens (--slide-accent,
+   --slide-fg-muted, --slide-border, --slide-accent-fg) with generic-dark defaults, so the classes
+   are coherent on an unthemed deck and recolour automatically under any preset. Content budgets are
+   documented in references/deck-contract.md. */
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-slide-lede {
+  color: var(--slide-fg-muted, #a1a1aa);
+  font-size: 34px;
+  line-height: 1.4;
+  max-width: 26ch;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-section {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-section .cmh-slide-kicker {
+  color: var(--slide-accent, #93c5fd);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 0.3em;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-section::before {
+  content: "";
+  display: block;
+  width: 120px;
+  height: 8px;
+  margin-bottom: 28px;
+  border-radius: 999px;
+  background: var(--slide-accent, #93c5fd);
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-cols-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 28px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric {
+  padding: 28px 32px;
+  border: 1px solid var(--slide-border, rgba(255, 255, 255, 0.22));
+  border-radius: 16px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-value {
+  display: block;
+  color: var(--slide-accent, #93c5fd);
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-label {
+  display: block;
+  color: var(--slide-fg-muted, #a1a1aa);
+  font-size: 24px;
+  margin-top: 8px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill {
+  display: inline-block;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: var(--slide-accent, #93c5fd);
+  color: var(--slide-accent-fg, #0b0b0f);
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }

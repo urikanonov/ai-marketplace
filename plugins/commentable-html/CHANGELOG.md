@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.135.0] - 2026-07-16
+
+### Added
+
+- Native deck theme presets that incorporate the frontend-slides design system directly into the deck engine, replacing per-deck hand-translation of vendored reference material. A preset is a named JSON profile under `tools/deck/themes/<name>.theme.json` of allowlisted, system-font, contrast-safe deck tokens; `deck_scaffold.py --theme <name>` builds a fully styled deck and the new `deck_theme.py apply --theme <name>` re-themes an existing deck in place. Re-theming is idempotent and comment-safe: the theme block is `cm-skip`, so it never shifts stored comment offsets. Ships the `terminal` preset (dark/technical, system monospace), adapted from the frontend-slides "Terminal Green" style (Zara Zhang, MIT). Deck component colours (syntax tokens, table headers, diff, mermaid) and the link/border are now themeable via `var(--token, <default>)` with byte-exact defaults, plus reusable recipe classes (`.cmh-slide-section`, `.cmh-slide-lede`, `.cmh-cols-2`, `.cmh-metric-grid`, `.cmh-pill`) so a themed deck needs no per-deck CSS. `deck_validate.py` gates every themed contrast pair (compositing the translucent diff rows for a faithful check). Supersedes the vendor-first deck design routing from issue #208; the vendored `frontend-slides` subtree is retained as design provenance and the maintainer refresh source (CMH-DECK-THEME-01/02/03, CMH-DECK-14; issue #334).
+
 ## [1.134.0] - 2026-07-16
 
 ### Changed

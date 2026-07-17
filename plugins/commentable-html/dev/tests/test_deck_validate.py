@@ -200,6 +200,14 @@ class DeckValidateTests(unittest.TestCase):
         errs = _errors(bad)
         self.assertTrue(any("--slide-fg/--slide-bg" in e for e in errs), errs)
 
+    def test_cmh_deck_theme_03_component_variable_pair_fails(self):
+        # deck_validate.py's DECK_CONTRAST_VARIABLE_PAIRS gates the new themed component surfaces
+        # directly (not only via the theme loader): a collapsed code text/bg pair fails.
+        bad = _inject(self.html,
+                      "<style>:root{--cmh-deck-code-text:#777;--cmh-deck-code-bg:#777;}</style>")
+        errs = _errors(bad)
+        self.assertTrue(any("code text/bg" in e for e in errs), errs)
+
     def test_cmh_deck_12_non_finite_rgb_does_not_crash(self):
         self.assertEqual(_errors(_inject(
             self.html, '<p style="color:#000; background:rgb(inf 0 0)">Bad color</p>')), [])
