@@ -15,6 +15,15 @@ plugins with `copilot plugin install <name>@urikan-ai-marketplace` (or
 
 These rules are the ones most often forgotten. They are a MUST on every change, no exceptions:
 
+**ALWAYS pull the latest `origin/main` before ANY work OR investigation - not just before a change.** The
+very first thing you do in a session, before reading code, answering a question, planning, reviewing, or
+editing anything, is `git fetch origin` and base every conclusion on the latest `origin/main` (not a stale
+local checkout or a stale branch). Investigating stale code leads to wrong conclusions - for example
+deciding a feature does not exist when it was merged in a newer commit you never pulled - so treat a fetch
+as the precondition for looking at the code at all, not only for branching off it. This is why rule 1 makes
+`git fetch origin` the first step of a worktree; the same fetch-first rule applies even when you are only
+reading or investigating and will never make a change.
+
 1. **Never work in the primary tree - do EVERYTHING in a fresh worktree off the latest `main`.** The very
    FIRST action for ANY code or file change (a fix, a feature, a doc edit, a test-only change) is
    `git fetch origin` then `git worktree add -b <branch> .worktrees/<name> origin/main`; then `cd` into
