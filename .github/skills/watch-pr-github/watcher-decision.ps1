@@ -128,6 +128,31 @@ function ConvertTo-ReviewStates {
     return @($out)
 }
 
+# Normalize a timestamp to a stable, culture-invariant UTC ISO string, so a key built from it is
+# identical across runtimes. ConvertFrom-Json yields a [datetime] on pwsh 7 but a raw ISO string on
+# Windows PowerShell 5.1, and a [datetime]'s default ToString is culture/timezone-dependent -- either
+# would make the same status produce different keys. A null/blank value yields '' (a stable no-op).
+function ConvertTo-CanonicalTimestamp($Value) {
+    if ($null -eq $Value) { return '' }
+    $invariant = [System.Globalization.CultureInfo]::InvariantCulture
+    if ($Value -is [datetime]) {
+        # An Unspecified-kind datetime (what pwsh 7 ConvertFrom-Json yields for a timestamp with
+        # no zone) must be treated as UTC, matching the string path's AssumeUniversal below, so the
+        # two runtimes agree; otherwise ToUniversalTime would shift an Unspecified value by the
+        # local offset and produce a different key on pwsh 7 than on Windows PowerShell 5.1.
+        $dt = if ($Value.Kind -eq [System.DateTimeKind]::Unspecified) { [datetime]::SpecifyKind($Value, [System.DateTimeKind]::Utc) } else { $Value }
+        return $dt.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $invariant)
+    }
+    $s = [string]$Value
+    if (-not $s.Trim()) { return '' }
+    $dt = [datetime]::MinValue
+    $styles = [System.Globalization.DateTimeStyles]::AdjustToUniversal -bor [System.Globalization.DateTimeStyles]::AssumeUniversal
+    if ([datetime]::TryParse($s, $invariant, $styles, [ref]$dt)) {
+        return $dt.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $invariant)
+    }
+    return $s
+}
+
 # Reduce a status-check rollup's context nodes to the sorted identities of the runs that
 # are currently FAILING. Keying a CHECKS_FAILED event by these identities means a rerun
 # (new run ids) re-fires while a repeated identical failure does not suppress it forever.
@@ -139,7 +164,16 @@ function Get-FailedCheckIds {
         if ($ctx.__typename -eq 'CheckRun' -and $ctx.conclusion -in @('FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED')) {
             $ids += "cr$($ctx.databaseId)"
         } elseif ($ctx.__typename -eq 'StatusContext' -and $ctx.state -in @('FAILURE', 'ERROR')) {
-            $ids += "sc$($ctx.context)"
+            # Key a legacy commit-status by its context name AND its createdAt. Unlike a
+            # CheckRun (whose databaseId changes on a rerun), a StatusContext keeps the same
+            # context name across reposts, so keying by name alone would never re-fire after a
+            # fail -> pass -> fail transition on the same commit; the reposted status carries a
+            # new createdAt, so including it (canonicalized so the key is runtime-stable) makes
+            # the re-failure a new key that re-fires. A missing/null createdAt degrades safely to
+            # name-only keying (the old behavior), read via PSObject.Properties so it never throws.
+            $caProp = $ctx.PSObject.Properties['createdAt']
+            $ca = if ($caProp) { ConvertTo-CanonicalTimestamp $caProp.Value } else { '' }
+            $ids += "sc$($ctx.context)@$ca"
         }
     }
     # Return the failing-run identities, sorted. NOTE: a PowerShell function return unrolls a
@@ -248,7 +282,30 @@ function Get-WatcherDecision {
         }
         if ($seen -contains $f.Key -or $add -contains $f.Key) { continue }
         $add += $f.Key
-        if (& $IsTrusted $f.Login $f.Assoc) { $trusted += $f.Key } else { $untrusted += $f.Key }
+        # Trust classification is LEAST-PRIVILEGED: an item is trusted only if EVERY participant
+        # is trusted. A review thread carries a Participants list (all its comment authors), so an
+        # external comment ANYWHERE in an otherwise maintainer-led thread (or vice versa) still
+        # marks the thread untrusted and gets vetted, rather than being judged by only the latest
+        # comment's author. An issue comment or review body has a single author (no Participants),
+        # so it is classified by that author. A thread that somehow arrives WITHOUT a Participants
+        # list cannot be confirmed complete, so it gets an empty set and fails closed below.
+        $pp = $f.PSObject.Properties['Participants']
+        if ($pp) { $participants = @($pp.Value) }
+        elseif ($f.Kind -eq 'thread') { $participants = @() }
+        else { $participants = @([pscustomobject]@{ Login = $f.Login; Assoc = $f.Assoc }) }
+        # Fail CLOSED when the participant set cannot be confirmed complete: a truncated window (a
+        # thread with more comments than were fetched, ParticipantsTruncated) or an empty set means
+        # an untrusted participant might be unseen, so treat the item as untrusted (vet it).
+        $truncProp = $f.PSObject.Properties['ParticipantsTruncated']
+        if (($truncProp -and $truncProp.Value) -or $participants.Count -eq 0) {
+            $itemTrusted = $false
+        } else {
+            $itemTrusted = $true
+            foreach ($person in $participants) {
+                if (-not (& $IsTrusted $person.Login $person.Assoc)) { $itemTrusted = $false; break }
+            }
+        }
+        if ($itemTrusted) { $trusted += $f.Key } else { $untrusted += $f.Key }
     }
     if ($add.Count -gt 0) {
         $evt = "EVENT=NEW_COMMENTS trusted=[{0}] untrusted=[{1}]" -f ($trusted -join ','), ($untrusted -join ',')

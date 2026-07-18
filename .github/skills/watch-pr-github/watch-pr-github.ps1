@@ -110,15 +110,48 @@ query($owner:String!,$repo:String!,$num:Int!){
       state merged isDraft mergeable mergeStateStatus reviewDecision author{ login }
       autoMergeRequest{ enabledAt }
       commits(last:1){ nodes{ commit{ oid statusCheckRollup{ state
-        contexts(first:100){ nodes{
+        contexts(first:100){ pageInfo{ hasNextPage endCursor } nodes{
           __typename
           ... on CheckRun{ databaseId conclusion }
-          ... on StatusContext{ context state }
+          ... on StatusContext{ context state createdAt }
         } } } } } }
     }
   }
 }
 '@
+
+# Page through the last commit's statusCheckRollup contexts beyond the first 100 that the
+# state query already fetched. The rollup embeds only the first page, so a failing context past
+# position 100 would otherwise be invisible; this fetches the remaining pages (starting at the
+# state query's endCursor) and returns their nodes to append. Returns @() when there is no more.
+# $ExpectedOid guards a cross-poll race: if a new commit lands between the state query and this
+# call, the cursor would target a different commit's contexts, so bail rather than mix pages.
+function Get-RollupContexts([string]$After, [string]$ExpectedOid) {
+    $nodes = @(); $cursor = $After
+    $q = @'
+query($owner:String!,$repo:String!,$num:Int!,$after:String!){
+  repository(owner:$owner,name:$repo){ pullRequest(number:$num){ commits(last:1){ nodes{ commit{ oid statusCheckRollup{
+    contexts(first:100, after:$after){ pageInfo{ hasNextPage endCursor } nodes{
+      __typename
+      ... on CheckRun{ databaseId conclusion }
+      ... on StatusContext{ context state createdAt }
+    } } } } } } } }
+}
+'@
+    while ($cursor) {
+        $cnodes = (gh api graphql -f query=$q -f owner=$Owner -f repo=$Repo -F num=$PrNumber -f after=$cursor | ConvertFrom-Json).data.repository.pullRequest.commits.nodes
+        $c = if ($cnodes) { $cnodes[0].commit } else { $null }
+        if (-not $c) { break }
+        if ($ExpectedOid -and $c.oid -ne $ExpectedOid) { break }
+        $rollup2 = if ($c.statusCheckRollup) { $c.statusCheckRollup } else { $null }
+        if (-not $rollup2) { break }
+        $conn = $rollup2.contexts
+        if (-not $conn) { break }
+        $nodes += $conn.nodes
+        $cursor = if ($conn.pageInfo.hasNextPage) { $conn.pageInfo.endCursor } else { $null }
+    }
+    return @($nodes)
+}
 
 for ($i = 0; $i -lt $MaxIterations; $i++) {
     try {
@@ -143,7 +176,14 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
         $oid = if ($commit) { $commit.oid } else { '' }
         $rollupObj = if ($commit) { $commit.statusCheckRollup } else { $null }
         $rollup = if ($rollupObj) { $rollupObj.state } else { $null }
-        $rollupContexts = if ($rollupObj -and $rollupObj.contexts) { $rollupObj.contexts.nodes } else { @() }
+        $rollupContexts = if ($rollupObj -and $rollupObj.contexts) { @($rollupObj.contexts.nodes) } else { @() }
+        # If the rollup has more than the first 100 contexts, page the rest so a failing context
+        # beyond position 100 is not missed (it would otherwise leave the CHECKS_FAILED key
+        # incomplete). Non-fatal: on a pagination error, keep the first page.
+        if ($rollupObj -and $rollupObj.contexts -and $rollupObj.contexts.pageInfo -and $rollupObj.contexts.pageInfo.hasNextPage) {
+            try { $rollupContexts += @(Get-RollupContexts -After $rollupObj.contexts.pageInfo.endCursor -ExpectedOid $oid) }
+            catch { Write-Host "[$(Get-Date -Format o)] poll $i rollup-contexts pagination failed (using first page): $($_.Exception.Message)" }
+        }
 
         # Fetch the feedback connections when the PR is still open (a merged/closed PR short-
         # circuits in the decision anyway). NON-FATAL: if any pagination call fails, mark the
@@ -157,15 +197,27 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
         $feedbackAvailable = $true
         if (-not $pr.merged -and $pr.state -ne 'CLOSED') {
             try {
-                $threads = Get-AllNodes 'reviewThreads' 'id isResolved comments(last:1){ nodes{ databaseId author{ login } authorAssociation } }'
+                $threads = Get-AllNodes 'reviewThreads' 'id isResolved comments(last:100){ pageInfo{ hasPreviousPage } nodes{ databaseId author{ login } authorAssociation } }'
                 $issueComments = Get-AllNodes 'comments' 'databaseId author{ login } authorAssociation'
                 $reviews = Get-AllNodes 'reviews' 'databaseId state body author{ login } authorAssociation'
                 foreach ($t in $threads) {
                     if (-not $t -or $t.isResolved) { continue }
-                    $c = if ($t.comments -and $t.comments.nodes) { $t.comments.nodes[0] } else { $null }
-                    if (-not $c) { continue }
-                    $login = if ($c.author) { $c.author.login } else { $null }
-                    $feedback += [pscustomobject]@{ Kind = 'thread'; Key = "thread:$($t.id):$($c.databaseId)"; Login = $login; Assoc = $c.authorAssociation }
+                    $tcomments = if ($t.comments -and $t.comments.nodes) { @($t.comments.nodes | Where-Object { $_ }) } else { @() }
+                    if ($tcomments.Count -eq 0) { continue }
+                    # Key on the LATEST comment id so a new reply re-surfaces the thread, but
+                    # collect ALL participants so trust is judged least-privileged (any external
+                    # participant makes the whole thread untrusted, not just the last commenter).
+                    # If the thread has more comments than the fetched window (hasPreviousPage),
+                    # the participant set is incomplete -> mark it truncated so the decision fails
+                    # closed (treats the thread as untrusted) rather than trusting a partial set.
+                    $latest = $tcomments[-1]
+                    $participants = @($tcomments | ForEach-Object {
+                            $pl = if ($_.author) { $_.author.login } else { $null }
+                            [pscustomobject]@{ Login = $pl; Assoc = $_.authorAssociation }
+                        })
+                    $truncated = if ($t.comments.pageInfo) { [bool]$t.comments.pageInfo.hasPreviousPage } else { $false }
+                    $latestLogin = if ($latest.author) { $latest.author.login } else { $null }
+                    $feedback += [pscustomobject]@{ Kind = 'thread'; Key = "thread:$($t.id):$($latest.databaseId)"; Login = $latestLogin; Assoc = $latest.authorAssociation; Participants = $participants; ParticipantsTruncated = $truncated }
                 }
                 foreach ($c in $issueComments) {
                     if (-not $c) { continue }

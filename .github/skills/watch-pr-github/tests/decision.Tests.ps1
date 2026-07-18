@@ -311,16 +311,104 @@ try {
         [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 20; conclusion = 'FAILURE' },
         [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 5; conclusion = 'SUCCESS' },
         [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 7; conclusion = 'TIMED_OUT' },
-        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/pending'; state = 'PENDING' },
-        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/broken'; state = 'ERROR' }
+        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/pending'; state = 'PENDING'; createdAt = '2026-01-01T00:00:00Z' },
+        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/broken'; state = 'ERROR'; createdAt = '2026-01-01T00:00:00Z' }
     )
     $ids = Get-FailedCheckIds -Contexts $contexts
-    Assert-Eq 'cr20,cr7,scci/broken' ($ids -join ',') 'WPG-DECISION-17: only failures, sorted; passing/pending excluded'
+    # A StatusContext is keyed by its context name AND its createdAt (so a repost re-fires).
+    Assert-Eq 'cr20,cr7,scci/broken@2026-01-01T00:00:00Z' ($ids -join ',') 'WPG-DECISION-17: only failures, sorted; passing/pending excluded; StatusContext keyed with createdAt'
     # Null / empty inputs (a PR with no checks) yield an empty list, not a StrictMode throw.
     Assert-Eq 0 @(Get-FailedCheckIds -Contexts @()).Count 'WPG-DECISION-17: empty contexts -> empty'
     Assert-Eq 0 @(Get-FailedCheckIds -Contexts $null).Count 'WPG-DECISION-17: null contexts -> empty'
     Assert-Eq 'cr8' ((Get-FailedCheckIds -Contexts @($null, [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 8; conclusion = 'FAILURE' })) -join ',') 'WPG-DECISION-17: null context entry skipped'
+    # A StatusContext with a missing or null createdAt degrades to name-only keying (sc<ctx>@) and
+    # does NOT throw under StrictMode (createdAt is read via PSObject.Properties).
+    Assert-Eq 'scci/x@' ((Get-FailedCheckIds -Contexts @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/x'; state = 'FAILURE' })) -join ',') 'WPG-DECISION-17: missing createdAt degrades to name-only key'
+    Assert-Eq 'scci/y@' ((Get-FailedCheckIds -Contexts @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/y'; state = 'ERROR'; createdAt = $null })) -join ',') 'WPG-DECISION-17: null createdAt degrades to name-only key'
+    # createdAt is canonicalized, so a [datetime] (pwsh 7 ConvertFrom-Json) and the equivalent ISO
+    # string (Windows PowerShell 5.1) produce the SAME key.
+    $asString = (Get-FailedCheckIds -Contexts @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/z'; state = 'FAILURE'; createdAt = '2026-03-04T05:06:07Z' })) -join ','
+    $asDate = (Get-FailedCheckIds -Contexts @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/z'; state = 'FAILURE'; createdAt = ([datetime]::new(2026, 3, 4, 5, 6, 7, [System.DateTimeKind]::Utc)) })) -join ','
+    Assert-Eq 'scci/z@2026-03-04T05:06:07Z' $asString 'WPG-DECISION-17: ISO-string createdAt canonicalized'
+    Assert-Eq $asString $asDate 'WPG-DECISION-17: datetime and ISO-string createdAt yield the same key'
 } catch { $script:failures += "WPG-DECISION-17 threw: $_" }
+
+Write-Host "== WPG-DECISION-22 a StatusContext re-failure (fail -> pass -> fail) re-fires CHECKS_FAILED =="
+try {
+    $oid = 'abc123'
+    # First failure of a legacy status.
+    $c1 = @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/legacy'; state = 'FAILURE'; createdAt = '2026-01-01T10:00:00Z' })
+    $s1 = New-Snapshot -Rollup 'FAILURE' -MergeStateStatus 'BLOCKED' -FailedCheckIds (Get-FailedCheckIds -Contexts $c1)
+    $d1 = Invoke-Decision $s1
+    Assert-Eq "EVENT=CHECKS_FAILED oid=$oid runs=scci/legacy@2026-01-01T10:00:00Z" $d1.Event 'WPG-DECISION-22: first StatusContext failure fires'
+    # The SAME failure (same createdAt) does not re-fire.
+    Assert-Eq $null (Invoke-Decision $s1 -Seen $d1.Seen).Event 'WPG-DECISION-22: unchanged StatusContext failure suppressed'
+    # After a pass then a new failure, the reposted status has a NEW createdAt -> new key -> re-fires.
+    $c2 = @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/legacy'; state = 'FAILURE'; createdAt = '2026-01-01T12:00:00Z' })
+    $s2 = New-Snapshot -Rollup 'FAILURE' -MergeStateStatus 'BLOCKED' -FailedCheckIds (Get-FailedCheckIds -Contexts $c2)
+    Assert-Eq "EVENT=CHECKS_FAILED oid=$oid runs=scci/legacy@2026-01-01T12:00:00Z" (Invoke-Decision $s2 -Seen $d1.Seen).Event 'WPG-DECISION-22: re-failure with new createdAt re-fires'
+} catch { $script:failures += "WPG-DECISION-22 threw: $_" }
+
+Write-Host "== WPG-DECISION-23 a review thread is trusted only if ALL participants are trusted (least-privileged) =="
+try {
+    # Trust only OWNER association (a stand-in for a confirmed maintainer).
+    $trustOwner = { param($login, $assoc) $assoc -eq 'OWNER' }
+    # A thread whose participants are all trusted -> trusted.
+    $fbAll = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t1:9'; Login = 'maint'; Assoc = 'OWNER'; Participants = @(
+                [pscustomobject]@{ Login = 'maint'; Assoc = 'OWNER' },
+                [pscustomobject]@{ Login = 'maint2'; Assoc = 'OWNER' }) })
+    $dAll = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbAll) -Trust $trustOwner
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[thread:t1:9] untrusted=[]' $dAll.Event 'WPG-DECISION-23: all-trusted thread is trusted'
+    # A thread where the LATEST comment is a trusted maintainer but an EARLIER participant is
+    # external must be classified UNtrusted (least-privileged), so the external comment is vetted.
+    $fbMixed = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t2:9'; Login = 'maint'; Assoc = 'OWNER'; Participants = @(
+                [pscustomobject]@{ Login = 'ext'; Assoc = 'NONE' },
+                [pscustomobject]@{ Login = 'maint'; Assoc = 'OWNER' }) })
+    $dMixed = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbMixed) -Trust $trustOwner
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t2:9]' $dMixed.Event 'WPG-DECISION-23: an external participant makes the thread untrusted'
+    # Issue/review items (no Participants) still classify by their single author (backward compatible).
+    $fbIssue = @([pscustomobject]@{ Kind = 'issue'; Key = 'issue:5'; Login = 'maint'; Assoc = 'OWNER' })
+    $dIssue = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbIssue) -Trust $trustOwner
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[issue:5] untrusted=[]' $dIssue.Event 'WPG-DECISION-23: single-author item still classifies by its author'
+    # A thread whose only participant is external is untrusted.
+    $fbExt = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t3:9'; Login = 'ext'; Assoc = 'NONE'; Participants = @([pscustomobject]@{ Login = 'ext'; Assoc = 'NONE' }) })
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t3:9]' (Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbExt) -Trust $trustOwner).Event 'WPG-DECISION-23: sole external participant is untrusted'
+    # A null-author participant (deleted account) makes the thread untrusted (fail closed).
+    $fbNull = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t4:9'; Login = 'maint'; Assoc = 'OWNER'; Participants = @(
+                [pscustomobject]@{ Login = $null; Assoc = 'NONE' },
+                [pscustomobject]@{ Login = 'maint'; Assoc = 'OWNER' }) })
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t4:9]' (Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbNull) -Trust $trustOwner).Event 'WPG-DECISION-23: null-author participant makes the thread untrusted'
+    # A TRUNCATED thread (more comments than were fetched) fails closed to untrusted even if every
+    # fetched participant is trusted, because an older untrusted participant might be unseen.
+    $fbTrunc = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t5:9'; Login = 'maint'; Assoc = 'OWNER'; ParticipantsTruncated = $true; Participants = @(
+                [pscustomobject]@{ Login = 'maint'; Assoc = 'OWNER' }) })
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t5:9]' (Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbTrunc) -Trust $trustOwner).Event 'WPG-DECISION-23: truncated participant window fails closed to untrusted'
+    # A present-but-EMPTY Participants list fails closed to untrusted (never silently trusted).
+    $fbEmpty = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t6:9'; Login = 'maint'; Assoc = 'OWNER'; Participants = @() })
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t6:9]' (Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbEmpty) -Trust $trustOwner).Event 'WPG-DECISION-23: empty participant list fails closed to untrusted'
+    # A thread that arrives WITHOUT a Participants property fails closed (does NOT fall back to
+    # single-author trust the way an issue/review item does).
+    $fbNoP = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t7:9'; Login = 'maint'; Assoc = 'OWNER' })
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t7:9]' (Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbNoP) -Trust $trustOwner).Event 'WPG-DECISION-23: thread without a participant list fails closed'
+} catch { $script:failures += "WPG-DECISION-23 threw: $_" }
+
+Write-Host "== WPG-DECISION-24 ConvertTo-CanonicalTimestamp normalizes datetimes and strings to a stable key =="
+try {
+    $inv = '2026-03-04T05:06:07Z'
+    Assert-Eq $inv (ConvertTo-CanonicalTimestamp '2026-03-04T05:06:07Z') 'WPG-DECISION-24: ISO string round-trips'
+    Assert-Eq $inv (ConvertTo-CanonicalTimestamp ([datetime]::new(2026, 3, 4, 5, 6, 7, [System.DateTimeKind]::Utc))) 'WPG-DECISION-24: UTC datetime canonicalized'
+    # A non-UTC datetime is converted to UTC so the key is timezone-stable.
+    $local = [datetime]::new(2026, 3, 4, 5, 6, 7, [System.DateTimeKind]::Utc).ToLocalTime()
+    Assert-Eq $inv (ConvertTo-CanonicalTimestamp $local) 'WPG-DECISION-24: local datetime converted to UTC'
+    # Null / blank -> '' (a stable no-op).
+    Assert-Eq '' (ConvertTo-CanonicalTimestamp $null) 'WPG-DECISION-24: null -> empty'
+    Assert-Eq '' (ConvertTo-CanonicalTimestamp '   ') 'WPG-DECISION-24: blank -> empty'
+    # An Unspecified-kind datetime (a no-zone value) is treated as UTC (AssumeUniversal), matching
+    # the string path, so pwsh 7 and Windows PowerShell 5.1 produce the same key.
+    $unspec = [datetime]::new(2026, 3, 4, 5, 6, 7, [System.DateTimeKind]::Unspecified)
+    Assert-Eq $inv (ConvertTo-CanonicalTimestamp $unspec) 'WPG-DECISION-24: Unspecified datetime treated as UTC'
+    Assert-Eq (ConvertTo-CanonicalTimestamp '2026-03-04T05:06:07') (ConvertTo-CanonicalTimestamp $unspec) 'WPG-DECISION-24: no-zone string and Unspecified datetime agree'
+} catch { $script:failures += "WPG-DECISION-24 threw: $_" }
 
 Write-Host "== WPG-DECISION-18 Test-CommenterTrusted fails closed on bots and unprivileged accounts =="
 try {
