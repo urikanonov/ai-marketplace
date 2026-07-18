@@ -213,11 +213,12 @@ test("the features section pitches no extension, all-HTML, and cross-platform su
 });
 
 
-test("the privacy section notes moving or renaming the file on the same device keeps comments (SITE-PLUGIN-22)", async ({ page }) => {
+test("the privacy section qualifies comment persistence to same-origin hosting and export (SITE-PLUGIN-22)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const privacy = page.locator("#privacy");
-  await expect(privacy).toContainText("moving or renaming the file on the same device");
   await expect(privacy).toContainText("keyed to a stable id");
+  await expect(privacy).toContainText("served from one web origin");
+  await expect(privacy).toContainText("an exported file always carries every comment inside it");
 });
 
 
