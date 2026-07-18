@@ -176,6 +176,21 @@ class StatusBodyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             task.status_body("issue-5-caf\u00e9", "2026-07-18T13:55:00Z")
 
+    def test_rejects_backtick_or_leading_dash_or_space_branch(self):
+        for bad in ["--force", "has`tick", "has space", " ", ""]:
+            with self.assertRaises(ValueError):
+                task.status_body(bad, "2026-07-18T13:55:00Z")
+
+
+class AssertValidBranchTests(unittest.TestCase):
+    def test_accepts_normal_and_strips(self):
+        self.assertEqual(task.assert_valid_branch("  issue-5-foo  "), "issue-5-foo")
+
+    def test_rejects_leading_dash_backtick_space_and_empty(self):
+        for bad in ["-x", "a`b", "a b", "", "   "]:
+            with self.assertRaises(ValueError):
+                task.assert_valid_branch(bad)
+
 
 class BumpLastActiveTests(unittest.TestCase):
     def test_updates_only_timestamp_and_keeps_branch(self):
@@ -202,6 +217,28 @@ class FindStatusCommentTests(unittest.TestCase):
     def test_returns_none_when_absent(self):
         self.assertIsNone(task.find_status_comment([{"id": 1, "body": "nope"}]))
 
+    def test_trusted_only_ignores_untrusted_author(self):
+        comments = [
+            {"id": 1, "body": task.STATUS_MARKER + "\nplanted", "assoc": "NONE"},
+            {"id": 2, "body": task.STATUS_MARKER + "\nreal", "assoc": "OWNER"},
+        ]
+        # Without the filter the outsider comment wins; with it, only the trusted one is adopted.
+        self.assertEqual(task.find_status_comment(comments)["id"], 1)
+        self.assertEqual(task.find_status_comment(comments, trusted_only=True)["id"], 2)
+
+    def test_trusted_only_returns_none_when_only_untrusted(self):
+        comments = [{"id": 1, "body": task.STATUS_MARKER, "assoc": "CONTRIBUTOR"}]
+        self.assertIsNone(task.find_status_comment(comments, trusted_only=True))
+
+
+class ParseBranchTests(unittest.TestCase):
+    def test_extracts_branch(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        self.assertEqual(task.parse_branch(body), "issue-5-foo")
+
+    def test_returns_none_without_line(self):
+        self.assertIsNone(task.parse_branch("no branch line"))
+
 
 class ParseLastActiveTests(unittest.TestCase):
     def test_extracts_timestamp(self):
@@ -227,6 +264,15 @@ class IsStaleTests(unittest.TestCase):
     def test_unparseable_is_stale(self):
         self.assertTrue(task.is_stale("not-a-timestamp", self.NOW, minutes=15))
 
+    def test_zero_minutes_only_exact_now_is_fresh(self):
+        self.assertFalse(task.is_stale("2026-07-18T14:00:00Z", self.NOW, minutes=0))
+        self.assertTrue(task.is_stale("2026-07-18T13:59:59Z", self.NOW, minutes=0))
+
+    def test_naive_now_is_treated_as_utc(self):
+        naive = datetime(2026, 7, 18, 14, 0, 0)
+        self.assertFalse(task.is_stale("2026-07-18T13:55:00Z", naive, minutes=15))
+        self.assertTrue(task.is_stale("2026-07-18T13:40:00Z", naive, minutes=15))
+
 
 class BranchDerivationTests(unittest.TestCase):
     def test_slug_lowercases_and_dashes(self):
@@ -236,9 +282,38 @@ class BranchDerivationTests(unittest.TestCase):
         self.assertEqual(task.branch_slug("  --Hello--  "), "hello")
         self.assertLessEqual(len(task.branch_slug("word " * 40)), 40)
 
+    def test_slug_has_no_trailing_dash_after_truncation(self):
+        # A truncation that lands on a separator must not leave a dangling dash.
+        s = task.branch_slug("ab " * 30, maxlen=5)
+        self.assertFalse(s.endswith("-"))
+
+    def test_slug_empty_or_all_symbols_is_empty(self):
+        self.assertEqual(task.branch_slug(""), "")
+        self.assertEqual(task.branch_slug("!!! @@@"), "")
+
     def test_derive_branch_with_and_without_slug(self):
         self.assertEqual(task.derive_branch(414, "Heartbeat work"), "issue-414-heartbeat-work")
         self.assertEqual(task.derive_branch(414, ""), "issue-414")
+
+
+class ArgTypeValidatorTests(unittest.TestCase):
+    def test_positive_int_accepts_and_rejects(self):
+        self.assertEqual(task._positive_int("5"), 5)
+        for bad in ["0", "-1"]:
+            with self.assertRaises(task.argparse.ArgumentTypeError):
+                task._positive_int(bad)
+
+    def test_non_negative_int_accepts_and_rejects(self):
+        self.assertEqual(task._non_negative_int("0"), 0)
+        with self.assertRaises(task.argparse.ArgumentTypeError):
+            task._non_negative_int("-1")
+
+    def test_safe_worktree_name_rejects_separators_and_dotdot(self):
+        for bad in ["a/b", "a\\b", "..", "../x", "."]:
+            with self.assertRaises(SystemExit):
+                task._assert_safe_worktree_name(bad)
+        self.assertEqual(task._assert_safe_worktree_name("issue-5-foo"), "issue-5-foo")
+        self.assertIsNone(task._assert_safe_worktree_name(None))
 
 
 if __name__ == "__main__":

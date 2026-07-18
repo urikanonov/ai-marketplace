@@ -7,9 +7,9 @@ Task issue-form section shape. Agents and contributors should prefer this wrappe
 over raw `gh` so those conventions are not re-typed each time.
 
 The pure helpers (build_body, create_args, tick_checkbox, assert_ascii, status_body,
-bump_last_active, find_status_comment, parse_last_active, is_stale, utc_stamp,
-branch_slug, derive_branch) are unit tested in scripts/test_task.py; the thin `_run`
-layer shells out to `gh` and `git`.
+bump_last_active, find_status_comment, parse_last_active, parse_branch, is_stale,
+utc_stamp, assert_valid_branch, branch_slug, derive_branch) are unit tested in
+scripts/test_task.py; the thin `_run` layer shells out to `gh` and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
@@ -43,6 +43,16 @@ STATUS_MARKER = "<!-- task-status: heartbeat -->"
 HEARTBEAT_INTERVAL_SECONDS = 300
 # A heartbeat older than this (or missing) means no agent is actively working the issue.
 HEARTBEAT_STALE_MINUTES = 15
+# Only a marker comment authored by one of these associations is trusted as THE status comment.
+# On a public repo anyone can comment, so an outsider (CONTRIBUTOR/NONE) could plant the marker;
+# adopting only maintainer/collaborator comments stops that from hijacking the automation.
+TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+
+
+class HeartbeatStop(Exception):
+    """Raised when the heartbeat cannot continue (a fatal setup error, e.g. no branch and no
+    status comment). The --watch daemon stops on this but keeps beating through transient
+    command failures, so a stopped heartbeat still means work genuinely stopped."""
 
 # Smart characters the house style forbids, mapped to their ASCII equivalents.
 SMART = {
@@ -142,6 +152,21 @@ def utc_stamp(now=None):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def assert_valid_branch(branch):
+    """Validate a branch name for use in a stamp/comment and as a git argument.
+
+    Rejects non-ASCII (house style), a leading '-' (which git/gh could read as an option),
+    backticks (which would break the markdown code span in the comment), and any whitespace.
+    Returns the stripped branch. Raises ValueError on a bad name.
+    """
+    assert_ascii(branch, "branch")
+    b = branch.strip()
+    if not b or b.startswith("-") or "`" in b or any(c.isspace() for c in b):
+        raise ValueError(
+            f"invalid branch name {branch!r}: no leading dash, backticks, or whitespace")
+    return b
+
+
 def status_body(branch, stamp):
     """Build the pinned 'Work status' comment body for a branch and UTC timestamp.
 
@@ -149,8 +174,7 @@ def status_body(branch, stamp):
     worktree branch (so dropped work can be resumed from it), and the last-active
     timestamp (the heartbeat). Plain ASCII, per the house style.
     """
-    branch = branch.strip()
-    assert_ascii(branch, "branch")
+    branch = assert_valid_branch(branch)
     return "\n".join([
         STATUS_MARKER,
         "### Work status (automated heartbeat)",
@@ -177,11 +201,20 @@ def bump_last_active(body, stamp):
     return new_body
 
 
-def find_status_comment(comments):
-    """Return the first comment dict (with 'id'/'body') whose body has STATUS_MARKER, or None."""
+def find_status_comment(comments, trusted_only=False):
+    """Return the first comment dict whose body has STATUS_MARKER, or None.
+
+    comments: iterable of dicts with 'id'/'body' (and optionally 'assoc', the GitHub
+    author_association). When trusted_only is set, only a marker comment authored by a
+    trusted association (OWNER/MEMBER/COLLABORATOR) is adopted, so an outsider who plants
+    the marker on a public issue cannot hijack the automation's status comment.
+    """
     for c in comments:
-        if STATUS_MARKER in (c.get("body") or ""):
-            return c
+        if STATUS_MARKER not in (c.get("body") or ""):
+            continue
+        if trusted_only and (c.get("assoc") or "").upper() not in TRUSTED_ASSOCIATIONS:
+            continue
+        return c
     return None
 
 
@@ -191,14 +224,25 @@ def parse_last_active(body):
     return m.group(1) if m else None
 
 
+def parse_branch(body):
+    """Return the branch name stamped in a status-comment body, or None if absent."""
+    m = re.search(r"^- Branch: `([^`]+)`", body or "", re.M)
+    return m.group(1) if m else None
+
+
 def is_stale(stamp, now, minutes=HEARTBEAT_STALE_MINUTES):
-    """True if stamp is missing, unparseable, or older than `minutes` before `now`."""
+    """True if stamp is missing, unparseable, or older than `minutes` before `now`.
+
+    A naive `now` is treated as UTC so the comparison never raises on mixed awareness.
+    """
     if not stamp:
         return True
     try:
         dt = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except ValueError:
         return True
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     return (now - dt) > timedelta(minutes=minutes)
 
 
@@ -212,6 +256,30 @@ def derive_branch(number, text=""):
     """Return a branch name for an issue: 'issue-<n>-<slug>' (or 'issue-<n>' with no text)."""
     slug = branch_slug(text)
     return f"issue-{number}-{slug}" if slug else f"issue-{number}"
+
+
+def _positive_int(value):
+    """argparse type: an int >= 1 (used for --interval so it never hot-loops or goes negative)."""
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be an integer >= 1, got {value}")
+    return n
+
+
+def _non_negative_int(value):
+    """argparse type: an int >= 0 (used for --minutes so the stale window is never negative)."""
+    n = int(value)
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"must be an integer >= 0, got {value}")
+    return n
+
+
+def _assert_safe_worktree_name(name):
+    """Reject a --name that is not a single safe path component (no separators or '..'),
+    so a worktree cannot be created outside .worktrees/."""
+    if name and (re.search(r"[\\/]", name) or ".." in name.split("/") or name in (".", "..")):
+        raise SystemExit(f"--name must be a single path component (no separators or '..'), got {name!r}")
+    return name
 
 
 def _run(args):
@@ -244,11 +312,24 @@ def current_branch():
 
 
 def _list_comments(number):
-    """Return the issue's comments as a list of {'id', 'body'} dicts (paginated)."""
+    """Return the issue's comments as a list of {'id','body','assoc'} dicts (paginated).
+
+    'assoc' is the GitHub author_association, used to trust only maintainer/collaborator
+    status comments. Malformed NDJSON lines are skipped rather than aborting the run.
+    """
     out = _capture(["gh", "api", "--paginate",
                     f"repos/{REPO}/issues/{number}/comments",
-                    "--jq", ".[] | {id: .id, body: .body}"])
-    return [json.loads(line) for line in out.splitlines() if line.strip()]
+                    "--jq", ".[] | {id: .id, body: .body, assoc: .author_association}"])
+    comments = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            comments.append(json.loads(line))
+        except ValueError:
+            continue
+    return comments
 
 
 def _post_comment(number, body):
@@ -263,15 +344,16 @@ def _edit_comment(comment_id, body):
     path = _write_temp(body)
     try:
         _capture(["gh", "api", "--method", "PATCH",
-                  f"repos/{REPO}/issues/comments/{comment_id}", "-F", f"body=@{path}"])
+                  f"repos/{REPO}/issues/comments/{int(comment_id)}", "-F", f"body=@{path}"])
     finally:
         os.unlink(path)
 
 
 def _upsert_status(number, branch, stamp=None):
-    """Create or (in place) refresh the pinned Work status comment for a branch."""
+    """Create or (in place) refresh the pinned Work status comment for a branch. Adopts only a
+    trusted (maintainer/collaborator) marker comment; otherwise posts a fresh canonical one."""
     stamp = stamp or utc_stamp()
-    existing = find_status_comment(_list_comments(number))
+    existing = find_status_comment(_list_comments(number), trusted_only=True)
     body = status_body(branch, stamp)
     if existing:
         _edit_comment(existing["id"], body)
@@ -281,18 +363,29 @@ def _upsert_status(number, branch, stamp=None):
 
 
 def _beat_once(number, branch):
-    """Post one heartbeat: refresh the existing status comment's timestamp, or create it
-    from `branch` if none exists yet. Returns the UTC stamp written."""
+    """Post one heartbeat: refresh the existing (trusted) status comment's timestamp, or create
+    it from `branch` if none exists yet. Returns the UTC stamp written. Raises HeartbeatStop on a
+    fatal condition (no status comment and no branch, or a malformed comment we cannot rebuild)."""
     stamp = utc_stamp()
-    existing = find_status_comment(_list_comments(number))
+    existing = find_status_comment(_list_comments(number), trusted_only=True)
     if existing:
-        _edit_comment(existing["id"], bump_last_active(existing["body"], stamp))
+        try:
+            new_body = bump_last_active(existing["body"], stamp)
+        except ValueError:
+            # Marker comment missing its timestamp line: self-heal by rebuilding the full
+            # canonical body from a known or recoverable branch, else stop rather than loop.
+            recovered = branch or parse_branch(existing["body"])
+            if not recovered:
+                raise HeartbeatStop(
+                    f"status comment on #{number} is malformed and no branch is known to rebuild it")
+            new_body = status_body(recovered, stamp)
+        _edit_comment(existing["id"], new_body)
     elif branch:
         _post_comment(number, status_body(branch, stamp))
     else:
-        raise SystemExit(
-            "no Work status comment yet and no branch detected; run `task.py claim "
-            f"{number} --branch <name>` from the worktree first")
+        raise HeartbeatStop(
+            f"no Work status comment on #{number} and no branch detected; run "
+            f"`task.py claim {number} --branch <name>` from the worktree first")
     return stamp
 
 
@@ -315,10 +408,15 @@ def cmd_new(a):
 
 
 def cmd_claim(a):
+    branch = a.branch or current_branch()
+    if branch:
+        try:
+            branch = assert_valid_branch(branch)
+        except ValueError as exc:
+            raise SystemExit(str(exc))
     code = _run(["gh", "issue", "edit", str(a.number), "--repo", REPO,
                  "--add-assignee", "@me", "--add-label", IN_PROGRESS_LABEL])
     if code == 0:
-        branch = a.branch or current_branch()
         if branch:
             stamp = _upsert_status(a.number, branch)
             print(f"stamped branch `{branch}` and heartbeat {stamp} on #{a.number}")
@@ -332,14 +430,21 @@ def cmd_claim(a):
 def cmd_start(a):
     """Automate the start of work: create a worktree+branch off latest origin/main, claim
     the issue, and stamp the branch. Prints the worktree path and the heartbeat command."""
-    branch = a.branch or derive_branch(a.number, a.slug or "")
+    _assert_safe_worktree_name(a.name)
+    try:
+        branch = assert_valid_branch(a.branch or derive_branch(a.number, a.slug or ""))
+    except ValueError as exc:
+        raise SystemExit(str(exc))
     name = a.name or branch
     path = os.path.join(".worktrees", name)
     _capture(["git", "fetch", "origin"])
     if _run(["git", "worktree", "add", "-b", branch, path, "origin/main"]) != 0:
         raise SystemExit(f"could not create worktree at {path} (branch {branch})")
-    _run(["gh", "issue", "edit", str(a.number), "--repo", REPO,
-          "--add-assignee", "@me", "--add-label", IN_PROGRESS_LABEL])
+    if _run(["gh", "issue", "edit", str(a.number), "--repo", REPO,
+             "--add-assignee", "@me", "--add-label", IN_PROGRESS_LABEL]) != 0:
+        raise SystemExit(
+            f"created worktree {path} (branch {branch}) but FAILED to claim #{a.number}; "
+            f"claim it manually with `python scripts/task.py claim {a.number} --branch {branch}`")
     stamp = _upsert_status(a.number, branch)
     print(f"worktree ready: {path} (branch {branch}); stamped heartbeat {stamp} on #{a.number}")
     print(f"next: cd {path} ; then start the session-scoped heartbeat daemon:")
@@ -348,8 +453,16 @@ def cmd_start(a):
 
 def cmd_heartbeat(a):
     branch = a.branch or current_branch()
+    if branch:
+        try:
+            branch = assert_valid_branch(branch)
+        except ValueError as exc:
+            raise SystemExit(str(exc))
     if not a.watch:
-        stamp = _beat_once(a.number, branch)
+        try:
+            stamp = _beat_once(a.number, branch)
+        except HeartbeatStop as exc:
+            raise SystemExit(str(exc))
         print(f"heartbeat {stamp} on #{a.number}")
         return
     print(f"heartbeat daemon: #{a.number} every {a.interval}s (stop it to signal work ended)",
@@ -359,11 +472,17 @@ def cmd_heartbeat(a):
             try:
                 stamp = _beat_once(a.number, branch)
                 print(f"heartbeat {stamp} on #{a.number}", flush=True)
-            except SystemExit:
-                raise
-            except Exception as exc:  # keep beating through transient gh/network errors
+            except HeartbeatStop:
+                raise  # fatal setup error - stop the daemon (propagates to the outer handler)
+            except SystemExit as exc:
+                # _capture raises SystemExit on a nonzero gh/git exit (a transient network or
+                # rate-limit blip); keep beating so a blip is not misread as abandoned work.
+                sys.stderr.write(f"heartbeat: transient command failure (exit {exc.code}); retrying\n")
+            except Exception as exc:  # transient in-process error (e.g. a proxy JSON hiccup)
                 sys.stderr.write(f"heartbeat error (will retry): {exc}\n")
             time.sleep(a.interval)
+    except HeartbeatStop as exc:
+        raise SystemExit(str(exc))
     except KeyboardInterrupt:
         print("heartbeat daemon stopped")
 
@@ -376,16 +495,17 @@ def cmd_stale(a):
         "--limit", "200", "--json", "number,title"]))
     stale = []
     for it in issues:
-        st = find_status_comment(_list_comments(it["number"]))
+        st = find_status_comment(_list_comments(it["number"]), trusted_only=True)
         stamp = parse_last_active(st["body"]) if st else None
+        branch = (parse_branch(st["body"]) if st else None) or "unknown"
         if is_stale(stamp, now, a.minutes):
-            stale.append((it["number"], stamp or "none", it["title"]))
+            stale.append((it["number"], stamp or "none", branch, it["title"]))
     if not stale:
         print(f"No stale in-progress issues (all beat within {a.minutes} min).")
         return
     print(f"Stale in-progress issues (no heartbeat in {a.minutes} min) - likely free to take over:")
-    for number, stamp, title in stale:
-        print(f"  #{number}  last-active={stamp}  {title}")
+    for number, stamp, branch, title in stale:
+        print(f"  #{number}  last-active={stamp}  branch={branch}  {title}")
 
 
 def cmd_plan(a):
@@ -445,12 +565,12 @@ def build_parser():
     hb.add_argument("--branch", help="branch to stamp if no status comment exists yet")
     hb.add_argument("--watch", action="store_true",
                     help="loop, beating every --interval seconds until stopped")
-    hb.add_argument("--interval", type=int, default=HEARTBEAT_INTERVAL_SECONDS,
+    hb.add_argument("--interval", type=_positive_int, default=HEARTBEAT_INTERVAL_SECONDS,
                     help=f"seconds between beats in --watch mode (default {HEARTBEAT_INTERVAL_SECONDS})")
     hb.set_defaults(func=cmd_heartbeat)
 
     sl = sub.add_parser("stale", help="list in-progress issues with a missing or old heartbeat")
-    sl.add_argument("--minutes", type=int, default=HEARTBEAT_STALE_MINUTES,
+    sl.add_argument("--minutes", type=_non_negative_int, default=HEARTBEAT_STALE_MINUTES,
                     help=f"staleness threshold in minutes (default {HEARTBEAT_STALE_MINUTES})")
     sl.set_defaults(func=cmd_stale)
 
