@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.149.0] - 2026-07-18
+
+### Security
+
+- Bounded `mergeCommentSets()` against a pathological `embeddedComments` array or a
+  poisoned cross-document `localStorage` array under a matching `data-comment-key`:
+  the merged comment count is now capped at a generous `CMH_MAX_COMMENTS` bound, and
+  any comment whose `start`/`end` is present but not a finite, non-negative, ordered,
+  in-range offset is dropped, so startup's `backfillContext()`/`restoreHighlights()`
+  per-comment document walk can no longer be driven into unbounded
+  O(comment_count x document_size) work by untrusted input. Normal documents with
+  realistic comment counts and offsets are unaffected (CMH-PERSIST-04).
+
 ## [1.145.0] - 2026-07-18
 
 ### Changed

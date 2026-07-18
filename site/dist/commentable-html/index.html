@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.145.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.149.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.149.0] - 2026-07-18</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>Bounded <code>mergeCommentSets()</code> against a pathological <code>embeddedComments</code> array or a poisoned cross-document <code>localStorage</code> array under a matching <code>data-comment-key</code>: the merged comment count is now capped at a generous <code>CMH_MAX_COMMENTS</code> bound, and any comment whose <code>start</code>/<code>end</code> is present but not a finite, non-negative, ordered, in-range offset is dropped, so startup&#x27;s <code>backfillContext()</code>/<code>restoreHighlights()</code> per-comment document walk can no longer be driven into unbounded O(comment_count x document_size) work by untrusted input. Normal documents with realistic comment counts and offsets are unaffected (CMH-PERSIST-04).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.145.0] - 2026-07-18</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -433,6 +440,8 @@
               <li>The showcase deck&#x27;s top-right brand mark is now the official Commentable HTML logo rendered as a plain image (an inlined, offline-safe <code>data:</code> SVG) instead of a bordered card with a hand-drawn glyph; it still links to the project site with a clear tooltip (CMH-DECK-SHOWCASE-10).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.144.0] - 2026-07-18</h3></div>
             <div class="group-label">Changed</div>
@@ -442,8 +451,6 @@
               <li>Mobile mermaid diagrams now use a width-based classifier: small diagrams fit the viewport, genuinely wide diagrams keep a scrollable min-width, and overflowing diagrams show an edge-fade cue (CMH-RESP-09).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.143.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -483,24 +490,7 @@
               <li>Made the vendored rich-libraries blob (the inline gzip+base64 mermaid/Chart.js payload) reproducible across zlib implementations. <code>build.py</code> previously gzipped the libraries live via <code>deterministic_gzip</code>, but gzip DEFLATE output is not identical between stock zlib and zlib-ng (which Python 3.14 ships), so a dist built on Python 3.14 produced a different blob than CI&#x27;s stock-zlib build and failed the required <code>dist-in-sync</code>/<code>plugin-tests</code> checks with no source change. The build now reads a committed <code>assets/vendor/&lt;lib&gt;.gz</code> artifact and only base64-encodes it (deterministic on every machine); <code>build.py --regen-vendor-gz</code> regenerates those artifacts when a vendored library changes, and <code>build.py --check</code> verifies each committed <code>.gz</code> decompresses to the current source (decompression is deterministic across zlib impls, so the guard never recompresses) (CMH-BUILD-11, closes #372).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.139.0] - 2026-07-17</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Ship the skill as a compact <code>skills/commentable-html/skill-resources.zip</code> (only <code>SKILL.md</code>, <code>LICENSE</code>, and the zip in the shipped skill dir) that a SessionStart hook unpacks on first run per version. This drastically cuts the number of files the plugin installer writes, working around the Windows Defender install failure (<code>Access is denied. (os error 5)</code>) where the installer aborts on the first transiently locked file - the extractor retries each member with backoff, which the installer does not. An update ships a new zip and self-heals on the next session (the version marker invalidates), which largely fixes the auto-updater silently never updating on Defender machines: it now rewrites just the one zip instead of ~178 files, shrinking the transient-lock surface dramatically (a lock on that single file is still possible and simply retries next session). The large tutorial (<code>docs/</code>) and worked examples (<code>examples/</code>) are no longer installed; they moved to the plugin top level and are linked online. <code>build.py</code> gains <code>--pkg-dir</code> / <code>--examples-dir</code> and assembles the deterministic zip, and the editable + built skill tree now lives under <code>dev/skill/</code>.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Harden the first-run extractor and packager (review round): the extractor now refuses to write the success marker for a zip that carries no installable runtime directory (a truncated/empty/wrong zip self-heals next session instead of caching a broken install); a fully-successful swap that then hits a locked orphan backup still writes the marker (the backup is reclaimed next run rather than forcing a needless re-extract); <code>_make_writable</code> restores the directory execute bit on POSIX (not <code>S_IWRITE</code> only) so a cleared-bit tree can still be removed; and its NTFS retry set is pinned (<code>WinError 5/32/33/145</code>). The packager now fails the build if any required runtime dir is missing or empty, and <code>--check</code> flags a duplicated zip member (which a name-to-bytes map would silently collapse). The Windows launcher&#x27;s <code>$PSScriptRoot</code> anchoring and the <code>-c pass</code> interpreter probe are pinned by tests, plus a Windows-junction packager-guard test.</li>
-              <li>Round-7 review hardening: the version-marker fast path now tests for a real FILE (<code>isfile</code>, not <code>exists</code>) and <code>clear_markers</code> removes a marker-named directory, so a directory that somehow shares the marker name can no longer permanently skip extraction or block the marker write. Added tests pin the orphan-backup-cleanup survival, the rename-aside rollback branch, absolute/drive-letter zip-member rejection, the stale-lock sidecar cleanup, <code>.ok.tmp</code> cleanup, deterministic-zip host-neutral metadata, and text LF-normalization.</li>
-              <li>Round-8 review hardening: the hook HOT-PATH marker check is now FILE-specific (bash <code>-f</code>, PowerShell <code>-PathType Leaf</code>) so a marker-named directory cannot short-circuit the launcher before Python and suppress extraction (previously the <code>isfile</code> guard in run() was unreachable behind the launchers&#x27; <code>-e</code>/<code>Test-Path</code>). Cleanup now unlinks a symlink/junction as itself instead of following a reparse point into its target (os.path.islink misses Windows junctions; matters on Python &lt; 3.12). An in-place upgrade prunes the obsolete <code>docs/</code> and <code>examples/</code> dirs the package no longer ships so the runtime converges to the minimal tree. The packager fails closed if a required shipped file (<code>SKILL.md</code>/<code>LICENSE</code>) is missing from the stage. Added tests execute the shipped bash hook commands end-to-end (cold/warm/marker-dir) and pin the junction cleanup, the legacy prune, and the missing-file guards.</li>
-              <li>Round-9 review hardening (junction/reparse robustness): <code>_make_writable</code> now prunes reparse points from its <code>os.walk</code> in place so it never DESCENDS into a junction&#x27;s external target (a bare <code>continue</code> did not stop the walk); cleanup/swap use <code>os.path.lexists</code> so a BROKEN junction (which <code>os.path.exists</code> and <code>os.path.islink</code> both miss) is detected and removed instead of causing a later <code>os.replace</code> to fail with WinError 5; and the marker temp file is pid-unique so a leftover locked <code>.tmp</code> cannot block the marker write. Added tests: no-descend-into-junction, broken-junction removal, pid-suffixed <code>.tmp</code> cleanup, an executable PowerShell-launcher smoke test (cold/marker-dir), and a canary proving the warm hot path spawns no Python. Repointed remaining stale pre-relocation doc paths.</li>
-              <li>Round-10 review hardening: cleanup now unlinks a junction NESTED inside a directory being removed before calling <code>shutil.rmtree</code>, so rmtree can never traverse a nested junction into its external target (Python &lt; 3.12 lacked that protection - bpo-31818); a test pins it. Fixed the <code>.githooks/pre-push</code> layer-dist check, which still targeted the pre-relocation <code>--out-dir</code> and always failed; made the <code>40-package.py</code> build part self-contained (explicit <code>os</code>/<code>re</code> imports); and added a plugin-level <code>.gitignore</code> so the extractor unpacking into the source tree during local testing can never stage a polluted (non-minimal) shipped skill dir.</li>
-              <li>Round-11 review hardening: made the nested-junction protection robust to an unlink FAILURE. <code>_prune_nested_reparse</code> now returns whether the tree is truly free of nested reparse points, and its three callers only proceed to <code>shutil.rmtree</code> when it is - so a junction that could not be unlinked (e.g. a transient lock) makes the removal retry (or skip) instead of ever letting <code>shutil.rmtree</code> traverse the survivor into its external target on Python &lt; 3.12. A mock-based test pins the unlink-failure path.</li>
-              <li>Round-12 review hardening: <code>_prune_nested_reparse</code> also fails closed when <code>os.walk</code> cannot scan a subtree (a junction could hide there unseen) via an <code>onerror</code> callback, so <code>shutil.rmtree</code> never runs on an incompletely-inspected tree. And a crash-recovery backup restore that cannot complete now aborts the extraction rather than swallowing the error and then letting the swap delete the very backup it meant to keep, so the last-known-good backup survives for the next session. Tests pin both.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">122 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">123 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

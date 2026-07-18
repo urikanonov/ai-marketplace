@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.145.0";
+const CMH_VERSION = "1.149.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -191,19 +191,41 @@ function _tombstoneEmbedded(ids) {
 function commentTimestamp(c) {
   return (c && (c.updatedAt || c.createdAt)) || "";
 }
+// Defense-in-depth bounds for mergeCommentSets(), so an untrusted embeddedComments
+// array (or a poisoned localStorage array under a matching data-comment-key) can never
+// drive backfillContext()/restoreHighlights() into O(comment_count x document_size) work
+// at startup. Both bounds are far beyond anything a real document ever needs, so normal
+// documents are unaffected.
+const CMH_MAX_COMMENTS = 1000;
+const CMH_MAX_OFFSET = 1000000000; // 1e9 chars: no real document approaches this, but an
+// orphaned-anchor offset just past a document's end (e.g. a stale reload target) stays sane.
+// True for non-text-anchored comments (document/image/widget/mermaid/diff), which never
+// carry start/end and so never drive the offset-based context/highlight walk - those
+// pass through untouched. A text-anchored comment (start and/or end present) must have
+// finite, non-negative, ordered, in-range offsets or it is dropped.
+function _offsetAnchorIsSane(c) {
+  if (c.start === undefined && c.end === undefined) return true;
+  return Number.isFinite(c.start) && Number.isFinite(c.end)
+    && c.start >= 0 && c.end >= c.start && c.end <= CMH_MAX_OFFSET;
+}
 // Merge two comment arrays by id. For each id present in both, keep the
 // entry with the later updatedAt (fallback createdAt). Ids only in one
 // side pass through. Order is preserved best-effort (a first, then new
-// b entries appended). Entries whose id fails SAFE_ID_RE are dropped here
-// (the single load/merge choke point), so an unsafe id from localStorage or
-// the embeddedComments block can never reach a data-cid attribute or selector.
+// b entries appended). Entries whose id fails SAFE_ID_RE, or whose start/end
+// offsets are not sane, are dropped here (the single load/merge choke point), so
+// an unsafe id or a pathological offset from localStorage or the embeddedComments
+// block can never reach a data-cid attribute/selector or an unbounded startup walk.
+// The merged result is also capped at CMH_MAX_COMMENTS: once the cap is reached, no
+// further new ids are admitted (an id already present may still be updated by a
+// newer duplicate), degrading gracefully instead of throwing.
 function mergeCommentSets(a, b) {
   const map = new Map();
   const order = [];
   for (const c of (a || [])) {
-    if (!c || !c.id || !SAFE_ID_RE.test(c.id)) continue;
+    if (!c || !c.id || !SAFE_ID_RE.test(c.id) || !_offsetAnchorIsSane(c)) continue;
     const existing = map.get(c.id);
     if (!existing) {
+      if (map.size >= CMH_MAX_COMMENTS) continue;
       map.set(c.id, c);
       order.push(c.id);            // dedupe: an id repeated in the persisted array appears once
     } else if (commentTimestamp(c) > commentTimestamp(existing)) {
@@ -211,9 +233,10 @@ function mergeCommentSets(a, b) {
     }
   }
   for (const c of (b || [])) {
-    if (!c || !c.id || !SAFE_ID_RE.test(c.id)) continue;
+    if (!c || !c.id || !SAFE_ID_RE.test(c.id) || !_offsetAnchorIsSane(c)) continue;
     const existing = map.get(c.id);
     if (!existing) {
+      if (map.size >= CMH_MAX_COMMENTS) continue;
       map.set(c.id, c);
       order.push(c.id);
     } else if (commentTimestamp(c) > commentTimestamp(existing)) {
@@ -233,6 +256,9 @@ function getEmbeddedComments() {
     return [];
   }
 }
+
+
+
 
 /* ---------- Text-offset helpers ---------- */
 function getTextNodes() {
@@ -7325,8 +7351,15 @@ function withoutHandled(arr) {
   return arr.filter(c => !handled.has(c.id));
 }
 function restoreHighlights() {
+  // Require finite start/end in addition to excluding the known non-text anchor types: a
+  // malformed comment with neither (no real anchorType and no offsets - not something any
+  // composer path produces) must not be treated as a text anchor, or rangeFromOffsets()
+  // would still run its full-document text-node walk for it despite mergeCommentSets()
+  // treating an offsetless entry as trivially sane. This keeps the per-comment restore
+  // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
-    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document");
+    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document"
+    && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
     const r = rangeFromOffsets(c.start, c.end);
