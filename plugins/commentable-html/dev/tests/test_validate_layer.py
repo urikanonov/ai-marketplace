@@ -588,5 +588,34 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         self.assertFalse(any("will not render" in w or "mermaid loader" in w for w in warnings))
 
 
+class ReviewedSectionsTests(ValidateAssertions, unittest.TestCase):
+    """CMH-REVIEW-07: the optional reviewedSections marker block is schema-validated."""
+
+    @staticmethod
+    def _embedded(inner):
+        return (
+            "<!--\nBEGIN: commentable-html - EMBEDDED COMMENTS\n-->\n"
+            '<script type="application/json" id="embeddedComments">[]</script>\n'
+            '<script type="application/json" id="reviewedSections">' + inner + "</script>\n"
+            "<!-- END: commentable-html - EMBEDDED COMMENTS -->"
+        )
+
+    def _build(self, inner):
+        return build(body=[HANDLED_REGION, self._embedded(inner), comment_ui(), MAIN, JS_REGION])
+
+    def test_reviewed_sections_block_is_validated(self):
+        # A valid object with a safe base36 hash validates clean.
+        self.assertOkNoWarn(self._build(
+            '{"goals": {"hash": "abc123", "headingText": "Goals", "level": 2, "reviewedAt": "x"}}'))
+        # An empty object is fine (the default baked block).
+        self.assertOkNoWarn(self._build("{}"))
+        # A non-object is rejected.
+        self.assertError(self._build("[]"), "reviewedSections is not a JSON object")
+        # A marker with an unsafe hash is rejected.
+        self.assertError(self._build('{"goals": {"hash": "NOT SAFE!"}}'), "unsafe hash")
+        # Invalid JSON is rejected.
+        self.assertError(self._build("{bad"), "reviewedSections is not valid JSON")
+
+
 if __name__ == "__main__":
     unittest.main()

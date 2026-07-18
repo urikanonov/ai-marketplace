@@ -1,0 +1,63 @@
+/* ---------- Section review tracking (badges, TOC dots, segmented filter) ----------
+   Runtime-only chrome (cm-skip), so it never enters a Plain/standalone snapshot. The badge sits
+   just right of a heading's text and shows the section's review state; the side-TOC gains a
+   per-entry state dot and an All/Reviewed/Unreviewed/Commented/Changed segmented filter. */
+:root {
+  --cmh-review-ok: #2e7d32;
+  --cmh-review-ok-soft: #e7f4ec;
+  --cmh-review-ok-border: #a6d3af;
+  --cmh-review-changed: var(--cp-warning, #b45309);
+  --cmh-review-changed-soft: var(--cp-warning-soft, #fff7ed);
+  --cmh-review-changed-border: #f0c48a;
+  --cmh-review-commented: #1d4ed8;
+  --cmh-review-commented-soft: #e6efff;
+  --cmh-review-commented-border: #b3ccf5;
+}
+
+/* The badge/button. Reset the heading font so it reads as a small pill, not heading-sized. */
+.cmh-review-badge {
+  display: inline-flex; align-items: center; gap: 0.3em;
+  margin-left: 0.6rem; vertical-align: middle;
+  font-size: 0.68rem; font-weight: 600; line-height: 1.4; letter-spacing: 0.01em;
+  padding: 0.05rem 0.5rem; border-radius: 999px;
+  border: 1px solid var(--cp-border, #d5d5d5); background: var(--cp-surface, #fff); color: var(--cp-text-soft, #666);
+  cursor: pointer; white-space: nowrap; transition: opacity 0.12s ease, background 0.12s ease;
+}
+.cmh-review-badge::before { content: ""; width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; }
+.cmh-review-badge::after { content: attr(data-cmh-label); }
+.cmh-review-badge:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+
+/* Unreviewed: a muted "Mark reviewed" affordance that only appears on heading hover/focus, so it
+   does not clutter every heading until the reader reaches for it. It stays reachable by keyboard. */
+.cmh-review-unreviewed { opacity: 0; }
+.cmh-review-unreviewed::before { display: none; }
+h1:hover > .cmh-review-unreviewed, h2:hover > .cmh-review-unreviewed, h3:hover > .cmh-review-unreviewed,
+h4:hover > .cmh-review-unreviewed, h5:hover > .cmh-review-unreviewed, h6:hover > .cmh-review-unreviewed,
+h1:focus-within > .cmh-review-unreviewed, h2:focus-within > .cmh-review-unreviewed,
+h3:focus-within > .cmh-review-unreviewed, h4:focus-within > .cmh-review-unreviewed,
+h5:focus-within > .cmh-review-unreviewed, h6:focus-within > .cmh-review-unreviewed,
+.cmh-review-unreviewed:focus { opacity: 1; }
+
+.cmh-review-reviewed { color: var(--cmh-review-ok); background: var(--cmh-review-ok-soft); border-color: var(--cmh-review-ok-border); }
+.cmh-review-changed { color: var(--cmh-review-changed); background: var(--cmh-review-changed-soft); border-color: var(--cmh-review-changed-border); }
+.cmh-review-commented { color: var(--cmh-review-commented); background: var(--cmh-review-commented-soft); border-color: var(--cmh-review-commented-border); }
+
+/* Side-TOC per-entry state dot, painted by refreshReviewUI(). */
+.cmh-toc-dot { display: inline-block; width: 0.5em; height: 0.5em; border-radius: 50%; margin-right: 0.45em; vertical-align: middle; background: transparent; border: 1px solid var(--cp-border, #ccc); }
+.cmh-toc-dot-reviewed { background: var(--cmh-review-ok); border-color: var(--cmh-review-ok); }
+.cmh-toc-dot-changed { background: var(--cmh-review-changed); border-color: var(--cmh-review-changed); }
+.cmh-toc-dot-commented { background: var(--cmh-review-commented); border-color: var(--cmh-review-commented); }
+.cmh-toc-dot-unreviewed { background: transparent; }
+
+/* The segmented review filter in the side-TOC head. */
+.cm-side-toc-review { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0 0 0.4rem; }
+.cm-side-toc-review-btn {
+  flex: 1 1 auto; min-width: fit-content;
+  font-size: 0.68rem; font-weight: 600; padding: 0.15rem 0.4rem;
+  border: 1px solid var(--cp-border, #d5d5d5); border-radius: 0.35rem;
+  background: var(--cp-surface, #fff); color: var(--cp-text-soft, #666); cursor: pointer;
+}
+.cm-side-toc-review-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-side-toc-review-btn[aria-pressed="true"] { background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg, #fff); }
+.cm-side-toc-review-btn:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 1px; }
+.cm-side-toc.is-collapsed .cm-side-toc-review { display: none; }

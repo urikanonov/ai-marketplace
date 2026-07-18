@@ -955,6 +955,7 @@ if (IS_DECK) {
   setupHeadingAnchors();
   setupCollapsibleSections();
   setupSideToc();
+  setupSectionReview();
   setupFooter();
   setupScrollProgress();
 }

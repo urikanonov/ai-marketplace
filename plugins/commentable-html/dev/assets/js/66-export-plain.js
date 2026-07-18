@@ -41,7 +41,7 @@ function _buildPlainHtml(baseHtml) {
   // Data-safety net: the comment-data scripts must be gone. If a malformed or hand-edited
   // marker made a region strip miss, fail loudly instead of downloading a plain file that
   // still leaks the comments.
-  if (/id\s*=\s*["'](?:handledCommentIds|embeddedComments)["']/.test(t)) {
+  if (/id\s*=\s*["'](?:handledCommentIds|embeddedComments|reviewedSections)["']/.test(t)) {
     throw new Error("Plain export aborted: the comment regions could not be fully removed (malformed markers?).");
   }
   return t.replace(/\n{3,}/g, "\n\n");

@@ -198,6 +198,7 @@ async function saveHtml() {
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
+  baseHtml = _applyReviewStateToHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildSavedHtml(baseHtml, exportComments); }

@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.149.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.153.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.153.0] - 2026-07-18</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Section review tracking: hover or keyboard-focus any heading (h1-h6) to mark that section reviewed. A badge to the right of the title shows one of four states - Reviewed (green), Changed - re-review (amber, when the section content changed since it was reviewed), Commented (blue, when the section has an open comment), or unreviewed. Change detection uses a deterministic content hash of the section (heading to the next same-or-higher heading, excluding runtime chrome); a one-click re-review on a Changed/Commented badge re-stamps it. The side table-of-contents gains a per-entry state dot and an All / Reviewed / Unreviewed / Commented / Changed filter that collapses the sections it hides. Markers persist in localStorage (with tombstones for cleared baked markers) and bake into Portable/Offline exports via a dedicated <code>reviewedSections</code> block (kept out of the Copy-all bundle; stripped from Plain export). New <code>tools/authoring/mark_reviewed.py</code> bakes markers from the CLI, and <code>section_hash.py</code> shares the byte-identical hash contract with the runtime (pinned equal by a JS/Python golden and an end-to-end extractor-parity test).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.149.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
             <ul>
               <li>Bounded <code>mergeCommentSets()</code> against a pathological <code>embeddedComments</code> array or a poisoned cross-document <code>localStorage</code> array under a matching <code>data-comment-key</code>: the merged comment count is now capped at a generous <code>CMH_MAX_COMMENTS</code> bound, and any comment whose <code>start</code>/<code>end</code> is present but not a finite, non-negative, ordered, in-range offset is dropped, so startup&#x27;s <code>backfillContext()</code>/<code>restoreHighlights()</code> per-comment document walk can no longer be driven into unbounded O(comment_count x document_size) work by untrusted input. Normal documents with realistic comment counts and offsets are unaffected (CMH-PERSIST-04).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.145.0] - 2026-07-18</h3></div>
             <div class="group-label">Changed</div>
@@ -440,8 +449,6 @@
               <li>The showcase deck&#x27;s top-right brand mark is now the official Commentable HTML logo rendered as a plain image (an inlined, offline-safe <code>data:</code> SVG) instead of a bordered card with a hand-drawn glyph; it still links to the project site with a clear tooltip (CMH-DECK-SHOWCASE-10).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.144.0] - 2026-07-18</h3></div>
             <div class="group-label">Changed</div>
@@ -483,14 +490,7 @@
               <li><code>tools/authoring/upgrade.py</code> now restamps the <code>&lt;head&gt;</code> <code>&lt;meta name=&quot;commentable-html-version&quot;&gt;</code> to the template&#x27;s runtime version during an upgrade (inserting it when a pre-version legacy document lacks it), so an upgraded document no longer self-reports the old version while running the new runtime. The restamp is scoped to <code>&lt;head&gt;</code>, so the marker-like JS export regex literal (<code>content=&quot;[^&quot;]+&quot;</code>) is never matched or rewritten. Post-upgrade validator warnings are now surfaced instead of discarded, and a new opt-in <code>--strict</code> flag treats them as a failure (leaving the target unchanged and exiting non-zero); the default still commits so a version-only upgrade is never blocked by a pre-existing content warning (CMH-TOOL-08, closes #359).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.140.0] - 2026-07-17</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Made the vendored rich-libraries blob (the inline gzip+base64 mermaid/Chart.js payload) reproducible across zlib implementations. <code>build.py</code> previously gzipped the libraries live via <code>deterministic_gzip</code>, but gzip DEFLATE output is not identical between stock zlib and zlib-ng (which Python 3.14 ships), so a dist built on Python 3.14 produced a different blob than CI&#x27;s stock-zlib build and failed the required <code>dist-in-sync</code>/<code>plugin-tests</code> checks with no source change. The build now reads a committed <code>assets/vendor/&lt;lib&gt;.gz</code> artifact and only base64-encodes it (deterministic on every machine); <code>build.py --regen-vendor-gz</code> regenerates those artifacts when a vendored library changes, and <code>build.py --check</code> verifies each committed <code>.gz</code> decompresses to the current source (decompression is deterministic across zlib impls, so the guard never recompresses) (CMH-BUILD-11, closes #372).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">123 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">124 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

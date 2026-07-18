@@ -1,3 +1,7 @@
+# Section-review marker hashes are base36 FNV-1a (see section_hash.py / assets/js/84-section-review.js).
+_REVIEW_HASH_RE = re.compile(r"^[0-9a-z]{1,16}$")
+
+
 def _region_bounds(begin_idx, end_idx, name):
     """Byte range [lo, hi) of a region's content, or (None, None) when its
     markers are missing or out of order, so a state JSON block is read from inside
@@ -59,6 +63,29 @@ def _check_state_json_blocks(html, parser, begin_idx, end_idx, nonportable):
                                   % (len(bad), bad[:5], SAFE_ID_RE.pattern))
         except json.JSONDecodeError as exc:
             errors.append(f"embeddedComments is not valid JSON: {exc}")
+
+    # 5b) reviewedSections (optional) is a JSON object of section-review markers, each keyed by a
+    #     safe heading id whose value carries a safe base36 content hash. Absent is fine (older
+    #     documents); present-but-malformed is an error (mark_reviewed.py would refuse it and the
+    #     runtime would drop it).
+    review_script = _parser_script(parser, "reviewedSections", elo, ehi)
+    if review_script is not None:
+        if not _is_json_attrs(review_script["attrs"]):
+            errors.append('the <script id="reviewedSections"> block must be type="application/json"')
+        try:
+            obj = json.loads((review_script["body"] or "").strip() or "{}")
+            if not isinstance(obj, dict):
+                errors.append("reviewedSections is not a JSON object keyed by heading id")
+            else:
+                bad = [k for k, v in obj.items()
+                       if not (isinstance(v, dict) and isinstance(v.get("hash"), str)
+                               and _REVIEW_HASH_RE.match(v["hash"]))]
+                if bad:
+                    errors.append("reviewedSections: %d marker(s) have a missing or unsafe hash "
+                                  "(ids %s) - each value must be an object whose hash matches %s"
+                                  % (len(bad), bad[:5], _REVIEW_HASH_RE.pattern))
+        except json.JSONDecodeError as exc:
+            errors.append(f"reviewedSections is not valid JSON: {exc}")
 
     # 6) The JS region must contain exactly one real </script>.
     if not nonportable and "JS" in begin_idx and "JS" in end_idx:

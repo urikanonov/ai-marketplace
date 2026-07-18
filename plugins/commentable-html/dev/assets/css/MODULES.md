@@ -11,6 +11,7 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `00-base.css` | CMH-THEME, CMH-CORE, CMH-DENSITY | Theme tokens (`--cp-*`) and base element styling. |
 | `10-layout.css` | CMH-CORE, CMH-RESP, CMH-DENSITY | Layout recipe, toolbar, and core chrome. |
 | `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY | Attribution footer, sidebar meta, help dialog, TOC chrome. |
+| `22-section-review.css` | CMH-REVIEW | Section-review badges (four states), TOC state dots, and the segmented review filter. |
 | `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonPortable controls. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
 | `50-content.css` | CMH-CONTENT, CMH-STATS | Default content styling (sections, tables, badges, document-overview strip). |

@@ -174,6 +174,13 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
 <script type="application/json" id="embeddedComments">
 []
 </script>
+<!-- Section-review markers (a dedicated store, kept out of the comments array and the
+     Copy-all bundle). Portable/Offline export bakes the reviewed sections here so the
+     markers travel; Plain export strips this whole region. On load the layer merges this
+     with the localStorage copy and recomputes each section's state from its content hash. -->
+<script type="application/json" id="reviewedSections">
+{}
+</script>
 <!-- END: commentable-html - EMBEDDED COMMENTS -->
 
 <!-- ============================================================
