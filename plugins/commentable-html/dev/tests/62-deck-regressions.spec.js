@@ -7,6 +7,8 @@ import {
   ready,
   routeMermaidLocal,
   startStaticServer,
+  openDeckModeMenu,
+  enterCommentMode,
 } from "./helpers.js";
 
 const EXAMPLES = path.join(SKILL, "..", "..", "examples");
@@ -252,7 +254,7 @@ test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losi
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".showcase-chart-slide");
-    await page.locator(".cmh-deck-mode-toggle").click();
+    await enterCommentMode(page);
     const cell = page.locator(".slide.active table.show-table tbody tr").nth(1).locator("td").nth(2);
     const before = await cell.evaluate((el) => {
       const style = getComputedStyle(el);
@@ -342,7 +344,7 @@ test("CMH-DECK-SHOWCASE-02: showcase deck mounts in deck mode and is commentable
     await expect(page.locator(".cmh-deck-mode-toggle")).toBeVisible();
     await expect(page.locator(".cmh-deck-nav")).toBeVisible();
 
-    await page.locator(".cmh-deck-mode-toggle").click();
+    await enterCommentMode(page);
     await expect(page.locator("#sidebar")).toBeVisible();
     await page.evaluate(() => {
       const el = document.querySelector(".slide.active .showcase-comment-target");
@@ -485,7 +487,7 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portab
 test("CMH-DECK-20: slide 16 cross-card comments do not highlight the grid gap", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    await page.locator(".cmh-deck-mode-toggle").click();
+    await enterCommentMode(page);
     await showSlideWith(page, '[data-slide-id="slide-3d5c8a12"]');
 
     await page.evaluate(() => {
@@ -537,10 +539,12 @@ test("CMH-DECK-20: slide 16 cross-card comments do not highlight the grid gap", 
 test("CMH-DECK-21: deck chrome exposes the project link and distinct overview/count pills", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    const brand = page.locator(".cmh-deck-brand-link");
-    await expect(brand).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
-    await expect(brand).toHaveAttribute("target", "_blank");
-    await expect(brand.locator("svg.cm-brand-icon")).toHaveCount(1);
+    const menu = await openDeckModeMenu(page);
+    const site = menu.locator(".cmh-deck-mode-site");
+    await expect(site).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
+    await expect(site).toHaveAttribute("target", "_blank");
+    await expect(site).toHaveText("Commentable HTML site");
+    await expect(page.locator(".cmh-deck-brand-link")).toHaveCount(0);
 
     const chrome = await page.evaluate(() => {
       const nav = document.querySelector(".cmh-deck-nav");
@@ -573,7 +577,7 @@ test("CMH-DECK-21: deck chrome exposes the project link and distinct overview/co
 test("CMH-BOARD-06: the showcase Locked column Add Comment affordance avoids Reset moves", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    await page.locator(".cmh-deck-mode-toggle").click();
+    await enterCommentMode(page);
     await showSlideWith(page, '[data-cm-widget="showcase-triage-board"]');
 
     await dragCardToSlot(page, '[data-cm-part="bed8-crop"]', '[data-cm-slot="Locked"]');
@@ -659,6 +663,75 @@ test("CMH-DECK-SHOWCASE-09: the showcase deck shows a concrete Copy all bundle s
     const pointAt = page.locator(".slide.active");
     await expect(pointAt).toContainText('Example: the "Paste the Copy all bundle" node.');
     await expect(pointAt).not.toContainText("Copy all Markdown bundle");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-12: showcase slides vertically center their content", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-card-example");
+    const metrics = await page.locator(".slide.active").evaluate((slide) => {
+      const rect = slide.getBoundingClientRect();
+      const content = slide.querySelector(".show-card-example").getBoundingClientRect();
+      const style = getComputedStyle(slide);
+      return {
+        display: style.display,
+        flexDirection: style.flexDirection,
+        justifyContent: style.justifyContent,
+        stageCenterY: rect.top + rect.height / 2,
+        contentCenterY: content.top + content.height / 2,
+        stageHeight: rect.height,
+      };
+    });
+    expect(metrics.display).toBe("flex");
+    expect(metrics.flexDirection).toBe("column");
+    expect(metrics.justifyContent).toBe("center");
+    expect(Math.abs(metrics.contentCenterY - metrics.stageCenterY)).toBeLessThan(metrics.stageHeight * 0.2);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const logo = page.locator('a.show-corner-logo[href="https://urikanonov.github.io/ai-marketplace/commentable-html/"]');
+    await expect(logo).toHaveCount(1);
+    await expect(logo).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
+    await expect(logo).toHaveAttribute("target", "_blank");
+    await expect(logo.locator("svg")).toHaveCount(1);
+    const ids = await page.evaluate(() => Array.from(document.querySelectorAll(".slide")).map((slide) => slide.dataset.slideId));
+    for (const id of [ids[0], ids[Math.floor(ids.length / 2)], ids[ids.length - 1]]) {
+      await page.evaluate((slideId) => window.__cmhDeck.showSlideById(slideId), id);
+      await expect(logo).toBeVisible();
+    }
+    const pos = await logo.evaluate((el) => {
+      const logoRect = el.getBoundingClientRect();
+      const slideRect = document.querySelector(".slide.active").getBoundingClientRect();
+      return {
+        rightGap: slideRect.right - logoRect.right,
+        topGap: logoRect.top - slideRect.top,
+        slideWidth: slideRect.width,
+        slideHeight: slideRect.height,
+      };
+    });
+    expect(pos.rightGap).toBeGreaterThanOrEqual(0);
+    expect(pos.rightGap).toBeLessThan(pos.slideWidth * 0.08);
+    expect(pos.topGap).toBeGreaterThanOrEqual(0);
+    expect(pos.topGap).toBeLessThan(pos.slideHeight * 0.12);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-11: showcase amber title highlights do not paint a halo above the line", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-mark");
+    await expect(page.locator(".slide.active .show-mark").first()).toBeVisible();
+    await expect(page.locator(".slide.active .show-mark").first()).toHaveCSS("box-shadow", "none");
   } finally {
     await server.close();
   }

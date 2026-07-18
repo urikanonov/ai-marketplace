@@ -47,6 +47,9 @@ function updateSortUi() {
 function renderComments() {
   toolbarCount.textContent = comments.length;
   sidebarCount.textContent = comments.length;
+  // Keep the deck comment-options menu in step with the live comment count (the "Disable
+  // commenting" item is only available when the deck has zero comments).
+  if (window.__cmhDeck && typeof window.__cmhDeck.refreshMode === "function") window.__cmhDeck.refreshMode();
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   updateSideInfo();
   updateSortUi();

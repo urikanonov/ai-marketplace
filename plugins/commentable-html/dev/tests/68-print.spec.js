@@ -112,7 +112,7 @@ test("CMH-PRINT-01: deck print keeps one slide per page", async ({ page }) => {
   await page.emulateMedia({ media: "print" });
 
   await expect(page.locator(".cmh-deck-nav")).toBeHidden();
-  await expect(page.locator(".cmh-deck-mode-toggle")).toBeHidden();
+  await expect(page.locator(".cmh-deck-mode-ctl")).toBeHidden();
 
   const slidesInfo = await page.locator(".slide").evaluateAll((els) => els.map((slide) => {
     const style = getComputedStyle(slide);

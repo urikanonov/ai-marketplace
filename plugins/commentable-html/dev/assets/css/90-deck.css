@@ -9,18 +9,23 @@ body.cmh-deck-present #sidebar {
 body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
   display: none !important;
 }
-/* Hide the comment-mode toggle whenever the side panel is open: it would sit poorly-coloured over
-   the slide, and the panel's own header controls replace it. Applies at every width; hiding the
-   panel brings the toggle back so returning to present mode stays reachable. */
-body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-toggle {
+/* Hide the corner comment-options control whenever the side panel is open: the panel's own
+   header controls (Close, sort, Copy all) take over, and the control would sit over the sidebar.
+   Applies at every width; closing the panel brings it back. */
+body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
   display: none !important;
 }
-body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-brand-link {
-  display: none !important;
-}
-/* In present mode, suppress the text-selection popup so a selection is not a dead end
-   (the composer/sidebar are hidden; the user enters comment mode to review). */
-body.cmh-deck-present #menuComment {
+/* When commenting is disabled ("off" state), suppress the text-selection popup so a selection is
+   not a dead end. In the default state (comments on, panel closed) the popup DOES appear, so a
+   reviewer can select text and Add Comment without first opening the panel. The rich-content
+   floating "Add Comment" buttons (mermaid nodes, images, diff lines, widget parts, headings) are
+   hidden too, so every comment entry point is inert - not just the selection popup. */
+body.cmh-deck-comments-off #menuComment,
+body.cmh-deck-comments-off #mermaidAddBtn,
+body.cmh-deck-comments-off #imageAddBtn,
+body.cmh-deck-comments-off #diffAddBtn,
+body.cmh-deck-comments-off #widgetAddBtn,
+body.cmh-deck-comments-off #headingAddBtn {
   display: none !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide {
@@ -201,19 +206,23 @@ body.cmh-deck-present #menuComment {
   visibility: visible !important;
   transform: none !important;
 }
-.cmh-deck-brand-link,
-.cmh-deck-mode-toggle {
+.cmh-deck-mode-ctl {
   position: fixed;
   top: 14px;
+  right: 14px;
   z-index: 100001;
+}
+.cmh-deck-mode-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
+  gap: 4px;
   height: 42px;
-  padding: 0;
+  padding: 0 8px;
   border-radius: 8px;
   border: 1px solid var(--cp-border, #444);
+  /* Keep a stable surface background in EVERY state so the brand icon stays legible - the old
+     accent-filled "on" state hid the accent-coloured bubble against an accent background. */
   background: var(--cp-surface, #222);
   color: var(--cp-text, #fff);
   font: inherit;
@@ -221,32 +230,83 @@ body.cmh-deck-present #menuComment {
   /* Lift the chrome off arbitrary slide backgrounds so it stays legible over any slide colour. */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
-.cmh-deck-brand-link {
-  right: 14px;
-  color: var(--cp-text, #fff);
-  text-decoration: none;
-}
-.cmh-deck-brand-link:hover {
-  text-decoration: none;
+.cmh-deck-mode-toggle:hover,
+.cmh-deck-mode-toggle[aria-expanded="true"] {
   border-color: var(--cp-accent, #2ecc71);
   background: var(--cp-surface-soft, #333);
 }
-.cmh-deck-brand-link .cm-brand-icon {
+.cmh-deck-mode-toggle .cm-brand-icon {
   width: 20px;
   height: 20px;
   margin: 0;
 }
-.cmh-deck-mode-toggle {
-  right: 64px;
+/* A small down caret signals the button opens a menu (not a bare toggle). */
+.cmh-deck-mode-toggle .cmh-deck-mode-caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.75;
 }
-.cmh-deck-mode-toggle.cmh-deck-mode-on {
-  background: var(--cp-accent, #2ecc71);
-  color: #000;
+/* A subtle accent dot marks the panel-open state without recolouring the whole button. */
+.cmh-deck-mode-toggle.cmh-deck-pane-open {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--cp-accent, #2ecc71);
 }
-.cmh-deck-mode-toggle .cm-brand-icon,
-.cmh-deck-mode-toggle .cmh-deck-mode-icon {
-  width: 20px;
-  height: 20px;
+.cmh-deck-mode-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--cp-border, #444);
+  background: var(--cp-surface, #222);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
+}
+.cmh-deck-mode-menu[hidden] {
+  display: none !important;
+}
+.cmh-deck-mode-item {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--cp-text, #fff);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.cmh-deck-mode-item:hover,
+.cmh-deck-mode-item:focus-visible {
+  background: var(--cp-surface-soft, #333);
+  outline: none;
+}
+.cmh-deck-mode-item[disabled],
+.cmh-deck-mode-item[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cmh-deck-mode-pane[aria-checked="true"]::before {
+  content: "\2713\00a0";
+  color: var(--cp-accent, #2ecc71);
+  font-weight: 700;
+}
+.cmh-deck-mode-sep {
+  display: block;
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--cp-border, #444);
+}
+.cmh-deck-mode-site::after {
+  content: "\2197";
+  margin-left: 6px;
+  opacity: 0.7;
 }
 #commentRoot[data-cmh-mode="deck"] .deck-viewport:focus {
   outline: none;
@@ -411,9 +471,9 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   border-color: var(--cp-accent-hover, #8f1a3d);
 }
 .cmh-deck-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -421,12 +481,13 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
 }
 .cmh-deck-overview-card {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
-  padding: 10px;
-  border-radius: 12px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
   text-align: left;
+  font-size: 16px;
 }
 .cmh-deck-overview-card:hover,
 .cmh-deck-overview-card:focus-visible {
@@ -436,64 +497,38 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
 }
 .cmh-deck-overview-card[aria-current="true"] {
   border-color: var(--cp-accent, #2ecc71);
+  background: color-mix(in srgb, var(--cp-accent, #2ecc71) 12%, var(--cp-surface-soft, #333));
 }
-.cmh-deck-overview-thumb {
-  position: relative;
-  display: block;
-  width: 192px;
-  max-width: 100%;
-  height: 108px;
-  margin: 0 auto;
-  overflow: hidden;
-  border-radius: 8px;
-  background: #111;
-}
-.cmh-deck-overview-scale {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: block;
-  width: 1920px;
-  height: 1080px;
-  transform: scale(0.1);
-  transform-origin: 0 0;
-}
-.cmh-deck-overview-scale .slide {
-  position: relative !important;
-  inset: auto !important;
-  width: 1920px !important;
-  height: 1080px !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: none !important;
-  transform: none !important;
-}
-/* Thumbnails should show each slide's FINAL rendered state, not the pre-animation state: force
-   any reveal/animated content visible in the clone (mirrors the comment-mode force-reveal) so a
-   thumbnail is a real preview instead of a near-blank dark slide. */
-.cmh-deck-overview-scale .slide .reveal,
-.cmh-deck-overview-scale .slide [class*="reveal"] {
-  opacity: 1 !important;
-  visibility: visible !important;
-  transform: none !important;
+.cmh-deck-overview-card-num {
+  flex: none;
+  min-width: 2.2em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cp-accent, #b11f4b) 18%, var(--cp-surface-soft, #333));
+  color: var(--cp-text, #fff);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: center;
 }
 .cmh-deck-overview-card-label {
-  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
 }
 @media (max-width: 640px) {
-  .cmh-deck-nav button,
-  .cmh-deck-mode-toggle {
+  .cmh-deck-nav button {
     padding: 11px 16px;
     min-height: 44px;
   }
   .cmh-deck-mode-toggle {
-    width: 44px;
     height: 44px;
-    padding: 0;
+    min-height: 44px;
+  }
+  .cmh-deck-mode-item {
+    padding: 12px 14px;
+    min-height: 44px;
   }
   .cmh-deck-overview {
     width: 100vw;
@@ -579,4 +614,42 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   color: var(--slide-accent-fg, #0b0b0f);
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+/* Sortable-table chevrons on a deck header: the base chevron colours (muted text / accent) are
+   invisible on a solid coloured (e.g. raspberry) deck header, so tint them with the header
+   foreground so the sort affordance stays legible in both directions. */
+#commentRoot[data-cmh-mode="deck"] .slide table thead th .cmh-sort-ctrl {
+  color: var(--cmh-deck-table-head-fg, #f8fafc);
+}
+#commentRoot[data-cmh-mode="deck"] .slide table thead th .cmh-sort-ctrl .cmh-sort-up,
+#commentRoot[data-cmh-mode="deck"] .slide table thead th .cmh-sort-ctrl .cmh-sort-dn {
+  color: var(--cmh-deck-table-head-fg, #f8fafc);
+  opacity: 0.5;
+}
+#commentRoot[data-cmh-mode="deck"] .slide table thead th .cmh-sort-ctrl:hover .cmh-sort-up,
+#commentRoot[data-cmh-mode="deck"] .slide table thead th .cmh-sort-ctrl:hover .cmh-sort-dn {
+  opacity: 0.82;
+}
+#commentRoot[data-cmh-mode="deck"] .slide table thead th .cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up,
+#commentRoot[data-cmh-mode="deck"] .slide table thead th .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn {
+  color: var(--cmh-deck-table-head-fg, #f8fafc);
+  opacity: 1;
+}
+
+/* Mermaid diagrams on a deck slide should fill the available slide width instead of rendering at
+   their small intrinsic size and leaving most of the slide empty. Scaling to 100% width lets the
+   SVG's own viewBox grow the nodes/labels to a readable deck size. */
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host > svg {
+  width: 100%;
+  height: auto;
+  /* Mermaid stamps an inline max-width (its intrinsic px size) on the rendered SVG, which would
+     otherwise cap it far below the slide width; override it so the diagram fills the slide. */
+  max-width: none !important;
 }
