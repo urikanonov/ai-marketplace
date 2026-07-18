@@ -171,6 +171,10 @@ function Get-FailedCheckIds {
             # new createdAt, so including it (canonicalized so the key is runtime-stable) makes
             # the re-failure a new key that re-fires. A missing/null createdAt degrades safely to
             # name-only keying (the old behavior), read via PSObject.Properties so it never throws.
+            # VERIFIED empirically 2026-07-18 (issue #426): a POST /statuses fail -> pass -> fail on
+            # one commit produced three distinct StatusContext.createdAt values in the rollup
+            # (17:31:39Z, 17:32:11Z, 17:32:17Z), confirming createdAt tracks the LATEST status, so
+            # the re-fire works.
             $caProp = $ctx.PSObject.Properties['createdAt']
             $ca = if ($caProp) { ConvertTo-CanonicalTimestamp $caProp.Value } else { '' }
             $ids += "sc$($ctx.context)@$ca"
