@@ -262,17 +262,18 @@ def _pick_survivor(matches):
 
 def _max_stamp(stamps):
     """Return the newest well-formed UTC stamp from an iterable (or None). Used so converging
-    duplicates never regresses the effective timestamp below the newest one already published."""
-    best = None
+    duplicates never regresses the effective timestamp below the newest one already published.
+    Compares parsed datetimes (not strings) so a non-zero-padded stamp cannot misorder."""
+    best, best_dt = None, None
     for s in stamps:
         if not s:
             continue
         try:
-            datetime.strptime(s, _UTC_FMT)
+            dt = datetime.strptime(s, _UTC_FMT)
         except ValueError:
             continue
-        if best is None or s > best:  # _UTC_FMT is fixed-width: lexicographic == chronological
-            best = s
+        if best_dt is None or dt > best_dt:
+            best, best_dt = s, dt
     return best
 
 

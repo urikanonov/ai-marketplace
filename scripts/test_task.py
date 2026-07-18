@@ -293,6 +293,12 @@ class MaxStampTests(unittest.TestCase):
     def test_none_when_no_valid(self):
         self.assertIsNone(task._max_stamp([None, "nope", ""]))
 
+    def test_orders_by_datetime_not_string(self):
+        # A non-zero-padded month (accepted by strptime) must not misorder: October > July.
+        self.assertEqual(
+            task._max_stamp(["2026-7-18T00:00:00Z", "2026-10-18T00:00:00Z"]),
+            "2026-10-18T00:00:00Z")
+
 
 class IsNewerTests(unittest.TestCase):
     def test_newer_beats_older(self):
