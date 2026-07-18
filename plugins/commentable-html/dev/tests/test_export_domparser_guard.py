@@ -23,8 +23,9 @@ _COMMENT_FIELDS = (
     ".note", ".quote", ".author",
 )
 
-# All current call sites use String(html ...) as the first argument.
-_ALLOWED_ARG_RE = re.compile(r"String\(html\b")
+# All current call sites feed the trusted document string: either String(html ...) directly, or a
+# local `src` that is itself assigned from String(html ...) (e.g. 84-section-review.js).
+_ALLOWED_ARG_RE = re.compile(r"^(?:String\(html\b|src$)")
 
 # Captures the first argument of a .parseFromString(...) call.
 _PARSE_CALL_RE = re.compile(r"\.parseFromString\(([^,]+),")
@@ -97,6 +98,7 @@ class DomParserRoundTripGuardTests(unittest.TestCase):
             "37-notes.js",
             "65-export-portable.js",
             "68-export-offline.js",
+            "84-section-review.js",
         })
         found = {os.path.basename(p) for p in _partials() if "DOMParser" in _read(p)}
         unexpected = found - expected
