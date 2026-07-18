@@ -15,7 +15,10 @@ const CMH_CHECK_CODE = { blank: "b", check: "v", cross: "x", question: "q" };
 const CMH_CHECK_TOKEN = { b: "blank", v: "check", x: "cross", q: "question" };
 const CMH_CL_KEY = COMMENT_KEY + "::cl";
 const checklists = [];
-let _clOverrides = {};   // { [checklistId]: { [itemKey]: token } } - current leaf states (any value)
+// Object.create(null) at every assignment/reset site below: a checklist id or item key of
+// "__proto__"/"constructor" is ordinary author data, and a plain {} would let it resolve to
+// Object.prototype and write through it (see CMH-SEC-02).
+let _clOverrides = Object.create(null);   // { [checklistId]: { [itemKey]: token } } - current leaf states (any value)
 let _clHadChanges = false;
 
 function _clToken(v) {
@@ -98,31 +101,39 @@ function _clDescendantLeaves(item) {
 function _clSetLeaf(item, token) {
   const cid = item.checklist;
   if (token === item.baseline) { if (_clOverrides[cid]) delete _clOverrides[cid][item.key]; }
-  else { if (!_clOverrides[cid]) _clOverrides[cid] = {}; _clOverrides[cid][item.key] = token; }
+  else { if (!_clOverrides[cid]) _clOverrides[cid] = Object.create(null); _clOverrides[cid][item.key] = token; }
   if (_clOverrides[cid] && !Object.keys(_clOverrides[cid]).length) delete _clOverrides[cid];
 }
+// A JSON.parse'd object still chains to Object.prototype, so a crafted "__proto__" or
+// "constructor" own key survives Object.keys() fine, but any direct property read (not just
+// the destination writes above) should not be able to fall through to the prototype. Re-home
+// every parsed map onto a null-prototype copy before it is read from, per CMH-SEC-02.
+function _clNullProto(obj) {
+  return obj && typeof obj === "object" ? Object.assign(Object.create(null), obj) : Object.create(null);
+}
 function _clLoad() {
-  _clOverrides = {};
+  _clOverrides = Object.create(null);
   let raw = null;
   try { raw = localStorage.getItem(CMH_CL_KEY); } catch (e) { raw = null; }
-  let data = {};
-  try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
-  if (!data || typeof data !== "object") return;
+  let parsed = {};
+  try { parsed = raw ? JSON.parse(raw) : {}; } catch (e) { parsed = {}; }
+  if (!parsed || typeof parsed !== "object") return;
+  const data = _clNullProto(parsed);
   Object.keys(data).forEach((cid) => {
-    const m = data[cid];
-    if (!m || typeof m !== "object") return;
+    if (!data[cid] || typeof data[cid] !== "object") return;
+    const m = _clNullProto(data[cid]);
     Object.keys(m).forEach((key) => {
-      const token = CMH_CHECK_TOKEN[m[key]];
-      if (token) { if (!_clOverrides[cid]) _clOverrides[cid] = {}; _clOverrides[cid][key] = token; }
+      const token = Object.prototype.hasOwnProperty.call(CMH_CHECK_TOKEN, m[key]) ? CMH_CHECK_TOKEN[m[key]] : null;
+      if (token) { if (!_clOverrides[cid]) _clOverrides[cid] = Object.create(null); _clOverrides[cid][key] = token; }
     });
   });
 }
 function _clSave() {
-  const out = {};
+  const out = Object.create(null);
   checklists.forEach((cl) => {
     cl.leaves.forEach((item) => {
       const cur = _clLeafState(item);
-      if (cur !== item.baseline) { if (!out[item.checklist]) out[item.checklist] = {}; out[item.checklist][item.key] = CMH_CHECK_CODE[cur]; }
+      if (cur !== item.baseline) { if (!out[item.checklist]) out[item.checklist] = Object.create(null); out[item.checklist][item.key] = CMH_CHECK_CODE[cur]; }
     });
   });
   try {
@@ -234,7 +245,7 @@ function resetChecklist(cid) {
 }
 function resetAllChecklists() {
   if (!checklistChanges().length) return false;
-  _clOverrides = {};
+  _clOverrides = Object.create(null);
   _clAfterChange();
   return true;
 }

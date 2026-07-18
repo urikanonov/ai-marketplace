@@ -275,3 +275,63 @@ test("CMH-DEMO-04: the shipped checklist demo renders both shapes, aggregates, a
   await ready(page);
   await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");
 });
+
+const PROTO = `
+  <h1>Proto pollution probe</h1>
+  <div class="cmh-checklist" data-cmh-checklist="__proto__" data-cmh-checklist-label="Proto probe">
+    <ul>
+      <li data-cmh-item="polluted" data-cmh-state="blank">Ordinary item keyed "polluted"</li>
+    </ul>
+  </div>
+  <div class="cmh-checklist" data-cmh-checklist="constructor" data-cmh-checklist-label="Constructor probe">
+    <ul>
+      <li data-cmh-item="polluted2" data-cmh-state="blank">Ordinary item keyed "polluted2"</li>
+    </ul>
+  </div>`;
+
+test("CMH-SEC-02: cycling checklists authored with id __proto__ or constructor cannot pollute Object.prototype", async ({ page }) => {
+  await open(page, PROTO, "cmh-sec-02-click");
+  // A checklist id of "__proto__" or "constructor" still works as ordinary data: no
+  // reserved-key skip, so both items render and cycle normally - this is document-reachable via
+  // a plain user click, no localStorage seeding needed.
+  expect(await stateOf(page, "polluted")).toBe("blank");
+  expect(await stateOf(page, "polluted2")).toBe("blank");
+  await ctrl(page, "polluted").click();
+  await ctrl(page, "polluted2").click();
+  expect(await stateOf(page, "polluted")).toBe("check");
+  expect(await stateOf(page, "polluted2")).toBe("check");
+  // The historical bug: a plain {} makes `_clOverrides["__proto__"]` (or ["constructor"])
+  // resolve to Object.prototype (or Object) itself (truthy, so the create-guard is skipped),
+  // and writing item.key onto it lands a new "polluted"/"polluted2" property on every object,
+  // or overwrites the shared Object constructor. Assert neither happened.
+  expect(await page.evaluate(() => ({}).polluted)).toBeUndefined();
+  expect(await page.evaluate(() => ({}).polluted2)).toBeUndefined();
+  expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call({}, "polluted"))).toBe(false);
+  expect(await page.evaluate(() => Object.prototype.constructor === Object)).toBe(true);
+});
+
+test("CMH-SEC-02: a crafted ::cl localStorage payload with __proto__ and constructor keys cannot pollute Object.prototype", async ({ page }) => {
+  const key = "cmh-sec-02-storage";
+  // JSON.parse (unlike an object literal) creates a real OWN "__proto__" property via
+  // CreateDataProperty, so this mirrors an attacker crafting the persisted "::cl" JSON
+  // directly: data["__proto__"] resolves the crafted inner map, not Object.prototype, on the
+  // way in, and data["constructor"] resolves the crafted inner map, not Object. The
+  // "release"/"rel" entry additionally corrupts the stored *code* to "__proto__", and
+  // "release"/"mig" corrupts its code to "constructor" - both used to make the token lookup
+  // itself resolve to a truthy prototype/constructor object.
+  await page.addInitScript((k) => {
+    localStorage.setItem(k + "::cl",
+      '{"__proto__":{"polluted":"v"},"constructor":{"polluted2":"v"},'
+      + '"release":{"rel":"__proto__","mig":"constructor"}}');
+  }, key);
+  await open(page, LIST, key);
+  expect(await page.evaluate(() => ({}).polluted)).toBeUndefined();
+  expect(await page.evaluate(() => ({}).polluted2)).toBeUndefined();
+  expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call({}, "polluted"))).toBe(false);
+  expect(await page.evaluate(() => Object.prototype.constructor === Object)).toBe(true);
+  // The corrupted "rel"/"mig" codes are not recognized tokens, so they are ignored and both
+  // items fall back to their authored baseline instead of rendering the stringified
+  // prototype/constructor object.
+  expect(await stateOf(page, "rel")).toBe("blank");
+  expect(await stateOf(page, "mig")).toBe("check");
+});
