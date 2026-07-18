@@ -23,12 +23,13 @@ _COMMENT_FIELDS = (
     ".note", ".quote", ".author",
 )
 
-# All current call sites feed the trusted document string: either String(html ...) directly, or a
-# local `src` that is itself assigned from String(html ...) (e.g. 84-section-review.js).
-_ALLOWED_ARG_RE = re.compile(r"^(?:String\(html\b|src$)")
+# All current call sites feed the trusted document string as the COMPLETE first argument: either
+# String(html ...) or a local `src` that is itself assigned from String(html ...) (84-section-review.js).
+# Matched with fullmatch so a concatenation like `comment.payload + String(html)` cannot slip through.
+_ALLOWED_ARG_RE = re.compile(r"String\(html\b.*\)|src")
 
-# Captures the first argument of a .parseFromString(...) call.
-_PARSE_CALL_RE = re.compile(r"\.parseFromString\(([^,]+),")
+# Captures the first argument of a .parseFromString(...) call, tolerating whitespace before "(".
+_PARSE_CALL_RE = re.compile(r"\.parseFromString\s*\(([^,]+),")
 
 
 def _partials():
@@ -77,7 +78,7 @@ class DomParserRoundTripGuardTests(unittest.TestCase):
             name = os.path.basename(path)
             for m in _PARSE_CALL_RE.finditer(src):
                 arg = m.group(1).strip()
-                if not _ALLOWED_ARG_RE.search(arg):
+                if not _ALLOWED_ARG_RE.fullmatch(arg):
                     line_no = src[: m.start()].count("\n") + 1
                     bad.append(
                         "%s:%d: unexpected arg (expected String(html...)), got: %r" % (name, line_no, arg)
