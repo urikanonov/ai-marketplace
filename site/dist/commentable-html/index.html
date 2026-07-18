@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.155.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.156.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.156.0] - 2026-07-18</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>PPTX deck imports now preflight ZIP central-directory metadata before starting the vendored extractor, rejecting archives with excessive expanded size, entry count, or compression ratio to prevent zip-bomb memory exhaustion (CMH-DECK-29, closes #410).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.155.0] - 2026-07-19</h3></div>
             <div class="group-label">Security</div>
             <ul>
@@ -433,6 +440,8 @@
               <li>Copy all machine trailer: all machine-readable JSON (<code>HANDLED_IDS_JSON</code>, <code>NOTES_STATE_JSON</code>, <code>CHECKLIST_STATE_JSON</code>) now lives only inside ONE unconditional final <code>=== CMH MACHINE TRAILER (do not edit) ===</code> block (canonical empty values when there are no changes). The <code>notes_apply.py</code>, <code>checklist_apply.py</code>, and <code>mark_handled.py</code> tools read JSON only from within that fenced trailer, so a forged trailer or state line inside a note body or the document source is ignored rather than winning a last-match over the whole bundle (CMH-COPY-09, CMH-HANDLED-01).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.154.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
@@ -440,8 +449,6 @@
               <li>Checklist and notes state maps (<code>_clOverrides</code>, the <code>::cl</code> save/load maps, <code>_noteOverrides</code>) are now built with <code>Object.create(null)</code> at every assignment site; <code>_clLoad</code> additionally re-homes the parsed outer map and each per-checklist inner map onto a null-prototype copy before reading them, and the checklist token lookup uses a <code>hasOwnProperty</code> guard. As a result, a checklist authored with <code>data-cmh-checklist=&quot;__proto__&quot;</code>/<code>&quot;constructor&quot;</code> (or a crafted <code>::cl</code> localStorage payload using <code>__proto__</code>/<code>constructor</code> keys or codes) can no longer write onto or return <code>Object.prototype</code>. A checklist id or item key of <code>constructor</code>/<code>__proto__</code> still works as ordinary data; no behavior changed for legitimate documents (CMH-SEC-02).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.153.0] - 2026-07-18</h3></div>
             <div class="group-label">Added</div>
@@ -473,17 +480,7 @@
               <li>Mobile mermaid diagrams now use a width-based classifier: small diagrams fit the viewport, genuinely wide diagrams keep a scrollable min-width, and overflowing diagrams show an edge-fade cue (CMH-RESP-09).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.143.0] - 2026-07-17</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Redesigned the deck comment-mode control into a 3-state selector persisted per-deck. The corner brand icon now opens a small menu with three states: comments on with the panel closed (the new default, so a reviewer can select text / right-click and Add Comment on any slide without first entering a mode), comments on with the review panel open, and commenting disabled (present-only). &quot;Disable commenting&quot; is only offered when the deck has zero comments, so existing feedback can never be stranded. Adding a comment or opening the panel keeps the persisted state in step. The corner icon now keeps a legible surface background in every state (the old accent-filled &quot;on&quot; state hid the accent-coloured icon), and a small caret marks it as a menu (CMH-DECK-11, CMH-DECK-25). This single menu control supersedes the separate comment-mode toggle and brand link from 1.142.0, so the distinct-toggle-icons behaviour (was CMH-DECK-23) is removed with its test.</li>
-              <li>Replaced the deck slide-overview thumbnail grid with a readable numbered list of slide titles (the 1920x1080-to-chip thumbnails were unreadable and rendered canvas/hero content as black blocks) (CMH-DECK-16). This retires the overview thumbnail-snapshot behaviour (was CMH-DECK-24) with its test, since there are no longer any thumbnails to render.</li>
-              <li>Deck Mermaid diagrams now scale to fill the slide width instead of rendering at a tiny intrinsic size with a large empty band, and sortable-table sort chevrons on a coloured deck header now use the header foreground colour so they stay legible (CMH-DECK-26, CMH-DECK-27).</li>
-              <li>Showcase deck polish: slide content is vertically centered to use the full stage (less bottom whitespace), the amber title highlight now hugs the letters instead of bleeding into the line above, and every slide carries a Commentable HTML brand mark at its top-right linking to the plugin site (CMH-DECK-SHOWCASE-10, CMH-DECK-SHOWCASE-11, CMH-DECK-SHOWCASE-12).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">126 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">127 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

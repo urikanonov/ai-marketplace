@@ -32,6 +32,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
@@ -50,6 +51,43 @@ _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.\-]*:", re.I)
 # A self-contained inline image (base64). The deck validator allows data:image (it is local,
 # non-egress) but rejects data:text/html and every other scheme.
 _DATA_IMAGE_RE = re.compile(r"^data:image/[a-z0-9.+-]+;base64,", re.I)
+
+MAX_PPTX_TOTAL_BYTES = 1024 * 1024 * 1024
+MAX_PPTX_ENTRY_BYTES = 250 * 1024 * 1024
+MAX_PPTX_ENTRIES = 100_000
+MAX_PPTX_COMPRESSION_RATIO = 250
+
+
+def _preflight_pptx_archive(pptx_path):
+    with zipfile.ZipFile(pptx_path) as archive:
+        entries = archive.infolist()
+    if len(entries) > MAX_PPTX_ENTRIES:
+        raise ValueError(
+            f"archive has {len(entries)} entries; limit is {MAX_PPTX_ENTRIES}"
+        )
+
+    total_size = 0
+    total_compressed = 0
+    for entry in entries:
+        if entry.file_size > MAX_PPTX_ENTRY_BYTES:
+            raise ValueError(
+                f"entry {entry.filename!r} expands to {entry.file_size} bytes; "
+                f"per-entry limit is {MAX_PPTX_ENTRY_BYTES}"
+            )
+        total_size += entry.file_size
+        total_compressed += entry.compress_size
+
+    if total_size > MAX_PPTX_TOTAL_BYTES:
+        raise ValueError(
+            f"archive expands to {total_size} bytes; total limit is {MAX_PPTX_TOTAL_BYTES}"
+        )
+    if total_size and (
+        total_compressed == 0
+        or total_size / total_compressed > MAX_PPTX_COMPRESSION_RATIO
+    ):
+        raise ValueError(
+            f"archive compression ratio exceeds {MAX_PPTX_COMPRESSION_RATIO}:1"
+        )
 
 
 def _safe_image_path(path, index):
@@ -159,6 +197,11 @@ def _inline_local_images(slides, base_dir):
 def _extract_via_local(pptx_path: str):
     if not VENDOR_EXTRACTOR.exists():
         print(f"pptx_to_fragment: vendored extractor missing: {VENDOR_EXTRACTOR}", file=sys.stderr)
+        raise SystemExit(1)
+    try:
+        _preflight_pptx_archive(pptx_path)
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        print(f"pptx_to_fragment: PPTX archive rejected: {exc}", file=sys.stderr)
         raise SystemExit(1)
     with tempfile.TemporaryDirectory() as tmp:
         proc = subprocess.run(
