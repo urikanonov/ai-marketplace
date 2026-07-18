@@ -101,9 +101,15 @@ function Test-ViewerApproved {
     if (-not $Viewer) { return $false }
     $meaningful = @($Reviews | Where-Object {
             $_ -and $_.Login -eq $Viewer -and $_.State -in @('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED')
-        } | Sort-Object -Property Order)
+        })
     if ($meaningful.Count -eq 0) { return $false }
-    return ($meaningful[-1].State -eq 'APPROVED')
+    # Fail CLOSED if any ordering key is missing: without a reliable recency key we cannot tell
+    # which of the viewer's reviews is the latest, and a null Order sorts BEFORE numeric keys,
+    # which could let a stale earlier APPROVED win. databaseId is present for every real review,
+    # so this never trips in practice; it just refuses to risk a false approval on bad data.
+    if (@($meaningful | Where-Object { $null -eq $_.Order }).Count -gt 0) { return $false }
+    $sorted = @($meaningful | Sort-Object -Property Order)
+    return ($sorted[-1].State -eq 'APPROVED')
 }
 
 # Normalize raw gh review nodes (each with author{ login }, state, databaseId) into the

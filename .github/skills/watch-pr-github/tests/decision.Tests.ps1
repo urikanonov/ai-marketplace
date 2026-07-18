@@ -405,6 +405,12 @@ try {
     Assert-True (-not (Test-ViewerApproved -Reviews @(
                 [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED'; Order = 9 },
                 [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 4 }) -Viewer $me)) 'WPG-DECISION-20: higher Order changes-requested wins regardless of array position'
+    # Fail CLOSED on a missing ordering key: a null-Order CHANGES_REQUESTED alongside a numeric
+    # APPROVED must NOT report approved (a null Order would otherwise sort first and let the
+    # stale APPROVED win). Without a reliable recency key, do not risk a false approval.
+    Assert-True (-not (Test-ViewerApproved -Reviews @(
+                [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 4 },
+                [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED'; Order = $null }) -Viewer $me)) 'WPG-DECISION-20: null Order fails closed'
 } catch { $script:failures += "WPG-DECISION-20 threw: $_" }
 
 Write-Host "== WPG-DECISION-21 ConvertTo-ReviewStates normalizes gh review nodes and tolerates nulls =="
