@@ -136,7 +136,12 @@ function ConvertTo-CanonicalTimestamp($Value) {
     if ($null -eq $Value) { return '' }
     $invariant = [System.Globalization.CultureInfo]::InvariantCulture
     if ($Value -is [datetime]) {
-        return $Value.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $invariant)
+        # An Unspecified-kind datetime (what pwsh 7 ConvertFrom-Json yields for a timestamp with
+        # no zone) must be treated as UTC, matching the string path's AssumeUniversal below, so the
+        # two runtimes agree; otherwise ToUniversalTime would shift an Unspecified value by the
+        # local offset and produce a different key on pwsh 7 than on Windows PowerShell 5.1.
+        $dt = if ($Value.Kind -eq [System.DateTimeKind]::Unspecified) { [datetime]::SpecifyKind($Value, [System.DateTimeKind]::Utc) } else { $Value }
+        return $dt.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $invariant)
     }
     $s = [string]$Value
     if (-not $s.Trim()) { return '' }
@@ -282,9 +287,11 @@ function Get-WatcherDecision {
         # external comment ANYWHERE in an otherwise maintainer-led thread (or vice versa) still
         # marks the thread untrusted and gets vetted, rather than being judged by only the latest
         # comment's author. An issue comment or review body has a single author (no Participants),
-        # so it is classified by that author.
+        # so it is classified by that author. A thread that somehow arrives WITHOUT a Participants
+        # list cannot be confirmed complete, so it gets an empty set and fails closed below.
         $pp = $f.PSObject.Properties['Participants']
         if ($pp) { $participants = @($pp.Value) }
+        elseif ($f.Kind -eq 'thread') { $participants = @() }
         else { $participants = @([pscustomobject]@{ Login = $f.Login; Assoc = $f.Assoc }) }
         # Fail CLOSED when the participant set cannot be confirmed complete: a truncated window (a
         # thread with more comments than were fetched, ParticipantsTruncated) or an empty set means

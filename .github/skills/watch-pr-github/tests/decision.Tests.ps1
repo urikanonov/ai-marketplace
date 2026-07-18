@@ -386,6 +386,10 @@ try {
     # A present-but-EMPTY Participants list fails closed to untrusted (never silently trusted).
     $fbEmpty = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t6:9'; Login = 'maint'; Assoc = 'OWNER'; Participants = @() })
     Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t6:9]' (Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbEmpty) -Trust $trustOwner).Event 'WPG-DECISION-23: empty participant list fails closed to untrusted'
+    # A thread that arrives WITHOUT a Participants property fails closed (does NOT fall back to
+    # single-author trust the way an issue/review item does).
+    $fbNoP = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t7:9'; Login = 'maint'; Assoc = 'OWNER' })
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t7:9]' (Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbNoP) -Trust $trustOwner).Event 'WPG-DECISION-23: thread without a participant list fails closed'
 } catch { $script:failures += "WPG-DECISION-23 threw: $_" }
 
 Write-Host "== WPG-DECISION-24 ConvertTo-CanonicalTimestamp normalizes datetimes and strings to a stable key =="
@@ -399,6 +403,11 @@ try {
     # Null / blank -> '' (a stable no-op).
     Assert-Eq '' (ConvertTo-CanonicalTimestamp $null) 'WPG-DECISION-24: null -> empty'
     Assert-Eq '' (ConvertTo-CanonicalTimestamp '   ') 'WPG-DECISION-24: blank -> empty'
+    # An Unspecified-kind datetime (a no-zone value) is treated as UTC (AssumeUniversal), matching
+    # the string path, so pwsh 7 and Windows PowerShell 5.1 produce the same key.
+    $unspec = [datetime]::new(2026, 3, 4, 5, 6, 7, [System.DateTimeKind]::Unspecified)
+    Assert-Eq $inv (ConvertTo-CanonicalTimestamp $unspec) 'WPG-DECISION-24: Unspecified datetime treated as UTC'
+    Assert-Eq (ConvertTo-CanonicalTimestamp '2026-03-04T05:06:07') (ConvertTo-CanonicalTimestamp $unspec) 'WPG-DECISION-24: no-zone string and Unspecified datetime agree'
 } catch { $script:failures += "WPG-DECISION-24 threw: $_" }
 
 Write-Host "== WPG-DECISION-18 Test-CommenterTrusted fails closed on bots and unprivileged accounts =="

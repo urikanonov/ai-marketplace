@@ -143,7 +143,9 @@ query($owner:String!,$repo:String!,$num:Int!,$after:String!){
         $c = if ($cnodes) { $cnodes[0].commit } else { $null }
         if (-not $c) { break }
         if ($ExpectedOid -and $c.oid -ne $ExpectedOid) { break }
-        $conn = $c.statusCheckRollup.contexts
+        $rollup2 = if ($c.statusCheckRollup) { $c.statusCheckRollup } else { $null }
+        if (-not $rollup2) { break }
+        $conn = $rollup2.contexts
         if (-not $conn) { break }
         $nodes += $conn.nodes
         $cursor = if ($conn.pageInfo.hasNextPage) { $conn.pageInfo.endCursor } else { $null }
