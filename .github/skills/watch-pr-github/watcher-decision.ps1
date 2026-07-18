@@ -139,7 +139,12 @@ function Get-FailedCheckIds {
         if ($ctx.__typename -eq 'CheckRun' -and $ctx.conclusion -in @('FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED')) {
             $ids += "cr$($ctx.databaseId)"
         } elseif ($ctx.__typename -eq 'StatusContext' -and $ctx.state -in @('FAILURE', 'ERROR')) {
-            $ids += "sc$($ctx.context)"
+            # Key a legacy commit-status by its context name AND its createdAt. Unlike a
+            # CheckRun (whose databaseId changes on a rerun), a StatusContext keeps the same
+            # context name across reposts, so keying by name alone would never re-fire after a
+            # fail -> pass -> fail transition on the same commit; the reposted status carries a
+            # new createdAt, so including it makes the re-failure a new key that re-fires.
+            $ids += "sc$($ctx.context)@$($ctx.createdAt)"
         }
     }
     # Return the failing-run identities, sorted. NOTE: a PowerShell function return unrolls a
@@ -248,7 +253,21 @@ function Get-WatcherDecision {
         }
         if ($seen -contains $f.Key -or $add -contains $f.Key) { continue }
         $add += $f.Key
-        if (& $IsTrusted $f.Login $f.Assoc) { $trusted += $f.Key } else { $untrusted += $f.Key }
+        # Trust classification is LEAST-PRIVILEGED: an item is trusted only if EVERY participant
+        # is trusted. A review thread carries a Participants list (all its comment authors), so an
+        # external comment ANYWHERE in an otherwise maintainer-led thread (or vice versa) still
+        # marks the thread untrusted and gets vetted, rather than being judged by only the latest
+        # comment's author. An issue comment or review body has a single author (no Participants),
+        # so it is classified by that author.
+        $participants = $null
+        $pp = $f.PSObject.Properties['Participants']
+        if ($pp -and $pp.Value) { $participants = @($pp.Value) }
+        else { $participants = @([pscustomobject]@{ Login = $f.Login; Assoc = $f.Assoc }) }
+        $itemTrusted = $true
+        foreach ($person in $participants) {
+            if (-not (& $IsTrusted $person.Login $person.Assoc)) { $itemTrusted = $false; break }
+        }
+        if ($itemTrusted) { $trusted += $f.Key } else { $untrusted += $f.Key }
     }
     if ($add.Count -gt 0) {
         $evt = "EVENT=NEW_COMMENTS trusted=[{0}] untrusted=[{1}]" -f ($trusted -join ','), ($untrusted -join ',')

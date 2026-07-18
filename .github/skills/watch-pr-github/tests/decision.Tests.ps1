@@ -311,16 +311,56 @@ try {
         [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 20; conclusion = 'FAILURE' },
         [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 5; conclusion = 'SUCCESS' },
         [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 7; conclusion = 'TIMED_OUT' },
-        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/pending'; state = 'PENDING' },
-        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/broken'; state = 'ERROR' }
+        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/pending'; state = 'PENDING'; createdAt = '2026-01-01T00:00:00Z' },
+        [pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/broken'; state = 'ERROR'; createdAt = '2026-01-01T00:00:00Z' }
     )
     $ids = Get-FailedCheckIds -Contexts $contexts
-    Assert-Eq 'cr20,cr7,scci/broken' ($ids -join ',') 'WPG-DECISION-17: only failures, sorted; passing/pending excluded'
+    # A StatusContext is keyed by its context name AND its createdAt (so a repost re-fires).
+    Assert-Eq 'cr20,cr7,scci/broken@2026-01-01T00:00:00Z' ($ids -join ',') 'WPG-DECISION-17: only failures, sorted; passing/pending excluded; StatusContext keyed with createdAt'
     # Null / empty inputs (a PR with no checks) yield an empty list, not a StrictMode throw.
     Assert-Eq 0 @(Get-FailedCheckIds -Contexts @()).Count 'WPG-DECISION-17: empty contexts -> empty'
     Assert-Eq 0 @(Get-FailedCheckIds -Contexts $null).Count 'WPG-DECISION-17: null contexts -> empty'
     Assert-Eq 'cr8' ((Get-FailedCheckIds -Contexts @($null, [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 8; conclusion = 'FAILURE' })) -join ',') 'WPG-DECISION-17: null context entry skipped'
 } catch { $script:failures += "WPG-DECISION-17 threw: $_" }
+
+Write-Host "== WPG-DECISION-22 a StatusContext re-failure (fail -> pass -> fail) re-fires CHECKS_FAILED =="
+try {
+    $oid = 'abc123'
+    # First failure of a legacy status.
+    $c1 = @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/legacy'; state = 'FAILURE'; createdAt = '2026-01-01T10:00:00Z' })
+    $s1 = New-Snapshot -Rollup 'FAILURE' -MergeStateStatus 'BLOCKED' -FailedCheckIds (Get-FailedCheckIds -Contexts $c1)
+    $d1 = Invoke-Decision $s1
+    Assert-Eq "EVENT=CHECKS_FAILED oid=$oid runs=scci/legacy@2026-01-01T10:00:00Z" $d1.Event 'WPG-DECISION-22: first StatusContext failure fires'
+    # The SAME failure (same createdAt) does not re-fire.
+    Assert-Eq $null (Invoke-Decision $s1 -Seen $d1.Seen).Event 'WPG-DECISION-22: unchanged StatusContext failure suppressed'
+    # After a pass then a new failure, the reposted status has a NEW createdAt -> new key -> re-fires.
+    $c2 = @([pscustomobject]@{ __typename = 'StatusContext'; context = 'ci/legacy'; state = 'FAILURE'; createdAt = '2026-01-01T12:00:00Z' })
+    $s2 = New-Snapshot -Rollup 'FAILURE' -MergeStateStatus 'BLOCKED' -FailedCheckIds (Get-FailedCheckIds -Contexts $c2)
+    Assert-Eq "EVENT=CHECKS_FAILED oid=$oid runs=scci/legacy@2026-01-01T12:00:00Z" (Invoke-Decision $s2 -Seen $d1.Seen).Event 'WPG-DECISION-22: re-failure with new createdAt re-fires'
+} catch { $script:failures += "WPG-DECISION-22 threw: $_" }
+
+Write-Host "== WPG-DECISION-23 a review thread is trusted only if ALL participants are trusted (least-privileged) =="
+try {
+    # Trust only OWNER association (a stand-in for a confirmed maintainer).
+    $trustOwner = { param($login, $assoc) $assoc -eq 'OWNER' }
+    # A thread whose participants are all trusted -> trusted.
+    $fbAll = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t1:9'; Login = 'maint'; Assoc = 'OWNER'; Participants = @(
+                [pscustomobject]@{ Login = 'maint'; Assoc = 'OWNER' },
+                [pscustomobject]@{ Login = 'maint2'; Assoc = 'OWNER' }) })
+    $dAll = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbAll) -Trust $trustOwner
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[thread:t1:9] untrusted=[]' $dAll.Event 'WPG-DECISION-23: all-trusted thread is trusted'
+    # A thread where the LATEST comment is a trusted maintainer but an EARLIER participant is
+    # external must be classified UNtrusted (least-privileged), so the external comment is vetted.
+    $fbMixed = @([pscustomobject]@{ Kind = 'thread'; Key = 'thread:t2:9'; Login = 'maint'; Assoc = 'OWNER'; Participants = @(
+                [pscustomobject]@{ Login = 'ext'; Assoc = 'NONE' },
+                [pscustomobject]@{ Login = 'maint'; Assoc = 'OWNER' }) })
+    $dMixed = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbMixed) -Trust $trustOwner
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t2:9]' $dMixed.Event 'WPG-DECISION-23: an external participant makes the thread untrusted'
+    # Issue/review items (no Participants) still classify by their single author (backward compatible).
+    $fbIssue = @([pscustomobject]@{ Kind = 'issue'; Key = 'issue:5'; Login = 'maint'; Assoc = 'OWNER' })
+    $dIssue = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbIssue) -Trust $trustOwner
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[issue:5] untrusted=[]' $dIssue.Event 'WPG-DECISION-23: single-author item still classifies by its author'
+} catch { $script:failures += "WPG-DECISION-23 threw: $_" }
 
 Write-Host "== WPG-DECISION-18 Test-CommenterTrusted fails closed on bots and unprivileged accounts =="
 try {
