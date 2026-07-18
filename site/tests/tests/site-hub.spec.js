@@ -102,8 +102,29 @@ test("the hub lays each plugin out as a full-width row with the actions in a pla
   const foot = await first.locator(".foot").boundingBox();
   const install = await first.locator(".install").boundingBox();
   expect(keywords.y).toBeGreaterThan(desc.y + desc.height - 5);
-  // The description is capped to a comfortable measure, not stretched to the full card width.
+  // The description is capped to a comfortable measure (SITE-HUB-09: max-width 84ch), not stretched
+  // to the full card width. Assert the effective cap in CHARACTER units so a regression to the old
+  // 78ch (or any other value) is caught - a relative "less than the card width" check would not
+  // distinguish 84ch from 78ch.
   expect(desc.width).toBeLessThan(firstBox.width * 0.8);
+  const capCh = await first.locator(".desc").evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const maxWidthPx = parseFloat(cs.maxWidth);
+    const probe = document.createElement("span");
+    probe.style.font = cs.font;
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = cs.fontSize;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.visibility = "hidden";
+    probe.style.whiteSpace = "nowrap";
+    probe.style.position = "absolute";
+    probe.textContent = "0".repeat(100);
+    el.appendChild(probe);
+    const chPx = probe.getBoundingClientRect().width / 100;
+    probe.remove();
+    return maxWidthPx / chPx;
+  });
+  expect(Math.round(capCh)).toBe(84);
   // The Learn more/Source actions sit in a plain row UNDER the tags (not a box floated to the right
   // of the description), sharing the left edge - so there is no dead whitespace gap beside the prose.
   expect(foot.y).toBeGreaterThan(keywords.y + keywords.height - 5);
