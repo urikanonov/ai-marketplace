@@ -358,6 +358,35 @@ try {
     Assert-Eq 'EVENT=CHECKS_FAILED oid=abc123 runs=cr1' (Invoke-Decision (New-Snapshot -Rollup 'FAILURE' -FailedCheckIds @('cr1')) -FeedbackAvailable $false).Event 'WPG-DECISION-19: failing checks still fire'
 } catch { $script:failures += "WPG-DECISION-19 threw: $_" }
 
+Write-Host "== WPG-DECISION-20 Test-ViewerApproved reflects the viewer's LATEST review state =="
+try {
+    # Reviews are passed oldest -> newest as @{ Login; State }.
+    $me = 'me'
+    # Viewer approved and nothing since -> approved.
+    Assert-True (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'me'; State = 'APPROVED' }) -Viewer $me) 'WPG-DECISION-20: lone approval counts'
+    # Viewer approved then later requested changes -> NOT approved (the bug #407 fixes: any-historical-APPROVED was wrong).
+    Assert-True (-not (Test-ViewerApproved -Reviews @(
+                [pscustomobject]@{ Login = 'me'; State = 'APPROVED' },
+                [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED' }) -Viewer $me)) 'WPG-DECISION-20: later changes-requested overrides the approval'
+    # Viewer approved then dismissed their own review -> NOT approved.
+    Assert-True (-not (Test-ViewerApproved -Reviews @(
+                [pscustomobject]@{ Login = 'me'; State = 'APPROVED' },
+                [pscustomobject]@{ Login = 'me'; State = 'DISMISSED' }) -Viewer $me)) 'WPG-DECISION-20: later dismissal overrides the approval'
+    # A later COMMENTED review does NOT supersede a standing approval (only APPROVED/CHANGES_REQUESTED/DISMISSED count).
+    Assert-True (Test-ViewerApproved -Reviews @(
+            [pscustomobject]@{ Login = 'me'; State = 'APPROVED' },
+            [pscustomobject]@{ Login = 'me'; State = 'COMMENTED' }) -Viewer $me) 'WPG-DECISION-20: a later COMMENTED review does not revoke approval'
+    # Only OTHER users approved -> viewer not approved.
+    Assert-True (-not (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'someone'; State = 'APPROVED' }) -Viewer $me)) 'WPG-DECISION-20: another user approving does not count'
+    # Viewer requested changes then approved -> approved (latest wins the other way too).
+    Assert-True (Test-ViewerApproved -Reviews @(
+            [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED' },
+            [pscustomobject]@{ Login = 'me'; State = 'APPROVED' }) -Viewer $me) 'WPG-DECISION-20: latest approval after changes counts'
+    # No reviews / empty viewer -> not approved.
+    Assert-True (-not (Test-ViewerApproved -Reviews @() -Viewer $me)) 'WPG-DECISION-20: no reviews -> not approved'
+    Assert-True (-not (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'me'; State = 'APPROVED' }) -Viewer '')) 'WPG-DECISION-20: empty viewer -> not approved'
+} catch { $script:failures += "WPG-DECISION-20 threw: $_" }
+
 Write-Host ""
 if ($script:failures.Count -gt 0) {
     Write-Host "FAILED ($($script:failures.Count) assertion(s), $script:passes passed):" -ForegroundColor Red

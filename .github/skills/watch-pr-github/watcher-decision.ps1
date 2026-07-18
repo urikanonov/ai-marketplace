@@ -84,6 +84,25 @@ function Test-CommenterTrusted {
     return ($p -eq 'admin' -or $p -eq 'maintain' -or $p -eq 'write')
 }
 
+# Decide whether the viewer's OWN review currently APPROVES the PR, based on their LATEST
+# meaningful review. $Reviews is the full review list oldest -> newest, each @{ Login; State }.
+# Only APPROVED / CHANGES_REQUESTED / DISMISSED change a reviewer's standing state (a later
+# COMMENTED review does not revoke a standing approval, mirroring GitHub), so the answer is
+# whether the viewer's last such review is APPROVED. This prevents a stale earlier APPROVED
+# from counting after the viewer later requested changes or dismissed their own review.
+function Test-ViewerApproved {
+    param(
+        [AllowEmptyCollection()][object[]]$Reviews = @(),
+        [AllowEmptyString()][AllowNull()][string]$Viewer
+    )
+    if (-not $Viewer) { return $false }
+    $meaningful = @($Reviews | Where-Object {
+            $_ -and $_.Login -eq $Viewer -and $_.State -in @('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED')
+        })
+    if ($meaningful.Count -eq 0) { return $false }
+    return ($meaningful[-1].State -eq 'APPROVED')
+}
+
 # Reduce a status-check rollup's context nodes to the sorted identities of the runs that
 # are currently FAILING. Keying a CHECKS_FAILED event by these identities means a rerun
 # (new run ids) re-fires while a repeated identical failure does not suppress it forever.
