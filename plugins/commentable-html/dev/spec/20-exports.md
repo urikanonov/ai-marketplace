@@ -57,6 +57,12 @@
 | CMH-DOC-16 | The shipped Chart.js reference is split so chart embedding/tooltips and chart recipes/data hygiene/dark theme live in separate focused files, while `references/charts.md` remains only a thin compatibility router. `SKILL.md` links directly to all three files so agents can load the narrow guide they need instead of the old combined reference. | `tests/test_docs_diagrams.py` - `ChartReferenceSplitDocsTests`; source: `SKILL.md`, `references/charts.md`, `references/charts-embedding.md`, `references/charts-recipes.md` |
 | CMH-MODE-09 | The NonPortable asset/version banner has an accessible `Dismiss` button. Dismissal hides the banner and persists in `localStorage` by document key plus page/runtime version pair, so reloads keep the same warning hidden while a different version pair can still warn. | `tests/07-nonportable.spec.js` - dismissible version banner reload test; source: `assets/js/` - `revealAssetBanner()`, `assetBannerDismissKey()` |
 
+## Export security invariants
+
+| Feature id | Behavior | Covering tests |
+| --- | --- | --- |
+| CMH-EXP-14 | The whole-document `DOMParser -> doc.documentElement.outerHTML` round-trip used in the four export/apply paths (`36-checklist.js`, `37-notes.js`, `65-export-portable.js`, `68-export-offline.js`) is safe only because comment/state data never enters it as markup and host HTML is a trusted, unsanitized boundary (CMH-SEC-01). Every `parseFromString()` call site feeds only the trusted document `html` string, never a comment `note`, `quote`, `author`, or any other user-supplied field. If host-HTML sanitization is ever added upstream, this round-trip must be re-audited for serialization-differential stored XSS before landing. | `tests/test_export_domparser_guard.py` - `test_domparser_call_sites_never_take_comment_fields`, `test_domparser_call_sites_use_the_trusted_html_variable`, `test_domparser_present_only_in_expected_partials`; source: `assets/js/36-checklist.js` - `_applyChecklistStateToHtml()`, `assets/js/37-notes.js` - `_applyNoteStateToHtml()`, `assets/js/65-export-portable.js` - `_applyWidgetLayoutToHtml()`, `assets/js/68-export-offline.js` - `_offlineDocFromHtml()` |
+
 ## Export to Markdown
 
 | Feature id | Behavior | Covering tests |
