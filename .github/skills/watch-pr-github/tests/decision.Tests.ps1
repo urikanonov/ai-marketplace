@@ -142,6 +142,18 @@ try {
     Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[thread:t9:9]' $d2.Event 'WPG-DECISION-05: thread bot not skipped'
     # Already-seen feedback does not re-fire.
     Assert-Eq $null (Invoke-Decision $s -Seen $d.Seen -Trust $TrustCopilotOrOwner).Event 'WPG-DECISION-05: seen comments suppressed'
+    # A custom -CopilotLogins list is honored: a [bot] in the list is NOT filtered on an issue.
+    $fb3 = @([pscustomobject]@{ Kind = 'issue'; Key = 'issue:7'; Login = 'my-bot[bot]'; Assoc = 'NONE' })
+    $d3 = Get-WatcherDecision -Snapshot (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fb3) -Viewer 'me' -Seen @() -IsTrusted $TrustNone -ResolveViewerPermission $MaintainerPerm -CopilotLogins @('my-bot[bot]')
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[issue:7]' $d3.Event 'WPG-DECISION-05: custom CopilotLogins keeps an allowlisted bot'
+    # A duplicate feedback key (e.g. a pagination cursor shift returning the same node twice)
+    # is added only once, not duplicated into the emitted event.
+    $fbDup = @(
+        [pscustomobject]@{ Kind = 'issue'; Key = 'issue:9'; Login = 'octocat'; Assoc = 'NONE' },
+        [pscustomobject]@{ Kind = 'issue'; Key = 'issue:9'; Login = 'octocat'; Assoc = 'NONE' }
+    )
+    $dDup = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbDup) -Trust $TrustNone
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[issue:9]' $dDup.Event 'WPG-DECISION-05: duplicate feedback key de-duplicated'
 } catch { $script:failures += "WPG-DECISION-05 threw: $_" }
 
 Write-Host "== WPG-DECISION-06 USER_APPROVED only for a merge-capable actor, honoring the merge guards =="
@@ -155,6 +167,14 @@ try {
     # Changes-requested suppresses USER_APPROVED.
     $sc = New-Snapshot -ViewerApproved $true -ReviewDecision 'CHANGES_REQUESTED'
     Assert-Eq 'EVENT=CHANGES_REQUESTED' (Invoke-Decision $sc).Event 'WPG-DECISION-06: changes-requested suppresses approval-merge'
+    # A DRAFT approved by the viewer must NOT fire USER_APPROVED; it surfaces DRAFT_HELD and
+    # records no approved: key (the guard is `-not $p.IsDraft`).
+    $sd = New-Snapshot -ViewerApproved $true -IsDraft $true
+    $dd = Invoke-Decision $sd -Perm $MaintainerPerm
+    Assert-Eq 'EVENT=DRAFT_HELD' $dd.Event 'WPG-DECISION-06: draft suppresses approval-merge'
+    Assert-True ($dd.Seen -notcontains 'approved:abc123') 'WPG-DECISION-06: draft records no approved key'
+    # Once approved:$oid is seen, USER_APPROVED does not re-nudge and falls through to readiness.
+    Assert-Eq 'EVENT=READY_TO_MERGE mergeState=CLEAN' (Invoke-Decision $s -Seen @('approved:abc123') -Perm $MaintainerPerm).Event 'WPG-DECISION-06: approved seen-guard falls through to READY'
 } catch { $script:failures += "WPG-DECISION-06 threw: $_" }
 
 Write-Host "== WPG-DECISION-07 DRAFT_HELD once per oid, and a draft never merges =="
@@ -215,6 +235,14 @@ try {
     Assert-True ($d.Seen -notcontains 'await:abc123' -and $d.Seen -notcontains 'ready:abc123') 'WPG-DECISION-13: unknown records no ready/await key'
     # Next poll, once the lookup succeeds as write+, it is promoted to READY.
     Assert-Eq 'EVENT=READY_TO_MERGE mergeState=CLEAN' (Invoke-Decision (New-Snapshot) -Seen $d.Seen -Perm $MaintainerPerm).Event 'WPG-DECISION-13: re-probed to READY'
+    # The SAME re-probe guard protects the USER_APPROVED path: a viewer-approved snapshot with
+    # 'unknown' perm emits nothing and records no key, then promotes to USER_APPROVED once the
+    # lookup succeeds (a regression that fired approval-merge on a transient failure is caught).
+    $sa = New-Snapshot -ViewerApproved $true
+    $da = Invoke-Decision $sa -Perm $UnknownPerm
+    Assert-Eq $null $da.Event 'WPG-DECISION-13: unknown perm emits no USER_APPROVED'
+    Assert-True ($da.Seen -notcontains 'approved:abc123' -and $da.Seen -notcontains 'ready:abc123' -and $da.Seen -notcontains 'await:abc123') 'WPG-DECISION-13: unknown records no approval/ready/await key'
+    Assert-Eq 'EVENT=USER_APPROVED login=me' (Invoke-Decision $sa -Seen $da.Seen -Perm $MaintainerPerm).Event 'WPG-DECISION-13: approval re-probed to USER_APPROVED'
 } catch { $script:failures += "WPG-DECISION-13 threw: $_" }
 
 Write-Host "== WPG-DECISION-14 an active auto-merge suppresses readiness events =="
@@ -242,13 +270,16 @@ Write-Host "== WPG-DECISION-16 ConvertFrom-WatcherState fails CLOSED on a corrup
 try {
     # Corrupt JSON -> opt-out assumed so a corrupt file can never silently re-enable merging.
     Assert-True (ConvertFrom-WatcherState -Json '{ this is not json').NoMerge 'WPG-DECISION-16: corrupt -> fail closed to opt-out'
-    # Empty / missing -> no opt-out, empty seen.
-    $empty = ConvertFrom-WatcherState -Json ''
-    Assert-True (-not $empty.NoMerge) 'WPG-DECISION-16: empty state is not opted out'
-    Assert-Eq 0 @($empty.Seen).Count 'WPG-DECISION-16: empty state has no seen keys'
+    # Empty / whitespace state content -> fail CLOSED (an existing but truncated/blank state
+    # file is corruption; the genuine no-file first-run case is handled by the caller, not here).
+    Assert-True (ConvertFrom-WatcherState -Json '').NoMerge 'WPG-DECISION-16: empty content fails closed'
+    Assert-True (ConvertFrom-WatcherState -Json "  `n ").NoMerge 'WPG-DECISION-16: whitespace content fails closed'
+    Assert-Eq 0 @((ConvertFrom-WatcherState -Json '').Seen).Count 'WPG-DECISION-16: empty state has no seen keys'
     # Valid state round-trips seen + noMerge.
     $ok = ConvertFrom-WatcherState -Json '{"seen":["ready:x"],"noMerge":true}'
     Assert-True ($ok.NoMerge -and ($ok.Seen -contains 'ready:x')) 'WPG-DECISION-16: valid state parsed'
+    # A valid state that is NOT opted out round-trips noMerge=false.
+    Assert-True (-not (ConvertFrom-WatcherState -Json '{"seen":[],"noMerge":false}').NoMerge) 'WPG-DECISION-16: valid non-opted-out state parsed'
 } catch { $script:failures += "WPG-DECISION-16 threw: $_" }
 
 Write-Host "== WPG-DECISION-17 Get-FailedCheckIds maps and sorts CheckRun / StatusContext failures =="
@@ -262,7 +293,31 @@ try {
     )
     $ids = Get-FailedCheckIds -Contexts $contexts
     Assert-Eq 'cr20,cr7,scci/broken' ($ids -join ',') 'WPG-DECISION-17: only failures, sorted; passing/pending excluded'
+    # Null / empty inputs (a PR with no checks) yield an empty list, not a StrictMode throw.
+    Assert-Eq 0 @(Get-FailedCheckIds -Contexts @()).Count 'WPG-DECISION-17: empty contexts -> empty'
+    Assert-Eq 0 @(Get-FailedCheckIds -Contexts $null).Count 'WPG-DECISION-17: null contexts -> empty'
+    Assert-Eq 'cr8' ((Get-FailedCheckIds -Contexts @($null, [pscustomobject]@{ __typename = 'CheckRun'; databaseId = 8; conclusion = 'FAILURE' })) -join ',') 'WPG-DECISION-17: null context entry skipped'
 } catch { $script:failures += "WPG-DECISION-17 threw: $_" }
+
+Write-Host "== WPG-DECISION-18 Test-CommenterTrusted fails closed on bots and unprivileged accounts =="
+try {
+    $writePerm = { param($l) 'write' }
+    $readPerm = { param($l) 'read' }
+    $unknownPerm = { param($l) 'unknown' }
+    # An allowlisted Copilot login is trusted (including its [bot] form) without a perm lookup.
+    Assert-True (Test-CommenterTrusted -Login 'copilot-pull-request-reviewer' -Assoc 'NONE' -PermissionResolver $readPerm) 'WPG-DECISION-18: allowlisted Copilot trusted'
+    Assert-True (Test-CommenterTrusted -Login 'copilot-swe-agent[bot]' -Assoc 'NONE' -PermissionResolver $readPerm) 'WPG-DECISION-18: allowlisted Copilot [bot] trusted'
+    # A generic [bot] is NEVER trusted, even with a MEMBER association and write permission.
+    Assert-True (-not (Test-CommenterTrusted -Login 'random[bot]' -Assoc 'MEMBER' -PermissionResolver $writePerm)) 'WPG-DECISION-18: generic bot fails closed even with write perm'
+    # OWNER association is trusted.
+    Assert-True (Test-CommenterTrusted -Login 'owner' -Assoc 'OWNER' -PermissionResolver $readPerm) 'WPG-DECISION-18: OWNER trusted'
+    # A human with write+ permission is trusted; read is not; unknown is not.
+    Assert-True (Test-CommenterTrusted -Login 'maint' -Assoc 'MEMBER' -PermissionResolver $writePerm) 'WPG-DECISION-18: write perm trusted'
+    Assert-True (-not (Test-CommenterTrusted -Login 'reader' -Assoc 'COLLABORATOR' -PermissionResolver $readPerm)) 'WPG-DECISION-18: read perm not trusted'
+    Assert-True (-not (Test-CommenterTrusted -Login 'nope' -Assoc 'NONE' -PermissionResolver $unknownPerm)) 'WPG-DECISION-18: unknown perm not trusted'
+    # A custom -CopilotLogins list is honored.
+    Assert-True (Test-CommenterTrusted -Login 'my-bot[bot]' -Assoc 'NONE' -PermissionResolver $readPerm -CopilotLogins @('my-bot[bot]')) 'WPG-DECISION-18: custom allowlist honored'
+} catch { $script:failures += "WPG-DECISION-18 threw: $_" }
 
 Write-Host ""
 if ($script:failures.Count -gt 0) {

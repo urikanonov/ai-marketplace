@@ -32,7 +32,16 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'watcher-decision.ps1')
 
-if (-not $StateFile) { $StateFile = Join-Path ([IO.Path]::GetTempPath()) ".wpg-state-$Owner-$Repo-$PrNumber.json" }
+if (-not $StateFile) {
+    # Default to a PER-USER-PRIVATE state dir (LocalApplicationData: %LOCALAPPDATA% on
+    # Windows, ~/.local/share or $XDG_DATA_HOME on Unix), NOT the shared OS temp dir. A
+    # world-writable /tmp path would be a predictable, symlink-raceable target on a
+    # multi-user host; a per-user dir keeps the sticky opt-out and the atomic .tmp write out
+    # of another local user's reach. It is also outside the repo, so running never dirties it.
+    $stateDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'watch-pr-github'
+    if (-not (Test-Path $stateDir)) { New-Item -ItemType Directory -Force -Path $stateDir | Out-Null }
+    $StateFile = Join-Path $stateDir ".wpg-state-$Owner-$Repo-$PrNumber.json"
+}
 
 # State file carries the per-PR seen keys AND the sticky opt-out flag. Reads fail CLOSED on
 # a corrupt/interrupted write (see ConvertFrom-WatcherState). Writes are atomic (temp + move).
@@ -68,12 +77,11 @@ function Get-EffectivePermission($login, [switch]$Fresh) {
 }
 # Trust = an exact allowlisted Copilot login, OR a human with effective admin/maintain/write.
 # Fail closed: association (MEMBER/COLLABORATOR) and a generic [bot] suffix are NOT sufficient.
+# The rule itself lives in the unit-tested pure module (Test-CommenterTrusted); this wrapper
+# only injects the live gh-backed permission lookup.
 function Test-Trusted($login, $assoc) {
-    if ($CopilotLogins -contains $login) { return $true }
-    if ($login -and $login.EndsWith('[bot]')) { return $false }
-    if ($assoc -eq 'OWNER') { return $true }
-    $p = Get-EffectivePermission $login
-    return ($p -eq 'admin' -or $p -eq 'maintain' -or $p -eq 'write')
+    return Test-CommenterTrusted -Login $login -Assoc $assoc -CopilotLogins $CopilotLogins `
+        -PermissionResolver { param($l) Get-EffectivePermission $l }
 }
 
 # Page through a PR sub-connection (reviewThreads | comments | reviews) via graphql cursors.
@@ -120,32 +128,49 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
         $resp = (gh api graphql -f query=$stateQuery -f owner=$Owner -f repo=$Repo -F num=$PrNumber | ConvertFrom-Json)
         $viewer = $resp.data.viewer.login
         $pr = $resp.data.repository.pullRequest
-        $commit = $pr.commits.nodes[0].commit
-        $oid = $commit.oid
-        $rollup = $commit.statusCheckRollup.state
+        # Nullable GraphQL fields: a PR always has a commit, but statusCheckRollup is null for
+        # a commit with no checks. Guard every dereference so a missing rollup yields an empty
+        # rollup rather than throwing under StrictMode (which would strand the poll in the
+        # catch and retry to timeout without ever emitting a terminal/readiness event).
+        $commit = if ($pr.commits.nodes) { $pr.commits.nodes[0].commit } else { $null }
+        $oid = if ($commit) { $commit.oid } else { '' }
+        $rollupObj = if ($commit) { $commit.statusCheckRollup } else { $null }
+        $rollup = if ($rollupObj) { $rollupObj.state } else { $null }
+        $rollupContexts = if ($rollupObj) { $rollupObj.contexts.nodes } else { @() }
 
         # Only fetch feedback connections when the PR is still open (a merged/closed PR short-
-        # circuits in the decision anyway).
+        # circuits in the decision anyway). Make the fetch NON-FATAL: if a pagination call
+        # fails, fall back to empty feedback and let the decision proceed, so a transient
+        # feedback-API error never suppresses an earlier conflict/checks/auto-merge event
+        # (which the ordered decision emits before NEW_COMMENTS regardless of feedback).
         $feedback = @()
         $viewerApproved = $false
         if (-not $pr.merged -and $pr.state -ne 'CLOSED') {
-            $threads = Get-AllNodes 'reviewThreads' 'id isResolved comments(last:1){ nodes{ databaseId author{ login } authorAssociation } }'
-            $issueComments = Get-AllNodes 'comments' 'databaseId author{ login } authorAssociation'
-            $reviews = Get-AllNodes 'reviews' 'databaseId state body author{ login } authorAssociation'
-            foreach ($t in $threads) {
-                if ($t.isResolved) { continue }
-                $c = $t.comments.nodes[0]; if (-not $c) { continue }
-                $feedback += [pscustomobject]@{ Kind = 'thread'; Key = "thread:$($t.id):$($c.databaseId)"; Login = $c.author.login; Assoc = $c.authorAssociation }
+            try {
+                $threads = Get-AllNodes 'reviewThreads' 'id isResolved comments(last:1){ nodes{ databaseId author{ login } authorAssociation } }'
+                $issueComments = Get-AllNodes 'comments' 'databaseId author{ login } authorAssociation'
+                $reviews = Get-AllNodes 'reviews' 'databaseId state body author{ login } authorAssociation'
+                foreach ($t in $threads) {
+                    if ($t.isResolved) { continue }
+                    $c = $t.comments.nodes[0]; if (-not $c) { continue }
+                    $login = if ($c.author) { $c.author.login } else { $null }
+                    $feedback += [pscustomobject]@{ Kind = 'thread'; Key = "thread:$($t.id):$($c.databaseId)"; Login = $login; Assoc = $c.authorAssociation }
+                }
+                foreach ($c in $issueComments) {
+                    $login = if ($c.author) { $c.author.login } else { $null }
+                    $feedback += [pscustomobject]@{ Kind = 'issue'; Key = "issue:$($c.databaseId)"; Login = $login; Assoc = $c.authorAssociation }
+                }
+                foreach ($r in $reviews) {
+                    if (-not $r.body -or -not $r.body.Trim()) { continue }
+                    if ($r.state -notin @('COMMENTED', 'CHANGES_REQUESTED', 'APPROVED', 'DISMISSED')) { continue }
+                    $login = if ($r.author) { $r.author.login } else { $null }
+                    $feedback += [pscustomobject]@{ Kind = 'review'; Key = "review:$($r.databaseId)"; Login = $login; Assoc = $r.authorAssociation }
+                }
+                $viewerApproved = [bool]($reviews | Where-Object { $_.author -and $_.author.login -eq $viewer -and $_.state -eq 'APPROVED' })
+            } catch {
+                Write-Host "[$(Get-Date -Format o)] poll $i feedback fetch failed (continuing with empty feedback): $($_.Exception.Message)"
+                $feedback = @(); $viewerApproved = $false
             }
-            foreach ($c in $issueComments) {
-                $feedback += [pscustomobject]@{ Kind = 'issue'; Key = "issue:$($c.databaseId)"; Login = $c.author.login; Assoc = $c.authorAssociation }
-            }
-            foreach ($r in $reviews) {
-                if (-not $r.body -or -not $r.body.Trim()) { continue }
-                if ($r.state -notin @('COMMENTED', 'CHANGES_REQUESTED', 'APPROVED', 'DISMISSED')) { continue }
-                $feedback += [pscustomobject]@{ Kind = 'review'; Key = "review:$($r.databaseId)"; Login = $r.author.login; Assoc = $r.authorAssociation }
-            }
-            $viewerApproved = [bool]($reviews | Where-Object { $_.author.login -eq $viewer -and $_.state -eq 'APPROVED' })
         }
 
         $snapshot = [pscustomobject]@{
@@ -159,7 +184,7 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
             AutoMergeEnabled = [bool]$pr.autoMergeRequest
             IsDraft          = [bool]$pr.isDraft
             ViewerApproved   = $viewerApproved
-            FailedCheckIds   = (Get-FailedCheckIds -Contexts $commit.statusCheckRollup.contexts.nodes)
+            FailedCheckIds   = (Get-FailedCheckIds -Contexts $rollupContexts)
             Feedback         = $feedback
         }
 
@@ -170,7 +195,11 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
             -IsTrusted $isTrusted -ResolveViewerPermission $resolveViewerPerm -CopilotLogins $CopilotLogins
 
         if ($decision.Event) {
-            Save-Seen $decision.Seen
+            # Persist only when the decision actually added a seen key (the seen-set only
+            # grows). Terminal (PR_MERGED/PR_CLOSED) and the deliberately un-seen-guarded
+            # DISABLE_AUTO_MERGE return the seen-set unchanged and are not persisted, matching
+            # the original loop.
+            if (@($decision.Seen).Count -ne @($seen).Count) { Save-Seen $decision.Seen }
             Write-Output $decision.Event
             exit 0
         }

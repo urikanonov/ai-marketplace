@@ -36,13 +36,15 @@ function Resolve-OptOut {
 }
 
 # Parse a persisted watcher-state JSON string into its seen-set and sticky opt-out flag.
-# Fail CLOSED: if the string is missing or cannot be parsed (corruption / an interrupted
-# write), assume the opt-out (noMerge = $true) so a corrupt file can never silently
-# re-enable merging.
+# Fail CLOSED: any content that is missing, empty/whitespace, or unparseable (corruption /
+# an interrupted write) assumes the opt-out (noMerge = $true) so a corrupt or truncated
+# state file can never silently re-enable merging. NOTE: this is a contract about state
+# CONTENT; the ABSENCE of a state file (a genuine first run) is handled by the caller
+# (Load-Seen returns an empty seen-set and leaves the opt-out unset) and never reaches here.
 function ConvertFrom-WatcherState {
     param([string]$Json)
     if (-not $Json -or -not $Json.Trim()) {
-        return [pscustomobject]@{ Seen = @(); NoMerge = $false }
+        return [pscustomobject]@{ Seen = @(); NoMerge = $true }
     }
     try {
         $s = $Json | ConvertFrom-Json
@@ -52,6 +54,27 @@ function ConvertFrom-WatcherState {
     }
 }
 
+# Classify a commenter as trusted or not. Trust = an exact allowlisted Copilot login, OR a
+# human with effective admin/maintain/write permission. Fail closed: a generic [bot] suffix
+# and a MEMBER/COLLABORATOR association are NOT sufficient. Pure: the effective-permission
+# lookup is injected as $PermissionResolver (login -> permission string) so this
+# security-critical rule -- in particular the [bot] fail-closed guard, which the readiness
+# path relies on because Get-WatcherDecision does NOT pre-filter [bot] authors on review
+# threads -- is unit-testable without any gh call.
+function Test-CommenterTrusted {
+    param(
+        [AllowEmptyString()][AllowNull()][string]$Login,
+        [AllowEmptyString()][AllowNull()][string]$Assoc,
+        [Parameter(Mandatory)][scriptblock]$PermissionResolver,
+        [string[]]$CopilotLogins = @('copilot-pull-request-reviewer', 'copilot-pull-request-reviewer[bot]', 'copilot-swe-agent', 'copilot-swe-agent[bot]', 'Copilot')
+    )
+    if ($CopilotLogins -contains $Login) { return $true }
+    if ($Login -and $Login.EndsWith('[bot]')) { return $false }
+    if ($Assoc -eq 'OWNER') { return $true }
+    $p = & $PermissionResolver $Login
+    return ($p -eq 'admin' -or $p -eq 'maintain' -or $p -eq 'write')
+}
+
 # Reduce a status-check rollup's context nodes to the sorted identities of the runs that
 # are currently FAILING. Keying a CHECKS_FAILED event by these identities means a rerun
 # (new run ids) re-fires while a repeated identical failure does not suppress it forever.
@@ -59,13 +82,17 @@ function Get-FailedCheckIds {
     param([object[]]$Contexts)
     $ids = @()
     foreach ($ctx in @($Contexts)) {
+        if ($null -eq $ctx) { continue }
         if ($ctx.__typename -eq 'CheckRun' -and $ctx.conclusion -in @('FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED')) {
             $ids += "cr$($ctx.databaseId)"
         } elseif ($ctx.__typename -eq 'StatusContext' -and $ctx.state -in @('FAILURE', 'ERROR')) {
             $ids += "sc$($ctx.context)"
         }
     }
-    return , @($ids | Sort-Object)
+    # Return a real array (never unrolled to a scalar) that is EMPTY when there are no
+    # failures. A leading-comma wrapper (`,@(...)`) would turn an empty result into a
+    # one-element array holding an empty array, so build the typed array explicitly.
+    return [string[]]@($ids | Sort-Object)
 }
 
 # The core decision. Given a normalized PR-state snapshot, the current seen-set, the
@@ -146,7 +173,7 @@ function Get-WatcherDecision {
         if ($f.Kind -in @('issue', 'review') -and $f.Login -and $f.Login.EndsWith('[bot]') -and ($CopilotLogins -notcontains $f.Login)) {
             continue
         }
-        if ($seen -contains $f.Key) { continue }
+        if ($seen -contains $f.Key -or $add -contains $f.Key) { continue }
         $add += $f.Key
         if (& $IsTrusted $f.Login $f.Assoc) { $trusted += $f.Key } else { $untrusted += $f.Key }
     }

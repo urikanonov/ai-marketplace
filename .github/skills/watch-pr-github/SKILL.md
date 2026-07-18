@@ -237,7 +237,9 @@ Key parameters (see the script header for the rest):
 Run it as an async shell with shellId `pr-watch`. Use PowerShell 7 (`pwsh`), which is the
 cross-platform, repo-portable choice; Windows PowerShell 5.1 (`powershell`) also runs it. In this repo
 `<skill-folder>` is `.github/skills/watch-pr-github`; a maintainer running the Copilot CLI has the same
-files in the installed personal skill folder:
+files in the installed personal skill folder. The runnable `watch-pr-github.ps1` dot-sources
+`watcher-decision.ps1` from the same folder, so keep the trio together
+(`watch-pr-github.ps1`, `watcher-decision.ps1`, `SKILL.md`) when syncing a personal copy:
 
 `pwsh -NoProfile -File <skill-folder>/watch-pr-github.ps1 -Owner <owner> -Repo <repo> -PrNumber <n>`
 
