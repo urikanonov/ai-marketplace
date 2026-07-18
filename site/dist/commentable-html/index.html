@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.144.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.145.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.145.0] - 2026-07-18</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deck comment-options menu (all decks): the menu surface is now a 3-state RADIO GROUP of mutually exclusive options - <code>Comments off</code>, <code>Comments on, panel closed</code>, and <code>Comments on, panel open</code> - of which exactly one is selected (<code>menuitemradio</code>, <code>aria-checked</code>), so choosing one is clearly a single pick rather than a set of independent toggles. <code>Comments off</code> stays disabled while any comment exists (so feedback is never stranded), the site link remains a menu item, and full keyboard navigation is preserved (opening focuses the checked option) (CMH-DECK-11).</li>
+              <li>The showcase deck&#x27;s top-right brand mark is now the official Commentable HTML logo rendered as a plain image (an inlined, offline-safe <code>data:</code> SVG) instead of a bordered card with a hand-drawn glyph; it still links to the project site with a clear tooltip (CMH-DECK-SHOWCASE-10).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.144.0] - 2026-07-18</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -434,6 +442,8 @@
               <li>Mobile mermaid diagrams now use a width-based classifier: small diagrams fit the viewport, genuinely wide diagrams keep a scrollable min-width, and overflowing diagrams show an edge-fade cue (CMH-RESP-09).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.143.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -444,8 +454,6 @@
               <li>Showcase deck polish: slide content is vertically centered to use the full stage (less bottom whitespace), the amber title highlight now hugs the letters instead of bleeding into the line above, and every slide carries a Commentable HTML brand mark at its top-right linking to the plugin site (CMH-DECK-SHOWCASE-10, CMH-DECK-SHOWCASE-11, CMH-DECK-SHOWCASE-12).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.142.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -492,14 +500,7 @@
               <li>Round-12 review hardening: <code>_prune_nested_reparse</code> also fails closed when <code>os.walk</code> cannot scan a subtree (a junction could hide there unseen) via an <code>onerror</code> callback, so <code>shutil.rmtree</code> never runs on an incompletely-inspected tree. And a crash-recovery backup restore that cannot complete now aborts the extraction rather than swallowing the error and then letting the swap delete the very backup it meant to keep, so the last-known-good backup survives for the next session. Tests pin both.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.138.0] - 2026-07-17</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Slimmed the shipped plugin payload and site skill ZIP by relocating the agent-only <code>bold-template-pack</code> reference material into <code>dev/vendor/frontend-slides/</code>. The shipped frontend-slides runtime assets and tooling remain in <code>pkg/</code>, while separate SHA-256 manifests now keep both vendor trees pristine (CMH-DECK-07, closes #341).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">121 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">122 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

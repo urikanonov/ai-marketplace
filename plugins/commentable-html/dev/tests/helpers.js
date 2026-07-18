@@ -305,7 +305,7 @@ export async function openDeckModeMenu(page) {
 export async function enterCommentMode(page) {
   if (await page.evaluate(() => window.__cmhDeck && window.__cmhDeck.deckMode()) === "open") return;
   await openDeckModeMenu(page);
-  await page.locator(".cmh-deck-mode-pane").click();
+  await page.locator(".cmh-deck-mode-open-item").click();
   await expect(page.locator("#sidebar")).toBeVisible();
 }
 // Close the review panel (deckMode back to "closed").

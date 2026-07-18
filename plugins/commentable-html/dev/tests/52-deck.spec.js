@@ -269,6 +269,9 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(overview).toBeHidden();
 
     await enterCommentMode(page);
+    // Opening the panel moves focus into the cm-skip review panel, where deck shortcuts are
+    // intentionally out of scope; move focus to the stage so the "o" shortcut applies.
+    await page.evaluate(() => document.querySelector(".deck-viewport").focus());
     await page.keyboard.press("o");
     await expect(overview).toBeVisible();
     await page.keyboard.press("End");
@@ -422,11 +425,10 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#menuDocComment")).toBeHidden();
   });
 
-  test("CMH-DECK-11: comment-options menu uses the brand trigger and controls the review panel", async ({ page }) => {
+  test("CMH-DECK-11: comment-options menu is a 3-state radio group controlling the review panel", async ({ page }) => {
     await openDeck(page);
     const toggle = page.getByRole("button", { name: "Comment options" });
     await expect(toggle).toHaveAttribute("title", "Comment options");
-    await expect(toggle).toHaveAttribute("aria-label", "Comment options");
     await expect(toggle).toHaveAttribute("aria-haspopup", "menu");
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(toggle.locator("svg.cm-brand-icon")).toHaveCount(1);
@@ -435,15 +437,24 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
 
     const menu = await openDeckModeMenu(page);
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    const pane = menu.locator(".cmh-deck-mode-pane");
-    await expect(pane).toHaveAttribute("role", "menuitemcheckbox");
-    await expect(pane).toHaveAttribute("aria-checked", "false");
-    await expect(pane).toHaveText("Open comment panel");
-    await expect(menu.locator(".cmh-deck-mode-off-item")).toHaveAttribute("role", "menuitem");
-    await expect(menu.locator(".cmh-deck-mode-off-item")).toHaveText("Disable commenting");
+    // Three mutually-exclusive radio options; exactly one is checked (the default "closed").
+    const off = menu.locator('.cmh-deck-mode-radio[data-deck-mode="off"]');
+    const closed = menu.locator('.cmh-deck-mode-radio[data-deck-mode="closed"]');
+    const open = menu.locator('.cmh-deck-mode-radio[data-deck-mode="open"]');
+    await expect(menu.locator(".cmh-deck-mode-radio")).toHaveCount(3);
+    await expect(off).toHaveAttribute("role", "menuitemradio");
+    await expect(closed).toHaveAttribute("role", "menuitemradio");
+    await expect(open).toHaveAttribute("role", "menuitemradio");
+    await expect(off).toHaveText("Comments off");
+    await expect(closed).toHaveText("Comments on, panel closed");
+    await expect(open).toHaveText("Comments on, panel open");
+    await expect(closed).toHaveAttribute("aria-checked", "true");
+    await expect(off).toHaveAttribute("aria-checked", "false");
+    await expect(open).toHaveAttribute("aria-checked", "false");
     await expect(menu.locator(".cmh-deck-mode-site")).toHaveText("Commentable HTML site");
 
-    await pane.click();
+    // Selecting "panel open" opens the review panel and hides the corner control.
+    await open.click();
     expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("open");
     await expect(page.locator("#sidebar")).toBeVisible();
     await expect(page.locator(".cmh-deck-mode-ctl")).toBeHidden();
@@ -452,6 +463,13 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("closed");
     await expect(page.locator(".cmh-deck-mode-ctl")).toBeVisible();
     await expect(page.locator("#sidebar")).toBeHidden();
+
+    // Reopen: "closed" is checked again, and selecting "off" disables commenting.
+    const menu2 = await openDeckModeMenu(page);
+    await expect(menu2.locator('.cmh-deck-mode-radio[data-deck-mode="closed"]')).toHaveAttribute("aria-checked", "true");
+    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="off"]').click();
+    expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("off");
+    await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
   });
 
   test("CMH-DECK-25: three-state comment model defaults, persists, and gates commenting", async ({ page }) => {
@@ -585,23 +603,51 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await openDeck(page, "", "cmh-deck-menu-kbd");
     const menu = await openDeckModeMenu(page);
     const activeClass = () => page.evaluate(() => (document.activeElement && document.activeElement.className) || "");
-    // Opening the menu focuses the first item.
-    await expect.poll(activeClass).toContain("cmh-deck-mode-pane");
+    // Opening the menu focuses the current (checked) option - default "closed".
+    await expect.poll(activeClass).toContain("cmh-deck-mode-closed-item");
     await page.keyboard.press("ArrowDown");
-    await expect.poll(activeClass).toContain("cmh-deck-mode-off-item");
+    await expect.poll(activeClass).toContain("cmh-deck-mode-open-item");
     await page.keyboard.press("ArrowDown");
     await expect.poll(activeClass).toContain("cmh-deck-mode-site");
-    await page.keyboard.press("ArrowDown"); // wraps back to the first item
-    await expect.poll(activeClass).toContain("cmh-deck-mode-pane");
+    await page.keyboard.press("ArrowDown"); // wraps to the first item
+    await expect.poll(activeClass).toContain("cmh-deck-mode-off-item");
     await page.keyboard.press("ArrowUp"); // wraps to the last item
     await expect.poll(activeClass).toContain("cmh-deck-mode-site");
     await page.keyboard.press("Home");
-    await expect.poll(activeClass).toContain("cmh-deck-mode-pane");
+    await expect.poll(activeClass).toContain("cmh-deck-mode-off-item");
     await page.keyboard.press("End");
     await expect.poll(activeClass).toContain("cmh-deck-mode-site");
     // Tab moves focus out of the menu and closes it (no keyboard trap).
     await page.keyboard.press("Tab");
     await expect(menu).toBeHidden();
+  });
+
+  test("CMH-DECK-11: the open menu blocks slide navigation, dismisses on outside click, and manages focus", async ({ page }) => {
+    await openDeck(page, "", "cmh-deck-menu-focus");
+    const toggle = page.locator(".cmh-deck-mode-toggle");
+    const menu = page.locator(".cmh-deck-mode-menu");
+
+    // While the menu is open, deck slide-navigation keys do NOT move slides.
+    await openDeckModeMenu(page);
+    await page.keyboard.press("ArrowRight");
+    expect(await activeId(page)).toBe("slide-00000001");
+    await page.keyboard.press("PageDown");
+    expect(await activeId(page)).toBe("slide-00000001");
+    // Escape closes the menu and returns focus to the trigger.
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    // A click outside the menu dismisses it.
+    await openDeckModeMenu(page);
+    await page.mouse.click(5, 400);
+    await expect(menu).toBeHidden();
+
+    // Choosing "panel open" hides the trigger, so focus moves into the sidebar (not lost).
+    const menu2 = await openDeckModeMenu(page);
+    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="open"]').click();
+    await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(page.locator("#btnCloseSidebar")).toBeFocused();
   });
 
   test("CMH-DECK-26: Mermaid diagrams on deck slides fill the slide width", async ({ page }) => {

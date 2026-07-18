@@ -701,7 +701,14 @@ test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark
     await expect(logo).toHaveCount(1);
     await expect(logo).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
     await expect(logo).toHaveAttribute("target", "_blank");
-    await expect(logo.locator("svg")).toHaveCount(1);
+    await expect(logo).toHaveAttribute("title", "Commentable HTML - open the project site");
+    // The official Commentable HTML logo rendered as a plain image (not the old bordered card).
+    const img = logo.locator("img.show-corner-logo-img");
+    await expect(img).toHaveCount(1);
+    await expect(img).toHaveAttribute("src", /^data:image\/svg\+xml/);
+    await expect(logo.locator("svg")).toHaveCount(0);
+    const border = await logo.evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(border).toBe("0px");
     const ids = await page.evaluate(() => Array.from(document.querySelectorAll(".slide")).map((slide) => slide.dataset.slideId));
     for (const id of [ids[0], ids[Math.floor(ids.length / 2)], ids[ids.length - 1]]) {
       await page.evaluate((slideId) => window.__cmhDeck.showSlideById(slideId), id);

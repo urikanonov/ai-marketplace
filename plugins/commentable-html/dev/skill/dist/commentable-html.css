@@ -1851,7 +1851,7 @@ body.cmh-deck-comments-off #headingAddBtn {
   opacity: 0.45;
   cursor: not-allowed;
 }
-.cmh-deck-mode-pane[aria-checked="true"]::before {
+.cmh-deck-mode-radio[aria-checked="true"]::before {
   content: "\2713\00a0";
   color: var(--cp-accent, #2ecc71);
   font-weight: 700;
