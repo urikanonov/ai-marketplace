@@ -71,7 +71,7 @@
       <div class="wrap">
         <a class="back-link" href="../">&larr; All plugins</a>
         <h1>Keep your marketplace plugins <span class="accent">up to date</span>, automatically</h1>
-        <p class="lead">An opt-in session-start hook that checks for and installs updates to every other plugin you use from this marketplace. Install it once and stop thinking about updates - it fetches new releases on session start, so the latest fixes and features land automatically (Claude Code applies a plugin update on the next restart). (It updates every plugin but itself, since a plugin cannot update itself while its own hook runs; update the auto-updater with <code>copilot plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</code> or <code>claude plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</code>.)</p>
+        <p class="lead">Update every plugin you use from this marketplace, automatically. An opt-in session-start hook keeps them current - on every session, or a cadence you set - so you always have the latest fixes and features without lifting a finger.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#install">Install</a>
           <a class="btn" href="#how">How it works</a>
@@ -97,6 +97,7 @@
         <p class="section-sub">Works with both Claude Code and the GitHub Copilot CLI. Pick your agent, add the marketplace, then install the auto-updater. That is the whole setup.</p>
         <!-- BEGIN:install --><!-- END:install -->
         <p class="section-sub install-note">On macOS and Linux the updater needs <a href="https://learn.microsoft.com/powershell/scripting/install/installing-powershell" target="_blank" rel="noopener noreferrer">PowerShell 7 (<code>pwsh</code>)</a> on your <code>PATH</code>; on Windows the Copilot hook runs the script under Windows PowerShell with nothing extra to install, and the Claude hook dispatches it through the shell Claude Code provides. When PowerShell is missing the hook logs a dated skip note instead of failing.</p>
+        <p class="section-sub install-selfupdate">The auto-updater updates every plugin but itself (a plugin cannot update itself while its own hook runs), so update it by hand with <code>copilot plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</code> or <code>claude plugin update urikan-ai-marketplace-auto-updater@urikan-ai-marketplace</code>. The hook fetches new releases on session start; under Claude Code an update applies on the next restart.</p>
       </div>
     </section>
 
