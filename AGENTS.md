@@ -680,8 +680,9 @@ commands are:
    with `gh issue comment <n> --body "1. ...  2. ..."`.
 5. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it.
 6. FINISH: open the PR with `Closes #<n>` in its body. The `issue-status-sync` workflow marks the issue
-   In Progress when the PR opens; merging the PR closes the issue (and the Project board's built-in
-   workflow moves the card to Done). Record the final summary in the PR
+   In Progress when the PR opens; merging the PR closes the issue, and `issue-status-sync` then removes
+   the `status: in progress` label on close (so a done issue is never left labelled In Progress) while
+   the Project board's built-in workflow moves the card to Done. Record the final summary in the PR
    description or a closing comment.
 
 CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, file an issue for it

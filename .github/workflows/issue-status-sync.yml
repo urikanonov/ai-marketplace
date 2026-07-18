@@ -1,24 +1,31 @@
-# When a PR that closes an issue is opened (or edited), mark that issue In Progress.
+# Keep a task issue's `status: in progress` label in sync with its PR lifecycle:
+# add it when a closing PR opens, and REMOVE it when the issue closes (a merged PR
+# closes its linked issue via "Closes #N", but nothing else clears the label, so it
+# would otherwise get stuck In Progress on a done issue).
 #
 # Trust boundary (see scripts/check_workflow_policy.py, RULE A): this runs on
 # pull_request_target with a write-capable token, so it MUST NOT check out or run
-# PR-authored code. It reads ONLY the PR number from the trusted event payload and
-# calls the GitHub API; it never parses the untrusted PR body in the shell.
+# PR-authored code. It reads ONLY the PR/issue number from the trusted event payload
+# and calls the GitHub API; it never parses the untrusted PR body in the shell. The
+# `issues` trigger runs in the same trusted base context and likewise touches no PR code.
 #
-# It uses GitHub's own parsed closing-issue links (closingIssuesReferences), not a
-# regex over the PR body, so only issues this PR actually closes are considered. It
-# runs only for trusted authors (owner/member/collaborator) and only relabels OPEN
-# issues that carry the `task` label, bounding the privileged token's reach. Merging
-# the PR closes the linked issue via the "Closes #N" keyword; a Project board built-in
-# "issue closed -> Done" workflow then moves it to Done.
+# The mark-in-progress job uses GitHub's own parsed closing-issue links
+# (closingIssuesReferences), not a regex over the PR body, so only issues this PR
+# actually closes are considered. It runs only for trusted authors
+# (owner/member/collaborator) and only relabels OPEN issues that carry the `task`
+# label, bounding the privileged token's reach. The clear-in-progress job fires on
+# `issues: closed` and removes the label from a closed `task` issue, covering every
+# close path (PR merge, manual close, close-as-not-planned).
 name: issue-status-sync
 
 on:
   # zizmor: ignore[dangerous-triggers] audited-safe: never checks out or runs PR code
-  # (it reads only the PR number from the event payload and calls the GitHub API); the
-  # no-checkout invariant is enforced by scripts/check_workflow_policy.py RULE A.
+  # (it reads only the PR/issue number from the event payload and calls the GitHub
+  # API); the no-checkout invariant is enforced by scripts/check_workflow_policy.py RULE A.
   pull_request_target:
     types: [opened, reopened, ready_for_review, edited]
+  issues:
+    types: [closed]
 
 permissions:
   contents: read
@@ -26,11 +33,12 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: issue-status-sync-${{ github.event.pull_request.number }}
+  group: issue-status-sync-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   mark-in-progress:
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Mark linked task issues In Progress
@@ -73,3 +81,33 @@ jobs:
               echo "Skipping #$n (not an open task issue)."
             fi
           done
+
+  clear-in-progress:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove In Progress from a closed task issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Read the closed issue's labels once. Only a `task` issue that actually
+          # carries `status: in progress` is touched, so this never relabels a
+          # non-task issue and is a no-op when the label is already absent.
+          if ! labels=$(gh issue view "$ISSUE_NUMBER" --repo "$REPO" \
+              --json labels --jq '.labels[].name'); then
+            echo "gh issue view failed" >&2
+            exit 1
+          fi
+          if ! printf '%s\n' "$labels" | grep -qx "task"; then
+            echo "Skipping #$ISSUE_NUMBER (not a task issue)."
+            exit 0
+          fi
+          if printf '%s\n' "$labels" | grep -qx "status: in progress"; then
+            echo "Clearing 'status: in progress' from closed task issue #$ISSUE_NUMBER"
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --remove-label "status: in progress"
+          else
+            echo "Issue #$ISSUE_NUMBER has no in-progress label; nothing to do."
+          fi
