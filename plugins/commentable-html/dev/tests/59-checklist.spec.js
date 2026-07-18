@@ -275,3 +275,45 @@ test("CMH-DEMO-04: the shipped checklist demo renders both shapes, aggregates, a
   await ready(page);
   await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");
 });
+
+const PROTO = `
+  <h1>Proto pollution probe</h1>
+  <div class="cmh-checklist" data-cmh-checklist="__proto__" data-cmh-checklist-label="Proto probe">
+    <ul>
+      <li data-cmh-item="polluted" data-cmh-state="blank">Ordinary item keyed "polluted"</li>
+    </ul>
+  </div>`;
+
+test("CMH-SEC-02: cycling a checklist authored with id __proto__ cannot pollute Object.prototype", async ({ page }) => {
+  await open(page, PROTO, "cmh-sec-02-click");
+  // A checklist id of "__proto__" still works as ordinary data: no reserved-key skip, so the
+  // item renders and cycles normally - this is document-reachable via a plain user click, no
+  // localStorage seeding needed.
+  expect(await stateOf(page, "polluted")).toBe("blank");
+  await ctrl(page, "polluted").click();
+  expect(await stateOf(page, "polluted")).toBe("check");
+  // The historical bug: a plain {} makes `_clOverrides["__proto__"]` resolve to Object.prototype
+  // itself (truthy, so the create-guard is skipped), and writing item.key onto it lands a new
+  // "polluted" property on every object. Assert it did not happen.
+  expect(await page.evaluate(() => ({}).polluted)).toBeUndefined();
+  expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call({}, "polluted"))).toBe(false);
+});
+
+test("CMH-SEC-02: a crafted ::cl localStorage payload with __proto__ keys cannot pollute Object.prototype", async ({ page }) => {
+  const key = "cmh-sec-02-storage";
+  // JSON.parse (unlike an object literal) creates a real OWN "__proto__" property via
+  // CreateDataProperty, so this mirrors an attacker crafting the persisted "::cl" JSON
+  // directly: data["__proto__"] resolves the crafted inner map, not Object.prototype, on the
+  // way in. The "release"/"rel" entry additionally corrupts the stored *code* to "__proto__",
+  // which used to make the token lookup itself resolve to Object.prototype.
+  await page.addInitScript((k) => {
+    localStorage.setItem(k + "::cl",
+      '{"__proto__":{"polluted":"v"},"release":{"rel":"__proto__"}}');
+  }, key);
+  await open(page, LIST, key);
+  expect(await page.evaluate(() => ({}).polluted)).toBeUndefined();
+  expect(await page.evaluate(() => Object.prototype.hasOwnProperty.call({}, "polluted"))).toBe(false);
+  // The corrupted "rel" code is not a recognized token, so it is ignored and the item falls
+  // back to its authored baseline instead of rendering the stringified Object.prototype.
+  expect(await stateOf(page, "rel")).toBe("blank");
+});

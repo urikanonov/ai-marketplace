@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.154.0] - 2026-07-18
+
+### Security
+
+- Checklist and notes state maps (`_clOverrides`, the `::cl` save/load maps, `_noteOverrides`) are
+  now built with `Object.create(null)` at every assignment site; `_clLoad` additionally re-homes
+  the parsed outer map and each per-checklist inner map onto a null-prototype copy before reading
+  them, and the checklist token lookup uses a `hasOwnProperty` guard. As a result, a checklist
+  authored with `data-cmh-checklist="__proto__"`/`"constructor"` (or a crafted `::cl` localStorage
+  payload using `__proto__`/`constructor` keys or codes) can no longer write onto or return
+  `Object.prototype`. A checklist id or item key of `constructor`/`__proto__` still works as
+  ordinary data; no behavior changed for legitimate documents (CMH-SEC-02).
+
 ## [1.153.0] - 2026-07-18
 
 ### Added

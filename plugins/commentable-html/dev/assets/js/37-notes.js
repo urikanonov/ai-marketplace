@@ -9,7 +9,9 @@
    defined identically in tools/notes/notes_apply.py so the browser and the cementing tool agree. */
 const CMH_NOTE_KEY = COMMENT_KEY + "::note";
 const notes = [];
-let _noteOverrides = {};   // { [noteId]: currentText } loaded from storage before setup
+// Object.create(null) for consistency with the checklist maps (defense-in-depth); a plain
+// string-valued map keyed by note id was confirmed not pollutable, but keep the same shape.
+let _noteOverrides = Object.create(null);   // { [noteId]: currentText } loaded from storage before setup
 let _noteHadChanges = false;
 let _noteSeq = 0;
 
@@ -22,7 +24,7 @@ function _noteCurrent(note) {
   return normalizeNote(note.textarea.value);
 }
 function _noteLoad() {
-  _noteOverrides = {};
+  _noteOverrides = Object.create(null);
   let raw = null;
   try { raw = localStorage.getItem(CMH_NOTE_KEY); } catch (e) { raw = null; }
   let data = {};
