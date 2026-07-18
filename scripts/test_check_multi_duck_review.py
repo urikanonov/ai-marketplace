@@ -19,7 +19,6 @@ Coverage map (every behavior the multi-duck panel raised has a case):
 import json
 import os
 import tempfile
-import time
 import unittest
 
 import check_multi_duck_review as gate
@@ -85,6 +84,24 @@ class PassedFalsePassTests(unittest.TestCase):
     def test_in_unterminated_fence_fails(self):
         self.assertFalse(ok(UNCHECKED_BODY + "\n```\n- [x] Multi-Duck passed (2 rounds)\n"))
 
+    def test_no_space_task_marker_is_not_a_checkbox(self):
+        # `-[x]Multi-Duck passed` is not rendered as a GitHub task list item.
+        self.assertFalse(ok("-[x]Multi-Duck passed"))
+        self.assertFalse(ok("- [x]Multi-Duck passed"))
+        self.assertFalse(ok("-[x] Multi-Duck passed"))
+
+    def test_newline_split_stamp_fails(self):
+        self.assertFalse(ok("- [x]\nMulti-Duck passed"))
+        self.assertFalse(ok("- [x] Multi-Duck\npassed"))
+
+    def test_stamp_quoted_inline_code_fails(self):
+        self.assertFalse(ok("`- [x] Multi-Duck passed`\n\n" + UNCHECKED_BODY))
+
+    def test_fence_close_needs_a_bare_line(self):
+        # ```not-a-close is NOT a CommonMark closing fence, so a stamp after it is still inside the
+        # code block and must not pass.
+        self.assertFalse(ok("```\ncode\n```not-a-close\n- [x] Multi-Duck passed\n"))
+
     def test_visible_stamp_after_a_closing_comment_on_prior_line_passes(self):
         # A real closing --> then a stamp on its own line renders as a visible checkbox: accept it.
         self.assertTrue(ok("<!-- note -->\n\n- [x] Multi-Duck passed (2 rounds)\n"))
@@ -109,6 +126,15 @@ class OptOutTests(unittest.TestCase):
     def test_reason_with_comparison_operators_passes(self):
         self.assertTrue(ok("- [x] Multi-Duck opted out - reason: keep p95 < 200ms and rps > 1k"))
 
+    def test_reason_containing_placeholder_words_in_prose_passes(self):
+        # A real reason that merely contains a placeholder word (e.g. "why the") is accepted;
+        # only a WHOLE-string placeholder is rejected.
+        self.assertTrue(ok("- [x] Multi-Duck opted out - reason: docs-only, explains why the page changed"))
+        self.assertTrue(ok("- [x] Multi-Duck opted out - reason: todo list wording tweak only"))
+
+    def test_no_space_optout_is_not_a_checkbox(self):
+        self.assertFalse(ok("-[x]Multi-Duck opted out - reason: skipped, trivial"))
+
     def test_negating_optout_suffix_fails(self):
         # A checked opt-out box whose text negates it (no canonical separator) must not pass.
         self.assertFalse(ok("- [x] Multi-Duck opted out? No, review is still pending"))
@@ -125,7 +151,7 @@ class OptOutTests(unittest.TestCase):
     def test_placeholder_reason_fails(self):
         self.assertFalse(ok("- [x] Multi-Duck opted out - reason: <a real, specific reason>"))
         self.assertFalse(ok("- [x] Multi-Duck opted out - reason: TODO"))
-        self.assertFalse(ok("- [x] Multi-Duck opted out - reason: fill in why"))
+        self.assertFalse(ok("- [x] Multi-Duck opted out - reason: fill in"))
 
 
 class ExactlyOneTests(unittest.TestCase):
@@ -179,12 +205,13 @@ class RobustnessTests(unittest.TestCase):
         self.assertFalse(ok(""))
         self.assertFalse(ok(None))
 
-    def test_backtick_heavy_body_does_not_hang(self):
-        # ReDoS sanity: many stray fence markers must evaluate quickly and deterministically.
+    def test_backtick_heavy_body_evaluates_deterministically(self):
+        # A pathological, fence-marker-heavy body must still return a clean boolean verdict (the
+        # regexes are linear - no catastrophic backtracking). No wall-clock assertion (the test
+        # guidelines forbid runner-speed dependence); a true hang would fail the suite by timeout.
         body = ("```\n" * 500) + "- [x] Multi-Duck passed\n"
-        start = time.time()
-        gate.evaluate(body)
-        self.assertLess(time.time() - start, 2.0)
+        ok_flag, _ = gate.evaluate(body)
+        self.assertIsInstance(ok_flag, bool)
 
     def test_large_body_with_stamp_passes(self):
         body = ("lorem ipsum " * 5000) + "\n- [x] Multi-Duck passed (2 rounds)\n"

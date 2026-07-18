@@ -1,6 +1,6 @@
 {
   "branch": "main",
-  "note": "Source of truth for the required status checks on main. scripts/check_required_checks.py compares this list to live branch protection so the required set is code-reviewed, not silently drifted (see the git-history finding GH-CI-CHECK-DRIFT). When you add or remove a required check, edit BOTH this file and the live branch protection together. NARROW EXCEPTION: when a PR introduces a NEW required context (e.g. multi-duck-review), the context cannot be required in live branch protection until it has run at least once on main, so the introducing PR adds it here and the maintainer flips branch protection right after merge; the scheduled required-checks-drift job will report it MISSING in the meantime, which is expected until the flip.",
+  "note": "Source of truth for the required status checks on main. scripts/check_required_checks.py compares this list to live branch protection so the required set is code-reviewed, not silently drifted (see the git-history finding GH-CI-CHECK-DRIFT). When you add or remove a required check, edit BOTH this file and the live branch protection together (atomic update). A newly introduced context (e.g. multi-duck-review) can be required in live protection as soon as it has produced a status once - the introducing PR's own run does that - so it is added here and to branch protection together before that PR merges.",
   "required_status_checks": [
     "All conversations resolved",
     "actionlint",

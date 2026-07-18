@@ -36,38 +36,45 @@ import sys
 # Authors whose PRs do not need a manual multi-duck stamp (automation, not feature work).
 AUTO_PASS_AUTHORS = {"dependabot[bot]", "dependabot-preview[bot]"}
 
-# A checked "passed" checkbox. Leading indent is capped at 3 spaces: a checkbox indented 4+ spaces
-# is a Markdown code block (invisible as a real checkbox), so it must not count. The line must be
-# JUST the canonical stamp (optionally a trailing "(...)" note), anchored to end-of-line, so
-# negating trailing prose - "- [x] Multi-Duck passed? No" - does NOT pass.
+# A checked "passed" checkbox. Requires real GitHub task-list syntax: same-line horizontal
+# whitespace (never a newline) around the bullet, marker, and label, so `-[x]Multi-Duck passed`
+# or a line-split variant does NOT stamp. Indent is capped at 3 spaces (4+ is a code block). The
+# line must be JUST the canonical stamp (optionally a trailing "(...)" note), anchored to EOL, so
+# negating trailing prose - "- [x] Multi-Duck passed? No" - does not pass.
 PASSED_RE = re.compile(
-    r"^[ ]{0,3}[-*]\s*\[[xX]\]\s*multi-duck\s+passed\s*(?:\([^)\n]*\))?\s*$",
+    r"^[ ]{0,3}[-*][ \t]+\[[xX]\][ \t]+multi-duck[ \t]+passed[ \t]*(?:\([^)\n]*\))?[ \t]*$",
     re.IGNORECASE | re.MULTILINE,
 )
-# A checked "opted out" checkbox (same 3-space indent cap). group(1) is everything after the label;
-# acceptance additionally requires a canonical separator + a real reason (see evaluate()), so a
-# negating suffix like "opted out? No, still pending" does not pass.
+# A checked "opted out" checkbox (same same-line-whitespace rule); group(1) is everything after the
+# label. Acceptance additionally requires a canonical separator + a real reason (see evaluate()).
 OPTOUT_RE = re.compile(
-    r"^[ ]{0,3}[-*]\s*\[[xX]\]\s*multi-duck\s+opt(?:ed)?[ -]?out\b(.*)$",
+    r"^[ ]{0,3}[-*][ \t]+\[[xX]\][ \t]+multi-duck[ \t]+opt(?:ed)?[ \t-]?out\b(.*)$",
     re.IGNORECASE | re.MULTILINE,
 )
 # The reason must be introduced by a canonical separator (": " or " - "), optionally after a
 # "(reason required)" hint. This rejects a checked opt-out whose trailing text negates it.
 _OPTOUT_REASON_RE = re.compile(r"^\s*(?:\(reason[^)]*\))?\s*[:\-]\s*(.*)$", re.DOTALL)
-# Reason text that is really an unfilled placeholder, not a genuine justification.
-_PLACEHOLDER_TOKENS = ("fill in", "fill-in", "reason here", "why the", "your reason", "tbd", "todo")
+# Reason values that are a placeholder rather than a real justification. Matched as the WHOLE reason
+# (not a substring), so an ordinary reason that merely contains one of these words - e.g.
+# "docs-only: explain why the page changed" - is accepted.
+_PLACEHOLDER_REASONS = {"tbd", "todo", "n/a", "na", "reason", "reason here", "fill in", "fill-in",
+                        "your reason", "why", "why the", "placeholder"}
 
 
 def _strip_noise(text):
-    """Remove code fences and HTML comments so a stamp that is INVISIBLE in the rendered PR cannot
-    pass. Fences are handled FIRST (a `<!--` can legitimately live inside a code sample) and only
-    when they open at line start (<=3 indent, per CommonMark); an UNTERMINATED fence or comment is
-    consumed to end-of-file, because GitHub hides everything after an unclosed opener. Each stripped
-    span becomes a newline so surrounding lines keep their boundaries (a stamp that follows a real
-    closing `-->` on the same line stays a valid, visible stamp)."""
+    """Remove code fences, inline code spans, and HTML comments so a stamp that is INVISIBLE in the
+    rendered PR cannot pass and a stamp merely QUOTED cannot be over-eaten. Order matters:
+      1. Fenced code blocks, line-anchored open (<=3 indent, per CommonMark); a valid CLOSING fence
+         is the fence chars plus only trailing whitespace, and an UNTERMINATED fence runs to EOF.
+      2. Inline code spans, so a literal `<!--` or a quoted `- [x]` cannot be mistaken for a comment
+         opener or a real checkbox.
+      3. HTML comments, closed or unterminated-to-EOF (GitHub hides both).
+    Each stripped span becomes a newline so surrounding line boundaries survive."""
     text = text or ""
-    text = re.sub(r"(?m)^[ ]{0,3}(```+|~~~+)[^\n]*(?:.*?(?:\n[ ]{0,3}\1[^\n]*|\Z))",
-                  "\n", text, flags=re.DOTALL)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?m)^[ ]{0,3}(`{3,}|~{3,})[^\n]*(?:.*?(?:\n[ ]{0,3}\1[ \t]*$|\Z))", "\n",
+                  text, flags=re.DOTALL)
+    text = re.sub(r"`[^`\n]*`", " ", text)
     text = re.sub(r"<!--.*?(?:-->|\Z)", "\n", text, flags=re.DOTALL)
     return text
 
@@ -80,15 +87,14 @@ def _clean_reason(raw):
 
 
 def _reason_is_valid(reason):
-    if len(reason) < 3:
+    r = reason.strip()
+    if len(r) < 3:
         return False
-    # Only a fully angle-bracket-wrapped value is a placeholder (the template's
-    # "<a real, specific reason>"). A reason that merely CONTAINS "<" and ">" - e.g. a latency
-    # target "keep p95 < 200ms and rps > 1k" - is a real reason and must be accepted.
-    if reason.startswith("<") and reason.endswith(">"):
+    # A fully angle-bracket-wrapped value is the template placeholder "<a real, specific reason>".
+    if r.startswith("<") and r.endswith(">"):
         return False
-    low = reason.lower()
-    return not any(tok in low for tok in _PLACEHOLDER_TOKENS)
+    # Reject only when the WHOLE reason is a placeholder word, never a substring of real prose.
+    return r.lower() not in _PLACEHOLDER_REASONS
 
 
 def evaluate(body, author=None):
