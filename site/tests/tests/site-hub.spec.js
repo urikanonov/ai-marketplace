@@ -10,7 +10,7 @@ test("hub renders with plugins, install command, and logo", async ({ page }) => 
   await expect(page.locator(".brand img")).toHaveCount(1);
   const cards = page.locator(".plugin-card");
   expect(await cards.count()).toBeGreaterThanOrEqual(2);
-  await expect(page.locator(".plugin-card .name", { hasText: "commentable-html" })).toBeVisible();
+  await expect(page.locator(".plugin-card .name", { hasText: "Commentable HTML" })).toBeVisible();
   await expect(page.locator("#install .install-tab", { hasText: "GitHub Copilot" })).toBeVisible();
   await expect(page.locator("#install .cmd pre").first()).toContainText("marketplace add");
 });
@@ -18,7 +18,7 @@ test("hub renders with plugins, install command, and logo", async ({ page }) => 
 
 test("a plugin card is clickable across its body, navigating to the plugin page (SITE-HUB-06)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
+  const card = page.locator("#plugin-commentable-html");
   const desc = card.locator(".desc");
   await desc.scrollIntoViewIfNeeded();
   const box = await desc.boundingBox();
@@ -29,7 +29,7 @@ test("a plugin card is clickable across its body, navigating to the plugin page 
 
 test("the card copy button and Learn more stay independently clickable over the card link (SITE-HUB-06)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
+  const card = page.locator("#plugin-commentable-html");
   await card.locator(".copy-btn").first().click();
   await expect(page).toHaveURL(/\/$/);
 });
@@ -37,7 +37,7 @@ test("the card copy button and Learn more stay independently clickable over the 
 
 test("the plugin card body shows a pointer cursor so it reads as clickable (SITE-HUB-06)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  const card = page.locator(".plugin-card", { hasText: "commentable-html" }).first();
+  const card = page.locator("#plugin-commentable-html");
   // The whole card navigates, so its body carries the hand/pointer cursor to signal it.
   expect(await card.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
   expect(await card.locator(".desc").evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
@@ -52,7 +52,7 @@ test("the auto-updater card navigates to its plugin page (SITE-HUB-06)", async (
   // a link and the whole card navigates to that page with a pointer cursor. The linkless-card
   // rendering path (a plugin with no page) stays covered by the generator test
   // RenderPluginsTests.test_card_without_page_has_no_learn_more.
-  const card = page.locator(".plugin-card", { hasText: "urikan-ai-marketplace-auto-updater" }).first();
+  const card = page.locator("#plugin-urikan-ai-marketplace-auto-updater");
   await expect(card.locator(".name a")).toHaveAttribute("href", "./urikan-ai-marketplace-auto-updater/");
   expect(await card.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
   await card.locator(".desc").click();
@@ -60,21 +60,84 @@ test("the auto-updater card navigates to its plugin page (SITE-HUB-06)", async (
 });
 
 
-test("the hub Learn more button uses the brand accent color, not yellow (SITE-HUB-07)", async ({ page }) => {
+test("the hub Learn more button is accent-colored but visually distinct from the solid install tab (SITE-HUB-07)", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  const resolveVar = (name) =>
+    page.evaluate((n) => {
+      const d = document.createElement("div");
+      d.style.color = `var(${n})`;
+      document.body.appendChild(d);
+      const c = getComputedStyle(d).color;
+      d.remove();
+      return c;
+    }, name);
+  const accent = await resolveVar("--cp-accent");
   const learn = page.locator(".plugin-card .learn-more").first();
-  const bg = await learn.evaluate((el) => getComputedStyle(el).backgroundColor);
-  const accentBg = await page.evaluate(() => {
-    const d = document.createElement("div");
-    d.style.backgroundColor = "var(--cp-accent)";
-    document.body.appendChild(d);
-    const c = getComputedStyle(d).backgroundColor;
-    d.remove();
-    return c;
+  const styles = await learn.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { color: cs.color, border: cs.borderTopColor, bg: cs.backgroundColor };
   });
-  expect(bg).toBe(accentBg);
+  // The Learn more label and border are the brand accent color...
+  expect(styles.color).toBe(accent);
+  expect(styles.border).toBe(accent);
+  // ...but it is NOT a solid accent fill, so it does not look like the active install tab.
+  expect(styles.bg).not.toBe(accent);
+  // Positively pin the soft accent tint so a regression to white/transparent also fails, not just a
+  // regression to the solid accent.
+  const accentSoft = await resolveVar("--cp-accent-soft");
+  expect(styles.bg).toBe(accentSoft);
   // The old design used amber #ffc107 -> rgb(255, 193, 7); make sure that is gone.
-  expect(bg).not.toBe("rgb(255, 193, 7)");
+  expect(styles.bg).not.toBe("rgb(255, 193, 7)");
+  // Concretely: the Learn more background differs from the solid accent-filled active install tab,
+  // so the two kinds of buttons read as distinct.
+  const activeTabBg = await page
+    .locator(".plugin-card .install-tab[aria-selected='true']")
+    .first()
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(activeTabBg).toBe(accent);
+  expect(styles.bg).not.toBe(activeTabBg);
+  // On hover the button must STAY distinct from the solid tab (it must not fill solid accent), so the
+  // differentiation this feature adds does not collapse in the hover state.
+  await learn.hover();
+  const hover = await learn.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { bg: cs.backgroundColor, color: cs.color };
+  });
+  // The hover rule actually applied and CHANGED the resting background (so a removed/broken :hover
+  // rule fails here rather than passing because the resting state already satisfied the checks below).
+  expect(hover.bg).not.toBe(styles.bg);
+  // ...and the hovered state is still not the solid accent tab, and its text stays accent.
+  expect(hover.bg).not.toBe(activeTabBg);
+  expect(hover.color).toBe(accent);
+});
+
+
+test("a horizontal divider with spacing separates the card actions from the install tabs (SITE-HUB-13)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const card = page.locator("#plugins .plugin-card").first();
+  const install = card.locator(".install");
+  // The install section carries a top border (the horizontal rule) that the actions row does not.
+  const borderTop = await install.evaluate((el) => parseFloat(getComputedStyle(el).borderTopWidth));
+  expect(borderTop).toBeGreaterThan(0);
+  // The rule must be visible, not a transparent 1px border (a regression where --cp-border resolves
+  // to transparent would otherwise pass the width check).
+  const borderColor = await install.evaluate((el) => getComputedStyle(el).borderTopColor);
+  expect(borderColor).not.toBe("rgba(0, 0, 0, 0)");
+  const footBorder = await card.locator(".foot").evaluate(
+    (el) => parseFloat(getComputedStyle(el).borderTopWidth));
+  expect(footBorder).toBe(0);
+  // There is real breathing room above the rule (margin + padding) so the two button groups do not
+  // read as one.
+  const gap = await install.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return parseFloat(cs.marginTop) + parseFloat(cs.paddingTop);
+  });
+  expect(gap).toBeGreaterThanOrEqual(24);
+  // The rule sits below the actions row, above the first install tab.
+  const foot = await card.locator(".foot").boundingBox();
+  const firstTab = await card.locator(".install-tab").first().boundingBox();
+  expect(firstTab.y).toBeGreaterThan(foot.y + foot.height);
 });
 
 
@@ -158,10 +221,27 @@ test("the hub plugin cards are ordered commentable-html, multi-duck, then the au
   const names = await page.locator("#plugins .plugin-card .name").allTextContents();
   const trimmed = names.map((n) => n.trim());
   expect(trimmed.slice(0, 3)).toEqual([
-    "commentable-html",
-    "multi-duck",
-    "urikan-ai-marketplace-auto-updater",
+    "Commentable HTML",
+    "Multi Duck",
+    "Auto-updater",
   ]);
+});
+
+
+test("the hub plugin card titles show the friendly display name while the link href and anchor id keep the code-name slug (SITE-HUB-14)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The visible card title is the friendly display name from PLUGIN_DISPLAY_NAMES...
+  const title = page.locator("#plugin-commentable-html .name a");
+  await expect(title).toHaveText("Commentable HTML");
+  await expect(page.locator("#plugin-multi-duck .name a")).toHaveText("Multi Duck");
+  await expect(page.locator("#plugin-urikan-ai-marketplace-auto-updater .name a")).toHaveText("Auto-updater");
+  // ...while the link href and the card anchor id keep the code-name slug so nav/hero targets resolve.
+  await expect(title).toHaveAttribute("href", "./commentable-html/");
+  // The raw code name is never the visible title text on any card.
+  const titles = await page.locator("#plugins .plugin-card .name a").allTextContents();
+  for (const t of titles) {
+    expect(t.trim()).not.toMatch(/^(commentable-html|multi-duck|urikan-ai-marketplace-auto-updater)$/);
+  }
 });
 
 

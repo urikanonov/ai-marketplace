@@ -46,12 +46,28 @@
 .plugin-card .name a:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 3px; border-radius: 4px; }
 .plugin-card .name a::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; pointer-events: none; }
 .plugin-card .desc, .plugin-card .keywords, .plugin-card .cmd, .plugin-card .foot { position: relative; z-index: 2; }
+/* SITE-HUB-07: the Learn more button uses the brand accent family but renders as a soft/outlined
+   button (accent text and border on a soft accent tint), NOT a solid accent fill, so it is clearly
+   distinct from the solid accent-filled active install-agent tab below it (and not the former
+   amber). Source stays a plain neutral button. */
 .plugin-card .learn-more {
-  background: var(--cp-accent);
-  color: var(--cp-accent-fg);
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
   border-color: var(--cp-accent);
 }
-.plugin-card .learn-more:hover { background: var(--cp-accent-hover); border-color: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+.plugin-card .learn-more:hover {
+  background: color-mix(in srgb, var(--cp-accent) 16%, var(--cp-surface));
+  border-color: var(--cp-accent-hover);
+  color: var(--cp-accent);
+}
+
+/* SITE-HUB-13: separate the card actions (Learn more/Source) from the install-agent tabs with a
+   horizontal rule and extra spacing, so the two button rows do not read as one group. */
+#plugins .plugin-card .install {
+  margin-top: 10px;
+  padding-top: 22px;
+  border-top: 1px solid var(--cp-border);
+}
 
 .mode-card { display: flex; flex-direction: column; }
 .mode-card p { flex: 1; }
