@@ -83,6 +83,22 @@ class OrchestrationTests(unittest.TestCase):
         labels = [c[0] for c in self.calls]
         self.assertFalse(any("fixtures" in lbl.lower() for lbl in labels))
 
+    def test_screenshots_skip_message_distinguishes_missing_script(self):
+        # node present + deps present, but the capture script path does not exist -> a distinct
+        # "capture script not found" note (not the misleading "node not found" or the deps note).
+        import io
+        import contextlib
+        with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True), \
+                mock.patch.object(rebuild_all.os.path, "exists", return_value=False):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = rebuild_all.main(["rebuild_all.py", "--check"])
+            out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn(
+            "Tutorial screenshots (capture_tutorial.mjs) == skipped (capture script not found)", out)
+
 
 if __name__ == "__main__":
     unittest.main()

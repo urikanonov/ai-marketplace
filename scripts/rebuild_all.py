@@ -80,8 +80,10 @@ def main(argv=None):
         print("== Tutorial screenshots (capture_tutorial.mjs) == skipped "
               "(commentable-html dev node_modules not installed; run 'python scripts/setup_dev.py'; "
               "CI plugin-tests runs it)")
-    else:
+    elif not node:
         print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (node not found; CI plugin-tests runs it)")
+    else:
+        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (capture script not found)")
     steps.append(("GitHub Pages site (build_site_data.py)", [sys.executable, SITE_DATA] + check))
 
     failed = []
