@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.144.0] - 2026-07-18
+
+### Changed
+
+- Decks now show a dismissible "Best viewed in landscape" hint on narrow portrait phones only, leaving landscape and non-deck documents unchanged (CMH-DECK-28).
+- The comments sidebar now uses one Export menu for Portable, Offline, Markdown, and Plain HTML actions instead of four always-visible export buttons, while keeping the same export handlers and downloads (CMH-EXP-13).
+- Mobile mermaid diagrams now use a width-based classifier: small diagrams fit the viewport, genuinely wide diagrams keep a scrollable min-width, and overflowing diagrams show an edge-fade cue (CMH-RESP-09).
+
 ## [1.143.0] - 2026-07-17
 
 ### Changed

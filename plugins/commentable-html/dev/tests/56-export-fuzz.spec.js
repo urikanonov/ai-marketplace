@@ -3,6 +3,7 @@ import fs from "fs";
 import {
   openInline, addTextComment, storedComments, readDownload,
   stageInline, startStaticServer, ready, openToolbarMenu,
+  clickSidebarExport,
 } from "./helpers.js";
 
 // GH-REGRESS-EXPORT-HOTSPOT: the export path serializes user-authored comment text into the
@@ -68,7 +69,7 @@ test("Export as Portable round-trips a batch of adversarial comment notes byte-e
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("#btnSaveHtml").click(),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const html = await readDownload(download);
 

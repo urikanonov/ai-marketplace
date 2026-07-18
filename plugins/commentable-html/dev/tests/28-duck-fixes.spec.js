@@ -5,6 +5,7 @@ import path from "path";
 import {
   openInline, ready, fileUrl, INLINE, stageInline, addTextComment, readDownload,
   installClipboardCapture, allCids,
+  clickSidebarExport,
 } from "./helpers.js";
 
 const CONTENT_END = "<!-- END: commentable-html - CONTENT -->";
@@ -84,7 +85,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
     const p = stageNamed("report-comments.html");
     await openStaged(page, p);
     await addTextComment(page, "#commentRoot section p", "note");
-    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtml")]);
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
     expect(dl.suggestedFilename()).toBe("report-portable.html");
   });
 
@@ -92,7 +93,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
   test("deleting an embedded comment keeps it deleted across reload", async ({ page, context }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "embedded then deleted");
-    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtml")]);
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
     const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_tomb_")), "doc.html");
     fs.writeFileSync(p, await readDownload(dl));
     const p2 = await context.newPage();
@@ -118,7 +119,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
     const markText = await page.$eval("mark.cm-hl", (m) => m.textContent);
     // Sort Requests ascending so the commented row moves.
     await page.locator("#commentRoot table.cmh-sortable thead th", { hasText: "Requests" }).locator(".cmh-sort-ctrl").click();
-    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtml")]);
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
     const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_canon_")), "doc.html");
     fs.writeFileSync(p, await readDownload(dl));
     const p2 = await context.newPage();

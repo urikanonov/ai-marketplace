@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.143.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.144.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,15 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.144.0] - 2026-07-18</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Decks now show a dismissible &quot;Best viewed in landscape&quot; hint on narrow portrait phones only, leaving landscape and non-deck documents unchanged (CMH-DECK-28).</li>
+              <li>The comments sidebar now uses one Export menu for Portable, Offline, Markdown, and Plain HTML actions instead of four always-visible export buttons, while keeping the same export handlers and downloads (CMH-EXP-13).</li>
+              <li>Mobile mermaid diagrams now use a width-based classifier: small diagrams fit the viewport, genuinely wide diagrams keep a scrollable min-width, and overflowing diagrams show an edge-fade cue (CMH-RESP-09).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.143.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -435,6 +444,8 @@
               <li>Showcase deck polish: slide content is vertically centered to use the full stage (less bottom whitespace), the amber title highlight now hugs the letters instead of bleeding into the line above, and every slide carries a Commentable HTML brand mark at its top-right linking to the plugin site (CMH-DECK-SHOWCASE-10, CMH-DECK-SHOWCASE-11, CMH-DECK-SHOWCASE-12).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.142.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -450,8 +461,6 @@
               <li>The deck overview grid renders faithful thumbnails: slide canvases are snapshotted into images (a cloned canvas is blank), and each cloned SVG&#x27;s ids are namespaced per clone (with <code>url(#id)</code>, <code>href</code>, and aria idref references rewritten) so a thumbnail&#x27;s gradient/mask/filter refs resolve to its OWN defs - fixing the slide-1 logo rendering black, without duplicating a document id when two slides reuse the same id (CMH-DECK-24).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.141.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -490,15 +499,7 @@
               <li>Slimmed the shipped plugin payload and site skill ZIP by relocating the agent-only <code>bold-template-pack</code> reference material into <code>dev/vendor/frontend-slides/</code>. The shipped frontend-slides runtime assets and tooling remain in <code>pkg/</code>, while separate SHA-256 manifests now keep both vendor trees pristine (CMH-DECK-07, closes #341).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.137.0] - 2026-07-17</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Two LIGHT native deck theme presets alongside the dark <code>terminal</code>: <code>paper</code> (warm-cream, editorial-serif, crimson accent) and <code>editorial</code> (soft-cream serif, deep-teal accent), each adapted from a frontend-slides <code>STYLE_PRESETS.md</code> style (credited via <code>adaptedFrom</code> + <code>sourceCommit</code>). Both override the full component token set (the defaults are dark) and pass <code>_deck_theme.load</code> (composited effective-contrast + opaque <code>contrastPairs</code> self-check at AA) and the objective <code>theme_eval</code> harness with no validator error, no clipping advisory, and a bounded byte delta (CMH-DECK-THEME-06, issue #343). Scaffold a themed deck with <code>deck_scaffold.py --theme paper</code> (or <code>editorial</code>, <code>terminal</code>).</li>
-              <li>Made the previously hard-coded-dark deck code-control surfaces themeable so light decks stay legible: the code/KQL language + copy badge background (<code>--cmh-deck-code-badge-bg</code>), the KQL run-link hover colour (<code>--cmh-deck-code-link-hover-fg</code>), and the Mermaid subgraph cluster fill/stroke (<code>--cmh-deck-mermaid-cluster-fill</code>/<code>-stroke</code>), each with byte-exact dark defaults so unthemed and <code>terminal</code> decks are unchanged.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">120 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">121 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

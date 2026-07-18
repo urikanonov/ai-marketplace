@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
-import { SKILL, fileUrl, ready, stageContent } from "./helpers.js";
+import { SKILL, fileUrl, ready, stageContent, routeMermaidLocal, startStaticServer } from "./helpers.js";
 
 const METRICS = path.join(SKILL, "..", "..", "examples", "report-metrics.html");
 
@@ -214,6 +214,57 @@ test("the chart Add button clamps inside a narrow chart container on horizontal 
     expect(metrics.buttonLeft).toBeGreaterThanOrEqual(metrics.figureLeft - 1);
     expect(metrics.buttonRight).toBeLessThanOrEqual(metrics.figureRight + 1);
   } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("small mermaid diagrams fit while genuinely wide ones scroll with an edge fade (CMH-RESP-09)", async ({ page }) => {
+  const staged = stageContent(`
+<h1>Diagram widths</h1>
+<pre class="mermaid" id="smallDiagram">
+flowchart LR
+  A[Start] --> B[Done]
+</pre>
+<pre class="mermaid" id="wideDiagram">
+flowchart LR
+  A[Ingest] --> B[Normalize] --> C[Enrich] --> D[Correlate] --> E[Score] --> F[Route] --> G[Notify] --> H[Archive]
+  A --> I[Backfill] --> J[Replay] --> K[Compare] --> L[Publish]
+</pre>`, { key: "cmh-mermaid-width-classifier", source: "mermaid-width-classifier.html" });
+  const server = await startStaticServer(staged.dir);
+  try {
+    await routeMermaidLocal(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await page.waitForSelector("#smallDiagram svg");
+    await page.waitForSelector("#wideDiagram svg");
+    await expect.poll(() => page.locator("#wideDiagram").evaluate((el) => el.classList.contains("cmh-diagram-wide"))).toBe(true);
+
+    const metrics = await page.evaluate(() => {
+      const measure = (id) => {
+        const host = document.getElementById(id);
+        const box = host.getBoundingClientRect();
+        return {
+          wide: host.classList.contains("cmh-diagram-wide"),
+          fade: host.classList.contains("cmh-diagram-scroll-fade"),
+          maskImage: getComputedStyle(host).maskImage || "",
+          webkitMaskImage: getComputedStyle(host).webkitMaskImage || "",
+          fits: box.right <= document.documentElement.clientWidth + 1,
+          delta: host.scrollWidth - host.clientWidth,
+        };
+      };
+      return { small: measure("smallDiagram"), wide: measure("wideDiagram") };
+    });
+    expect(metrics.small.fits, "the small diagram host stays inside the viewport").toBe(true);
+    expect(metrics.small.wide, "the small diagram is not force-classified wide").toBe(false);
+    expect(metrics.small.delta, "the small diagram does not need horizontal scrolling").toBeLessThanOrEqual(1);
+    expect(metrics.wide.fits, "the wide diagram host stays inside the viewport").toBe(true);
+    expect(metrics.wide.wide, "the wide diagram keeps a legible scroll width").toBe(true);
+    expect(metrics.wide.delta, "the wide diagram scrolls horizontally").toBeGreaterThan(40);
+    expect(metrics.wide.fade, "scrollable diagrams carry the edge-fade cue class").toBe(true);
+    expect(metrics.wide.maskImage, "the unprefixed edge-fade mask is active").toContain("gradient");
+    expect(metrics.wide.webkitMaskImage, "the webkit edge-fade mask is active").toContain("gradient");
+  } finally {
+    await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });

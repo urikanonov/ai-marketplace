@@ -94,6 +94,31 @@ function indexMermaidDiagrams() {
   });
 }
 function mermaidHostForIndex(i) { return mermaidDiagrams[i] || null; }
+function mermaidIntrinsicWidth(host) {
+  const svg = host && host.querySelector && host.querySelector("svg");
+  if (!svg) return 0;
+  const viewBox = (svg.getAttribute("viewBox") || "").trim().split(/\s+/).map(Number);
+  if (viewBox.length === 4 && isFinite(viewBox[2]) && viewBox[2] > 0) return viewBox[2];
+  const widthAttr = parseFloat(svg.getAttribute("width") || "");
+  if (isFinite(widthAttr) && widthAttr > 0) return widthAttr;
+  try {
+    const box = svg.getBBox && svg.getBBox();
+    if (box && isFinite(box.width) && box.width > 0) return box.width;
+  } catch (e) {}
+  return svg.getBoundingClientRect().width || 0;
+}
+function updateMermaidWidthClass(host) {
+  if (!host) return;
+  const container = host.clientWidth || host.getBoundingClientRect().width || window.innerWidth || 0;
+  const natural = mermaidIntrinsicWidth(host);
+  const wide = natural > Math.max(container + 80, 520);
+  host.classList.toggle("cmh-diagram-wide", wide);
+  const syncFade = () => {
+    host.classList.toggle("cmh-diagram-scroll-fade", wide && host.scrollWidth > host.clientWidth + 1);
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncFade);
+  else setTimeout(syncFade, 0);
+}
 function mermaidNodeKey(nodeEl) {
   const ds = nodeEl.dataset && nodeEl.dataset.id;
   if (ds) return ds;
@@ -323,6 +348,7 @@ function setupMermaidLayer() {
       comments.forEach(c => {
         if (c.anchorType === "mermaid" && c.diagramIndex === i) applyMermaidHighlight(c);
       });
+      updateMermaidWidthClass(host);
       attachMermaidHostHandlers(host);
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(apply);
@@ -341,5 +367,10 @@ function setupMermaidLayer() {
     });
     obs.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-processed"] });
   });
+  if (!setupMermaidLayer._widthResizeBound) {
+    setupMermaidLayer._widthResizeBound = true;
+    window.addEventListener("resize", function () {
+      mermaidDiagrams.forEach(updateMermaidWidthClass);
+    });
+  }
 }
-

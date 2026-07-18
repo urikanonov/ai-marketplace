@@ -5,6 +5,8 @@ import os from "os";
 import {
   openInline, addTextComment, openToolbarMenu, readDownload, fileUrl, ready,
   stageContent, stageNonPortable,
+  openSidebarExportMenu,
+  clickSidebarExport,
 } from "./helpers.js";
 
 // Once a comment exists the panel is open (the floating toolbar is hidden), so
@@ -32,7 +34,7 @@ test.describe("Save comments / Export plain", () => {
     await addTextComment(page, "#commentRoot section p", evil);
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnSaveHtml").click(),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const html = await readDownload(download);
     const block = html.match(/id="embeddedComments">([\s\S]*?)<\/script>/)[1];
@@ -64,12 +66,51 @@ test.describe("Save comments / Export plain", () => {
     await addTextComment(page, "#commentRoot section p", "embed this note");
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnSaveHtml").click(),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const html = await readDownload(download);
     const m = html.match(/id="embeddedComments">([\s\S]*?)<\/script>/);
     expect(m).toBeTruthy();
     expect(JSON.parse(m[1].trim())[0].note).toBe("embed this note");
+  });
+
+  test("sidebar export actions live in a single disclosure and Portable still downloads (CMH-EXP-13)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "menu export note");
+    await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "false");
+    for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd"]) {
+      await expect(page.locator("#" + id)).toBeHidden();
+    }
+    const roles = await page.locator("#sidebarExportMenu, #sidebarExportMenu button").evaluateAll((els) =>
+      els.map((el) => el.getAttribute("role")));
+    expect(roles.every((role) => role !== "menu" && role !== "menuitem")).toBe(true);
+    await openSidebarExportMenu(page);
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#sidebarExportMenu")).toBeVisible();
+    for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd"]) {
+      await expect(page.locator("#" + id)).toBeVisible();
+    }
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnSaveHtml"),
+    ]);
+    const html = await readDownload(download);
+    expect(embeddedComments(html)[0].note).toBe("menu export note");
+  });
+
+  test("Escape closes only the sidebar export disclosure before a composer draft (CMH-EXP-13)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "menu priority note");
+    await page.locator('.cm-card [data-act="edit"]').first().click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("draft kept behind export menu");
+    await openSidebarExportMenu(page);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#sidebarExportMenu")).toBeHidden();
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "false");
+    await expect(composer).toBeVisible();
+    await expect(composer.locator("textarea")).toHaveValue("draft kept behind export menu");
   });
 
   test("Save, Portable, and Offline exports exclude comments already listed as handled", async ({ page }) => {
@@ -87,7 +128,7 @@ test.describe("Save comments / Export plain", () => {
       const inlineCid = await markLiveCommentHandled(page, "handled inline note");
       const [saveDownload] = await Promise.all([
         page.waitForEvent("download"),
-        page.locator("#btnSaveHtml").click(),
+        clickSidebarExport(page, "#btnSaveHtml"),
       ]);
       const savedHtml = await readDownload(saveDownload);
       expect(embeddedComments(savedHtml)).toEqual([]);
@@ -96,7 +137,7 @@ test.describe("Save comments / Export plain", () => {
 
       const [offlineDownload] = await Promise.all([
         page.waitForEvent("download"),
-        page.locator("#btnExportOffline").click(),
+        clickSidebarExport(page, "#btnExportOffline"),
       ]);
       const offlineHtml = await readDownload(offlineDownload);
       expect(embeddedComments(offlineHtml)).toEqual([]);
@@ -108,7 +149,7 @@ test.describe("Save comments / Export plain", () => {
       const portableCid = await markLiveCommentHandled(page, "handled nonportable note");
       const [portableDownload] = await Promise.all([
         page.waitForEvent("download"),
-        page.locator("#btnSaveHtml").click(),
+        clickSidebarExport(page, "#btnSaveHtml"),
       ]);
       const portableHtml = await readDownload(portableDownload);
       expect(embeddedComments(portableHtml)).toEqual([]);
@@ -125,7 +166,7 @@ test.describe("Save comments / Export plain", () => {
     await addTextComment(page, "#commentRoot section p", "traveling comment");
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnSaveHtml").click(),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const shared = path.join(os.tmpdir(), "cmh_shared_" + Date.now() + ".html");
     fs.writeFileSync(shared, await readDownload(download));

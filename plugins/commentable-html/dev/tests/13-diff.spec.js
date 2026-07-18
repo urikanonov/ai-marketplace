@@ -1,7 +1,8 @@
 // Diff / code-review layer: rendering, side-by-side <-> inline toggle, and
 // structural (layout-stable, reload-stable) comments on diff lines.
 import { test, expect } from "@playwright/test";
-import { openInline, ready, copiedBundle, denyExternalNetwork, fileUrl, INLINE, installClipboardCapture } from "./helpers.js";
+import { openInline, ready, copiedBundle, denyExternalNetwork, fileUrl, INLINE, installClipboardCapture ,
+  clickSidebarExport } from "./helpers.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -672,7 +673,7 @@ test("a diff comment survives Save-in-HTML (embeddedComments) + reopen", async (
   const cid = await page.locator(".cmh-dl-hl").first().getAttribute("data-cid");
   const [dl] = await Promise.all([
     page.waitForEvent("download"),
-    page.click("#btnSaveHtml"),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const html = fs.readFileSync(await dl.path(), "utf8");
   const arr = JSON.parse(html.match(/id="embeddedComments">([\s\S]*?)<\/script>/)[1].trim());

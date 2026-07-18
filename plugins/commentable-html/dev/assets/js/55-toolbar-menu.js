@@ -26,7 +26,16 @@
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
   }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
   menu.addEventListener("click", () => setOpen(false));
   document.addEventListener("click", (e) => {
@@ -34,4 +43,29 @@
   });
   // Escape is handled centrally (toolbar menu has priority) in the global keydown
   // listener above, so it is not duplicated here.
+})();
+
+/* ---------- Sidebar export menu ---------- */
+(function () {
+  const btn = document.getElementById("btnSidebarExportMenu");
+  const menu = document.getElementById("sidebarExportMenu");
+  if (!btn || !menu) return;
+  function setOpen(open) {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+  }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
+  btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  menu.addEventListener("click", () => setOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+  });
 })();

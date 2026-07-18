@@ -84,6 +84,41 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: var(--cp-chrome-font); line-height: 1.55; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
+.cm-sidebar-export {
+  position: relative;
+  flex: 1 1 6.8rem;
+  min-width: min(100%, 6.2rem);
+}
+.cm-sidebar .head-actions .cm-sidebar-export > button {
+  width: 100%;
+}
+.cm-sidebar-export-menu {
+  position: absolute;
+  z-index: 230;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  min-width: 12rem;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--cp-bg-elevated);
+  border: 1px solid var(--cp-border);
+  border-radius: 0.65rem;
+  box-shadow: var(--cp-shadow);
+}
+.cm-sidebar-export-menu[hidden] { display: none; }
+.cm-sidebar .head-actions .cm-sidebar-export-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  flex: none;
+  min-width: 0;
+  white-space: nowrap;
+}
+.cm-sidebar.is-narrow .head-actions .cm-sidebar-export { flex: 1 1 calc(50% - 0.2rem); min-width: 0; }
+.cm-sidebar.is-narrow .head-actions .cm-sidebar-export-menu { right: auto; width: min(14rem, calc(100vw - 2rem)); }
+
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class
    because .cm-card sets display:flex, which would otherwise win over the UA [hidden] rule. */

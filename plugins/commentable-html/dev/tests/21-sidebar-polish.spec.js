@@ -131,9 +131,9 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
   });
 
   test("the sidebar minimum width keeps every action button label legible (CMH-SIDE-06)", async ({ page }) => {
-    // The resize floor is 256px - the empirically measured minimum at which the two-per-row export
-    // button labels ("Portable", "Offline", "Markdown", "Plain HTML") and Copy all stay fully shown
-    // (below ~240px they clip). The same floor applies on wide and narrow viewports. Below the 640px
+    // The resize floor is 256px - the empirically measured minimum at which the Export menu,
+    // Clear, Copy all, and the search placeholder stay fully shown. The same floor applies
+    // on wide and narrow viewports. Below the 640px
     // phone breakpoint the sidebar is instead a non-resizable full-width sheet (CMH-RESP-04), so the
     // narrow-viewport case uses 700px, where the panel is still a resizable side panel.
     for (const vw of [1400, 700]) {
@@ -189,7 +189,7 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     expect(metrics.actionRows).toBeGreaterThan(1);
   });
 
-  test("the sidebar export buttons are two-per-row in narrow layout (CMH-SIDE-08)", async ({ page }) => {
+  test("the sidebar Export menu and Clear button share the narrow action row (CMH-SIDE-08)", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await openKitchenSink(page);
     await openSidebarPanel(page);
@@ -201,10 +201,7 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
       const actions = sidebar.querySelector(".head-actions");
       const rect = (id) => document.getElementById(id).getBoundingClientRect();
       const r = {
-        portable: rect("btnSaveHtml"),
-        offline: rect("btnExportOffline"),
-        markdown: rect("btnExportMd"),
-        plain: rect("btnSavePlain"),
+        exportMenu: rect("btnSidebarExportMenu"),
         clear: rect("btnClearAll"),
       };
       const round = (f) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(f(v))]));
@@ -218,21 +215,11 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
     });
 
     expect(layout.narrow).toBe(true);
-    // Row 1: Portable and Offline share a row, Portable on the left.
-    expect(layout.top.portable).toBe(layout.top.offline);
-    expect(layout.left.portable).toBeLessThan(layout.left.offline);
-    // Row 2: Markdown and Plain HTML share the next row down, Markdown on the left.
-    expect(layout.top.markdown).toBe(layout.top.plain);
-    expect(layout.left.markdown).toBeLessThan(layout.left.plain);
-    expect(layout.top.markdown).toBeGreaterThan(layout.top.portable);
-    // Clear sits on its own row below, spanning the full width (a destructive action kept apart).
-    expect(layout.top.clear).toBeGreaterThan(layout.top.markdown);
-    expect(layout.width.clear).toBeGreaterThan(layout.containerWidth * 0.9);
-    // Each export button is about half a row, so two fit side by side.
-    for (const key of ["portable", "offline", "markdown", "plain"]) {
-      expect(layout.width[key]).toBeLessThan(layout.containerWidth * 0.75);
-    }
-    expect(layout.width.portable + layout.width.offline).toBeLessThanOrEqual(layout.containerWidth + 2);
+    expect(layout.top.exportMenu).toBe(layout.top.clear);
+    expect(layout.left.exportMenu).toBeLessThan(layout.left.clear);
+    expect(layout.width.exportMenu).toBeLessThan(layout.containerWidth * 0.75);
+    expect(layout.width.clear).toBeLessThan(layout.containerWidth * 0.75);
+    expect(layout.width.exportMenu + layout.width.clear).toBeLessThanOrEqual(layout.containerWidth + 2);
   });
 
   test("the sidebar shows Generated-on and Last-comment info rows", async ({ page }) => {

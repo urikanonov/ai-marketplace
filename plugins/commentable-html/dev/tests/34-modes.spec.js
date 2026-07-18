@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {
   openInline, fileUrl, addTextComment, storedComments, readDownload,
+  clickSidebarExport,
 } from "./helpers.js";
 
 // Explicit end-to-end coverage of the three document modes a reviewer encounters:
@@ -29,7 +30,7 @@ test("MODE Portable-with-comments: Save embeds comments that travel to a fresh b
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("#btnSaveHtml").click(),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const shared = path.join(os.tmpdir(), "cmh_modes_" + Date.now() + ".html");
   fs.writeFileSync(shared, await readDownload(download));

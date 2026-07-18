@@ -5,6 +5,7 @@ import path from "path";
 import {
   openKitchenSink, openKitchenSinkNonPortable, addTextComment, openToolbarMenu, lastCopied,
   readDownload, fileUrl, ready, stageInline, KITCHEN_SINK, KITCHEN_SINK_NONPORTABLE, SKILL, DEV,
+  clickSidebarExport,
 } from "./helpers.js";
 
 test.describe("theme, copy payload, nonportable plain, drift", () => {
@@ -71,7 +72,7 @@ test.describe("theme, copy payload, nonportable plain, drift", () => {
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
       (async () => {
-        if (await page.locator("#btnSavePlain").isVisible()) return page.click("#btnSavePlain");
+        if (await page.locator("#btnSidebarExportMenu").isVisible()) return clickSidebarExport(page, "#btnSavePlain");
         await openToolbarMenu(page);
         return page.click("#btnSavePlainTop");
       })(),

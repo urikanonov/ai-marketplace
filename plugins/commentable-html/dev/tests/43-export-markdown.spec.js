@@ -3,7 +3,7 @@
 import { test, expect } from "@playwright/test";
 import {
   fileUrl, ready, installClipboardCapture, stageContent,
-  openKitchenSink, openToolbarMenu, addTextComment,
+  openKitchenSink, openToolbarMenu, openSidebarExportMenu, addTextComment,
   routeMermaidLocal, startStaticServer,
 } from "./helpers.js";
 
@@ -110,7 +110,10 @@ test("Export to Markdown downloads a .md file and does NOT write the clipboard",
 
 test("Export to Markdown is available in the sidebar and the overflow menu", async ({ page }) => {
   await openKitchenSink(page);
+  await page.click("#btnToggleSidebar");
+  await openSidebarExportMenu(page);
   await expect(page.locator("#btnExportMd")).toBeVisible();
+  await page.click("#btnCloseSidebar");
   await openToolbarMenu(page);
   await expect(page.locator("#btnExportMdTop")).toBeVisible();
 });

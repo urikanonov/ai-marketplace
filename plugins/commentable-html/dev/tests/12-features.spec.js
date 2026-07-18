@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
-import { PYTHON } from "./helpers.js";
+import { PYTHON ,
+  clickSidebarExport } from "./helpers.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -379,7 +380,7 @@ test.describe("exports preserve comments", () => {
     await addTextComment(page, "#commentRoot section p", "save me into the file");
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
-      page.click("#btnSaveHtml"),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     expect(dl.suggestedFilename()).toMatch(/-portable\.html$/);
     const html = await readDownload(dl);
@@ -415,7 +416,7 @@ test.describe("exports preserve comments", () => {
       // comments" always yields a portable combined file, even from an nonportable doc.
       const [dl] = await Promise.all([
         page.waitForEvent("download"),
-        page.click("#btnSaveHtml"),
+        clickSidebarExport(page, "#btnSaveHtml"),
       ]);
       expect(dl.suggestedFilename()).toMatch(/-portable\.html$/);
       const html = await readDownload(dl);
@@ -450,7 +451,7 @@ test.describe("exports preserve comments", () => {
     });
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
-      page.click("#btnSavePlain"),
+      clickSidebarExport(page, "#btnSavePlain"),
     ]);
     expect(dl.suggestedFilename()).toMatch(/\.plain\.html$/);
     const html = await readDownload(dl);
