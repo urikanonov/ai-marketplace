@@ -246,6 +246,8 @@ flowchart LR
         return {
           wide: host.classList.contains("cmh-diagram-wide"),
           fade: host.classList.contains("cmh-diagram-scroll-fade"),
+          maskImage: getComputedStyle(host).maskImage || "",
+          webkitMaskImage: getComputedStyle(host).webkitMaskImage || "",
           fits: box.right <= document.documentElement.clientWidth + 1,
           delta: host.scrollWidth - host.clientWidth,
         };
@@ -259,6 +261,8 @@ flowchart LR
     expect(metrics.wide.wide, "the wide diagram keeps a legible scroll width").toBe(true);
     expect(metrics.wide.delta, "the wide diagram scrolls horizontally").toBeGreaterThan(40);
     expect(metrics.wide.fade, "scrollable diagrams carry the edge-fade cue class").toBe(true);
+    expect(metrics.wide.maskImage, "the unprefixed edge-fade mask is active").toContain("gradient");
+    expect(metrics.wide.webkitMaskImage, "the webkit edge-fade mask is active").toContain("gradient");
   } finally {
     await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });

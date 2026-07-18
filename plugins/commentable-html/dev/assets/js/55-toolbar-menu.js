@@ -26,7 +26,16 @@
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
   }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
   menu.addEventListener("click", () => setOpen(false));
   document.addEventListener("click", (e) => {
@@ -44,16 +53,19 @@
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
   }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
   menu.addEventListener("click", () => setOpen(false));
   document.addEventListener("click", (e) => {
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || menu.hidden) return;
-    e.preventDefault();
-    setOpen(false);
-    btn.focus();
   });
 })();

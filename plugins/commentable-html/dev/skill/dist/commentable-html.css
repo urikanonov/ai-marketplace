@@ -1571,6 +1571,9 @@ body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
   cursor: pointer;
 }
 .cmh-deck-landscape-hint button:hover { background: var(--cp-accent-hover, #27ae60); }
+@media print {
+  .cmh-deck-landscape-hint { display: none !important; }
+}
 /* When commenting is disabled ("off" state), suppress the text-selection popup so a selection is
    not a dead end. In the default state (comments on, panel closed) the popup DOES appear, so a
    reviewer can select text and Add Comment without first opening the panel. The rich-content

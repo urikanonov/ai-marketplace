@@ -966,6 +966,20 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       await expect(hint).toBeVisible();
       await expect(hint).toContainText("Best viewed in landscape");
 
+      await page.emulateMedia({ media: "print" });
+      await expect(hint).toBeHidden();
+      await page.emulateMedia({ media: null });
+      await expect(hint).toBeVisible();
+
+      await page.evaluate(() => window.__cmhDeck.setDeckMode("open"));
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        clickSidebarExport(page, "#btnSaveHtml"),
+      ]);
+      const exported = await readDownload(download);
+      expect(exported).not.toMatch(/<[^>]+class="[^"]*cmh-deck-landscape-hint/);
+      expect(exported).not.toMatch(/<[^>]+class='[^']*cmh-deck-landscape-hint/);
+
       await page.setViewportSize({ width: 844, height: 390 });
       await expect(hint).toBeHidden();
 

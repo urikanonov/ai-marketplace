@@ -1700,6 +1700,9 @@ body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
   cursor: pointer;
 }
 .cmh-deck-landscape-hint button:hover { background: var(--cp-accent-hover, #27ae60); }
+@media print {
+  .cmh-deck-landscape-hint { display: none !important; }
+}
 /* When commenting is disabled ("off" state), suppress the text-selection popup so a selection is
    not a dead end. In the default state (comments on, panel closed) the popup DOES appear, so a
    reviewer can select text and Add Comment without first opening the panel. The rich-content
@@ -2705,12 +2708,12 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
     </div>
     <div class="head-actions">
       <div class="cm-sidebar-export">
-        <button type="button" id="btnSidebarExportMenu" class="cm-sidebar-export-toggle" title="Open export actions" aria-haspopup="true" aria-controls="sidebarExportMenu" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export</span></button>
-        <div id="sidebarExportMenu" class="cm-sidebar-export-menu" role="menu" hidden>
-          <button type="button" id="btnSaveHtml" role="menuitem" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
-          <button type="button" id="btnExportOffline" role="menuitem" aria-label="Export Offline" title="Download an offline HTML copy with current comments embedded, remote loaders removed, and vendored mermaid or Chart.js inlined only when this document needs them"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Offline</span></button>
-          <button type="button" id="btnExportMd" role="menuitem" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
-          <button type="button" id="btnSavePlain" role="menuitem" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
+        <button type="button" id="btnSidebarExportMenu" class="cm-sidebar-export-toggle" title="Open export actions" aria-controls="sidebarExportMenu" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export</span></button>
+        <div id="sidebarExportMenu" class="cm-sidebar-export-menu" hidden>
+          <button type="button" id="btnSaveHtml" aria-label="Export as Portable" title="Download a single self-contained HTML with the current comments embedded (a combined/standalone file, even when this document uses companion files) so the review travels with it"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Portable</span></button>
+          <button type="button" id="btnExportOffline" aria-label="Export Offline" title="Download an offline HTML copy with current comments embedded, remote loaders removed, and vendored mermaid or Chart.js inlined only when this document needs them"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7 M9 7l3 3 3-3 M5 14h14v5H5z M8 16.5h.01 M12 16.5h4"/></svg><span>Offline</span></button>
+          <button type="button" id="btnExportMd" aria-label="Export to Markdown" title="Download a .md file (a deterministic block-by-block conversion; comments are appended as a section)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4 M8.5 17v-4l2 2 2-2v4"/></svg><span>Markdown</span></button>
+          <button type="button" id="btnSavePlain" aria-label="Export to Plain HTML" title="Download a plain copy of this HTML with the comment layer removed (keeps all of your content and styling)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v4h4"/></svg><span>Plain HTML</span></button>
         </div>
       </div>
       <button type="button" id="btnClearAll" class="danger" aria-label="Clear Comments" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear</span></button>
@@ -6129,16 +6132,39 @@ document.addEventListener("click", (e) => {
   if (menu.hidden) return;
   if (!menu.contains(e.target)) hideMenu();
 });
+const cmhEscapePopupStack = [];
+window.__cmhRegisterEscapePopup = function (popup) {
+  if (!popup || typeof popup.isOpen !== "function" || typeof popup.close !== "function") return function () {};
+  cmhEscapePopupStack.push(popup);
+  return function () {
+    const i = cmhEscapePopupStack.indexOf(popup);
+    if (i >= 0) cmhEscapePopupStack.splice(i, 1);
+  };
+};
+window.__cmhPrioritizeEscapePopup = function (popup) {
+  const i = cmhEscapePopupStack.indexOf(popup);
+  if (i >= 0) {
+    cmhEscapePopupStack.splice(i, 1);
+    cmhEscapePopupStack.push(popup);
+  }
+};
+function cmhClosePriorityPopup() {
+  for (let i = cmhEscapePopupStack.length - 1; i >= 0; i--) {
+    const popup = cmhEscapePopupStack[i];
+    if (popup && popup.isOpen()) {
+      popup.close(true);
+      return true;
+    }
+  }
+  return false;
+}
 document.addEventListener("keydown", (e) => {
   if (e.isComposing) return;
   if (e.key === "Escape") {
-    // Priority: an open toolbar overflow menu closes first and consumes the key,
-    // so Escape does not also discard an open composer.
-    const tmenu = document.getElementById("toolbarMenu");
-    if (tmenu && !tmenu.hidden) {
-      tmenu.hidden = true;
-      const tbtn = document.getElementById("btnToolbarMenu");
-      if (tbtn) { tbtn.setAttribute("aria-expanded", "false"); tbtn.focus(); }
+    // Priority: an open toolbar/sidebar popup closes first and consumes Escape,
+    // so the key does not also discard an open composer draft behind it.
+    if (cmhClosePriorityPopup()) {
+      e.preventDefault();
       return;
     }
     // An open add-comment selection menu closes first and consumes Escape, so the key
@@ -6204,7 +6230,6 @@ document.getElementById("menuComment").addEventListener("click", () => {
 });
 const _menuDocBtn = document.getElementById("menuDocComment");
 if (_menuDocBtn) _menuDocBtn.addEventListener("click", () => { hideMenu(); openDocumentComposer(); });
-
 /* ---------- Composer (per-instance, parallel-safe) ---------- */
 function bringToFront(el) { el.style.zIndex = ++composerZ; }
 
@@ -7384,7 +7409,16 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
   }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
   menu.addEventListener("click", () => setOpen(false));
   document.addEventListener("click", (e) => {
@@ -7402,17 +7436,20 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
   }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
   menu.addEventListener("click", () => setOpen(false));
   document.addEventListener("click", (e) => {
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || menu.hidden) return;
-    e.preventDefault();
-    setOpen(false);
-    btn.focus();
   });
 })();
 /* ---------- Copy all + Clear all ---------- */

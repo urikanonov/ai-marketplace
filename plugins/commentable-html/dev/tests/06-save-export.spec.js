@@ -5,6 +5,7 @@ import os from "os";
 import {
   openInline, addTextComment, openToolbarMenu, readDownload, fileUrl, ready,
   stageContent, stageNonPortable,
+  openSidebarExportMenu,
   clickSidebarExport,
 } from "./helpers.js";
 
@@ -73,14 +74,19 @@ test.describe("Save comments / Export plain", () => {
     expect(JSON.parse(m[1].trim())[0].note).toBe("embed this note");
   });
 
-  test("sidebar export actions live in a single menu and Portable still downloads (CMH-EXP-13)", async ({ page }) => {
+  test("sidebar export actions live in a single disclosure and Portable still downloads (CMH-EXP-13)", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "menu export note");
     await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "false");
     for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd"]) {
       await expect(page.locator("#" + id)).toBeHidden();
     }
-    await page.locator("#btnSidebarExportMenu").click();
+    const roles = await page.locator("#sidebarExportMenu, #sidebarExportMenu button").evaluateAll((els) =>
+      els.map((el) => el.getAttribute("role")));
+    expect(roles.every((role) => role !== "menu" && role !== "menuitem")).toBe(true);
+    await openSidebarExportMenu(page);
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "true");
     await expect(page.locator("#sidebarExportMenu")).toBeVisible();
     for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd"]) {
       await expect(page.locator("#" + id)).toBeVisible();
@@ -91,6 +97,20 @@ test.describe("Save comments / Export plain", () => {
     ]);
     const html = await readDownload(download);
     expect(embeddedComments(html)[0].note).toBe("menu export note");
+  });
+
+  test("Escape closes only the sidebar export disclosure before a composer draft (CMH-EXP-13)", async ({ page }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "menu priority note");
+    await page.locator('.cm-card [data-act="edit"]').first().click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("draft kept behind export menu");
+    await openSidebarExportMenu(page);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#sidebarExportMenu")).toBeHidden();
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "false");
+    await expect(composer).toBeVisible();
+    await expect(composer.locator("textarea")).toHaveValue("draft kept behind export menu");
   });
 
   test("Save, Portable, and Offline exports exclude comments already listed as handled", async ({ page }) => {

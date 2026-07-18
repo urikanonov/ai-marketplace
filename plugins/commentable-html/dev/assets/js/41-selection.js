@@ -132,16 +132,39 @@ document.addEventListener("click", (e) => {
   if (menu.hidden) return;
   if (!menu.contains(e.target)) hideMenu();
 });
+const cmhEscapePopupStack = [];
+window.__cmhRegisterEscapePopup = function (popup) {
+  if (!popup || typeof popup.isOpen !== "function" || typeof popup.close !== "function") return function () {};
+  cmhEscapePopupStack.push(popup);
+  return function () {
+    const i = cmhEscapePopupStack.indexOf(popup);
+    if (i >= 0) cmhEscapePopupStack.splice(i, 1);
+  };
+};
+window.__cmhPrioritizeEscapePopup = function (popup) {
+  const i = cmhEscapePopupStack.indexOf(popup);
+  if (i >= 0) {
+    cmhEscapePopupStack.splice(i, 1);
+    cmhEscapePopupStack.push(popup);
+  }
+};
+function cmhClosePriorityPopup() {
+  for (let i = cmhEscapePopupStack.length - 1; i >= 0; i--) {
+    const popup = cmhEscapePopupStack[i];
+    if (popup && popup.isOpen()) {
+      popup.close(true);
+      return true;
+    }
+  }
+  return false;
+}
 document.addEventListener("keydown", (e) => {
   if (e.isComposing) return;
   if (e.key === "Escape") {
-    // Priority: an open toolbar overflow menu closes first and consumes the key,
-    // so Escape does not also discard an open composer.
-    const tmenu = document.getElementById("toolbarMenu");
-    if (tmenu && !tmenu.hidden) {
-      tmenu.hidden = true;
-      const tbtn = document.getElementById("btnToolbarMenu");
-      if (tbtn) { tbtn.setAttribute("aria-expanded", "false"); tbtn.focus(); }
+    // Priority: an open toolbar/sidebar popup closes first and consumes Escape,
+    // so the key does not also discard an open composer draft behind it.
+    if (cmhClosePriorityPopup()) {
+      e.preventDefault();
       return;
     }
     // An open add-comment selection menu closes first and consumes Escape, so the key
@@ -207,4 +230,3 @@ document.getElementById("menuComment").addEventListener("click", () => {
 });
 const _menuDocBtn = document.getElementById("menuDocComment");
 if (_menuDocBtn) _menuDocBtn.addEventListener("click", () => { hideMenu(); openDocumentComposer(); });
-
