@@ -79,7 +79,7 @@ test("the hub Learn more button uses the brand accent color, not yellow (SITE-HU
 
 
 
-test("the hub lays each plugin out as a full-width row with the actions boxed beside the description (SITE-HUB-09)", async ({ page }) => {
+test("the hub lays each plugin out as a full-width row with the actions in a plain row under the tags (SITE-HUB-09)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const grid = page.locator("#plugins .grid");
@@ -95,25 +95,61 @@ test("the hub lays each plugin out as a full-width row with the actions boxed be
   // Each card spans (nearly) the full grid width and the cards are stacked vertically.
   expect(firstBox.width).toBeGreaterThan(gridBox.width * 0.9);
   expect(secondBox.y).toBeGreaterThan(firstBox.y + firstBox.height - 5);
-  // The card info is a vertical stack: description, then tags, then the install section - each below
-  // the previous and sharing the left edge, not split into a second install column off to the right.
+  // The card info is a flat vertical stack: description, then tags, then the actions row, then the
+  // install section - each below the previous and sharing the left edge (no second column).
   const desc = await first.locator(".desc").boundingBox();
   const keywords = await first.locator(".keywords").boundingBox();
   const foot = await first.locator(".foot").boundingBox();
   const install = await first.locator(".install").boundingBox();
   expect(keywords.y).toBeGreaterThan(desc.y + desc.height - 5);
-  expect(install.y).toBeGreaterThan(keywords.y + keywords.height - 5);
+  // The description is capped to a comfortable measure (SITE-HUB-09: max-width 84ch), not stretched
+  // to the full card width. Assert the effective cap in CHARACTER units so a regression to the old
+  // 78ch (or any other value) is caught - a relative "less than the card width" check would not
+  // distinguish 84ch from 78ch.
+  expect(desc.width).toBeLessThan(firstBox.width * 0.8);
+  const capCh = await first.locator(".desc").evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const maxWidthPx = parseFloat(cs.maxWidth);
+    const probe = document.createElement("span");
+    probe.style.font = cs.font;
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = cs.fontSize;
+    probe.style.fontWeight = cs.fontWeight;
+    probe.style.visibility = "hidden";
+    probe.style.whiteSpace = "nowrap";
+    probe.style.position = "absolute";
+    probe.textContent = "0".repeat(100);
+    el.appendChild(probe);
+    const chPx = probe.getBoundingClientRect().width / 100;
+    probe.remove();
+    return maxWidthPx / chPx;
+  });
+  expect(Math.round(capCh)).toBe(84);
+  // The Learn more/Source actions sit in a plain row UNDER the tags (not a box floated to the right
+  // of the description), sharing the left edge - so there is no dead whitespace gap beside the prose.
+  expect(foot.y).toBeGreaterThan(keywords.y + keywords.height - 5);
+  expect(foot.x).toBeLessThan(desc.x + 5);
+  expect(install.y).toBeGreaterThan(foot.y + foot.height - 5);
   expect(install.x).toBeLessThan(desc.x + 5);
-  // The Learn more/Source actions no longer stack below the tags: they sit in a bordered box to the
-  // RIGHT of the description, using the space the capped-width description leaves on a full-width row.
-  expect(foot.x).toBeGreaterThanOrEqual(desc.x + desc.width);
-  expect(foot.y).toBeLessThan(desc.y + desc.height);
+  // The actions row carries no box chrome (no border, transparent background), unlike the old panel.
   const footEl = first.locator(".foot");
   const border = await footEl.evaluate((el) => parseFloat(getComputedStyle(el).borderTopWidth));
-  expect(border).toBeGreaterThan(0);
+  expect(border).toBe(0);
   const bg = await footEl.evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(bg).not.toBe("rgba(0, 0, 0, 0)");
-  expect(bg).not.toBe("transparent");
+  expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(bg);
+  // On a narrow (mobile) viewport the actions row wraps within the card without horizontal overflow
+  // (the old boxed 560px .foot override is gone; the shared flex-wrap rule covers it), and both
+  // buttons stay reachable and keyboard-focusable.
+  await page.setViewportSize({ width: 375, height: 900 });
+  const narrow = page.locator("#plugins .plugin-card").first();
+  await narrow.scrollIntoViewIfNeeded();
+  const narrowFoot = narrow.locator(".foot");
+  const noOverflow = await narrowFoot.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(noOverflow).toBe(true);
+  const narrowLearn = narrowFoot.locator("a.learn-more");
+  await expect(narrowLearn).toBeVisible();
+  await narrowLearn.focus();
+  await expect(narrowLearn).toBeFocused();
 });
 
 
@@ -157,6 +193,10 @@ test("the hub nav 'Plugins' is a dropdown that lists each plugin and scrolls to 
   await expect(menu.locator('a[href="#plugin-commentable-html"]')).toHaveCount(1);
   await expect(menu.locator('a[href="#plugin-multi-duck"]')).toHaveCount(1);
   await expect(menu.locator('a[href="#plugin-urikan-ai-marketplace-auto-updater"]')).toHaveCount(1);
+  // The tile category sub-labels are Title Case (matching the card badges), not lowercase slugs.
+  await expect(menu.locator(".switch-tile-sub", { hasText: "Planning and Analysis" })).toHaveCount(1);
+  await expect(menu.locator(".switch-tile-sub", { hasText: "Code and Plan Review" })).toHaveCount(1);
+  await expect(menu.locator(".switch-tile-sub", { hasText: "Infrastructure" })).toHaveCount(1);
   // Clicking a tile jumps to that card.
   await menu.locator('a[href="#plugin-multi-duck"]').click();
   await expect(page).toHaveURL(/#plugin-multi-duck$/);

@@ -166,20 +166,16 @@ def render_plugins(manifest, claude_names=None):
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
         learn_more = ('<a class="btn learn-more" href="%s">Learn more</a>' % esc(page)) if page else ""
         foot = learn_more + source
-        actions = ('    <div class="foot">%s</div>\n' % foot) if foot else ""
+        actions = ('  <div class="foot">%s</div>\n' % foot) if foot else ""
         card = (
             '<article class="card plugin-card" id="plugin-%s">\n'
             '  <div class="head">\n'
             '    %s\n'
             '    <span class="badge version">v%s</span>%s\n'
             '  </div>\n'
-            '  <div class="body-row">\n'
-            '    <div class="body-main">\n'
-            '      <p class="desc">%s</p>\n'
-            '      <div class="keywords">%s</div>\n'
-            '    </div>\n'
+            '  <p class="desc">%s</p>\n'
+            '  <div class="keywords">%s</div>\n'
             '%s'
-            '  </div>\n'
             '  <div class="install">\n'
             '    %s\n'
             '  </div>\n'
@@ -265,7 +261,7 @@ def render_nav_plugins(manifest):
         label = PLUGIN_DISPLAY_NAMES.get(name, name)
         category = plugin.get("category", "")
         href = "#plugin-" + _slug_id(name)
-        sub = ('<span class="switch-tile-sub">%s</span>' % esc(category)) if category else ""
+        sub = ('<span class="switch-tile-sub">%s</span>' % esc(category_label(category))) if category else ""
         if name in PLUGIN_PAGES:
             icon = esc(safe_url("assets/" + name + ".svg"))
             icon_html = '<img class="switch-tile-icon" src="%s" alt="%s logo" />' % (icon, esc(label))

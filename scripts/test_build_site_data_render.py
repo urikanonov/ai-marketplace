@@ -48,10 +48,11 @@ class RenderPluginsTests(unittest.TestCase):
         out = bsd.render_plugins(manifest)
         self.assertIn('<article class="card plugin-card" id="plugin-commentable-html">', out)
 
-    def test_actions_render_in_a_box_beside_the_description(self):
-        # SITE-HUB-09: desc and keywords live in a .body-main column and the Learn more/Source
-        # actions sit in a .foot box as its sibling inside a .body-row, so CSS can place the box
-        # to the right of the description instead of stacking it below.
+    def test_actions_render_in_a_plain_row_under_the_tags(self):
+        # SITE-HUB-09: the card info is a flat vertical stack - description, then keywords, then the
+        # Learn more/Source actions as a plain .foot row directly under the tags (no .body-row or
+        # .body-main wrapper, no boxed column to the right of the description), then the install
+        # block. This keeps the actions in reading order with no dead whitespace gap.
         manifest = {
             "name": "urikan-ai-marketplace",
             "plugins": [{
@@ -63,15 +64,15 @@ class RenderPluginsTests(unittest.TestCase):
             }],
         }
         out = bsd.render_plugins(manifest)
+        # The old two-column wrappers are gone; desc, keywords, and the actions are siblings.
+        self.assertNotIn("body-row", out)
+        self.assertNotIn("body-main", out)
         self.assertIn(
-            '  <div class="body-row">\n'
-            '    <div class="body-main">\n'
-            '      <p class="desc">Review HTML</p>\n'
-            '      <div class="keywords"><span class="chip">a</span></div>\n'
-            '    </div>\n'
-            '    <div class="foot">', out)
-        # The install block sits after the body-row, not inside it.
-        self.assertIn('  </div>\n  <div class="install">', out)
+            '  <p class="desc">Review HTML</p>\n'
+            '  <div class="keywords"><span class="chip">a</span></div>\n'
+            '  <div class="foot">', out)
+        # The install block sits after the actions row.
+        self.assertLess(out.index('<div class="foot">'), out.index('<div class="install">'))
 
     def test_card_without_page_has_no_learn_more(self):
         manifest = {
@@ -83,6 +84,24 @@ class RenderPluginsTests(unittest.TestCase):
         self.assertIn('<span class="name">no-page</span>', out)
         # A card with no page and no homepage has no actions, so no empty box is rendered.
         self.assertNotIn('<div class="foot">', out)
+
+    def test_source_only_card_renders_a_lone_source_action(self):
+        # SITE-HUB-09: a plugin with no dedicated page but a homepage has no Learn more, so its
+        # .foot row carries only the Source button (the actions row still renders, and is not empty).
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "plugins": [{
+                "name": "no-page",
+                "version": "1.0.0",
+                "description": "x",
+                "homepage": "https://example.com/source",
+            }],
+        }
+        out = bsd.render_plugins(manifest)
+        self.assertNotIn("learn-more", out)
+        self.assertIn(
+            '  <div class="foot"><a class="btn" href="https://example.com/source">Source</a></div>',
+            out)
 
     def test_real_manifest_commentable_badge_and_chips(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -615,6 +634,18 @@ class RenderNavPluginsTests(unittest.TestCase):
         out = bsd.render_nav_plugins(self._manifest())
         self.assertIn(">Auto-updater<", out)
         self.assertNotIn(">urikan-ai-marketplace-auto-updater<", out)
+
+    def test_tiles_show_title_case_category_labels(self):
+        # SITE-NAV-02: the hub nav "Jump to plugin" flyout sub-labels are Title Case category labels
+        # via category_label (matching the card badges and the plugin-page switcher), never the
+        # lowercase manifest slug ("code review" reads "Code and Plan Review").
+        out = bsd.render_nav_plugins(self._manifest())
+        self.assertIn(">Planning and Analysis<", out)
+        self.assertIn(">Code and Plan Review<", out)
+        self.assertIn(">Infrastructure<", out)
+        self.assertNotIn(">planning and analysis<", out)
+        self.assertNotIn(">code review<", out)
+        self.assertNotIn(">infrastructure<", out)
 
 
 class RenderHeroPillsTests(unittest.TestCase):
