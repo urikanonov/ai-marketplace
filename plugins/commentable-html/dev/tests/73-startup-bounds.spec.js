@@ -46,9 +46,19 @@ const CONTENT = "<h1>Doc</h1><p>Some target text here for offset testing purpose
 // highlight onto the same few characters (which would be an unrealistic, extra-pathological
 // DOM-fragmentation case beyond what F5 describes).
 const LONG_CONTENT = "<h1>Doc</h1><p>" + "Lorem ipsum dolor sit amet consectetur. ".repeat(700) + "</p>";
+// Many small paragraphs (a "wide" document: lots of DOM/text nodes), unlike LONG_CONTENT's
+// single long text node. getTextNodes()'s TreeWalker cost tracks DOM node count, not raw
+// character count, so this shape is what actually makes a doomed rangeFromOffsets() call
+// (one that never finds a match) expensive per call - the shape a large real report or a
+// long thread of many short comments/sections would have.
+const MANY_NODES_CONTENT = "<h1>Doc</h1>" + "<p>word</p>".repeat(20000);
 
 test("an oversized embeddedComments array is capped at merge time and startup stays fast (CMH-PERSIST-04)", async ({ page }) => {
-  test.setTimeout(30000);
+  // Tighter than the project default: pins "startup stays fast" via the test's own timeout
+  // (deterministic - see below) rather than a wall-clock assertion. Pre-fix, this test's
+  // page.goto() never resolved at all (a genuine hang), so any regression of the cap fails
+  // the same way, without depending on runner speed for a numeric threshold.
+  test.setTimeout(15000);
   const OVER_CAP = 8000; // comfortably above the CMH_MAX_COMMENTS bound
   const arr = [];
   for (let i = 0; i < OVER_CAP; i++) {
@@ -68,18 +78,13 @@ test("an oversized embeddedComments array is capped at merge time and startup st
   const html = stageWithEmbeddedComments(LONG_CONTENT, arr, "cmh-flood-cap");
   const errors = watchErrors(page);
   await installClipboardCapture(page);
-  const t0 = Date.now();
   await page.goto(fileUrl(html));
   await ready(page);
-  const elapsedMs = Date.now() - t0;
   const stored = await storedComments(page);
-  // Bounded: the merge never keeps more than the generous cap, no matter how large the
-  // untrusted array was.
-  expect(stored.length).toBeLessThan(OVER_CAP);
-  expect(stored.length).toBeLessThanOrEqual(1000);
-  // Fast: capping at merge time keeps startup well under a "hung browser" timescale even
-  // though the untrusted array was far larger than any real document's comment count.
-  expect(elapsedMs).toBeLessThan(10000);
+  // Bounded: every generated entry is a distinct, otherwise-valid id, so the merge keeps
+  // exactly the cap - not fewer (which would mean valid comments were wrongly dropped) and
+  // not more (which would mean the cap was not enforced).
+  expect(stored.length).toBe(1000);
   expect(errors).toEqual([]);
 });
 
@@ -110,5 +115,35 @@ test("comments with non-finite or absurd start/end offsets are dropped without b
   expect(ids).not.toContain(idFor(4));
   expect(await distinctCids(page)).toBe(1);
   await expect(page.locator(".cm-card")).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test("a flood of offsetless, non-anchor-typed comments does not drive per-comment full-document work (CMH-PERSIST-04)", async ({ page }) => {
+  // Regression for a gap the merge-time cap alone does not close: an entry with neither a
+  // recognized anchorType (document/image/widget/mermaid/diff) nor start/end passes
+  // mergeCommentSets()'s offset-sanity check trivially (no offsets to validate), but
+  // restoreHighlights() used to treat anything without one of those anchorTypes as a text
+  // comment and call rangeFromOffsets(undefined, undefined) anyway - which still walks
+  // every text node. A capped flood of such malformed entries would reproduce the same
+  // O(count x doc size) hang the count cap is meant to prevent. restoreHighlights() must
+  // skip these instead (kept as stored comments/cards, just never attempted as a highlight).
+  test.setTimeout(15000);
+  const FLOOD = 1000; // at the CMH_MAX_COMMENTS cap: the worst case that survives merging
+  const goodId = idFor(999999);
+  const arr = [{ id: goodId, start: 3, end: 7, quote: "word", note: "GOOD-COMMENT", createdAt: "2024-01-01T00:00:00Z" }];
+  for (let i = 0; i < FLOOD - 1; i++) {
+    arr.push({ id: idFor(i), note: "offsetless-" + i, createdAt: "2024-01-01T00:00:00Z" });
+  }
+  const html = stageWithEmbeddedComments(MANY_NODES_CONTENT, arr, "cmh-flood-offsetless");
+  const errors = watchErrors(page);
+  await installClipboardCapture(page);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  const stored = await storedComments(page);
+  expect(stored.length).toBe(FLOOD);
+  // The one real text comment still anchors and highlights; the offsetless flood does not
+  // (no anchor to restore), and none of it crashes startup.
+  expect(await distinctCids(page)).toBe(1);
+  await expect(page.locator(".cm-card")).toHaveCount(FLOOD);
   expect(errors).toEqual([]);
 });

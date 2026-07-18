@@ -10204,8 +10204,15 @@ function withoutHandled(arr) {
   return arr.filter(c => !handled.has(c.id));
 }
 function restoreHighlights() {
+  // Require finite start/end in addition to excluding the known non-text anchor types: a
+  // malformed comment with neither (no real anchorType and no offsets - not something any
+  // composer path produces) must not be treated as a text anchor, or rangeFromOffsets()
+  // would still run its full-document text-node walk for it despite mergeCommentSets()
+  // treating an offsetless entry as trivially sane. This keeps the per-comment restore
+  // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
-    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document");
+    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document"
+    && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
     const r = rangeFromOffsets(c.start, c.end);
