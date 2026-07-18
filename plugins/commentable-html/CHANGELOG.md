@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.158.0] - 2026-07-19
+
+### Fixed
+
+- A Mermaid diagram authored inside a collapsible section that is collapsed (`display:none`) at load
+  no longer renders as a tiny, broken graph. Drawing a diagram in place with `mermaid.run()` while its
+  container has a zero-size box produced a degenerate `~16px` viewBox with the nodes stacked on top of
+  each other, and mermaid never re-measured it, so it stayed broken once the section was revealed. The
+  loader now renders each hidden diagram by running mermaid on an OFF-SCREEN CLONE (a `1000px`
+  sandbox) and moving the rendered SVG into the real element - reusing mermaid's own source extraction
+  (so `<br/>` labels and entities match a visible diagram) and error handling (a malformed diagram
+  leaves no stray SVG in the page). Every diagram is therefore laid out correctly at load - correct the
+  moment its section is revealed and also correct if the collapsed section is printed. Renders are
+  serialized so rendering many diagrams at once cannot corrupt them, and one malformed diagram does not
+  starve its siblings (CMH-MMD-07). Deck slides (hidden with `visibility:hidden`, not `display:none`)
+  keep their existing eager render. On reveal the wide/scroll-fade classification is recomputed against
+  the diagram's now-real container width, and the loader exposes `window.__cmhMermaidReady` for
+  print/screenshot automation. The Export Offline vendored-inline re-init carries the same logic, so
+  offline-exported reports render collapsed-section diagrams correctly with zero network.
+
 ## [1.157.0] - 2026-07-19
 
 ### Fixed

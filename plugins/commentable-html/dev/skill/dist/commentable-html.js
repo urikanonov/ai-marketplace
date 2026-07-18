@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.157.0";
+const CMH_VERSION = "1.158.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -931,6 +931,16 @@ function setupMermaidLayer() {
     window.addEventListener("resize", function () {
       mermaidDiagrams.forEach(updateMermaidWidthClass);
     });
+  }
+  // A diagram rendered while its section was collapsed had its wide/scroll-fade class computed against
+  // a zero-size (window-fallback) container; recompute it when the host gains its real size on reveal.
+  if (typeof ResizeObserver === "function") {
+    if (setupMermaidLayer._widthObs) setupMermaidLayer._widthObs.disconnect();
+    const widthObs = new ResizeObserver(function (entries) {
+      entries.forEach(function (e) { updateMermaidWidthClass(e.target); });
+    });
+    mermaidDiagrams.forEach(function (host) { widthObs.observe(host); });
+    setupMermaidLayer._widthObs = widthObs;
   }
 }
 /* ---------- Diff / code-review layer ----------
@@ -6403,14 +6413,46 @@ async function _offlineInlineRichLibs(doc) {
     _offlineAppendInlineScript(doc, head,
       "(function(){\n"
       + "  if (!window.mermaid || !window.mermaid.initialize || !window.mermaid.run) return;\n"
+      + "  var isHidden = function (el) { return !(el.offsetWidth || el.offsetHeight || el.getClientRects().length); };\n"
+      + "  var chain = Promise.resolve();\n"
+      + "  var runVisible = function (nodes) {\n"
+      + "    if (!nodes.length) return;\n"
+      + "    chain = chain.then(function () { var r = window.mermaid.run({ nodes: nodes }); return r && r.catch ? r.catch(function () {}) : r; }, function () {});\n"
+      + "  };\n"
+      + "  var renderHidden = function (el) {\n"
+      + "    if (el.hasAttribute('data-processed')) return;\n"
+      + "    chain = chain.then(function () {\n"
+      + "      if (el.hasAttribute('data-processed')) return;\n"
+      + "      var sandbox = document.createElement('div');\n"
+      + "      sandbox.setAttribute('aria-hidden', 'true');\n"
+      + "      sandbox.style.cssText = 'position:fixed;left:-99999px;top:0;width:1000px;visibility:hidden;pointer-events:none;';\n"
+      + "      var clone = el.cloneNode(true);\n"
+      + "      clone.removeAttribute('id');\n"
+      + "      clone.removeAttribute('data-processed');\n"
+      + "      sandbox.appendChild(clone);\n"
+      + "      document.body.appendChild(sandbox);\n"
+      + "      var cleanup = function () { if (sandbox.parentNode) sandbox.parentNode.removeChild(sandbox); };\n"
+      + "      var ran;\n"
+      + "      try { ran = window.mermaid.run({ nodes: [clone] }); } catch (e) { cleanup(); return; }\n"
+      + "      return Promise.resolve(ran).then(function () {\n"
+      + "        var svg = clone.querySelector('svg');\n"
+      + "        if (svg && !el.hasAttribute('data-processed')) {\n"
+      + "          el.textContent = '';\n"
+      + "          el.appendChild(svg);\n"
+      + "          el.setAttribute('data-processed', 'true');\n"
+      + "        }\n"
+      + "        cleanup();\n"
+      + "      }, cleanup);\n"
+      + "    }, function () {});\n"
+      + "  };\n"
       + "  var run = function () {\n"
       + "    var theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';\n"
       + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', flowchart: { htmlLabels: true, curve: 'basis' } }); }\n"
       + "    catch (e) { return; }\n"
-      + "    try {\n"
-      + "      var result = window.mermaid.run();\n"
-      + "      if (result && result.catch) result.catch(function () {});\n"
-      + "    } catch (e) {}\n"
+      + "    var all = Array.prototype.slice.call(document.querySelectorAll('pre.mermaid, div.mermaid'));\n"
+      + "    runVisible(all.filter(function (el) { return !el.hasAttribute('data-processed') && !isHidden(el); }));\n"
+      + "    all.filter(function (el) { return !el.hasAttribute('data-processed') && isHidden(el); }).forEach(renderHidden);\n"
+      + "    window.__cmhMermaidReady = chain;\n"
       + "  };\n"
       + "  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });\n"
       + "  else run();\n"

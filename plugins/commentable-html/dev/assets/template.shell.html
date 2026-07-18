@@ -36,10 +36,60 @@
       const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@{{MERMAID_VERSION}}/dist/mermaid.esm.min.mjs")).default;
       const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
       m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+      const isHidden = (el) => !(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+      // mermaid shares internal state across renders, so serialize every render on one chain to avoid
+      // the corruption that appears when many diagrams render at once.
+      let chain = Promise.resolve();
+      const runVisible = (nodes) => {
+        if (!nodes.length) return;
+        chain = chain.then(() => m.run({ nodes }).catch(() => {}), () => {});
+      };
+      // A diagram whose container is hidden (display:none, e.g. a collapsed section) has a zero-size
+      // box, so rendering it in place with mermaid.run draws a tiny, clipped, permanently-broken
+      // layout. Instead run mermaid on an off-screen CLONE that has a real width, then move the
+      // rendered SVG into the real element. This reuses mermaid.run's own source extraction (so <br/>
+      // labels, entities, and indentation match a visible diagram) and its error handling (a malformed
+      // diagram leaves no stray node), and the diagram is laid out correctly AT LOAD - so it is correct
+      // whether its section is later revealed on screen or printed while still collapsed.
+      const renderHidden = (el) => {
+        if (el.hasAttribute("data-processed")) return;
+        chain = chain.then(() => {
+          if (el.hasAttribute("data-processed")) return;
+          const sandbox = document.createElement("div");
+          sandbox.setAttribute("aria-hidden", "true");
+          sandbox.style.cssText = "position:fixed;left:-99999px;top:0;width:1000px;visibility:hidden;pointer-events:none;";
+          const clone = el.cloneNode(true);
+          clone.removeAttribute("id");
+          clone.removeAttribute("data-processed");
+          sandbox.appendChild(clone);
+          document.body.appendChild(sandbox);
+          const cleanup = () => { if (sandbox.parentNode) sandbox.parentNode.removeChild(sandbox); };
+          let ran;
+          try { ran = m.run({ nodes: [clone] }); } catch (e) { cleanup(); return; }
+          return Promise.resolve(ran).then(() => {
+            const svg = clone.querySelector("svg");
+            if (svg && !el.hasAttribute("data-processed")) {
+              el.textContent = "";
+              el.appendChild(svg);
+              el.setAttribute("data-processed", "true");
+            }
+            cleanup();
+          }, cleanup);
+        }, () => {});
+      };
+      const start = () => {
+        const all = [...document.querySelectorAll("pre.mermaid, div.mermaid")];
+        runVisible(all.filter((el) => !el.hasAttribute("data-processed") && !isHidden(el)));
+        all.filter((el) => !el.hasAttribute("data-processed") && isHidden(el)).forEach(renderHidden);
+        // Diagrams render asynchronously; expose a promise that settles once every render has
+        // finished so a print/screenshot pipeline can await it (or poll for
+        // `pre.mermaid:not([data-processed])`) instead of racing the render.
+        window.__cmhMermaidReady = chain;
+      };
       if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
+        document.addEventListener("DOMContentLoaded", start);
       } else {
-        m.run().catch(() => {});
+        start();
       }
     } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
   }
