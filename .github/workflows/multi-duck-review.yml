@@ -1,0 +1,38 @@
+name: multi-duck-review
+
+# Required gate: every feature PR must carry a multi-duck review stamp (2 rounds by default) or an
+# explicit opt-out with a reason, so the maintainer's multi-duck rule is auditable (AGENTS.md rule 6).
+# Its own workflow (not a job in validate.yml) so it can trigger on `edited` - the stamp lives in the
+# PR body and is normally added by editing the description after the ducks run, which must re-run the
+# check. The checker reads the PR body/author from the runner's GITHUB_EVENT_PATH event payload as
+# DATA (never interpolated into a shell command, and not via an env var that a 65KB body could
+# overflow), holds no secrets, and keeps contents: read - a safe pull_request gate per the
+# trust-boundary rules in AGENTS.md. The verdict is a deterministic regex over the body, so PR text
+# cannot prompt-inject the outcome. The context `multi-duck-review` is required in
+# .github/required-checks.json.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  multi-duck-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Require a multi-duck review stamp on the PR
+        run: python scripts/check_multi_duck_review.py

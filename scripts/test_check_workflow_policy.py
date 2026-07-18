@@ -152,6 +152,53 @@ class RuleCTests(unittest.TestCase):
             cwp.ACTIONLINT_CONFIGS = orig
 
 
+class RuleDTests(unittest.TestCase):
+    def test_pr_body_interpolated_into_run_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+                       "      - run: echo \"${{ github.event.pull_request.body }}\"\n")
+            v = cwp.check_workflow(p)
+            self.assertTrue(any("RULE D" in x for x in v), v)
+
+    def test_issue_title_interpolated_into_run_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  issue_comment:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+                       "      - run: grep foo <<< '${{ github.event.issue.title }}'\n")
+            self.assertTrue(any("RULE D" in x for x in cwp.check_workflow(p)))
+
+    def test_head_ref_and_commit_message_in_run_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+                       "      - run: echo ${{ github.head_ref }}\n"
+                       "      - run: echo ${{ github.event.head_commit.message }}\n")
+            self.assertEqual(len([x for x in cwp.check_workflow(p) if "RULE D" in x]), 2)
+
+    def test_pr_body_via_env_var_passes(self):
+        # The safe pattern the multi-duck-review gate uses: bind to env, reference "$VAR" in run.
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+                       "      - env:\n          PR_BODY: ${{ github.event.pull_request.body }}\n"
+                       "        run: python scripts/check_multi_duck_review.py\n")
+            self.assertEqual([x for x in cwp.check_workflow(p) if "RULE D" in x], [])
+
+    def test_safe_metadata_sha_and_number_in_run_pass(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+                       "      - run: echo ${{ github.event.pull_request.head.sha }} "
+                       "${{ github.event.pull_request.number }}\n")
+            self.assertEqual([x for x in cwp.check_workflow(p) if "RULE D" in x], [])
+
+
 class RealRepoTests(unittest.TestCase):
     def test_current_workflows_satisfy_the_policy(self):
         self.assertEqual(cwp.main(), 0)

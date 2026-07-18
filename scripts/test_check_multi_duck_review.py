@@ -82,9 +82,40 @@ class EvaluateTests(unittest.TestCase):
         ok, _ = gate.evaluate("", author="urikanonov")
         self.assertFalse(ok)
 
-    def test_passed_wording_is_flexible(self):
-        ok, _ = gate.evaluate("- [X] multi-duck PASSED after two rounds")
-        self.assertTrue(ok)
+    def test_passed_canonical_forms_pass(self):
+        self.assertTrue(gate.evaluate("- [x] multi-duck passed")[0])
+        self.assertTrue(gate.evaluate("- [X] Multi-Duck passed (2 rounds of multi-duck review)")[0])
+
+    def test_passed_with_negating_trailing_prose_fails(self):
+        # A checked box whose text negates the stamp must NOT count as a pass.
+        ok, _ = gate.evaluate("- [x] Multi-Duck passed? No, this has not passed")
+        self.assertFalse(ok)
+
+    def test_stamp_hidden_in_html_comment_fails(self):
+        body = "<!--\n- [x] Multi-Duck passed (2 rounds)\n-->\n\n" + UNCHECKED_BODY
+        ok, _ = gate.evaluate(body)
+        self.assertFalse(ok)
+
+    def test_stamp_quoted_in_code_fence_fails(self):
+        body = "Here is the template:\n\n```\n- [x] Multi-Duck passed (2 rounds)\n```\n\n" + UNCHECKED_BODY
+        ok, _ = gate.evaluate(body)
+        self.assertFalse(ok)
+
+    def test_both_boxes_checked_fails(self):
+        body = ("- [x] Multi-Duck passed (2 rounds of multi-duck review)\n"
+                "- [x] Multi-Duck opted out - reason: also skipped\n")
+        ok, msg = gate.evaluate(body)
+        self.assertFalse(ok)
+        self.assertIn("exactly one", msg.lower())
+
+    def test_reason_with_comparison_operators_passes(self):
+        # A real reason that merely contains "<" and ">" must not be mistaken for the placeholder.
+        ok, msg = gate.evaluate("- [x] Multi-Duck opted out - reason: keep p95 < 200ms and rps > 1k")
+        self.assertTrue(ok, msg)
+
+    def test_fully_bracketed_placeholder_reason_fails(self):
+        ok, _ = gate.evaluate("- [x] Multi-Duck opted out - reason: <why 2 rounds were skipped>")
+        self.assertFalse(ok)
 
     def test_opt_out_hyphen_and_spelling_variants(self):
         for line in (
@@ -114,6 +145,37 @@ class MainTests(unittest.TestCase):
                 os.environ["PR_BODY"] = old
             if old_author is not None:
                 os.environ["PR_AUTHOR"] = old_author
+
+
+    def test_main_reads_event_path(self):
+        # The CI path: body/author come from the GitHub Actions event payload (GITHUB_EVENT_PATH).
+        import json
+        import os
+        import tempfile
+        saved = {k: os.environ.get(k) for k in ("PR_BODY", "PR_AUTHOR", "GITHUB_EVENT_PATH")}
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+        try:
+            json.dump({"pull_request": {"body": PASSED_BODY, "user": {"login": "urikanonov"}}}, tmp)
+            tmp.close()
+            os.environ.pop("PR_BODY", None)
+            os.environ.pop("PR_AUTHOR", None)
+            os.environ["GITHUB_EVENT_PATH"] = tmp.name
+            self.assertEqual(gate.main([]), 0)
+            # A missing stamp in the payload fails.
+            with open(tmp.name, "w", encoding="utf-8") as fh:
+                json.dump({"pull_request": {"body": UNCHECKED_BODY, "user": {"login": "urikanonov"}}}, fh)
+            self.assertEqual(gate.main([]), 1)
+            # A dependabot author in the payload auto-passes even with no stamp.
+            with open(tmp.name, "w", encoding="utf-8") as fh:
+                json.dump({"pull_request": {"body": "", "user": {"login": "dependabot[bot]"}}}, fh)
+            self.assertEqual(gate.main([]), 0)
+        finally:
+            os.unlink(tmp.name)
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
 
 if __name__ == "__main__":

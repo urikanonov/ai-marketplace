@@ -206,30 +206,6 @@ jobs:
       - name: Lint workflows with zizmor (offline, no token)
         run: zizmor --offline .github/workflows
 
-  # Required gate: every feature PR must carry a multi-duck review stamp (2 rounds by default) or
-  # an explicit opt-out with a reason, so the maintainer's multi-duck rule is auditable. Reads the
-  # PR body/author ONLY as env data (never interpolated into a shell command) and holds no secrets,
-  # so it stays a safe pull_request job per the trust-boundary rules. The context is required in
-  # .github/required-checks.json.
-  multi-duck-review:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-      - name: Require a multi-duck review stamp on the PR
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: python scripts/check_multi_duck_review.py
-
   # Not required (the version state of other open PRs is non-deterministic); the required version-bump
   # gate still blocks the actual collision at merge time. Keeps permissions at contents: read - the
   # script gracefully SKIPS (green) if it cannot list open PRs, so no widened token is needed.
