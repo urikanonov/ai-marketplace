@@ -27,10 +27,7 @@ on:
   issues:
     types: [closed]
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: read
+permissions: {}
 
 concurrency:
   group: issue-status-sync-${{ github.event.pull_request.number || github.event.issue.number }}
@@ -40,6 +37,10 @@ jobs:
   mark-in-progress:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     steps:
       - name: Mark linked task issues In Progress
         env:
@@ -77,6 +78,14 @@ jobs:
                  | grep -qx "task"; then
               echo "Marking task issue #$n In Progress"
               gh issue edit "$n" --repo "$REPO" --add-label "status: in progress"
+              # Self-heal a close/label race: if the issue closed between the OPEN
+              # check above and this add, the clear-in-progress job (fired by that
+              # close) may already have run and found no label, which would leave the
+              # closed issue stuck In Progress. Re-check and remove the label if so.
+              if [ "$(gh issue view "$n" --repo "$REPO" --json state --jq '.state')" = "CLOSED" ]; then
+                echo "Issue #$n closed during labelling; clearing the label again."
+                gh issue edit "$n" --repo "$REPO" --remove-label "status: in progress" || true
+              fi
             else
               echo "Skipping #$n (not an open task issue)."
             fi
@@ -85,6 +94,9 @@ jobs:
   clear-in-progress:
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Remove In Progress from a closed task issue
         env:

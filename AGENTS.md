@@ -535,10 +535,11 @@ check out or run PR-supplied code.
   execution contains.
 - The privileged workflows run in the trusted base-repo context: `request-copilot-review.yml` and
   `require-owner-approval.yml` (on `pull_request_target`, the latter also on `pull_request_review`), and
-  `issue-status-sync.yml` (on `pull_request_target`). They DO have a write-capable token and secrets even
-  for fork PRs - but they never check out or run PR code; they only read PR metadata via the API (the PR
-  number and its parsed closing-issue links) and then publish a commit status or add an issue label. That
-  is what keeps them safe.
+  `issue-status-sync.yml` (on `pull_request_target` and on the trusted `issues: closed` event). They DO
+  have a write-capable token and secrets even for fork PRs - but they never check out or run PR code; they
+  only read PR/issue metadata via the API (the PR number and its parsed closing-issue links, or the closed
+  issue's number and labels) and then publish a commit status or add/remove an issue label. That is what
+  keeps them safe.
 - Merge protection is independent of who runs CI: `main` stays protected and `require-owner-approval`
   still blocks external PRs until `@urikanonov` approves, so auto-running CI never lets anyone merge.
 
