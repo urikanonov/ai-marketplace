@@ -395,5 +395,68 @@ class BeatOnceRoutingTests(unittest.TestCase):
         self.assertEqual(len(stub.posted), 1)
 
 
+class _StubStartBoundary:
+    """Monkeypatch the git/gh boundary of cmd_start so its orchestration is testable without
+    touching the filesystem or the network. `claim_rc` sets the return code of the claim step."""
+    def __init__(self, claim_rc=0):
+        self.claim_rc = claim_rc
+        self.runs = []
+        self.upserts = []
+
+    def _run(self, args):
+        self.runs.append(args)
+        if "worktree" in args:
+            return 0
+        if "issue" in args and "edit" in args:
+            return self.claim_rc
+        return 0
+
+    def __enter__(self):
+        self._orig = (task._run, task._capture, task._upsert_status)
+        task._run = self._run
+        task._capture = lambda args: ""
+        task._upsert_status = lambda number, branch, stamp=None: self.upserts.append((number, branch))
+        return self
+
+    def __exit__(self, *exc):
+        task._run, task._capture, task._upsert_status = self._orig
+
+
+def _start_args(number=7, slug="foo", branch=None, name=None):
+    return task.build_parser().parse_args(
+        ["start", str(number)]
+        + (["--slug", slug] if slug is not None else [])
+        + (["--branch", branch] if branch else [])
+        + (["--name", name] if name else []))
+
+
+class CmdStartTests(unittest.TestCase):
+    def test_success_creates_worktree_and_stamps(self):
+        with _StubStartBoundary(claim_rc=0) as stub:
+            task.cmd_start(_start_args(7, "Heartbeat work"))
+        self.assertTrue(any("worktree" in r for r in stub.runs))
+        self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work")])
+
+    def test_aborts_and_does_not_stamp_when_claim_fails(self):
+        with _StubStartBoundary(claim_rc=1) as stub:
+            with self.assertRaises(SystemExit):
+                task.cmd_start(_start_args(7, "foo"))
+        # The worktree was created, but the failed claim means the status was never stamped.
+        self.assertTrue(any("worktree" in r for r in stub.runs))
+        self.assertEqual(stub.upserts, [])
+
+    def test_rejects_unsafe_name_before_any_git_call(self):
+        with _StubStartBoundary() as stub:
+            with self.assertRaises(SystemExit):
+                task.cmd_start(_start_args(7, "foo", name="a/b"))
+        self.assertEqual(stub.runs, [])
+
+    def test_rejects_invalid_explicit_branch(self):
+        with _StubStartBoundary() as stub:
+            with self.assertRaises(SystemExit):
+                task.cmd_start(_start_args(7, None, branch="--evil"))
+        self.assertEqual(stub.runs, [])
+
+
 if __name__ == "__main__":
     unittest.main()
