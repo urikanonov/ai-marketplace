@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.143.0";
+const CMH_VERSION = "1.144.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -627,6 +627,31 @@ function indexMermaidDiagrams() {
   });
 }
 function mermaidHostForIndex(i) { return mermaidDiagrams[i] || null; }
+function mermaidIntrinsicWidth(host) {
+  const svg = host && host.querySelector && host.querySelector("svg");
+  if (!svg) return 0;
+  const viewBox = (svg.getAttribute("viewBox") || "").trim().split(/\s+/).map(Number);
+  if (viewBox.length === 4 && isFinite(viewBox[2]) && viewBox[2] > 0) return viewBox[2];
+  const widthAttr = parseFloat(svg.getAttribute("width") || "");
+  if (isFinite(widthAttr) && widthAttr > 0) return widthAttr;
+  try {
+    const box = svg.getBBox && svg.getBBox();
+    if (box && isFinite(box.width) && box.width > 0) return box.width;
+  } catch (e) {}
+  return svg.getBoundingClientRect().width || 0;
+}
+function updateMermaidWidthClass(host) {
+  if (!host) return;
+  const container = host.clientWidth || host.getBoundingClientRect().width || window.innerWidth || 0;
+  const natural = mermaidIntrinsicWidth(host);
+  const wide = natural > Math.max(container + 80, 520);
+  host.classList.toggle("cmh-diagram-wide", wide);
+  const syncFade = () => {
+    host.classList.toggle("cmh-diagram-scroll-fade", wide && host.scrollWidth > host.clientWidth + 1);
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncFade);
+  else setTimeout(syncFade, 0);
+}
 function mermaidNodeKey(nodeEl) {
   const ds = nodeEl.dataset && nodeEl.dataset.id;
   if (ds) return ds;
@@ -856,6 +881,7 @@ function setupMermaidLayer() {
       comments.forEach(c => {
         if (c.anchorType === "mermaid" && c.diagramIndex === i) applyMermaidHighlight(c);
       });
+      updateMermaidWidthClass(host);
       attachMermaidHostHandlers(host);
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(apply);
@@ -874,8 +900,13 @@ function setupMermaidLayer() {
     });
     obs.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-processed"] });
   });
+  if (!setupMermaidLayer._widthResizeBound) {
+    setupMermaidLayer._widthResizeBound = true;
+    window.addEventListener("resize", function () {
+      mermaidDiagrams.forEach(updateMermaidWidthClass);
+    });
+  }
 }
-
 /* ---------- Diff / code-review layer ----------
    Renders unified-diff blocks (pre.cmh-diff / div.cmh-diff) into a colored
    review view with a per-block toggle between side-by-side and inline layouts.
@@ -4343,8 +4374,8 @@ let _sidebarWidthPx = 0;
 function _sidebarWidthBounds() {
   const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
   const narrow = vw < 700;
-  // Legible floor: below ~240px the two-per-row export button labels ("Portable",
-  // "Plain HTML", ...) and the search placeholder start to clip. 256px (16rem) keeps every
+  // Legible floor: below ~240px the Export menu, Clear button, Copy all,
+  // and the search placeholder start to clip. 256px (16rem) keeps every
   // panel control fully shown with a small cross-platform buffer; the CSS min-width matches.
   // Still clamped to the viewport so a very small screen keeps a usable pane.
   const min = Math.min(256, Math.max(108, vw - 48));
@@ -4470,7 +4501,6 @@ function setupSidebarResize() {
     }
   });
 }
-
 /* ---------- Sidebar open/close ---------- */
 function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
@@ -4539,6 +4569,28 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   });
   // Escape is handled centrally (toolbar menu has priority) in the global keydown
   // listener above, so it is not duplicated here.
+})();
+
+/* ---------- Sidebar export menu ---------- */
+(function () {
+  const btn = document.getElementById("btnSidebarExportMenu");
+  const menu = document.getElementById("sidebarExportMenu");
+  if (!btn || !menu) return;
+  function setOpen(open) {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  menu.addEventListener("click", () => setOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || menu.hidden) return;
+    e.preventDefault();
+    setOpen(false);
+    btn.focus();
+  });
 })();
 /* ---------- Copy all + Clear all ---------- */
 function buildCopyText() {
@@ -7472,6 +7524,7 @@ function setupDeck() {
     stageFocusTarget.tabIndex = -1;
     if (!stageFocusTarget.getAttribute("aria-label")) stageFocusTarget.setAttribute("aria-label", "Slide stage");
   }
+  makeLandscapeHint();
 
   function slideTitle(slide, index) {
     const explicit = slide.getAttribute("data-slide-title") || slide.getAttribute("aria-label");
@@ -7489,6 +7542,29 @@ function setupDeck() {
     const y = (vh - 1080 * scale) / 2;
     stage.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
     syncEdgeNavPosition();
+  }
+
+  function makeLandscapeHint() {
+    if (!window.matchMedia) return null;
+    const mq = window.matchMedia("(max-width: 600px) and (orientation: portrait)");
+    const hint = document.createElement("div");
+    hint.className = "cm-skip cmh-deck-landscape-hint";
+    hint.setAttribute("role", "note");
+    hint.setAttribute("aria-label", "Deck viewing hint");
+    hint.setAttribute("aria-live", "polite");
+    hint.innerHTML = '<span>Best viewed in landscape. Rotate your device for larger slide text.</span>'
+      + '<button type="button" aria-label="Dismiss landscape hint">Dismiss</button>';
+    document.body.appendChild(hint);
+    CMH_INJECTED_CHROME.add(hint);
+    let dismissed = false;
+    const sync = () => { hint.hidden = dismissed || !mq.matches; };
+    const close = hint.querySelector("button");
+    if (close) close.addEventListener("click", () => { dismissed = true; sync(); });
+    if (mq.addEventListener) mq.addEventListener("change", sync);
+    else if (mq.addListener) mq.addListener(sync);
+    window.addEventListener("resize", sync);
+    sync();
+    return hint;
   }
 
   function focusStage() {

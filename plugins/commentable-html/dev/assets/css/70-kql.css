@@ -46,6 +46,10 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 }
 #commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
 #commentRoot pre.mermaid svg { max-width: none; }
+#commentRoot pre.mermaid.cmh-diagram-scroll-fade {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+}
 /* Chart figures are boxed for readability, like code and KQL blocks. */
 #commentRoot figure.chart {
   margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
@@ -64,10 +68,9 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 @media (max-width: 480px) {
-  /* Keep wide mermaid diagrams legible (they scroll inside their box), but do NOT
-     force charts to 560px - that clipped small pie/doughnut charts and pushed their
-     legend off-screen. A responsive Chart.js canvas fits the viewport on its own. */
-  #commentRoot pre.mermaid svg { min-width: 560px; }
+  /* Keep only genuinely wide mermaid diagrams legible (they scroll inside their box).
+     Small diagrams and responsive Chart.js canvases fit the viewport on their own. */
+  #commentRoot pre.mermaid.cmh-diagram-wide svg { min-width: 560px; }
 }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */

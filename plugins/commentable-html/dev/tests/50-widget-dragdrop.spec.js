@@ -4,6 +4,7 @@ import fs from "fs";
 import {
   DEV, SKILL, fileUrl, ready, installClipboardCapture, copiedBundle, stageContent, readDownload,
   addTextComment,
+  clickSidebarExport,
 } from "./helpers.js";
 
 const TRIAGE = path.join(SKILL, "..", "..", "examples", "report-triage.html");
@@ -399,7 +400,7 @@ test("exporting after a move persists the new DOM order and keeps widget comment
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("#btnSaveHtml").click(),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const html = await readDownload(download);
   expect(html).toMatch(/data-cm-slot="Investigating"[\s\S]*data-cm-part="api-saturation"/);
@@ -433,7 +434,7 @@ test("exporting after a widget move refreshes later prose text comment offsets (
 
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnSaveHtml").click(),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const html = await readDownload(download);
     fs.mkdirSync(path.dirname(exportedPath), { recursive: true });

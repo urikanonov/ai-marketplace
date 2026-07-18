@@ -3,6 +3,7 @@ import fs from "fs";
 import {
   openInline, addTextComment, readDownload, stageInline, startStaticServer,
   ready, openToolbarMenu,
+  clickSidebarExport,
 } from "./helpers.js";
 
 // F2: the Export as Portable saved-HTML builder must NOT let a comment note that
@@ -16,7 +17,7 @@ test("Export as Portable preserves a comment note containing $-replacement patte
   await addTextComment(page, "#commentRoot section p", note);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("#btnSaveHtml").click(),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const html = await readDownload(download);
   const m = html.match(/id="embeddedComments">([\s\S]*?)<\/script>/);

@@ -29,11 +29,9 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
 .cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
 .cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
-/* In narrow layout the export buttons pack two per row (Portable | Offline, then Markdown | Plain
-   HTML) instead of one full-width button per row; Clear keeps its own full-width row so the
-   destructive action stays visually apart. */
+/* In narrow layout the Export menu and Clear share a compact action row. */
 .cm-sidebar.is-narrow .head-actions button { flex: 1 1 calc(50% - 0.2rem); min-width: 0; justify-content: center; }
-.cm-sidebar.is-narrow .head-actions button.danger { flex-basis: 100%; }
+.cm-sidebar.is-narrow .head-actions button.danger { flex-basis: calc(50% - 0.2rem); }
 .cm-ui-ico { flex: none; vertical-align: middle; }
 
 /* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with

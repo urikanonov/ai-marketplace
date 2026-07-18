@@ -35,3 +35,25 @@
   // Escape is handled centrally (toolbar menu has priority) in the global keydown
   // listener above, so it is not duplicated here.
 })();
+
+/* ---------- Sidebar export menu ---------- */
+(function () {
+  const btn = document.getElementById("btnSidebarExportMenu");
+  const menu = document.getElementById("sidebarExportMenu");
+  if (!btn || !menu) return;
+  function setOpen(open) {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  menu.addEventListener("click", () => setOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || menu.hidden) return;
+    e.preventDefault();
+    setOpen(false);
+    btn.focus();
+  });
+})();

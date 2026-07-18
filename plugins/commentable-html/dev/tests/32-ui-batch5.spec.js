@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, openToolbarMenu, fileUrl, INLINE, openKitchenSinkNonPortable } from "./helpers.js";
+import { openInline, ready, openToolbarMenu, openSidebarExportMenu, fileUrl, INLINE, openKitchenSinkNonPortable } from "./helpers.js";
 
 // UI batch 5: searchable/collapsible Help, custom tooltips, compact sidebar header,
 // bigger section caret, and icons on the TOC / scroll buttons.
@@ -115,17 +115,14 @@ test.describe("compact sidebar header", () => {
     await page.evaluate(() => document.body.classList.add("sidebar-open"));
     const rects = await page.evaluate(() => {
       const r = (id) => { const e = document.getElementById(id); const b = e.getBoundingClientRect(); return { top: Math.round(b.top), h: b.height }; };
-      return { gen: r("cmGenerated"), last: r("cmLastComment"), save: r("btnSaveHtml"), plain: r("btnSavePlain"), md: r("btnExportMd"), clear: r("btnClearAll") };
+      return { gen: r("cmGenerated"), last: r("cmLastComment"), exportMenu: r("btnSidebarExportMenu"), clear: r("btnClearAll") };
     });
     // timestamps on one line
     expect(Math.abs(rects.gen.top - rects.last.top)).toBeLessThan(6);
-    // the four action buttons stay a compact, aligned grid (one or two rows, never a
-    // ragged stack): at most two distinct row tops.
-    const tops = [...new Set([rects.save.top, rects.plain.top, rects.md.top, rects.clear.top])];
-    expect(tops.length).toBeLessThanOrEqual(2);
+    // the action controls stay on a compact, aligned row.
+    expect(rects.exportMenu.top).toBe(rects.clear.top);
     // accessible names stay full even though the visible labels are compact
-    await expect(page.locator("#btnSaveHtml")).toHaveAttribute("aria-label", "Export as Portable");
-    await expect(page.locator("#btnExportMd")).toHaveAttribute("aria-label", "Export to Markdown");
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-haspopup", "true");
     await expect(page.locator("#btnClearAll")).toHaveAttribute("aria-label", "Clear Comments");
   });
 
@@ -216,6 +213,7 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
   test("the tooltip does not overwrite a control's existing aria-label", async ({ page }) => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel so its buttons are focusable
+    await openSidebarExportMenu(page);
     const saveBtn = page.locator("#btnSaveHtml");
     await saveBtn.scrollIntoViewIfNeeded();
     const before = await saveBtn.getAttribute("aria-label");
@@ -229,8 +227,7 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
   test("the compact action buttons keep their short visible labels", async ({ page }) => {
     await openInline(page);
     await page.evaluate(() => document.body.classList.add("sidebar-open"));
-    expect((await page.locator("#btnSaveHtml").innerText()).trim()).toBe("Portable");
-    expect((await page.locator("#btnSavePlain").innerText()).trim()).toBe("Plain HTML");
+    expect((await page.locator("#btnSidebarExportMenu").innerText()).trim()).toBe("Export");
     expect((await page.locator("#btnClearAll").innerText()).trim()).toBe("Clear");
   });
 
@@ -258,12 +255,12 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     expect(await page.locator(".cm-help-topic[open]").count()).toBe(1);
   });
 
-  test("nonportable mode keeps the sidebar Export button's icon and full aria-label", async ({ page }) => {
+  test("nonportable mode keeps the sidebar Export button's icon and menu contract", async ({ page }) => {
     await openKitchenSinkNonPortable(page);
     await expect(page.locator("body.cm-nonportable")).toHaveCount(1);
-    expect(await page.locator("#btnSaveHtml svg.cm-ui-ico").count()).toBe(1); // icon preserved
-    expect((await page.locator("#btnSaveHtml span").innerText()).trim()).toBe("Portable");
-    await expect(page.locator("#btnSaveHtml")).toHaveAttribute("aria-label", "Export as Portable");
+    expect(await page.locator("#btnSidebarExportMenu svg.cm-ui-ico").count()).toBe(1); // icon preserved
+    expect((await page.locator("#btnSidebarExportMenu span").innerText()).trim()).toBe("Export");
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-controls", "sidebarExportMenu");
   });
 
   test("runtime tooltip and Help DOM never bake into a Plain HTML export", async ({ page }) => {

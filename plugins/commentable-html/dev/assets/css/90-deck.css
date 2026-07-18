@@ -15,6 +15,37 @@ body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
 body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
   display: none !important;
 }
+.cmh-deck-landscape-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 100002;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.55rem 0.65rem 0.55rem 0.8rem;
+  color: var(--cp-text, #fff);
+  background: var(--cp-surface, #222);
+  border: 1px solid var(--cp-border, #444);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+.cmh-deck-landscape-hint[hidden] { display: none !important; }
+.cmh-deck-landscape-hint button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  background: var(--cp-accent, #2ecc71);
+  color: var(--cp-accent-fg, #111);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cmh-deck-landscape-hint button:hover { background: var(--cp-accent-hover, #27ae60); }
 /* When commenting is disabled ("off" state), suppress the text-selection popup so a selection is
    not a dead end. In the default state (comments on, panel closed) the popup DOES appear, so a
    reviewer can select text and Add Comment without first opening the panel. The rich-content

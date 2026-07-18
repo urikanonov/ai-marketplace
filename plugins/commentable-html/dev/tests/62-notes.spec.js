@@ -9,6 +9,7 @@ import path from "path";
 import {
   fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, readDownload,
   addTextComment, SKILL, PYTHON,
+  clickSidebarExport,
 } from "./helpers.js";
 
 const NOTES_APPLY = path.join(SKILL, "tools", "notes", "notes_apply.py");
@@ -135,7 +136,7 @@ test("CMH-NOTE-09: export bakes note text into the source element with no editin
   await field(page).fill(HOSTILE);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("#btnSaveHtml").click(),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const html = await readDownload(download);
   expect(html).toContain("One blocker: not  reversible &lt; &amp;");
@@ -265,7 +266,7 @@ test("CMH-NOTE-16: fold state is presentation only - the export keeps data-cmh-n
   await expect(noteInput(page, "content-fold")).toBeHidden();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("#btnSaveHtml").click(),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const html = await readDownload(download);
   // Scope to the collapsed note's own tag (the inlined runtime legitimately mentions the class).

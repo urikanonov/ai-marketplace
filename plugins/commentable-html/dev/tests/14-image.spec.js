@@ -1,7 +1,8 @@
 // Image comment layer: structural (reload-stable) comments anchored to an <img>
 // by (imageIndex) + src, mirroring the mermaid-node layer.
 import { test, expect } from "@playwright/test";
-import { openInline, ready, copiedBundle, fileUrl, INLINE, installClipboardCapture } from "./helpers.js";
+import { openInline, ready, copiedBundle, fileUrl, INLINE, installClipboardCapture ,
+  clickSidebarExport } from "./helpers.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -97,7 +98,7 @@ test.describe("image comments", () => {
     const cid = await page.locator("img.cm-img-hl").getAttribute("data-cid");
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
-      page.click("#btnSaveHtml"),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const html = fs.readFileSync(await dl.path(), "utf8");
     const arr = JSON.parse(html.match(/id="embeddedComments">([\s\S]*?)<\/script>/)[1].trim());

@@ -7,6 +7,7 @@ import {
   fileUrl,
   ready,
   stageDeck,
+  stageContent,
   addTextComment,
   openComposerFor,
   installClipboardCapture,
@@ -19,6 +20,7 @@ import {
   selectText,
   PYTHON,
   SKILL,
+  clickSidebarExport,
 } from "./helpers.js";
 
 // Three slides with distinct, stable ids and commentable text (CMH-DECK-05).
@@ -811,7 +813,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       // the sidebar Export Offline button is reachable once the panel is revealed
       const [download] = await Promise.all([
         page.waitForEvent("download"),
-        page.locator("#btnExportOffline").click(),
+        clickSidebarExport(page, "#btnExportOffline"),
       ]);
       expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
       const exportedHtml = await readDownload(download);
@@ -946,5 +948,38 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator(".cmh-deck-overview-card").first().locator(".cmh-deck-overview-card-label")).toHaveText("Reveal");
     await expect(page.locator(".cmh-deck-overview-thumb, .cmh-deck-overview-scale")).toHaveCount(0);
     await expect(page.locator(".cmh-deck-overview [data-reveal-probe]")).toHaveCount(0);
+  });
+
+  test("CMH-DECK-28: narrow portrait decks show a dismissible landscape hint only for decks", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const deck = stageDeck('<section class="slide active" data-slide-id="s1"><h2>Portrait</h2><p>Rotate for readability.</p></section>', {
+      key: "cmh-deck-portrait-hint",
+    });
+    const doc = stageContent("<h1>Flat doc</h1><p>No deck hint here.</p>", {
+      key: "cmh-flat-portrait-hint",
+      source: "flat-portrait-hint.html",
+    });
+    try {
+      await page.goto(fileUrl(deck.html));
+      await ready(page);
+      const hint = page.locator(".cmh-deck-landscape-hint");
+      await expect(hint).toBeVisible();
+      await expect(hint).toContainText("Best viewed in landscape");
+
+      await page.setViewportSize({ width: 844, height: 390 });
+      await expect(hint).toBeHidden();
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(hint).toBeVisible();
+      await hint.getByRole("button", { name: "Dismiss landscape hint" }).click();
+      await expect(hint).toBeHidden();
+
+      await page.goto(fileUrl(doc.html));
+      await ready(page);
+      await expect(page.locator(".cmh-deck-landscape-hint")).toHaveCount(0);
+    } finally {
+      fs.rmSync(deck.dir, { recursive: true, force: true });
+      fs.rmSync(doc.dir, { recursive: true, force: true });
+    }
   });
 });

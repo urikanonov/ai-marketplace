@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {
   openInline, ready, fileUrl, lastCopied, addTextComment, readDownload, installClipboardCapture,
+  clickSidebarExport,
 } from "./helpers.js";
 
 test.describe("UI batch 3: collapsible sections, portable-stale, KQL title copy, chart box", () => {
@@ -72,7 +73,7 @@ test.describe("UI batch 3: collapsible sections, portable-stale, KQL title copy,
     await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable"); // unembedded yet
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
-      page.click("#btnSaveHtml"),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const html = await readDownload(dl);
     const tmp = path.join(os.tmpdir(), "cmh_portable_" + Date.now() + ".html");

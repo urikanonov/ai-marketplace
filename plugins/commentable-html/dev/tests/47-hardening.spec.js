@@ -6,6 +6,7 @@ import {
   fileUrl, ready, installClipboardCapture, stageContent, stageInline,
   openInline, openNonPortable, openComposerFor, addTextComment, selectText,
   openToolbarMenu, readDownload, currentToast, storedComments,
+  clickSidebarExport,
 } from "./helpers.js";
 
 async function openRich(page, content, key) {
@@ -26,7 +27,7 @@ test("embedded-comments script is found regardless of attribute order (CMH-EXP-0
   await page.goto(fileUrl(html));
   await ready(page);
   await addTextComment(page, "#commentRoot p", "order-independent note");
-  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtml")]);
+  const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
   const out = await readDownload(dl);
   expect(out).toContain("order-independent note");
   expect(out).toContain('id="embeddedComments"');
@@ -44,7 +45,7 @@ test("export updates the real embeddedComments block, not a decoy data-id script
   await page.goto(fileUrl(html));
   await ready(page);
   await addTextComment(page, "#commentRoot p", "real-block note");
-  const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtml")]);
+  const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
   const out = await readDownload(dl);
   expect(out).toContain("real-block note");
   expect(out).toContain("DECOY_SENTINEL_MUST_SURVIVE");

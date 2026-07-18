@@ -254,6 +254,7 @@ function setupDeck() {
     stageFocusTarget.tabIndex = -1;
     if (!stageFocusTarget.getAttribute("aria-label")) stageFocusTarget.setAttribute("aria-label", "Slide stage");
   }
+  makeLandscapeHint();
 
   function slideTitle(slide, index) {
     const explicit = slide.getAttribute("data-slide-title") || slide.getAttribute("aria-label");
@@ -271,6 +272,29 @@ function setupDeck() {
     const y = (vh - 1080 * scale) / 2;
     stage.style.transform = "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
     syncEdgeNavPosition();
+  }
+
+  function makeLandscapeHint() {
+    if (!window.matchMedia) return null;
+    const mq = window.matchMedia("(max-width: 600px) and (orientation: portrait)");
+    const hint = document.createElement("div");
+    hint.className = "cm-skip cmh-deck-landscape-hint";
+    hint.setAttribute("role", "note");
+    hint.setAttribute("aria-label", "Deck viewing hint");
+    hint.setAttribute("aria-live", "polite");
+    hint.innerHTML = '<span>Best viewed in landscape. Rotate your device for larger slide text.</span>'
+      + '<button type="button" aria-label="Dismiss landscape hint">Dismiss</button>';
+    document.body.appendChild(hint);
+    CMH_INJECTED_CHROME.add(hint);
+    let dismissed = false;
+    const sync = () => { hint.hidden = dismissed || !mq.matches; };
+    const close = hint.querySelector("button");
+    if (close) close.addEventListener("click", () => { dismissed = true; sync(); });
+    if (mq.addEventListener) mq.addEventListener("change", sync);
+    else if (mq.addListener) mq.addListener(sync);
+    window.addEventListener("resize", sync);
+    sync();
+    return hint;
   }
 
   function focusStage() {

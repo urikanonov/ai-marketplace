@@ -9,7 +9,8 @@ import fs from "fs";
 import path from "path";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, readDownload, startStaticServer,
-  installClipboardCapture, openComposerFor, routeMermaidLocal, enterCommentMode,
+  installClipboardCapture, openComposerFor, routeMermaidLocal, enterCommentMode, openSidebarExportMenu,
+  clickSidebarExport,
 } from "./helpers.js";
 
 const DECK = path.join(SKILL, "..", "..", "examples", "deck-showcase.html");
@@ -75,10 +76,12 @@ test("CMH-DECK-EXPORT-01: Export Portable round-trips the showcase deck and reop
   let ctx2;
   try {
     await enterCommentModeAndComment(page, "portable deck note");
+    await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
+    await openSidebarExportMenu(page);
     await expect(page.locator("#btnSaveHtml")).toBeVisible();
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnSaveHtml").click(),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     expect(download.suggestedFilename()).toMatch(/-portable\.html$/);
     const exportedHtml = await readDownload(download);
@@ -133,10 +136,12 @@ test("CMH-DECK-EXPORT-01: Export Offline keeps the deck mermaid + chart live, va
     }, null, { timeout: 20000 });
 
     await enterCommentModeAndComment(page, "offline deck note");
+    await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
+    await openSidebarExportMenu(page);
     await expect(page.locator("#btnExportOffline")).toBeVisible();
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnExportOffline").click(),
+      clickSidebarExport(page, "#btnExportOffline"),
     ]);
     expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
     const exportedHtml = await readDownload(download);
@@ -197,10 +202,12 @@ test("CMH-DECK-EXPORT-01: Export Plain strips the layer but keeps the showcase d
   const { cleanup } = await openDeck(page);
   try {
     await enterCommentModeAndComment(page, "plain deck note");
+    await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
+    await openSidebarExportMenu(page);
     await expect(page.locator("#btnSavePlain")).toBeVisible();
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnSavePlain").click(),
+      clickSidebarExport(page, "#btnSavePlain"),
     ]);
     const html = await readDownload(download);
 
@@ -243,10 +250,12 @@ test("CMH-DECK-EXPORT-01: Export Markdown produces a deterministic structural ex
 
     // The Export Markdown button downloads a .md file that also carries the review comment.
     await enterCommentModeAndComment(page, "markdown deck note");
+    await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
+    await openSidebarExportMenu(page);
     await expect(page.locator("#btnExportMd")).toBeVisible();
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnExportMd").click(),
+      clickSidebarExport(page, "#btnExportMd"),
     ]);
     expect(download.suggestedFilename()).toMatch(/\.md$/);
     const md = await readDownload(download);

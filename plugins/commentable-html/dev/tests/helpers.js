@@ -158,6 +158,17 @@ export async function openToolbarMenu(page) {
   await expect(page.locator("#toolbarMenu")).toBeVisible();
 }
 
+export async function openSidebarExportMenu(page) {
+  const menu = page.locator("#sidebarExportMenu");
+  if (await menu.isHidden()) await page.click("#btnSidebarExportMenu");
+  await expect(menu).toBeVisible();
+}
+
+export async function clickSidebarExport(page, selector) {
+  await openSidebarExportMenu(page);
+  await page.locator(selector).click();
+}
+
 export async function lastCopied(page) {
   return page.evaluate(() => (window.__copied && window.__copied.length ? window.__copied[window.__copied.length - 1] : null));
 }

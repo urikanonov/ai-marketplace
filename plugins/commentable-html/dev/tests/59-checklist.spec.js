@@ -7,6 +7,7 @@ import path from "path";
 import {
   fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, readDownload,
   addTextComment, SKILL,
+  clickSidebarExport,
 } from "./helpers.js";
 
 const CHECKLIST_DEMO = path.join(SKILL, "..", "..", "examples", "report-checklist.html");
@@ -168,7 +169,7 @@ test("CMH-CHECK-09: export bakes current states into data-cmh-state", async ({ p
   await ctrl(page, "rel").click(); // blank -> check
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.locator("#btnSaveHtml").click(),
+    clickSidebarExport(page, "#btnSaveHtml"),
   ]);
   const html = await readDownload(download);
   expect(html).toMatch(/data-cmh-item="rel"[^>]*data-cmh-state="check"|data-cmh-state="check"[^>]*data-cmh-item="rel"/);

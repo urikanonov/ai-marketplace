@@ -100,7 +100,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel
-    for (const id of ["btnCopyAll", "btnSaveHtml", "btnSavePlain", "btnClearAll", "btnCloseSidebar", "btnHelp", "cmTypeBadge"]) {
+    for (const id of ["btnCopyAll", "btnSidebarExportMenu", "btnClearAll", "btnCloseSidebar", "btnHelp", "cmTypeBadge"]) {
       const el = page.locator("#" + id);
       // the tooltip text lives in `title` until the styled tooltip layer moves it to
       // data-cmh-tip on first hover/focus, so accept either.
