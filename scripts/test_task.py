@@ -3,8 +3,10 @@
 Run by the validate CI job via `python -m unittest discover -s scripts -p "test_*.py"`,
 so the issue-first task wrapper's body assembly, ASCII guard, argument construction,
 checkbox ticking, and the heartbeat / branch-stamp helpers are covered by a required
-status check. The `gh` boundary is not exercised here; only the pure helpers are.
+status check. The `gh` boundary is not exercised here; only the pure helpers and the
+_beat_once routing (with the gh/git calls stubbed) are.
 """
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -314,6 +316,83 @@ class ArgTypeValidatorTests(unittest.TestCase):
                 task._assert_safe_worktree_name(bad)
         self.assertEqual(task._assert_safe_worktree_name("issue-5-foo"), "issue-5-foo")
         self.assertIsNone(task._assert_safe_worktree_name(None))
+
+    @unittest.skipUnless(os.name == "nt", "drive-qualified names only escape on Windows")
+    def test_safe_worktree_name_rejects_windows_drive(self):
+        for bad in ["C:foo", "C:\\foo", "C:/foo"]:
+            with self.assertRaises(SystemExit):
+                task._assert_safe_worktree_name(bad)
+
+
+class _StubComments:
+    """Context-managed monkeypatch of the gh/git boundary so _beat_once routing is testable.
+
+    _list_comments returns the provided comments; _edit_comment / _post_comment record their
+    calls instead of shelling out."""
+    def __init__(self, comments):
+        self.comments = comments
+        self.edited = []
+        self.posted = []
+
+    def __enter__(self):
+        self._orig = (task._list_comments, task._edit_comment, task._post_comment)
+        task._list_comments = lambda number: self.comments
+        task._edit_comment = lambda cid, body: self.edited.append((cid, body))
+        task._post_comment = lambda number, body: self.posted.append((number, body))
+        return self
+
+    def __exit__(self, *exc):
+        task._list_comments, task._edit_comment, task._post_comment = self._orig
+
+
+class BeatOnceRoutingTests(unittest.TestCase):
+    def _trusted(self, body):
+        return [{"id": 7, "body": body, "assoc": "OWNER"}]
+
+    def test_existing_valid_comment_bumps_timestamp_in_place(self):
+        body = task.status_body("issue-7-foo", "2026-07-18T10:00:00Z")
+        with _StubComments(self._trusted(body)) as stub:
+            task._beat_once(7, None)
+        self.assertEqual(len(stub.edited), 1)
+        self.assertEqual(len(stub.posted), 0)
+        edited_body = stub.edited[0][1]
+        self.assertIn("`issue-7-foo`", edited_body)          # branch preserved
+        self.assertNotIn("2026-07-18T10:00:00Z", edited_body)  # timestamp refreshed
+
+    def test_malformed_comment_self_heals_from_recovered_branch(self):
+        malformed = task.STATUS_MARKER + "\n- Branch: `issue-7-foo` (note)\n(no timestamp line)"
+        with _StubComments(self._trusted(malformed)) as stub:
+            task._beat_once(7, None)
+        self.assertEqual(len(stub.edited), 1)
+        healed = stub.edited[0][1]
+        self.assertIn("- Last active (UTC):", healed)
+        self.assertIn("`issue-7-foo`", healed)
+
+    def test_malformed_comment_with_invalid_branch_stops(self):
+        malformed = task.STATUS_MARKER + "\n- Branch: `bad branch`\n(no timestamp line)"
+        with _StubComments(self._trusted(malformed)) as stub:
+            with self.assertRaises(task.HeartbeatStop):
+                task._beat_once(7, None)
+        self.assertEqual(stub.edited, [])
+
+    def test_no_comment_no_branch_stops(self):
+        with _StubComments([]):
+            with self.assertRaises(task.HeartbeatStop):
+                task._beat_once(7, None)
+
+    def test_no_comment_with_branch_posts_fresh(self):
+        with _StubComments([]) as stub:
+            task._beat_once(7, "issue-7-foo")
+        self.assertEqual(len(stub.posted), 1)
+        self.assertIn(task.STATUS_MARKER, stub.posted[0][1])
+
+    def test_untrusted_marker_comment_is_not_adopted(self):
+        planted = [{"id": 1, "body": task.status_body("evil", "2026-07-18T10:00:00Z"), "assoc": "NONE"}]
+        with _StubComments(planted) as stub:
+            task._beat_once(7, "issue-7-foo")
+        # The outsider comment is ignored; a fresh trusted comment is posted instead of edited.
+        self.assertEqual(len(stub.edited), 0)
+        self.assertEqual(len(stub.posted), 1)
 
 
 if __name__ == "__main__":

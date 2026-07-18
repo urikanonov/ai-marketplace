@@ -275,9 +275,11 @@ def _non_negative_int(value):
 
 
 def _assert_safe_worktree_name(name):
-    """Reject a --name that is not a single safe path component (no separators or '..'),
-    so a worktree cannot be created outside .worktrees/."""
-    if name and (re.search(r"[\\/]", name) or ".." in name.split("/") or name in (".", "..")):
+    """Reject a --name that is not a single safe path component, so a worktree cannot be
+    created outside .worktrees/. Rejects path separators, '..', '.', an absolute path, and a
+    Windows drive-qualified name like 'C:foo' (which os.path.join would resolve out of tree)."""
+    if name and (re.search(r"[\\/]", name) or ".." in name.split("/") or name in (".", "..")
+                 or os.path.splitdrive(name)[0] or os.path.isabs(name)):
         raise SystemExit(f"--name must be a single path component (no separators or '..'), got {name!r}")
     return name
 
@@ -378,7 +380,13 @@ def _beat_once(number, branch):
             if not recovered:
                 raise HeartbeatStop(
                     f"status comment on #{number} is malformed and no branch is known to rebuild it")
-            new_body = status_body(recovered, stamp)
+            try:
+                new_body = status_body(recovered, stamp)
+            except ValueError as exc:
+                # A tampered comment with an invalid branch stamp is unrecoverable; stop the
+                # daemon rather than let the watch loop retry it forever.
+                raise HeartbeatStop(
+                    f"status comment on #{number} has an invalid branch stamp: {exc}")
         _edit_comment(existing["id"], new_body)
     elif branch:
         _post_comment(number, status_body(branch, stamp))
