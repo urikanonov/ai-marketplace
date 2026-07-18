@@ -27,7 +27,8 @@ class OrchestrationTests(unittest.TestCase):
         # present regardless of whether node is installed on the host. Without this the test
         # raises StopIteration on a node-less machine (no "Tutorial screenshots" label), which
         # is exactly what made a node-less pre-push run fail spuriously and tempt a bypass.
-        with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"):
+        with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=True):
             rc = rebuild_all.main(["rebuild_all.py", "--check"])
         self.assertEqual(rc, 0)
         labels = [c[0] for c in self.calls]
@@ -58,6 +59,19 @@ class OrchestrationTests(unittest.TestCase):
             return 1 if "site" in label.lower() else 0
         rebuild_all._run = failing_run
         self.assertEqual(rebuild_all.main(["rebuild_all.py", "--check"]), 1)
+
+    def test_tutorial_screenshots_skipped_when_dev_deps_absent(self):
+        # node is present but the commentable-html dev node_modules (@playwright/test) is not
+        # installed, so the screenshots step is skipped with a note instead of a cryptic
+        # ERR_MODULE_NOT_FOUND failure - and the run still succeeds.
+        with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
+                mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=False):
+            rc = rebuild_all.main(["rebuild_all.py", "--check"])
+        self.assertEqual(rc, 0)
+        labels = [c[0] for c in self.calls]
+        self.assertFalse(any("Tutorial screenshots" in lbl for lbl in labels))
+        # The rest of the pipeline still runs (the skip is surgical, not a bail-out).
+        self.assertTrue(any(lbl.startswith("GitHub Pages site") for lbl in labels))
 
     def test_fixtures_step_is_skipped_when_node_is_absent(self):
         orig_which = rebuild_all.shutil.which
