@@ -68,7 +68,7 @@ def category_label(category):
         w.lower() if i and w.lower() in _CATEGORY_SMALL_WORDS else w[:1].upper() + w[1:].lower()
         for i, w in enumerate(words))
 CHANGELOG_PLUGIN = "commentable-html"
-DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "deck-showcase.html"]
+DEMO_FILES = ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "report-notes.html", "deck-showcase.html"]
 EXAMPLES_REL = os.path.join("plugins", "commentable-html", "examples")
 # Site layout (all under site/): sources and the generated publishable output live together.
 #   site/pages/  page templates (source)        site/css/  CSS partials (source)

@@ -98,12 +98,55 @@ Mermaid diagrams render when you open the file in a modern browser. If one does 
 
 ![The unified diff block with the view toggle and a syntax-highlight toggle](assets/garden-04-diff.png)
 
-## 11. Navigate and collapse sections
+## 11. Work a review checklist
 
-1. Widen the browser window to at least 1400px. A generated section menu appears on the left (separate from the author Contents list near the top) and highlights the section you are reading; it has its own collapse toggle.
-2. In the document itself, each section title has a small caret to its left: click the caret to collapse or expand that section. When a section is collapsed, clicking its title also expands it again.
+Some reports embed interactive review checklists - grouped items whose state you cycle as you verify each one. The community garden plan does not use them, so this step uses [`examples/report-checklist.html`](../examples/report-checklist.html), which is built around a release-readiness checklist.
 
-## 12. Hand your comments back
+1. Open [`examples/report-checklist.html`](../examples/report-checklist.html).
+2. Click an item's box to cycle its state: blank, done (green check), failed (red cross), or unresolved (amber question). A group heading rolls up the state of its items, and clicking it propagates a state to every item beneath it.
+3. Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item's text and click **Add Comment** to leave a note on that specific check.
+
+![A grouped review checklist with tickable items under Backend and Frontend headings](assets/checklist-01-checklist.png)
+
+## 12. Edit a review note
+
+Notes are editable free-text fields authors embed for context, verdicts, or reviewer input. Each starts from an authored baseline you can edit in place. The garden plan has none, so this step uses [`examples/report-notes.html`](../examples/report-notes.html).
+
+1. Open [`examples/report-notes.html`](../examples/report-notes.html).
+2. Click into a note and edit its text; use its single/multi-line toggle to switch the field height for longer entries.
+3. Your changes are saved with the document and appear as a note card in the sidebar (with jump and reset), so the agent can cement them back into the source. You can also select the note text and click **Add Comment** to leave a tracked comment on it.
+
+![An editable note field labeled Verdict with a single/multi-line toggle](assets/note-01-note.png)
+
+## 13. Track review progress per section
+
+Every section heading carries a small review badge so you can mark sections as you finish them and see at a glance what is left.
+
+1. Hover a section heading to reveal its badge, then click the badge to mark that section **Reviewed**. The badge turns green and stays visible.
+2. A section you have not touched shows the default **unreviewed** state (no marker). The badge also reflects two more states automatically: a section you have commented on shows a **Commented** badge, and one whose content changed since your last visit shows a **Changed** badge.
+3. Use these badges together with the section filter in the side navigation (next step) to focus on unreviewed or changed sections.
+
+![A section heading showing a green Reviewed badge](assets/garden-10-review-badge.png)
+
+## 14. Navigate, search, and filter sections
+
+1. Widen the browser window to at least 1400px. A generated section navigation appears on the left (separate from the author Contents list near the top) and highlights the section you are reading.
+2. The nav has a search box at the top: type to filter the section list down to matching headings.
+3. Below it, a review-status filter (All / Reviewed / Unreviewed / Commented / Changed) narrows the list to sections in that state, and a status dot next to each entry shows its review state. Use it with the per-section badges from the previous step to jump straight to what still needs attention.
+4. The nav buttons let you **Expand All** or **Collapse All** sections at once and **Scroll to Top** or **Scroll to Bottom** of the document. In the document itself, each section title also has a small caret to its left: click the caret to collapse or expand that one section (clicking a collapsed section's title expands it again).
+
+![The left section navigation with its search box, review-status filter, and expand/collapse and scroll controls](assets/garden-11-side-toc.png)
+
+## 15. Search and sort your comments
+
+Once you have several comments, the sidebar helps you find and order them.
+
+1. Type in the comment search box at the top of the panel to filter the list to comments whose quoted text or note matches your query; the header shows how many of the total are shown.
+2. Use the sort buttons to order comments by their position in the document, ascending or descending, instead of the order you added them.
+
+![The comments panel filtered by a search query, with the sort controls and a shown-of-total count](assets/garden-13-comment-search.png)
+
+## 16. Hand your comments back
 
 1. Click **Copy all** in the toolbar or the sidebar.
 2. This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.
@@ -111,13 +154,32 @@ Mermaid diagrams render when you open the file in a modern browser. If one does 
 
 ![The Copy all action with the comments panel populated](assets/garden-09-copyall.png)
 
-## 13. Refresh and repeat
+## 17. Use the export menu
+
+The sidebar's export menu gathers the ways to save or share the file in one place.
+
+1. Click **Export** in the comments panel header to open the menu.
+2. Choose an option: **Portable** bakes your comments into a single self-contained copy, **Offline** makes a zero-network copy after diagrams and charts have rendered, **Markdown** writes the comment bundle to a `.md` file, and **Plain HTML** hands over a clean copy with the commenting layer removed.
+3. The **Clear** button next to Export removes every comment so you can start the review over.
+
+![The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML](assets/garden-12-export-menu.png)
+
+## 18. Refresh and repeat
 
 Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.
 
-To share the review with another person instead, use **Export as Portable** to bake the comments into a single self-contained copy, or **Export to Plain HTML** to hand over a clean copy with the commenting layer removed.
+To share the review with another person instead, use the export menu's **Portable** action to bake the comments into a single self-contained copy, or **Plain HTML** to hand over a clean copy with the commenting layer removed.
 
 Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips.
+
+## 19. Review a board document
+
+Not every commentable file is a prose report. A board document (`kind: board`) renders as columns of cards - handy for triaging incidents, tickets, or tasks. The [`examples/report-triage.html`](../examples/report-triage.html) report is one.
+
+1. Open [`examples/report-triage.html`](../examples/report-triage.html).
+2. Read the cards across the columns, then select any card text and click **Add Comment** to leave a note, just as you would in a prose report.
+
+![An incident triage board with cards arranged in status columns](assets/triage-01-board.png)
 
 ## Dark theme
 
