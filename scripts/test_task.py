@@ -2,10 +2,11 @@
 
 Run by the validate CI job via `python -m unittest discover -s scripts -p "test_*.py"`,
 so the issue-first task wrapper's body assembly, ASCII guard, argument construction,
-and checkbox ticking are covered by a required status check. The `gh` boundary is not
-exercised here; only the pure helpers are.
+checkbox ticking, and the heartbeat / branch-stamp helpers are covered by a required
+status check. The `gh` boundary is not exercised here; only the pure helpers are.
 """
 import unittest
+from datetime import datetime, timedelta, timezone
 
 import task
 
@@ -126,6 +127,118 @@ class ParserTests(unittest.TestCase):
     def test_search_all_flag(self):
         args = task.build_parser().parse_args(["search", "topic", "--all"])
         self.assertTrue(args.all)
+
+    def test_claim_accepts_branch(self):
+        args = task.build_parser().parse_args(["claim", "5", "--branch", "issue-5-foo"])
+        self.assertEqual(args.branch, "issue-5-foo")
+
+    def test_heartbeat_watch_and_interval(self):
+        args = task.build_parser().parse_args(["heartbeat", "5", "--watch", "--interval", "60"])
+        self.assertTrue(args.watch)
+        self.assertEqual(args.interval, 60)
+
+    def test_heartbeat_default_interval_is_five_minutes(self):
+        args = task.build_parser().parse_args(["heartbeat", "5"])
+        self.assertFalse(args.watch)
+        self.assertEqual(args.interval, task.HEARTBEAT_INTERVAL_SECONDS)
+
+    def test_stale_default_minutes(self):
+        args = task.build_parser().parse_args(["stale"])
+        self.assertEqual(args.minutes, task.HEARTBEAT_STALE_MINUTES)
+
+    def test_start_parses_slug_and_name(self):
+        args = task.build_parser().parse_args(["start", "5", "--slug", "Fix Thing", "--name", "wt"])
+        self.assertEqual(args.slug, "Fix Thing")
+        self.assertEqual(args.name, "wt")
+
+
+class UtcStampTests(unittest.TestCase):
+    def test_formats_fixed_datetime_as_zulu(self):
+        dt = datetime(2026, 7, 18, 13, 55, 0, tzinfo=timezone.utc)
+        self.assertEqual(task.utc_stamp(dt), "2026-07-18T13:55:00Z")
+
+    def test_converts_non_utc_to_utc(self):
+        dt = datetime(2026, 7, 18, 16, 55, 0, tzinfo=timezone(timedelta(hours=3)))
+        self.assertEqual(task.utc_stamp(dt), "2026-07-18T13:55:00Z")
+
+
+class StatusBodyTests(unittest.TestCase):
+    def test_carries_marker_branch_and_timestamp(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        self.assertIn(task.STATUS_MARKER, body)
+        self.assertIn("`issue-5-foo`", body)
+        self.assertIn("- Last active (UTC): 2026-07-18T13:55:00Z", body)
+
+    def test_is_plain_ascii(self):
+        task.assert_ascii(task.status_body("issue-5-foo", "2026-07-18T13:55:00Z"), "status body")
+
+    def test_rejects_non_ascii_branch(self):
+        with self.assertRaises(ValueError):
+            task.status_body("issue-5-caf\u00e9", "2026-07-18T13:55:00Z")
+
+
+class BumpLastActiveTests(unittest.TestCase):
+    def test_updates_only_timestamp_and_keeps_branch(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        out = task.bump_last_active(body, "2026-07-18T14:00:00Z")
+        self.assertIn("- Last active (UTC): 2026-07-18T14:00:00Z", out)
+        self.assertNotIn("13:55:00Z", out)
+        self.assertIn("`issue-5-foo`", out)
+
+    def test_raises_when_no_last_active_line(self):
+        with self.assertRaises(ValueError):
+            task.bump_last_active("no timestamp here", "2026-07-18T14:00:00Z")
+
+
+class FindStatusCommentTests(unittest.TestCase):
+    def test_returns_first_marker_comment(self):
+        comments = [
+            {"id": 1, "body": "unrelated"},
+            {"id": 2, "body": task.STATUS_MARKER + "\nstuff"},
+            {"id": 3, "body": task.STATUS_MARKER + "\nlater"},
+        ]
+        self.assertEqual(task.find_status_comment(comments)["id"], 2)
+
+    def test_returns_none_when_absent(self):
+        self.assertIsNone(task.find_status_comment([{"id": 1, "body": "nope"}]))
+
+
+class ParseLastActiveTests(unittest.TestCase):
+    def test_extracts_timestamp(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        self.assertEqual(task.parse_last_active(body), "2026-07-18T13:55:00Z")
+
+    def test_returns_none_without_line(self):
+        self.assertIsNone(task.parse_last_active("no timestamp"))
+
+
+class IsStaleTests(unittest.TestCase):
+    NOW = datetime(2026, 7, 18, 14, 0, 0, tzinfo=timezone.utc)
+
+    def test_fresh_is_not_stale(self):
+        self.assertFalse(task.is_stale("2026-07-18T13:55:00Z", self.NOW, minutes=15))
+
+    def test_old_is_stale(self):
+        self.assertTrue(task.is_stale("2026-07-18T13:40:00Z", self.NOW, minutes=15))
+
+    def test_missing_is_stale(self):
+        self.assertTrue(task.is_stale(None, self.NOW, minutes=15))
+
+    def test_unparseable_is_stale(self):
+        self.assertTrue(task.is_stale("not-a-timestamp", self.NOW, minutes=15))
+
+
+class BranchDerivationTests(unittest.TestCase):
+    def test_slug_lowercases_and_dashes(self):
+        self.assertEqual(task.branch_slug("Fix the Thing!"), "fix-the-thing")
+
+    def test_slug_trims_and_bounds_length(self):
+        self.assertEqual(task.branch_slug("  --Hello--  "), "hello")
+        self.assertLessEqual(len(task.branch_slug("word " * 40)), 40)
+
+    def test_derive_branch_with_and_without_slug(self):
+        self.assertEqual(task.derive_branch(414, "Heartbeat work"), "issue-414-heartbeat-work")
+        self.assertEqual(task.derive_branch(414, ""), "issue-414")
 
 
 if __name__ == "__main__":
