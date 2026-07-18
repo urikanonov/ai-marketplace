@@ -269,6 +269,9 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(overview).toBeHidden();
 
     await enterCommentMode(page);
+    // Opening the panel moves focus into the cm-skip review panel, where deck shortcuts are
+    // intentionally out of scope; move focus to the stage so the "o" shortcut applies.
+    await page.evaluate(() => document.querySelector(".deck-viewport").focus());
     await page.keyboard.press("o");
     await expect(overview).toBeVisible();
     await page.keyboard.press("End");
@@ -617,6 +620,34 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     // Tab moves focus out of the menu and closes it (no keyboard trap).
     await page.keyboard.press("Tab");
     await expect(menu).toBeHidden();
+  });
+
+  test("CMH-DECK-11: the open menu blocks slide navigation, dismisses on outside click, and manages focus", async ({ page }) => {
+    await openDeck(page, "", "cmh-deck-menu-focus");
+    const toggle = page.locator(".cmh-deck-mode-toggle");
+    const menu = page.locator(".cmh-deck-mode-menu");
+
+    // While the menu is open, deck slide-navigation keys do NOT move slides.
+    await openDeckModeMenu(page);
+    await page.keyboard.press("ArrowRight");
+    expect(await activeId(page)).toBe("slide-00000001");
+    await page.keyboard.press("PageDown");
+    expect(await activeId(page)).toBe("slide-00000001");
+    // Escape closes the menu and returns focus to the trigger.
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(toggle).toBeFocused();
+
+    // A click outside the menu dismisses it.
+    await openDeckModeMenu(page);
+    await page.mouse.click(5, 400);
+    await expect(menu).toBeHidden();
+
+    // Choosing "panel open" hides the trigger, so focus moves into the sidebar (not lost).
+    const menu2 = await openDeckModeMenu(page);
+    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="open"]').click();
+    await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(page.locator("#btnCloseSidebar")).toBeFocused();
   });
 
   test("CMH-DECK-26: Mermaid diagrams on deck slides fill the slide width", async ({ page }) => {

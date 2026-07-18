@@ -11013,6 +11013,14 @@ function setupDeck() {
       if (item.disabled) return;
       setDeckMode(opt.mode);
       closeModeMenu(false);
+      // Keep keyboard focus sensible after the menu closes: opening the review panel hides the
+      // trigger, so move focus into the panel; otherwise return focus to the trigger.
+      if (opt.mode === "open") {
+        const panelBtn = document.getElementById("btnCloseSidebar");
+        if (panelBtn && panelBtn.focus) { try { panelBtn.focus(); } catch (e) {} }
+      } else if (modeToggle && modeToggle.focus) {
+        try { modeToggle.focus(); } catch (e) {}
+      }
     });
     modeMenu.appendChild(item);
     return item;
