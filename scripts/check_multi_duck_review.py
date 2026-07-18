@@ -36,41 +36,45 @@ import sys
 # Authors whose PRs do not need a manual multi-duck stamp (automation, not feature work).
 AUTO_PASS_AUTHORS = {"dependabot[bot]", "dependabot-preview[bot]"}
 
-# A checked "passed" checkbox. The line must be JUST the canonical stamp (optionally with a
-# trailing "(...)" note like "(2 rounds)"), anchored to end-of-line, so trailing prose that negates
-# it - e.g. "- [x] Multi-Duck passed? No, not really" - does NOT count as a pass.
+# A checked "passed" checkbox. Leading indent is capped at 3 spaces: a checkbox indented 4+ spaces
+# is a Markdown code block (invisible as a real checkbox), so it must not count. The line must be
+# JUST the canonical stamp (optionally a trailing "(...)" note), anchored to end-of-line, so
+# negating trailing prose - "- [x] Multi-Duck passed? No" - does NOT pass.
 PASSED_RE = re.compile(
-    r"^\s*[-*]\s*\[[xX]\]\s*multi-duck\s+passed\s*(?:\([^)\n]*\))?\s*$",
+    r"^[ ]{0,3}[-*]\s*\[[xX]\]\s*multi-duck\s+passed\s*(?:\([^)\n]*\))?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
-# A checked "opted out" checkbox; group(1) is everything after the label, which must contain a
-# real reason. "opt out", "opted-out", and "opted out" are all accepted.
+# A checked "opted out" checkbox (same 3-space indent cap). group(1) is everything after the label;
+# acceptance additionally requires a canonical separator + a real reason (see evaluate()), so a
+# negating suffix like "opted out? No, still pending" does not pass.
 OPTOUT_RE = re.compile(
-    r"^\s*[-*]\s*\[[xX]\]\s*multi-duck\s+opt(?:ed)?[ -]?out\b(.*)$",
+    r"^[ ]{0,3}[-*]\s*\[[xX]\]\s*multi-duck\s+opt(?:ed)?[ -]?out\b(.*)$",
     re.IGNORECASE | re.MULTILINE,
 )
+# The reason must be introduced by a canonical separator (": " or " - "), optionally after a
+# "(reason required)" hint. This rejects a checked opt-out whose trailing text negates it.
+_OPTOUT_REASON_RE = re.compile(r"^\s*(?:\(reason[^)]*\))?\s*[:\-]\s*(.*)$", re.DOTALL)
 # Reason text that is really an unfilled placeholder, not a genuine justification.
 _PLACEHOLDER_TOKENS = ("fill in", "fill-in", "reason here", "why the", "your reason", "tbd", "todo")
 
 
 def _strip_noise(text):
-    """Remove HTML comments and fenced code blocks so a checked stamp that is INVISIBLE in the
-    rendered PR (hidden in `<!-- ... -->`) or merely QUOTED (in a ``` or ~~~ code fence, e.g. a PR
-    that documents this very template) cannot silently pass the gate. The stamp must be a real,
-    rendered checkbox."""
+    """Remove code fences and HTML comments so a stamp that is INVISIBLE in the rendered PR cannot
+    pass. Fences are handled FIRST (a `<!--` can legitimately live inside a code sample) and only
+    when they open at line start (<=3 indent, per CommonMark); an UNTERMINATED fence or comment is
+    consumed to end-of-file, because GitHub hides everything after an unclosed opener. Each stripped
+    span becomes a newline so surrounding lines keep their boundaries (a stamp that follows a real
+    closing `-->` on the same line stays a valid, visible stamp)."""
     text = text or ""
-    text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
-    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
-    text = re.sub(r"~~~.*?~~~", " ", text, flags=re.DOTALL)
+    text = re.sub(r"(?m)^[ ]{0,3}(```+|~~~+)[^\n]*(?:.*?(?:\n[ ]{0,3}\1[^\n]*|\Z))",
+                  "\n", text, flags=re.DOTALL)
+    text = re.sub(r"<!--.*?(?:-->|\Z)", "\n", text, flags=re.DOTALL)
     return text
 
 
 def _clean_reason(raw):
-    """Strip the boilerplate around an opted-out reason and return the substantive text."""
+    """Strip any leftover 'reason:' label and surrounding whitespace from an opted-out reason."""
     text = (raw or "").strip()
-    # Drop a leading "(reason required)" style hint and the following separator/label.
-    text = re.sub(r"^\(reason[^)]*\)", "", text, flags=re.IGNORECASE).strip()
-    text = text.lstrip(":-").strip()
     text = re.sub(r"^reason\s*[:\-]\s*", "", text, flags=re.IGNORECASE).strip()
     return text
 
@@ -90,39 +94,42 @@ def _reason_is_valid(reason):
 def evaluate(body, author=None):
     """Return (ok: bool, message: str) for a PR body + author.
 
-    Order: dependabot auto-pass; then, over the body with HTML comments and code fences stripped,
-    exactly one checked box must be present - a checked "passed" box, or a checked "opted out" box
-    with a valid reason. Both boxes checked, neither checked, or an opt-out without a real reason
-    all fail.
+    Order: dependabot auto-pass; then, over the body with code fences and HTML comments stripped,
+    EXACTLY ONE checked stamp box must be present - a "passed" box, or an "opted out" box whose
+    reason follows a canonical separator and is not a placeholder. Zero boxes, more than one box,
+    or an opt-out without a real reason all fail.
     """
     if author and author.strip().lower() in AUTO_PASS_AUTHORS:
         return True, "multi-duck-review OK: %s PR auto-passes (dependency bump, not feature work)." % author
     text = _strip_noise(body or "")
-    passed = PASSED_RE.search(text)
-    optout = OPTOUT_RE.search(text)
-    if passed and optout:
+    passed = PASSED_RE.findall(text)
+    optout_tails = OPTOUT_RE.findall(text)
+    total = len(passed) + len(optout_tails)
+    if total == 0:
         return False, (
-            "multi-duck-review FAILED: both the 'Multi-Duck passed' and 'Multi-Duck opted out' "
-            "boxes are checked. Check EXACTLY ONE."
+            "multi-duck-review FAILED: this PR has no multi-duck stamp. Run 2 rounds of multi-duck "
+            "review, then check exactly one box in the PR body:\n"
+            "  - [x] Multi-Duck passed (2 rounds of multi-duck review)\n"
+            "  - [x] Multi-Duck opted out - reason: <a real, specific reason>\n"
+            "This gate is required (see .github/required-checks.json); it cannot be skipped by "
+            "leaving the template untouched, hiding the stamp in an HTML comment, or quoting it in "
+            "a code block."
+        )
+    if total > 1:
+        return False, (
+            "multi-duck-review FAILED: %d stamp boxes are checked. Check EXACTLY ONE - either "
+            "'Multi-Duck passed' or 'Multi-Duck opted out', not both and not more than one." % total
         )
     if passed:
         return True, "multi-duck-review OK: the PR is stamped multi-duck passed."
-    if optout is not None:
-        reason = _clean_reason(optout.group(1))
-        if _reason_is_valid(reason):
-            return True, 'multi-duck-review OK: the PR opted out of multi-duck with reason: "%s".' % reason
-        return False, (
-            "multi-duck-review FAILED: the 'Multi-Duck opted out' box is checked but has no real "
-            "reason. Fill in a specific reason after 'reason:' (not a placeholder), or run the 2 "
-            "rounds of multi-duck and check 'Multi-Duck passed' instead."
-        )
+    sep = _OPTOUT_REASON_RE.match(optout_tails[0])
+    reason = _clean_reason(sep.group(1)) if sep else ""
+    if sep and _reason_is_valid(reason):
+        return True, 'multi-duck-review OK: the PR opted out of multi-duck with reason: "%s".' % reason
     return False, (
-        "multi-duck-review FAILED: this PR has no multi-duck stamp. Run 2 rounds of multi-duck "
-        "review, then check exactly one box in the PR body:\n"
-        "  - [x] Multi-Duck passed (2 rounds of multi-duck review)\n"
-        "  - [x] Multi-Duck opted out - reason: <a real, specific reason>\n"
-        "This gate is required (see .github/required-checks.json); it cannot be skipped by leaving "
-        "the template untouched, hidden in an HTML comment, or quoted in a code block."
+        "multi-duck-review FAILED: the 'Multi-Duck opted out' box is checked but has no real "
+        "reason. Write it as 'Multi-Duck opted out - reason: <a real, specific reason>' (not a "
+        "placeholder), or run the 2 rounds of multi-duck and check 'Multi-Duck passed' instead."
     )
 
 

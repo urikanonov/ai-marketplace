@@ -97,17 +97,33 @@ _SECRETS_RES = (
 )
 # RULE D: attacker-controllable expression contexts that must never be spliced into a run: shell.
 # Matches a PR/issue title or body, a comment/review/discussion body, a commit message, the page
-# name, a commit author name/email, github.head_ref, and a PR head ref/label. SHAs, numbers, and
+# name, a commit author name/email, github.head_ref, a PR head ref/label, and toJSON() of any
+# github.event object (serializing it into the shell is equally injectable). SHAs, numbers, and
 # logins are intentionally NOT here - they are constrained and are the safe metadata values run:
-# steps legitimately use.
+# steps legitimately use. Bracket/index notation (`['body']`, `["pull_request"]`, `[0]`) is
+# normalized to dotted form first, so `github.event.pull_request['body']` cannot evade the guard.
 _EXPR_RE = re.compile(r"\$\{\{(.*?)\}\}", re.S)
+_BRACKET_INDEX_RE = re.compile(r"\[\s*['\"]?([\w-]+)['\"]?\s*\]")
 _INJECTABLE_CTX_RE = re.compile(
     r"github\.head_ref"
     r"|github\.event\.pull_request\.head\.(?:ref|label)"
-    r"|github\.event\.[\w.\[\]'\"*-]*\.(?:body|title|message|page_name)"
-    r"|github\.event\.[\w.\[\]'\"*-]*\.author\.(?:name|email)",
+    r"|github\.event\.[\w.]*\.(?:body|title|message|page_name)\b"
+    r"|github\.event\.[\w.]*\.author\.(?:name|email)\b"
+    r"|toJSON\(\s*github\.event\b",
     re.IGNORECASE,
 )
+
+
+def _normalize_expr(expr):
+    """Rewrite bracket/index property access to dotted form so both notations are checked alike:
+    `github['event']['pull_request']['body']` -> `github.event.pull_request.body`."""
+    prev = None
+    out = expr
+    # Repeat until stable so chained `[...][...]` segments all collapse.
+    while out != prev:
+        prev = out
+        out = _BRACKET_INDEX_RE.sub(r".\1", out)
+    return out
 
 
 def _iter_run_scripts(doc):
@@ -164,7 +180,7 @@ def check_workflow(path):
     # RULE D: no run: shell step may splice attacker-controllable context in with ${{ ... }}.
     for job_id, idx, run_text in _iter_run_scripts(doc):
         for m in _EXPR_RE.finditer(run_text):
-            hit = _INJECTABLE_CTX_RE.search(m.group(1))
+            hit = _INJECTABLE_CTX_RE.search(_normalize_expr(m.group(1)))
             if hit:
                 violations.append(
                     rel + ": RULE D - job '" + str(job_id) + "' step " + str(idx)
