@@ -36,7 +36,16 @@ PKG_DIR = os.path.join(ROOT, "plugins", "commentable-html", "pkg", "skills", "co
 EXAMPLES_DIR = os.path.join(ROOT, "plugins", "commentable-html", "examples")
 FIXTURES_GEN = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tests", "fixtures", "generate.mjs")
 TUTORIAL_SHOTS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "tools", "capture_tutorial.mjs")
+# capture_tutorial.mjs imports @playwright/test, so it needs the commentable-html dev node_modules
+# installed (run scripts/setup_dev.py). When they are absent the step is skipped with a note rather
+# than failing with a cryptic ERR_MODULE_NOT_FOUND.
+TUTORIAL_DEPS = os.path.join(ROOT, "plugins", "commentable-html", "dev", "node_modules",
+                             "@playwright", "test")
 SITE_DATA = os.path.join(ROOT, "scripts", "build_site_data.py")
+
+
+def _tutorial_deps_installed():
+    return os.path.isdir(TUTORIAL_DEPS)
 
 
 def _run(label, cmd):
@@ -65,10 +74,16 @@ def main(argv=None):
         steps.append(("Playwright fixtures (generate.mjs)", [node, FIXTURES_GEN] + check))
     else:
         print("== Playwright fixtures (generate.mjs) == skipped (node not found; CI plugin-tests runs it)")
-    if node and os.path.exists(TUTORIAL_SHOTS):
+    if node and os.path.exists(TUTORIAL_SHOTS) and _tutorial_deps_installed():
         steps.append(("Tutorial screenshots (capture_tutorial.mjs)", [node, TUTORIAL_SHOTS] + check))
-    else:
+    elif node and os.path.exists(TUTORIAL_SHOTS):
+        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped "
+              "(commentable-html dev node_modules not installed; run 'python scripts/setup_dev.py'; "
+              "CI plugin-tests runs it)")
+    elif not node:
         print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (node not found; CI plugin-tests runs it)")
+    else:
+        print("== Tutorial screenshots (capture_tutorial.mjs) == skipped (capture script not found)")
     steps.append(("GitHub Pages site (build_site_data.py)", [sys.executable, SITE_DATA] + check))
 
     failed = []

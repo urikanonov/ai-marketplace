@@ -389,6 +389,34 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
 7. Validate at the end: `python scripts/validate_marketplace.py` and
    `python plugins/<plugin>/dev/tools/build.py ... --check` must both pass.
 
+## First-time setup (fresh clone)
+
+A fresh clone is not dev-ready until its dependencies are installed and the git hooks are enabled.
+Git has no post-clone hook (a hook cannot install the thing that turns hooks on), so run this one
+idempotent command once after cloning - it enables the hooks, installs the Python validator deps
+(`jsonschema`, `pyyaml`), and runs `npm ci` plus a Playwright browser install in every Node suite it
+discovers (`site/tests` and each `plugins/<x>/dev` with a `package.json`):
+
+```bash
+python scripts/setup_dev.py                 # enable hooks + install Python and Node deps + browsers
+python scripts/setup_dev.py --no-browsers   # skip the (large) Playwright browser download
+python scripts/setup_dev.py --check         # report readiness without installing (non-zero if not)
+```
+
+It is safe to re-run any time (for example after a lockfile change). Node.js (`npm`/`npx`), Python,
+and Git must be on PATH first. Until the Node deps are installed, `rebuild_all.py` skips its tutorial
+screenshots step (it needs `@playwright/test`) with a note pointing back here rather than failing.
+
+When to run it (agents): a fresh clone is a weak trigger because an agent usually lands in an
+existing checkout, so make readiness an explicit precondition instead. BEFORE running anything that
+needs the dev dependencies - a plugin or site Playwright suite, `rebuild_all.py`, or a `RUN_E2E`
+push - first run `python scripts/setup_dev.py --check` (fast and side-effect-free; it exits non-zero
+when the clone is not ready) and, if it reports not ready, run `python scripts/setup_dev.py`.
+Likewise, if a local command fails because a Node dependency or a Playwright browser is missing, run
+`python scripts/setup_dev.py` rather than reaching for `--no-verify`. The installer is never run
+automatically from a check/test/build (a silent `npm ci` or browser download mid-run is a surprising
+side effect); it stays an explicit step so `--check` is the readiness gate an agent calls first.
+
 ## Validate before you commit
 
 ```bash
@@ -404,8 +432,9 @@ lanes still apply: assign distinct `dev/VERSION` values to concurrent PRs up fro
 version order (see "Maximizing concurrency"); if a newer merge takes your version, re-bump and rerun
 `rebuild_all.py`.
 
-Enable the git hooks once per clone so they run automatically (skip a single commit with
-`git commit --no-verify`, or a single push with `git push --no-verify`):
+Enable the git hooks once per clone so they run automatically (this is one of the steps
+`scripts/setup_dev.py` performs; skip a single commit with `git commit --no-verify`, or a single
+push with `git push --no-verify`):
 
 ```bash
 git config core.hooksPath .githooks

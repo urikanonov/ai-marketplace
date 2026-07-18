@@ -21,8 +21,19 @@ This is a personal marketplace. Every plugin is authored and maintained by Uri K
 
 ## One-time setup
 
-Enable the git hooks so they run automatically (it needs python with `jsonschema` and `pyyaml`).
-This catches issues locally before CI, even for the maintainer:
+Run the one-command setup once after cloning. It enables the git hooks and installs everything the
+local checks need - the Python validator deps (`jsonschema`, `pyyaml`) and, for every Node test suite
+(`site/tests` and each `plugins/<x>/dev`), its `npm ci` deps plus the Playwright browser:
+
+```bash
+python scripts/setup_dev.py                 # hooks + Python and Node deps + browsers
+python scripts/setup_dev.py --no-browsers   # skip the (large) Playwright browser download
+python scripts/setup_dev.py --check         # report readiness without installing (non-zero if not)
+```
+
+It is idempotent (safe to re-run, for example after a lockfile change); Node.js (`npm`/`npx`),
+Python, and Git must be on PATH first. If you would rather set up by hand, the minimum for the
+commit/push hooks is:
 
 ```bash
 pip install jsonschema pyyaml
