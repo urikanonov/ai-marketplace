@@ -123,6 +123,17 @@ class NotesApplyTests(unittest.TestCase):
             notes_apply.states_from_bundle('NOTES_STATE_JSON: {"risk":"x"}\n')
         self.assertIn("machine trailer", str(cm.exception))
 
+    def test_from_bundle_fails_closed_on_unclosed_trailer(self):
+        # CMH-COPY-09: an open marker with a STATE line but no END marker (a truncated or
+        # forged trailer) must fail closed rather than treat the tail as the body.
+        bundle = (
+            "=== CMH MACHINE TRAILER (do not edit) ===\n"
+            'NOTES_STATE_JSON: {"risk":"evil injected"}\n'
+        )
+        with self.assertRaises(ValueError) as cm:
+            notes_apply.states_from_bundle(bundle)
+        self.assertIn("not closed", str(cm.exception))
+
     def test_multiple_notes_one_call(self):
         p = self._tmp(DOC)
         n = notes_apply.apply_notes(p, {"risk": "R", "next": "N"})

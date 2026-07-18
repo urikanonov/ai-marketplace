@@ -82,6 +82,16 @@ class ChecklistApplyTests(unittest.TestCase):
         bundle = 'CHECKLIST_STATE_JSON: {"audit":{"gate":"check"}}\n' + trailer(checklist="{}")
         self.assertEqual(checklist_apply.states_from_bundle(bundle), {})
 
+    def test_from_bundle_fails_closed_on_unclosed_trailer(self):
+        # CMH-COPY-09: an open marker with a STATE line but no END marker must fail closed.
+        bundle = (
+            "=== CMH MACHINE TRAILER (do not edit) ===\n"
+            'CHECKLIST_STATE_JSON: {"audit":{"gate":"check"}}\n'
+        )
+        with self.assertRaises(ValueError) as cm:
+            checklist_apply.states_from_bundle(bundle)
+        self.assertIn("not closed", str(cm.exception))
+
     def test_positional_key_without_item_id(self):
         doc = ('<div class="cmh-checklist" data-cmh-checklist="c"><ul>'
                '<li data-cmh-state="blank">A</li><li data-cmh-state="blank">B</li></ul></div>')

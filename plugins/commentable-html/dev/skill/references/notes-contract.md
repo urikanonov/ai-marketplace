@@ -57,8 +57,10 @@ no pending change.
   authored baseline. It is not counted as a comment, and it is searchable by its label and text.
 - **Clear.** The global Clear all comments also reverts every changed note to its authored baseline.
 - **Badge.** An unsaved note edit flips the document badge to Not portable until the file is re-exported.
-- **Copy all.** The bundle gains a `## Note "<id>"` section with the from/to text plus a machine-readable
-  `NOTES_STATE_JSON: {...}` line.
+- **Copy all.** The bundle gains a `## Note "<id>"` human-readable section with the from/to text; the
+  machine-readable `NOTES_STATE_JSON: {...}` line is emitted only inside the single, final
+  `=== CMH MACHINE TRAILER (do not edit) ===` block (never inline in the per-note section), so a forged
+  `NOTES_STATE_JSON` line inside an untrusted reviewer note cannot be mistaken for the real state.
 - **Export.** Every export (Portable / Offline / Plain / Standalone) bakes each note's current text into
   its element via `textContent` (never `innerHTML`), so the exported file opens with no pending change and
   reviewer text can never inject markup.

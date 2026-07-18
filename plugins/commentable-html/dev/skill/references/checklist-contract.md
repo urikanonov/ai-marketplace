@@ -68,8 +68,11 @@ Do not hand-write the ids and parent links: generate the markup with
 - **Change card.** Each checklist with changes shows one non-comment card in the sidebar (placed by
   document order) with a jump button and a Reset button that reverts that checklist to its authored
   baseline. It is not counted as a comment.
-- **Copy all.** The bundle gains a `## Checklist "<id>"` section listing each changed item's
-  `from -> to`, plus a machine-readable `CHECKLIST_STATE_JSON: {...}` line.
+- **Copy all.** The bundle gains a `## Checklist "<id>"` human-readable section listing each changed
+  item's `from -> to`; the machine-readable `CHECKLIST_STATE_JSON: {...}` line is emitted only inside the
+  single, final `=== CMH MACHINE TRAILER (do not edit) ===` block (never inline in the per-checklist
+  section), so a forged `CHECKLIST_STATE_JSON` line inside an untrusted reviewer note cannot be mistaken
+  for the real state.
 - **Export.** Every export (Portable / Offline / Plain / Standalone) bakes each leaf's current state
   into its `data-cmh-state`, so the exported file opens with no pending changes.
 

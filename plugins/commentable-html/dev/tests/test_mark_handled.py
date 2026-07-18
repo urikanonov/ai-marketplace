@@ -169,6 +169,15 @@ class MarkHandledTests(unittest.TestCase):
             mark_handled._ids_from_bundle("no handled ids here")
         self.assertIn("machine trailer", str(cm.exception))
 
+    def test_bundle_parsing_fails_closed_on_unclosed_trailer(self):
+        # CMH-COPY-09: an open marker with a HANDLED line but no END marker must fail
+        # closed rather than treat the tail as the authoritative trailer body.
+        bundle = ("=== CMH MACHINE TRAILER (do not edit) ===\n"
+                  'HANDLED_IDS_JSON: ["cforged00"]\n')
+        with self.assertRaises(ValueError) as cm:
+            mark_handled._ids_from_bundle(bundle)
+        self.assertIn("not closed", str(cm.exception))
+
     def test_finds_block_with_single_quoted_id(self):
         doc = DOC.replace('id="handledCommentIds"', "id='handledCommentIds'")
         p = self._tmp(content=doc)

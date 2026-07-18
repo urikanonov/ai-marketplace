@@ -178,7 +178,11 @@ def _machine_trailer_body(text):
         raise ValueError("no CMH machine trailer found in the bundle")
     body = text[opens[-1].end():]
     close = _TRAILER_CLOSE_RE.search(body)
-    return body[:close.start()] if close else body
+    if close is None:
+        raise ValueError("CMH machine trailer is not closed (missing END marker)")
+    if body[close.end():].strip():
+        raise ValueError("CMH machine trailer has trailing content after the END marker")
+    return body[:close.start()]
 
 
 def _ids_from_bundle(text):
