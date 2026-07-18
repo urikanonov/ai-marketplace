@@ -85,8 +85,11 @@ function Test-CommenterTrusted {
 }
 
 # Decide whether the viewer's OWN review currently APPROVES the PR, based on their LATEST
-# meaningful review. $Reviews is the full review list oldest -> newest, each @{ Login; State }.
-# Only APPROVED / CHANGES_REQUESTED / DISMISSED change a reviewer's standing state (a later
+# meaningful review. $Reviews is a list of @{ Login; State; Order }; Order is a monotonic
+# sort key (the review's numeric databaseId, assigned at creation) so "latest" is decided by
+# an explicit sort, NOT by relying on the order the gh reviews connection happened to return
+# (that connection takes no orderBy and its ordering is not a documented contract). Only
+# APPROVED / CHANGES_REQUESTED / DISMISSED change a reviewer's standing state (a later
 # COMMENTED review does not revoke a standing approval, mirroring GitHub), so the answer is
 # whether the viewer's last such review is APPROVED. This prevents a stale earlier APPROVED
 # from counting after the viewer later requested changes or dismissed their own review.
@@ -98,9 +101,25 @@ function Test-ViewerApproved {
     if (-not $Viewer) { return $false }
     $meaningful = @($Reviews | Where-Object {
             $_ -and $_.Login -eq $Viewer -and $_.State -in @('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED')
-        })
+        } | Sort-Object -Property Order)
     if ($meaningful.Count -eq 0) { return $false }
     return ($meaningful[-1].State -eq 'APPROVED')
+}
+
+# Normalize raw gh review nodes (each with author{ login }, state, databaseId) into the
+# ordered @{ Login; State; Order } shape Test-ViewerApproved expects. Tolerant of a null node
+# (a nullable connection entry, which would otherwise throw under StrictMode and strand the
+# poll) and a null author (a deleted account -> Login $null, never matched as the viewer).
+# Pure, so the projection is unit-testable rather than living only in the untested I/O shell.
+function ConvertTo-ReviewStates {
+    param([AllowEmptyCollection()][AllowNull()][object[]]$RawReviews = @())
+    $out = @()
+    foreach ($r in @($RawReviews)) {
+        if (-not $r) { continue }
+        $login = if ($r.author) { $r.author.login } else { $null }
+        $out += [pscustomobject]@{ Login = $login; State = $r.state; Order = $r.databaseId }
+    }
+    return @($out)
 }
 
 # Reduce a status-check rollup's context nodes to the sorted identities of the runs that

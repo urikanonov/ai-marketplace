@@ -178,11 +178,7 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
                     $login = if ($r.author) { $r.author.login } else { $null }
                     $feedback += [pscustomobject]@{ Kind = 'review'; Key = "review:$($r.databaseId)"; Login = $login; Assoc = $r.authorAssociation }
                 }
-                $reviewStates = @($reviews | ForEach-Object {
-                        $rl = if ($_.author) { $_.author.login } else { $null }
-                        [pscustomobject]@{ Login = $rl; State = $_.state }
-                    })
-                $viewerApproved = Test-ViewerApproved -Viewer $viewer -Reviews $reviewStates
+                $viewerApproved = Test-ViewerApproved -Viewer $viewer -Reviews (ConvertTo-ReviewStates -RawReviews $reviews)
             } catch {
                 Write-Host "[$(Get-Date -Format o)] poll $i feedback fetch failed (holding merge/readiness this poll, will retry): $($_.Exception.Message)"
                 $feedback = @(); $viewerApproved = $false; $feedbackAvailable = $false

@@ -363,29 +363,74 @@ try {
     # Reviews are passed oldest -> newest as @{ Login; State }.
     $me = 'me'
     # Viewer approved and nothing since -> approved.
-    Assert-True (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'me'; State = 'APPROVED' }) -Viewer $me) 'WPG-DECISION-20: lone approval counts'
+    Assert-True (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 1 }) -Viewer $me) 'WPG-DECISION-20: lone approval counts'
     # Viewer approved then later requested changes -> NOT approved (the bug #407 fixes: any-historical-APPROVED was wrong).
     Assert-True (-not (Test-ViewerApproved -Reviews @(
-                [pscustomobject]@{ Login = 'me'; State = 'APPROVED' },
-                [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED' }) -Viewer $me)) 'WPG-DECISION-20: later changes-requested overrides the approval'
+                [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 1 },
+                [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED'; Order = 2 }) -Viewer $me)) 'WPG-DECISION-20: later changes-requested overrides the approval'
     # Viewer approved then dismissed their own review -> NOT approved.
     Assert-True (-not (Test-ViewerApproved -Reviews @(
-                [pscustomobject]@{ Login = 'me'; State = 'APPROVED' },
-                [pscustomobject]@{ Login = 'me'; State = 'DISMISSED' }) -Viewer $me)) 'WPG-DECISION-20: later dismissal overrides the approval'
+                [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 1 },
+                [pscustomobject]@{ Login = 'me'; State = 'DISMISSED'; Order = 2 }) -Viewer $me)) 'WPG-DECISION-20: later dismissal overrides the approval'
     # A later COMMENTED review does NOT supersede a standing approval (only APPROVED/CHANGES_REQUESTED/DISMISSED count).
     Assert-True (Test-ViewerApproved -Reviews @(
-            [pscustomobject]@{ Login = 'me'; State = 'APPROVED' },
-            [pscustomobject]@{ Login = 'me'; State = 'COMMENTED' }) -Viewer $me) 'WPG-DECISION-20: a later COMMENTED review does not revoke approval'
+            [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 1 },
+            [pscustomobject]@{ Login = 'me'; State = 'COMMENTED'; Order = 2 }) -Viewer $me) 'WPG-DECISION-20: a later COMMENTED review does not revoke approval'
     # Only OTHER users approved -> viewer not approved.
-    Assert-True (-not (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'someone'; State = 'APPROVED' }) -Viewer $me)) 'WPG-DECISION-20: another user approving does not count'
+    Assert-True (-not (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'someone'; State = 'APPROVED'; Order = 1 }) -Viewer $me)) 'WPG-DECISION-20: another user approving does not count'
     # Viewer requested changes then approved -> approved (latest wins the other way too).
     Assert-True (Test-ViewerApproved -Reviews @(
-            [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED' },
-            [pscustomobject]@{ Login = 'me'; State = 'APPROVED' }) -Viewer $me) 'WPG-DECISION-20: latest approval after changes counts'
+            [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED'; Order = 1 },
+            [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 2 }) -Viewer $me) 'WPG-DECISION-20: latest approval after changes counts'
     # No reviews / empty viewer -> not approved.
     Assert-True (-not (Test-ViewerApproved -Reviews @() -Viewer $me)) 'WPG-DECISION-20: no reviews -> not approved'
-    Assert-True (-not (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'me'; State = 'APPROVED' }) -Viewer '')) 'WPG-DECISION-20: empty viewer -> not approved'
+    Assert-True (-not (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 1 }) -Viewer '')) 'WPG-DECISION-20: empty viewer -> not approved'
+    # A viewer whose ONLY review is COMMENTED is not approved (COMMENTED is not a meaningful state).
+    Assert-True (-not (Test-ViewerApproved -Reviews @([pscustomobject]@{ Login = 'me'; State = 'COMMENTED'; Order = 1 }) -Viewer $me)) 'WPG-DECISION-20: sole COMMENTED review is not approved'
+    # A null-Login review (deleted author) is never attributed to the viewer.
+    Assert-True (-not (Test-ViewerApproved -Reviews @(
+                [pscustomobject]@{ Login = $null; State = 'APPROVED'; Order = 1 },
+                [pscustomobject]@{ Login = 'me'; State = 'COMMENTED'; Order = 2 }) -Viewer $me)) 'WPG-DECISION-20: null-login review is skipped'
+    # Another user's review interleaved between the viewer's own reviews is ignored.
+    Assert-True (Test-ViewerApproved -Reviews @(
+            [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED'; Order = 1 },
+            [pscustomobject]@{ Login = 'other'; State = 'CHANGES_REQUESTED'; Order = 2 },
+            [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 3 }) -Viewer $me) 'WPG-DECISION-20: interleaved other-user review ignored'
+    # "Latest" is decided by Order, not array position: an APPROVED with a higher Order that
+    # appears FIRST in the array still wins over an earlier-ordered CHANGES_REQUESTED.
+    Assert-True (Test-ViewerApproved -Reviews @(
+            [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 9 },
+            [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED'; Order = 4 }) -Viewer $me) 'WPG-DECISION-20: higher Order approval wins regardless of array position'
+    # And the reverse: a higher-Order CHANGES_REQUESTED beats an earlier-ordered APPROVED.
+    Assert-True (-not (Test-ViewerApproved -Reviews @(
+                [pscustomobject]@{ Login = 'me'; State = 'CHANGES_REQUESTED'; Order = 9 },
+                [pscustomobject]@{ Login = 'me'; State = 'APPROVED'; Order = 4 }) -Viewer $me)) 'WPG-DECISION-20: higher Order changes-requested wins regardless of array position'
 } catch { $script:failures += "WPG-DECISION-20 threw: $_" }
+
+Write-Host "== WPG-DECISION-21 ConvertTo-ReviewStates normalizes gh review nodes and tolerates nulls =="
+try {
+    # gh-shaped nodes (author{login}, state, databaseId) -> ordered @{ Login; State; Order }.
+    $raw = @(
+        [pscustomobject]@{ author = [pscustomobject]@{ login = 'me' }; state = 'APPROVED'; databaseId = 5 },
+        $null,
+        [pscustomobject]@{ author = $null; state = 'COMMENTED'; databaseId = 6 }
+    )
+    $states = ConvertTo-ReviewStates -RawReviews $raw
+    Assert-Eq 2 @($states).Count 'WPG-DECISION-21: null node skipped'
+    Assert-Eq 'me' $states[0].Login 'WPG-DECISION-21: author login mapped'
+    Assert-Eq 'APPROVED' $states[0].State 'WPG-DECISION-21: state mapped'
+    Assert-Eq 5 $states[0].Order 'WPG-DECISION-21: databaseId mapped to Order'
+    Assert-True ($null -eq $states[1].Login) 'WPG-DECISION-21: null author -> null Login'
+    # Empty / null input -> empty list, no throw.
+    Assert-Eq 0 @(ConvertTo-ReviewStates -RawReviews @()).Count 'WPG-DECISION-21: empty input -> empty'
+    Assert-Eq 0 @(ConvertTo-ReviewStates -RawReviews $null).Count 'WPG-DECISION-21: null input -> empty'
+    # Round-trips into Test-ViewerApproved: a normalized withdrawn approval is not approved.
+    $rt = ConvertTo-ReviewStates -RawReviews @(
+        [pscustomobject]@{ author = [pscustomobject]@{ login = 'me' }; state = 'APPROVED'; databaseId = 1 },
+        [pscustomobject]@{ author = [pscustomobject]@{ login = 'me' }; state = 'CHANGES_REQUESTED'; databaseId = 2 }
+    )
+    Assert-True (-not (Test-ViewerApproved -Reviews $rt -Viewer 'me')) 'WPG-DECISION-21: normalized withdrawn approval is not approved'
+} catch { $script:failures += "WPG-DECISION-21 threw: $_" }
 
 Write-Host ""
 if ($script:failures.Count -gt 0) {
