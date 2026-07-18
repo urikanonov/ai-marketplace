@@ -407,6 +407,16 @@ It is safe to re-run any time (for example after a lockfile change). Node.js (`n
 and Git must be on PATH first. Until the Node deps are installed, `rebuild_all.py` skips its tutorial
 screenshots step (it needs `@playwright/test`) with a note pointing back here rather than failing.
 
+When to run it (agents): a fresh clone is a weak trigger because an agent usually lands in an
+existing checkout, so make readiness an explicit precondition instead. BEFORE running anything that
+needs the dev dependencies - a plugin or site Playwright suite, `rebuild_all.py`, or a `RUN_E2E`
+push - first run `python scripts/setup_dev.py --check` (fast and side-effect-free; it exits non-zero
+when the clone is not ready) and, if it reports not ready, run `python scripts/setup_dev.py`.
+Likewise, if a local command fails because a Node dependency or a Playwright browser is missing, run
+`python scripts/setup_dev.py` rather than reaching for `--no-verify`. The installer is never run
+automatically from a check/test/build (a silent `npm ci` or browser download mid-run is a surprising
+side effect); it stays an explicit step so `--check` is the readiness gate an agent calls first.
+
 ## Validate before you commit
 
 ```bash
