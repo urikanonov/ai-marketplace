@@ -8,6 +8,7 @@
     "cross-platform (ubuntu-latest)",
     "cross-platform (windows-latest)",
     "dist-in-sync",
+    "multi-duck-review",
     "plugin-tests",
     "pwsh-tests (ubuntu-latest)",
     "pwsh-tests (windows-latest)",
