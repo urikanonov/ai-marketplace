@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.144.0";
+const CMH_VERSION = "1.145.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7545,7 +7545,7 @@ function setupDeck() {
   //   "off"    - comments disabled (present-only), only selectable at zero comments
   let commentMode = false;
   let deckMode = "closed";
-  let modeMenu = null, modeToggle = null, modePaneItem = null, modeOffItem = null;
+  let modeMenu = null, modeToggle = null, modeRadioItems = [];
   let counter = null, prevBtn = null, nextBtn = null;
   let edgePrevBtn = null, edgeNextBtn = null;
   let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
@@ -8047,20 +8047,21 @@ function setupDeck() {
         ? "Comment options (commenting disabled)"
         : (paneOpen ? "Comment options (review panel open)" : "Comment options"));
     }
-    if (modePaneItem) {
-      modePaneItem.textContent = paneOpen ? "Close comment panel" : "Open comment panel";
-      modePaneItem.setAttribute("aria-checked", paneOpen ? "true" : "false");
-    }
-    if (modeOffItem) {
-      modeOffItem.textContent = off ? "Enable commenting" : "Disable commenting";
-      // Enabling is always allowed; disabling only when there are no comments to strand.
-      const allow = off ? true : canDisableComments();
-      modeOffItem.disabled = !allow;
-      modeOffItem.setAttribute("aria-disabled", allow ? "false" : "true");
-      modeOffItem.title = (!off && !allow)
+    modeRadioItems.forEach((item) => {
+      const m = item.getAttribute("data-deck-mode");
+      const on = m === deckMode;
+      item.setAttribute("aria-checked", on ? "true" : "false");
+      item.classList.toggle("cmh-deck-mode-item-current", on);
+      // The three states are mutually exclusive (exactly one selected). "Comments off" is only
+      // selectable while no comment exists, so existing feedback is never stranded behind a
+      // present-only lock.
+      const allow = m !== "off" ? true : (off || canDisableComments());
+      item.disabled = !allow;
+      item.setAttribute("aria-disabled", allow ? "false" : "true");
+      item.title = (m === "off" && !allow)
         ? "Delete every comment before you can disable commenting"
         : "";
-    }
+    });
   }
 
   function openModeMenu() {
@@ -8070,7 +8071,8 @@ function setupDeck() {
     modeToggle.setAttribute("aria-expanded", "true");
     document.addEventListener("click", onModeMenuOutside, true);
     document.addEventListener("keydown", onModeMenuKey, true);
-    const first = modeMenu.querySelector(".cmh-deck-mode-item:not([disabled])");
+    const first = modeMenu.querySelector('.cmh-deck-mode-radio[aria-checked="true"]:not([disabled])')
+      || modeMenu.querySelector(".cmh-deck-mode-item:not([disabled])");
     if (first) setTimeout(() => { try { first.focus(); } catch (e) {} }, 0);
   }
   function closeModeMenu(focusToggle) {
@@ -8139,23 +8141,28 @@ function setupDeck() {
   modeMenu.hidden = true;
   toggle.setAttribute("aria-controls", modeMenu.id);
 
-  modePaneItem = document.createElement("button");
-  modePaneItem.type = "button";
-  modePaneItem.className = "cmh-deck-mode-item cmh-deck-mode-pane";
-  modePaneItem.setAttribute("role", "menuitemcheckbox");
-  modePaneItem.addEventListener("click", () => {
-    setDeckMode(deckMode === "open" ? "closed" : "open");
-    closeModeMenu(false);
-  });
-
-  modeOffItem = document.createElement("button");
-  modeOffItem.type = "button";
-  modeOffItem.className = "cmh-deck-mode-item cmh-deck-mode-off-item";
-  modeOffItem.setAttribute("role", "menuitem");
-  modeOffItem.addEventListener("click", () => {
-    if (deckMode === "off") setDeckMode("closed");
-    else if (canDisableComments()) setDeckMode("off");
-    closeModeMenu(false);
+  const DECK_MODE_OPTIONS = [
+    { mode: "off", label: "Comments off", cls: "cmh-deck-mode-off-item" },
+    { mode: "closed", label: "Comments on, panel closed", cls: "cmh-deck-mode-closed-item" },
+    { mode: "open", label: "Comments on, panel open", cls: "cmh-deck-mode-open-item" },
+  ];
+  // A radio group: the three deck states are mutually exclusive, so exactly one is selected at a
+  // time (menuitemradio). Selecting an option applies it; "Comments off" is disabled while any
+  // comment exists (see updateModeMenu).
+  modeRadioItems = DECK_MODE_OPTIONS.map((opt) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "cmh-deck-mode-item cmh-deck-mode-radio " + opt.cls;
+    item.setAttribute("role", "menuitemradio");
+    item.setAttribute("data-deck-mode", opt.mode);
+    item.textContent = opt.label;
+    item.addEventListener("click", () => {
+      if (item.disabled) return;
+      setDeckMode(opt.mode);
+      closeModeMenu(false);
+    });
+    modeMenu.appendChild(item);
+    return item;
   });
 
   const modeSep = document.createElement("span");
@@ -8171,8 +8178,6 @@ function setupDeck() {
   siteItem.textContent = "Commentable HTML site";
   siteItem.addEventListener("click", () => closeModeMenu(false));
 
-  modeMenu.appendChild(modePaneItem);
-  modeMenu.appendChild(modeOffItem);
   modeMenu.appendChild(modeSep);
   modeMenu.appendChild(siteItem);
   modeCtl.appendChild(toggle);

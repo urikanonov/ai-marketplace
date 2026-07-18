@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.145.0] - 2026-07-18
+
+### Changed
+
+- Deck comment-options menu (all decks): the menu surface is now a 3-state RADIO GROUP of mutually
+  exclusive options - `Comments off`, `Comments on, panel closed`, and `Comments on, panel open` -
+  of which exactly one is selected (`menuitemradio`, `aria-checked`), so choosing one is clearly a
+  single pick rather than a set of independent toggles. `Comments off` stays disabled while any
+  comment exists (so feedback is never stranded), the site link remains a menu item, and full
+  keyboard navigation is preserved (opening focuses the checked option) (CMH-DECK-11).
+- The showcase deck's top-right brand mark is now the official Commentable HTML logo rendered as a
+  plain image (an inlined, offline-safe `data:` SVG) instead of a bordered card with a hand-drawn
+  glyph; it still links to the project site with a clear tooltip (CMH-DECK-SHOWCASE-10).
+
 ## [1.144.0] - 2026-07-18
 
 ### Changed
