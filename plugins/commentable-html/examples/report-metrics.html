@@ -3130,7 +3130,8 @@ function commentTimestamp(c) {
 // at startup. Both bounds are far beyond anything a real document ever needs, so normal
 // documents are unaffected.
 const CMH_MAX_COMMENTS = 1000;
-const CMH_MAX_OFFSET = 50000000; // 50e6 chars: no real document approaches this
+const CMH_MAX_OFFSET = 1000000000; // 1e9 chars: no real document approaches this, but an
+// orphaned-anchor offset just past a document's end (e.g. a stale reload target) stays sane.
 // True for non-text-anchored comments (document/image/widget/mermaid/diff), which never
 // carry start/end and so never drive the offset-based context/highlight walk - those
 // pass through untouched. A text-anchored comment (start and/or end present) must have
