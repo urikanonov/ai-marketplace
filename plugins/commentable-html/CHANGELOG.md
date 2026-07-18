@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.156.0] - 2026-07-18
+
+### Security
+
+- PPTX deck imports now preflight ZIP central-directory metadata before starting the vendored
+  extractor, rejecting archives with excessive expanded size, entry count, or compression ratio
+  to prevent zip-bomb memory exhaustion (CMH-DECK-29, closes #410).
+
 ## [1.155.0] - 2026-07-19
 
 ### Security

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for deck/pptx_to_fragment.py (CMH-DECK-03a).
+"""Tests for deck/pptx_to_fragment.py (CMH-DECK-03a, CMH-DECK-29).
 
 Extracted PowerPoint text must be HTML-escaped (no injection), one section per slide with a
 stable data-slide-id, speaker notes ignored, and the local --pptx fallback must fail closed.
@@ -7,10 +7,12 @@ stable data-slide-id, speaker notes ignored, and the local --pptx fallback must 
 import json
 import os
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
@@ -36,6 +38,69 @@ HOSTILE = [
 
 
 class PptxToFragmentTests(unittest.TestCase):
+    def _write_minimal_pptx(self):
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
+        path = Path(tmp, "input.pptx")
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("[Content_Types].xml", b"<Types/>")
+        return str(path)
+
+    def test_cmh_deck_29_pptx_zip_bomb_preflight(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            normal = Path(tmp, "normal.pptx")
+            with zipfile.ZipFile(normal, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("[Content_Types].xml", b"<Types/>")
+            self.assertIsNone(p2f._preflight_pptx_archive(normal))
+
+            oversized = Path(tmp, "oversized.pptx")
+            with zipfile.ZipFile(oversized, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("ppt/media/large.bin", b"x")
+            raw = bytearray(oversized.read_bytes())
+            central_header = raw.index(b"PK\x01\x02")
+            struct.pack_into("<I", raw, central_header + 24, p2f.MAX_PPTX_ENTRY_BYTES + 1)
+            oversized.write_bytes(raw)
+            with self.assertRaisesRegex(ValueError, "entry"):
+                p2f._preflight_pptx_archive(oversized)
+            with mock.patch.object(p2f.subprocess, "run") as run:
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+                    p2f._extract_via_local(str(oversized))
+                run.assert_not_called()
+            self.assertIn("PPTX archive rejected", stderr.getvalue())
+
+            oversized_total = Path(tmp, "oversized-total.pptx")
+            with zipfile.ZipFile(oversized_total, "w", zipfile.ZIP_DEFLATED) as archive:
+                for index in range(5):
+                    archive.writestr(f"ppt/media/{index}.bin", b"x")
+            raw = bytearray(oversized_total.read_bytes())
+            offset = 0
+            while True:
+                central_header = raw.find(b"PK\x01\x02", offset)
+                if central_header < 0:
+                    break
+                struct.pack_into("<I", raw, central_header + 24, 220 * 1024 * 1024)
+                offset = central_header + 46
+            oversized_total.write_bytes(raw)
+            with self.assertRaisesRegex(ValueError, "archive expands"):
+                p2f._preflight_pptx_archive(oversized_total)
+
+            high_ratio = Path(tmp, "high-ratio.pptx")
+            with zipfile.ZipFile(high_ratio, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("ppt/media/compressed.bin", b"A" * (1024 * 1024))
+            with self.assertRaisesRegex(ValueError, "compression ratio"):
+                p2f._preflight_pptx_archive(high_ratio)
+
+            too_many = Path(tmp, "too-many.pptx")
+            with zipfile.ZipFile(too_many, "w", zipfile.ZIP_STORED) as archive:
+                for index in range(p2f.MAX_PPTX_ENTRIES + 1):
+                    archive.writestr(f"ppt/empty/{index}", b"")
+            with self.assertRaisesRegex(ValueError, "entries"):
+                p2f._preflight_pptx_archive(too_many)
+
     def test_hostile_text_is_escaped(self):
         frag = p2f.slides_to_fragment(HOSTILE)
         self.assertNotIn("<script>", frag)
@@ -149,7 +214,7 @@ class PptxToFragmentTests(unittest.TestCase):
         with mock.patch.object(p2f, "VENDOR_EXTRACTOR", dummy):
             with contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
-                    p2f.main(["--pptx", os.path.join(d, "x.pptx")])
+                    p2f.main(["--pptx", self._write_minimal_pptx()])
 
 
     def test_non_text_and_empty_blocks_skipped(self):
@@ -172,7 +237,7 @@ class PptxToFragmentTests(unittest.TestCase):
             with mock.patch("subprocess.run", return_value=result):
                 with contextlib.redirect_stderr(io.StringIO()):
                     with self.assertRaises(SystemExit):
-                        p2f.main(["--pptx", "any.pptx"])
+                        p2f.main(["--pptx", self._write_minimal_pptx()])
 
 
     def test_local_extract_no_json(self):
@@ -183,7 +248,7 @@ class PptxToFragmentTests(unittest.TestCase):
         with mock.patch("subprocess.run", return_value=ok):
             with contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
-                    p2f.main(["--pptx", "any.pptx"])
+                    p2f.main(["--pptx", self._write_minimal_pptx()])
 
 
     def test_local_extract_success(self):
@@ -200,7 +265,7 @@ class PptxToFragmentTests(unittest.TestCase):
         out = os.path.join(tempfile.mkdtemp(), "o.html")
         with mock.patch("subprocess.run", side_effect=fake_run):
             with contextlib.redirect_stderr(io.StringIO()):
-                self.assertEqual(p2f.main(["--pptx", "any.pptx", "--out", out]), 0)
+                self.assertEqual(p2f.main(["--pptx", self._write_minimal_pptx(), "--out", out]), 0)
         self.assertIn("<section", Path(out).read_text(encoding="utf-8"))
 
 
@@ -240,7 +305,7 @@ class PptxToFragmentTests(unittest.TestCase):
         out = os.path.join(tempfile.mkdtemp(), "o.html")
         with mock.patch("subprocess.run", side_effect=fake_run):
             with contextlib.redirect_stderr(io.StringIO()):
-                self.assertEqual(p2f.main(["--pptx", "any.pptx", "--out", out]), 0)
+                self.assertEqual(p2f.main(["--pptx", self._write_minimal_pptx(), "--out", out]), 0)
         html = Path(out).read_text(encoding="utf-8")
         # the extracted image is inlined (survives the deleted temp dir), not a dangling assets/ ref
         self.assertIn('<img src="data:image/png;base64,', html)
