@@ -79,5 +79,7 @@ python scripts/task.py finish 188 "Enforced a CSS min-width and covered it with 
   `--watch` it becomes a daemon beating every `--interval` seconds (default 300); run it session-scoped
   so a stopped heartbeat certainly means work stopped. `stale` lists in-progress issues whose heartbeat
   is missing or older than the threshold, so abandoned work is easy to find and resume from its branch.
-
-The pure helpers are covered by `scripts/test_task.py`, run by the required `validate` CI check.
+- The "Work status" comment is adopted only from a trusted author - a maintainer/collaborator
+  (`author_association` OWNER/MEMBER/COLLABORATOR) or the invoking account itself - so an outsider cannot
+  plant it on a public issue; heartbeats never regress a newer timestamp, and duplicate status comments
+  (from a rare concurrent first-write) converge to one by editing the oldest and pruning the rest.
