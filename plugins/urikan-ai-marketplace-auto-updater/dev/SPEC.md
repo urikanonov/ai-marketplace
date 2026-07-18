@@ -10,7 +10,7 @@ named test in the same change (see the repo `AGENTS.md` "Spec-and-test disciplin
 
 Covering test suite: `plugins/urikan-ai-marketplace-auto-updater/dev/tests/updater.Tests.ps1`
 (a pwsh script; runs on `windows-latest` and `ubuntu-latest` via
-`.github/workflows/auto-updater-tests.yml`). It exercises the real
+`.github/workflows/pwsh-tests.yml`). It exercises the real
 `pkg/hooks/marketplace-update.ps1` against isolated temp `COPILOT_HOME` / `CLAUDE_CONFIG_DIR` sandboxes
 with stubbed `copilot` / `claude` commands, so no real updates and no network calls occur.
 
