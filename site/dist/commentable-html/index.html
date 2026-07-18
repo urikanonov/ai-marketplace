@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.153.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.154.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.154.0] - 2026-07-18</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>Checklist and notes state maps (<code>_clOverrides</code>, the <code>::cl</code> save/load maps, <code>_noteOverrides</code>) are now built with <code>Object.create(null)</code> at every assignment site; <code>_clLoad</code> additionally re-homes the parsed outer map and each per-checklist inner map onto a null-prototype copy before reading them, and the checklist token lookup uses a <code>hasOwnProperty</code> guard. As a result, a checklist authored with <code>data-cmh-checklist=&quot;__proto__&quot;</code>/<code>&quot;constructor&quot;</code> (or a crafted <code>::cl</code> localStorage payload using <code>__proto__</code>/<code>constructor</code> keys or codes) can no longer write onto or return <code>Object.prototype</code>. A checklist id or item key of <code>constructor</code>/<code>__proto__</code> still works as ordinary data; no behavior changed for legitimate documents (CMH-SEC-02).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.153.0] - 2026-07-18</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Section review tracking: hover or keyboard-focus any heading (h1-h6) to mark that section reviewed. A badge to the right of the title shows one of four states - Reviewed (green), Changed - re-review (amber, when the section content changed since it was reviewed), Commented (blue, when the section has an open comment), or unreviewed. Change detection uses a deterministic content hash of the section (heading to the next same-or-higher heading, excluding runtime chrome); a one-click re-review on a Changed/Commented badge re-stamps it. The side table-of-contents gains a per-entry state dot and an All / Reviewed / Unreviewed / Commented / Changed filter that collapses the sections it hides. Markers persist in localStorage (with tombstones for cleared baked markers) and bake into Portable/Offline exports via a dedicated <code>reviewedSections</code> block (kept out of the Copy-all bundle; stripped from Plain export). New <code>tools/authoring/mark_reviewed.py</code> bakes markers from the CLI, and <code>section_hash.py</code> shares the byte-identical hash contract with the runtime (pinned equal by a JS/Python golden and an end-to-end extractor-parity test).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.149.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
@@ -439,8 +448,6 @@
               <li>Bounded <code>mergeCommentSets()</code> against a pathological <code>embeddedComments</code> array or a poisoned cross-document <code>localStorage</code> array under a matching <code>data-comment-key</code>: the merged comment count is now capped at a generous <code>CMH_MAX_COMMENTS</code> bound, and any comment whose <code>start</code>/<code>end</code> is present but not a finite, non-negative, ordered, in-range offset is dropped, so startup&#x27;s <code>backfillContext()</code>/<code>restoreHighlights()</code> per-comment document walk can no longer be driven into unbounded O(comment_count x document_size) work by untrusted input. Normal documents with realistic comment counts and offsets are unaffected (CMH-PERSIST-04).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.145.0] - 2026-07-18</h3></div>
             <div class="group-label">Changed</div>
@@ -483,14 +490,7 @@
               <li>The deck overview grid renders faithful thumbnails: slide canvases are snapshotted into images (a cloned canvas is blank), and each cloned SVG&#x27;s ids are namespaced per clone (with <code>url(#id)</code>, <code>href</code>, and aria idref references rewritten) so a thumbnail&#x27;s gradient/mask/filter refs resolve to its OWN defs - fixing the slide-1 logo rendering black, without duplicating a document id when two slides reuse the same id (CMH-DECK-24).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.141.0] - 2026-07-17</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>tools/authoring/upgrade.py</code> now restamps the <code>&lt;head&gt;</code> <code>&lt;meta name=&quot;commentable-html-version&quot;&gt;</code> to the template&#x27;s runtime version during an upgrade (inserting it when a pre-version legacy document lacks it), so an upgraded document no longer self-reports the old version while running the new runtime. The restamp is scoped to <code>&lt;head&gt;</code>, so the marker-like JS export regex literal (<code>content=&quot;[^&quot;]+&quot;</code>) is never matched or rewritten. Post-upgrade validator warnings are now surfaced instead of discarded, and a new opt-in <code>--strict</code> flag treats them as a failure (leaving the target unchanged and exiting non-zero); the default still commits so a version-only upgrade is never blocked by a pre-existing content warning (CMH-TOOL-08, closes #359).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">124 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">125 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -104,16 +104,24 @@ function _clSetLeaf(item, token) {
   else { if (!_clOverrides[cid]) _clOverrides[cid] = Object.create(null); _clOverrides[cid][item.key] = token; }
   if (_clOverrides[cid] && !Object.keys(_clOverrides[cid]).length) delete _clOverrides[cid];
 }
+// A JSON.parse'd object still chains to Object.prototype, so a crafted "__proto__" or
+// "constructor" own key survives Object.keys() fine, but any direct property read (not just
+// the destination writes above) should not be able to fall through to the prototype. Re-home
+// every parsed map onto a null-prototype copy before it is read from, per CMH-SEC-02.
+function _clNullProto(obj) {
+  return obj && typeof obj === "object" ? Object.assign(Object.create(null), obj) : Object.create(null);
+}
 function _clLoad() {
   _clOverrides = Object.create(null);
   let raw = null;
   try { raw = localStorage.getItem(CMH_CL_KEY); } catch (e) { raw = null; }
-  let data = {};
-  try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
-  if (!data || typeof data !== "object") return;
+  let parsed = {};
+  try { parsed = raw ? JSON.parse(raw) : {}; } catch (e) { parsed = {}; }
+  if (!parsed || typeof parsed !== "object") return;
+  const data = _clNullProto(parsed);
   Object.keys(data).forEach((cid) => {
-    const m = data[cid];
-    if (!m || typeof m !== "object") return;
+    if (!data[cid] || typeof data[cid] !== "object") return;
+    const m = _clNullProto(data[cid]);
     Object.keys(m).forEach((key) => {
       const token = Object.prototype.hasOwnProperty.call(CMH_CHECK_TOKEN, m[key]) ? CMH_CHECK_TOKEN[m[key]] : null;
       if (token) { if (!_clOverrides[cid]) _clOverrides[cid] = Object.create(null); _clOverrides[cid][key] = token; }
