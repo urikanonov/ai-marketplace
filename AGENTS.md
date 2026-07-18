@@ -704,7 +704,9 @@ PR merges, and you move a card to In Progress yourself when you claim it.
 
 **Issue-first is a non-negotiable (see rule 2).** Track the work as a `task`-labeled issue that is
 `In Progress` and assigned to you BEFORE writing any code. You can (and should) file the issue before the
-worktree exists, since it is not a file in the tree.
+worktree exists, since it is not a file in the tree. The moment you START work, create the worktree +
+branch and STAMP that branch on the issue, and keep a heartbeat running (see "Signal that an issue is
+actively being worked on" below) so an abandoned issue is detectable and its branch is recoverable.
 
 Prefer the in-repo task-management skill, which wraps these `gh` calls with the right parameters. The raw
 commands are:
@@ -715,12 +717,24 @@ commands are:
 2. If nothing covers it, CREATE one, labeled `task`, filling the form's sections (Description, Acceptance
    criteria as a checklist, optional Implementation plan):
    `gh issue create --label task --title "Title" --body "..."`.
-3. CLAIM it: `gh issue edit <n> --add-assignee @me --add-label "status: in progress"` (and move its
-   Status to In Progress on the Project board).
-4. PLAN it, then share the plan and get approval before coding: post the implementation plan as a comment
+3. CLAIM it AND immediately STAMP the worktree branch. The one-step way is
+   `python scripts/task.py start <n> --slug "<short desc>"`: it fetches, creates
+   `.worktrees/<branch>` off the latest `origin/main`, assigns `@me`, adds `status: in progress`, and
+   posts the pinned "Work status" comment carrying the branch. (Equivalently, create the worktree
+   yourself per rule 1, then `python scripts/task.py claim <n>` from inside it - claim auto-detects and
+   stamps the current branch. Move the card to In Progress on the Project board.) Stamping the branch
+   the moment work starts means a dropped task can be resumed from the same branch by the next worker.
+4. HEARTBEAT while you work. Start the session-scoped daemon once and leave it running:
+   `python scripts/task.py heartbeat <n> --watch`. It refreshes the "Work status" comment's UTC
+   timestamp every 5 minutes in place (no new comment each beat). Launch it as a process TIED TO YOUR
+   SESSION (not detached) so it stops the instant your session ends - a stopped heartbeat is the signal
+   that no one is working the issue. Run `python scripts/task.py stale` any time to list in-progress
+   issues whose heartbeat is missing or older than the threshold (15 min by default) - those are free to
+   take over, resuming from the branch stamped in their "Work status" comment.
+5. PLAN it, then share the plan and get approval before coding: post the implementation plan as a comment
    with `gh issue comment <n> --body "1. ...  2. ..."`.
-5. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it.
-6. FINISH: open the PR with `Closes #<n>` in its body. The `issue-status-sync` workflow marks the issue
+6. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it.
+7. FINISH: open the PR with `Closes #<n>` in its body. The `issue-status-sync` workflow marks the issue
    In Progress when the PR opens; merging the PR closes the issue, and `issue-status-sync` then removes
    the `status: in progress` label on close (so a done issue is never left labelled In Progress) while
    the Project board's built-in workflow moves the card to Done. Record the final summary in the PR
@@ -729,6 +743,29 @@ commands are:
 CAPTURE as you go: the moment a follow-up or new problem surfaces mid-session, file an issue for it
 immediately (`gh issue create --label task ...`) so it never lives only in the chat transcript. That is
 the whole point of issue-first - it is how work stops getting forgotten between sessions.
+
+### Signal that an issue is actively being worked on (branch stamp + heartbeat)
+
+So the maintainer can tell for certain whether an in-progress issue is actually being worked on (and so
+dropped work can be resumed), every agent working an issue MUST do two things, both automated by
+`scripts/task.py`:
+
+- STAMP THE WORKTREE BRANCH IMMEDIATELY. When you start work you create the worktree + branch off the
+  latest `origin/main` (rule 1); record that branch on the issue AT ONCE via `task.py start` (which does
+  it for you) or `task.py claim` (which auto-detects the current branch). The branch is written into a
+  single pinned "Work status" comment. If the work is abandoned, the next worker checks out that same
+  branch and continues from where it stopped, instead of starting over.
+- KEEP A HEARTBEAT RUNNING. Start `python scripts/task.py heartbeat <n> --watch` once when you begin and
+  leave it running for the whole session. It edits the "Work status" comment in place every 5 minutes
+  with a fresh UTC timestamp - it does NOT post a new comment each beat, so the timeline stays clean. The
+  heartbeat represents a LIVE worker: launch it as a session-scoped background process (NOT fully
+  detached), so it dies with your session. A heartbeat that stopped more than ~15 minutes ago (or a
+  "Work status" comment that never appeared) therefore certainly means no agent is on the issue.
+
+The maintainer (or another agent looking for work) runs `python scripts/task.py stale [--minutes N]` to
+list in-progress `task` issues whose heartbeat is missing or older than N minutes - the definitive
+"nobody is working this" list, each row naming the branch to resume from. The heartbeat helpers are pure
+and unit-tested in `scripts/test_task.py` (the required `validate` check runs them).
 
 ## Driving a PR or issue to completion (drive-to-merge)
 
