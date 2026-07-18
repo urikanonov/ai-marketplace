@@ -48,7 +48,16 @@ function ConvertFrom-WatcherState {
     }
     try {
         $s = $Json | ConvertFrom-Json
-        return [pscustomobject]@{ Seen = @($s.seen); NoMerge = [bool]$s.noMerge }
+        # Fail CLOSED per field: a missing or null noMerge assumes the opt-out ($true), and a
+        # missing or null seen is an empty set. Read via PSObject.Properties so a missing
+        # property is StrictMode-safe (a bare $s.noMerge would throw under StrictMode). This
+        # keeps a partial/legacy/tampered state object (e.g. {"noMerge":null}) from silently
+        # re-enabling merging.
+        $noMergeProp = $s.PSObject.Properties['noMerge']
+        $noMerge = if ($noMergeProp -and $null -ne $noMergeProp.Value) { [bool]$noMergeProp.Value } else { $true }
+        $seenProp = $s.PSObject.Properties['seen']
+        $seenVal = if ($seenProp -and $null -ne $seenProp.Value) { @($seenProp.Value) } else { @() }
+        return [pscustomobject]@{ Seen = $seenVal; NoMerge = $noMerge }
     } catch {
         return [pscustomobject]@{ Seen = @(); NoMerge = $true }
     }
@@ -89,9 +98,11 @@ function Get-FailedCheckIds {
             $ids += "sc$($ctx.context)"
         }
     }
-    # Return a real array (never unrolled to a scalar) that is EMPTY when there are no
-    # failures. A leading-comma wrapper (`,@(...)`) would turn an empty result into a
-    # one-element array holding an empty array, so build the typed array explicitly.
+    # Return the failing-run identities, sorted. NOTE: a PowerShell function return unrolls a
+    # collection through the pipeline (empty -> nothing, one element -> a scalar, many -> an
+    # array), so callers normalize with @(...) before use; the [string[]] cast just keeps the
+    # element type stable. A leading-comma wrapper (`,@(...)`) is deliberately NOT used because
+    # it would turn an empty result into a one-element array holding an empty array.
     return [string[]]@($ids | Sort-Object)
 }
 
@@ -110,8 +121,14 @@ function Get-FailedCheckIds {
 #
 # $IsTrusted: scriptblock (login, assoc) -> [bool].
 # $ResolveViewerPermission: scriptblock () -> permission string
-#   (admin|maintain|write|triage|read|none|unknown); 'unknown' means the lookup could not
+#   (admin|maintain|write|triage|none|read|unknown); 'unknown' means the lookup could not
 #   be confirmed (transient failure) and must be re-probed next poll, not demoted.
+# $FeedbackAvailable: $false when the caller could NOT fetch the review threads / comments /
+#   reviews this poll (a transient API failure). The pre-feedback events (terminal, conflict,
+#   auto-merge cancellation, failing checks) still fire, but everything from NEW_COMMENTS
+#   onward -- including USER_APPROVED, DRAFT_HELD, and merge readiness -- is SUPPRESSED, so the
+#   watcher never advances or merges a PR on a poll where an unseen review comment might exist
+#   (fail CLOSED, matching the original loop, which aborted the whole poll on a feedback error).
 function Get-WatcherDecision {
     param(
         [Parameter(Mandatory)][object]$Snapshot,
@@ -120,6 +137,7 @@ function Get-WatcherDecision {
         [AllowEmptyCollection()][string[]]$Seen = @(),
         [Parameter(Mandatory)][scriptblock]$IsTrusted,
         [Parameter(Mandatory)][scriptblock]$ResolveViewerPermission,
+        [bool]$FeedbackAvailable = $true,
         [string[]]$CopilotLogins = @('copilot-pull-request-reviewer', 'copilot-pull-request-reviewer[bot]', 'copilot-swe-agent', 'copilot-swe-agent[bot]', 'Copilot')
     )
 
@@ -129,7 +147,10 @@ function Get-WatcherDecision {
 
     function New-Decision($evt, [string[]]$newSeen) {
         # $evt is deliberately untyped so a $null (no-event) is preserved, not coerced to ''.
-        return [pscustomobject]@{ Event = $evt; Seen = @($newSeen) }
+        # Changed reports whether the seen-set grew (a key was added), so the caller persists
+        # only real state changes -- terminal and the un-seen-guarded DISABLE_AUTO_MERGE leave
+        # it unchanged. The seen-set is append-only, so a count delta is a sound "changed" test.
+        return [pscustomobject]@{ Event = $evt; Seen = @($newSeen); Changed = (@($newSeen).Count -ne @($Seen).Count) }
     }
 
     # Terminal states first: a merged or closed PR ends the loop.
@@ -161,6 +182,14 @@ function Get-WatcherDecision {
             return New-Decision "EVENT=CHECKS_FAILED oid=$oid runs=$($failedIds -join ',')" (@($seen) + $ck)
         }
     }
+
+    # Fail CLOSED when this poll's feedback could not be fetched: the pre-feedback events above
+    # (terminal, conflict, auto-merge cancellation, failing checks) have already had their say
+    # and do not depend on feedback, but NEW_COMMENTS and everything after it (USER_APPROVED,
+    # DRAFT_HELD, and merge readiness) must NOT run, because an unseen review comment or an
+    # informal objection might exist. Returning no event keeps the watcher polling until the
+    # feedback fetch recovers, so it never advances or merges a PR on degraded feedback.
+    if (-not $FeedbackAvailable) { return New-Decision $null $seen }
 
     # Fully-paginated actionable feedback: unresolved review threads, non-bot issue
     # comments, and top-level review bodies. Classify each unseen item as trusted (an

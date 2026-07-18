@@ -71,15 +71,18 @@ function New-Snapshot {
 }
 
 function Invoke-Decision {
-    param($Snapshot, [string]$Viewer = 'me', [bool]$OptedOut = $false, [string[]]$Seen = @(), $Trust = $TrustAll, $Perm = $MaintainerPerm)
-    return Get-WatcherDecision -Snapshot $Snapshot -Viewer $Viewer -OptedOut $OptedOut -Seen $Seen -IsTrusted $Trust -ResolveViewerPermission $Perm
+    param($Snapshot, [string]$Viewer = 'me', [bool]$OptedOut = $false, [string[]]$Seen = @(), $Trust = $TrustAll, $Perm = $MaintainerPerm, [bool]$FeedbackAvailable = $true)
+    return Get-WatcherDecision -Snapshot $Snapshot -Viewer $Viewer -OptedOut $OptedOut -Seen $Seen -IsTrusted $Trust -ResolveViewerPermission $Perm -FeedbackAvailable $FeedbackAvailable
 }
 
 Write-Host "== WPG-DECISION-01 merged/closed take precedence over everything =="
 try {
     # Even a conflicting, failing, draft snapshot yields PR_MERGED when merged.
     $s = New-Snapshot -Merged $true -Mergeable 'CONFLICTING' -Rollup 'FAILURE' -IsDraft $true
-    Assert-Eq 'EVENT=PR_MERGED' (Invoke-Decision $s).Event 'WPG-DECISION-01: merged wins'
+    $dm = Invoke-Decision $s
+    Assert-Eq 'EVENT=PR_MERGED' $dm.Event 'WPG-DECISION-01: merged wins'
+    # A terminal event adds no seen key, so it is not persisted (Changed is false).
+    Assert-True (-not $dm.Changed) 'WPG-DECISION-01: terminal event does not grow the seen-set'
     $s2 = New-Snapshot -State 'CLOSED' -Mergeable 'CONFLICTING'
     Assert-Eq 'EVENT=PR_CLOSED' (Invoke-Decision $s2).Event 'WPG-DECISION-01: closed wins'
 } catch { $script:failures += "WPG-DECISION-01 threw: $_" }
@@ -90,6 +93,7 @@ try {
     $d = Invoke-Decision $s
     Assert-Eq 'EVENT=MERGE_CONFLICT' $d.Event 'WPG-DECISION-02: CONFLICTING emits'
     Assert-True ($d.Seen -contains 'conflict:abc123') 'WPG-DECISION-02: conflict key persisted'
+    Assert-True $d.Changed 'WPG-DECISION-02: conflict grows the seen-set (persisted)'
     # Seen-guarded: same oid does not re-fire.
     $d2 = Invoke-Decision $s -Seen $d.Seen
     Assert-Eq $null $d2.Event 'WPG-DECISION-02: seen conflict does not re-fire'
@@ -109,6 +113,11 @@ try {
     # Changes-requested with an active auto-merge -> cancel over the objection.
     $sc = New-Snapshot -AutoMergeEnabled $true -ReviewDecision 'CHANGES_REQUESTED'
     Assert-Eq 'EVENT=DISABLE_AUTO_MERGE reason=changes' (Invoke-Decision $sc).Event 'WPG-DECISION-03: changes cancels'
+    # When BOTH opt-out and changes-requested hold, opt-out is the reported reason (precedence).
+    $sb = New-Snapshot -AutoMergeEnabled $true -ReviewDecision 'CHANGES_REQUESTED'
+    Assert-Eq 'EVENT=DISABLE_AUTO_MERGE reason=optout' (Invoke-Decision $sb -OptedOut $true).Event 'WPG-DECISION-03: optout reason beats changes'
+    # DISABLE_AUTO_MERGE adds no seen key, so it is not persisted (Changed is false).
+    Assert-True (-not $d.Changed) 'WPG-DECISION-03: cancel event does not grow the seen-set'
 } catch { $script:failures += "WPG-DECISION-03 threw: $_" }
 
 Write-Host "== WPG-DECISION-04 CHECKS_FAILED keyed by failing run ids; a rerun re-fires =="
@@ -154,6 +163,13 @@ try {
     )
     $dDup = Invoke-Decision (New-Snapshot -MergeStateStatus 'BLOCKED' -Feedback $fbDup) -Trust $TrustNone
     Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[issue:9]' $dDup.Event 'WPG-DECISION-05: duplicate feedback key de-duplicated'
+    Assert-True $dDup.Changed 'WPG-DECISION-05: NEW_COMMENTS grows the seen-set'
+    # Ordering: unseen feedback takes precedence over USER_APPROVED and readiness, even for a
+    # merge-capable viewer who approved -- NEW_COMMENTS wins and no approved:/ready: key is added.
+    $fbA = @([pscustomobject]@{ Kind = 'issue'; Key = 'issue:11'; Login = 'octocat'; Assoc = 'NONE' })
+    $dA = Invoke-Decision (New-Snapshot -ViewerApproved $true -Feedback $fbA) -Trust $TrustNone -Perm $MaintainerPerm
+    Assert-Eq 'EVENT=NEW_COMMENTS trusted=[] untrusted=[issue:11]' $dA.Event 'WPG-DECISION-05: NEW_COMMENTS beats USER_APPROVED/readiness'
+    Assert-True ($dA.Seen -notcontains 'approved:abc123' -and $dA.Seen -notcontains 'ready:abc123') 'WPG-DECISION-05: no approval/ready key while comments are unseen'
 } catch { $script:failures += "WPG-DECISION-05 threw: $_" }
 
 Write-Host "== WPG-DECISION-06 USER_APPROVED only for a merge-capable actor, honoring the merge guards =="
@@ -280,6 +296,13 @@ try {
     Assert-True ($ok.NoMerge -and ($ok.Seen -contains 'ready:x')) 'WPG-DECISION-16: valid state parsed'
     # A valid state that is NOT opted out round-trips noMerge=false.
     Assert-True (-not (ConvertFrom-WatcherState -Json '{"seen":[],"noMerge":false}').NoMerge) 'WPG-DECISION-16: valid non-opted-out state parsed'
+    # Partial / tampered state fails CLOSED per field: a null or missing noMerge assumes the
+    # opt-out, and a null or missing seen is an empty set (never a set with a null element).
+    Assert-True (ConvertFrom-WatcherState -Json '{"seen":["ready:x"],"noMerge":null}').NoMerge 'WPG-DECISION-16: null noMerge fails closed'
+    Assert-True (ConvertFrom-WatcherState -Json '{"seen":["ready:x"]}').NoMerge 'WPG-DECISION-16: missing noMerge fails closed'
+    $ns = ConvertFrom-WatcherState -Json '{"seen":null,"noMerge":false}'
+    Assert-Eq 0 @($ns.Seen).Count 'WPG-DECISION-16: null seen -> empty set'
+    Assert-Eq 0 @((ConvertFrom-WatcherState -Json '{"noMerge":true}').Seen).Count 'WPG-DECISION-16: missing seen -> empty set'
 } catch { $script:failures += "WPG-DECISION-16 threw: $_" }
 
 Write-Host "== WPG-DECISION-17 Get-FailedCheckIds maps and sorts CheckRun / StatusContext failures =="
@@ -318,6 +341,22 @@ try {
     # A custom -CopilotLogins list is honored.
     Assert-True (Test-CommenterTrusted -Login 'my-bot[bot]' -Assoc 'NONE' -PermissionResolver $readPerm -CopilotLogins @('my-bot[bot]')) 'WPG-DECISION-18: custom allowlist honored'
 } catch { $script:failures += "WPG-DECISION-18 threw: $_" }
+
+Write-Host "== WPG-DECISION-19 feedback-unavailable holds NEW_COMMENTS onward (fail closed), pre-feedback events still fire =="
+try {
+    # When this poll's feedback could not be fetched, an otherwise-ready PR must NOT advance:
+    # no USER_APPROVED, no readiness, no DRAFT_HELD -- the watcher holds and retries.
+    Assert-Eq $null (Invoke-Decision (New-Snapshot) -Perm $MaintainerPerm -FeedbackAvailable $false).Event 'WPG-DECISION-19: no READY when feedback unavailable'
+    Assert-Eq $null (Invoke-Decision (New-Snapshot -ViewerApproved $true) -Perm $MaintainerPerm -FeedbackAvailable $false).Event 'WPG-DECISION-19: no USER_APPROVED when feedback unavailable'
+    Assert-Eq $null (Invoke-Decision (New-Snapshot -IsDraft $true) -FeedbackAvailable $false).Event 'WPG-DECISION-19: no DRAFT_HELD when feedback unavailable'
+    Assert-Eq $null (Invoke-Decision (New-Snapshot -MergeStateStatus 'BEHIND') -FeedbackAvailable $false).Event 'WPG-DECISION-19: no BRANCH_BEHIND when feedback unavailable'
+    # But the pre-feedback events (terminal, conflict, auto-merge cancel, failing checks) still
+    # fire even when feedback is unavailable -- they do not depend on it.
+    Assert-Eq 'EVENT=PR_MERGED' (Invoke-Decision (New-Snapshot -Merged $true) -FeedbackAvailable $false).Event 'WPG-DECISION-19: terminal still fires'
+    Assert-Eq 'EVENT=MERGE_CONFLICT' (Invoke-Decision (New-Snapshot -MergeStateStatus 'DIRTY') -FeedbackAvailable $false).Event 'WPG-DECISION-19: conflict still fires'
+    Assert-Eq 'EVENT=DISABLE_AUTO_MERGE reason=optout' (Invoke-Decision (New-Snapshot -AutoMergeEnabled $true) -OptedOut $true -FeedbackAvailable $false).Event 'WPG-DECISION-19: auto-merge cancel still fires'
+    Assert-Eq 'EVENT=CHECKS_FAILED oid=abc123 runs=cr1' (Invoke-Decision (New-Snapshot -Rollup 'FAILURE' -FailedCheckIds @('cr1')) -FeedbackAvailable $false).Event 'WPG-DECISION-19: failing checks still fire'
+} catch { $script:failures += "WPG-DECISION-19 threw: $_" }
 
 Write-Host ""
 if ($script:failures.Count -gt 0) {

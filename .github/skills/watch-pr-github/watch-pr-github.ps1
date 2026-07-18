@@ -38,7 +38,12 @@ if (-not $StateFile) {
     # world-writable /tmp path would be a predictable, symlink-raceable target on a
     # multi-user host; a per-user dir keeps the sticky opt-out and the atomic .tmp write out
     # of another local user's reach. It is also outside the repo, so running never dirties it.
-    $stateDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'watch-pr-github'
+    # Guard the base path: on a minimal Unix/container with no HOME/XDG it can be empty, and
+    # Join-Path with an empty base would yield a RELATIVE path created under the CWD (often the
+    # repo) -- fall back to the OS temp dir so the state file never lands in the working tree.
+    $stateBase = [Environment]::GetFolderPath('LocalApplicationData')
+    if (-not $stateBase) { $stateBase = [IO.Path]::GetTempPath() }
+    $stateDir = Join-Path $stateBase 'watch-pr-github'
     if (-not (Test-Path $stateDir)) { New-Item -ItemType Directory -Force -Path $stateDir | Out-Null }
     $StateFile = Join-Path $stateDir ".wpg-state-$Owner-$Repo-$PrNumber.json"
 }
@@ -129,47 +134,54 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
         $viewer = $resp.data.viewer.login
         $pr = $resp.data.repository.pullRequest
         # Nullable GraphQL fields: a PR always has a commit, but statusCheckRollup is null for
-        # a commit with no checks. Guard every dereference so a missing rollup yields an empty
-        # rollup rather than throwing under StrictMode (which would strand the poll in the
-        # catch and retry to timeout without ever emitting a terminal/readiness event).
-        $commit = if ($pr.commits.nodes) { $pr.commits.nodes[0].commit } else { $null }
+        # a commit with no checks, and a list can carry a null node. Guard every dereference so
+        # a missing rollup/commit yields an empty rollup rather than throwing under StrictMode
+        # (which would strand the poll in the catch and retry to timeout without ever emitting
+        # a terminal/readiness event).
+        $commitNode = if ($pr.commits.nodes) { $pr.commits.nodes[0] } else { $null }
+        $commit = if ($commitNode) { $commitNode.commit } else { $null }
         $oid = if ($commit) { $commit.oid } else { '' }
         $rollupObj = if ($commit) { $commit.statusCheckRollup } else { $null }
         $rollup = if ($rollupObj) { $rollupObj.state } else { $null }
-        $rollupContexts = if ($rollupObj) { $rollupObj.contexts.nodes } else { @() }
+        $rollupContexts = if ($rollupObj -and $rollupObj.contexts) { $rollupObj.contexts.nodes } else { @() }
 
-        # Only fetch feedback connections when the PR is still open (a merged/closed PR short-
-        # circuits in the decision anyway). Make the fetch NON-FATAL: if a pagination call
-        # fails, fall back to empty feedback and let the decision proceed, so a transient
-        # feedback-API error never suppresses an earlier conflict/checks/auto-merge event
-        # (which the ordered decision emits before NEW_COMMENTS regardless of feedback).
+        # Fetch the feedback connections when the PR is still open (a merged/closed PR short-
+        # circuits in the decision anyway). NON-FATAL: if any pagination call fails, mark the
+        # feedback DEGRADED and fall back to empty. The decision then still emits an earlier
+        # terminal/conflict/auto-merge/checks event (which do not depend on feedback), but the
+        # $FeedbackAvailable=$false flag makes it SUPPRESS NEW_COMMENTS and everything after it
+        # (USER_APPROVED / readiness), so a transient feedback error can never advance or merge
+        # a PR past an unseen review comment. It retries next poll.
         $feedback = @()
         $viewerApproved = $false
+        $feedbackAvailable = $true
         if (-not $pr.merged -and $pr.state -ne 'CLOSED') {
             try {
                 $threads = Get-AllNodes 'reviewThreads' 'id isResolved comments(last:1){ nodes{ databaseId author{ login } authorAssociation } }'
                 $issueComments = Get-AllNodes 'comments' 'databaseId author{ login } authorAssociation'
                 $reviews = Get-AllNodes 'reviews' 'databaseId state body author{ login } authorAssociation'
                 foreach ($t in $threads) {
-                    if ($t.isResolved) { continue }
-                    $c = $t.comments.nodes[0]; if (-not $c) { continue }
+                    if (-not $t -or $t.isResolved) { continue }
+                    $c = if ($t.comments -and $t.comments.nodes) { $t.comments.nodes[0] } else { $null }
+                    if (-not $c) { continue }
                     $login = if ($c.author) { $c.author.login } else { $null }
                     $feedback += [pscustomobject]@{ Kind = 'thread'; Key = "thread:$($t.id):$($c.databaseId)"; Login = $login; Assoc = $c.authorAssociation }
                 }
                 foreach ($c in $issueComments) {
+                    if (-not $c) { continue }
                     $login = if ($c.author) { $c.author.login } else { $null }
                     $feedback += [pscustomobject]@{ Kind = 'issue'; Key = "issue:$($c.databaseId)"; Login = $login; Assoc = $c.authorAssociation }
                 }
                 foreach ($r in $reviews) {
-                    if (-not $r.body -or -not $r.body.Trim()) { continue }
+                    if (-not $r -or -not $r.body -or -not $r.body.Trim()) { continue }
                     if ($r.state -notin @('COMMENTED', 'CHANGES_REQUESTED', 'APPROVED', 'DISMISSED')) { continue }
                     $login = if ($r.author) { $r.author.login } else { $null }
                     $feedback += [pscustomobject]@{ Kind = 'review'; Key = "review:$($r.databaseId)"; Login = $login; Assoc = $r.authorAssociation }
                 }
-                $viewerApproved = [bool]($reviews | Where-Object { $_.author -and $_.author.login -eq $viewer -and $_.state -eq 'APPROVED' })
+                $viewerApproved = [bool]($reviews | Where-Object { $_ -and $_.author -and $_.author.login -eq $viewer -and $_.state -eq 'APPROVED' })
             } catch {
-                Write-Host "[$(Get-Date -Format o)] poll $i feedback fetch failed (continuing with empty feedback): $($_.Exception.Message)"
-                $feedback = @(); $viewerApproved = $false
+                Write-Host "[$(Get-Date -Format o)] poll $i feedback fetch failed (holding merge/readiness this poll, will retry): $($_.Exception.Message)"
+                $feedback = @(); $viewerApproved = $false; $feedbackAvailable = $false
             }
         }
 
@@ -184,7 +196,7 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
             AutoMergeEnabled = [bool]$pr.autoMergeRequest
             IsDraft          = [bool]$pr.isDraft
             ViewerApproved   = $viewerApproved
-            FailedCheckIds   = (Get-FailedCheckIds -Contexts $rollupContexts)
+            FailedCheckIds   = @(Get-FailedCheckIds -Contexts $rollupContexts)
             Feedback         = $feedback
         }
 
@@ -192,14 +204,14 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
         $resolveViewerPerm = { Get-EffectivePermission $viewer -Fresh }
 
         $decision = Get-WatcherDecision -Snapshot $snapshot -Viewer $viewer -OptedOut $optedOut -Seen $seen `
-            -IsTrusted $isTrusted -ResolveViewerPermission $resolveViewerPerm -CopilotLogins $CopilotLogins
+            -IsTrusted $isTrusted -ResolveViewerPermission $resolveViewerPerm -FeedbackAvailable $feedbackAvailable `
+            -CopilotLogins $CopilotLogins
 
         if ($decision.Event) {
-            # Persist only when the decision actually added a seen key (the seen-set only
-            # grows). Terminal (PR_MERGED/PR_CLOSED) and the deliberately un-seen-guarded
-            # DISABLE_AUTO_MERGE return the seen-set unchanged and are not persisted, matching
-            # the original loop.
-            if (@($decision.Seen).Count -ne @($seen).Count) { Save-Seen $decision.Seen }
+            # Persist only when the decision actually added a seen key. Terminal
+            # (PR_MERGED/PR_CLOSED) and the deliberately un-seen-guarded DISABLE_AUTO_MERGE
+            # leave the seen-set unchanged and are not persisted, matching the original loop.
+            if ($decision.Changed) { Save-Seen $decision.Seen }
             Write-Output $decision.Event
             exit 0
         }
