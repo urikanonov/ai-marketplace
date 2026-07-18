@@ -64,12 +64,20 @@ class OrchestrationTests(unittest.TestCase):
         # node is present but the commentable-html dev node_modules (@playwright/test) is not
         # installed, so the screenshots step is skipped with a note instead of a cryptic
         # ERR_MODULE_NOT_FOUND failure - and the run still succeeds.
+        import io
+        import contextlib
         with mock.patch.object(rebuild_all.shutil, "which", return_value="/usr/bin/node"), \
                 mock.patch.object(rebuild_all, "_tutorial_deps_installed", return_value=False):
-            rc = rebuild_all.main(["rebuild_all.py", "--check"])
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = rebuild_all.main(["rebuild_all.py", "--check"])
+            out = buf.getvalue()
         self.assertEqual(rc, 0)
         labels = [c[0] for c in self.calls]
         self.assertFalse(any("Tutorial screenshots" in lbl for lbl in labels))
+        # The actionable skip message is printed (not the misleading "node not found").
+        self.assertIn("commentable-html dev node_modules not installed", out)
+        self.assertIn("scripts/setup_dev.py", out)
         # The rest of the pipeline still runs (the skip is surgical, not a bail-out).
         self.assertTrue(any(lbl.startswith("GitHub Pages site") for lbl in labels))
 
