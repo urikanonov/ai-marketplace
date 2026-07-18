@@ -8,6 +8,15 @@
 - [ ] New plugin (maintainer only)
 - [ ] Docs or repo tooling
 
+## Multi-duck review (required)
+
+<!-- Run 2 rounds of multi-duck review before completing this PR, then check EXACTLY ONE box.
+     The required `multi-duck-review` check fails if neither is checked (an untouched template
+     does not pass), or if the opt-out reason is left as a placeholder. Dependabot PRs auto-pass. -->
+
+- [ ] Multi-Duck passed (2 rounds of multi-duck review)
+- [ ] Multi-Duck opted out - reason: <a real, specific reason>
+
 ## Checklist
 
 - [ ] New or changed feature/behavior has a matching feature-id row in the owning spec (`plugins/<plugin>/dev/SPEC.md` for a skill, `site/tests/SPEC.md` for the site) and a covering automated test named in that row

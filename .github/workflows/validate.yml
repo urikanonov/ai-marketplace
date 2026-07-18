@@ -206,8 +206,6 @@ jobs:
       - name: Lint workflows with zizmor (offline, no token)
         run: zizmor --offline .github/workflows
 
-  # Advisory early warning for finding 4.5: if this PR bumps commentable-html to a version another
-  # open PR already claimed, flag it now so the author picks a distinct lane and avoids re-bump churn.
   # Not required (the version state of other open PRs is non-deterministic); the required version-bump
   # gate still blocks the actual collision at merge time. Keeps permissions at contents: read - the
   # script gracefully SKIPS (green) if it cannot list open PRs, so no widened token is needed.

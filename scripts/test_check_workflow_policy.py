@@ -152,6 +152,81 @@ class RuleCTests(unittest.TestCase):
             cwp.ACTIONLINT_CONFIGS = orig
 
 
+class RuleDTests(unittest.TestCase):
+    def _v(self, run_lines):
+        with tempfile.TemporaryDirectory() as tmp:
+            steps = "".join("      - run: %s\n" % ln for ln in run_lines)
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n" + steps)
+            return [x for x in cwp.check_workflow(p) if "RULE D" in x]
+
+    def test_dotted_injectable_contexts_fail(self):
+        for expr in (
+            "github.event.pull_request.body",
+            "github.event.pull_request.title",
+            "github.event.issue.body",
+            "github.event.issue.title",
+            "github.event.comment.body",
+            "github.event.review.body",
+            "github.event.discussion.body",
+            "github.event.head_commit.message",
+            "github.event.commits[0].message",
+            "github.head_ref",
+            "github.event.pull_request.head.ref",
+            "github.event.pull_request.head.label",
+            "github.event.head_commit.author.email",
+            "github.event.head_commit.author.name",
+        ):
+            self.assertTrue(self._v(["echo ${{ %s }}" % expr]), expr)
+
+    def test_bracket_and_index_notation_is_caught(self):
+        # Semantically identical to the dotted form; must not evade the guard.
+        for expr in (
+            "github.event.pull_request['body']",
+            'github.event.pull_request["body"]',
+            "github['event']['pull_request']['body']",
+            "github.event['issue'].title",
+            "github.event.commits[0]['message']",
+        ):
+            self.assertTrue(self._v(["echo ${{ %s }}" % expr]), expr)
+
+    def test_tojson_of_event_object_is_caught(self):
+        self.assertTrue(self._v(["echo ${{ toJSON(github.event) }}"]))
+        self.assertTrue(self._v(["echo ${{ toJSON(github.event.pull_request) }}"]))
+
+    def test_no_space_and_multiline_expressions_are_caught(self):
+        self.assertTrue(self._v(["echo ${{github.event.pull_request.body}}"]))
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+                       "      - run: |\n"
+                       "          echo ${{\n            github.event.pull_request.body\n          }}\n")
+            self.assertTrue([x for x in cwp.check_workflow(p) if "RULE D" in x])
+
+    def test_safe_metadata_contexts_pass(self):
+        for expr in (
+            "github.event.pull_request.head.sha",
+            "github.event.pull_request.number",
+            "github.event.pull_request.user.login",
+            "github.event.pull_request.base.sha",
+            "github.sha",
+            "github.repository",
+        ):
+            self.assertEqual(self._v(["echo ${{ %s }}" % expr]), [], expr)
+
+    def test_pr_body_via_env_var_passes(self):
+        # The safe pattern the multi-duck-review gate uses: bind to env, reference "$VAR" in run.
+        with tempfile.TemporaryDirectory() as tmp:
+            p = _write(tmp, "wf.yml",
+                       "on:\n  pull_request:\n"
+                       "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n"
+                       "      - env:\n          PR_BODY: ${{ github.event.pull_request.body }}\n"
+                       "        run: python scripts/check_multi_duck_review.py\n")
+            self.assertEqual([x for x in cwp.check_workflow(p) if "RULE D" in x], [])
+
+
 class RealRepoTests(unittest.TestCase):
     def test_current_workflows_satisfy_the_policy(self):
         self.assertEqual(cwp.main(), 0)

@@ -69,6 +69,15 @@ reading or investigating and will never make a change.
    in each assets dir). NEVER recombine them into a `commentable-html.js`/`.css` monolith - a test
    (`tests/test_assets_split.py`) fails if either monolith reappears, and reintroducing one revives the
    whole-file clobber class this split removed.
+6. **Run 2 rounds of multi-duck before completing a feature PR (and stamp the PR).** By default,
+   before you finish a feature PR, run TWO rounds of the multi-duck review (a panel of independent
+   `rubber-duck` agents across model families, consolidated - the `multi-duck` skill orchestrates it),
+   address what it finds, then stamp the PR body by checking exactly one box: `Multi-Duck passed`
+   (the default) or `Multi-Duck opted out - reason: <reason>` (only when the user or the change
+   genuinely does not warrant it, e.g. a trivial docs/typo fix). The required `multi-duck-review`
+   status check (`scripts/check_multi_duck_review.py`) FAILS a PR that carries neither stamp, so an
+   unstamped PR cannot merge; Dependabot PRs auto-pass. Do not skip the review just to add the stamp -
+   the stamp asserts the review actually happened.
 
 ## Layout
 
@@ -488,7 +497,9 @@ rulesets are unavailable on public user-owned repos. The required `site` check r
   `secret-scan` (the gitleaks content scan), `pwsh-tests (ubuntu-latest)` and
   `pwsh-tests (windows-latest)` (the auto-updater PowerShell hook tests - the highest-privilege
   shipped code), `cross-platform (ubuntu-latest)` / `cross-platform (windows-latest)` /
-  `cross-platform (macos-latest)` (the validators run on every OS), `require-owner-approval` (an
+  `cross-platform (macos-latest)` (the validators run on every OS), `multi-duck-review` (a feature PR
+  carries a `Multi-Duck passed`/`opted-out` stamp in its body; `scripts/check_multi_duck_review.py`),
+  `require-owner-approval` (an
   external PR carries the maintainer's approving review), and `All conversations resolved` (every
   review thread must be resolved - the job log lists open threads by file, line, author, and body
   snippet). Every check that can catch a break is required, so nothing merges that would break the
