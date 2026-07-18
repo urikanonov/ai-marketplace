@@ -121,8 +121,11 @@ test.describe("compact sidebar header", () => {
     expect(Math.abs(rects.gen.top - rects.last.top)).toBeLessThan(6);
     // the action controls stay on a compact, aligned row.
     expect(rects.exportMenu.top).toBe(rects.clear.top);
-    // accessible names stay full even though the visible labels are compact
-    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-haspopup", "true");
+    // The compact Export control is a disclosure, not an ARIA menu button.
+    const exportButton = page.locator("#btnSidebarExportMenu");
+    await expect(exportButton).toHaveAttribute("aria-controls", "sidebarExportMenu");
+    await expect(exportButton).toHaveAttribute("aria-expanded", "false");
+    expect(await exportButton.getAttribute("aria-haspopup")).toBeNull();
     await expect(page.locator("#btnClearAll")).toHaveAttribute("aria-label", "Clear Comments");
   });
 
