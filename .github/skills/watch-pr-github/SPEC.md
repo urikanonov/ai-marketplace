@@ -49,18 +49,20 @@ injected as scriptblocks so the merge gating is fully deterministic.
 | WPG-DECISION-20 | `Test-ViewerApproved` decides whether the viewer's own review currently approves the PR from their LATEST meaningful review, where "latest" is fixed by an explicit sort on `Order` (the review's monotonic `databaseId`), NOT by the gh reviews-connection order (which takes no `orderBy`). APPROVED / CHANGES_REQUESTED / DISMISSED are meaningful (a later COMMENTED does not revoke a standing approval), a null-login (deleted-author) review is never attributed to the viewer, and it fails CLOSED if any ordering key is null (so bad data cannot let a stale APPROVED win). A stale earlier APPROVED does not count after the viewer later requested changes or dismissed. | `decision.Tests.ps1` -> "WPG-DECISION-20 Test-ViewerApproved reflects the viewer's LATEST review state" |
 | WPG-DECISION-21 | `ConvertTo-ReviewStates` normalizes raw gh review nodes (`author{ login }`, `state`, `databaseId`) into the ordered `@{ Login; State; Order }` shape `Test-ViewerApproved` consumes, skipping a null connection node (which would otherwise throw under StrictMode and strand the poll) and mapping a null author to a null Login. | `decision.Tests.ps1` -> "WPG-DECISION-21 ConvertTo-ReviewStates normalizes gh review nodes and tolerates nulls" |
 | WPG-DECISION-22 | A legacy StatusContext that fails, passes, then fails again on the same head commit re-fires `CHECKS_FAILED`: because a StatusContext keeps its context name across reposts but gets a new `createdAt`, keying by name-plus-`createdAt` makes the re-failure a new key (a CheckRun already re-fires via its changing `databaseId`). | `decision.Tests.ps1` -> "WPG-DECISION-22 a StatusContext re-failure (fail -> pass -> fail) re-fires CHECKS_FAILED" |
-| WPG-DECISION-23 | A review thread is classified for trust LEAST-PRIVILEGED: it is trusted only if EVERY participant (all its comment authors) is trusted, so an external comment anywhere in an otherwise maintainer-led thread (or vice versa) marks the thread untrusted and is vetted, rather than being judged by only the latest comment's author. An issue comment or review body (a single author, no participant list) is still classified by that author. | `decision.Tests.ps1` -> "WPG-DECISION-23 a review thread is trusted only if ALL participants are trusted (least-privileged)" |
+| WPG-DECISION-23 | A review thread is classified for trust LEAST-PRIVILEGED: it is trusted only if EVERY participant (all its comment authors) is trusted, so an external comment anywhere in an otherwise maintainer-led thread (or vice versa) marks the thread untrusted and is vetted, rather than being judged by only the latest comment's author. It fails CLOSED (untrusted) when the participant set cannot be confirmed complete -- a truncated comment window (`ParticipantsTruncated`, a thread with more comments than were fetched), an empty participant list, or a null-author (deleted) participant. An issue comment or review body (a single author, no participant list) is still classified by that author. | `decision.Tests.ps1` -> "WPG-DECISION-23 a review thread is trusted only if ALL participants are trusted (least-privileged)" |
+| WPG-DECISION-24 | `ConvertTo-CanonicalTimestamp` normalizes a timestamp to a stable, culture-invariant UTC ISO string, so a key built from it is identical whether `ConvertFrom-Json` produced a `[datetime]` (pwsh 7) or a raw ISO string (Windows PowerShell 5.1), and regardless of the local timezone/culture; a null or blank value yields an empty string. | `decision.Tests.ps1` -> "WPG-DECISION-24 ConvertTo-CanonicalTimestamp normalizes datetimes and strings to a stable key" |
 
 ## Coverage gaps
 
 The runnable I/O shell `watch-pr-github.ps1` (gh GraphQL queries, cursor pagination -- including the
 `Get-RollupContexts` paging that fetches a commit's status-check contexts beyond the first 100 so a
 failing context past position 100 still contributes to the `CHECKS_FAILED` key, and the
-`comments(last:100)` fetch that collects a thread's participants -- the
-`gh api .../collaborators/<login>/permission` lookups, and the atomic temp+move state file writes) is
-not unit-tested here because it only performs live `gh`/network I/O and filesystem persistence; all of
-its DECISION behavior is delegated to `watcher-decision.ps1` and covered by the rows above -- including
-the security-critical trust rule (its `Test-Trusted` is a thin wrapper over the tested
-`Test-CommenterTrusted`, injecting only the live permission lookup) and the least-privileged thread
-classification and StatusContext keying it feeds. The shell is kept thin on purpose so that what is
-untested is only glue, not logic.
+`comments(last:100)` fetch that collects a thread's participants and detects a truncated window --
+the `gh api .../collaborators/<login>/permission` lookups, and the atomic temp+move state file writes)
+is not unit-tested here because it only performs live `gh`/network I/O and filesystem persistence; all
+of its DECISION behavior is delegated to `watcher-decision.ps1` and covered by the rows above --
+including the security-critical trust rule (its `Test-Trusted` is a thin wrapper over the tested
+`Test-CommenterTrusted`, injecting only the live permission lookup), the least-privileged thread
+classification (with its fail-closed truncation/empty handling), the canonical StatusContext keying,
+and the review-approval logic it feeds. The shell is kept thin on purpose so that what is untested is
+only glue, not logic.

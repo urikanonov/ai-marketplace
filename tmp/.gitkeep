@@ -1,3 +1,0 @@
-# This file keeps the gitignored tmp/ scratch directory present in the repo.
-# Put temporary artifacts here (see AGENTS.md, House style), not in the repo root.
-# Everything in tmp/ except this .gitkeep is ignored by git.

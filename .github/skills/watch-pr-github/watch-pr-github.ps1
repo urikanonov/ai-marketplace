@@ -124,11 +124,13 @@ query($owner:String!,$repo:String!,$num:Int!){
 # state query already fetched. The rollup embeds only the first page, so a failing context past
 # position 100 would otherwise be invisible; this fetches the remaining pages (starting at the
 # state query's endCursor) and returns their nodes to append. Returns @() when there is no more.
-function Get-RollupContexts([string]$After) {
+# $ExpectedOid guards a cross-poll race: if a new commit lands between the state query and this
+# call, the cursor would target a different commit's contexts, so bail rather than mix pages.
+function Get-RollupContexts([string]$After, [string]$ExpectedOid) {
     $nodes = @(); $cursor = $After
     $q = @'
 query($owner:String!,$repo:String!,$num:Int!,$after:String!){
-  repository(owner:$owner,name:$repo){ pullRequest(number:$num){ commits(last:1){ nodes{ commit{ statusCheckRollup{
+  repository(owner:$owner,name:$repo){ pullRequest(number:$num){ commits(last:1){ nodes{ commit{ oid statusCheckRollup{
     contexts(first:100, after:$after){ pageInfo{ hasNextPage endCursor } nodes{
       __typename
       ... on CheckRun{ databaseId conclusion }
@@ -137,12 +139,16 @@ query($owner:String!,$repo:String!,$num:Int!,$after:String!){
 }
 '@
     while ($cursor) {
-        $conn = (gh api graphql -f query=$q -f owner=$Owner -f repo=$Repo -F num=$PrNumber -f after=$cursor | ConvertFrom-Json).data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts
+        $cnodes = (gh api graphql -f query=$q -f owner=$Owner -f repo=$Repo -F num=$PrNumber -f after=$cursor | ConvertFrom-Json).data.repository.pullRequest.commits.nodes
+        $c = if ($cnodes) { $cnodes[0].commit } else { $null }
+        if (-not $c) { break }
+        if ($ExpectedOid -and $c.oid -ne $ExpectedOid) { break }
+        $conn = $c.statusCheckRollup.contexts
         if (-not $conn) { break }
         $nodes += $conn.nodes
         $cursor = if ($conn.pageInfo.hasNextPage) { $conn.pageInfo.endCursor } else { $null }
     }
-    return , @($nodes)
+    return @($nodes)
 }
 
 for ($i = 0; $i -lt $MaxIterations; $i++) {
@@ -173,7 +179,7 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
         # beyond position 100 is not missed (it would otherwise leave the CHECKS_FAILED key
         # incomplete). Non-fatal: on a pagination error, keep the first page.
         if ($rollupObj -and $rollupObj.contexts -and $rollupObj.contexts.pageInfo -and $rollupObj.contexts.pageInfo.hasNextPage) {
-            try { $rollupContexts += @(Get-RollupContexts -After $rollupObj.contexts.pageInfo.endCursor) }
+            try { $rollupContexts += @(Get-RollupContexts -After $rollupObj.contexts.pageInfo.endCursor -ExpectedOid $oid) }
             catch { Write-Host "[$(Get-Date -Format o)] poll $i rollup-contexts pagination failed (using first page): $($_.Exception.Message)" }
         }
 
@@ -189,7 +195,7 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
         $feedbackAvailable = $true
         if (-not $pr.merged -and $pr.state -ne 'CLOSED') {
             try {
-                $threads = Get-AllNodes 'reviewThreads' 'id isResolved comments(last:100){ nodes{ databaseId author{ login } authorAssociation } }'
+                $threads = Get-AllNodes 'reviewThreads' 'id isResolved comments(last:100){ pageInfo{ hasPreviousPage } nodes{ databaseId author{ login } authorAssociation } }'
                 $issueComments = Get-AllNodes 'comments' 'databaseId author{ login } authorAssociation'
                 $reviews = Get-AllNodes 'reviews' 'databaseId state body author{ login } authorAssociation'
                 foreach ($t in $threads) {
@@ -199,13 +205,17 @@ for ($i = 0; $i -lt $MaxIterations; $i++) {
                     # Key on the LATEST comment id so a new reply re-surfaces the thread, but
                     # collect ALL participants so trust is judged least-privileged (any external
                     # participant makes the whole thread untrusted, not just the last commenter).
+                    # If the thread has more comments than the fetched window (hasPreviousPage),
+                    # the participant set is incomplete -> mark it truncated so the decision fails
+                    # closed (treats the thread as untrusted) rather than trusting a partial set.
                     $latest = $tcomments[-1]
                     $participants = @($tcomments | ForEach-Object {
                             $pl = if ($_.author) { $_.author.login } else { $null }
                             [pscustomobject]@{ Login = $pl; Assoc = $_.authorAssociation }
                         })
+                    $truncated = if ($t.comments.pageInfo) { [bool]$t.comments.pageInfo.hasPreviousPage } else { $false }
                     $latestLogin = if ($latest.author) { $latest.author.login } else { $null }
-                    $feedback += [pscustomobject]@{ Kind = 'thread'; Key = "thread:$($t.id):$($latest.databaseId)"; Login = $latestLogin; Assoc = $latest.authorAssociation; Participants = $participants }
+                    $feedback += [pscustomobject]@{ Kind = 'thread'; Key = "thread:$($t.id):$($latest.databaseId)"; Login = $latestLogin; Assoc = $latest.authorAssociation; Participants = $participants; ParticipantsTruncated = $truncated }
                 }
                 foreach ($c in $issueComments) {
                     if (-not $c) { continue }
