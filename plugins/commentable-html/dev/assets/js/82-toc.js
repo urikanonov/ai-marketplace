@@ -132,8 +132,17 @@ function setupHeadingAnchors() {
 // stay valid. The caret is a text-free cm-skip element (pseudo-element glyph) so it does
 // not pollute heading text or offsets.
 const _cmSectionToggles = [];
+// Parallel to _cmSectionToggles but keyed to the owning heading + section, so the review
+// filter (84-section-review.js) can expand/collapse a specific section by its review state.
+const _cmSectionEntries = [];
+// Live side-TOC items/links, captured by setupSideToc so the review layer can paint per-entry
+// state dots and drive the review filter.
+let _cmTocItems = [];
+let _cmTocLinks = [];
+let _cmReviewFilterBtns = null;
 function setupCollapsibleSections() {
   _cmSectionToggles.length = 0;
+  _cmSectionEntries.length = 0;
   root.querySelectorAll("section").forEach(function (sec) {
     if (sec.closest(".cm-skip")) return;
     const heading = sec.querySelector(":scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6");
@@ -155,6 +164,9 @@ function setupCollapsibleSections() {
     }
     caret.addEventListener("click", function (e) {
       e.stopPropagation();
+      // A manual per-section toggle invalidates any active review filter, so reset it to All -
+      // otherwise the next refreshReviewUI would re-collapse the section the user just expanded.
+      if (typeof _resetReviewFilterUI === "function") _resetReviewFilterUI();
       setState(!sec.classList.contains("cmh-section-collapsed"));
     });
     // Clicking a collapsed section's title (anywhere but the caret) expands it too - a
@@ -169,6 +181,7 @@ function setupCollapsibleSections() {
       setState(false);
     });
     _cmSectionToggles.push(setState);
+    _cmSectionEntries.push({ heading: heading, section: sec, setState: setState });
   });
 }
 function setupSideToc() {
@@ -237,6 +250,29 @@ function setupSideToc() {
     list.appendChild(li);
     links.push(a);
   });
+  _cmTocItems = items;
+  _cmTocLinks = links;
+  // A segmented review filter: All / Reviewed / Unreviewed / Commented / Changed. Selecting a
+  // state collapses every section that does not contain a heading in that state and expands the
+  // rest; All re-expands everything. Runtime chrome, cm-skip.
+  const reviewFilter = document.createElement("div");
+  reviewFilter.className = "cm-side-toc-review cm-skip";
+  reviewFilter.setAttribute("role", "group");
+  reviewFilter.setAttribute("aria-label", "Filter sections by review state");
+  _cmReviewFilterBtns = {};
+  [["all", "All"], ["reviewed", "Reviewed"], ["unreviewed", "Unreviewed"], ["commented", "Commented"], ["changed", "Changed"]]
+    .forEach(function (pair) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "cm-side-toc-review-btn cmh-review-filter-" + pair[0];
+      b.dataset.cmhReviewFilter = pair[0];
+      b.textContent = pair[1];
+      b.title = "Show " + pair[1].toLowerCase() + " sections";
+      b.setAttribute("aria-pressed", pair[0] === "all" ? "true" : "false");
+      b.addEventListener("click", function () { applyReviewFilter(pair[0]); });
+      _cmReviewFilterBtns[pair[0]] = b;
+      reviewFilter.appendChild(b);
+    });
   // A11: filter the visible sections (and their menu entries) by heading + body text.
   function _cmTocSectionOf(it) { return (it.el && it.el.closest) ? it.el.closest("section") : null; }
   // Cache each item's lowercase haystack (label + its section/heading text) once, so typing does
@@ -291,13 +327,13 @@ function setupSideToc() {
     expandAll.className = "cm-side-toc-top";
     expandAll.title = "Expand all sections";
     expandAll.innerHTML = _cmIco("expand") + "<span>Expand All</span>";
-    expandAll.addEventListener("click", function () { _cmSectionToggles.forEach(function (t) { t(false); }); });
+    expandAll.addEventListener("click", function () { _resetReviewFilterUI(); _cmSectionToggles.forEach(function (t) { t(false); }); });
     const collapseAll = document.createElement("button");
     collapseAll.type = "button";
     collapseAll.className = "cm-side-toc-top";
     collapseAll.title = "Collapse all sections";
     collapseAll.innerHTML = _cmIco("collapse") + "<span>Collapse All</span>";
-    collapseAll.addEventListener("click", function () { _cmSectionToggles.forEach(function (t) { t(true); }); });
+    collapseAll.addEventListener("click", function () { _resetReviewFilterUI(); _cmSectionToggles.forEach(function (t) { t(true); }); });
     expandGrp = document.createElement("div");
     expandGrp.className = "cm-side-toc-scroll";
     expandGrp.append(expandAll, collapseAll);
@@ -313,8 +349,8 @@ function setupSideToc() {
   bottom.title = "Scroll to the bottom of the document";
   bottom.innerHTML = _cmIco("bottom") + "<span>Scroll to Bottom</span>";
   scrollBtns.append(top, bottom);
-  if (expandGrp) nav.append(head, search, list, expandGrp, scrollBtns);
-  else nav.append(head, search, list, scrollBtns);
+  if (expandGrp) nav.append(head, search, reviewFilter, list, expandGrp, scrollBtns);
+  else nav.append(head, search, reviewFilter, list, scrollBtns);
   document.body.appendChild(nav);
   document.body.classList.add("cm-side-toc-on");
   toggle.addEventListener("click", function () {
@@ -397,5 +433,61 @@ function setupScrollProgress() {
   window.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", schedule);
   update();
+}
+
+// ----- Section-review TOC integration (state dots + segmented filter) -----
+// A section matches a review filter when it (or any heading nested inside it) is in that state,
+// so a parent section stays open when one of its subsections matches.
+function _sectionHasState(entry, states, mode) {
+  const hs = entry.section.querySelectorAll("h1, h2, h3, h4, h5, h6");
+  for (let i = 0; i < hs.length; i++) {
+    const info = states.get(hs[i]);
+    if (info && info.state === mode) return true;
+  }
+  return false;
+}
+function applyReviewFilter(mode, precomputedStates) {
+  _cmReviewFilter = mode || "all";
+  if (_cmReviewFilterBtns) {
+    Object.keys(_cmReviewFilterBtns).forEach(function (k) {
+      _cmReviewFilterBtns[k].setAttribute("aria-pressed", String(k === _cmReviewFilter));
+    });
+  }
+  if (_cmReviewFilter === "all") {
+    _cmSectionToggles.forEach(function (t) { t(false); });
+    return;
+  }
+  const states = precomputedStates || ((typeof computeSectionStates === "function") ? computeSectionStates() : new Map());
+  _cmSectionEntries.forEach(function (entry) {
+    const match = _sectionHasState(entry, states, _cmReviewFilter);
+    entry.setState(!match); // collapse (true) when the section does not match the filter
+  });
+}
+// Set the segmented control back to All without touching section collapse state - used when the
+// user drives Expand/Collapse All directly, so a still-pressed filter does not fight the next refresh.
+function _resetReviewFilterUI() {
+  _cmReviewFilter = "all";
+  if (_cmReviewFilterBtns) {
+    Object.keys(_cmReviewFilterBtns).forEach(function (k) {
+      _cmReviewFilterBtns[k].setAttribute("aria-pressed", String(k === "all"));
+    });
+  }
+}
+function updateTocReviewDots(states) {
+  if (!_cmTocLinks || !_cmTocLinks.length) return;
+  for (let i = 0; i < _cmTocLinks.length; i++) {
+    const a = _cmTocLinks[i];
+    const item = _cmTocItems[i];
+    let dot = a.querySelector(":scope > .cmh-toc-dot");
+    if (!dot) {
+      dot = document.createElement("span");
+      dot.className = "cmh-toc-dot";
+      dot.setAttribute("aria-hidden", "true");
+      a.insertBefore(dot, a.firstChild);
+    }
+    const info = (item && item.el) ? states.get(item.el) : null;
+    const state = info ? info.state : "unreviewed";
+    dot.className = "cmh-toc-dot cmh-toc-dot-" + state;
+  }
 }
 

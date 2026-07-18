@@ -246,6 +246,7 @@ async function saveOffline() {
   baseHtml = _applyWidgetLayoutToHtml(baseHtml);
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
+  baseHtml = _applyReviewStateToHtml(baseHtml);
   const exportComments = _exportableComments();
   let portable;
   try {

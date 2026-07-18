@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.153.0] - 2026-07-18
+
+### Added
+
+- Section review tracking: hover or keyboard-focus any heading (h1-h6) to mark that section
+  reviewed. A badge to the right of the title shows one of four states - Reviewed (green),
+  Changed - re-review (amber, when the section content changed since it was reviewed), Commented
+  (blue, when the section has an open comment), or unreviewed. Change detection uses a deterministic
+  content hash of the section (heading to the next same-or-higher heading, excluding runtime chrome);
+  a one-click re-review on a Changed/Commented badge re-stamps it. The side table-of-contents gains a
+  per-entry state dot and an All / Reviewed / Unreviewed / Commented / Changed filter that collapses
+  the sections it hides. Markers persist in localStorage (with tombstones for cleared baked markers)
+  and bake into Portable/Offline exports via a dedicated `reviewedSections` block (kept out of the
+  Copy-all bundle; stripped from Plain export). New `tools/authoring/mark_reviewed.py` bakes markers
+  from the CLI, and `section_hash.py` shares the byte-identical hash contract with the runtime
+  (pinned equal by a JS/Python golden and an end-to-end extractor-parity test).
+
 ## [1.149.0] - 2026-07-18
 
 ### Security
