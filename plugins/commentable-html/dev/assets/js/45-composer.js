@@ -32,6 +32,14 @@ function positionComposerNear(el, anchorRect) {
 }
 
 function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget }) {
+  // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
+  // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
+  // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
+  // so gate every new-comment composer here at the single choke point.
+  if (String(mode || "").indexOf("new") === 0
+      && document.body.classList.contains("cmh-deck-comments-off")) {
+    return null;
+  }
   const el = document.createElement("div");
   // Remember what had focus so keyboard users return to the diagram node / diff
   // line / image (not <body>) after the composer closes.

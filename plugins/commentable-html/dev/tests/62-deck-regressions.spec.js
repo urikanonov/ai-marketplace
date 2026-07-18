@@ -645,7 +645,30 @@ test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and a
   }
 });
 
-test("CMH-DECK-SHOWCASE-09: showcase slides vertically center their content", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-09: the showcase deck shows a concrete Copy all bundle specimen", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, "text=How a comment finds the same spot on reload.");
+    const anchoring = page.locator(".slide.active");
+    const bundle = anchoring.locator(".show-bundle-sample");
+    await expect(bundle).toBeVisible();
+    await expect(bundle).toContainText("Quote:");
+    await expect(bundle).toContainText("Pinpoint:");
+    await expect(bundle).toContainText("Stable id:");
+    await expect(bundle).toContainText("Note:");
+    await expect(bundle).toContainText("HANDLED_IDS_JSON:");
+    await expect(bundle.locator("code")).toHaveCount(0);
+
+    await showSlideWith(page, "text=Comment on the actual thing, not a screenshot of it.");
+    const pointAt = page.locator(".slide.active");
+    await expect(pointAt).toContainText('Example: the "Paste the Copy all bundle" node.');
+    await expect(pointAt).not.toContainText("Copy all Markdown bundle");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-12: showcase slides vertically center their content", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".show-card-example");

@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.142.0";
+const CMH_VERSION = "1.143.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3171,9 +3171,9 @@ function _setMenuMode(mode) {
 }
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
-  // Deck present mode is a clean full-screen presentation with no commenting UI: keep the
-  // native context menu and do not raise the text/document comment menu.
-  if (document.body.classList.contains("cmh-deck-present")) return;
+  // Deck with commenting disabled ("off" state): keep the native context menu and do not raise
+  // the text/document comment menu. Commenting stays available with the panel merely closed.
+  if (document.body.classList.contains("cmh-deck-comments-off")) return;
   if (_coarsePointer) return;
   const got = selectionInRoot();
   if (got) {
@@ -3213,8 +3213,8 @@ document.addEventListener("mouseup", (e) => {
   // that neighbour while a valid content selection still stands. Remember it so the no-selection
   // cleanup below can skip clobbering an open menu when the release landed on chrome.
   const onSkip = !!(e.target.closest && e.target.closest(".cm-skip"));
-  // Deck present mode: no text-selection comment popup (the comment UI is hidden).
-  if (document.body.classList.contains("cmh-deck-present")) return;
+  // Deck with commenting disabled: no text-selection comment popup.
+  if (document.body.classList.contains("cmh-deck-comments-off")) return;
   setTimeout(() => {
     const got = selectionInRoot();
     if (!got) {
@@ -3245,7 +3245,7 @@ document.addEventListener("mouseup", (e) => {
 if (_coarsePointer) {
   let _touchSelTimer = null;
   const raiseTouchSelectionMenu = () => {
-    if (document.body.classList.contains("cmh-deck-present")) { hideMenu(); return; }
+    if (document.body.classList.contains("cmh-deck-comments-off")) { hideMenu(); return; }
     const got = selectionInRoot();
     if (!got) { hideMenu(); pendingRange = null; pendingQuote = ""; return; }
     pendingDiffSel = null;
@@ -3385,6 +3385,14 @@ function positionComposerNear(el, anchorRect) {
 }
 
 function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget }) {
+  // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
+  // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
+  // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
+  // so gate every new-comment composer here at the single choke point.
+  if (String(mode || "").indexOf("new") === 0
+      && document.body.classList.contains("cmh-deck-comments-off")) {
+    return null;
+  }
   const el = document.createElement("div");
   // Remember what had focus so keyboard users return to the diagram node / diff
   // line / image (not <body>) after the composer closes.
@@ -3812,6 +3820,9 @@ function updateSortUi() {
 function renderComments() {
   toolbarCount.textContent = comments.length;
   sidebarCount.textContent = comments.length;
+  // Keep the deck comment-options menu in step with the live comment count (the "Disable
+  // commenting" item is only available when the deck has zero comments).
+  if (window.__cmhDeck && typeof window.__cmhDeck.refreshMode === "function") window.__cmhDeck.refreshMode();
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   updateSideInfo();
   updateSortUi();
@@ -5543,7 +5554,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
 // single-, or unquoted) matching whole tokens, so a <body class="..."> literal elsewhere
 // (inlined script/content) is left alone, a superstring like x-sidebar-open is preserved,
 // and non-transient classes survive; the live layer re-derives the sidebar state on load.
-const _TRANSIENT_BODY_CLASSES = { "sidebar-open": 1, "cm-sidebar-resizing": 1, "cm-widget-dragging": 1, "cmh-deck-present": 1 };
+const _TRANSIENT_BODY_CLASSES = { "sidebar-open": 1, "cm-sidebar-resizing": 1, "cm-widget-dragging": 1, "cmh-deck-present": 1, "cmh-deck-comments-off": 1 };
 function _stripTransientBodyClasses(html) {
   return String(html == null ? "" : html).replace(/<body\b[^>]*>/i, function (tag) {
     return tag.replace(
@@ -7441,7 +7452,14 @@ function setupDeck() {
 
   let current = slides.findIndex((s) => s.classList.contains("active"));
   if (current < 0) current = 0;
+  // Deck comment model (3 states): commentMode mirrors the pane-open state so the existing
+  // navigation/focus/edge-nav gates keep working. deckMode is the persisted selection:
+  //   "closed" - comments enabled, side panel closed (DEFAULT)
+  //   "open"   - comments enabled, side panel open (review)
+  //   "off"    - comments disabled (present-only), only selectable at zero comments
   let commentMode = false;
+  let deckMode = "closed";
+  let modeMenu = null, modeToggle = null, modePaneItem = null, modeOffItem = null;
   let counter = null, prevBtn = null, nextBtn = null;
   let edgePrevBtn = null, edgeNextBtn = null;
   let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
@@ -7552,6 +7570,7 @@ function setupDeck() {
   function hasBlockingDeckChrome() {
     return !!(
       (overview && !overview.hidden)
+      || (modeMenu && !modeMenu.hidden)
       || document.querySelector(".cm-composer, .cm-modal-overlay")
     );
   }
@@ -7661,86 +7680,6 @@ function setupDeck() {
     cards[next].focus();
   }
 
-  // Namespace every id inside a cloned inline SVG (root included) with a per-clone
-  // prefix and rewrite every reference to those ids - url(...) in presentation
-  // attributes and inline style, href / xlink:href fragment refs, and the
-  // aria-labelledby / aria-describedby idref lists. This keeps each thumbnail's
-  // gradient/mask/filter/marker refs resolving to ITS OWN defs while guaranteeing the
-  // clones never duplicate an id already in the document (which would let the browser
-  // resolve url(#id) to the wrong, first-in-document definition).
-  var overviewSvgIdSeq = 0;
-  function namespaceSvgIds(svg) {
-    var withId = [];
-    if (svg.hasAttribute("id")) withId.push(svg);
-    svg.querySelectorAll("[id]").forEach(function (el) { withId.push(el); });
-    if (!withId.length) return;
-    var prefix = "cmhov" + (overviewSvgIdSeq++) + "-";
-    var map = Object.create(null);
-    withId.forEach(function (el) {
-      var old = el.getAttribute("id");
-      var neu = prefix + old;
-      el.setAttribute("id", neu);
-      map[old] = neu;
-    });
-    var XLINK = "http://www.w3.org/1999/xlink";
-    var rewriteUrls = function (v) {
-      return v.replace(/url\(\s*(['"]?)#([^'")\s]+)\1\s*\)/g, function (m, q, id) {
-        return map[id] ? "url(#" + map[id] + ")" : m;
-      });
-    };
-    var rewriteRef = function (v) {
-      return (v && v.charAt(0) === "#" && map[v.slice(1)]) ? "#" + map[v.slice(1)] : v;
-    };
-    var rewriteIdList = function (v) {
-      return v.split(/\s+/).map(function (t) { return map[t] || t; }).join(" ");
-    };
-    var URL_ATTRS = ["fill", "stroke", "clip-path", "mask", "filter", "marker", "marker-start", "marker-mid", "marker-end"];
-    var IDLIST_ATTRS = ["aria-labelledby", "aria-describedby"];
-    var els = [svg];
-    svg.querySelectorAll("*").forEach(function (el) { els.push(el); });
-    els.forEach(function (el) {
-      if (el.hasAttribute("style")) el.setAttribute("style", rewriteUrls(el.getAttribute("style")));
-      URL_ATTRS.forEach(function (a) { if (el.hasAttribute(a)) el.setAttribute(a, rewriteUrls(el.getAttribute(a))); });
-      if (el.hasAttribute("href")) el.setAttribute("href", rewriteRef(el.getAttribute("href")));
-      var xh = el.getAttributeNS ? el.getAttributeNS(XLINK, "href") : null;
-      if (xh) el.setAttributeNS(XLINK, "href", rewriteRef(xh));
-      IDLIST_ATTRS.forEach(function (a) { if (el.hasAttribute(a)) el.setAttribute(a, rewriteIdList(el.getAttribute(a))); });
-    });
-  }
-
-  function cleanOverviewClone(node) {
-    if (node.removeAttribute) node.removeAttribute("id");
-    if (node.classList) node.classList.remove("active", "visible");
-    node.setAttribute("inert", "");
-    node.inert = true;
-    node.tabIndex = -1;
-    // Strip non-SVG ids so the clones do not duplicate document ids. Ids INSIDE an
-    // <svg> are needed (it references its own gradients/masks/filters by url(#id);
-    // removing them made the reference fall back to black - the slide-1 logo bug), so
-    // instead of leaving them raw (which would duplicate ids across the thumbnails and
-    // the live slide and make url(#id) resolve to the wrong def) we namespace each
-    // SVG's ids uniquely per clone and rewrite every reference to them.
-    node.querySelectorAll("[id]").forEach((el) => { if (!el.closest("svg")) el.removeAttribute("id"); });
-    node.querySelectorAll("svg").forEach((svg) => namespaceSvgIds(svg));
-    node.querySelectorAll("mark.cm-hl").forEach((mark) => {
-      mark.replaceWith(...Array.prototype.slice.call(mark.childNodes));
-    });
-    node.querySelectorAll("a[href],area[href]").forEach((el) => {
-      el.removeAttribute("href");
-      el.tabIndex = -1;
-    });
-    node.querySelectorAll("[data-cid],[data-cids]").forEach((el) => {
-      el.removeAttribute("data-cid");
-      el.removeAttribute("data-cids");
-    });
-    node.querySelectorAll(
-      "a,area,button,input,select,textarea,summary,iframe,object,embed,audio[controls],video[controls],[tabindex],[contenteditable]"
-    ).forEach((el) => {
-      el.tabIndex = -1;
-      if (el.hasAttribute("contenteditable")) el.setAttribute("contenteditable", "false");
-    });
-  }
-
   function makeOverview() {
     if (overview) return;
     overview = document.createElement("section");
@@ -7810,54 +7749,16 @@ function setupDeck() {
       card.setAttribute("data-slide-index", String(i));
       card.setAttribute("data-slide-id", id);
 
-      const thumb = document.createElement("span");
-      thumb.className = "cmh-deck-overview-thumb";
-      const scale = document.createElement("span");
-      scale.className = "cmh-deck-overview-scale";
-      const clone = slide.cloneNode(true);
-      // The overview clones live outside #commentRoot, so deck-scoped rules like
-      // `#commentRoot[data-cmh-mode="deck"] .logo-line { fill: #fff }` do not reach
-      // them and SVG shapes fall back to black. Copy each original shape's computed
-      // fill/stroke inline onto the clone (done on the fresh clone so the node order
-      // still matches the original) so scoped styling survives the move.
-      const oAll = slide.querySelectorAll("*");
-      const cAll = clone.querySelectorAll("*");
-      for (let k = 0; k < oAll.length && k < cAll.length; k++) {
-        const o = oAll[k];
-        if (o instanceof SVGElement && o.tagName.toLowerCase() !== "svg") {
-          const cs = getComputedStyle(o);
-          if (cs.fill && cs.fill !== "none") cAll[k].style.fill = cs.fill;
-          if (cs.stroke && cs.stroke !== "none") cAll[k].style.stroke = cs.stroke;
-        }
-      }
-      cleanOverviewClone(clone);
-      // A cloned <canvas> is blank (the bitmap does not clone), which showed as black
-      // bars in the overview. Snapshot each original canvas into an <img> in the clone.
-      const origCanvases = slide.querySelectorAll("canvas");
-      const cloneCanvases = clone.querySelectorAll("canvas");
-      origCanvases.forEach((oc, ci) => {
-        const cc = cloneCanvases[ci];
-        if (!cc) return;
-        let url = null;
-        try { url = oc.toDataURL("image/png"); } catch (e) { url = null; }
-        if (!url) return;
-        const img = document.createElement("img");
-        img.src = url;
-        img.setAttribute("aria-hidden", "true");
-        if (cc.getAttribute("style")) img.setAttribute("style", cc.getAttribute("style"));
-        if (cc.className) img.className = cc.className;
-        img.width = cc.width || oc.width;
-        img.height = cc.height || oc.height;
-        cc.replaceWith(img);
-      });
-      clone.setAttribute("aria-hidden", "true");
-      scale.appendChild(clone);
-      thumb.appendChild(scale);
-
+      // A readable numbered title row (thumbnails of a 1920x1080 stage scaled to a chip were
+      // unreadable and rendered canvas/hero content as black blocks); the title is the reliable
+      // slide identifier for navigation.
+      const num = document.createElement("span");
+      num.className = "cmh-deck-overview-card-num";
+      num.textContent = (i + 1);
       const label = document.createElement("span");
       label.className = "cmh-deck-overview-card-label";
-      label.textContent = (i + 1) + ". " + titleText;
-      card.appendChild(thumb);
+      label.textContent = titleText;
+      card.appendChild(num);
       card.appendChild(label);
       card.addEventListener("click", () => {
         if (show(i)) closeOverview();
@@ -7918,6 +7819,9 @@ function setupDeck() {
     showSlideById: showById,
     activeSlideId: () => slides[current] && slides[current].getAttribute("data-slide-id"),
     slideCount: () => slides.length,
+    deckMode: () => deckMode,
+    setDeckMode: (m) => setDeckMode(m),
+    refreshMode: () => updateModeMenu(),
   };
 
   show(current);
@@ -7928,9 +7832,8 @@ function setupDeck() {
   } else {
     window.addEventListener("resize", fitStage);
   }
-  // Default to a clean full-screen presentation: hide the comment sidebar/toolbar until the
-  // user enters comment mode (see the cmh-deck-present CSS).
-  document.body.classList.add("cmh-deck-present");
+  // The comment-model default (present, panel closed) is applied by applyDeckMode() below,
+  // which reads the persisted per-deck selection and sets the deck body classes.
 
   function isEditableTarget(t) {
     if (!t) return false;
@@ -7987,36 +7890,123 @@ function setupDeck() {
     if (slide) showById(slide.getAttribute("data-slide-id"));
   }, true);
 
-  function setCommentMode(on) {
-    commentMode = on;
-    root.classList.toggle("cmh-deck-comment-mode", on);
-    document.body.classList.toggle("cmh-deck-present", !on);
-    try { if (on) openSidebar(); else closeSidebar(); } catch (e) { /* sidebar helpers are optional */ }
-    toggle.setAttribute("aria-pressed", String(on));
-    toggle.classList.toggle("cmh-deck-mode-on", on);
+  // ---- 3-state comment model (persisted per-deck) ---------------------------------
+  const DECK_MODE_KEY = COMMENT_KEY + "::deckMode";
+  function commentCount() { return (typeof comments !== "undefined" && comments) ? comments.length : 0; }
+  // Disabling comments is only offered when the deck carries no comments, so a reviewer can never
+  // strand existing feedback behind a present-only lock.
+  function canDisableComments() { return commentCount() === 0; }
+  function normalizeDeckMode(v) {
+    if (v !== "open" && v !== "off" && v !== "closed") return "closed";
+    if (v === "off" && !canDisableComments()) return "closed";
+    return v;
+  }
+  function saveDeckMode() { try { localStorage.setItem(DECK_MODE_KEY, deckMode); } catch (e) { /* private mode */ } }
+
+  function applyDeckMode(persist) {
+    const paneOpen = deckMode === "open";
+    const off = deckMode === "off";
+    commentMode = paneOpen;   // gates keyboard nav, edge-nav, and stage focus below
+    root.classList.toggle("cmh-deck-comment-mode", paneOpen);
+    document.body.classList.toggle("cmh-deck-present", !paneOpen);
+    document.body.classList.toggle("cmh-deck-comments-off", off);
+    try { if (paneOpen) openSidebar(); else closeSidebar(); } catch (e) { /* sidebar helpers optional */ }
+    if (persist !== false) saveDeckMode();
+    updateModeMenu();
     hideEdgeNav();
-    // Comment mode narrows the stage (the sidebar takes width); refit after layout settles.
+    // Opening the panel narrows the stage (the sidebar takes width); refit after layout settles.
     if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => {
-        fitStage();
-        if (!on) focusStage();
-      });
+      requestAnimationFrame(() => { fitStage(); if (!paneOpen) focusStage(); });
     } else {
       fitStage();
-      if (!on) focusStage();
+      if (!paneOpen) focusStage();
     }
   }
+  function setDeckMode(mode) {
+    deckMode = normalizeDeckMode(mode);
+    applyDeckMode(true);
+  }
+
+  function updateModeMenu() {
+    const paneOpen = deckMode === "open";
+    const off = deckMode === "off";
+    if (modeToggle) {
+      modeToggle.classList.toggle("cmh-deck-comments-off", off);
+      modeToggle.classList.toggle("cmh-deck-pane-open", paneOpen);
+      modeToggle.setAttribute("aria-label", off
+        ? "Comment options (commenting disabled)"
+        : (paneOpen ? "Comment options (review panel open)" : "Comment options"));
+    }
+    if (modePaneItem) {
+      modePaneItem.textContent = paneOpen ? "Close comment panel" : "Open comment panel";
+      modePaneItem.setAttribute("aria-checked", paneOpen ? "true" : "false");
+    }
+    if (modeOffItem) {
+      modeOffItem.textContent = off ? "Enable commenting" : "Disable commenting";
+      // Enabling is always allowed; disabling only when there are no comments to strand.
+      const allow = off ? true : canDisableComments();
+      modeOffItem.disabled = !allow;
+      modeOffItem.setAttribute("aria-disabled", allow ? "false" : "true");
+      modeOffItem.title = (!off && !allow)
+        ? "Delete every comment before you can disable commenting"
+        : "";
+    }
+  }
+
+  function openModeMenu() {
+    if (!modeMenu) return;
+    updateModeMenu();
+    modeMenu.hidden = false;
+    modeToggle.setAttribute("aria-expanded", "true");
+    document.addEventListener("click", onModeMenuOutside, true);
+    document.addEventListener("keydown", onModeMenuKey, true);
+    const first = modeMenu.querySelector(".cmh-deck-mode-item:not([disabled])");
+    if (first) setTimeout(() => { try { first.focus(); } catch (e) {} }, 0);
+  }
+  function closeModeMenu(focusToggle) {
+    if (!modeMenu || modeMenu.hidden) return;
+    modeMenu.hidden = true;
+    modeToggle.setAttribute("aria-expanded", "false");
+    document.removeEventListener("click", onModeMenuOutside, true);
+    document.removeEventListener("keydown", onModeMenuKey, true);
+    if (focusToggle) { try { modeToggle.focus(); } catch (e) {} }
+  }
+  function toggleModeMenu() { if (modeMenu.hidden) openModeMenu(); else closeModeMenu(true); }
+  function onModeMenuOutside(e) {
+    if (modeMenu.contains(e.target) || modeToggle.contains(e.target)) return;
+    closeModeMenu(false);
+  }
+  function modeMenuItems() {
+    return Array.prototype.slice.call(
+      modeMenu.querySelectorAll(".cmh-deck-mode-item:not([disabled])"));
+  }
+  function focusModeItem(index) {
+    const items = modeMenuItems();
+    if (!items.length) return;
+    const i = (index + items.length) % items.length;
+    try { items[i].focus(); } catch (e) {}
+  }
+  function onModeMenuKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); closeModeMenu(true); return; }
+    // Tab moves focus out of the menu and closes it (standard menu behaviour); let the browser
+    // do the default focus move so the menu does not trap the keyboard.
+    if (e.key === "Tab") { closeModeMenu(false); return; }
+    const items = modeMenuItems();
+    if (!items.length) return;
+    const cur = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); focusModeItem(cur < 0 ? 0 : cur + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); focusModeItem(cur < 0 ? items.length - 1 : cur - 1); }
+    else if (e.key === "Home") { e.preventDefault(); focusModeItem(0); }
+    else if (e.key === "End") { e.preventDefault(); focusModeItem(items.length - 1); }
+  }
+
+  const modeCtl = document.createElement("div");
+  modeCtl.className = "cm-skip cmh-deck-mode-ctl";
   const toggle = document.createElement("button");
+  modeToggle = toggle;
   toggle.className = "cm-skip cmh-deck-mode-toggle";
   toggle.type = "button";
-  // Stable accessible name; state is conveyed by aria-pressed + the on-colour, per the ARIA
-  // toggle-button pattern (a name that flips to "Present" would read "Present, pressed").
-  // A distinct annotate (pencil) icon - NOT the brand speech-bubble the site link below uses -
-  // so the two top-corner controls are visually distinguishable, not identical bubbles.
-  toggle.innerHTML = '<svg class="cmh-deck-mode-icon" viewBox="0 0 24 24" width="20" height="20"'
-    + ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
-    + ' aria-hidden="true" focusable="false"><path d="M12 20h9"/>'
-    + '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  toggle.innerHTML = CMH_ICON_SVG + '<span class="cmh-deck-mode-caret" aria-hidden="true"></span>';
   const toggleIcon = toggle.querySelector("svg");
   if (toggleIcon) {
     toggleIcon.setAttribute("aria-hidden", "true");
@@ -8025,28 +8015,74 @@ function setupDeck() {
     toggleIcon.removeAttribute("aria-label");
     toggleIcon.removeAttribute("data-cmh-tip");
   }
-  toggle.title = "Comment Mode";
-  toggle.setAttribute("aria-label", "Comment Mode");
-  toggle.setAttribute("aria-pressed", "false");
-  toggle.addEventListener("click", () => { setCommentMode(!commentMode); toggle.blur(); });
-  document.body.prepend(toggle);
-  const brandLink = document.createElement("a");
-  brandLink.className = "cm-skip cm-brand-link cmh-deck-brand-link";
-  brandLink.href = CMH_SITE_URL;
-  brandLink.target = "_blank";
-  brandLink.rel = "noopener noreferrer";
-  brandLink.title = "Commentable HTML site";
-  brandLink.setAttribute("aria-label", "Commentable HTML site (opens in a new tab)");
-  brandLink.innerHTML = CMH_ICON_SVG;
-  const brandIcon = brandLink.querySelector("svg");
-  if (brandIcon) {
-    brandIcon.setAttribute("aria-hidden", "true");
-    brandIcon.setAttribute("focusable", "false");
-    brandIcon.removeAttribute("role");
-    brandIcon.removeAttribute("aria-label");
-    brandIcon.removeAttribute("data-cmh-tip");
+  toggle.title = "Comment options";
+  toggle.setAttribute("aria-label", "Comment options");
+  toggle.setAttribute("aria-haspopup", "menu");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.addEventListener("click", (e) => { e.preventDefault(); toggleModeMenu(); });
+
+  modeMenu = document.createElement("div");
+  modeMenu.className = "cm-skip cmh-deck-mode-menu";
+  modeMenu.id = "cmhDeckModeMenu";
+  modeMenu.setAttribute("role", "menu");
+  modeMenu.setAttribute("aria-label", "Comment options");
+  modeMenu.hidden = true;
+  toggle.setAttribute("aria-controls", modeMenu.id);
+
+  modePaneItem = document.createElement("button");
+  modePaneItem.type = "button";
+  modePaneItem.className = "cmh-deck-mode-item cmh-deck-mode-pane";
+  modePaneItem.setAttribute("role", "menuitemcheckbox");
+  modePaneItem.addEventListener("click", () => {
+    setDeckMode(deckMode === "open" ? "closed" : "open");
+    closeModeMenu(false);
+  });
+
+  modeOffItem = document.createElement("button");
+  modeOffItem.type = "button";
+  modeOffItem.className = "cmh-deck-mode-item cmh-deck-mode-off-item";
+  modeOffItem.setAttribute("role", "menuitem");
+  modeOffItem.addEventListener("click", () => {
+    if (deckMode === "off") setDeckMode("closed");
+    else if (canDisableComments()) setDeckMode("off");
+    closeModeMenu(false);
+  });
+
+  const modeSep = document.createElement("span");
+  modeSep.className = "cmh-deck-mode-sep";
+  modeSep.setAttribute("role", "separator");
+
+  const siteItem = document.createElement("a");
+  siteItem.className = "cmh-deck-mode-item cmh-deck-mode-site cm-brand-link";
+  siteItem.setAttribute("role", "menuitem");
+  siteItem.href = CMH_SITE_URL;
+  siteItem.target = "_blank";
+  siteItem.rel = "noopener noreferrer";
+  siteItem.textContent = "Commentable HTML site";
+  siteItem.addEventListener("click", () => closeModeMenu(false));
+
+  modeMenu.appendChild(modePaneItem);
+  modeMenu.appendChild(modeOffItem);
+  modeMenu.appendChild(modeSep);
+  modeMenu.appendChild(siteItem);
+  modeCtl.appendChild(toggle);
+  modeCtl.appendChild(modeMenu);
+  document.body.prepend(modeCtl);
+
+  // Keep deckMode in step with any OTHER code path that opens or closes the panel (adding a
+  // comment opens the sidebar; the sidebar header Close button closes it). applyDeckMode leaves
+  // body.sidebar-open consistent with deckMode, so this observer never fights its own writes.
+  if (typeof MutationObserver === "function") {
+    new MutationObserver(() => {
+      const open = document.body.classList.contains("sidebar-open");
+      if (open && deckMode !== "open") setDeckMode("open");
+      else if (!open && deckMode === "open") setDeckMode("closed");
+    }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   }
-  toggle.after(brandLink);
+
+  // Apply the persisted selection (default "closed": comments on, panel shut).
+  try { deckMode = normalizeDeckMode(localStorage.getItem(DECK_MODE_KEY)); } catch (e) { deckMode = "closed"; }
+  applyDeckMode(false);
 
   const nav = document.createElement("div");
   nav.className = "cm-skip cmh-deck-nav";
@@ -8110,8 +8146,13 @@ renderComments();
 if (prunedCount > 0) {
   showToast(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }
-if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length) || (typeof notesChanges === "function" && notesChanges().length)) openSidebar();
-else closeSidebar();
+// A deck manages its own panel state from the persisted comment-model selection (applyDeckMode);
+// the document-flow auto-open below must not override it (that would force every deck with a
+// comment to open the panel, ignoring the reviewer's "panel closed" choice).
+if (!IS_DECK) {
+  if (comments.length || (typeof checklistChanges === "function" && checklistChanges().length) || (typeof notesChanges === "function" && notesChanges().length)) openSidebar();
+  else closeSidebar();
+}
 // Signals the nonportable-mode bootstrap that the external runtime initialized, so
 // the missing-companion-assets banner stays hidden.
 window.__commentableHtmlReady = true;

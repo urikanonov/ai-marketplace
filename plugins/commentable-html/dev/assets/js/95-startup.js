@@ -758,8 +758,28 @@ function setupDeck() {
     if (modeMenu.contains(e.target) || modeToggle.contains(e.target)) return;
     closeModeMenu(false);
   }
+  function modeMenuItems() {
+    return Array.prototype.slice.call(
+      modeMenu.querySelectorAll(".cmh-deck-mode-item:not([disabled])"));
+  }
+  function focusModeItem(index) {
+    const items = modeMenuItems();
+    if (!items.length) return;
+    const i = (index + items.length) % items.length;
+    try { items[i].focus(); } catch (e) {}
+  }
   function onModeMenuKey(e) {
-    if (e.key === "Escape") { e.preventDefault(); closeModeMenu(true); }
+    if (e.key === "Escape") { e.preventDefault(); closeModeMenu(true); return; }
+    // Tab moves focus out of the menu and closes it (standard menu behaviour); let the browser
+    // do the default focus move so the menu does not trap the keyboard.
+    if (e.key === "Tab") { closeModeMenu(false); return; }
+    const items = modeMenuItems();
+    if (!items.length) return;
+    const cur = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); focusModeItem(cur < 0 ? 0 : cur + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); focusModeItem(cur < 0 ? items.length - 1 : cur - 1); }
+    else if (e.key === "Home") { e.preventDefault(); focusModeItem(0); }
+    else if (e.key === "End") { e.preventDefault(); focusModeItem(items.length - 1); }
   }
 
   const modeCtl = document.createElement("div");

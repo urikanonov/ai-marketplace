@@ -452,7 +452,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#sidebar")).toBeHidden();
   });
 
-  test("CMH-DECK-22: three-state comment model defaults, persists, and gates commenting", async ({ page }) => {
+  test("CMH-DECK-25: three-state comment model defaults, persists, and gates commenting", async ({ page }) => {
     await openDeck(page, "", "cmh-deck-22-authoring");
     const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
     const triggerBackground = () => page.locator(".cmh-deck-mode-toggle").evaluate((el) =>
@@ -528,7 +528,81 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
   });
 
-  test("CMH-DECK-23: Mermaid diagrams on deck slides fill the slide width", async ({ page }) => {
+  test("CMH-DECK-25: off gates every rich-content comment entry point, not just the selection popup", async ({ page }) => {
+    // A deck slide with a real rich-content affordance (an image) that is commentable via the
+    // keyboard (focus + Enter opens the image composer) - a path that bypasses the selection popup.
+    const IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    const slides =
+      '<section class="slide active" data-slide-id="slide-rich"><h2>Rich</h2>'
+      + '<p>Alpha slide content</p><img src="' + IMG + '" alt="pic" width="80" height="60"></section>';
+    await installClipboardCapture(page);
+    const { html } = stageDeck(slides, { key: "cmh-deck-off-rich" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+
+    const addImageComment = () => page.evaluate(() => {
+      const before = document.querySelectorAll(".cm-composer").length;
+      const img = document.querySelector(".slide.active img");
+      if (img) { img.focus(); img.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); }
+      return document.querySelectorAll(".cm-composer").length - before;
+    });
+
+    // In an ON state (closed mode, comments enabled) the image affordance opens a composer,
+    // proving the rich-content entry point is live before we disable commenting.
+    expect(await addImageComment()).toBe(1);
+    await page.locator(".cm-composer [data-act='cancel']").click();
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+
+    // Switch to off (present-only). It must gate EVERY entry point, not just the selection popup.
+    const menu = await openDeckModeMenu(page);
+    await menu.locator(".cmh-deck-mode-off-item").click();
+    await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
+
+    // Every floating "Add Comment" affordance (mermaid / image / diff / widget / heading) stays
+    // hidden even when its reveal path fires, so a present-only deck exposes no dead control.
+    const revealed = await page.evaluate(() => {
+      const ids = ["mermaidAddBtn", "imageAddBtn", "diffAddBtn", "widgetAddBtn", "headingAddBtn"];
+      const out = {};
+      for (const id of ids) {
+        const b = document.getElementById(id);
+        if (!b) { out[id] = "missing"; continue; }
+        b.hidden = false; // simulate the hover/focus reveal path
+        out[id] = getComputedStyle(b).display;
+      }
+      return out;
+    });
+    for (const [id, display] of Object.entries(revealed)) {
+      expect(display, id + " must stay hidden while commenting is off").toBe("none");
+    }
+
+    // The central composer guard also refuses to open a new composer from the rich-content path.
+    expect(await addImageComment(), "no composer opens from a rich-content entry point while off").toBe(0);
+  });
+
+  test("CMH-DECK-11: the comment-options menu supports full keyboard navigation", async ({ page }) => {
+    await openDeck(page, "", "cmh-deck-menu-kbd");
+    const menu = await openDeckModeMenu(page);
+    const activeClass = () => page.evaluate(() => (document.activeElement && document.activeElement.className) || "");
+    // Opening the menu focuses the first item.
+    await expect.poll(activeClass).toContain("cmh-deck-mode-pane");
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(activeClass).toContain("cmh-deck-mode-off-item");
+    await page.keyboard.press("ArrowDown");
+    await expect.poll(activeClass).toContain("cmh-deck-mode-site");
+    await page.keyboard.press("ArrowDown"); // wraps back to the first item
+    await expect.poll(activeClass).toContain("cmh-deck-mode-pane");
+    await page.keyboard.press("ArrowUp"); // wraps to the last item
+    await expect.poll(activeClass).toContain("cmh-deck-mode-site");
+    await page.keyboard.press("Home");
+    await expect.poll(activeClass).toContain("cmh-deck-mode-pane");
+    await page.keyboard.press("End");
+    await expect.poll(activeClass).toContain("cmh-deck-mode-site");
+    // Tab moves focus out of the menu and closes it (no keyboard trap).
+    await page.keyboard.press("Tab");
+    await expect(menu).toBeHidden();
+  });
+
+  test("CMH-DECK-26: Mermaid diagrams on deck slides fill the slide width", async ({ page }) => {
     const slides =
       '<section class="slide active" data-slide-id="slide-mermaid"><h2>Mermaid</h2>'
       + '<pre class="mermaid cm-skip">flowchart LR\n A[Alpha]-->B[Beta]</pre></section>';
@@ -558,7 +632,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     }
   });
 
-  test("CMH-DECK-24: sortable-table sort chevrons inherit the deck table header color", async ({ page }) => {
+  test("CMH-DECK-27: sortable-table sort chevrons inherit the deck table header color", async ({ page }) => {
     const slides =
       '<section class="slide active" data-slide-id="slide-sort"><h2>Sortable</h2>'
       + '<table><thead><tr>'

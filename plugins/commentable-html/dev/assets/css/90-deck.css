@@ -17,8 +17,15 @@ body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
 }
 /* When commenting is disabled ("off" state), suppress the text-selection popup so a selection is
    not a dead end. In the default state (comments on, panel closed) the popup DOES appear, so a
-   reviewer can select text and Add Comment without first opening the panel. */
-body.cmh-deck-comments-off #menuComment {
+   reviewer can select text and Add Comment without first opening the panel. The rich-content
+   floating "Add Comment" buttons (mermaid nodes, images, diff lines, widget parts, headings) are
+   hidden too, so every comment entry point is inert - not just the selection popup. */
+body.cmh-deck-comments-off #menuComment,
+body.cmh-deck-comments-off #mermaidAddBtn,
+body.cmh-deck-comments-off #imageAddBtn,
+body.cmh-deck-comments-off #diffAddBtn,
+body.cmh-deck-comments-off #widgetAddBtn,
+body.cmh-deck-comments-off #headingAddBtn {
   display: none !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide {
@@ -347,8 +354,8 @@ body.cmh-deck-comments-off #menuComment {
   cursor: pointer;
 }
 .cmh-deck-nav button:disabled {
-  opacity: 0.55;
-  color: var(--cp-text-muted, #9aa0a6);
+  opacity: 0.9;
+  color: var(--cp-text-soft, #55606b);
   cursor: default;
 }
 .cmh-deck-nav button.cmh-deck-overview-on {

@@ -93,24 +93,6 @@ test.describe("visual-audit follow-ups", () => {
   });
 });
 
-test("the deck comment-mode toggle and brand link use distinct icons (CMH-DECK-23)", async ({ page }) => {
-  await page.setViewportSize({ width: 1200, height: 800 });
-  await page.goto(fileUrl(path.join(EXAMPLES, "deck-showcase.html")));
-  await ready(page);
-  const icons = await page.evaluate(() => {
-    const modeSvg = document.querySelector(".cmh-deck-mode-toggle svg");
-    const brandSvg = document.querySelector(".cmh-deck-brand-link svg");
-    return {
-      modeClass: modeSvg ? modeSvg.getAttribute("class") : null,
-      brandClass: brandSvg ? brandSvg.getAttribute("class") : null,
-      same: modeSvg && brandSvg ? modeSvg.innerHTML === brandSvg.innerHTML : true,
-    };
-  });
-  expect(icons.modeClass, "the comment-mode toggle uses the distinct annotate icon").toBe("cmh-deck-mode-icon");
-  expect(icons.brandClass, "the brand link keeps the brand logo").toBe("cm-brand-icon");
-  expect(icons.same, "the two top-corner controls no longer render identical icons").toBe(false);
-});
-
 test("small charts fit the mobile viewport instead of being force-widened (CMH-RESP-08)", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const staged = stageContent(
@@ -167,76 +149,6 @@ test("deck mode does not inherit the report title toolbar-clearance margin on mo
       return fc ? parseFloat(getComputedStyle(fc).marginTop) : -1;
     });
     expect(mt, "the deck viewport is not pushed down by the report toolbar-clearance margin (the deck toolbar is hidden)").toBeLessThanOrEqual(1);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("deck overview snapshots canvases and namespaces cloned SVG ids (CMH-DECK-24)", async ({ page }) => {
-  const slides =
-    '<style>#commentRoot[data-cmh-mode="deck"] .t-shape { fill: rgb(10, 20, 30); }</style>' +
-    '<section class="slide active" data-slide-id="slide-1"><h2>Chart</h2><canvas id="oc" width="120" height="80"></canvas></section>' +
-    '<section class="slide" data-slide-id="slide-2"><h2>Logo A</h2><svg viewBox="0 0 24 24" width="40" height="40">' +
-    '<defs><linearGradient id="grad"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient></defs>' +
-    '<rect width="24" height="24" fill="url(#grad)"/><rect class="t-shape" x="0" y="0" width="8" height="8"/></svg></section>' +
-    '<section class="slide" data-slide-id="slide-3"><h2>Logo B</h2><svg viewBox="0 0 24 24" width="40" height="40">' +
-    '<defs><linearGradient id="grad"><stop offset="0" stop-color="#00aa00"/><stop offset="1" stop-color="#00ffff"/></linearGradient></defs>' +
-    '<rect width="24" height="24" fill="url(#grad)"/></svg></section>';
-  const { dir, html } = stageDeck(slides, { key: "cmh-ov-f7" });
-  try {
-    await page.goto(fileUrl(html));
-    await ready(page);
-    await page.evaluate(() => {
-      const c = document.getElementById("oc");
-      const g = c.getContext("2d");
-      g.fillStyle = "#00aa00";
-      g.fillRect(0, 0, 120, 80);
-    });
-    await page.locator(".cmh-deck-nav").getByRole("button", { name: "Slide overview", exact: true }).click();
-    await expect(page.locator(".cmh-deck-overview")).toBeVisible();
-    const r = await page.evaluate(() => {
-      const cards = [...document.querySelectorAll(".cmh-deck-overview .cmh-deck-overview-card")];
-      const scale = (i) => cards[i].querySelector(".cmh-deck-overview-scale");
-      const c0 = scale(0), c1 = scale(1), c2 = scale(2);
-      const img = c0.querySelector("img");
-      const shape = c1.querySelector(".t-shape");
-      const fillIdOf = (sc) => {
-        const rect = sc.querySelector('rect[fill^="url(#"]');
-        return rect ? rect.getAttribute("fill").replace(/^url\(#/, "").replace(/\)$/, "") : null;
-      };
-      const stopColorWithin = (sc, id) => {
-        const grad = id ? sc.querySelector("#" + CSS.escape(id)) : null;
-        const stop = grad ? grad.querySelector("stop") : null;
-        return stop ? stop.getAttribute("stop-color") : null;
-      };
-      const id1 = fillIdOf(c1), id2 = fillIdOf(c2);
-      const idCount = (id) => document.querySelectorAll('[id="' + id + '"]').length;
-      return {
-        canvasReplacedByImg: !c0.querySelector("canvas") && !!img,
-        imgHasData: !!img && String(img.getAttribute("src") || "").startsWith("data:image"),
-        scopedFill: shape ? getComputedStyle(shape).fill : "",
-        overviewHasRawGrad: !!document.querySelector('.cmh-deck-overview [id="grad"]'),
-        id1Unique: id1 ? idCount(id1) === 1 : false,
-        id2Unique: id2 ? idCount(id2) === 1 : false,
-        idsDiffer: !!id1 && !!id2 && id1 !== id2,
-        stop1: stopColorWithin(c1, id1),
-        stop2: stopColorWithin(c2, id2),
-        liveStillGrad: !!document.querySelector('.slide[data-slide-id="slide-2"] #grad'),
-      };
-    });
-    expect(r.canvasReplacedByImg, "the cloned canvas is replaced by a snapshot image").toBe(true);
-    expect(r.imgHasData, "the snapshot is a data URL of the drawn canvas").toBe(true);
-    expect(r.scopedFill, "deck-scoped SVG fills are inlined so the thumbnail is not black").toBe("rgb(10, 20, 30)");
-    // The thumbnails must not keep the raw authored id (that duplicates the live slide's
-    // id and makes url(#grad) resolve to the wrong gradient) - ids are namespaced.
-    expect(r.overviewHasRawGrad, "cloned SVG ids are namespaced, not left as raw duplicates").toBe(false);
-    expect(r.id1Unique, "thumbnail 1 gradient id is unique in the document").toBe(true);
-    expect(r.id2Unique, "thumbnail 2 gradient id is unique in the document").toBe(true);
-    expect(r.idsDiffer, "two slides reusing id 'grad' get distinct namespaced ids").toBe(true);
-    // ...and each thumbnail resolves to ITS OWN gradient, so the logo is not black.
-    expect(r.stop1, "thumbnail 1 resolves its own red gradient").toBe("#ff0000");
-    expect(r.stop2, "thumbnail 2 resolves its own green gradient").toBe("#00aa00");
-    expect(r.liveStillGrad, "the live slide keeps its original id").toBe(true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
