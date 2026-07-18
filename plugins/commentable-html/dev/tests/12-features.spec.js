@@ -10,6 +10,7 @@ import {
   distinctCids, allCids, currentToast, copiedBundle, markTextForCid, storedComments,
   denyExternalNetwork, installClipboardCapture, readDownload, fileUrl, ready,
   startStaticServer, routeMermaidLocal, stageNonPortable, stageInline, openToolbarMenu, KITCHEN_SINK, SKILL,
+  expectNoteFenced,
 } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -99,7 +100,7 @@ test.describe("copy all", () => {
     expect(b).toMatch(/\nId: cm[a-z0-9]+\n/);
     expect(b).toMatch(/\nOffsets: \[\d+, \d+\]\n/);
     expect(b).toContain("Quoted text:");
-    expect(b).toContain("Comment:\nplease rename this");
+    expectNoteFenced(b, "please rename this");
     expect(b).toContain("AGENT INSTRUCTIONS:");
     const cid = (await allCids(page))[0];
     expect(b).toContain('HANDLED_IDS_JSON: ["' + cid + '"]');
@@ -116,7 +117,7 @@ test.describe("copy all", () => {
     await page.locator("#btnCloseSidebar").click();
     await page.click("#btnCopyAllTop");
     const b = await copiedBundle(page);
-    expect(b).toContain("Comment:\ntop copy path");
+    expectNoteFenced(b, "top copy path");
     expect(b).toContain("HANDLED_IDS_JSON: [");
   });
 
@@ -175,7 +176,7 @@ test.describe("copy all", () => {
     await page.click("#btnCopyAll");
     const execd = await page.evaluate(() => window.__execCopied);
     expect(execd.length).toBe(1);
-    expect(execd[0]).toContain("Comment:\nfallback copy");
+    expectNoteFenced(execd[0], "fallback copy");
     await expect(page.locator("#toast")).toContainText(/Copied 1 comment\./);
   });
 
@@ -205,7 +206,7 @@ test.describe("copy all", () => {
     expect(exec[0]).toContain("prompt fallback");
     expect(exec[0]).toContain("HANDLED_IDS_JSON: [");
     expect(prompted.length).toBe(1);
-    expect(prompted[0]).toContain("Comment:\nprompt fallback");
+    expectNoteFenced(prompted[0], "prompt fallback");
     expect(prompted[0]).toContain("HANDLED_IDS_JSON: [");
   });
 
@@ -504,7 +505,7 @@ test.describe("mermaid copy + activation", () => {
       const b = await copiedBundle(page);
       expect(b).toContain("## Comment 1 (mermaid)");
       expect(b).toMatch(/Anchor: mermaid diagram #1, node "/);
-      expect(b).toContain("Comment:\nrename this node");
+      expectNoteFenced(b, "rename this node");
       expect(b).not.toContain("Offsets: [");
       expect(b).not.toContain("Quoted text:");
 

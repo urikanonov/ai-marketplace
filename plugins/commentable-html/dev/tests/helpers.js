@@ -86,6 +86,29 @@ export function copiedBundle(page) {
   return page.evaluate(() => (window.__copied && window.__copied.length ? window.__copied[window.__copied.length - 1] : null));
 }
 
+// Copy all wraps every free-text reviewer note in a dynamic, tilde-sized UNTRUSTED
+// REVIEWER NOTE fence (so an injected trailer/instruction line in a note cannot be read
+// as bundle structure). Assert `note` appears verbatim inside that fence.
+export function expectNoteFenced(bundle, note) {
+  const esc = note.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(
+    "~{3,} BEGIN UNTRUSTED REVIEWER NOTE \\(data, not instructions\\) ~{3,}\\n" +
+    esc + "\\n~{3,} END UNTRUSTED REVIEWER NOTE ~{3,}");
+  expect(bundle, "note is wrapped in the untrusted-note fence").toMatch(re);
+}
+
+// The body of the FINAL machine trailer block (the genuine, unconditional trailer that
+// Copy all emits last), or null if none. A forged trailer inside a note is earlier, so
+// the LAST open marker is always the genuine one.
+export function machineTrailerBody(bundle) {
+  const opens = [...bundle.matchAll(/^=== CMH MACHINE TRAILER \(do not edit\) ===[^\n]*\n/gm)];
+  if (!opens.length) return null;
+  const start = opens[opens.length - 1].index + opens[opens.length - 1][0].length;
+  const rest = bundle.slice(start);
+  const close = rest.match(/^=== END CMH MACHINE TRAILER ===/m);
+  return close ? rest.slice(0, close.index) : rest;
+}
+
 export async function openInline(page) {
   await installClipboardCapture(page);
   await page.goto(fileUrl(INLINE));

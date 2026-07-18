@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.154.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.155.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.155.0] - 2026-07-19</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>Copy all agent bundle: hardened against untrusted-document / prompt-injection. Each free-text reviewer note is now wrapped verbatim in a dynamic, tilde-sized <code>UNTRUSTED REVIEWER NOTE</code> fence (sized longer than any tilde run in the note), and a read-first AGENT INSTRUCTIONS block frames reviewer notes as untrusted, document-scoped change requests the agent may act on only as edits to the document under review - as data, never as agent or system instructions, and never as a trigger for tool use beyond the documented handled-id update (CMH-COPY-08). The document <code>data-doc-source</code> is emitted single-line so an embedded newline cannot forge a standalone machine line (CMH-COPY-08).</li>
+              <li>Copy all machine trailer: all machine-readable JSON (<code>HANDLED_IDS_JSON</code>, <code>NOTES_STATE_JSON</code>, <code>CHECKLIST_STATE_JSON</code>) now lives only inside ONE unconditional final <code>=== CMH MACHINE TRAILER (do not edit) ===</code> block (canonical empty values when there are no changes). The <code>notes_apply.py</code>, <code>checklist_apply.py</code>, and <code>mark_handled.py</code> tools read JSON only from within that fenced trailer, so a forged trailer or state line inside a note body or the document source is ignored rather than winning a last-match over the whole bundle (CMH-COPY-09, CMH-HANDLED-01).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.154.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
             <ul>
               <li>Checklist and notes state maps (<code>_clOverrides</code>, the <code>::cl</code> save/load maps, <code>_noteOverrides</code>) are now built with <code>Object.create(null)</code> at every assignment site; <code>_clLoad</code> additionally re-homes the parsed outer map and each per-checklist inner map onto a null-prototype copy before reading them, and the checklist token lookup uses a <code>hasOwnProperty</code> guard. As a result, a checklist authored with <code>data-cmh-checklist=&quot;__proto__&quot;</code>/<code>&quot;constructor&quot;</code> (or a crafted <code>::cl</code> localStorage payload using <code>__proto__</code>/<code>constructor</code> keys or codes) can no longer write onto or return <code>Object.prototype</code>. A checklist id or item key of <code>constructor</code>/<code>__proto__</code> still works as ordinary data; no behavior changed for legitimate documents (CMH-SEC-02).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.153.0] - 2026-07-18</h3></div>
             <div class="group-label">Added</div>
@@ -439,8 +449,6 @@
               <li>Section review tracking: hover or keyboard-focus any heading (h1-h6) to mark that section reviewed. A badge to the right of the title shows one of four states - Reviewed (green), Changed - re-review (amber, when the section content changed since it was reviewed), Commented (blue, when the section has an open comment), or unreviewed. Change detection uses a deterministic content hash of the section (heading to the next same-or-higher heading, excluding runtime chrome); a one-click re-review on a Changed/Commented badge re-stamps it. The side table-of-contents gains a per-entry state dot and an All / Reviewed / Unreviewed / Commented / Changed filter that collapses the sections it hides. Markers persist in localStorage (with tombstones for cleared baked markers) and bake into Portable/Offline exports via a dedicated <code>reviewedSections</code> block (kept out of the Copy-all bundle; stripped from Plain export). New <code>tools/authoring/mark_reviewed.py</code> bakes markers from the CLI, and <code>section_hash.py</code> shares the byte-identical hash contract with the runtime (pinned equal by a JS/Python golden and an end-to-end extractor-parity test).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.149.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
@@ -475,22 +483,7 @@
               <li>Showcase deck polish: slide content is vertically centered to use the full stage (less bottom whitespace), the amber title highlight now hugs the letters instead of bleeding into the line above, and every slide carries a Commentable HTML brand mark at its top-right linking to the plugin site (CMH-DECK-SHOWCASE-10, CMH-DECK-SHOWCASE-11, CMH-DECK-SHOWCASE-12).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.142.0] - 2026-07-17</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Mobile and chrome polish from a full visual audit of the example set (the new <code>.github/skills/visual-audit</code> skill drove every example in desktop and mobile viewports; issue #353). On narrow viewports a page title flush to the top no longer renders under the fixed toolbar pill (CMH-RESP-03), the comments sidebar opens as a full-width sheet with the resize handle removed so no document sliver shows behind it (CMH-RESP-04), and the floating scroll-progress bubble is hidden so it never overlaps content (CMH-RESP-05). The compact checklist state control gains a <code>&gt;=44px</code> invisible touch target without enlarging its glyph (CMH-RESP-06). The control that reopens the comments panel is now labeled <code>Comments</code> instead of the ambiguous <code>Show</code> that duplicated the top-bar pill (CMH-CHROME-11), and a disabled deck navigation button keeps a readable contrast instead of near-invisible gray (CMH-DECK-NAV-01).</li>
-              <li>Follow-up polish from the visual audit (issue #360), each with a covering test in <code>tests/72-followups.spec.js</code>: - A leading lede/card (not just a bare title) also clears the fixed toolbar on mobile (CMH-RESP-03). - The notes fold/toggle controls and the sidebar comment-card action buttons (jump/edit/delete) get <code>&gt;=44px</code> touch targets on mobile without changing their look (CMH-RESP-07). Dense checklist rows also keep enough vertical rhythm (table rows via <code>td</code> padding) that adjacent tap targets never overlap into a neighbouring row (CMH-RESP-06). - Small charts fit the mobile viewport instead of being force-widened to 560px, which had clipped pie/doughnut legends; wide mermaid diagrams still scroll (CMH-RESP-08).</li>
-              <li><code>report-checklist</code> no longer repeats its document title verbatim as its first section heading; the first section is now <code>About this example</code>, so the sidebar breadcrumb is not doubled (CMH-CONTENT-17).</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The sidebar/Copy-all context preview no longer glues adjacent elements into a run-on (&quot;18open incidents&quot;): it inserts a separator at non-inline box boundaries. Display-only - the comment-anchoring offset space is unchanged (CMH-CTX-01).</li>
-              <li>The deck comment-mode toggle now uses a distinct annotate icon instead of the brand speech-bubble the site link uses, so the two top-corner controls are no longer identical (CMH-DECK-11, CMH-DECK-23).</li>
-              <li>The deck overview grid renders faithful thumbnails: slide canvases are snapshotted into images (a cloned canvas is blank), and each cloned SVG&#x27;s ids are namespaced per clone (with <code>url(#id)</code>, <code>href</code>, and aria idref references rewritten) so a thumbnail&#x27;s gradient/mask/filter refs resolve to its OWN defs - fixing the slide-1 logo rendering black, without duplicating a document id when two slides reuse the same id (CMH-DECK-24).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">125 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">126 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

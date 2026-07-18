@@ -27,6 +27,9 @@ from html.parser import HTMLParser
 
 STATES = ("blank", "check", "cross", "question")
 _BUNDLE_RE = re.compile(r"^\s*CHECKLIST_STATE_JSON:\s*(\{.*\})\s*$", re.MULTILINE)
+_TRAILER_OPEN_RE = re.compile(
+    r"^=== CMH MACHINE TRAILER \(do not edit\) ===[^\n]*\n", re.MULTILINE)
+_TRAILER_CLOSE_RE = re.compile(r"^=== END CMH MACHINE TRAILER ===", re.MULTILINE)
 _VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
@@ -171,10 +174,25 @@ def apply_states(path, state_map, warn=None):
     return changed
 
 
+def _machine_trailer_body(text):
+    """Return the body of the FINAL '=== CMH MACHINE TRAILER ===' block. Copy all emits
+    that trailer unconditionally as the last block of the bundle, so a forged trailer or
+    STATE line inside an untrusted reviewer note (always earlier in the text) is ignored:
+    the parser reads state ONLY from the genuine trailer, never via a last-match over the
+    whole bundle."""
+    opens = list(_TRAILER_OPEN_RE.finditer(text))
+    if not opens:
+        raise ValueError("no CMH machine trailer found in the bundle")
+    body = text[opens[-1].end():]
+    close = _TRAILER_CLOSE_RE.search(body)
+    return body[:close.start()] if close else body
+
+
 def states_from_bundle(text):
-    matches = list(_BUNDLE_RE.finditer(text))
+    body = _machine_trailer_body(text)
+    matches = list(_BUNDLE_RE.finditer(body))
     if not matches:
-        raise ValueError("no 'CHECKLIST_STATE_JSON: {...}' line found in the bundle")
+        raise ValueError("no 'CHECKLIST_STATE_JSON: {...}' line found in the machine trailer")
     return json.loads(matches[-1].group(1))
 
 

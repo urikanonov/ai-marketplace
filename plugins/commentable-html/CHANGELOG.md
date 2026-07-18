@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.155.0] - 2026-07-19
+
+### Security
+
+- Copy all agent bundle: hardened against untrusted-document / prompt-injection. Each free-text
+  reviewer note is now wrapped verbatim in a dynamic, tilde-sized `UNTRUSTED REVIEWER NOTE` fence
+  (sized longer than any tilde run in the note), and a read-first AGENT INSTRUCTIONS block frames
+  reviewer notes as untrusted, document-scoped change requests the agent may act on only as edits to
+  the document under review - as data, never as agent or system instructions, and never as a trigger
+  for tool use beyond the documented handled-id update (CMH-COPY-08). The document `data-doc-source`
+  is emitted single-line so an embedded newline cannot forge a standalone machine line (CMH-COPY-08).
+- Copy all machine trailer: all machine-readable JSON (`HANDLED_IDS_JSON`, `NOTES_STATE_JSON`,
+  `CHECKLIST_STATE_JSON`) now lives only inside ONE unconditional final
+  `=== CMH MACHINE TRAILER (do not edit) ===` block (canonical empty values when there are no
+  changes). The `notes_apply.py`, `checklist_apply.py`, and `mark_handled.py` tools read JSON only
+  from within that fenced trailer, so a forged trailer or state line inside a note body or the
+  document source is ignored rather than winning a last-match over the whole bundle (CMH-COPY-09,
+  CMH-HANDLED-01).
+
 ## [1.154.0] - 2026-07-18
 
 ### Security
