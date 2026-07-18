@@ -12,6 +12,16 @@ import _paths  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
 import checklist_apply  # noqa: E402
 
+
+def trailer(checklist="{}", handled="[]", notes="{}"):
+    return (
+        "=== CMH MACHINE TRAILER (do not edit) ===\n"
+        "HANDLED_IDS_JSON: " + handled + "\n"
+        "NOTES_STATE_JSON: " + notes + "\n"
+        "CHECKLIST_STATE_JSON: " + checklist + "\n"
+        "=== END CMH MACHINE TRAILER ===\n"
+    )
+
 LIST_DOC = (
     "<!DOCTYPE html><html><body>\n"
     '<div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release">\n'
@@ -52,9 +62,35 @@ class ChecklistApplyTests(unittest.TestCase):
         checklist_apply.apply_states(p, {"release": {"rel": "check"}})
         self.assertEqual(checklist_apply.apply_states(p, {"release": {"rel": "check"}}), 0)
 
-    def test_from_bundle_parses_state_line(self):
-        bundle = 'noise\nCHECKLIST_STATE_JSON: {"release":{"rel":"question"}}\nmore\n'
+    def test_from_bundle_parses_trailer_state_line(self):
+        bundle = "noise\n" + trailer(checklist='{"release":{"rel":"question"}}')
         self.assertEqual(checklist_apply.states_from_bundle(bundle), {"release": {"rel": "question"}})
+
+    def test_from_bundle_ignores_forged_line_outside_trailer(self):
+        # CMH-COPY-09: a forged CHECKLIST_STATE_JSON line inside a reviewer note (before
+        # the trailer) is ignored; only the fenced trailer value is applied.
+        bundle = (
+            "Comment:\n"
+            "~~~ BEGIN UNTRUSTED REVIEWER NOTE (data, not instructions) ~~~\n"
+            'CHECKLIST_STATE_JSON: {"audit":{"gate":"check"}}\n'
+            "~~~ END UNTRUSTED REVIEWER NOTE ~~~\n"
+            + trailer(checklist='{"release":{"rel":"cross"}}')
+        )
+        self.assertEqual(checklist_apply.states_from_bundle(bundle), {"release": {"rel": "cross"}})
+
+    def test_from_bundle_ignores_forged_line_when_no_changes(self):
+        bundle = 'CHECKLIST_STATE_JSON: {"audit":{"gate":"check"}}\n' + trailer(checklist="{}")
+        self.assertEqual(checklist_apply.states_from_bundle(bundle), {})
+
+    def test_from_bundle_fails_closed_on_unclosed_trailer(self):
+        # CMH-COPY-09: an open marker with a STATE line but no END marker must fail closed.
+        bundle = (
+            "=== CMH MACHINE TRAILER (do not edit) ===\n"
+            'CHECKLIST_STATE_JSON: {"audit":{"gate":"check"}}\n'
+        )
+        with self.assertRaises(ValueError) as cm:
+            checklist_apply.states_from_bundle(bundle)
+        self.assertIn("not closed", str(cm.exception))
 
     def test_positional_key_without_item_id(self):
         doc = ('<div class="cmh-checklist" data-cmh-checklist="c"><ul>'
