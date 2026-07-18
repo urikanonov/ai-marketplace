@@ -262,6 +262,38 @@ class StatusCommentsListTests(unittest.TestCase):
         self.assertEqual(task.extra_status_comment_ids([], trusted_only=True), [])
 
 
+class PickSurvivorTests(unittest.TestCase):
+    def test_prefers_globally_trusted_over_self_only(self):
+        # A self-only (viewer-matched, assoc NONE) comment must not win over a maintainer's.
+        matches = [
+            {"id": 1, "assoc": "NONE"},   # older, self-only
+            {"id": 2, "assoc": "OWNER"},  # maintainer
+        ]
+        self.assertEqual(task._pick_survivor(matches)["id"], 2)
+
+    def test_oldest_trusted_when_multiple_trusted(self):
+        matches = [{"id": 5, "assoc": "COLLABORATOR"}, {"id": 8, "assoc": "OWNER"}]
+        self.assertEqual(task._pick_survivor(matches)["id"], 5)
+
+    def test_oldest_when_all_self_only(self):
+        matches = [{"id": 3, "assoc": "NONE"}, {"id": 4, "assoc": "NONE"}]
+        self.assertEqual(task._pick_survivor(matches)["id"], 3)
+
+
+class MaxStampTests(unittest.TestCase):
+    def test_returns_newest_valid(self):
+        self.assertEqual(
+            task._max_stamp(["2026-07-18T10:00:00Z", "2026-07-18T12:00:00Z", "2026-07-18T09:00:00Z"]),
+            "2026-07-18T12:00:00Z")
+
+    def test_ignores_none_and_unparseable(self):
+        self.assertEqual(task._max_stamp([None, "garbage", "2026-07-18T10:00:00Z"]),
+                         "2026-07-18T10:00:00Z")
+
+    def test_none_when_no_valid(self):
+        self.assertIsNone(task._max_stamp([None, "nope", ""]))
+
+
 class IsNewerTests(unittest.TestCase):
     def test_newer_beats_older(self):
         self.assertTrue(task.is_newer("2026-07-18T10:05:00Z", "2026-07-18T10:00:00Z"))
@@ -471,6 +503,52 @@ class BeatOnceRoutingTests(unittest.TestCase):
             task._beat_once(7, None)
         self.assertEqual(len(stub.edited), 1)
         self.assertEqual(len(stub.posted), 0)
+
+    def test_survivor_prefers_maintainer_over_self_only(self):
+        # A self-authored older comment must not cause a maintainer's comment to be pruned.
+        t = "2026-07-18T10:00:00Z"
+        comments = [
+            {"id": 1, "body": task.status_body("issue-7-foo", t), "assoc": "NONE", "author": "me"},
+            {"id": 2, "body": task.status_body("issue-7-foo", t), "assoc": "OWNER", "author": "boss"},
+        ]
+        with _StubComments(comments, viewer="me") as stub:
+            task._beat_once(7, None)
+        self.assertEqual(stub.edited[0][0], 2)   # the maintainer's comment survives
+        self.assertEqual(stub.deleted, [1])      # the self-only duplicate is pruned
+
+    def test_does_not_delete_valid_duplicate_when_survivor_unrecoverable(self):
+        # Oldest survivor is malformed and unrecoverable (no branch); a valid duplicate exists.
+        comments = [
+            {"id": 1, "body": task.STATUS_MARKER + "\n(no branch, no timestamp)", "assoc": "OWNER"},
+            {"id": 2, "body": task.status_body("issue-7-foo", "2026-07-18T10:00:00Z"), "assoc": "OWNER"},
+        ]
+        with _StubComments(comments) as stub:
+            with self.assertRaises(task.HeartbeatStop):
+                task._beat_once(7, None)
+        self.assertEqual(stub.deleted, [])   # the valid duplicate is NOT deleted
+        self.assertEqual(stub.edited, [])
+
+    def test_converges_to_newest_stamp_without_regression(self):
+        # A duplicate carries a newer stamp than the oldest survivor; converging must not lose it.
+        older = task.status_body("issue-7-foo", "2098-01-01T00:00:00Z")
+        newer = task.status_body("issue-7-foo", "2099-01-01T00:00:00Z")
+        comments = [
+            {"id": 1, "body": older, "assoc": "OWNER"},  # oldest -> survivor
+            {"id": 2, "body": newer, "assoc": "OWNER"},  # duplicate with the newest stamp
+        ]
+        with _StubComments(comments) as stub:
+            result = task._beat_once(7, None)
+        self.assertEqual(result, "2099-01-01T00:00:00Z")           # newest preserved
+        self.assertIn("2099-01-01T00:00:00Z", stub.edited[0][1])   # survivor rewritten to newest
+        self.assertEqual(stub.deleted, [2])                        # duplicate pruned
+
+    def test_viewer_unresolved_skips_post_to_avoid_duplicate(self):
+        # gh api user failed (viewer ""); an untrusted marker exists -> skip rather than duplicate.
+        planted = [{"id": 1, "body": task.STATUS_MARKER + "\nx", "assoc": "NONE", "author": "someone"}]
+        with _StubComments(planted, viewer="") as stub:
+            task._beat_once(7, "issue-7-foo")
+        self.assertEqual(stub.posted, [])
+        self.assertEqual(stub.edited, [])
 
 
 class _StubStartBoundary:
