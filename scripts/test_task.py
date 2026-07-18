@@ -232,6 +232,50 @@ class FindStatusCommentTests(unittest.TestCase):
         comments = [{"id": 1, "body": task.STATUS_MARKER, "assoc": "CONTRIBUTOR"}]
         self.assertIsNone(task.find_status_comment(comments, trusted_only=True))
 
+    def test_viewer_authored_comment_is_adopted_despite_untrusted_assoc(self):
+        # A bot/self account whose author_association is NONE still owns its own comment.
+        comments = [{"id": 9, "body": task.STATUS_MARKER, "assoc": "NONE", "author": "me-bot"}]
+        self.assertIsNone(task.find_status_comment(comments, trusted_only=True))
+        self.assertEqual(
+            task.find_status_comment(comments, trusted_only=True, viewer="me-bot")["id"], 9)
+
+    def test_outsider_not_matching_viewer_is_rejected(self):
+        comments = [{"id": 1, "body": task.STATUS_MARKER, "assoc": "NONE", "author": "outsider"}]
+        self.assertIsNone(task.find_status_comment(comments, trusted_only=True, viewer="me-bot"))
+
+
+class StatusCommentsListTests(unittest.TestCase):
+    def _c(self, cid, assoc="OWNER"):
+        return {"id": cid, "body": task.STATUS_MARKER + f"\n#{cid}", "assoc": assoc}
+
+    def test_status_comments_returns_all_matches_in_order(self):
+        comments = [self._c(2), {"id": 3, "body": "unrelated"}, self._c(5)]
+        got = task.status_comments(comments, trusted_only=True)
+        self.assertEqual([c["id"] for c in got], [2, 5])
+
+    def test_extra_status_comment_ids_are_all_but_first(self):
+        comments = [self._c(2), self._c(5), self._c(8)]
+        self.assertEqual(task.extra_status_comment_ids(comments, trusted_only=True), [5, 8])
+
+    def test_extra_ids_empty_when_zero_or_one_match(self):
+        self.assertEqual(task.extra_status_comment_ids([self._c(2)], trusted_only=True), [])
+        self.assertEqual(task.extra_status_comment_ids([], trusted_only=True), [])
+
+
+class IsNewerTests(unittest.TestCase):
+    def test_newer_beats_older(self):
+        self.assertTrue(task.is_newer("2026-07-18T10:05:00Z", "2026-07-18T10:00:00Z"))
+
+    def test_older_does_not_beat_newer(self):
+        self.assertFalse(task.is_newer("2026-07-18T10:00:00Z", "2026-07-18T10:05:00Z"))
+
+    def test_equal_is_not_newer(self):
+        self.assertFalse(task.is_newer("2026-07-18T10:00:00Z", "2026-07-18T10:00:00Z"))
+
+    def test_missing_or_unparseable_existing_is_writable(self):
+        self.assertTrue(task.is_newer("2026-07-18T10:00:00Z", None))
+        self.assertTrue(task.is_newer("2026-07-18T10:00:00Z", "none"))
+
 
 class ParseBranchTests(unittest.TestCase):
     def test_extracts_branch(self):
@@ -327,22 +371,28 @@ class ArgTypeValidatorTests(unittest.TestCase):
 class _StubComments:
     """Context-managed monkeypatch of the gh/git boundary so _beat_once routing is testable.
 
-    _list_comments returns the provided comments; _edit_comment / _post_comment record their
-    calls instead of shelling out."""
-    def __init__(self, comments):
+    _list_comments returns the provided comments; _edit_comment / _post_comment / _delete_comment
+    record their calls instead of shelling out; _viewer_login returns a fixed login."""
+    def __init__(self, comments, viewer="me"):
         self.comments = comments
+        self.viewer = viewer
         self.edited = []
         self.posted = []
+        self.deleted = []
 
     def __enter__(self):
-        self._orig = (task._list_comments, task._edit_comment, task._post_comment)
+        self._orig = (task._list_comments, task._edit_comment, task._post_comment,
+                      task._delete_comment, task._viewer_login)
         task._list_comments = lambda number: self.comments
         task._edit_comment = lambda cid, body: self.edited.append((cid, body))
         task._post_comment = lambda number, body: self.posted.append((number, body))
+        task._delete_comment = lambda cid: self.deleted.append(cid)
+        task._viewer_login = lambda: self.viewer
         return self
 
     def __exit__(self, *exc):
-        task._list_comments, task._edit_comment, task._post_comment = self._orig
+        (task._list_comments, task._edit_comment, task._post_comment,
+         task._delete_comment, task._viewer_login) = self._orig
 
 
 class BeatOnceRoutingTests(unittest.TestCase):
@@ -393,6 +443,34 @@ class BeatOnceRoutingTests(unittest.TestCase):
         # The outsider comment is ignored; a fresh trusted comment is posted instead of edited.
         self.assertEqual(len(stub.edited), 0)
         self.assertEqual(len(stub.posted), 1)
+
+    def test_does_not_regress_a_newer_timestamp(self):
+        # A concurrent worker already wrote a FUTURE timestamp; this beat must not move it back.
+        future = task.status_body("issue-7-foo", "2099-01-01T00:00:00Z")
+        with _StubComments(self._trusted(future)) as stub:
+            task._beat_once(7, None)
+        self.assertEqual(stub.edited, [])  # no write - the existing stamp is newer
+
+    def test_converges_duplicate_status_comments(self):
+        body = task.status_body("issue-7-foo", "2026-07-18T10:00:00Z")
+        dupes = [
+            {"id": 7, "body": body, "assoc": "OWNER"},
+            {"id": 8, "body": body, "assoc": "OWNER"},
+            {"id": 9, "body": body, "assoc": "OWNER"},
+        ]
+        with _StubComments(dupes) as stub:
+            task._beat_once(7, None)
+        self.assertEqual(stub.edited[0][0], 7)     # the oldest (first) is edited
+        self.assertEqual(sorted(stub.deleted), [8, 9])  # the duplicates are pruned
+
+    def test_adopts_viewer_authored_comment(self):
+        # A comment authored by the invoking account (assoc NONE) is adopted, not duplicated.
+        body = task.status_body("issue-7-foo", "2026-07-18T10:00:00Z")
+        mine = [{"id": 3, "body": body, "assoc": "NONE", "author": "me"}]
+        with _StubComments(mine, viewer="me") as stub:
+            task._beat_once(7, None)
+        self.assertEqual(len(stub.edited), 1)
+        self.assertEqual(len(stub.posted), 0)
 
 
 class _StubStartBoundary:
@@ -454,7 +532,7 @@ class CmdStartTests(unittest.TestCase):
     def test_rejects_invalid_explicit_branch(self):
         with _StubStartBoundary() as stub:
             with self.assertRaises(SystemExit):
-                task.cmd_start(_start_args(7, None, branch="--evil"))
+                task.cmd_start(_start_args(7, None, branch="bad branch"))
         self.assertEqual(stub.runs, [])
 
 

@@ -7,9 +7,10 @@ Task issue-form section shape. Agents and contributors should prefer this wrappe
 over raw `gh` so those conventions are not re-typed each time.
 
 The pure helpers (build_body, create_args, tick_checkbox, assert_ascii, status_body,
-bump_last_active, find_status_comment, parse_last_active, parse_branch, is_stale,
-utc_stamp, assert_valid_branch, branch_slug, derive_branch) are unit tested in
-scripts/test_task.py; the thin `_run` layer shells out to `gh` and `git`.
+bump_last_active, find_status_comment, status_comments, extra_status_comment_ids,
+parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch,
+branch_slug, derive_branch) are unit tested in scripts/test_task.py; the thin `_run`
+layer shells out to `gh` and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
@@ -47,6 +48,8 @@ HEARTBEAT_STALE_MINUTES = 15
 # On a public repo anyone can comment, so an outsider (CONTRIBUTOR/NONE) could plant the marker;
 # adopting only maintainer/collaborator comments stops that from hijacking the automation.
 TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+# The fixed-width UTC timestamp format used in the Work status comment (lexicographically sortable).
+_UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 class HeartbeatStop(Exception):
@@ -149,7 +152,27 @@ def utc_stamp(now=None):
     dt = now or datetime.now(timezone.utc)
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc)
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.strftime(_UTC_FMT)
+
+
+def is_newer(candidate, existing):
+    """True if `candidate` (a UTC stamp) should overwrite `existing`.
+
+    Returns True when existing is missing or unparseable (candidate is authoritative), and
+    otherwise only when candidate is strictly later than existing. This makes a heartbeat
+    monotonic: an out-of-order or clock-skewed beat cannot move a newer timestamp backwards.
+    """
+    if not existing:
+        return True
+    try:
+        e = datetime.strptime(existing, _UTC_FMT)
+    except ValueError:
+        return True
+    try:
+        c = datetime.strptime(candidate, _UTC_FMT)
+    except ValueError:
+        return False
+    return c > e
 
 
 def assert_valid_branch(branch):
@@ -201,21 +224,36 @@ def bump_last_active(body, stamp):
     return new_body
 
 
-def find_status_comment(comments, trusted_only=False):
-    """Return the first comment dict whose body has STATUS_MARKER, or None.
+def find_status_comment(comments, trusted_only=False, viewer=None):
+    """Return the first matching status comment (see status_comments), or None."""
+    matches = status_comments(comments, trusted_only, viewer)
+    return matches[0] if matches else None
 
-    comments: iterable of dicts with 'id'/'body' (and optionally 'assoc', the GitHub
-    author_association). When trusted_only is set, only a marker comment authored by a
-    trusted association (OWNER/MEMBER/COLLABORATOR) is adopted, so an outsider who plants
-    the marker on a public issue cannot hijack the automation's status comment.
+
+def _is_status_comment(comment, trusted_only, viewer):
+    """True if comment carries STATUS_MARKER and is trusted.
+
+    A marker comment is trusted when trusted_only is off, or its author_association is in
+    TRUSTED_ASSOCIATIONS, or it was authored by `viewer` (the invoking account owns its own
+    comment even if its association is NONE, e.g. a bot). Anything else is an outsider's plant.
     """
-    for c in comments:
-        if STATUS_MARKER not in (c.get("body") or ""):
-            continue
-        if trusted_only and (c.get("assoc") or "").upper() not in TRUSTED_ASSOCIATIONS:
-            continue
-        return c
-    return None
+    if STATUS_MARKER not in (comment.get("body") or ""):
+        return False
+    if not trusted_only:
+        return True
+    if (comment.get("assoc") or "").upper() in TRUSTED_ASSOCIATIONS:
+        return True
+    return bool(viewer) and (comment.get("author") or "") == viewer
+
+
+def status_comments(comments, trusted_only=False, viewer=None):
+    """Return every matching status comment, in list order (chronological from the API)."""
+    return [c for c in comments if _is_status_comment(c, trusted_only, viewer)]
+
+
+def extra_status_comment_ids(comments, trusted_only=False, viewer=None):
+    """Return the ids of duplicate status comments (all matches except the first) to prune."""
+    return [c["id"] for c in status_comments(comments, trusted_only, viewer)[1:]]
 
 
 def parse_last_active(body):
@@ -238,7 +276,7 @@ def is_stale(stamp, now, minutes=HEARTBEAT_STALE_MINUTES):
     if not stamp:
         return True
     try:
-        dt = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(stamp, _UTC_FMT).replace(tzinfo=timezone.utc)
     except ValueError:
         return True
     if now.tzinfo is None:
@@ -314,14 +352,15 @@ def current_branch():
 
 
 def _list_comments(number):
-    """Return the issue's comments as a list of {'id','body','assoc'} dicts (paginated).
+    """Return the issue's comments as a list of {'id','body','assoc','author'} dicts (paginated).
 
-    'assoc' is the GitHub author_association, used to trust only maintainer/collaborator
-    status comments. Malformed NDJSON lines are skipped rather than aborting the run.
+    'assoc' is the GitHub author_association and 'author' the login, used to trust only a
+    maintainer/collaborator or the invoking account's own status comment. Malformed NDJSON
+    lines are skipped rather than aborting the run.
     """
     out = _capture(["gh", "api", "--paginate",
                     f"repos/{REPO}/issues/{number}/comments",
-                    "--jq", ".[] | {id: .id, body: .body, assoc: .author_association}"])
+                    "--jq", ".[] | {id: .id, body: .body, assoc: .author_association, author: .user.login}"])
     comments = []
     for line in out.splitlines():
         line = line.strip()
@@ -332,6 +371,24 @@ def _list_comments(number):
         except ValueError:
             continue
     return comments
+
+
+_VIEWER_LOGIN = None
+
+
+def _viewer_login():
+    """Return the authenticated gh account login (cached), or '' if it cannot be determined.
+
+    Used so the automation trusts its OWN status comment even when its author_association is
+    NONE (e.g. a bot). A failure is not cached, so a transient error retries next call.
+    """
+    global _VIEWER_LOGIN
+    if not _VIEWER_LOGIN:
+        try:
+            _VIEWER_LOGIN = _capture(["gh", "api", "user", "--jq", ".login"]).strip()
+        except SystemExit:
+            return ""
+    return _VIEWER_LOGIN
 
 
 def _post_comment(number, body):
@@ -351,26 +408,53 @@ def _edit_comment(comment_id, body):
         os.unlink(path)
 
 
+def _delete_comment(comment_id):
+    _capture(["gh", "api", "--method", "DELETE",
+              f"repos/{REPO}/issues/comments/{int(comment_id)}"])
+
+
+def _prune_extras(extra_ids):
+    """Best-effort delete of duplicate status comments so the invariant of one pinned comment
+    converges. A failed delete is swallowed - the next pass retries it."""
+    for cid in extra_ids:
+        try:
+            _delete_comment(cid)
+        except SystemExit:
+            pass
+
+
 def _upsert_status(number, branch, stamp=None):
     """Create or (in place) refresh the pinned Work status comment for a branch. Adopts only a
-    trusted (maintainer/collaborator) marker comment; otherwise posts a fresh canonical one."""
+    trusted (maintainer/collaborator or self-authored) marker comment, edits the oldest, and
+    prunes any duplicates so concurrent first-writes converge to a single comment."""
     stamp = stamp or utc_stamp()
-    existing = find_status_comment(_list_comments(number), trusted_only=True)
+    viewer = _viewer_login()
+    comments = _list_comments(number)
+    matches = status_comments(comments, trusted_only=True, viewer=viewer)
     body = status_body(branch, stamp)
-    if existing:
-        _edit_comment(existing["id"], body)
+    if matches:
+        _edit_comment(matches[0]["id"], body)
+        _prune_extras([c["id"] for c in matches[1:]])
     else:
         _post_comment(number, body)
     return stamp
 
 
 def _beat_once(number, branch):
-    """Post one heartbeat: refresh the existing (trusted) status comment's timestamp, or create
-    it from `branch` if none exists yet. Returns the UTC stamp written. Raises HeartbeatStop on a
-    fatal condition (no status comment and no branch, or a malformed comment we cannot rebuild)."""
+    """Post one heartbeat: refresh the oldest trusted status comment's timestamp in place (never
+    regressing a newer one), pruning duplicates, or create the comment from `branch` if none
+    exists. Returns the UTC stamp now in effect. Raises HeartbeatStop on a fatal condition (no
+    status comment and no branch, or a malformed comment we cannot rebuild)."""
     stamp = utc_stamp()
-    existing = find_status_comment(_list_comments(number), trusted_only=True)
-    if existing:
+    viewer = _viewer_login()
+    matches = status_comments(_list_comments(number), trusted_only=True, viewer=viewer)
+    if matches:
+        existing = matches[0]
+        _prune_extras([c["id"] for c in matches[1:]])
+        current = parse_last_active(existing["body"])
+        if current and not is_newer(stamp, current):
+            # A concurrent worker already wrote a newer/equal timestamp; do not move it back.
+            return current
         try:
             new_body = bump_last_active(existing["body"], stamp)
         except ValueError:
@@ -497,13 +581,14 @@ def cmd_heartbeat(a):
 
 def cmd_stale(a):
     now = datetime.now(timezone.utc)
+    viewer = _viewer_login()
     issues = json.loads(_capture([
         "gh", "issue", "list", "--repo", REPO, "--state", "open",
         "--label", TASK_LABEL, "--label", IN_PROGRESS_LABEL,
         "--limit", "200", "--json", "number,title"]))
     stale = []
     for it in issues:
-        st = find_status_comment(_list_comments(it["number"]), trusted_only=True)
+        st = find_status_comment(_list_comments(it["number"]), trusted_only=True, viewer=viewer)
         stamp = parse_last_active(st["body"]) if st else None
         branch = (parse_branch(st["body"]) if st else None) or "unknown"
         if is_stale(stamp, now, a.minutes):
