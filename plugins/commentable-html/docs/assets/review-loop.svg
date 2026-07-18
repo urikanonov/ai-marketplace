@@ -47,5 +47,5 @@
 
   <!-- 4. agent returns the updated file -> you (curved loop back below the nodes) -->
   <path class="arrow" stroke="#b11f4b" fill="none" d="M160,175 C 250,235 380,235 470,161" stroke-width="1.8" marker-end="url(#cmh-ah)" />
-  <text class="sub" fill="#5c5c5c" x="320" y="242" text-anchor="middle" font-size="12.5">4. reload and repeat</text>
+  <text class="sub" fill="#5c5c5c" x="320" y="242" text-anchor="middle" font-size="12.5">4. Reload and repeat</text>
 </svg>

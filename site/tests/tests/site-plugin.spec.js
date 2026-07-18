@@ -21,22 +21,24 @@ test("the review-loop diagram swaps to a vertical, uncramped layout on a mobile 
   const box = await vertical.boundingBox();
   expect(box.height).toBeGreaterThan(box.width);
   // The vertical variant numbers ALL FOUR steps with a badge (SITE-WHY-04), including the
-  // "reload and repeat" loop-back, so on mobile step 4 reads like the other numbered actions
+  // "Reload and repeat" loop-back, so on mobile step 4 reads like the other numbered actions
   // instead of a plain italic caption. The old italic caption class is gone.
   await expect(vertical.locator(".loop-fig-badge")).toHaveCount(4);
   await expect(vertical.locator(".loop-fig-repeat")).toHaveCount(0);
   await expect(vertical).toContainText("Generates HTML");
   await expect(vertical).toContainText("Copy all back");
   await expect(vertical).toContainText("Comment inline");
-  await expect(vertical).toContainText("reload and repeat");
+  // Step 4 reads as a title-cased action ("Reload and repeat") in both SVG variants.
+  await expect(vertical).toContainText("Reload and repeat");
+  await expect(horizontal).toContainText("Reload and repeat");
 });
 
 
-test("the comparison table's Markdown-file verdict reads 'OK / need viewer' (SITE-WHY-08)", async ({ page }) => {
+test("the comparison table's Markdown-file verdict reads 'OK / Need viewer' (SITE-WHY-08)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const markdownRow = page.locator("table.compare tbody tr", { hasText: "Markdown file" });
   const bigPlan = markdownRow.locator('td[data-label="Handles a big plan"] .cmp-v');
-  await expect(bigPlan).toHaveText("OK / need viewer");
+  await expect(bigPlan).toHaveText("OK / Need viewer");
 });
 
 
@@ -196,6 +198,27 @@ test("the plugin page has a Private by design section emphasizing local-only dat
     .locator("#privacy .grid")
     .evaluate((el) => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length);
   expect(privacyCols).toBe(2);
+});
+
+
+test("the features section pitches no extension, all-HTML, and cross-platform support (SITE-PLUGIN-21)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const card = page.locator("#features .grid > .card.feature", { hasText: "No extension" });
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText(/no browser extension/i);
+  await expect(card).toContainText("HTML");
+  await expect(card).toContainText("Windows");
+  await expect(card).toContainText("macOS");
+  await expect(card).toContainText("Linux");
+});
+
+
+test("the privacy section qualifies comment persistence to same-origin hosting and export (SITE-PLUGIN-22)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const privacy = page.locator("#privacy");
+  await expect(privacy).toContainText("keyed to a stable id");
+  await expect(privacy).toContainText("served from one web origin");
+  await expect(privacy).toContainText("an exported file always carries every comment inside it");
 });
 
 

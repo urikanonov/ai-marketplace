@@ -126,6 +126,29 @@ test("the Why section states commentable-html shortens the AI planning loop", as
 });
 
 
+test("the 'With Commentable HTML' bullet says an even richer HTML and highlights 'review in place' (SITE-WHY-10)", async ({ page }) => {
+  // The comment-style highlight mirrors the runtime amber mark; assert the exact amber fill under
+  // both color schemes (an opaque gray or blue would still be "not transparent", so a bare opacity
+  // check would not prove the named amber behavior).
+  const amberByScheme = {
+    light: "rgba(245, 158, 11, 0.32)",
+    dark: "rgba(251, 191, 36, 0.28)",
+  };
+  for (const scheme of ["light", "dark"]) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+    const bullet = page.locator(".why-list li", { hasText: "With Commentable HTML" });
+    await expect(bullet).toHaveCount(1);
+    await expect(bullet).toContainText(/even richer HTML/i);
+    await expect(bullet).not.toContainText(/the same rich HTML/i);
+    const mark = bullet.locator("mark.hl-comment");
+    await expect(mark).toHaveText("review in place");
+    const bg = await mark.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg, scheme + " highlight fill must be the runtime amber").toBe(amberByScheme[scheme]);
+  }
+});
+
+
 test("the Why section frames HTML as the de-facto standard for AI planning and reporting (SITE-WHY-07)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const why = page.locator("#why");
