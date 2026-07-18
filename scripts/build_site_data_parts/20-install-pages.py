@@ -160,9 +160,10 @@ def render_plugins(manifest, claude_names=None):
                                        desktop_zip=desktop_zip, desktop_skill=desktop_skill)
         chips = "".join('<span class="chip">%s</span>' % esc(k) for k in keywords)
         category_badge = ('\n    <span class="badge">%s</span>' % esc(category_label(category))) if category else ""
-        title = '<span class="name">%s</span>' % esc(name)
+        title = '<span class="name">%s</span>' % esc(PLUGIN_DISPLAY_NAMES.get(name, name))
         if page:
-            title = '<span class="name"><a href="%s">%s</a></span>' % (esc(page), esc(name))
+            title = '<span class="name"><a href="%s">%s</a></span>' % (
+                esc(page), esc(PLUGIN_DISPLAY_NAMES.get(name, name)))
         source = ('<a class="btn" href="%s">Source</a>' % esc(safe_url(homepage))) if homepage else ""
         learn_more = ('<a class="btn learn-more" href="%s">Learn more</a>' % esc(page)) if page else ""
         foot = learn_more + source

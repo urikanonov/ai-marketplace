@@ -28,7 +28,8 @@ class RenderPluginsTests(unittest.TestCase):
         }
         out = bsd.render_plugins(manifest)
         # The title is a keyboard-focusable link to the plugin page; CSS stretches it over the card.
-        self.assertIn('<span class="name"><a href="./commentable-html/">commentable-html</a></span>', out)
+        # The visible text is the friendly display name (SITE-HUB-14), while the href stays the slug.
+        self.assertIn('<span class="name"><a href="./commentable-html/">Commentable HTML</a></span>', out)
         # The Learn more button also links to the page.
         self.assertIn('<a class="btn learn-more" href="./commentable-html/">Learn more</a>', out)
         # Two generated links (title + Learn more) point at the page; CSS supplies the stretched area.
@@ -36,6 +37,25 @@ class RenderPluginsTests(unittest.TestCase):
         # The Source link is still present and independent of the page links.
         self.assertIn('<a class="btn" href="https://example.com/source">Source</a>', out)
         self.assertNotIn("card-link", out)
+
+    def test_card_title_uses_display_name(self):
+        # SITE-HUB-14: each hub card title shows the friendly display name from PLUGIN_DISPLAY_NAMES,
+        # while the title link href and the card anchor id keep the code-name slug.
+        with open(os.path.join(bsd.REPO_ROOT, ".github", "plugin", "marketplace.json"),
+                  encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        out = bsd.render_plugins(manifest)
+        self.assertIn('<span class="name"><a href="./commentable-html/">Commentable HTML</a></span>', out)
+        self.assertIn('<span class="name"><a href="./multi-duck/">Multi Duck</a></span>', out)
+        self.assertIn(
+            '<span class="name"><a href="./urikan-ai-marketplace-auto-updater/">Auto-updater</a></span>',
+            out)
+        # The anchor id and link href stay the code-name slug so nav/hero targets still resolve.
+        self.assertIn('id="plugin-commentable-html"', out)
+        # The raw code name is never the visible title text.
+        self.assertNotIn(">commentable-html</a>", out)
+        self.assertNotIn(">multi-duck</a>", out)
+        self.assertNotIn(">urikan-ai-marketplace-auto-updater</a>", out)
 
     def test_card_has_a_stable_slugged_anchor_id(self):
         # SITE-HUB-11: each card carries a stable id so the nav dropdown and hero pills can scroll
@@ -430,7 +450,7 @@ class AutoUpdaterPageTests(unittest.TestCase):
     def test_render_plugins_links_the_auto_updater_card_to_its_page(self):
         out = bsd.render_plugins(self._real_manifest())
         self.assertIn(
-            '<span class="name"><a href="%s">%s</a></span>' % (self.PAGE, self.UPDATER), out)
+            '<span class="name"><a href="%s">%s</a></span>' % (self.PAGE, "Auto-updater"), out)
         self.assertIn('<a class="btn learn-more" href="%s">Learn more</a>' % self.PAGE, out)
 
     def test_sitemap_lists_the_auto_updater_page(self):
@@ -476,7 +496,7 @@ class MultiDuckPageTests(unittest.TestCase):
     def test_render_plugins_links_the_multi_duck_card_to_its_page(self):
         out = bsd.render_plugins(self._real_manifest())
         self.assertIn(
-            '<span class="name"><a href="%s">%s</a></span>' % (self.PAGE, self.MDUCK), out)
+            '<span class="name"><a href="%s">%s</a></span>' % (self.PAGE, "Multi Duck"), out)
         self.assertIn('<a class="btn learn-more" href="%s">Learn more</a>' % self.PAGE, out)
 
     def test_sitemap_lists_the_multi_duck_page(self):
