@@ -175,6 +175,31 @@ test("clicking a tutorial image opens a full-size lightbox that Escape closes", 
 });
 
 
+test("tutorial image lightbox opens via keyboard, traps Tab, and restores focus on close (SITE-TUT-07)", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const overlay = page.locator(".lightbox");
+  await expect(overlay).toBeHidden();
+  const firstImg = page.locator(".tutorial img").first();
+  await expect(firstImg).toHaveAttribute("tabindex", "0");
+  await expect(firstImg).toHaveAttribute("role", "button");
+  await expect(firstImg).toHaveAttribute("aria-label", /.+/);
+  await firstImg.focus();
+  await page.keyboard.press("Enter");
+  await expect(overlay).toBeVisible();
+  // Opening moves focus into the overlay (the close button).
+  await expect(overlay.locator(".lightbox-close")).toBeFocused();
+  const isInsideOverlay = () => page.evaluate(
+    () => document.querySelector(".lightbox").contains(document.activeElement));
+  await page.keyboard.press("Tab");
+  expect(await isInsideOverlay()).toBe(true);
+  await page.keyboard.press("Shift+Tab");
+  expect(await isInsideOverlay()).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(overlay).toBeHidden();
+  await expect(firstImg).toBeFocused();
+});
+
+
 test("tutorial brand keeps the user in the commentable-html section", async ({ page }) => {
   await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
   // The brand icon returns to the commentable-html plugin home, not the hub root.
