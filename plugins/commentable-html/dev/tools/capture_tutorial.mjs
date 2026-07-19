@@ -561,29 +561,36 @@ async function captureGarden(ctx) {
   });
   await page.mouse.move(1, 1);
   await waitForStableLayout(page);
-  // Clip the sidebar down to the bottom of its last visible comment card (plus a little padding) so
-  // the shot is tight instead of padded out with the empty rest of the full-height fixed panel.
+  // Clip the sidebar down to the bottom of its populated content (search controls plus the visible
+  // comment cards, plus a little padding) so the shot is tight instead of padded out with the empty
+  // rest of the full-height fixed panel. Fail loudly if the panel is missing or the search matched no
+  // visible card, rather than silently writing a degenerate sliver or skipping the shot.
   const searchClip = await page.evaluate(() => {
     const sidebar = document.getElementById("sidebar");
-    if (!sidebar) return null;
+    if (!sidebar) return { error: "#sidebar is missing" };
     const sb = sidebar.getBoundingClientRect();
+    const cards = Array.from(sidebar.querySelectorAll(".cm-card"))
+      .filter((card) => card.getBoundingClientRect().height > 0);
+    if (!cards.length) return { error: "no visible .cm-card (the search query matched nothing)" };
     let contentBottom = sb.top;
-    for (const card of sidebar.querySelectorAll(".cm-card")) {
-      const r = card.getBoundingClientRect();
-      if (r.bottom > contentBottom) contentBottom = r.bottom;
-    }
+    const searchInput = document.getElementById("cmSearchInput");
+    if (searchInput) contentBottom = Math.max(contentBottom, searchInput.getBoundingClientRect().bottom);
+    for (const card of cards) contentBottom = Math.max(contentBottom, card.getBoundingClientRect().bottom);
     const pad = 16;
     const height = Math.min(sb.height, Math.max(1, contentBottom - sb.top + pad));
     return {
-      x: Math.max(0, Math.floor(sb.left)),
-      y: Math.max(0, Math.floor(sb.top)),
-      width: Math.ceil(sb.width),
-      height: Math.ceil(height),
+      clip: {
+        x: Math.max(0, Math.floor(sb.left)),
+        y: Math.max(0, Math.floor(sb.top)),
+        width: Math.ceil(sb.width),
+        height: Math.ceil(height),
+      },
     };
   });
-  if (searchClip) {
-    await writeScreenshot(page, shotPath(targetDir, P, "13-comment-search"), { clip: searchClip });
+  if (searchClip.error) {
+    throw new Error("capture: cannot capture garden-13-comment-search: " + searchClip.error);
   }
+  await writeScreenshot(page, shotPath(targetDir, P, "13-comment-search"), { clip: searchClip.clip });
 
   // Clear the query, then open and shoot the sidebar export menu.
   await page.evaluate(() => {

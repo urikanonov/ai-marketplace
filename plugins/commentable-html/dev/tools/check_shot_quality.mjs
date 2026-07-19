@@ -27,11 +27,15 @@ const ASSETS = dirArg ? path.resolve(dirArg) : path.resolve(HERE, "..", "..", "d
 // each shot's dimensions, so no dimension floor is needed here. See report mode for the calibration.
 const MIN_SHARPNESS = 60;      // variance of the Laplacian on luma; a smooth-blurred shot scores low.
 const MIN_RICHNESS = 0.02;     // fraction of off-grid pixels; a color-quantized/faded shot scores 0.
+// Only the committed tutorial shots follow the <scene>-NN-<name>.png naming (garden-01-top-light,
+// note-01-note, triage-01-board, ...). Restrict the gate to that pattern so a future non-shot PNG (a
+// flat logo or icon) dropped into docs/assets is not falsely failed as faded/quantized.
+const SHOT_NAME_RE = /^[a-z]+-\d{2}-[a-z0-9-]+\.png$/;
 
 // Compute the quality metrics of a decoded image, and (for calibration) of a copy degraded exactly
 // the way the old normalization degraded shots, so a threshold can sit cleanly between the two.
-async function metricsFor(page, base64) {
-  return page.evaluate(async ({ b64 }) => {
+async function metricsFor(page, base64, withDegraded) {
+  return page.evaluate(async ({ b64, withDegraded }) => {
     const img = new Image();
     img.src = "data:image/png;base64," + b64;
     await img.decode();
@@ -67,7 +71,10 @@ async function metricsFor(page, base64) {
         const onGrid = (v) => v % step === 0 || v === 255;
         if (!onGrid(data[i]) || !onGrid(data[i + 1]) || !onGrid(data[i + 2])) offGrid += 1;
       }
-      return { sharpness, richness: offGrid / n };
+      // sharpMeasurable is false for an image thinner than 3px in either dimension (no interior
+      // pixel exists for a 3x3 Laplacian), so the caller skips the sharpness floor for it rather
+      // than false-failing a legitimately tiny strip as blurry.
+      return { sharpness, richness: offGrid / n, sharpMeasurable: count > 0 };
     }
 
     const canvas = document.createElement("canvas");
@@ -76,6 +83,9 @@ async function metricsFor(page, base64) {
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(img, 0, 0);
     const crisp = measure(ctx.getImageData(0, 0, width, height).data);
+    // The degraded copy is only needed by --report (to show the crisp-vs-degraded gap). The gate
+    // uses only the crisp metrics, so skip the extra full-image passes when not reporting.
+    if (!withDegraded) return { width, height, crisp, degraded: null };
 
     // Degraded copy: downsample by 2 (smoothing) then upsample nearest, and quantize colors - the
     // exact old normalization - so report mode shows the gap the thresholds must sit inside.
@@ -103,7 +113,7 @@ async function metricsFor(page, base64) {
     }
     const degraded = measure(d);
     return { width, height, crisp, degraded };
-  }, { b64: base64 });
+  }, { b64: base64, withDegraded });
 }
 
 async function run() {
@@ -111,9 +121,15 @@ async function run() {
     console.error("check_shot_quality: assets dir not found:", ASSETS);
     return 2;
   }
-  const files = fs.readdirSync(ASSETS).filter((f) => f.endsWith(".png")).sort();
+  let files;
+  try {
+    files = fs.readdirSync(ASSETS).filter((f) => SHOT_NAME_RE.test(f)).sort();
+  } catch (e) {
+    console.error("check_shot_quality: cannot read assets dir", ASSETS, "-", e.message);
+    return 2;
+  }
   if (!files.length) {
-    console.error("check_shot_quality: no PNG shots found in", ASSETS);
+    console.error("check_shot_quality: no tutorial shots (<scene>-NN-*.png) found in", ASSETS);
     return 2;
   }
   const browser = await chromium.launch();
@@ -121,8 +137,18 @@ async function run() {
   const problems = [];
   try {
     for (const file of files) {
-      const base64 = fs.readFileSync(path.join(ASSETS, file)).toString("base64");
-      const m = await metricsFor(page, base64);
+      let m;
+      try {
+        const base64 = fs.readFileSync(path.join(ASSETS, file)).toString("base64");
+        m = await metricsFor(page, base64, reportMode);
+      } catch (e) {
+        // A corrupt/undecodable PNG is a real problem for the gate, but --report is best-effort and
+        // must never fail; either way, keep scanning the rest of the shots.
+        const msg = `${file}: unreadable or corrupt image (${e.message})`;
+        if (reportMode) console.log(msg);
+        else problems.push(msg);
+        continue;
+      }
       if (reportMode) {
         console.log(
           `${file.padEnd(30)} ${m.width}x${m.height}  sharp=${m.crisp.sharpness.toFixed(1)}`
@@ -131,7 +157,7 @@ async function run() {
         continue;
       }
       const failed = [];
-      if (m.crisp.sharpness < MIN_SHARPNESS) failed.push(`blurry (sharpness ${m.crisp.sharpness.toFixed(1)} < ${MIN_SHARPNESS})`);
+      if (m.crisp.sharpMeasurable && m.crisp.sharpness < MIN_SHARPNESS) failed.push(`blurry (sharpness ${m.crisp.sharpness.toFixed(1)} < ${MIN_SHARPNESS})`);
       if (m.crisp.richness < MIN_RICHNESS) failed.push(`faded/quantized (richness ${m.crisp.richness.toFixed(3)} < ${MIN_RICHNESS})`);
       if (failed.length) problems.push(`${file}: ${failed.join("; ")}`);
     }
