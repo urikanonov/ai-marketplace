@@ -11,6 +11,7 @@ import {
   addTextComment,
   openComposerFor,
   installClipboardCapture,
+  copiedBundle,
   startStaticServer,
   readDownload,
   routeMermaidLocal,
@@ -18,6 +19,7 @@ import {
   enterCommentMode,
   leaveCommentMode,
   selectText,
+  storedComments,
   PYTHON,
   SKILL,
   clickSidebarExport,
@@ -37,6 +39,23 @@ async function openDeck(page, hash = "", key = "cmh-deck-test") {
 }
 
 const activeId = (page) => page.evaluate(() => window.__cmhDeck.activeSlideId());
+
+// Click squarely ON an element's rendered text glyphs (not the element-box center, which for a
+// short left-aligned line is empty space to the right of the text - which now correctly advances).
+async function clickOnText(page, selector) {
+  const pt = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) { return (n.nodeValue && n.nodeValue.trim()) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
+    });
+    const tn = walker.nextNode();
+    const range = document.createRange();
+    range.selectNodeContents(tn);
+    const r = range.getClientRects()[0];
+    return { x: r.left + Math.min(10, r.width / 2), y: r.top + r.height / 2 };
+  }, selector);
+  await page.mouse.click(pt.x, pt.y);
+}
 
 function parseRgb(value) {
   const match = String(value || "").match(/rgba?\(([^)]+)\)/);
@@ -186,6 +205,296 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await composer.locator("textarea").press("Enter");
     await expect(composer).toBeVisible();
     expect(await activeId(page)).toBe("slide-00000003");
+  });
+
+  test("CMH-DECK-33: empty right-click offers slide and deck comments; a slide comment ties to and jumps to its slide", async ({ page }) => {
+    await openDeck(page);
+    // An empty right-click on the active slide (closed mode) offers BOTH a slide-scoped comment
+    // and a deck-wide comment; the deck relabels the document item to "Comment on deck".
+    await page.evaluate(() => {
+      const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 });
+      document.querySelector(".slide.active").dispatchEvent(ev);
+    });
+    await expect(page.locator("#contextMenu")).toBeVisible();
+    const slideItem = page.locator("#menuSlideComment");
+    const deckItem = page.locator("#menuDocComment");
+    await expect(slideItem).toBeVisible();
+    await expect(slideItem).toHaveText("Comment on slide");
+    await expect(deckItem).toBeVisible();
+    await expect(deckItem).toHaveText("Comment on deck");
+
+    // Creating the slide comment stores it against the active slide (id + title), no highlight.
+    await slideItem.click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("note about slide one");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+
+    const stored = await storedComments(page);
+    expect(stored.length).toBe(1);
+    expect(stored[0].anchorType).toBe("slide");
+    expect(stored[0].slideId).toBe("slide-00000001");
+    expect(stored[0].slideTitle).toBe("One");
+    expect(await page.locator("mark.cm-hl").count()).toBe(0);
+
+    // The sidebar card is a slide card, names the slide, and keeps a jump button that navigates.
+    const card = page.locator(".cm-card[data-cid='" + stored[0].id + "']");
+    await expect(card).toHaveClass(/cm-card-slide/);
+    await expect(card).toContainText("One");
+    const jump = card.locator('[data-act="jump"]');
+    await expect(jump).toBeVisible();
+    await page.evaluate(() => window.__cmhDeck.showSlide(2));
+    expect(await activeId(page)).toBe("slide-00000003");
+    await jump.click();
+    expect(await activeId(page)).toBe("slide-00000001");
+
+    // The deck-wide item still makes a document-scoped comment (relabelled, same behavior).
+    await page.evaluate(() => {
+      const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 });
+      document.querySelector(".slide.active").dispatchEvent(ev);
+    });
+    await page.locator("#menuDocComment").click();
+    const deckComposer = page.locator(".cm-composer").last();
+    await deckComposer.locator("textarea").fill("note about the whole deck");
+    await deckComposer.locator('[data-act="save"]').click();
+    await expect(deckComposer).toHaveCount(0);
+    const after = await storedComments(page);
+    expect(after.some((c) => c.anchorType === "document")).toBe(true);
+    const slideCid = stored[0].id;
+
+    // The slide comment survives a reload (no offsets to re-anchor) and its card + jump restore.
+    await page.reload();
+    await ready(page);
+    const reloaded = await storedComments(page);
+    const rslide = reloaded.find((c) => c.id === slideCid);
+    expect(rslide).toBeTruthy();
+    expect(rslide.anchorType).toBe("slide");
+    expect(rslide.slideId).toBe("slide-00000001");
+    expect(rslide.slideIndex).toBe(0);
+    await enterCommentMode(page);
+    const rcard = page.locator(".cm-card[data-cid='" + slideCid + "']");
+    await expect(rcard).toContainText("One");
+
+    // Copy-all emits the slide comment as a "(slide)" bundle entry naming the slide.
+    await page.locator("#btnCopyAll").click();
+    const bundle = await copiedBundle(page);
+    expect(bundle).toContain("(slide)");
+    expect(bundle).toContain('Anchor: slide "One"');
+
+    // Export Markdown names the slide comment in its review-comments appendix.
+    const md = await page.evaluate(() => window.__cmhToMarkdown());
+    expect(md).toContain('slide "One"');
+
+    // Deleting the slide comment removes it cleanly.
+    page.once("dialog", (d) => d.accept());
+    await rcard.locator('[data-act="del"]').click();
+    await expect(page.locator(".cm-card[data-cid='" + slideCid + "']")).toHaveCount(0);
+    expect((await storedComments(page)).some((c) => c.id === slideCid)).toBe(false);
+
+    // A FLAT (non-deck) document keeps the single "Comment on document" item, no slide item.
+    const flat = stageContent('<h1>Flat</h1><p id="fp">Flat paragraph body</p>', { key: "cmh-flat-relabel" });
+    await page.goto(fileUrl(flat.html));
+    await ready(page);
+    await page.evaluate(() => {
+      const p = document.getElementById("fp");
+      p.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 30 }));
+    });
+    await expect(page.locator("#menuDocComment")).toBeVisible();
+    await expect(page.locator("#menuDocComment")).toHaveText("Comment on document");
+    await expect(page.locator("#menuSlideComment")).toBeHidden();
+  });
+
+  test("CMH-DECK-33: a slide comment caps a long title and falls back to the active slide without an id", async ({ page }) => {
+    const longTitle = "T".repeat(200);
+    const slides =
+      '<section class="slide active"><h2>' + longTitle + '</h2><p>No id on this slide</p></section>'
+      + '<section class="slide" data-slide-id="s2"><h2>Second</h2><p>Second body</p></section>';
+    const { html } = stageDeck(slides, { key: "cmh-deck-slide-fallback" });
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(html));
+    await ready(page);
+
+    await page.evaluate(() => {
+      document.querySelector(".slide.active").dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 40 }));
+    });
+    await page.locator("#menuSlideComment").click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("comment on the id-less slide");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+
+    const stored = await storedComments(page);
+    const c = stored.find((x) => x.anchorType === "slide");
+    expect(c).toBeTruthy();
+    // Title capped to 120 chars; the id-less active slide is captured by index (0), not lost.
+    expect(c.slideTitle.length).toBe(120);
+    expect(c.slideId == null).toBe(true);
+    expect(c.slideIndex).toBe(0);
+
+    // The jump uses the slideIndex fallback (no id) to return to the owning slide.
+    await page.evaluate(() => window.__cmhDeck.showSlideById("s2"));
+    expect(await activeId(page)).toBe("s2");
+    await page.locator(".cm-card[data-cid='" + c.id + "'] [data-act='jump']").click();
+    expect(await page.evaluate(() => document.querySelector(".slide.active") === document.querySelectorAll(".slide")[0])).toBe(true);
+  });
+
+  test("CMH-DECK-31: a click on EMPTY slide space advances in both present and open modes; text and interactive targets never advance", async ({ page }) => {
+    const slides =
+      '<section class="slide active" data-slide-id="s1"><h2 id="cah">Title one</h2>'
+      + '<p id="cap">Plain paragraph body text here</p>'
+      + '<p id="cap2">More plain body to select</p>'
+      + '<div id="cae" style="height:160px"></div>'
+      + '<a id="cal" href="#nowhere">a real link</a>'
+      + '<button id="cab" type="button">a button</button></section>'
+      + '<section class="slide" data-slide-id="s2"><h2>Title two</h2><p id="cap3">Second body</p></section>'
+      + '<section class="slide" data-slide-id="s3"><h2>Title three</h2><div id="cae3" style="height:160px"></div></section>';
+    const { html } = stageDeck(slides, { key: "cmh-deck-click-advance" });
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(html));
+    await ready(page);
+
+    // A click on EMPTY slide space (a spacer that holds no text) advances to the next slide - the
+    // natural "click forward" a presenter expects.
+    await page.locator("#cae").click();
+    expect(await activeId(page)).toBe("s2");
+
+    // A click whose POINT is over TEXT never advances (the reader may be selecting it to comment):
+    // neither a paragraph nor a heading pages the deck.
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
+    await clickOnText(page, "#cap");
+    expect(await activeId(page)).toBe("s1");
+    await clickOnText(page, "#cah");
+    expect(await activeId(page)).toBe("s1");
+
+    // Interactive targets (link, button) do NOT advance.
+    await page.locator("#cal").click();
+    expect(await activeId(page)).toBe("s1");
+    await page.locator("#cab").click();
+    expect(await activeId(page)).toBe("s1");
+
+    // A modified (Ctrl) click on empty space is never a "next slide" intent.
+    await page.locator("#cae").click({ modifiers: ["Control"] });
+    expect(await activeId(page)).toBe("s1");
+
+    // A click that DISMISSES a standing text selection must not advance (the browser collapses the
+    // selection on mousedown, so this guards the mousedown-snapshot path).
+    await page.evaluate(() => {
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById("cap2"));
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.locator("#cae").click();
+    expect(await activeId(page)).toBe("s1");
+
+    // A click that DISMISSES the open comment context menu must not advance.
+    await page.evaluate(() => {
+      document.querySelector(".slide.active").dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+    });
+    await expect(page.locator("#contextMenu")).toBeVisible();
+    await page.locator("#cae").click();
+    expect(await activeId(page)).toBe("s1");
+
+    // With the review panel OPEN, an empty-space click STILL advances (the reviewer can page
+    // through by clicking empty space)...
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
+    await enterCommentMode(page);
+    await page.locator("#cae").click();
+    expect(await activeId(page)).toBe("s2");
+    // ...but a click on text in open mode does not, so the text stays selectable to comment.
+    await clickOnText(page, "#cap3");
+    expect(await activeId(page)).toBe("s2");
+
+    // The last slide is a no-op (no wrap-around) even for an empty-space click.
+    await page.evaluate(() => window.__cmhDeck.showSlide(2));
+    expect(await activeId(page)).toBe("s3");
+    await page.locator("#cae3").click();
+    expect(await activeId(page)).toBe("s3");
+  });
+
+  test("CMH-DECK-31: a slide or wrapper carrying loose text still advances on an empty-space click (point-based)", async ({ page }) => {
+    const slides =
+      '<section class="slide active" data-slide-id="s1">Loose kicker text on the slide'
+      + '<div class="wrap">Wrapper loose text<div id="cae" style="height:200px"></div></div>'
+      + '<p id="cap">A real paragraph of body text</p></section>'
+      + '<section class="slide" data-slide-id="s2"><h2>Two</h2></section>';
+    const { html } = stageDeck(slides, { key: "cmh-deck-loosetext" });
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(html));
+    await ready(page);
+    // The slide AND a wrapper both carry loose direct text, but a click on the empty spacer (no text
+    // under the point) still advances - the old element-ancestry heuristic wrongly suppressed this.
+    await page.locator("#cae").click();
+    expect(await activeId(page)).toBe("s2");
+    // A click whose point IS over the paragraph text does not advance.
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
+    await clickOnText(page, "#cap");
+    expect(await activeId(page)).toBe("s1");
+  });
+
+  test("CMH-DECK-31: a visible highlight hover bubble suppresses the empty-space advance", async ({ page }) => {
+    const slides =
+      '<section class="slide active" data-slide-id="s1"><p id="cap">Commentable paragraph text here to select</p>'
+      + '<div id="cae" style="height:220px"></div></section>'
+      + '<section class="slide" data-slide-id="s2"><h2>Two</h2></section>';
+    const { html } = stageDeck(slides, { key: "cmh-deck-bubble" });
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(html));
+    await ready(page);
+    // Leave a comment so the paragraph carries a saved highlight, then hover it to raise the bubble.
+    await addTextComment(page, "#cap", "a note");
+    expect(await activeId(page)).toBe("s1");
+    await page.locator("mark.cm-hl").first().hover();
+    await expect(page.locator("#hlBubble")).toBeVisible();
+    // An empty-space click that dismisses the bubble must NOT also advance the deck.
+    await page.locator("#cae").click();
+    expect(await activeId(page)).toBe("s1");
+  });
+
+  test("CMH-DECK-34: the deck comment-scope menu stacks vertically with 'Comment on deck' above 'Comment on slide'", async ({ page }) => {
+    await openDeck(page);
+    // An empty right-click on the active slide offers both scope options.
+    await page.evaluate(() => {
+      document.querySelector(".slide.active").dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+    });
+    await expect(page.locator("#contextMenu")).toBeVisible();
+    const deckItem = page.locator("#menuDocComment");
+    const slideItem = page.locator("#menuSlideComment");
+    await expect(deckItem).toBeVisible();
+    await expect(slideItem).toBeVisible();
+    await expect(deckItem).toHaveText("Comment on deck");
+    await expect(slideItem).toHaveText("Comment on slide");
+    // The menu lays its options out as a vertical column...
+    await expect(page.locator("#contextMenu")).toHaveCSS("flex-direction", "column");
+    // ...with the deck-wide option ABOVE the slide option (deck first), stacked not side by side.
+    const dBox = await deckItem.boundingBox();
+    const sBox = await slideItem.boundingBox();
+    expect(dBox.y).toBeLessThan(sBox.y);
+    expect(sBox.y).toBeGreaterThanOrEqual(dBox.y + dBox.height - 1);
+  });
+
+  test("CMH-DECK-32: edge arrows reveal across a wide hover band and are a comfortably large target", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openDeck(page);
+    const viewport = page.locator(".deck-viewport");
+    const nextEdge = page.locator(".cmh-deck-edge-nav-next");
+    const box = await viewport.boundingBox();
+
+    // The center stays clear so the arrows never block slide content.
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(nextEdge).toBeHidden();
+
+    // The arrow reveals well before the very edge (a wide band, ~250px in from the right edge),
+    // so it is easy to reach and click quickly.
+    await page.mouse.move(box.x + box.width - 250, box.y + box.height / 2);
+    await expect(nextEdge).toBeVisible();
+    const edgeBox = await nextEdge.boundingBox();
+    expect(edgeBox.width).toBeGreaterThanOrEqual(52);
+    expect(edgeBox.height).toBeGreaterThanOrEqual(52);
+    await nextEdge.click();
+    expect(await activeId(page)).toBe("slide-00000002");
   });
 
   test("CMH-DECK-05d: typing in an editable field does not navigate; deck chrome is installed once", async ({ page }) => {

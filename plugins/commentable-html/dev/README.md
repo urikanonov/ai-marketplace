@@ -1,6 +1,6 @@
 # commentable-html development
 
-This `dev/` folder is the development home for `commentable-html`. It is not copied when users install the marketplace plugin. The editable + built skill tree (the STAGE) lives beside it at `dev/skill/`; `build.py` assembles the STAGE's bulky runtime into a single `skill-resources.zip`, and the plugin ships a minimal `../pkg` (`plugin.json`, the SessionStart hook, and `skills/commentable-html/` holding only `SKILL.md`, `LICENSE`, and `skill-resources.zip`) so the installer writes very few files. A SessionStart hook extracts the zip on first run. This folder keeps the canonical assets, build tooling, tests, fixtures, and spec in the source repository.
+This `dev/` folder is the development home for `commentable-html`. It is not copied when users install the marketplace plugin. The editable + built skill tree (the STAGE) lives beside it at `dev/skill/`; `build.py` assembles the STAGE's bulky runtime into a single `skill-resources.zip`, and the plugin ships a minimal `../pkg` (`plugin.json`, the SessionStart hook, and `skills/commentable-html/` holding only `SKILL.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `skill-resources.zip`) so the installer writes very few files. A SessionStart hook extracts the zip on first run. This folder keeps the canonical assets, build tooling, tests, fixtures, and spec in the source repository.
 
 ## Directory layout
 
@@ -21,7 +21,7 @@ dev/
   plugin.json             marketplace plugin manifest
   hooks.json, hooks/      the SessionStart extractor hook (Copilot + Claude configs, extract_resources.py)
   skills/commentable-html/
-    SKILL.md, LICENSE     shipped unzipped (the agent discovers the skill before extraction)
+    SKILL.md, LICENSE, THIRD_PARTY_NOTICES.md    shipped unzipped (the agent discovers the skill before extraction)
     skill-resources.zip   the bulky runtime (tools/references/dist/vendor), extracted on first run
 ../docs/                   tutorial and tutorial images (NOT shipped; published on the site)
 ../examples/               worked prompts and example reports (NOT shipped; published on the site)

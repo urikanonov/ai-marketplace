@@ -4,7 +4,7 @@
 Swaps the three layer regions - CSS, COMMENT UI, and JS - in a deployed standalone
 (inline) commentable-html file with the versions from a template, while leaving the
 document's own state and content untouched: HANDLED IDS, EMBEDDED COMMENTS, the
-CONTENT block, and the `#commentRoot` wrapper are never modified.
+CONTENT block, and the `#commentRoot` wrapper except for basename-only source provenance.
 
 This is the "Upgrade an existing instance to a new dist/PORTABLE.html" recipe from SKILL.md,
 made deterministic. Doing it by hand is error prone because of two documented footguns:
@@ -20,6 +20,7 @@ Stdlib-only, local-only, deterministic. Usage:
     python tools/upgrade.py <file.html> --check          # exit 1 if regions are stale, no write
 """
 import argparse
+import html as _html
 import os
 import re
 import sys
@@ -29,11 +30,12 @@ from html.parser import HTMLParser
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import doc_stamp  # noqa: E402
 SKILL_ROOT = _toolpath.SKILL_ROOT
 DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
 
 # Regions swapped from the template. HANDLED IDS, EMBEDDED COMMENTS, CONTENT, and the
-# #commentRoot wrapper are the document's own state and are deliberately left alone.
+# #commentRoot wrapper are document-owned; only its source provenance is normalized.
 SWAP_REGIONS = ["CSS", "COMMENT UI", "JS"]
 LAYER_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 # State/content markers a valid target must contain (so we never "upgrade" a file that
@@ -71,6 +73,111 @@ class _KindMetaFinder(HTMLParser):
 
     def handle_startendtag(self, tag, attrs):
         self._check(tag, attrs)
+
+
+class _RootSourceFinder(HTMLParser):
+    def __init__(self, html):
+        super().__init__(convert_charrefs=True)
+        self._line_offsets = []
+        offset = 0
+        for line in html.splitlines(True):
+            self._line_offsets.append(offset)
+            offset += len(line)
+        if not self._line_offsets:
+            self._line_offsets.append(0)
+        self.root_result = None
+        self.body_result = None
+
+    def handle_starttag(self, tag, attrs):
+        if self.root_result is not None:
+            return
+        first_id = next((v for k, v in attrs if k == "id"), None)
+        has_source = any(k == "data-doc-source" for k, _v in attrs)
+        is_root = first_id == "commentRoot"
+        is_body_fallback = tag.lower() == "body" and self.body_result is None
+        if not is_root and not is_body_fallback:
+            return
+        line, column = self.getpos()
+        start = self._line_offsets[line - 1] + column
+        raw = self.get_starttag_text()
+        result = (start, start + len(raw), raw)
+        if is_root:
+            self.root_result = result
+        elif has_source:
+            self.body_result = result
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+
+
+def _raw_tag_attributes(tag):
+    attrs = []
+    pos = 1
+    while pos < len(tag) and tag[pos] not in " \t\r\n/>":
+        pos += 1
+    while pos < len(tag):
+        while pos < len(tag) and tag[pos].isspace():
+            pos += 1
+        if pos >= len(tag) or tag[pos] in ">/":
+            break
+        name_start = pos
+        while pos < len(tag) and tag[pos] not in " \t\r\n=/>":
+            pos += 1
+        if pos == name_start:
+            pos += 1
+            continue
+        name = tag[name_start:pos].lower()
+        while pos < len(tag) and tag[pos].isspace():
+            pos += 1
+        value_start = value_end = None
+        quote = ""
+        if pos < len(tag) and tag[pos] == "=":
+            pos += 1
+            while pos < len(tag) and tag[pos].isspace():
+                pos += 1
+            if pos < len(tag) and tag[pos] in "\"'":
+                quote = tag[pos]
+                pos += 1
+                value_start = pos
+                while pos < len(tag) and tag[pos] != quote:
+                    pos += 1
+                value_end = pos
+                if pos < len(tag):
+                    pos += 1
+            else:
+                value_start = pos
+                while pos < len(tag) and not tag[pos].isspace() and tag[pos] != ">":
+                    pos += 1
+                value_end = pos
+        attrs.append((name, value_start, value_end, quote))
+    return attrs
+
+
+def _normalize_source_provenance(html):
+    finder = _RootSourceFinder(html)
+    finder.feed(html)
+    result = finder.root_result or finder.body_result
+    if result is None:
+        return html, False
+    start, end, tag = result
+    changed = False
+    new_tag = tag
+    source_attrs = [
+        attr for attr in _raw_tag_attributes(tag)
+        if attr[0] == "data-doc-source" and attr[1] is not None
+    ]
+    for _name, value_start, value_end, quote in reversed(source_attrs):
+        source = _html.unescape(tag[value_start:value_end])
+        basename = doc_stamp.source_basename(source)
+        if basename == source:
+            continue
+        changed = True
+        escaped = _html.escape(basename, quote=True)
+        replacement = escaped if quote else '"%s"' % escaped
+        new_tag = new_tag[:value_start] + replacement + new_tag[value_end:]
+    if not changed:
+        return html, False
+    return html[:start] + new_tag + html[end:], True
 
 
 def _has_kind_meta(html):
@@ -253,9 +360,12 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         if out[db:de] != new_inner:
             out = out[:db] + new_inner + out[de:]
             changed.append(name)
+    out, source_normalized = _normalize_source_provenance(out)
+    if source_normalized:
+        changed.append("source provenance")
     # Restamp the head version meta to the template's runtime version so an upgraded
     # document no longer self-reports the old version (region swaps leave <head> alone).
-    # Purely a <head> meta rewrite: content, state, and the #commentRoot wrapper are untouched.
+    # Purely a <head> meta rewrite: content, state, and the remaining #commentRoot attrs are untouched.
     tpl_version = _meta_version(template_html)
     if tpl_version:
         out, bumped = _set_version_meta(out, tpl_version)

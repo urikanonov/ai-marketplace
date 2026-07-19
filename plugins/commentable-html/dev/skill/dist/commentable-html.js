@@ -32,9 +32,17 @@ function cmScrollBehavior() {
 
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
 const root = document.getElementById("commentRoot") || document.body;
+function _docSourceBasename(source) {
+  const value = String(source == null ? "" : source);
+  const withoutSuffix = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)
+    ? value.split(/[?#]/, 1)[0] : value;
+  if (/[\\/]$/.test(withoutSuffix)) return "document";
+  const parts = withoutSuffix.split(/[\\/]/);
+  return (parts[parts.length - 1] || "document").replace(/^[A-Za-z]:/, "") || "document";
+}
 const COMMENT_KEY = root.dataset.commentKey || ("commentable-html:" + location.pathname);
 const DOC_LABEL   = root.dataset.docLabel   || document.title || location.pathname;
-const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
+const DOC_SOURCE  = _docSourceBasename(root.dataset.docSource || location.pathname);
 // Deck profile: a commentable-native slide deck (see references/deck-contract.md). When
 // active, the layer replaces the flow-document chrome (heading anchors, collapsible
 // sections, side TOC, footer, scroll progress) with slide navigation and commenting.
@@ -54,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.160.0";
+const CMH_VERSION = "1.172.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -553,8 +561,10 @@ function removeHighlight(comment) {
   if (comment.anchorType === "mermaid") clearMermaidHighlight(comment.id);
   else if (comment.anchorType === "diff") clearDiffHighlight(comment.id);
   else if (comment.anchorType === "image") clearImageHighlight(comment.id);
+  else if (comment.anchorType === "link") clearLinkHighlight(comment.id);
   else if (comment.anchorType === "widget") clearWidgetHighlight(comment.id);
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
+  else if (comment.anchorType === "slide") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }
 /* ---------- Mermaid commenting layer ----------
@@ -690,6 +700,15 @@ function mermaidNodeKey(nodeEl) {
   return "label:";
 }
 function mermaidNodeLabel(nodeEl) {
+  // Mermaid SVG <text> labels (htmlLabels:false, used for decks) split a wrapped label into per-line
+  // `tspan.text-outer-tspan` rows with NO separator between them, so a plain textContent read drops the
+  // space at each wrap point ("exact spot" -> "exactspot"). Rejoin the rows with a space so the label
+  // used for the anchor key, the comment quote, and Copy all matches the rendered words. HTML labels
+  // (reports) have no such rows and fall through to textContent unchanged.
+  const rows = nodeEl.querySelectorAll ? nodeEl.querySelectorAll("tspan.text-outer-tspan") : null;
+  if (rows && rows.length > 1) {
+    return Array.from(rows).map(r => (r.textContent || "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  }
   return (nodeEl.textContent || "").trim().replace(/\s+/g, " ");
 }
 function findMermaidNode(diagramIndex, nodeKey) {
@@ -704,6 +723,16 @@ function findMermaidNode(diagramIndex, nodeKey) {
     const want = nodeKey.slice(6);
     for (const n of candidates) {
       if (mermaidNodeLabel(n) === want) return n;
+    }
+    // Whitespace-insensitive fallback: an anchor saved before a diagram switched between HTML labels
+    // (report) and SVG <text> labels (deck) can differ ONLY in wrap-point spacing (for example an old
+    // "You comment on the exact spot" vs a rendered "exactspot", or the reverse). Match on the
+    // space-stripped label so such comments still re-anchor and keep their ring/jump across the change.
+    const wantStripped = want.replace(/\s+/g, "");
+    if (wantStripped) {
+      for (const n of candidates) {
+        if (mermaidNodeLabel(n).replace(/\s+/g, "") === wantStripped) return n;
+      }
     }
   }
   if (nodeKey && nodeKey.startsWith("id:")) {
@@ -2109,6 +2138,216 @@ if (imageAddBtn) {
     openImageComposer(info);
   });
 }
+/* ---------- Link comment layer ----------
+   Two runtime behaviours for author-facing <a href> links inside #commentRoot:
+   1. At render time, every external reference is stamped target="_blank" +
+      rel="noopener noreferrer" so opening a reference keeps the reader's place
+      (authors do not hand-stamp each link).
+   2. Each link is made commentable, mirroring the image/mermaid layers: hovering
+      or keyboard-focusing a link reveals a floating #linkAddBtn that anchors a
+      comment to that link by (linkIndex) + href/text fallback. The affordance is a
+      separate floating button, so activating it does not navigate and a normal
+      click still follows the link. Same-page "#" fragments (e.g. the TOC), UI
+      chrome (.cm-skip), and javascript: links are excluded. */
+const linkAddBtn = document.getElementById("linkAddBtn");
+const linkEls = [];
+let pendingLink = null;
+let linkAddHideTimer = null;
+let linkActiveEl = null;
+
+// Author-facing reference links only: real href, not UI chrome, not an in-page
+// fragment (those navigate within the document, so a new tab would be wrong and
+// commenting on a TOC entry is not the intent). Classification is by the browser-
+// NORMALIZED protocol (a.protocol), not a string match on the raw href, so an
+// obfuscated scheme (java\tscript:, embedded control chars) cannot slip past: only
+// real document references are eligible - http/https, or a relative/root-relative
+// URL that inherits the document's http(s)/file protocol. Everything else
+// (javascript:, mailto:, tel:, data:, blob:, ...) is excluded, so a mailto/tel link
+// is never stamped target=_blank (which would strand the reader on a dead tab).
+function _cmhCommentableLink(a) {
+  if (!a || a.tagName !== "A" || !a.hasAttribute("href")) return false;
+  if (a.closest(".cm-skip")) return false;
+  const raw = (a.getAttribute("href") || "").trim();
+  if (!raw || raw.charAt(0) === "#") return false; // same-page fragment
+  let proto = "";
+  try { proto = new URL(a.href, document.baseURI).protocol.toLowerCase(); }
+  catch (e) { proto = (a.protocol || "").toLowerCase(); }
+  return proto === "http:" || proto === "https:" || proto === "file:";
+}
+// Render-time defaults. Two independent concerns:
+// - NEW-TAB stamping: open author-facing document references (http/https/file only) in a new
+//   tab by default (never fragments, UI chrome, or non-document schemes like mailto:/tel:).
+// - rel ENFORCEMENT (reverse-tabnabbing defense): whenever the effective target is _blank
+//   (case-insensitively) on ANY author link - even a data:/blob: link an author pre-set - ensure
+//   rel="noopener noreferrer" is present. This is decoupled from commentability on purpose so a
+//   pre-targeted non-reference link is not left without the secure rel.
+function stampLinkTargets() {
+  root.querySelectorAll("a[href]").forEach((a) => {
+    if (a.closest(".cm-skip")) return; // never touch runtime UI chrome
+    if (_cmhCommentableLink(a) && !a.getAttribute("target")) a.setAttribute("target", "_blank");
+    if ((a.getAttribute("target") || "").trim().toLowerCase() === "_blank") {
+      const rel = (a.getAttribute("rel") || "").split(/\s+/).filter(Boolean);
+      let changed = false;
+      ["noopener", "noreferrer"].forEach((t) => { if (rel.indexOf(t) === -1) { rel.push(t); changed = true; } });
+      if (changed || !a.hasAttribute("rel")) a.setAttribute("rel", rel.join(" "));
+    }
+  });
+}
+function indexLinks() {
+  linkEls.length = 0;
+  root.querySelectorAll("a[href]").forEach((a) => {
+    if (!_cmhCommentableLink(a)) return;
+    const i = linkEls.length;
+    a.classList.add("cm-link-commentable");
+    a.dataset.cmLinkIndex = String(i);
+    linkEls.push(a);
+  });
+}
+function findLinkEl(index) {
+  if (!/^\d+$/.test(String(index))) return null;
+  return linkEls[index] || root.querySelector(`[data-cm-link-index="${index}"]`) || null;
+}
+// Resolve a link comment to its current element: by index first, then heal by stored
+// href if the index is stale (the document re-ordered). Used everywhere a link anchor
+// is looked up (highlight, jump, edit, section review) so all consumers relocate the
+// same way - not just the highlight restore.
+function resolveLinkEl(comment) {
+  if (!comment) return null;
+  let a = findLinkEl(comment.linkIndex);
+  if ((!a || (comment.linkHref && a.getAttribute("href") !== comment.linkHref)) && comment.linkHref) {
+    const byHref = linkEls.find((l) => l.getAttribute("href") === comment.linkHref);
+    if (byHref) a = byHref;
+  }
+  return a || null;
+}
+function linkInfo(a) {
+  const i = parseInt(a.dataset.cmLinkIndex, 10) || 0;
+  const href = (a.getAttribute("href") || "").replace(/[\r\n\t]+/g, " ").trim();
+  const text = (a.textContent || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  const shortHref = href.length > 120 ? href.slice(0, 117) + "..." : href;
+  const quote = text || ("link: " + (shortHref || "(no href)"));
+  return { linkIndex: i, href, text, quote };
+}
+function applyLinkHighlight(comment) {
+  const a = resolveLinkEl(comment);
+  if (!a) return false;
+  // A link can carry several comments; track them all in data-cids (first in
+  // data-cid for legacy selectors), like the image and mermaid layers.
+  a.classList.add("cm-link-hl");
+  const cids = (a.getAttribute("data-cids") || "").split(/\s+/).filter(Boolean);
+  if (!cids.includes(comment.id)) cids.push(comment.id);
+  a.setAttribute("data-cids", cids.join(" "));
+  a.setAttribute("data-cid", cids[0]);
+  return true;
+}
+function _linkCids(a) {
+  return (a.getAttribute("data-cids") || a.getAttribute("data-cid") || "").split(/\s+/).filter(Boolean);
+}
+function clearLinkHighlight(id) {
+  root.querySelectorAll("a.cm-link-hl").forEach((a) => {
+    const cids = _linkCids(a);
+    const rest = cids.filter((c) => c !== id);
+    if (rest.length === cids.length) return;
+    if (rest.length) {
+      a.setAttribute("data-cids", rest.join(" "));
+      a.setAttribute("data-cid", rest[0]);
+    } else {
+      a.classList.remove("cm-link-hl", "cm-link-active");
+      a.removeAttribute("data-cid");
+      a.removeAttribute("data-cids");
+    }
+  });
+}
+function flashLink(id) {
+  const a = [...root.querySelectorAll("a.cm-link-hl")].find((l) => _linkCids(l).includes(id));
+  if (!a) return;
+  a.classList.add("cm-link-active");
+  setTimeout(() => a.classList.remove("cm-link-active"), 2200);
+}
+function positionLinkAdd(a) {
+  // Anchor to the first line of the link (an inline link can wrap across lines, so
+  // getBoundingClientRect would span both; use the first client rect).
+  const rects = a.getClientRects();
+  const rect = rects.length ? rects[0] : a.getBoundingClientRect();
+  const visible = _clipAwareRect(a, rect);
+  if (!visible) return false;
+  const btnW = linkAddBtn.offsetWidth || 110;
+  const btnH = linkAddBtn.offsetHeight || 26;
+  const bounds = _floatingBounds(a);
+  const left = visible.right - btnW;
+  let top = visible.top - btnH - 4;
+  if (top < bounds.top) top = visible.bottom + 4;
+  linkAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
+  linkAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
+  return true;
+}
+function showLinkAddFor(a) {
+  const rect = a.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return;
+  pendingLink = linkInfo(a);
+  if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
+  linkAddBtn.hidden = false;
+  if (!positionLinkAdd(a)) { linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null; return; }
+  _activeAdd = { el: a, btn: linkAddBtn, position: () => positionLinkAdd(a), clear: () => { pendingLink = null; } };
+}
+function scheduleHideLinkAdd() {
+  if (linkAddHideTimer) clearTimeout(linkAddHideTimer);
+  linkAddHideTimer = setTimeout(() => {
+    // Keep it visible while the pointer is over the button OR the button itself holds
+    // focus, so a keyboard user moving to the button does not have it hidden from under them.
+    if (!linkAddBtn.matches(":hover") && document.activeElement !== linkAddBtn) {
+      linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null;
+    }
+  }, 220);
+}
+function openLinkComposer(info) {
+  return createComposerElement({ mode: "new-link", link: info });
+}
+function setupLinkLayer() {
+  if (!linkAddBtn) return;
+  stampLinkTargets();
+  indexLinks();
+  linkEls.forEach((a) => {
+    if (!a._cmLinkAttached) {
+      a._cmLinkAttached = true;
+      a.addEventListener("mouseenter", () => { linkActiveEl = a; showLinkAddFor(a); });
+      a.addEventListener("mouseleave", scheduleHideLinkAdd);
+      // Keyboard focus reveals the affordance too. Enter and Space keep their native
+      // behavior (Enter follows the link, Space scrolls), so the only keyboard comment
+      // entry point is the non-navigating Alt+Enter chord below - a normal activation
+      // still navigates.
+      a.addEventListener("focus", () => { linkActiveEl = a; showLinkAddFor(a); });
+      a.addEventListener("blur", scheduleHideLinkAdd);
+      a.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+          e.preventDefault();
+          linkAddBtn.hidden = true;
+          linkActiveEl = null;
+          openLinkComposer(linkInfo(a));
+        }
+      });
+    }
+  });
+  comments.forEach((c) => { if (c.anchorType === "link") applyLinkHighlight(c); });
+}
+if (linkAddBtn) {
+  linkAddBtn.addEventListener("mouseenter", () => {
+    if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
+  });
+  linkAddBtn.addEventListener("focus", () => {
+    if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
+  });
+  linkAddBtn.addEventListener("mouseleave", scheduleHideLinkAdd);
+  linkAddBtn.addEventListener("blur", scheduleHideLinkAdd);
+  linkAddBtn.addEventListener("click", () => {
+    if (!pendingLink) return;
+    const info = pendingLink;
+    pendingLink = null;
+    linkAddBtn.hidden = true;
+    linkActiveEl = null;
+    openLinkComposer(info);
+  });
+}
 /* ---------- Commentable widgets and SVG nodes (generic opt-in) ----------
    Any element marked data-cm-widget declares a commentable widget. Descendants marked
    data-cm-part (with an optional data-cm-part-label) become individually commentable even
@@ -3221,6 +3460,40 @@ function setupValidationBanner() {
 // highlight and no offsets; it just carries a note about the whole document.
 function openDocumentComposer() { return createComposerElement({ mode: "new-document" }); }
 
+// Deck-only: a comment tied to a specific slide (raised by "Comment on slide" on an empty
+// right-click). Like a document comment it has no text highlight, but it records the slide
+// id/title/index so the sidebar can label it and its jump can navigate to that slide.
+function _deckSlideMeta(slideEl) {
+  if (!slideEl) return null;
+  // Index within the SAME slide set the deck runtime uses (the stage), so a persisted slideIndex
+  // matches window.__cmhDeck's indexing for the id-less jump fallback.
+  const scope = root.querySelector(".deck-stage") || root;
+  const slides = Array.prototype.slice.call(scope.querySelectorAll(".slide"));
+  const index = slides.indexOf(slideEl);
+  const explicit = slideEl.getAttribute("data-slide-title") || slideEl.getAttribute("aria-label");
+  const heading = slideEl.querySelector("h1,h2,h3,h4,h5,h6");
+  const text = explicit || (heading && heading.textContent) || slideEl.getAttribute("data-slide-id");
+  // Cap the derived title so an over-long heading cannot bloat every sidebar card and Copy-all
+  // line; the full slide is still identified by its id.
+  const title = (text || ("Slide " + (index + 1))).replace(/\s+/g, " ").trim().slice(0, 120);
+  return { slideId: slideEl.getAttribute("data-slide-id"), slideTitle: title, slideIndex: index };
+}
+function openSlideComposer(slideId) {
+  let slideEl = null;
+  if (slideId) {
+    // Match by getAttribute rather than an attribute selector so the runtime never inlines a
+    // literal data-slide-id attribute string (which a scaffold's slide-id count would miscount).
+    const scope = root.querySelector(".deck-stage") || root;
+    const all = Array.prototype.slice.call(scope.querySelectorAll(".slide"));
+    slideEl = all.filter(function (s) { return s.getAttribute("data-slide-id") === slideId; })[0] || null;
+  }
+  // Fall back to the active slide when the id is missing or did not resolve (e.g. a slide
+  // authored without a data-slide-id), so the comment still ties to the on-screen slide.
+  if (!slideEl) slideEl = root.querySelector(".slide.active") || root.querySelector(".slide");
+  const meta = _deckSlideMeta(slideEl) || { slideId: slideId || null, slideTitle: "", slideIndex: -1 };
+  return createComposerElement({ mode: "new-slide", slide: meta });
+}
+
 /* ---------- Selection handling ---------- */
 function selectionInRoot() {
   const sel = window.getSelection();
@@ -3243,11 +3516,20 @@ function selectionInRoot() {
 // floating "Add comment" popup (raised from the selection/mouseup path) for commenting.
 const _coarsePointer = !!(window.matchMedia
   && window.matchMedia("(hover: none), (pointer: coarse)").matches);
+let pendingSlideId = null;
 function _setMenuMode(mode) {
   const mc = document.getElementById("menuComment");
+  const ms = document.getElementById("menuSlideComment");
   const md = document.getElementById("menuDocComment");
+  // In a deck, an empty right-click offers BOTH a slide-scoped comment and a deck-wide comment;
+  // a flat document offers only the single document-wide comment.
+  const deckDoc = (mode === "document") && IS_DECK;
   if (mc) mc.hidden = (mode !== "text");
-  if (md) md.hidden = (mode !== "document");
+  if (ms) ms.hidden = !deckDoc;
+  if (md) {
+    md.hidden = (mode !== "document");
+    md.textContent = IS_DECK ? "Comment on deck" : "Comment on document";
+  }
 }
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
@@ -3274,6 +3556,15 @@ document.addEventListener("contextmenu", (e) => {
   if (t.closest && t.closest("a[href], img, canvas, svg, button, input, textarea, select, [data-cm-part], mark.cm-hl")) { hideMenu(); return; }
   e.preventDefault();
   pendingRange = null; pendingQuote = ""; pendingDiffSel = null;
+  // In a deck, remember which slide the empty right-click landed on so a slide-scoped comment
+  // ties to it; fall back to the active slide when the click was on the stage margin.
+  if (IS_DECK) {
+    const slideEl = t.closest && t.closest(".slide");
+    pendingSlideId = slideEl ? slideEl.getAttribute("data-slide-id")
+      : (window.__cmhDeck ? window.__cmhDeck.activeSlideId() : null);
+  } else {
+    pendingSlideId = null;
+  }
   _setMenuMode("document");
   showMenu(e.clientX, e.clientY);
 });
@@ -3453,6 +3744,8 @@ document.getElementById("menuComment").addEventListener("click", () => {
 });
 const _menuDocBtn = document.getElementById("menuDocComment");
 if (_menuDocBtn) _menuDocBtn.addEventListener("click", () => { hideMenu(); openDocumentComposer(); });
+const _menuSlideBtn = document.getElementById("menuSlideComment");
+if (_menuSlideBtn) _menuSlideBtn.addEventListener("click", () => { hideMenu(); openSlideComposer(pendingSlideId); });
 /* ---------- Composer (per-instance, parallel-safe) ---------- */
 function bringToFront(el) { el.style.zIndex = ++composerZ; }
 
@@ -3486,7 +3779,7 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -3552,11 +3845,17 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     el._image = image;
     el._quote = image.quote;
+  } else if (mode === "new-link") {
+    el._link = link;
+    el._quote = link.quote;
   } else if (mode === "new-widget") {
     el._widget = widget;
     el._quote = widget.quote || widget.label || widget.part || widget.widget;
   } else if (mode === "new-document") {
     el._quote = "(document-wide comment)";
+  } else if (mode === "new-slide") {
+    el._slide = slide;
+    el._quote = slide && slide.slideTitle ? ("slide: " + slide.slideTitle) : "(comment on slide)";
   } else {
     el._quote = comment.quote;
     isCodeQuote = !!comment.isCode;
@@ -3581,10 +3880,16 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     const imgEl = findImageEl(image.imageIndex);
     anchorRect = imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  } else if (mode === "new-link") {
+    const aEl = findLinkEl(link.linkIndex);
+    anchorRect = aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   } else if (mode === "new-widget") {
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
   } else if (mode === "new-document") {
+    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
+    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+  } else if (mode === "new-slide") {
     const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
     anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
   } else {
@@ -3595,6 +3900,8 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
     } else if (comment.anchorType === "image") {
       anchorEl = findImageEl(comment.imageIndex);
+    } else if (comment.anchorType === "link") {
+      anchorEl = resolveLinkEl(comment);
     } else if (comment.anchorType === "widget") {
       anchorEl = findWidgetPart(comment.widget, comment.part);
     } else {
@@ -3603,6 +3910,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   }
   positionComposerNear(el, anchorRect);
+  if (mode === "new") applyComposerPreview(el);
 
   const cleanups = [];
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
@@ -3677,6 +3985,66 @@ function attachDrag(el, handle, cleanups) {
   cleanups.push(addListener(document, "touchend", onUp));
 }
 
+// Preview highlight while composing a NEW text comment. The moment the composer opens,
+// wrap the pending range in a transient mark.cm-preview so the reviewer sees exactly what
+// the comment will anchor to. The preview carries NO data-cid (so the hover bubble, the
+// highlight click handler, and the popover all treat it as inert - none of them act on a
+// mark without a cid) and is NOT .cm-skip (so it stays counted in the text-offset space,
+// keeping any concurrent composer's stored offsets correct). It is removed on cancel and
+// converted into the real highlight on save. Whitespace-only gap nodes are left unwrapped:
+// the saved highlight paints those transparently anyway (mark.cm-hl.cm-hl-gap), so the
+// preview matches its appearance. File exports rebuild highlights from the embedded
+// comments array over a pristine snapshot, so a live preview never leaks into a saved file.
+function applyComposerPreview(el) {
+  if (!el || el._mode !== "new") return;
+  if (typeof el._start !== "number" || typeof el._end !== "number") return;
+  const r = rangeFromOffsets(el._start, el._end);
+  if (!r) return;
+  // Track the created marks on the composer up front (the array is mutated in place), so a
+  // mid-loop throw is still fully cleanable by the catch below - otherwise a partially
+  // wrapped set of preview marks would leak into the live DOM with no reference.
+  const marks = [];
+  el._previewMarks = marks;
+  try {
+    getTextNodes().filter(n => r.intersectsNode(n)).forEach(tn => {
+      let s = 0, e = tn.nodeValue.length;
+      if (tn === r.startContainer) s = r.startOffset;
+      if (tn === r.endContainer)   e = r.endOffset;
+      if (s >= e) return;
+      // Skip a whitespace-only span BEFORE splitting the node, so a gap between inline
+      // elements never leaves a fragmented (but unwrapped, untracked) text node behind.
+      if (!tn.nodeValue.slice(s, e).trim()) return;
+      if (e < tn.nodeValue.length) tn.splitText(e);
+      let target = tn;
+      if (s > 0) target = tn.splitText(s);
+      const m = document.createElement("mark");
+      m.className = "cm-preview";
+      target.parentNode.insertBefore(m, target);
+      m.appendChild(target);
+      marks.push(m);
+    });
+  } catch (e2) { clearComposerPreview(el); return; }
+  // Drop the native selection so the amber preview reads exactly like a saved highlight
+  // (the browser's own selection tint would otherwise double up over it), but only once an
+  // amber preview actually stands in for it.
+  if (marks.length) {
+    try { window.getSelection().removeAllRanges(); } catch (e3) { /* headless / detached */ }
+  }
+}
+
+function clearComposerPreview(el) {
+  const marks = el && el._previewMarks;
+  if (el) el._previewMarks = null;
+  if (!marks || !marks.length) return;
+  marks.forEach(m => {
+    const parent = m.parentNode;
+    if (!parent) return;
+    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+    parent.normalize();
+  });
+}
+
 function flashComposer(el) {
   el.classList.remove("flash");
   void el.offsetWidth;
@@ -3700,6 +4068,7 @@ function openComposerForEdit(comment) {
       if (comment.anchorType === "mermaid") anchorEl = findMermaidNode(comment.diagramIndex, comment.nodeKey);
       else if (comment.anchorType === "diff") anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
       else if (comment.anchorType === "image") anchorEl = findImageEl(comment.imageIndex);
+      else if (comment.anchorType === "link") anchorEl = resolveLinkEl(comment);
       else if (comment.anchorType === "widget") anchorEl = findWidgetPart(comment.widget, comment.part);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
@@ -3712,6 +4081,7 @@ function openComposerForEdit(comment) {
 
 function closeComposerElement(el) {
   if (!el || !openComposers.has(el)) return;
+  clearComposerPreview(el);
   openComposers.delete(el);
   if (el._editingId) openEditComposers.delete(el._editingId);
   if (lastFocusedComposer === el) lastFocusedComposer = null;
@@ -3810,6 +4180,26 @@ function saveComposerElement(el) {
     if (!applyImageHighlight(comment)) {
       showToast("Comment saved, but the image could not be highlighted.");
     }
+  } else if (el._mode === "new-link") {
+    const info = el._link;
+    const a = findLinkEl(info.linkIndex);
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const ctx = a ? captureMermaidContext(a) : { section: null, headingPath: [] };
+    const comment = {
+      id,
+      anchorType: "link",
+      linkIndex: info.linkIndex,
+      linkHref: info.href,
+      linkText: info.text,
+      quote: info.quote,
+      note,
+      createdAt: new Date().toISOString(),
+      ...ctx,
+    };
+    comments.push(comment);
+    if (!applyLinkHighlight(comment)) {
+      showToast("Comment saved, but the link could not be highlighted.");
+    }
   } else if (el._mode === "new-widget") {
     const info = el._widget;
     const partEl = findWidgetPart(info.widget, info.part);
@@ -3843,9 +4233,37 @@ function saveComposerElement(el) {
       headingPath: [],
     };
     comments.push(comment);
+  } else if (el._mode === "new-slide") {
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const s = el._slide || {};
+    const comment = {
+      id,
+      anchorType: "slide",
+      slideId: s.slideId || null,
+      slideTitle: s.slideTitle || "",
+      slideIndex: (typeof s.slideIndex === "number") ? s.slideIndex : -1,
+      quote: "(comment on slide)",
+      note,
+      createdAt: new Date().toISOString(),
+      section: null,
+      headingPath: [],
+    };
+    comments.push(comment);
   } else {
+    // Convert the composing preview into the real highlight. First confirm the stored
+    // offsets still anchor while the preview is up, so a failed re-anchor leaves the preview
+    // (and its anchor cue) intact rather than stripping it from a still-open composer. Then
+    // drop the preview marks so wrapRangeWithMark re-wraps the original text with the
+    // comment's cid rather than nesting inside a preview mark.
+    if (!rangeFromOffsets(el._start, el._end)) {
+      showToast("Could not re-anchor that selection (the text may have changed). Try again.");
+      return;
+    }
+    clearComposerPreview(el);
     const r = rangeFromOffsets(el._start, el._end);
     if (!r) {
+      // Unreachable in practice (the preflight above just resolved it and unwrapping the
+      // preview does not change character offsets); guard defensively without a no-op re-apply.
       showToast("Could not re-anchor that selection (the text may have changed). Try again.");
       return;
     }
@@ -3862,7 +4280,11 @@ function saveComposerElement(el) {
       wrapRangeWithMark(r, id);
     } catch (e) {
       comments.pop();
+      // Roll back any partial mark.cm-hl the wrap created before throwing, so the failed
+      // save leaves no orphan highlight and the re-applied preview does not nest over one.
+      unwrapMarks(id);
       showToast("Could not highlight that range (it may overlap an existing comment). Comment was not saved.");
+      applyComposerPreview(el);
       return;
     }
     window.getSelection().removeAllRanges();
@@ -3946,17 +4368,7 @@ function renderComments() {
     if (typeof refreshReviewUI === "function") refreshReviewUI();
     return;
   }
-  const sortKey = (c) => (c.anchorType === "document")
-    ? -1
-    : (c.anchorType === "mermaid")
-    ? (1e12 + (c.diagramIndex || 0) * 1000)
-    : (c.anchorType === "diff")
-    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
-    : (c.anchorType === "image")
-    ? (3e12 + (c.imageIndex || 0))
-    : (c.anchorType === "widget")
-    ? (4e12 + _widgetOrderKey(c))
-    : (typeof c.start === "number" ? c.start : 0);
+  const sortKey = _anchorSortKey;
   const sorted = (commentSort === "time-asc")
     ? [...comments].sort((a, b) => (commentTimeValue(a) - commentTimeValue(b)) || (sortKey(a) - sortKey(b)))
     : (commentSort === "time-desc")
@@ -3966,8 +4378,10 @@ function renderComments() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
+    const isSlide = c.anchorType === "slide";
     const path = (c.headingPath && c.headingPath.length)
       ? c.headingPath.map(h => escapeHtml(h.text)).join(" &rsaquo; ")
       : (c.section ? escapeHtml(c.section) : "");
@@ -3978,10 +4392,14 @@ function renderComments() {
     } else if (isImage) {
       const mediaLbl = c.imageKind === "chart" ? "chart: " : "image: ";
       quoteHtml = `<div class="quote"><span class="ctx">${mediaLbl}</span><span class="quoted">${escapeHtml(c.imageAlt || c.quote || c.imageSrc || "")}</span></div>`;
+    } else if (isLink) {
+      quoteHtml = `<div class="quote"><span class="ctx">link: </span><span class="quoted">${escapeHtml(c.linkText || c.quote || c.linkHref || "")}</span></div>`;
     } else if (isWidget) {
       quoteHtml = `<div class="quote"><span class="ctx">${escapeHtml(c.widget || "widget")}: </span><span class="quoted">"${escapeHtml(c.partLabel || c.part || "")}"</span></div>`;
     } else if (isDocument) {
       quoteHtml = `<div class="quote"><span class="quoted">(document-wide comment)</span></div>`;
+    } else if (isSlide) {
+      quoteHtml = `<div class="quote"><span class="ctx">slide: </span><span class="quoted">"${escapeHtml(c.slideTitle || c.slideId || "")}"</span></div>`;
     } else if (c.isCode) {
       // Code-block quotes are rendered as a single preformatted block (no before/after
       // ctx) because surrounding code lines look misleading when collapsed to one line.
@@ -4003,11 +4421,17 @@ function renderComments() {
       pinBits.push(`${c.imageKind === "chart" ? "chart" : "image"} ${(Number(c.imageIndex) || 0) + 1}`);
       const src = String(c.imageSrc == null ? "" : c.imageSrc);
       if (src) pinBits.push(escapeHtml(src.length > 60 ? src.slice(0, 57) + "..." : src));
+    } else if (isLink) {
+      pinBits.push(`link ${(Number(c.linkIndex) || 0) + 1}`);
+      const href = String(c.linkHref == null ? "" : c.linkHref);
+      if (href) pinBits.push(escapeHtml(href.length > 60 ? href.slice(0, 57) + "..." : href));
     } else if (isWidget) {
       pinBits.push(`widget "${escapeHtml(c.widget || "")}"`);
       pinBits.push(`part "${escapeHtml(c.partLabel || c.part || "")}"`);
     } else if (isDocument) {
       pinBits.push("document-wide");
+    } else if (isSlide) {
+      pinBits.push(`slide "${escapeHtml(c.slideTitle || c.slideId || "")}"`);
     } else {
       if (c.isCode) {
         pinBits.push(c.codeLanguage ? `code (${escapeHtml(c.codeLanguage)})` : "code block");
@@ -4017,9 +4441,13 @@ function renderComments() {
       // on the sidebar card, which only surfaces reader-facing anchor info.
     }
     const pinHtml = pinBits.length ? `<div class="pin">${pinBits.join(" - ")}</div>` : "";
-    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isWidget ? "element" : "text";
-    const cardClass = isDocument ? "cm-card cm-card-doc" : "cm-card";
-    const jumpBtn = isDocument ? "" : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
+    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isLink ? "link" : isWidget ? "element" : isSlide ? "slide" : "text";
+    const cardClass = isDocument ? "cm-card cm-card-doc" : isSlide ? "cm-card cm-card-doc cm-card-slide" : "cm-card";
+    // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
+    // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
+    const jumpBtn = isDocument ? "" : isSlide
+      ? `<button type="button" data-act="jump" title="Go to this slide">jump</button>`
+      : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
     return `
     <article class="${cardClass}" data-cid="${c.id}">
       ${sectionHtml}
@@ -4055,6 +4483,26 @@ function renderComments() {
 function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
   return o == null ? 1e9 : o;
+}
+// Order key that groups comments by anchor family (text by document position, then the non-text
+// anchor bands) so the sidebar list and the Copy-all bundle sort identically. Kept in one place
+// so a new anchor type is added once, not in every renderer that sorts comments.
+function _anchorSortKey(c) {
+  return (c.anchorType === "document")
+    ? -1
+    : (c.anchorType === "mermaid")
+    ? (1e12 + (c.diagramIndex || 0) * 1000)
+    : (c.anchorType === "diff")
+    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
+    : (c.anchorType === "image")
+    ? (3e12 + (c.imageIndex || 0))
+    : (c.anchorType === "link")
+    ? (3.5e12 + (Number.isFinite(Number(c.linkIndex)) ? Number(c.linkIndex) : 0))
+    : (c.anchorType === "widget")
+    ? (4e12 + _widgetOrderKey(c))
+    : (c.anchorType === "slide")
+    ? (5e12 + (typeof c.slideIndex === "number" && c.slideIndex >= 0 ? c.slideIndex : 0))
+    : (typeof c.start === "number" ? c.start : 0);
 }
 // The display name for a board in the sidebar: its author-supplied aria-label if present,
 // else the raw data-cm-widget name.
@@ -4118,12 +4566,24 @@ function scrollToAnchor(c) {
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
   else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
+  else if (c.anchorType === "link") { el = resolveLinkEl(c); if (el) flashLink(c.id); }
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
   else if (c.anchorType === "document") {
     // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
     // document start) so a document-wide comment card does not strand the presenter.
     if (window.__cmhDeck) window.__cmhDeck.showSlide(0);
     else window.scrollTo({ top: 0, behavior: cmScrollBehavior() });
+    flashActive(c.id);
+    return;
+  }
+  else if (c.anchorType === "slide") {
+    // A slide-scoped comment navigates the deck to its owning slide.
+    if (window.__cmhDeck) {
+      if (!(c.slideId && window.__cmhDeck.showSlideById(c.slideId))
+        && typeof c.slideIndex === "number" && c.slideIndex >= 0) {
+        window.__cmhDeck.showSlide(c.slideIndex);
+      }
+    }
     flashActive(c.id);
     return;
   }
@@ -4798,17 +5258,7 @@ function buildCopyText() {
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
   const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
   if (!liveComments.length && !stateChanges.length && !clChanges.length && !noteChanges.length) return "";
-  const sortKey = (c) => (c.anchorType === "document")
-    ? -1
-    : (c.anchorType === "mermaid")
-    ? (1e12 + (c.diagramIndex || 0) * 1000)
-    : (c.anchorType === "diff")
-    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
-    : (c.anchorType === "image")
-    ? (3e12 + (c.imageIndex || 0))
-    : (c.anchorType === "widget")
-    ? (4e12 + _widgetOrderKey(c))
-    : (typeof c.start === "number" ? c.start : 0);
+  const sortKey = _anchorSortKey;
   const sorted = [...liveComments].sort((a, b) => sortKey(a) - sortKey(b));
   const lines = [];
   // Structured one-line metadata fields must not carry newlines/tabs, or a poisoned
@@ -4853,9 +5303,11 @@ function buildCopyText() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
-    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isWidget ? " (widget)" : isDocument ? " (document)" : ""}`);
+    const isSlide = c.anchorType === "slide";
+    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
     lines.push(`Id: ${c.id}`);
     lines.push(`When: ${formatTime(c.createdAt)}${c.updatedAt ? " (edited " + formatTime(c.updatedAt) + ")" : ""}`);
     if (c.headingPath && c.headingPath.length) {
@@ -4907,6 +5359,14 @@ function buildCopyText() {
       lines.push("");
       lines.push("Comment:");
       pushNote(c.note);
+    } else if (isLink) {
+      const rawHref = oneLine(c.linkHref);
+      const sHref = rawHref.length > 100 ? rawHref.slice(0, 100) + "..." : rawHref;
+      lines.push(`Anchor: link #${(Number(c.linkIndex) || 0) + 1}${sHref ? " (" + sHref + ")" : ""}`);
+      if (c.linkText) lines.push(`Text: ${oneLine(c.linkText)}`);
+      lines.push("");
+      lines.push("Comment:");
+      pushNote(c.note);
     } else if (isWidget) {
       lines.push(`Anchor: widget "${oneLine(c.widget)}", part "${oneLine(c.partLabel || c.part)}"${c.slot ? " (in " + oneLine(c.slot) + ")" : ""}`);
       lines.push("");
@@ -4914,6 +5374,11 @@ function buildCopyText() {
       pushNote(c.note);
     } else if (isDocument) {
       lines.push("Anchor: document-wide (not tied to a specific element)");
+      lines.push("");
+      lines.push("Comment:");
+      pushNote(c.note);
+    } else if (isSlide) {
+      lines.push(`Anchor: slide "${oneLine(c.slideTitle || c.slideId || "")}"${c.slideId ? " (id " + oneLine(c.slideId) + ")" : ""}`);
       lines.push("");
       lines.push("Comment:");
       pushNote(c.note);
@@ -5395,10 +5860,12 @@ function _mdCommentsAppendix() {
   live.forEach((c, i) => {
     let where = "";
     if (c.anchorType === "document") where = "document-wide";
+    else if (c.anchorType === "slide") where = 'slide "' + esc(c.slideTitle || c.slideId || "") + '"';
     else if (c.anchorType === "widget") where = 'widget "' + esc(c.widget) + '" / ' + esc(c.partLabel || c.part);
     else if (c.anchorType === "mermaid") where = "mermaid " + esc(c.nodeLabel || c.nodeKey);
     else if (c.anchorType === "diff") where = "diff line";
     else if (c.anchorType === "image") where = (c.imageKind === "chart" ? "chart" : "image") + " " + ((c.imageIndex || 0) + 1);
+    else if (c.anchorType === "link") where = "link " + ((Number(c.linkIndex) || 0) + 1);
     else if (c.quote) where = '"' + esc(oneLine(c.quote).slice(0, 80)) + '"';
     out.push("");
     out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment"));
@@ -5496,6 +5963,25 @@ function setupCodeCopy() {
     wrap.className = "cmh-code-wrap";
     pre.parentNode.insertBefore(wrap, pre);
     wrap.appendChild(pre);
+    // Optional author caption/filename line (data-code-caption on the <pre>): a cm-skip bar
+    // above the code, so it names the block's source without entering selection, text
+    // offsets, or the copy payload. Reopen is idempotent (a wrapped <pre> returns early
+    // above), so the caption is not duplicated on an exported file (exports serialize the
+    // pristine document, so the caption re-renders from the surviving attribute). A KQL
+    // figure already carries its own caption bar (.cmh-kql-cap), so it never gets a second.
+    const captionText = (pre.getAttribute("data-code-caption") || "").trim();
+    let caption = null;
+    if (captionText && !pre.closest("figure.cmh-kql")) {
+      caption = document.createElement("div");
+      caption.className = "cmh-code-caption cm-skip";
+      const captionLabel = document.createElement("span");
+      captionLabel.className = "cmh-code-caption-text";
+      captionLabel.textContent = captionText;
+      captionLabel.title = captionText;
+      caption.appendChild(captionLabel);
+      wrap.classList.add("cmh-has-caption");
+      wrap.insertBefore(caption, pre);
+    }
     const tools = document.createElement("div");
     tools.className = "cm-code-tools cm-skip";
     // A small language pill (Python, C#, KQL, ...) sits next to the Copy button.
@@ -5519,7 +6005,10 @@ function setupCodeCopy() {
       copyPlain(code.textContent.replace(/\n$/, ""), "Code copied to clipboard.");
     });
     tools.appendChild(btn);
-    wrap.appendChild(tools);
+    // With a caption, the pill + Copy live INSIDE the caption bar as flex items (like the KQL
+    // caption's Run link), so they never overlap the filename for any language-label width;
+    // otherwise they float over the code block's top-right corner as before.
+    (caption || wrap).appendChild(tools);
   });
 }
 
@@ -5639,7 +6128,7 @@ function recomputeTextOffsets(persist) {
   let changed = false;
   const allNodes = getTextNodes();
   comments.forEach(function (c) {
-    if (c.anchorType === "mermaid" || c.anchorType === "diff" || c.anchorType === "image") return;
+    if (c.anchorType === "mermaid" || c.anchorType === "diff" || c.anchorType === "image" || c.anchorType === "link") return;
     const marks = [...root.querySelectorAll('mark.cm-hl[data-cid="' + c.id + '"]')];
     if (!marks.length) return;
     const fT = firstTextNodeIn(marks[0]);
@@ -5861,6 +6350,133 @@ function _stripTransientBodyClasses(html) {
 }
 // Exposed for deterministic tests (body-class normalization is pure and worth unit-testing).
 window.__cmhStripTransientBody = function (h) { return _stripTransientBodyClasses(h); };
+function _cmhTagEnd(html, start) {
+  let quote = "";
+  for (let i = start + 1; i < html.length; i += 1) {
+    const ch = html[i];
+    if (quote) {
+      if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === ">") {
+      return i;
+    }
+  }
+  return -1;
+}
+function _cmhTagAttributes(tag) {
+  const attrs = [];
+  let pos = 1;
+  while (pos < tag.length && !/[\s/>]/.test(tag[pos])) pos += 1;
+  while (pos < tag.length) {
+    while (/\s/.test(tag[pos] || "")) pos += 1;
+    if (pos >= tag.length || tag[pos] === ">" || tag[pos] === "/") break;
+    const nameStart = pos;
+    while (pos < tag.length && !/[\s=/>]/.test(tag[pos])) pos += 1;
+    if (pos === nameStart) {
+      pos += 1;
+      continue;
+    }
+    const name = tag.slice(nameStart, pos).toLowerCase();
+    while (/\s/.test(tag[pos] || "")) pos += 1;
+    let valueStart = null;
+    let valueEnd = null;
+    let quote = "";
+    if (tag[pos] === "=") {
+      pos += 1;
+      while (/\s/.test(tag[pos] || "")) pos += 1;
+      if (tag[pos] === '"' || tag[pos] === "'") {
+        quote = tag[pos];
+        pos += 1;
+        valueStart = pos;
+        while (pos < tag.length && tag[pos] !== quote) pos += 1;
+        valueEnd = pos;
+        if (tag[pos] === quote) pos += 1;
+      } else {
+        valueStart = pos;
+        while (pos < tag.length && !/[\s>]/.test(tag[pos])) pos += 1;
+        valueEnd = pos;
+      }
+    }
+    attrs.push({ name, valueStart, valueEnd, quote });
+  }
+  return attrs;
+}
+function _cmhDecodeAttribute(value) {
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = String(value).replace(/</g, "&lt;");
+  return textarea.value;
+}
+function _cmhEncodeAttribute(value, quote) {
+  let encoded = String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  if (quote === '"') return encoded.replace(/"/g, "&quot;");
+  if (quote === "'") return encoded.replace(/'/g, "&#39;");
+  encoded = encoded.replace(/[\s"'`=>]/g, function (ch) {
+    return "&#" + ch.charCodeAt(0) + ";";
+  });
+  return '"' + encoded + '"';
+}
+function _cmhProvenanceRootTag(html) {
+  let body = null;
+  for (let pos = 0; pos < html.length;) {
+    const start = html.indexOf("<", pos);
+    if (start < 0) break;
+    if (html.slice(start, start + 4) === "<!--") {
+      const commentEnd = html.indexOf("-->", start + 4);
+      pos = commentEnd < 0 ? html.length : commentEnd + 3;
+      continue;
+    }
+    if (!/[A-Za-z]/.test(html[start + 1] || "")) {
+      pos = start + 1;
+      continue;
+    }
+    const end = _cmhTagEnd(html, start);
+    if (end < 0) break;
+    const tag = html.slice(start, end + 1);
+    const nameMatch = tag.match(/^<([A-Za-z][\w:-]*)/);
+    const name = nameMatch ? nameMatch[1].toLowerCase() : "";
+    const attrs = _cmhTagAttributes(tag);
+    const range = { start, end: end + 1, tag, attrs };
+    const idAttr = attrs.find(function (attr) { return attr.name === "id"; });
+    const firstId = idAttr && idAttr.valueStart != null
+      ? _cmhDecodeAttribute(tag.slice(idAttr.valueStart, idAttr.valueEnd)) : null;
+    if (firstId === "commentRoot") {
+      return range;
+    }
+    if (name === "body" && body === null) body = range;
+    if (/^(?:script|style|textarea|title|template)$/.test(name)) {
+      const close = html.toLowerCase().indexOf("</" + name, end + 1);
+      if (close < 0) break;
+      const closeEnd = _cmhTagEnd(html, close);
+      pos = closeEnd < 0 ? html.length : closeEnd + 1;
+    } else {
+      pos = end + 1;
+    }
+  }
+  return body;
+}
+function _normalizeDocSourceInHtml(html) {
+  const raw = String(html == null ? "" : html);
+  const rootTag = _cmhProvenanceRootTag(raw);
+  if (!rootTag) return raw;
+  let changed = false;
+  let nextTag = rootTag.tag;
+  const sources = rootTag.attrs.filter(function (attr) {
+    return attr.name === "data-doc-source" && attr.valueStart != null;
+  });
+  for (let i = sources.length - 1; i >= 0; i -= 1) {
+    const attr = sources[i];
+    const source = _cmhDecodeAttribute(rootTag.tag.slice(attr.valueStart, attr.valueEnd));
+    const basename = _docSourceBasename(source);
+    if (basename === source) continue;
+    changed = true;
+    nextTag = nextTag.slice(0, attr.valueStart)
+      + _cmhEncodeAttribute(basename, attr.quote)
+      + nextTag.slice(attr.valueEnd);
+  }
+  if (!changed) return raw;
+  return raw.slice(0, rootTag.start) + nextTag + raw.slice(rootTag.end);
+}
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
@@ -5870,10 +6486,12 @@ async function _getBaseHtml() {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
       const t = await r.text();
-      if (t && t.includes('id="embeddedComments"')) return _stripTransientBodyClasses(t);
+      if (t && t.includes('id="embeddedComments"')) {
+        return _normalizeDocSourceInHtml(_stripTransientBodyClasses(t));
+      }
     }
   } catch (e) { /* fall through to snapshot */ }
-  return _stripTransientBodyClasses(_snapshotWithTail());
+  return _normalizeDocSourceInHtml(_stripTransientBodyClasses(_snapshotWithTail()));
 }
 function _isInjectedChrome(n) {
   if (n.nodeType !== 1) return false;
@@ -6420,6 +7038,17 @@ function _stripOfflineNetworkLoads(doc) {
   });
 }
 function _stripOfflineRichRenderers(doc) {
+  // On a re-export of an already-offline document, remove any previously inlined library notice
+  // comments so they are re-emitted exactly once (the inlined lib scripts below are stripped and
+  // re-added the same way); otherwise each re-export would append another duplicate notice.
+  const head = doc.head || doc.querySelector("head");
+  if (head) {
+    Array.prototype.slice.call(head.childNodes).forEach(function (n) {
+      if (n.nodeType === 8 && /Third-party notice - .* bundled inline for offline use under the MIT License:/.test(n.nodeValue || "")) {
+        if (n.parentNode) n.parentNode.removeChild(n);
+      }
+    });
+  }
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
@@ -6455,6 +7084,8 @@ function _ensureOfflineVendoredRichLibsPromise() {
     return {
       mermaid: await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
       chartjs: await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
+      mermaidLicense: String(payload.mermaidLicense || ""),
+      chartjsLicense: String(payload.chartjsLicense || ""),
     };
   })();
   return _offlineVendoredRichLibsPromise;
@@ -6493,6 +7124,17 @@ function _offlineAppendInlineScript(doc, head, code, attrs) {
   s.textContent = _escClose(String(code || ""));
   head.appendChild(s);
 }
+function _offlineAppendLibNotice(doc, head, name, license) {
+  // MIT requires the copyright + permission notice to accompany a redistributed copy of the library.
+  // The Offline export inlines the library bytes, so emit its notice as an HTML comment beside it.
+  // Neutralize any "--" so the comment cannot terminate early or serialize as invalid HTML (the
+  // vendored MIT texts have none today; this keeps it safe if an upstream refresh introduces one).
+  const text = String(license || "").replace(/-{2,}/g, function (m) { return m.split("").join(" "); });
+  if (!text.trim()) return;
+  head.appendChild(doc.createComment(
+    " Third-party notice - " + name + " is bundled inline for offline use under the MIT License:\n"
+    + text + "\n"));
+}
 function _offlineHoistChartScripts(doc) {
   const body = doc.body || doc.querySelector("body");
   if (!body) return;
@@ -6519,10 +7161,12 @@ async function _offlineInlineRichLibs(doc) {
   const bundle = await _offlineVendoredRichLibs();
   if (needCharts) {
     if (!bundle.chartjs) throw new Error("Offline export is missing the vendored Chart.js bundle.");
+    _offlineAppendLibNotice(doc, head, "Chart.js", bundle.chartjsLicense);
     _offlineAppendInlineScript(doc, head, bundle.chartjs, { "data-cmh-offline-lib": "chartjs" });
   }
   if (needMermaid) {
     if (!bundle.mermaid) throw new Error("Offline export is missing the vendored mermaid bundle.");
+    _offlineAppendLibNotice(doc, head, "mermaid", bundle.mermaidLicense);
     _offlineAppendInlineScript(doc, head, bundle.mermaid, { "data-cmh-offline-lib": "mermaid" });
     _offlineAppendInlineScript(doc, head,
       "(function(){\n"
@@ -6561,7 +7205,8 @@ async function _offlineInlineRichLibs(doc) {
       + "  };\n"
       + "  var run = function () {\n"
       + "    var theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';\n"
-      + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', flowchart: { htmlLabels: true, curve: 'basis' } }); }\n"
+      + "    var htmlLabels = !document.querySelector('.deck-stage');\n"
+      + "    try { window.mermaid.initialize({ startOnLoad: false, theme: theme, securityLevel: 'strict', htmlLabels: htmlLabels, flowchart: { htmlLabels: htmlLabels, curve: 'basis' } }); }\n"
       + "    catch (e) { return; }\n"
       + "    var all = Array.prototype.slice.call(document.querySelectorAll('pre.mermaid, div.mermaid'));\n"
       + "    runVisible(all.filter(function (el) { return !el.hasAttribute('data-processed') && !isHidden(el); }));\n"
@@ -7576,6 +8221,7 @@ function _printHeadingPath(c) {
 function _printAnchorLabel(c) {
   if (!c) return "Comment";
   if (c.anchorType === "document") return "Document-wide comment";
+  if (c.anchorType === "slide") return "Slide comment" + (c.slideTitle ? ' - "' + c.slideTitle + '"' : "");
   if (c.anchorType === "mermaid") {
     return c.nodeKey && c.nodeKey !== "__diagram__" ? "Mermaid node " + c.nodeKey : "Mermaid diagram";
   }
@@ -7584,6 +8230,7 @@ function _printAnchorLabel(c) {
     return "Diff" + (c.diffLabel ? " " + c.diffLabel : "") + (line ? " - " + line : "");
   }
   if (c.anchorType === "image") return (c.imageKind === "chart" ? "Chart" : "Image") + " " + ((Number(c.imageIndex) || 0) + 1);
+  if (c.anchorType === "link") return "Link" + (c.linkText ? ' - "' + c.linkText + '"' : "");
   if (c.anchorType === "widget") return "Widget " + (c.widget || "widget") + (c.partLabel || c.part ? " - " + (c.partLabel || c.part) : "");
   if (c.isCode) return c.codeLanguage ? "Code block (" + c.codeLanguage + ")" : "Code block";
   return "Text selection";
@@ -7591,7 +8238,9 @@ function _printAnchorLabel(c) {
 function _printQuote(c) {
   if (!c) return "";
   if (c.anchorType === "document") return "(document-wide comment)";
+  if (c.anchorType === "slide") return c.slideTitle ? ('slide: "' + c.slideTitle + '"') : "(comment on slide)";
   if (c.anchorType === "image") return c.imageAlt || c.quote || c.imageSrc || "";
+  if (c.anchorType === "link") return c.linkText || c.quote || c.linkHref || "";
   if (c.anchorType === "widget") return c.partLabel || c.part || c.quote || "";
   if (c.anchorType === "mermaid") return c.nodeLabel || c.nodeKey || c.quote || "";
   return c.quote || "";
@@ -7735,6 +8384,7 @@ function _cmhAnchorElFor(c) {
   if (c.anchorType === "mermaid" && typeof findMermaidNode === "function") return findMermaidNode(c.diagramIndex, c.nodeKey);
   if (c.anchorType === "diff" && typeof findDiffLineEls === "function") return (findDiffLineEls(c.diffIndex, c.lineKey) || [])[0] || null;
   if (c.anchorType === "image" && typeof findImageEl === "function") return findImageEl(c.imageIndex);
+  if (c.anchorType === "link" && typeof resolveLinkEl === "function") return resolveLinkEl(c);
   if (c.anchorType === "widget" && typeof findWidgetPart === "function") return findWidgetPart(c.widget, c.part);
   return null; // document-wide comments belong to no section
 }
@@ -8068,7 +8718,8 @@ function restoreHighlights() {
   // treating an offsetless entry as trivially sane. This keeps the per-comment restore
   // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
-    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document"
+    && c.anchorType !== "image" && c.anchorType !== "link" && c.anchorType !== "widget"
+    && c.anchorType !== "document" && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
@@ -8263,6 +8914,7 @@ backfillContext();
 restoreHighlights();
 setupMermaidLayer();
 setupImageLayer();
+setupLinkLayer();
 setupWidgetLayer();
 setupChecklistLayer();
 setupChartContainment();
@@ -8425,6 +9077,7 @@ function setupDeck() {
     return !!(
       (overview && !overview.hidden)
       || (modeMenu && !modeMenu.hidden)
+      || _commentMenuOpen()
       || document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
     );
   }
@@ -8439,8 +9092,8 @@ function setupDeck() {
     const top = Math.max(20, rect.top + rect.height / 2);
     edgePrevBtn.style.top = top + "px";
     edgeNextBtn.style.top = top + "px";
-    edgePrevBtn.style.left = Math.max(12, rect.left + 16) + "px";
-    edgeNextBtn.style.left = Math.max(12, rect.right - 64) + "px";
+    edgePrevBtn.style.left = Math.max(12, rect.left + 20) + "px";
+    edgeNextBtn.style.left = Math.max(12, rect.right - 76) + "px";
   }
 
   function hideEdgeNav() {
@@ -8451,11 +9104,14 @@ function setupDeck() {
     });
   }
 
-  function syncEdgeNavButton(btn, strength, enabled) {
+  function syncEdgeNavButton(btn, active, enabled) {
     if (!btn) return;
-    const active = enabled && strength > 0;
-    btn.classList.toggle("is-active", active);
-    if (active) btn.style.setProperty("--cmh-deck-edge-opacity", String((0.2 + strength * 0.75).toFixed(3)));
+    const on = enabled && active;
+    btn.classList.toggle("is-active", on);
+    // A fixed, comfortably-visible opacity so the arrow is reliably readable anywhere in the
+    // hover band (not a proximity fade that is near-invisible until the very edge); the button's
+    // own :hover/:focus rule takes it to full opacity.
+    if (on) btn.style.setProperty("--cmh-deck-edge-opacity", "0.92");
     else btn.style.removeProperty("--cmh-deck-edge-opacity");
   }
 
@@ -8471,11 +9127,14 @@ function setupDeck() {
       return;
     }
     syncEdgeNavPosition();
-    const threshold = Math.min(168, Math.max(80, rect.width * 0.12));
-    const prevStrength = Math.max(0, Math.min(1, (threshold - (clientX - rect.left)) / threshold));
-    const nextStrength = Math.max(0, Math.min(1, (threshold - (rect.right - clientX)) / threshold));
-    syncEdgeNavButton(edgePrevBtn, prevStrength, current > 0);
-    syncEdgeNavButton(edgeNextBtn, nextStrength, current < slides.length - 1);
+    // A generous left/right hover band (about a quarter of the stage, floored/capped to a
+    // usable pixel range) so the arrow appears well before the mouse reaches the very edge and
+    // is easy to hit quickly; the center stays clear so it never blocks slide content.
+    const band = Math.min(320, Math.max(160, rect.width * 0.25));
+    const nearPrev = (clientX - rect.left) <= band;
+    const nearNext = (rect.right - clientX) <= band;
+    syncEdgeNavButton(edgePrevBtn, nearPrev, current > 0);
+    syncEdgeNavButton(edgeNextBtn, nearNext, current < slides.length - 1);
   }
 
   function makeEdgeNav() {
@@ -8511,6 +9170,101 @@ function setupDeck() {
       if (commentMode || hasBlockingDeckChrome() || isEditableTarget(e.target)) return;
       focusStage();
       updateEdgeNavFromPointer(e.clientX, e.clientY);
+    });
+  }
+
+  // A click on EMPTY slide space (the stage margins, the gaps between blocks, a layout wrapper's
+  // padding) has no content of its own, so it advances the deck - the natural "click to go forward"
+  // a presenter expects. A click on slide TEXT (a heading, paragraph, list item, table cell, or any
+  // inline run) never advances, because the reader may be selecting it to comment; the same holds
+  // for interactive/effect targets (links, buttons, form controls, ARIA widgets, focusable custom
+  // controls, draggable board parts, comment anchors, deck chrome, or anything the author marks
+  // [data-cmh-no-advance]), which keep their own click. This one rule applies in BOTH present mode
+  // and the open review panel, so a reviewer can still page through by clicking empty space.
+  const _CLICK_ADVANCE_SKIP = "a[href], area[href], button, input, textarea, select, option,"
+    + " label, summary, details, audio, video, iframe, embed, object, svg, canvas,"
+    + " [role='button'], [role='link'], [role='checkbox'], [role='radio'], [role='switch'],"
+    + " [role='tab'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'],"
+    + " [role='slider'], [role='spinbutton'], [role='textbox'], [role='combobox'], [role='option'],"
+    + " [data-cm-part], [data-cids], mark.cm-hl, [contenteditable], [onclick], [tabindex]:not([tabindex='-1']),"
+    + " [data-cmh-no-advance], .cm-skip";
+  // A click ADVANCES only when it lands on empty slide space. Whether a click is on "text" is
+  // decided by the POINT it lands on, not by element ancestry: hit-test the client rects of the
+  // slide's text nodes against the pointer coordinates. This is robust where an ancestry walk is
+  // not - a wrapper (or the `.slide` itself) that carries loose text no longer taints a click on
+  // genuine empty space, and clicking the empty tail of a paragraph's last line still advances.
+  function _pointOnText(slide, x, y) {
+    if (!slide) return false;
+    const walker = document.createTreeWalker(slide, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        return (n.nodeValue && n.nodeValue.trim()) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      }
+    });
+    const range = document.createRange();
+    let node;
+    while ((node = walker.nextNode())) {
+      range.selectNodeContents(node);
+      const rects = range.getClientRects();
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+      }
+    }
+    return false;
+  }
+  // The advance decision must reflect the state when the click GESTURE began, not when the click
+  // event fires: the browser collapses a text selection and other document click listeners hide
+  // the deck comment menu on `mousedown`, so a `click`-time check would see them already gone and
+  // wrongly advance when the user was only dismissing a selection or that menu. Snapshot the
+  // suppressing state at mousedown (capture phase, before those listeners run) and consult it.
+  let _advanceSuppressed = false;
+  function _liveSelection() {
+    const sel = window.getSelection();
+    return !!(sel && !sel.isCollapsed && String(sel).trim());
+  }
+  function _commentMenuOpen() {
+    const menuEl = document.getElementById("contextMenu");
+    return !!(menuEl && !menuEl.hidden);
+  }
+  // A visible hover bubble (raised by hovering a saved highlight) is transient chrome: an empty
+  // click that dismisses it must not also advance the deck, like the context menu and popover.
+  function _hlBubbleOpen() {
+    const b = document.getElementById("hlBubble");
+    return !!(b && !b.hidden);
+  }
+  // A point suppresses advance when it is off any slide, on an interactive/effect target, or on
+  // rendered text. `el` is the element under the point (from elementFromPoint at click time, which
+  // sees the true release target even when a press-on-empty / release-on-control gesture retargets
+  // the `click` event to the common .slide ancestor).
+  function _pointSuppresses(el, x, y) {
+    if (!el || !el.closest) return true;
+    const slide = el.closest(".slide");
+    if (!slide || !stage.contains(slide)) return true;
+    if (el.closest(_CLICK_ADVANCE_SKIP)) return true;
+    return _pointOnText(slide, x, y);
+  }
+  function installClickAdvance() {
+    // `pointerdown` (not `mousedown`) fires at the very start of a touch, before the browser
+    // collapses a text selection during the touch sequence, so the snapshot sees the real state.
+    const downEvt = window.PointerEvent ? "pointerdown" : "mousedown";
+    document.addEventListener(downEvt, (e) => {
+      _advanceSuppressed = hasBlockingDeckChrome() || _commentMenuOpen() || _hlBubbleOpen()
+        || _liveSelection() || _pointSuppresses(e.target, e.clientX, e.clientY);
+    }, true);
+    document.addEventListener("click", (e) => {
+      const suppressed = _advanceSuppressed;
+      _advanceSuppressed = false;
+      // Only a real, plain, unmodified primary click advances; a synthetic/programmatic click, a
+      // modified click, or the macOS Ctrl-click contextmenu gesture is never a "next slide" intent.
+      if (!e.isTrusted || e.defaultPrevented || e.button
+        || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (suppressed) return;
+      if (hasBlockingDeckChrome() || _commentMenuOpen() || _hlBubbleOpen() || _liveSelection()) return;
+      const x = e.clientX, y = e.clientY;
+      const el = (typeof document.elementFromPoint === "function"
+        ? document.elementFromPoint(x, y) : null) || e.target;
+      if (_pointSuppresses(el, x, y)) return;
+      if (show(current + 1)) focusStage();
     });
   }
 
@@ -8735,6 +9489,7 @@ function setupDeck() {
   show(current);
   fitStage();
   makeEdgeNav();
+  installClickAdvance();
   if (typeof ResizeObserver === "function") {
     new ResizeObserver(fitStage).observe(viewport || document.documentElement);
   } else {

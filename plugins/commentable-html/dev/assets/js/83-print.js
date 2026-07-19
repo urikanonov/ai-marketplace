@@ -7,6 +7,7 @@ function _printHeadingPath(c) {
 function _printAnchorLabel(c) {
   if (!c) return "Comment";
   if (c.anchorType === "document") return "Document-wide comment";
+  if (c.anchorType === "slide") return "Slide comment" + (c.slideTitle ? ' - "' + c.slideTitle + '"' : "");
   if (c.anchorType === "mermaid") {
     return c.nodeKey && c.nodeKey !== "__diagram__" ? "Mermaid node " + c.nodeKey : "Mermaid diagram";
   }
@@ -15,6 +16,7 @@ function _printAnchorLabel(c) {
     return "Diff" + (c.diffLabel ? " " + c.diffLabel : "") + (line ? " - " + line : "");
   }
   if (c.anchorType === "image") return (c.imageKind === "chart" ? "Chart" : "Image") + " " + ((Number(c.imageIndex) || 0) + 1);
+  if (c.anchorType === "link") return "Link" + (c.linkText ? ' - "' + c.linkText + '"' : "");
   if (c.anchorType === "widget") return "Widget " + (c.widget || "widget") + (c.partLabel || c.part ? " - " + (c.partLabel || c.part) : "");
   if (c.isCode) return c.codeLanguage ? "Code block (" + c.codeLanguage + ")" : "Code block";
   return "Text selection";
@@ -22,7 +24,9 @@ function _printAnchorLabel(c) {
 function _printQuote(c) {
   if (!c) return "";
   if (c.anchorType === "document") return "(document-wide comment)";
+  if (c.anchorType === "slide") return c.slideTitle ? ('slide: "' + c.slideTitle + '"') : "(comment on slide)";
   if (c.anchorType === "image") return c.imageAlt || c.quote || c.imageSrc || "";
+  if (c.anchorType === "link") return c.linkText || c.quote || c.linkHref || "";
   if (c.anchorType === "widget") return c.partLabel || c.part || c.quote || "";
   if (c.anchorType === "mermaid") return c.nodeLabel || c.nodeKey || c.quote || "";
   return c.quote || "";

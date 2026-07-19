@@ -171,6 +171,19 @@ def vendored_gz_drift(vendor_dir, min_js_name):
     return None
 
 
+# Upstream MIT license files for the vendored rich libraries. The MIT License requires the copyright
+# and permission notice to accompany every distribution of the library, so build assembles these into
+# a shipped THIRD_PARTY_NOTICES.md and into the offline-export bundle. Refresh them alongside the .js
+# on a vendor bump (see assets/vendor/UPSTREAM.md). Each entry is (label, license filename).
+VENDORED_LICENSE_FILES = (("mermaid", "mermaid.LICENSE"), ("Chart.js", "chart.umd.LICENSE"))
+
+
+def read_vendored_license(vendor_dir, license_name):
+    """Return the verbatim upstream license text for a vendored library (trailing whitespace only
+    trimmed), so THIRD_PARTY_NOTICES.md and the offline bundle stay byte-faithful to the source."""
+    return read(os.path.join(vendor_dir, license_name)).replace("\r\n", "\n").strip()
+
+
 # --------------------------------------------------------------------------- #
 # Version: the VERSION file at the dev root is the single source of truth. build
 # reads it and stamps it into the layer const, plugin.json, the marketplace
@@ -227,6 +240,58 @@ def read_mermaid_version(package_json=None):
                          "like 11.16.0 or ^11.16.0 (comparator ranges/tags are unsupported), "
                          "got %r in %s" % (spec, package_json))
     return m.group(1)
+
+
+def read_chartjs_version(package_json=None):
+    """The vendored Chart.js version, pinned from the dev package.json's chart.js dependency using
+    the same exact/caret/tilde rule as read_mermaid_version. Used only to STAMP the shipped notices,
+    never a CDN URL."""
+    package_json = PACKAGE_JSON if package_json is None else package_json
+    with open(package_json, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    spec = ((data.get("devDependencies") or {}).get("chart.js")
+            or (data.get("dependencies") or {}).get("chart.js"))
+    if not spec:
+        raise SystemExit("build: no chart.js dependency found in %s" % package_json)
+    m = re.match(r"^[\^~]?(\d+\.\d+\.\d+)$", spec.strip())
+    if not m:
+        raise SystemExit("build: the chart.js dependency must be an exact version or a ^/~ pin "
+                         "like 4.5.1 or ^4.5.1 (comparator ranges/tags are unsupported), "
+                         "got %r in %s" % (spec, package_json))
+    return m.group(1)
+
+
+_NOTICES_BANNER = ("<!-- GENERATED FILE - DO NOT EDIT. Built from the vendored license files under "
+                   "assets/vendor/ (mermaid.LICENSE, chart.umd.LICENSE) by "
+                   "plugins/commentable-html/dev/tools/build.py; run: "
+                   "python plugins/commentable-html/dev/tools/build.py -->")
+
+
+def build_third_party_notices(assets_dir):
+    """Assemble the shipped THIRD_PARTY_NOTICES.md from the vendored upstream license files, so the
+    MIT copyright and permission notices for mermaid and Chart.js travel with every distribution of
+    the skill (both ship gzipped inside the built templates and are inlined into Offline exports).
+    Single-sourced from assets/vendor/*.LICENSE plus the versions pinned in package.json."""
+    vendor_dir = os.path.join(assets_dir, "vendor")
+    versions = {"mermaid": read_mermaid_version(), "Chart.js": read_chartjs_version()}
+    parts = [
+        _NOTICES_BANNER,
+        "# Third-party notices",
+        "",
+        "The commentable-html skill renders diagrams and charts with two third-party open-source",
+        "libraries, redistributed here under the MIT License. They are vendored (bundled into the",
+        "built templates and inlined into zero-network Offline exports), so their upstream license",
+        "texts are reproduced in full below, as the MIT License requires.",
+        "",
+    ]
+    for label, license_name in VENDORED_LICENSE_FILES:
+        parts.append("## %s %s" % (label, versions[label]))
+        parts.append("")
+        parts.append("```text")
+        parts.append(read_vendored_license(vendor_dir, license_name))
+        parts.append("```")
+        parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
 
 
 def example_stamps(examples_dir, mermaid_version):
@@ -345,6 +410,11 @@ def source_stamps(version, assets_dir, out_dir, pkg_dir=None):
     skill = os.path.join(out_dir, "SKILL.md")
     if os.path.exists(skill):
         stamps[skill] = _stamp_md_version(read(skill), version, "SKILL.md")
+        # The third-party license notices ship beside SKILL.md/LICENSE, so generate them for a real
+        # skill stage (SKILL.md present, as the readme stamp below is). Assembled from
+        # assets/vendor/*.LICENSE; packaged into the shipped pkg via PACKAGE_SHIPPED_FILES and gated
+        # by --check like every other generated file.
+        stamps[os.path.join(out_dir, "THIRD_PARTY_NOTICES.md")] = build_third_party_notices(assets_dir)
     readme = os.path.join(out_dir, "dist", "README.md")
     if os.path.exists(readme):
         stamps[readme] = _stamp_md_version(read(readme), version, "dist/README.md")

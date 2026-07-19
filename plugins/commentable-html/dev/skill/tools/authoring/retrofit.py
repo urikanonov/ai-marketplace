@@ -18,6 +18,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 
 import _brand_profile  # noqa: E402
+import doc_stamp  # noqa: E402
 import new_document  # noqa: E402
 import recommend_kind  # noqa: E402
 import upgrade  # noqa: E402
@@ -532,7 +533,7 @@ def build_retrofit(html, args, out_path):
     key = _resolve_key(args, out_path)
     if key in new_document.REFUSED_KEYS:
         raise RetrofitError('refusing the demo/example data-comment-key "%s"' % key)
-    source = _source_attr(args)
+    source = doc_stamp.source_basename(_source_attr(args))
     head = parser.heads[0]
     body = parser.bodies[0]
     existing_kind_meta = _find_kind_meta(parser)
@@ -627,7 +628,8 @@ def main(argv):
                         help="document kind (%s); report and plan require an <h1> title"
                              % ", ".join(new_document.DOC_KINDS))
     parser.add_argument("--key", default="auto", help='data-comment-key, or "auto" for a stable generated key')
-    parser.add_argument("--source", default=None, help="data-doc-source; defaults to the input path")
+    parser.add_argument("--source", default=None,
+                        help="data-doc-source filename; defaults to the input filename")
     parser.add_argument("--out", default=None, help="output path; defaults to overwriting the input after validation")
     parser.add_argument("--root-selector", default=None, help='existing root to stamp, limited to a single "#id" selector')
     parser.add_argument("--skip-selectors", default="", help='comma-separated #id, .class, or tag selectors to mark class="cm-skip"')

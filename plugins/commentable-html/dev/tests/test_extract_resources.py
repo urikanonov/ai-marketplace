@@ -350,8 +350,8 @@ class ExtractResourcesTests(unittest.TestCase):
 
     def test_is_swappable_rejects_case_variant_reserved_and_backup_names(self):
         staging = os.path.join(self.skill, extract_resources.STAGING_NAME)
-        for name in ("skill.md", "License", "SKILL-RESOURCES.ZIP", "tools.skill-resources-old",
-                     ".hidden"):
+        for name in ("skill.md", "License", "third_party_notices.md", "SKILL-RESOURCES.ZIP",
+                     "tools.skill-resources-old", ".hidden"):
             os.makedirs(os.path.join(staging, name), exist_ok=True)
             self.assertFalse(extract_resources._is_swappable(self.skill, name),
                              "%r must not be swappable" % name)

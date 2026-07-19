@@ -41,14 +41,14 @@ VALIDATE_PY = os.path.join(TOOLS, "validate", "validate.py")
 # the two match - so shrinking or growing REQUIRED_IDS in the validator is a
 # deliberate, test-visible change rather than a silent regression.
 EXPECTED_REQUIRED_IDS = frozenset({
-    "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "hlBubble", "toast",
+    "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "linkAddBtn", "hlBubble", "toast",
     "toolbarCount", "sidebarCount",
     "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll",
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
-    "headingAddBtn", "widgetAddBtn", "menuDocComment",
+    "headingAddBtn", "widgetAddBtn", "menuDocComment", "menuSlideComment",
 })
 EXPECTED_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"

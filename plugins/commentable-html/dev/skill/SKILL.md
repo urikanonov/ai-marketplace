@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.160.0`
+**Version:** `1.172.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -43,7 +43,7 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 | New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids), bakes highlighting, accepts the same optional `--brand`, self-validates, and stamps the creating agent's session id (same `--session-id`/`--agent`/`--no-session-id` behavior as `new_document.py`). This is the ONLY tool that creates a real deck. |
 | Fix copied deck web fonts | `tools/deck/deck_fix_fonts.py` | Removes remote font loaders and maps copied web-font stacks to the approved deterministic system stacks before deck validation. |
 | Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer, wraps or stamps a content root, preserves host content, bakes highlighting, accepts the same optional `--brand`, and validates before writing. |
-| Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attributes. Restamps the `<head>` version meta to the new runtime and surfaces post-upgrade validator warnings; pass `--strict` to fail on them. Run `finalize.py --strict` afterwards to resolve any content warnings a newer validator now flags. |
+| Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces only CSS, COMMENT UI, and JS regions while preserving content, handled ids, embedded comments, and root attributes except that legacy source paths are reduced to a basename. Restamps the `<head>` version meta to the new runtime and surfaces post-upgrade validator warnings; pass `--strict` to fail on them. Run `finalize.py --strict` afterwards to resolve any content warnings a newer validator now flags. |
 
 Canonical commands:
 
@@ -68,7 +68,8 @@ python tools/deck/deck_fix_fonts.py my-deck.html
 ```
 
 `--key auto` derives a stable non-demo key; an explicit key must be unique per document on the same
-origin. `--label` becomes `data-doc-label`; `--source` becomes `data-doc-source`; `--kind` is required
+origin. `--label` becomes `data-doc-label`; only the basename of `--source` becomes
+`data-doc-source`; `--kind` is required
 and must be `report`, `plan`, `slides`, `board`, or `generic`. `report` and `plan` need a top-level
 title; the tools and validator enforce that. If the right kind is unclear, run
 `tools/authoring/recommend_kind.py <fragment-or-html> [--kind <chosen>]` first. It recommends only
@@ -113,6 +114,7 @@ Use the tools rather than manual region editing. If manual fallback is unavoidab
 - Section cards for a report/plan: `tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block in `<section>` so the document renders as boxed cards (`#commentRoot > section`); `new_document.py` (report/plan fragments) and `finalize.py` run it by default, so hand-wrapping is only needed for externally produced HTML. The validator warns (CMH-VAL-14) when top-level content is not sectioned.
 - Document overview strip for a report/plan (section count, word count, reading time): `tools/authoring/doc_stats.py` bakes a `cm-skip` strip under the `<h1>` title; `new_document.py`, `finalize.py`, and `retrofit.py` run it by default (opt out with `--no-stats`).
 - Local images in a standalone doc: `tools/authoring/inline_images.py --strict`.
+- Plain-ASCII typography: `tools/authoring/normalize_typography.py` rewrites AI smart-typography (em/en dashes, ellipsis, curly quotes, nbsp) in a document's prose to plain ASCII, leaving code/script/style/comments verbatim; `finalize.py` and `deck_scaffold.py` run it by default (opt out with `--no-normalize`).
 - Layered checklist markup: `tools/checklist/checklist_scaffold.py`.
 - Editable notes-field markup: `tools/notes/notes_scaffold.py`.
 - Full deterministic finalization and strict validation:
@@ -213,7 +215,7 @@ The content root carries document identity:
 | --- | --- | --- |
 | `data-comment-key` | yes | Unique `localStorage` bucket for this document on the same origin. |
 | `data-doc-label` | yes | Human-readable name used in Copy headers and Agent Instructions. |
-| `data-doc-source` | no | Source path for Copy output and agent edits; falls back to `location.pathname`. |
+| `data-doc-source` | no | Source filename for Copy output and agent edits; directory components are stripped, and the fallback is the basename of `location.pathname`. |
 | `data-cm-density` | no | Optional runtime chrome density: `compact` or `comfortable`; omitted keeps the default. |
 
 Do not bake transient runtime classes such as `sidebar-open` into saved `<body>` markup. The runtime derives them on load, and strict validation rejects persisted UI state. See [Document layout](references/document-layout.md#per-document-configuration-example).

@@ -31,7 +31,7 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -97,11 +97,17 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     el._image = image;
     el._quote = image.quote;
+  } else if (mode === "new-link") {
+    el._link = link;
+    el._quote = link.quote;
   } else if (mode === "new-widget") {
     el._widget = widget;
     el._quote = widget.quote || widget.label || widget.part || widget.widget;
   } else if (mode === "new-document") {
     el._quote = "(document-wide comment)";
+  } else if (mode === "new-slide") {
+    el._slide = slide;
+    el._quote = slide && slide.slideTitle ? ("slide: " + slide.slideTitle) : "(comment on slide)";
   } else {
     el._quote = comment.quote;
     isCodeQuote = !!comment.isCode;
@@ -126,10 +132,16 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     const imgEl = findImageEl(image.imageIndex);
     anchorRect = imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  } else if (mode === "new-link") {
+    const aEl = findLinkEl(link.linkIndex);
+    anchorRect = aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   } else if (mode === "new-widget") {
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
   } else if (mode === "new-document") {
+    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
+    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+  } else if (mode === "new-slide") {
     const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
     anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
   } else {
@@ -140,6 +152,8 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
     } else if (comment.anchorType === "image") {
       anchorEl = findImageEl(comment.imageIndex);
+    } else if (comment.anchorType === "link") {
+      anchorEl = resolveLinkEl(comment);
     } else if (comment.anchorType === "widget") {
       anchorEl = findWidgetPart(comment.widget, comment.part);
     } else {
@@ -148,6 +162,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   }
   positionComposerNear(el, anchorRect);
+  if (mode === "new") applyComposerPreview(el);
 
   const cleanups = [];
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
@@ -222,6 +237,66 @@ function attachDrag(el, handle, cleanups) {
   cleanups.push(addListener(document, "touchend", onUp));
 }
 
+// Preview highlight while composing a NEW text comment. The moment the composer opens,
+// wrap the pending range in a transient mark.cm-preview so the reviewer sees exactly what
+// the comment will anchor to. The preview carries NO data-cid (so the hover bubble, the
+// highlight click handler, and the popover all treat it as inert - none of them act on a
+// mark without a cid) and is NOT .cm-skip (so it stays counted in the text-offset space,
+// keeping any concurrent composer's stored offsets correct). It is removed on cancel and
+// converted into the real highlight on save. Whitespace-only gap nodes are left unwrapped:
+// the saved highlight paints those transparently anyway (mark.cm-hl.cm-hl-gap), so the
+// preview matches its appearance. File exports rebuild highlights from the embedded
+// comments array over a pristine snapshot, so a live preview never leaks into a saved file.
+function applyComposerPreview(el) {
+  if (!el || el._mode !== "new") return;
+  if (typeof el._start !== "number" || typeof el._end !== "number") return;
+  const r = rangeFromOffsets(el._start, el._end);
+  if (!r) return;
+  // Track the created marks on the composer up front (the array is mutated in place), so a
+  // mid-loop throw is still fully cleanable by the catch below - otherwise a partially
+  // wrapped set of preview marks would leak into the live DOM with no reference.
+  const marks = [];
+  el._previewMarks = marks;
+  try {
+    getTextNodes().filter(n => r.intersectsNode(n)).forEach(tn => {
+      let s = 0, e = tn.nodeValue.length;
+      if (tn === r.startContainer) s = r.startOffset;
+      if (tn === r.endContainer)   e = r.endOffset;
+      if (s >= e) return;
+      // Skip a whitespace-only span BEFORE splitting the node, so a gap between inline
+      // elements never leaves a fragmented (but unwrapped, untracked) text node behind.
+      if (!tn.nodeValue.slice(s, e).trim()) return;
+      if (e < tn.nodeValue.length) tn.splitText(e);
+      let target = tn;
+      if (s > 0) target = tn.splitText(s);
+      const m = document.createElement("mark");
+      m.className = "cm-preview";
+      target.parentNode.insertBefore(m, target);
+      m.appendChild(target);
+      marks.push(m);
+    });
+  } catch (e2) { clearComposerPreview(el); return; }
+  // Drop the native selection so the amber preview reads exactly like a saved highlight
+  // (the browser's own selection tint would otherwise double up over it), but only once an
+  // amber preview actually stands in for it.
+  if (marks.length) {
+    try { window.getSelection().removeAllRanges(); } catch (e3) { /* headless / detached */ }
+  }
+}
+
+function clearComposerPreview(el) {
+  const marks = el && el._previewMarks;
+  if (el) el._previewMarks = null;
+  if (!marks || !marks.length) return;
+  marks.forEach(m => {
+    const parent = m.parentNode;
+    if (!parent) return;
+    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+    parent.normalize();
+  });
+}
+
 function flashComposer(el) {
   el.classList.remove("flash");
   void el.offsetWidth;
@@ -245,6 +320,7 @@ function openComposerForEdit(comment) {
       if (comment.anchorType === "mermaid") anchorEl = findMermaidNode(comment.diagramIndex, comment.nodeKey);
       else if (comment.anchorType === "diff") anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
       else if (comment.anchorType === "image") anchorEl = findImageEl(comment.imageIndex);
+      else if (comment.anchorType === "link") anchorEl = resolveLinkEl(comment);
       else if (comment.anchorType === "widget") anchorEl = findWidgetPart(comment.widget, comment.part);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
@@ -257,6 +333,7 @@ function openComposerForEdit(comment) {
 
 function closeComposerElement(el) {
   if (!el || !openComposers.has(el)) return;
+  clearComposerPreview(el);
   openComposers.delete(el);
   if (el._editingId) openEditComposers.delete(el._editingId);
   if (lastFocusedComposer === el) lastFocusedComposer = null;
@@ -355,6 +432,26 @@ function saveComposerElement(el) {
     if (!applyImageHighlight(comment)) {
       showToast("Comment saved, but the image could not be highlighted.");
     }
+  } else if (el._mode === "new-link") {
+    const info = el._link;
+    const a = findLinkEl(info.linkIndex);
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const ctx = a ? captureMermaidContext(a) : { section: null, headingPath: [] };
+    const comment = {
+      id,
+      anchorType: "link",
+      linkIndex: info.linkIndex,
+      linkHref: info.href,
+      linkText: info.text,
+      quote: info.quote,
+      note,
+      createdAt: new Date().toISOString(),
+      ...ctx,
+    };
+    comments.push(comment);
+    if (!applyLinkHighlight(comment)) {
+      showToast("Comment saved, but the link could not be highlighted.");
+    }
   } else if (el._mode === "new-widget") {
     const info = el._widget;
     const partEl = findWidgetPart(info.widget, info.part);
@@ -388,9 +485,37 @@ function saveComposerElement(el) {
       headingPath: [],
     };
     comments.push(comment);
+  } else if (el._mode === "new-slide") {
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const s = el._slide || {};
+    const comment = {
+      id,
+      anchorType: "slide",
+      slideId: s.slideId || null,
+      slideTitle: s.slideTitle || "",
+      slideIndex: (typeof s.slideIndex === "number") ? s.slideIndex : -1,
+      quote: "(comment on slide)",
+      note,
+      createdAt: new Date().toISOString(),
+      section: null,
+      headingPath: [],
+    };
+    comments.push(comment);
   } else {
+    // Convert the composing preview into the real highlight. First confirm the stored
+    // offsets still anchor while the preview is up, so a failed re-anchor leaves the preview
+    // (and its anchor cue) intact rather than stripping it from a still-open composer. Then
+    // drop the preview marks so wrapRangeWithMark re-wraps the original text with the
+    // comment's cid rather than nesting inside a preview mark.
+    if (!rangeFromOffsets(el._start, el._end)) {
+      showToast("Could not re-anchor that selection (the text may have changed). Try again.");
+      return;
+    }
+    clearComposerPreview(el);
     const r = rangeFromOffsets(el._start, el._end);
     if (!r) {
+      // Unreachable in practice (the preflight above just resolved it and unwrapping the
+      // preview does not change character offsets); guard defensively without a no-op re-apply.
       showToast("Could not re-anchor that selection (the text may have changed). Try again.");
       return;
     }
@@ -407,7 +532,11 @@ function saveComposerElement(el) {
       wrapRangeWithMark(r, id);
     } catch (e) {
       comments.pop();
+      // Roll back any partial mark.cm-hl the wrap created before throwing, so the failed
+      // save leaves no orphan highlight and the re-applied preview does not nest over one.
+      unwrapMarks(id);
       showToast("Could not highlight that range (it may overlap an existing comment). Comment was not saved.");
+      applyComposerPreview(el);
       return;
     }
     window.getSelection().removeAllRanges();

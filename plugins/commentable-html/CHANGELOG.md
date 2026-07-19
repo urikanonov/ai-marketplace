@@ -4,6 +4,185 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.172.0] - 2026-07-19
+
+### Fixed
+
+- Deck mermaid node/edge labels no longer clip mid-word (CMH-MMD-08). A deck renders its slides inside
+  a CSS-scaled 1920x1080 stage, and mermaid's default HTML (`<foreignObject>`) labels are re-laid-out
+  by the browser against that scale, so a node box sized from the unscaled measurement is too small and
+  wider labels (for example `You comment on the exact spot`) were cut off. On a deck the mermaid loader
+  now initializes with `htmlLabels: false`, rendering labels as SVG `<text>` that scales with the
+  diagram and never re-flows, so every label stays fully visible inside its node box. Reports keep the
+  richer HTML labels. The same choice is applied by the live loader and the Export Offline re-init.
+- Deck mermaid comment labels keep the space at a wrapped-line boundary. mermaid splits an SVG `<text>`
+  label into per-line `tspan` rows with no separator, so the anchor key, comment quote, and Copy all
+  had dropped the wrap-point space (`exact spot` -> `exactspot`); `mermaidNodeLabel()` now rejoins the
+  rows with a space.
+
+## [1.171.0] - 2026-07-19
+
+### Added
+
+- Link handling for author-facing references (CMH-LINK-01..04): at render time every external
+  `<a href>` in the document is stamped `target="_blank"` + `rel="noopener noreferrer"` so a
+  reference opens in a new tab and the reader keeps their place (same-page `#` fragments, `.cm-skip`
+  UI chrome, and `javascript:` links are left untouched, and an author-set `target` is respected).
+  Each link is now commentable like an image or mermaid node: hovering or keyboard-focusing a link
+  reveals a floating `Add Comment` affordance that anchors an `anchorType: "link"` comment to that
+  link (by index + href/text) without navigating - a normal click (or Enter) still follows the link,
+  while the floating button or the non-navigating `Alt+Enter` chord opens the composer. Links are
+  classified by their normalized protocol (only `http`/`https`/`file`), so control-char-obfuscated
+  `javascript:`, `mailto:`/`tel:`, and `data:` links are never stamped or made commentable, and the
+  `_blank` rel-enforcement is case-insensitive (reverse-tabnabbing defense). Link comments ring the
+  link, list a card, flash on jump, and survive reload, Copy all, Export Markdown, and Export Offline.
+
+## [1.170.0] - 2026-07-19
+
+### Changed
+
+- Deck comment-scope menu now stacks its options vertically with "Comment on deck" above
+  "Comment on slide" (CMH-DECK-34).
+- In deck mode a plain click on EMPTY slide space advances to the next slide in BOTH present and
+  review-panel-open modes; a click on text (or any interactive target) never advances, so text
+  stays selectable for commenting. "Empty" is decided by hit-testing the click POINT against the
+  slide's text rects, so a wrapper/slide carrying loose text no longer blocks advancing, and a
+  keyboard activation of a focused control never advances (CMH-DECK-31).
+- Saved text highlights and the composing preview both paint a band slightly shorter than the line
+  box (zero horizontal padding, no reflow), so a highlight that wraps across two lines now shows
+  visible vertical spacing between the lines (CMH-SEL-02).
+- Deck pills lift on hover: the reusable `.cmh-pill` recipe gains a hover-lift for all decks
+  (CMH-DECK-RECIPE-05), and the showcase byline pills lift on hover (CMH-DECK-SHOWCASE-16).
+
+### Showcase deck
+
+- Refreshed the title and Act 1 promise copy: the title reads "Plan with AI, visually rich review
+  inline, repeat.", the Act 1 paragraph is rephrased, the redundant "reviewed end to end" pill is
+  removed, and the "Copy all" control is emphasized in its pill (CMH-DECK-SHOWCASE-13).
+- The Chat / Markdown / HTML comparison table now marks the Commentable HTML row's winning cells
+  with a distinct green fill and check glyph so the differentiators stand out (CMH-DECK-SHOWCASE-14).
+- The title slide embeds a real screenshot of a document with selected text and the Add-comment
+  popup, so the review workflow is visible up front (CMH-DECK-SHOWCASE-15).
+- The top-right site logo sits further into the corner and its tooltip reads just "Commentable
+  HTML" (CMH-DECK-SHOWCASE-10).
+
+## [1.169.0] - 2026-07-19
+
+### Added
+
+- Code blocks can carry an optional filename/description caption line: add `data-code-caption` to a
+  `<pre>` (for example `data-code-caption="trigger.kql"`) and the runtime renders a `cm-skip`,
+  non-selectable caption bar above the code, laid out like the KQL caption bar (filename on the left,
+  the language pill and Copy button inline on the right) so no language-label width overlaps the
+  filename. It is styled consistently in report and deck modes, leaves the language pill, Copy
+  button, syntax highlighting, and commenting on the code intact (a caption-crossing drag cannot
+  leak the filename into a comment's quote), never doubles a KQL figure's own caption, and survives
+  Export Offline (the caption re-renders from the surviving attribute on reopen). (CMH-CODE-05)
+
+## [1.168.0] - 2026-07-19
+
+### Changed
+
+- The validator now ERRORS in NonPortable mode when a baked absolute or `file://` companion
+  reference resolves inside an OS temporary directory that is not the document's own folder
+  (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment
+  layer once the OS reaps the temp directory - the exact failure behind a shared document whose
+  CSS/JS 404'd after handoff. Temp detection is cross-platform and root-anchored (`TMPDIR`/`TEMP`/
+  `TMP` and `tempfile.gettempdir()`, symlink-resolved via `realpath`, plus `/tmp`, `/var/tmp`,
+  `/var/folders`, `/windows/temp`, and per-user `AppData/Local/Temp`), so a durable project folder
+  named `tmp` is never mis-flagged; relative refs and a companion sitting beside the document are
+  never flagged. The message points at a Portable single-file export or copying `dist/` to a
+  durable folder.
+
+## [1.167.0] - 2026-07-19
+
+### Added
+
+- Preview highlight while composing a text comment (CMH-CORE-17): opening a new text-comment
+  composer immediately shows the selected text as a live amber preview highlight
+  (`mark.cm-preview`) so the reviewer sees exactly what the comment will anchor to. Saving turns
+  it into the real persisted highlight over exactly the previewed text; cancelling via the Cancel
+  button or Escape removes it and stores nothing. The preview is transient chrome (no `data-cid`,
+  never persisted, excluded from export and print), stays in the text-offset space so a concurrent
+  composer's anchors never cross, is fully cleaned up if wrapping throws, and is re-applied if a
+  save cannot complete so the still-open composer keeps its anchor cue.
+
+## [1.166.0] - 2026-07-19
+
+### Added
+
+- CMH-ASCII-01: the document producers now rewrite AI "smart" typography - em/en dashes, the
+  ellipsis glyph, curly quotes, and non-breaking / zero-width spaces - to plain ASCII in visible
+  prose, leaving code, script, style, and HTML comments verbatim. `finalize.py` (reports/plans) and
+  `deck_scaffold.py` (deck slide prose) run the new shared `normalize_typography.py` normalizer by
+  default; opt out with `--no-normalize`. This keeps every report, plan, and deck on the plain-ASCII
+  house style without a hand pass.
+
+### Changed
+
+- Deck hover is smoother (CMH-DECK-21, CMH-DECK-RECIPE-02): table-cell, metric-tile, and
+  reference-pill hovers no longer animate `box-shadow` (a per-frame repaint) and table cells no
+  longer apply a `transform` lift (which relayouts the table). Cells ease only the cheap
+  `background-color` and the highlight ring snaps; tiles and pills keep their lift via the
+  compositor-friendly `transform`. Sweeping the mouse across a large deck table no longer lags.
+
+## [1.165.0] - 2026-07-19
+
+### Added
+
+- Third-party MIT license notices for the vendored rich-content libraries (mermaid, Chart.js). The
+  upstream license texts are vendored under `dev/assets/vendor/*.LICENSE`, `build.py` assembles them
+  into a shipped `THIRD_PARTY_NOTICES.md` (copied unzipped beside the plugin LICENSE and gated by
+  `build.py --check`), and `Export Offline` now embeds each bundled library's MIT notice as an HTML
+  comment beside the inlined library, so a redistributed offline artifact carries the required
+  copyright and permission notice.
+
+## [1.163.0] - 2026-07-19
+
+### Changed
+
+- Documented the online mermaid CDN import as a by-design accepted supply-chain risk (CMH-SEC-04):
+  the runtime loads mermaid from a version-pinned jsDelivr URL (single-sourced from the mermaid
+  dependency), with a zero-network vendored fallback via Export Offline. Credited the third-party
+  rich-content libraries the plugin renders with - mermaid and Chart.js, both MIT - in the plugin
+  README, the marketplace README, the site plugin page, and the vendored-libraries provenance doc.
+
+## [1.162.0] - 2026-07-19
+
+### Added
+
+- Deck comment scoping: an empty right-click on a slide now offers BOTH "Comment on slide" (a comment
+  tied to that specific slide, whose sidebar card names the slide and whose jump navigates to it) and
+  "Comment on deck" (the deck-wide comment, the relabelled document-wide comment). (CMH-DECK-33)
+- Deck click-to-advance: in present mode (comment panel closed), a plain left-click on non-interactive
+  slide content advances to the next slide; links, buttons, form controls, comment anchors, and deck
+  chrome keep their own behavior, and the open review panel is never yanked forward. (CMH-DECK-31)
+
+### Changed
+
+- Deck edge navigation arrows now reveal across a wide left/right hover band (not only a thin edge
+  strip), stay reliably visible, and are a larger, comfortably clickable target. (CMH-DECK-32)
+
+## [1.161.0] - 2026-07-19
+
+### Added
+
+- Deck layer recipe classes so a themed deck needs no per-deck CSS for common needs (CMH-DECK-RECIPE-01/02/03/04):
+  - Status-pill variants `.cmh-pill.is-available` (green), `.is-wip` (amber), `.is-planned` (slate), each with white text at AA contrast.
+  - Metric tiles (`.cmh-metric`) hover-lift, and the metric value is capped at a fixed stage size with `overflow-wrap: break-word` so long word-labels no longer overflow the card.
+  - A reference-row recipe (`.cmh-refs` + `.cmh-refs-label`) that renders reference links as a horizontal row of pills; on a `.cmh-slide-flow` flex-column content slide its `margin-top: auto` pins the row to the bottom of the fixed slide box.
+  - Deck-scoped default prose spacing (paragraphs collapse their top margin, list items gain bottom spacing, lists get a 1.5 line-height) so a deck reads as spaced bullets-over-prose without per-deck CSS; non-deck documents are unaffected.
+- `deck_validate.py` now also gates the reference-pill contrast pair (`--slide-link` over `--cmh-deck-code-bg`), so a custom theme cannot ship low-contrast reference links.
+
+## [1.160.1] - 2026-07-19
+
+### Security
+
+- Source provenance now stores only the source filename in `data-doc-source`, Copy all, and every
+  preserved export. Authoring tools and runtime fallbacks strip directories, drive letters,
+  usernames, and internal project paths while leaving the document comment key, session id, and
+  generated timestamp unchanged (CMH-SEC-03, part of #438).
+
 ## [1.160.0] - 2026-07-19
 
 ### Added

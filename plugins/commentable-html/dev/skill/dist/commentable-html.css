@@ -1,31 +1,69 @@
 mark.cm-hl {
-  background: rgba(245, 158, 11, 0.32);
+  --cm-hl-bg: rgba(245, 158, 11, 0.32);
   color: inherit;
-  padding: 1px 0;
+  padding: 0;
   border-radius: 2px;
   cursor: pointer;
-  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
-  transition: background 0.15s;
+  /* Paint the highlight as a centered band a little SHORTER than the line box instead of a
+     full-height fill, so a highlight that wraps across two lines shows clear vertical space
+     between the lines (box-decoration-break: clone gives each wrapped fragment its own band).
+     Zero padding keeps the mark from reflowing the text it wraps. */
+  background-color: transparent;
+  background-image: linear-gradient(var(--cm-hl-bg), var(--cm-hl-bg));
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  background-size: 100% 1em;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-mark.cm-hl:hover { background: rgba(245, 158, 11, 0.5); }
-mark.cm-hl.active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+mark.cm-hl:hover { --cm-hl-bg: rgba(245, 158, 11, 0.5); }
+mark.cm-hl.active { --cm-hl-bg: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); outline-offset: 1px; }
 mark.cm-hl.cm-hl-gap {
   display: contents;
   background: transparent;
+  background-image: none;
   box-shadow: none;
   padding: 0;
   cursor: inherit;
 }
-html[data-theme="dark"] mark.cm-hl { background: rgba(251, 191, 36, 0.28); }
-html[data-theme="dark"] mark.cm-hl:hover { background: rgba(251, 191, 36, 0.42); }
-html[data-theme="dark"] mark.cm-hl.active { background: rgba(251, 191, 36, 0.6); }
-/* Code-block highlights: the mark lives inside <pre>/<code>. Keep its background but make
-   it behave well across line wraps and preserve the monospace baseline. */
+html[data-theme="dark"] mark.cm-hl { --cm-hl-bg: rgba(251, 191, 36, 0.28); }
+html[data-theme="dark"] mark.cm-hl:hover { --cm-hl-bg: rgba(251, 191, 36, 0.42); }
+html[data-theme="dark"] mark.cm-hl.active { --cm-hl-bg: rgba(251, 191, 36, 0.6); }
+/* Code-block highlights: the mark lives inside <pre>/<code>. Keep a solid full-height fill (a
+   short band would leave the monospace baseline looking clipped) and the tighter box. */
 pre mark.cm-hl, code mark.cm-hl {
   padding: 0 2px;
   border-radius: 3px;
+  background-color: var(--cm-hl-bg);
+  background-image: none;
+}
+/* Composing preview: the amber highlight shown over the selected text while a new-comment
+   composer is open, before it is saved. It looks like the saved highlight (same amber band,
+   CMH-SEL-02) with a dashed outline cue that it is provisional. It carries no data-cid, so it is
+   inert (no hover bubble, no click-to-open). It uses the same short-band paint as mark.cm-hl so
+   the preview and the saved highlight are visually identical (only the dashed outline differs),
+   and the band never reflows the line. The dashed outline is drawn outside the box (no reflow). */
+mark.cm-preview {
+  --cm-hl-bg: rgba(245, 158, 11, 0.32);
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+  background-color: transparent;
+  background-image: linear-gradient(var(--cm-hl-bg), var(--cm-hl-bg));
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  background-size: 100% 1em;
+  outline: 1px dashed rgba(245, 158, 11, 0.9);
+  outline-offset: 1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+html[data-theme="dark"] mark.cm-preview { --cm-hl-bg: rgba(251, 191, 36, 0.28); }
+pre mark.cm-preview, code mark.cm-preview {
+  padding: 0 2px;
+  border-radius: 3px;
+  background-color: var(--cm-hl-bg);
+  background-image: none;
 }
 
 :root {
@@ -685,7 +723,11 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   .cm-card .meta .acts button { min-height: 44px; padding: 0.4rem 0.7rem; }
 }
 
-.cm-menu { position: fixed; z-index: 200; }
+/* Stack the menu's options vertically (one pill below the next) with a small gap, so a deck's
+   two comment-scope options ("Comment on deck" above "Comment on slide") read as a clear list
+   rather than a side-by-side pair. */
+.cm-menu { position: fixed; z-index: 200; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.cm-menu button { justify-content: center; }
 
 /* Add-comment affordances: the text-selection menu button and the floating
    image / diff / mermaid buttons all share ONE accent-pill look + hover, so the
@@ -1282,6 +1324,16 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
 
 /* ---------------------------------------------------------------------------
+   Link comment layer (CMH-LINK) - author-facing <a href> links get a subtle
+   hover cue and a floating #linkAddBtn; a commented link keeps a warning
+   underline + ring so the reader can see which references carry feedback. The
+   affordance button is separate, so activating it never navigates and a normal
+   click still follows the link. --------------------------------------------- */
+#commentRoot a.cm-link-commentable:hover { text-decoration-thickness: 2px; outline: 1px dashed var(--cp-accent); outline-offset: 2px; border-radius: 2px; }
+#commentRoot a.cm-link-hl { outline: 2px solid var(--cp-warning); outline-offset: 2px; border-radius: 2px; text-decoration-color: var(--cp-warning); }
+#commentRoot a.cm-link-hl.cm-link-active { outline-width: 3px; box-shadow: 0 0 0 3px var(--cp-accent-soft); }
+.cm-link-add { position: fixed; z-index: 200; }
+/* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
    syntax highlighting. The .cmh-kql-* token spans are baked into the code by
    tools/kql_highlight.py; these rules only supply the frame and token colors, so
@@ -1326,6 +1378,33 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
 #commentRoot pre {
   background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
   border-radius: 10px; padding: 0.85rem 1rem; overflow-x: auto;
+}
+/* Optional author caption/filename line above a standalone code block (data-code-caption
+   on the <pre>): a cm-skip bar joined seamlessly to the framed code below it, mirroring the
+   KQL caption look. The language pill + Copy button live INSIDE the bar as flex items on the
+   right, so the filename text (which flexes and ellipsizes) can never overlap them for any
+   language-label width; the caption is non-selectable chrome so a drag that starts on it
+   cannot leak the filename into a code comment's quote. Scoped to #commentRoot, --cp-* vars. */
+#commentRoot .cmh-code-wrap.cmh-has-caption { margin: 1.25rem 0; }
+#commentRoot .cmh-code-wrap > .cmh-code-caption {
+  display: flex; align-items: center; gap: 1rem; min-height: 1.4rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem; font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--cp-text-muted); background: var(--cp-surface-soft);
+  border: 1px solid var(--cp-border); border-bottom: 0; border-radius: 10px 10px 0 0;
+  -webkit-user-select: none; user-select: none;
+}
+#commentRoot .cmh-code-caption > .cmh-code-caption-text {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Inside the caption the tools flow inline (not floating over the code). */
+#commentRoot .cmh-code-wrap.cmh-has-caption > .cmh-code-caption > .cm-code-tools {
+  position: static; top: auto; right: auto; flex: none;
+}
+#commentRoot .cmh-code-wrap.cmh-has-caption > pre {
+  margin: 0; padding-top: 0.85rem;
+  border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0;
 }
 #commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
 #commentRoot pre.mermaid svg { max-width: none; }
@@ -1677,6 +1756,7 @@ body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
 body.cmh-deck-comments-off #menuComment,
 body.cmh-deck-comments-off #mermaidAddBtn,
 body.cmh-deck-comments-off #imageAddBtn,
+body.cmh-deck-comments-off #linkAddBtn,
 body.cmh-deck-comments-off #diffAddBtn,
 body.cmh-deck-comments-off #widgetAddBtn,
 body.cmh-deck-comments-off #headingAddBtn {
@@ -1696,12 +1776,11 @@ body.cmh-deck-comments-off #headingAddBtn {
   border-color: var(--cmh-deck-table-head-border, rgba(148, 163, 184, 0.48));
 }
 #commentRoot[data-cmh-mode="deck"] .slide table :is(th, td) {
-  transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition: background-color 0.16s ease;
 }
 #commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):hover,
 #commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):focus-within {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--cp-accent, #2ecc71) 58%, transparent);
-  transform: translateY(-1px);
 }
 #commentRoot[data-cmh-mode="deck"] .slide table td:hover,
 #commentRoot[data-cmh-mode="deck"] .slide table td:focus-within {
@@ -1725,6 +1804,7 @@ body.cmh-deck-comments-off #headingAddBtn {
   border-color: var(--cmh-deck-code-border);
 }
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-cap,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap > .cmh-code-caption,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-bar,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-toobig {
   background: var(--cmh-deck-code-bg-soft);
@@ -2022,15 +2102,15 @@ body.cmh-deck-comments-off #headingAddBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   padding: 0;
   border-radius: 999px;
   border: 1px solid var(--cp-border, #444);
   background: color-mix(in srgb, var(--cp-surface, #222) 84%, transparent);
   color: var(--cp-text, #fff);
   font: inherit;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -2256,6 +2336,14 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   border-radius: 999px;
   background: var(--slide-accent, #93c5fd);
 }
+/* A full-content slide laid out as a flex column, so a trailing margin-top:auto child (for
+   example the .cmh-refs reference row) pins to the bottom of the fixed 1080px slide box. Unlike
+   .cmh-slide-section (a centred kicker/heading divider) this stacks normal slide content from the
+   top and reserves the remaining height for the auto-margin child. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-flow {
+  display: flex;
+  flex-direction: column;
+}
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-cols-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2271,13 +2359,21 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   padding: 28px 32px;
   border: 1px solid var(--slide-border, rgba(255, 255, 255, 0.22));
   border-radius: 16px;
+  background: var(--slide-bg, transparent);
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  border-color: var(--slide-accent, #93c5fd);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-value {
   display: block;
   color: var(--slide-accent, #93c5fd);
-  font-size: 64px;
+  font-size: 44px;
   font-weight: 800;
-  line-height: 1.05;
+  line-height: 1.1;
+  overflow-wrap: break-word;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-label {
   display: block;
@@ -2293,6 +2389,50 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   color: var(--slide-accent-fg, #0b0b0f);
   font-weight: 700;
   letter-spacing: 0.02em;
+  /* Hover-lift: animate only the cheap transform (not box-shadow, and not a brightness filter that
+     could push a custom theme's pill fill below its AA text contrast) so the deck hover stays smooth
+     and every themed pill keeps its vetted contrast. */
+  transition: transform 0.15s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill:hover {
+  transform: translateY(-2px);
+}
+/* Reusable status-pill variants: green Available, amber WIP, slate Planned (white text, AA-safe). */
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-available { background: #1a7f37; color: #ffffff; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-wip { background: #8a5200; color: #ffffff; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-planned { background: #57606a; color: #ffffff; }
+/* Generous spacing between deck paragraphs and bullets (prefer bullets over prose). */
+#commentRoot[data-cmh-mode="deck"] .slide p { margin: 0 0 0.75em; }
+#commentRoot[data-cmh-mode="deck"] .slide ul,
+#commentRoot[data-cmh-mode="deck"] .slide ol { margin: 0.2em 0 0.75em; padding-left: 1.1em; line-height: 1.5; }
+#commentRoot[data-cmh-mode="deck"] .slide li { margin-bottom: 0.5em; }
+/* Consistent reference row: pills pinned to the bottom of the slide, laid out horizontally. */
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs {
+  margin-top: auto;
+  padding-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 19px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs > .cmh-refs-label { color: var(--slide-fg-muted, #a1a1aa); font-weight: 600; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 15px;
+  border-radius: 999px;
+  background: var(--cmh-deck-code-bg, rgba(148, 163, 184, 0.16));
+  border: 1px solid var(--slide-border, rgba(148, 163, 184, 0.4));
+  color: var(--slide-link, #2f81f7);
+  text-decoration: none;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs a:hover {
+  transform: translateY(-2px);
+  border-color: var(--slide-accent, #93c5fd);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
 }
 
 /* Sortable-table chevrons on a deck header: the base chevron colours (muted text / accent) are
@@ -2433,6 +2573,15 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   #commentRoot {
     background: var(--cp-bg) !important;
     color: var(--cp-text) !important;
+  }
+
+  /* The composing preview highlight is transient chrome: print the underlying text
+     plainly rather than with the provisional amber fill and dashed outline. */
+  mark.cm-preview {
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0 !important;
   }
 
   #commentRoot section.cmh-section-collapsed > * {

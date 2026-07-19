@@ -8,12 +8,13 @@ Usage (run from the skill root):
     python tools/finalize.py file.html --strict
 
 Order is always:
-  1) generate_toc (when --toc)
-  2) wrap_sections (report/plan only; on by default, skip with --no-wrap-sections)
-  3) fix_skip (when --fix-skip)
-  4) inline_images (when --inline-images)
-  5) highlight_document (on by default; skip with --no-highlight)
-  6) validate
+  1) normalize_typography (on by default; skip with --no-normalize)
+  2) generate_toc (when --toc)
+  3) wrap_sections (report/plan only; on by default, skip with --no-wrap-sections)
+  4) fix_skip (when --fix-skip)
+  5) inline_images (when --inline-images)
+  6) highlight_document (on by default; skip with --no-highlight)
+  7) validate
 """
 import argparse
 import os
@@ -29,6 +30,7 @@ import generate_toc  # noqa: E402
 import doc_stats  # noqa: E402
 import highlight_document  # noqa: E402
 import inline_images  # noqa: E402
+import normalize_typography  # noqa: E402
 import validate  # noqa: E402
 import wrap_sections  # noqa: E402
 
@@ -46,6 +48,15 @@ def _read(path):
 def _write(path, html):
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(html)
+
+
+def _run_normalize(path):
+    source = _read(path)
+    rewritten, count = normalize_typography.normalize_typography(source)
+    changed = rewritten != source
+    if changed:
+        _write(path, rewritten)
+    return changed, count
 
 
 def _run_toc(path):
@@ -120,8 +131,12 @@ def _run_stats(path):
 
 
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
-             run_highlight=True, run_wrap_sections=True, run_stats=True):
+             run_highlight=True, run_wrap_sections=True, run_stats=True, run_normalize=True):
     steps = []
+    if run_normalize:
+        changed, count = _run_normalize(path)
+        status = "normalized %d AI char(s)" % count if changed else "unchanged"
+        steps.append(("normalize", status))
     if run_toc:
         changed = _run_toc(path)
         steps.append(("toc", "updated" if changed else "unchanged"))
@@ -176,6 +191,9 @@ def main(argv):
     parser.add_argument("--no-stats", action="store_true",
                         help="skip baking the section/word/reading-time overview strip for "
                              "report/plan documents (on by default)")
+    parser.add_argument("--no-normalize", action="store_true",
+                        help="skip rewriting AI smart-typography (em/en dashes, ellipsis, curly "
+                             "quotes, nbsp) to plain ASCII in prose (on by default)")
     parser.add_argument("--strict", action="store_true",
                         help="treat validator warnings as failures (errors already fail)")
     parser.add_argument("--no-stamp", action="store_true",
@@ -196,6 +214,7 @@ def main(argv):
             run_highlight=not args.no_highlight,
             run_wrap_sections=not args.no_wrap_sections,
             run_stats=not args.no_stats,
+            run_normalize=not args.no_normalize,
         )
     except (OSError, ValueError) as exc:
         sys.stderr.write("finalize: %s\n" % exc)

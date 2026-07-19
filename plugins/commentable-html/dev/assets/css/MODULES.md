@@ -16,11 +16,13 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
 | `50-content.css` | CMH-CONTENT, CMH-STATS | Default content styling (sections, tables, badges, document-overview strip). |
 | `60-images.css` | CMH-IMG | Image comment layer. |
-| `70-kql.css` | CMH-KQL | Kusto query figure + KQL token styling. |
+| `60-images.css` | CMH-IMG | Image comment layer. |
+| `61-links.css` | CMH-LINK | Author-facing link comment layer (hover cue, commented-link ring, floating add button). |
+| `70-kql.css` | CMH-KQL, CMH-CODE | Kusto query figure + KQL token styling; standalone code-block frame and optional caption. |
 | `80-focus.css` | CMH-A11Y | Shared themed focus ring for interactive controls. |
 | `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
 | `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
-| `90-deck.css` | CMH-DECK | Deck profile (`data-cmh-mode="deck"`) overrides. |
+| `90-deck.css` | CMH-DECK, CMH-CODE | Deck profile (`data-cmh-mode="deck"`) overrides; deck theming of the code caption. |
 | `92-print.css` | CMH-PRINT | Print/PDF stylesheet for flat documents plus one-slide-per-page deck print flow. |
 | `95-reduced-motion.css` | CMH-A11Y | `prefers-reduced-motion` reset: clamps non-essential animations/transitions to near-zero. |

@@ -10,11 +10,29 @@ const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garde
 
 // Fills SPEC coverage gaps that were previously manual-only.
 
+// Open a composer over an element's full contents. Selecting node contents (rather than
+// a text-offset range) is robust to the composing preview, which wraps the selected text
+// in a transient mark and so splits the underlying text nodes: two node-contents
+// selections of the same element still resolve to the identical anchor, so the second
+// composer genuinely collides with the first and the stagger is exercised.
+async function openComposerOnContents(page, selector) {
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(range);
+    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 40, clientY: 40 }));
+  }, selector);
+  await page.locator("#menuComment").click();
+}
+
 test("composers coexist, stagger by 28px on overlap, and focus raises z-order (CMH-CORE-09)", async ({ page }) => {
   await openInline(page);
   // two composers anchored on the SAME selection collide, so the second is offset
-  await openComposerFor(page, "#commentRoot p", { index: 0 });
-  await openComposerFor(page, "#commentRoot p", { index: 0 });
+  await openComposerOnContents(page, "#commentRoot p");
+  await openComposerOnContents(page, "#commentRoot p");
   const composers = page.locator(".cm-composer");
   await expect(composers).toHaveCount(2);
   const pos = await page.evaluate(() => [...document.querySelectorAll(".cm-composer")].map((c) => ({

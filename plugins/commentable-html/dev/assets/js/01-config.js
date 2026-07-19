@@ -1,8 +1,16 @@
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
 const root = document.getElementById("commentRoot") || document.body;
+function _docSourceBasename(source) {
+  const value = String(source == null ? "" : source);
+  const withoutSuffix = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)
+    ? value.split(/[?#]/, 1)[0] : value;
+  if (/[\\/]$/.test(withoutSuffix)) return "document";
+  const parts = withoutSuffix.split(/[\\/]/);
+  return (parts[parts.length - 1] || "document").replace(/^[A-Za-z]:/, "") || "document";
+}
 const COMMENT_KEY = root.dataset.commentKey || ("commentable-html:" + location.pathname);
 const DOC_LABEL   = root.dataset.docLabel   || document.title || location.pathname;
-const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
+const DOC_SOURCE  = _docSourceBasename(root.dataset.docSource || location.pathname);
 // Deck profile: a commentable-native slide deck (see references/deck-contract.md). When
 // active, the layer replaces the flow-document chrome (heading anchors, collapsible
 // sections, side TOC, footer, scroll progress) with slide navigation and commenting.
@@ -22,7 +30,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.160.0";
+const CMH_VERSION = "1.172.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

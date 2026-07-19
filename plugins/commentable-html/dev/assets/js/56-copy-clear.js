@@ -5,17 +5,7 @@ function buildCopyText() {
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
   const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
   if (!liveComments.length && !stateChanges.length && !clChanges.length && !noteChanges.length) return "";
-  const sortKey = (c) => (c.anchorType === "document")
-    ? -1
-    : (c.anchorType === "mermaid")
-    ? (1e12 + (c.diagramIndex || 0) * 1000)
-    : (c.anchorType === "diff")
-    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
-    : (c.anchorType === "image")
-    ? (3e12 + (c.imageIndex || 0))
-    : (c.anchorType === "widget")
-    ? (4e12 + _widgetOrderKey(c))
-    : (typeof c.start === "number" ? c.start : 0);
+  const sortKey = _anchorSortKey;
   const sorted = [...liveComments].sort((a, b) => sortKey(a) - sortKey(b));
   const lines = [];
   // Structured one-line metadata fields must not carry newlines/tabs, or a poisoned
@@ -60,9 +50,11 @@ function buildCopyText() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
-    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isWidget ? " (widget)" : isDocument ? " (document)" : ""}`);
+    const isSlide = c.anchorType === "slide";
+    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
     lines.push(`Id: ${c.id}`);
     lines.push(`When: ${formatTime(c.createdAt)}${c.updatedAt ? " (edited " + formatTime(c.updatedAt) + ")" : ""}`);
     if (c.headingPath && c.headingPath.length) {
@@ -114,6 +106,14 @@ function buildCopyText() {
       lines.push("");
       lines.push("Comment:");
       pushNote(c.note);
+    } else if (isLink) {
+      const rawHref = oneLine(c.linkHref);
+      const sHref = rawHref.length > 100 ? rawHref.slice(0, 100) + "..." : rawHref;
+      lines.push(`Anchor: link #${(Number(c.linkIndex) || 0) + 1}${sHref ? " (" + sHref + ")" : ""}`);
+      if (c.linkText) lines.push(`Text: ${oneLine(c.linkText)}`);
+      lines.push("");
+      lines.push("Comment:");
+      pushNote(c.note);
     } else if (isWidget) {
       lines.push(`Anchor: widget "${oneLine(c.widget)}", part "${oneLine(c.partLabel || c.part)}"${c.slot ? " (in " + oneLine(c.slot) + ")" : ""}`);
       lines.push("");
@@ -121,6 +121,11 @@ function buildCopyText() {
       pushNote(c.note);
     } else if (isDocument) {
       lines.push("Anchor: document-wide (not tied to a specific element)");
+      lines.push("");
+      lines.push("Comment:");
+      pushNote(c.note);
+    } else if (isSlide) {
+      lines.push(`Anchor: slide "${oneLine(c.slideTitle || c.slideId || "")}"${c.slideId ? " (id " + oneLine(c.slideId) + ")" : ""}`);
       lines.push("");
       lines.push("Comment:");
       pushNote(c.note);

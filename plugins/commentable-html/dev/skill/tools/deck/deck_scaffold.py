@@ -40,6 +40,7 @@ VIEWPORT_CSS = PKG / "vendor" / "frontend-slides" / "viewport-base.css"
 
 import new_document  # noqa: E402
 import deck_validate  # noqa: E402
+import normalize_typography  # noqa: E402
 try:
     import validate as _validate  # noqa: E402
 except ImportError:  # pragma: no cover
@@ -169,13 +170,16 @@ def main(argv=None):
     src.add_argument("--slides", type=int, help="generate N placeholder slides")
     ap.add_argument("--key", default="auto", help='data-comment-key, or "auto" to derive from --label')
     ap.add_argument("--label", required=True, help="human-readable document label")
-    ap.add_argument("--source", help="data-doc-source (the file the agent edits)")
+    ap.add_argument("--source", help="data-doc-source filename (directories are stripped)")
     ap.add_argument("--generated", help="ISO-8601 Generated-on stamp")
     ap.add_argument("--out", required=True, help="output file (create-only unless --force)")
     ap.add_argument("--force", action="store_true", help="overwrite an existing --out")
     ap.add_argument("--no-highlight", action="store_true",
                     help="do not bake syntax highlighting into raw language-labelled code blocks "
                          "(baking is ON by default so a scaffolded deck is never raw)")
+    ap.add_argument("--no-normalize", action="store_true",
+                    help="do not rewrite AI smart-typography (em/en dashes, ellipsis, curly quotes, "
+                         "nbsp) in slide prose to plain ASCII (normalizing is ON by default)")
     ap.add_argument("--brand", default=None,
                     help="optional brand.json profile that stamps validated --cp-* theme tokens "
                          "and local data-URI font faces")
@@ -207,6 +211,17 @@ def main(argv=None):
     else:
         fragment = sys.stdin.read() if args.content == "-" else Path(args.content).read_text(encoding="utf-8")
 
+    # Rewrite AI smart-typography to plain ASCII before assembly, leaving code/script/style verbatim
+    # (CMH-ASCII-01): the slide prose fragment (HTML-aware), plus the label and source that get baked
+    # into the document title and data-doc-* attributes (plain text, so use the plain-text path).
+    # Placeholder slides are already ASCII (no-op).
+    label, source = args.label, args.source
+    if not args.no_normalize:
+        fragment, _ = normalize_typography.normalize_typography(fragment)
+        label, _ = normalize_typography.normalize_text(label)
+        if source:
+            source, _ = normalize_typography.normalize_text(source)
+
     try:
         content, _ids = build_content(fragment)
     except ValueError as exc:
@@ -226,8 +241,8 @@ def main(argv=None):
     key = _auto_key(args.label) if args.key == "auto" else args.key
     template = TEMPLATE.read_text(encoding="utf-8")
     try:
-        html = new_document.make_document(template, content, key, args.label,
-                                          source=args.source, generated=args.generated,
+        html = new_document.make_document(template, content, key, label,
+                                          source=source, generated=args.generated,
                                           kind="slides")
     except ValueError as exc:
         print(f"deck_scaffold: {exc}", file=sys.stderr)

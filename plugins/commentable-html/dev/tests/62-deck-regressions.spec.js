@@ -184,6 +184,173 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
   }
 });
 
+test("CMH-MMD-08: deck Mermaid node labels are fully visible inside their node box", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+
+    const result = await page.evaluate(() => {
+      const svg = document.querySelector(".slide.active pre.mermaid svg");
+      const labels = [];
+      const clipped = [];
+      let nodeForeignObjects = 0;
+      let svgTextLabels = 0;
+      svg.querySelectorAll("g.node").forEach((node) => {
+        const text = (node.textContent || "").trim();
+        if (text) labels.push(text);
+        if (node.querySelector("foreignObject")) nodeForeignObjects += 1;
+        if (node.querySelector("text.nodeLabel, .nodeLabel text, tspan.text-outer-tspan, text")) svgTextLabels += 1;
+        // HTML-label mode: the label lives in a foreignObject whose box mermaid sizes from a width
+        // measurement. Inside a deck's CSS-scaled stage that measurement is wrong, so the box is too
+        // small and the content clips - scrollWidth (content) then exceeds clientWidth (box).
+        const div = node.querySelector("foreignObject div");
+        if (div && div.scrollWidth - div.clientWidth > 1) {
+          clipped.push({ text, mode: "html", over: div.scrollWidth - div.clientWidth });
+          return;
+        }
+        // SVG-<text>-label mode: the rendered label must fit within the node shape (user units, so
+        // the deck's uniform scale cancels out).
+        const label = node.querySelector("text.nodeLabel, .nodeLabel, text");
+        const shape = node.querySelector("rect, polygon, circle, ellipse");
+        if (label && shape && label.getBBox && shape.getBBox) {
+          const lw = label.getBBox().width;
+          const sw = shape.getBBox().width;
+          if (lw > sw + 2) clipped.push({ text, mode: "svg", labelWidth: Math.round(lw), shapeWidth: Math.round(sw) });
+        }
+      });
+      // Issue #476 covers node AND edge labels. Edge labels also drop out of foreignObject under
+      // htmlLabels:false; assert the labeled showcase edge renders and uses SVG text (no foreignObject,
+      // and no clipped foreignObject box).
+      let edgeForeignObjects = 0;
+      const edgeTexts = [];
+      svg.querySelectorAll("g.edgeLabel").forEach((edge) => {
+        if (edge.querySelector("foreignObject")) edgeForeignObjects += 1;
+        const div = edge.querySelector("foreignObject div");
+        if (div && div.scrollWidth - div.clientWidth > 1) {
+          clipped.push({ text: (edge.textContent || "").trim(), mode: "edge-html", over: div.scrollWidth - div.clientWidth });
+        }
+        const t = (edge.textContent || "").trim();
+        if (t) edgeTexts.push(t);
+      });
+      return { labels, clipped, nodeForeignObjects, svgTextLabels, edgeForeignObjects, edgeTexts };
+    });
+
+    // The deck must actually be in the fixed SVG-<text> label mode (htmlLabels:false), not merely
+    // "no clip observed at this viewport": assert node labels carry SVG text and NO foreignObject, so
+    // a regression back to HTML labels fails even if the clip does not reproduce on this browser.
+    expect(result.nodeForeignObjects, "deck node labels must not use a foreignObject").toBe(0);
+    expect(result.svgTextLabels, "deck node labels must be SVG <text>").toBeGreaterThanOrEqual(5);
+    // Edge labels are covered too: the showcase's labeled edge renders and uses SVG text.
+    expect(result.edgeForeignObjects, "deck edge labels must not use a foreignObject").toBe(0);
+    expect(result.edgeTexts.some((t) => t.replace(/\s+/g, "").includes("commentonanyelement")),
+      "the labeled showcase edge must render its text").toBe(true);
+    // A known long label from the showcase flowchart must be rendered (SVG <text> wrapping can drop
+    // the space at a wrap point, so compare with whitespace removed)...
+    const normalized = result.labels.map((t) => t.replace(/\s+/g, ""));
+    expect(normalized, "expected the long showcase node label to be rendered")
+      .toContain("Youcommentontheexactspot");
+    // ...and no node or edge label may be clipped by its box.
+    expect(result.clipped, "clipped deck labels: " + JSON.stringify(result.clipped)).toEqual([]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-MMD-08: deck mermaid comment labels preserve spaces across SVG-text wrapping", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+    await enterCommentMode(page);
+
+    // The wrapped node's raw textContent drops the wrap-point space ("You comment on the exactspot"),
+    // so the runtime must rejoin the SVG <text> rows to anchor and label it with the spaced words.
+    const idx = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")];
+      return nodes.findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot"));
+    });
+    expect(idx, "expected the wrapped showcase node to be present").toBeGreaterThanOrEqual(0);
+    const node = page.locator(".slide.active pre.mermaid svg g.node").nth(idx);
+    await node.hover();
+    await expect(page.locator("#mermaidAddBtn")).toBeVisible();
+    await page.locator("#mermaidAddBtn").click();
+    const composer = page.locator(".cm-composer").last();
+    await expect(composer).toBeVisible();
+    await composer.locator("textarea").fill("label spacing check");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+
+    // Copy all quotes the anchored node with its spaces intact, not the space-dropped "exactspot".
+    await page.evaluate(() => document.getElementById("btnCopyAll").click());
+    const bundle = await copiedBundle(page);
+    expect(bundle).toContain("You comment on the exact spot");
+    expect(bundle).not.toContain("exactspot");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches after the label mode change", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+    await enterCommentMode(page);
+
+    const idx = await page.evaluate(() =>
+      [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")]
+        .findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot")));
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const node = page.locator(".slide.active pre.mermaid svg g.node").nth(idx);
+    await node.hover();
+    await expect(page.locator("#mermaidAddBtn")).toBeVisible();
+    await page.locator("#mermaidAddBtn").click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("legacy anchor");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+    await expect(node).toHaveClass(/cm-mermaid-hl/);
+
+    // Rewrite the persisted anchor to a space-DROPPED label key (the form an SVG-text deck produced
+    // before the rejoin fix, or an HTML deck whose wrapped label concatenated without a space), then
+    // reload. The current rendered/rejoined label keeps the space ("You comment on the exact spot"),
+    // so the exact `label:` match fails and only the whitespace-insensitive fallback can re-anchor it.
+    const rewrote = await page.evaluate(() => {
+      const root = document.getElementById("commentRoot");
+      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
+      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      let changed = false;
+      arr.forEach((c) => {
+        if (c && typeof c.nodeKey === "string" && c.nodeKey.replace(/\s+/g, "") === "label:Youcommentontheexactspot") {
+          c.nodeKey = "label:You comment on the exactspot";
+          changed = true;
+        }
+      });
+      localStorage.setItem(key, JSON.stringify(arr));
+      return changed;
+    });
+    expect(rewrote, "expected a persisted mermaid anchor to rewrite").toBe(true);
+
+    await page.reload();
+    await ready(page);
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+
+    const reanchored = await page.evaluate(() =>
+      [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")]
+        .some((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot")
+          && n.classList.contains("cm-mermaid-hl")));
+    expect(reanchored, "the legacy-keyed comment must re-ring its node via the whitespace-insensitive fallback").toBe(true);
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
@@ -256,6 +423,16 @@ test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losi
     await showSlideWith(page, ".showcase-chart-slide");
     await enterCommentMode(page);
     const cell = page.locator(".slide.active table.show-table tbody tr").nth(1).locator("td").nth(2);
+    // Perf (CMH-DECK-21): sweeping the mouse across cells felt laggy because each cell animated
+    // box-shadow (a per-frame repaint) and a transform lift (which relayouts the table). The hover
+    // now eases only the cheap background-color; the highlight ring snaps and no transform is applied.
+    // Token-match the comma-separated transition-property list so a substring like transform-origin
+    // cannot pass by accident.
+    const cellTransitions = (await cell.evaluate((el) => getComputedStyle(el).transitionProperty))
+      .split(",").map((s) => s.trim());
+    expect(cellTransitions).toContain("background-color");
+    expect(cellTransitions).not.toContain("box-shadow");
+    expect(cellTransitions).not.toContain("transform");
     const before = await cell.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -265,6 +442,8 @@ test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losi
     });
     await cell.hover();
     await expect.poll(() => cell.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe(before.boxShadow);
+    // No transform lift is applied to the cell on hover (a lift would relayout the table).
+    expect(await cell.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
     const hovered = await cell.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -701,7 +880,7 @@ test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark
     await expect(logo).toHaveCount(1);
     await expect(logo).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
     await expect(logo).toHaveAttribute("target", "_blank");
-    await expect(logo).toHaveAttribute("title", "Commentable HTML - open the project site");
+    await expect(logo).toHaveAttribute("title", "Commentable HTML");
     // The official Commentable HTML logo rendered as a plain image (not the old bordered card).
     const img = logo.locator("img.show-corner-logo-img");
     await expect(img).toHaveCount(1);
@@ -725,9 +904,9 @@ test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark
       };
     });
     expect(pos.rightGap).toBeGreaterThanOrEqual(0);
-    expect(pos.rightGap).toBeLessThan(pos.slideWidth * 0.08);
+    expect(pos.rightGap).toBeLessThan(pos.slideWidth * 0.06);
     expect(pos.topGap).toBeGreaterThanOrEqual(0);
-    expect(pos.topGap).toBeLessThan(pos.slideHeight * 0.12);
+    expect(pos.topGap).toBeLessThan(pos.slideHeight * 0.05);
   } finally {
     await server.close();
   }
@@ -739,6 +918,93 @@ test("CMH-DECK-SHOWCASE-11: showcase amber title highlights do not paint a halo 
     await showSlideWith(page, ".show-mark");
     await expect(page.locator(".slide.active .show-mark").first()).toBeVisible();
     await expect(page.locator(".slide.active .show-mark").first()).toHaveCSS("box-shadow", "none");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-13: the title and Act 1 promise slides carry the refreshed copy", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    // Title (header) slide: the refreshed pitch headline replaces the old "Keep comments" line.
+    const header = page.locator('[data-slide-id="slide-21860f4e"]');
+    await expect(header.locator("h1")).toContainText("Plan with AI, visually rich review inline, repeat.");
+    await expect(header.locator("h1")).not.toContainText("Keep");
+
+    // Act 1 promise slide: the paragraph is rephrased and the redundant pill is gone.
+    const act1 = page.locator('[data-slide-id="slide-76b2501c"]');
+    await expect(act1.locator("p.showcase-comment-target")).toContainText("only the running example");
+    await expect(act1.locator("p.showcase-comment-target")).not.toContainText("just the running example");
+    await expect(act1).not.toContainText("reviewed end to end");
+    // The Copy all control is emphasized inside its pill.
+    await expect(act1.locator(".show-byline kbd")).toHaveText("Copy all");
+    await expect(act1.locator(".show-pill").first()).toContainText("Copy all handoff");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-14: the comparison table marks the Commentable HTML row's winning cells", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const row = page.locator("table.show-compare-table tr.show-best-row");
+    await expect(row).toHaveCount(1);
+    await expect(row.locator("td").first()).toHaveText("Commentable HTML");
+    const best = row.locator("td.show-best");
+    await expect(best).toHaveCount(3);
+    await expect(best.nth(0)).toContainText("Rich view");
+    await expect(best.nth(1)).toContainText("Yes");
+    await expect(best.nth(2)).toContainText("Copy all bundle");
+    // The winning cells carry a visible check glyph via ::before.
+    const marker = await best.first().evaluate((el) => getComputedStyle(el, "::before").content);
+    expect(marker).toContain("\u2713");
+    // ...and a distinct GREEN fill (green channel dominant, not the default transparent cell).
+    const bg = await best.first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    const rgb = (bg.match(/\d+(\.\d+)?/g) || []).map(Number);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(rgb[1]).toBeGreaterThan(rgb[0]);
+    expect(rgb[1]).toBeGreaterThan(rgb[2]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-15: the title slide embeds a real UI screenshot of a document and the Add Comment popup", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const shot = page.locator('[data-slide-id="slide-21860f4e"] figure.show-ui-shot img.show-ui-shot-img');
+    await expect(shot).toHaveCount(1);
+    await expect(shot).toHaveAttribute("src", /^data:image\/png;base64,/);
+    await expect(shot).toHaveAttribute("alt", /Add Comment/i);
+    // The embedded PNG decodes to a real, non-trivial raster image.
+    const dims = await shot.evaluate((img) => new Promise((res) => {
+      if (img.complete && img.naturalWidth) return res({ w: img.naturalWidth, h: img.naturalHeight });
+      img.addEventListener("load", () => res({ w: img.naturalWidth, h: img.naturalHeight }), { once: true });
+      img.addEventListener("error", () => res({ w: 0, h: 0 }), { once: true });
+    }));
+    expect(dims.w).toBeGreaterThan(600);
+    expect(dims.h).toBeGreaterThan(200);
+    // The restructured header slide (text + screenshot) must not overflow the fixed 1080px stage.
+    const overflow = await page.evaluate(() => {
+      const s = document.querySelector('[data-slide-id="slide-21860f4e"]');
+      return { scroll: s.scrollHeight, client: s.clientHeight };
+    });
+    expect(overflow.scroll).toBeLessThanOrEqual(overflow.client + 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-16: showcase byline pills lift on hover", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const pill = page.locator(".slide.active .show-pill").first();
+    await expect(pill).toBeVisible();
+    const transition = await pill.evaluate((el) => getComputedStyle(el).transitionProperty);
+    expect(transition).toContain("transform");
+    expect(await pill.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
+    await pill.hover();
+    await expect(pill).not.toHaveCSS("transform", "none");
   } finally {
     await server.close();
   }

@@ -1,0 +1,10 @@
+/* ---------------------------------------------------------------------------
+   Link comment layer (CMH-LINK) - author-facing <a href> links get a subtle
+   hover cue and a floating #linkAddBtn; a commented link keeps a warning
+   underline + ring so the reader can see which references carry feedback. The
+   affordance button is separate, so activating it never navigates and a normal
+   click still follows the link. --------------------------------------------- */
+#commentRoot a.cm-link-commentable:hover { text-decoration-thickness: 2px; outline: 1px dashed var(--cp-accent); outline-offset: 2px; border-radius: 2px; }
+#commentRoot a.cm-link-hl { outline: 2px solid var(--cp-warning); outline-offset: 2px; border-radius: 2px; text-decoration-color: var(--cp-warning); }
+#commentRoot a.cm-link-hl.cm-link-active { outline-width: 3px; box-shadow: 0 0 0 3px var(--cp-accent-soft); }
+.cm-link-add { position: fixed; z-index: 200; }

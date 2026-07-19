@@ -61,6 +61,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 import _brand_profile  # noqa: E402
+import doc_stamp  # noqa: E402
 import recommend_kind  # noqa: E402
 
 BEGIN_MARKER = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
@@ -222,7 +223,7 @@ def _build_main_tag(interior, key, label, source, generated=None):
     _set_attr(attrs, "data-comment-key", key)
     _set_attr(attrs, "data-doc-label", label)
     if source is not None:
-        _set_attr(attrs, "data-doc-source", source)
+        _set_attr(attrs, "data-doc-source", doc_stamp.source_basename(source))
     else:
         _drop_attr(attrs, "data-doc-source")
     if generated is not None:
@@ -528,7 +529,8 @@ def main(argv):
     parser.add_argument("--kind", required=True, choices=DOC_KINDS,
                         help="document kind (%s); report and plan require an <h1> title, "
                              "slides and board do not" % ", ".join(DOC_KINDS))
-    parser.add_argument("--source", default=None, help="optional data-doc-source")
+    parser.add_argument("--source", default=None,
+                        help="optional data-doc-source (directory components are stripped)")
     parser.add_argument("--generated", default=None,
                         help="optional data-generated ISO-8601 timestamp for deterministic metadata")
     mode = parser.add_mutually_exclusive_group()

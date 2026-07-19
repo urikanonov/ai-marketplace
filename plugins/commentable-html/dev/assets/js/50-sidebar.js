@@ -71,17 +71,7 @@ function renderComments() {
     if (typeof refreshReviewUI === "function") refreshReviewUI();
     return;
   }
-  const sortKey = (c) => (c.anchorType === "document")
-    ? -1
-    : (c.anchorType === "mermaid")
-    ? (1e12 + (c.diagramIndex || 0) * 1000)
-    : (c.anchorType === "diff")
-    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
-    : (c.anchorType === "image")
-    ? (3e12 + (c.imageIndex || 0))
-    : (c.anchorType === "widget")
-    ? (4e12 + _widgetOrderKey(c))
-    : (typeof c.start === "number" ? c.start : 0);
+  const sortKey = _anchorSortKey;
   const sorted = (commentSort === "time-asc")
     ? [...comments].sort((a, b) => (commentTimeValue(a) - commentTimeValue(b)) || (sortKey(a) - sortKey(b)))
     : (commentSort === "time-desc")
@@ -91,8 +81,10 @@ function renderComments() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
+    const isSlide = c.anchorType === "slide";
     const path = (c.headingPath && c.headingPath.length)
       ? c.headingPath.map(h => escapeHtml(h.text)).join(" &rsaquo; ")
       : (c.section ? escapeHtml(c.section) : "");
@@ -103,10 +95,14 @@ function renderComments() {
     } else if (isImage) {
       const mediaLbl = c.imageKind === "chart" ? "chart: " : "image: ";
       quoteHtml = `<div class="quote"><span class="ctx">${mediaLbl}</span><span class="quoted">${escapeHtml(c.imageAlt || c.quote || c.imageSrc || "")}</span></div>`;
+    } else if (isLink) {
+      quoteHtml = `<div class="quote"><span class="ctx">link: </span><span class="quoted">${escapeHtml(c.linkText || c.quote || c.linkHref || "")}</span></div>`;
     } else if (isWidget) {
       quoteHtml = `<div class="quote"><span class="ctx">${escapeHtml(c.widget || "widget")}: </span><span class="quoted">"${escapeHtml(c.partLabel || c.part || "")}"</span></div>`;
     } else if (isDocument) {
       quoteHtml = `<div class="quote"><span class="quoted">(document-wide comment)</span></div>`;
+    } else if (isSlide) {
+      quoteHtml = `<div class="quote"><span class="ctx">slide: </span><span class="quoted">"${escapeHtml(c.slideTitle || c.slideId || "")}"</span></div>`;
     } else if (c.isCode) {
       // Code-block quotes are rendered as a single preformatted block (no before/after
       // ctx) because surrounding code lines look misleading when collapsed to one line.
@@ -128,11 +124,17 @@ function renderComments() {
       pinBits.push(`${c.imageKind === "chart" ? "chart" : "image"} ${(Number(c.imageIndex) || 0) + 1}`);
       const src = String(c.imageSrc == null ? "" : c.imageSrc);
       if (src) pinBits.push(escapeHtml(src.length > 60 ? src.slice(0, 57) + "..." : src));
+    } else if (isLink) {
+      pinBits.push(`link ${(Number(c.linkIndex) || 0) + 1}`);
+      const href = String(c.linkHref == null ? "" : c.linkHref);
+      if (href) pinBits.push(escapeHtml(href.length > 60 ? href.slice(0, 57) + "..." : href));
     } else if (isWidget) {
       pinBits.push(`widget "${escapeHtml(c.widget || "")}"`);
       pinBits.push(`part "${escapeHtml(c.partLabel || c.part || "")}"`);
     } else if (isDocument) {
       pinBits.push("document-wide");
+    } else if (isSlide) {
+      pinBits.push(`slide "${escapeHtml(c.slideTitle || c.slideId || "")}"`);
     } else {
       if (c.isCode) {
         pinBits.push(c.codeLanguage ? `code (${escapeHtml(c.codeLanguage)})` : "code block");
@@ -142,9 +144,13 @@ function renderComments() {
       // on the sidebar card, which only surfaces reader-facing anchor info.
     }
     const pinHtml = pinBits.length ? `<div class="pin">${pinBits.join(" - ")}</div>` : "";
-    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isWidget ? "element" : "text";
-    const cardClass = isDocument ? "cm-card cm-card-doc" : "cm-card";
-    const jumpBtn = isDocument ? "" : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
+    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isLink ? "link" : isWidget ? "element" : isSlide ? "slide" : "text";
+    const cardClass = isDocument ? "cm-card cm-card-doc" : isSlide ? "cm-card cm-card-doc cm-card-slide" : "cm-card";
+    // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
+    // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
+    const jumpBtn = isDocument ? "" : isSlide
+      ? `<button type="button" data-act="jump" title="Go to this slide">jump</button>`
+      : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
     return `
     <article class="${cardClass}" data-cid="${c.id}">
       ${sectionHtml}
@@ -180,6 +186,26 @@ function renderComments() {
 function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
   return o == null ? 1e9 : o;
+}
+// Order key that groups comments by anchor family (text by document position, then the non-text
+// anchor bands) so the sidebar list and the Copy-all bundle sort identically. Kept in one place
+// so a new anchor type is added once, not in every renderer that sorts comments.
+function _anchorSortKey(c) {
+  return (c.anchorType === "document")
+    ? -1
+    : (c.anchorType === "mermaid")
+    ? (1e12 + (c.diagramIndex || 0) * 1000)
+    : (c.anchorType === "diff")
+    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
+    : (c.anchorType === "image")
+    ? (3e12 + (c.imageIndex || 0))
+    : (c.anchorType === "link")
+    ? (3.5e12 + (Number.isFinite(Number(c.linkIndex)) ? Number(c.linkIndex) : 0))
+    : (c.anchorType === "widget")
+    ? (4e12 + _widgetOrderKey(c))
+    : (c.anchorType === "slide")
+    ? (5e12 + (typeof c.slideIndex === "number" && c.slideIndex >= 0 ? c.slideIndex : 0))
+    : (typeof c.start === "number" ? c.start : 0);
 }
 // The display name for a board in the sidebar: its author-supplied aria-label if present,
 // else the raw data-cm-widget name.
@@ -243,12 +269,24 @@ function scrollToAnchor(c) {
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
   else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
+  else if (c.anchorType === "link") { el = resolveLinkEl(c); if (el) flashLink(c.id); }
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
   else if (c.anchorType === "document") {
     // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
     // document start) so a document-wide comment card does not strand the presenter.
     if (window.__cmhDeck) window.__cmhDeck.showSlide(0);
     else window.scrollTo({ top: 0, behavior: cmScrollBehavior() });
+    flashActive(c.id);
+    return;
+  }
+  else if (c.anchorType === "slide") {
+    // A slide-scoped comment navigates the deck to its owning slide.
+    if (window.__cmhDeck) {
+      if (!(c.slideId && window.__cmhDeck.showSlideById(c.slideId))
+        && typeof c.slideIndex === "number" && c.slideIndex >= 0) {
+        window.__cmhDeck.showSlide(c.slideIndex);
+      }
+    }
     flashActive(c.id);
     return;
   }

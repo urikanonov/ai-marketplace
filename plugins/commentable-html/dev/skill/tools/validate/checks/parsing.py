@@ -19,14 +19,14 @@ CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 # is checked by its own dedicated-block error, not listed here to avoid a
 # duplicate diagnostic.)
 REQUIRED_IDS = [
-    "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "hlBubble", "toast",
+    "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "linkAddBtn", "hlBubble", "toast",
     "toolbarCount", "sidebarCount",
     "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll",
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
-    "headingAddBtn", "widgetAddBtn", "menuDocComment",
+    "headingAddBtn", "widgetAddBtn", "menuDocComment", "menuSlideComment",
 ]
 
 # Export/Import was removed before the 1.0.0 release (redundant with Export with embedded comments). Its presence

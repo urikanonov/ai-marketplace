@@ -105,7 +105,7 @@ function recomputeTextOffsets(persist) {
   let changed = false;
   const allNodes = getTextNodes();
   comments.forEach(function (c) {
-    if (c.anchorType === "mermaid" || c.anchorType === "diff" || c.anchorType === "image") return;
+    if (c.anchorType === "mermaid" || c.anchorType === "diff" || c.anchorType === "image" || c.anchorType === "link") return;
     const marks = [...root.querySelectorAll('mark.cm-hl[data-cid="' + c.id + '"]')];
     if (!marks.length) return;
     const fT = firstTextNodeIn(marks[0]);

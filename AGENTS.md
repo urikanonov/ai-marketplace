@@ -170,7 +170,7 @@ Nothing under `dev/` is distributed. `node_modules/`, `test-results/`, and `play
 **commentable-html build target (do not build into `pkg/`).** The commentable-html Playwright specs
 (and its Python tool tests) load the BUILT STAGE at `plugins/commentable-html/dev/skill/dist`, NOT
 `pkg/`. After the skill was relocated, `pkg/skills/commentable-html` became a MINIMAL shipped copy
-(`SKILL.md`, `LICENSE`, `skill-resources.zip`) and `dev/skill` became the full editable+built stage the
+(`SKILL.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `skill-resources.zip`) and `dev/skill` became the full editable+built stage the
 tests exercise. So after changing any runtime source under `dev/assets/`, rebuild the STAGE before
 running the suite or the tests silently run stale code. The canonical build (run from
 `plugins/commentable-html/dev`) is:

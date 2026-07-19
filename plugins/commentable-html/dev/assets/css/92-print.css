@@ -101,6 +101,15 @@
     color: var(--cp-text) !important;
   }
 
+  /* The composing preview highlight is transient chrome: print the underlying text
+     plainly rather than with the provisional amber fill and dashed outline. */
+  mark.cm-preview {
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0 !important;
+  }
+
   #commentRoot section.cmh-section-collapsed > * {
     display: revert !important;
   }

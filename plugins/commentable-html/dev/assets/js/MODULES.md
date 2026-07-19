@@ -20,7 +20,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
 | `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access. |
-| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
+| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
 | `05-persistence.js` | CMH-PERSIST, CMH-EXP | localStorage load/merge/save of the comments array. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |
@@ -28,6 +28,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `25-diff.js` | CMH-DIFF | Unified-diff / code-review rendering and anchoring. |
 | `26-highlight.js` | CMH-DIFF, CMH-HL, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`) and the runtime fallback that highlights un-highlighted prose code blocks (`highlightCodeBlocks`). |
 | `30-images.js` | CMH-IMG, CMH-CHART | Image and chart-canvas comment layer. |
+| `31-links.js` | CMH-LINK | Author-facing link layer: render-time new-tab stamping + per-link commenting. |
 | `35-widgets.js` | CMH-WIDGET | Commentable widgets / SVG nodes; `widgetStateChanges` infra. |
 | `36-checklist.js` | CMH-CHECK | Layered checklist: four-state items, aggregation, minimal persistence, per-list state card, export bake. |
 | `37-notes.js` | CMH-NOTE | Editable notes fields: textarea upgrade, canonical delta persistence, per-note change card, single/multi-line toggle, export bake. |
@@ -43,9 +44,9 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
-| `60-export-markdown.js` | CMH-MD | Export to Markdown. |
+| `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |
 | `62-sortable-tables.js` | CMH-CONTENT | Sortable tables. |
-| `65-export-portable.js` | CMH-EXP | Export as Portable + shared export snapshot primitives. |
+| `65-export-portable.js` | CMH-EXP, CMH-SEC | Export as Portable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |
 | `67-export-standalone.js` | CMH-MODE | Export standalone (nonportable -> single file). |
 | `68-export-offline.js` | CMH-OFFLINE | Export Offline (portable + rich-content snapshots). |

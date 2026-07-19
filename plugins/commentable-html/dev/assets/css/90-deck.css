@@ -57,6 +57,7 @@ body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
 body.cmh-deck-comments-off #menuComment,
 body.cmh-deck-comments-off #mermaidAddBtn,
 body.cmh-deck-comments-off #imageAddBtn,
+body.cmh-deck-comments-off #linkAddBtn,
 body.cmh-deck-comments-off #diffAddBtn,
 body.cmh-deck-comments-off #widgetAddBtn,
 body.cmh-deck-comments-off #headingAddBtn {
@@ -76,12 +77,11 @@ body.cmh-deck-comments-off #headingAddBtn {
   border-color: var(--cmh-deck-table-head-border, rgba(148, 163, 184, 0.48));
 }
 #commentRoot[data-cmh-mode="deck"] .slide table :is(th, td) {
-  transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition: background-color 0.16s ease;
 }
 #commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):hover,
 #commentRoot[data-cmh-mode="deck"] .slide table :is(th, td):focus-within {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--cp-accent, #2ecc71) 58%, transparent);
-  transform: translateY(-1px);
 }
 #commentRoot[data-cmh-mode="deck"] .slide table td:hover,
 #commentRoot[data-cmh-mode="deck"] .slide table td:focus-within {
@@ -105,6 +105,7 @@ body.cmh-deck-comments-off #headingAddBtn {
   border-color: var(--cmh-deck-code-border);
 }
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-cap,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap > .cmh-code-caption,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-bar,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-toobig {
   background: var(--cmh-deck-code-bg-soft);
@@ -402,15 +403,15 @@ body.cmh-deck-comments-off #headingAddBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   padding: 0;
   border-radius: 999px;
   border: 1px solid var(--cp-border, #444);
   background: color-mix(in srgb, var(--cp-surface, #222) 84%, transparent);
   color: var(--cp-text, #fff);
   font: inherit;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -636,6 +637,14 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   border-radius: 999px;
   background: var(--slide-accent, #93c5fd);
 }
+/* A full-content slide laid out as a flex column, so a trailing margin-top:auto child (for
+   example the .cmh-refs reference row) pins to the bottom of the fixed 1080px slide box. Unlike
+   .cmh-slide-section (a centred kicker/heading divider) this stacks normal slide content from the
+   top and reserves the remaining height for the auto-margin child. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-flow {
+  display: flex;
+  flex-direction: column;
+}
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-cols-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -651,13 +660,21 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   padding: 28px 32px;
   border: 1px solid var(--slide-border, rgba(255, 255, 255, 0.22));
   border-radius: 16px;
+  background: var(--slide-bg, transparent);
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-metric:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  border-color: var(--slide-accent, #93c5fd);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-value {
   display: block;
   color: var(--slide-accent, #93c5fd);
-  font-size: 64px;
+  font-size: 44px;
   font-weight: 800;
-  line-height: 1.05;
+  line-height: 1.1;
+  overflow-wrap: break-word;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-metric > .cmh-metric-label {
   display: block;
@@ -673,6 +690,50 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   color: var(--slide-accent-fg, #0b0b0f);
   font-weight: 700;
   letter-spacing: 0.02em;
+  /* Hover-lift: animate only the cheap transform (not box-shadow, and not a brightness filter that
+     could push a custom theme's pill fill below its AA text contrast) so the deck hover stays smooth
+     and every themed pill keeps its vetted contrast. */
+  transition: transform 0.15s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill:hover {
+  transform: translateY(-2px);
+}
+/* Reusable status-pill variants: green Available, amber WIP, slate Planned (white text, AA-safe). */
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-available { background: #1a7f37; color: #ffffff; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-wip { background: #8a5200; color: #ffffff; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-planned { background: #57606a; color: #ffffff; }
+/* Generous spacing between deck paragraphs and bullets (prefer bullets over prose). */
+#commentRoot[data-cmh-mode="deck"] .slide p { margin: 0 0 0.75em; }
+#commentRoot[data-cmh-mode="deck"] .slide ul,
+#commentRoot[data-cmh-mode="deck"] .slide ol { margin: 0.2em 0 0.75em; padding-left: 1.1em; line-height: 1.5; }
+#commentRoot[data-cmh-mode="deck"] .slide li { margin-bottom: 0.5em; }
+/* Consistent reference row: pills pinned to the bottom of the slide, laid out horizontally. */
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs {
+  margin-top: auto;
+  padding-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 19px;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs > .cmh-refs-label { color: var(--slide-fg-muted, #a1a1aa); font-weight: 600; }
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 15px;
+  border-radius: 999px;
+  background: var(--cmh-deck-code-bg, rgba(148, 163, 184, 0.16));
+  border: 1px solid var(--slide-border, rgba(148, 163, 184, 0.4));
+  color: var(--slide-link, #2f81f7);
+  text-decoration: none;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-refs a:hover {
+  transform: translateY(-2px);
+  border-color: var(--slide-accent, #93c5fd);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
 }
 
 /* Sortable-table chevrons on a deck header: the base chevron colours (muted text / accent) are
