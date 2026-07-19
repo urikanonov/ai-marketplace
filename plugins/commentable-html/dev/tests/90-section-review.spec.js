@@ -324,6 +324,7 @@ test.describe("section review tracking", () => {
     // screen-reader announcement (aria-hidden, no label); only marked states expose a role/label.
     const unrev = page.locator("nav.cm-side-toc .cmh-toc-mark-unreviewed").first();
     await expect(unrev).toBeVisible();
+    expect(await unrev.getAttribute("data-cmh-mark")).toBe("");
     expect(await unrev.getAttribute("aria-hidden")).toBe("true");
     expect(await unrev.getAttribute("aria-label")).toBeNull();
     expect(await unrev.getAttribute("role")).toBeNull();
