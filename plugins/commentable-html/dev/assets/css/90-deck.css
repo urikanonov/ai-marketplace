@@ -773,3 +773,40 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      otherwise cap it far below the slide width; override it so the diagram fills the slide. */
   max-width: none !important;
 }
+/* CMH-DECK-35: a diagram-dominant slide - the author opt-in .cmh-slide-diagram, or the runtime
+   auto-detected .cmh-deck-diagram-slide (a slide whose only non-text content is one diagram) -
+   lays out as a flex column so the diagram fills the remaining slide HEIGHT as well as the width.
+   fitDeckDiagram() then sizes the SVG to contain-fit within the grown host (both dimensions); the
+   width:auto/height:auto + max-*:100% here is the pre-JS / no-JS fallback so the diagram is bounded
+   and never overflows the slide before sizing runs. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram,
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide {
+  display: flex;
+  flex-direction: column;
+}
+/* Un-confine a lone diagram from a half column: flatten a .cmh-cols-2 into the slide's flex column
+   (text stacks above) and let the column holding the diagram grow, so the diagram uses the full
+   slide width instead of a half-width column. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2,
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2 {
+  display: contents;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2 > *:has(.cm-mermaid-host),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2 > *:has(.cm-mermaid-host) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cm-mermaid-host,
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cm-mermaid-host {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cm-mermaid-host > svg,
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cm-mermaid-host > svg {
+  width: auto;
+  height: auto;
+  max-width: 100% !important;
+  max-height: 100%;
+}

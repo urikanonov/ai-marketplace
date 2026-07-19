@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.174.0] - 2026-07-19
+
+### Changed
+
+- Deck mermaid diagrams now scale to fill the available slide AREA using both width and height
+  (contain-to-fit), not just the width (CMH-DECK-35, building on CMH-DECK-26). A slide whose only
+  non-text content is a single diagram is auto-detected as a diagram slide (`cmh-deck-diagram-slide`;
+  the author opt-in `.cmh-slide-diagram` forces the same) and laid out as a flex column, and the
+  runtime sizes the rendered SVG to the largest aspect-preserving box that fits the slide - so a
+  wide-short or a lone diagram is as large as the slide allows without overflow or clipping. A lone
+  diagram authored inside a `.cmh-cols-2` is un-confined to the full slide width (the two-column grid
+  flattens, text stacking above). The fit recomputes on resize and on the first slide activation,
+  composes with CMH-MMD-08 (`htmlLabels: false`) so labels stay crisp, and survives Export Offline.
+
 ## [1.172.0] - 2026-07-19
 
 ### Fixed

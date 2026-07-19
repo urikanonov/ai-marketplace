@@ -24,7 +24,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `05-persistence.js` | CMH-PERSIST, CMH-EXP | localStorage load/merge/save of the comments array. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |
-| `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD | Mermaid diagram commenting layer. |
+| `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD, CMH-DECK | Mermaid diagram commenting layer; deck diagram contain-fit sizing. |
 | `25-diff.js` | CMH-DIFF | Unified-diff / code-review rendering and anchoring. |
 | `26-highlight.js` | CMH-DIFF, CMH-HL, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`) and the runtime fallback that highlights un-highlighted prose code blocks (`highlightCodeBlocks`). |
 | `30-images.js` | CMH-IMG, CMH-CHART | Image and chart-canvas comment layer. |

@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.172.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.174.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,6 +451,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.174.0] - 2026-07-19</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deck mermaid diagrams now scale to fill the available slide AREA using both width and height (contain-to-fit), not just the width (CMH-DECK-35, building on CMH-DECK-26). A slide whose only non-text content is a single diagram is auto-detected as a diagram slide (<code>cmh-deck-diagram-slide</code>; the author opt-in <code>.cmh-slide-diagram</code> forces the same) and laid out as a flex column, and the runtime sizes the rendered SVG to the largest aspect-preserving box that fits the slide - so a wide-short or a lone diagram is as large as the slide allows without overflow or clipping. A lone diagram authored inside a <code>.cmh-cols-2</code> is un-confined to the full slide width (the two-column grid flattens, text stacking above). The fit recomputes on resize and on the first slide activation, composes with CMH-MMD-08 (<code>htmlLabels: false</code>) so labels stay crisp, and survives Export Offline.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.172.0] - 2026-07-19</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -458,6 +465,8 @@
               <li>Deck mermaid comment labels keep the space at a wrapped-line boundary. mermaid splits an SVG <code>&lt;text&gt;</code> label into per-line <code>tspan</code> rows with no separator, so the anchor key, comment quote, and Copy all had dropped the wrap-point space (<code>exact spot</code> -&gt; <code>exactspot</code>); <code>mermaidNodeLabel()</code> now rejoins the rows with a space.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.171.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -465,8 +474,6 @@
               <li>Link handling for author-facing references (CMH-LINK-01..04): at render time every external <code>&lt;a href&gt;</code> in the document is stamped <code>target=&quot;_blank&quot;</code> + <code>rel=&quot;noopener noreferrer&quot;</code> so a reference opens in a new tab and the reader keeps their place (same-page <code>#</code> fragments, <code>.cm-skip</code> UI chrome, and <code>javascript:</code> links are left untouched, and an author-set <code>target</code> is respected). Each link is now commentable like an image or mermaid node: hovering or keyboard-focusing a link reveals a floating <code>Add Comment</code> affordance that anchors an <code>anchorType: &quot;link&quot;</code> comment to that link (by index + href/text) without navigating - a normal click (or Enter) still follows the link, while the floating button or the non-navigating <code>Alt+Enter</code> chord opens the composer. Links are classified by their normalized protocol (only <code>http</code>/<code>https</code>/<code>file</code>), so control-char-obfuscated <code>javascript:</code>, <code>mailto:</code>/<code>tel:</code>, and <code>data:</code> links are never stamped or made commentable, and the <code>_blank</code> rel-enforcement is case-insensitive (reverse-tabnabbing defense). Link comments ring the link, list a card, flash on jump, and survive reload, Copy all, Export Markdown, and Export Offline.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.170.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -505,18 +512,7 @@
               <li>Preview highlight while composing a text comment (CMH-CORE-17): opening a new text-comment composer immediately shows the selected text as a live amber preview highlight (<code>mark.cm-preview</code>) so the reviewer sees exactly what the comment will anchor to. Saving turns it into the real persisted highlight over exactly the previewed text; cancelling via the Cancel button or Escape removes it and stores nothing. The preview is transient chrome (no <code>data-cid</code>, never persisted, excluded from export and print), stays in the text-offset space so a concurrent composer&#x27;s anchors never cross, is fully cleaned up if wrapping throws, and is re-applied if a save cannot complete so the still-open composer keeps its anchor cue.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.166.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>CMH-ASCII-01: the document producers now rewrite AI &quot;smart&quot; typography - em/en dashes, the ellipsis glyph, curly quotes, and non-breaking / zero-width spaces - to plain ASCII in visible prose, leaving code, script, style, and HTML comments verbatim. <code>finalize.py</code> (reports/plans) and <code>deck_scaffold.py</code> (deck slide prose) run the new shared <code>normalize_typography.py</code> normalizer by default; opt out with <code>--no-normalize</code>. This keeps every report, plan, and deck on the plain-ASCII house style without a hand pass.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Deck hover is smoother (CMH-DECK-21, CMH-DECK-RECIPE-02): table-cell, metric-tile, and reference-pill hovers no longer animate <code>box-shadow</code> (a per-frame repaint) and table cells no longer apply a <code>transform</code> lift (which relayouts the table). Cells ease only the cheap <code>background-color</code> and the highlight ring snaps; tiles and pills keep their lift via the compositor-friendly <code>transform</code>. Sweeping the mouse across a large deck table no longer lags.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">143 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">144 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
