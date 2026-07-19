@@ -43,7 +43,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
-| `60-export-markdown.js` | CMH-MD | Export to Markdown. |
+| `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |
 | `62-sortable-tables.js` | CMH-CONTENT | Sortable tables. |
 | `65-export-portable.js` | CMH-EXP, CMH-SEC | Export as Portable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |

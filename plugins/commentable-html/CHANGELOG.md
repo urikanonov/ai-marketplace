@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.169.0] - 2026-07-19
+
+### Added
+
+- Code blocks can carry an optional filename/description caption line: add `data-code-caption` to a
+  `<pre>` (for example `data-code-caption="trigger.kql"`) and the runtime renders a `cm-skip`,
+  non-selectable caption bar above the code, laid out like the KQL caption bar (filename on the left,
+  the language pill and Copy button inline on the right) so no language-label width overlaps the
+  filename. It is styled consistently in report and deck modes, leaves the language pill, Copy
+  button, syntax highlighting, and commenting on the code intact (a caption-crossing drag cannot
+  leak the filename into a comment's quote), never doubles a KQL figure's own caption, and survives
+  Export Offline (the caption re-renders from the surviving attribute on reopen). (CMH-CODE-05)
+
 ## [1.168.0] - 2026-07-19
 
 ### Changed

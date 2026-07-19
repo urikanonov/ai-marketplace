@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.168.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.169.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.169.0] - 2026-07-19</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Code blocks can carry an optional filename/description caption line: add <code>data-code-caption</code> to a <code>&lt;pre&gt;</code> (for example <code>data-code-caption=&quot;trigger.kql&quot;</code>) and the runtime renders a <code>cm-skip</code>, non-selectable caption bar above the code, laid out like the KQL caption bar (filename on the left, the language pill and Copy button inline on the right) so no language-label width overlaps the filename. It is styled consistently in report and deck modes, leaves the language pill, Copy button, syntax highlighting, and commenting on the code intact (a caption-crossing drag cannot leak the filename into a comment&#x27;s quote), never doubles a KQL figure&#x27;s own caption, and survives Export Offline (the caption re-renders from the surviving attribute on reopen). (CMH-CODE-05)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.168.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The validator now ERRORS in NonPortable mode when a baked absolute or <code>file://</code> companion reference resolves inside an OS temporary directory that is not the document&#x27;s own folder (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment layer once the OS reaps the temp directory - the exact failure behind a shared document whose CSS/JS 404&#x27;d after handoff. Temp detection is cross-platform and root-anchored (<code>TMPDIR</code>/<code>TEMP</code>/ <code>TMP</code> and <code>tempfile.gettempdir()</code>, symlink-resolved via <code>realpath</code>, plus <code>/tmp</code>, <code>/var/tmp</code>, <code>/var/folders</code>, <code>/windows/temp</code>, and per-user <code>AppData/Local/Temp</code>), so a durable project folder named <code>tmp</code> is never mis-flagged; relative refs and a companion sitting beside the document are never flagged. The message points at a Portable single-file export or copying <code>dist/</code> to a durable folder.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.167.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -439,8 +448,6 @@
               <li>Preview highlight while composing a text comment (CMH-CORE-17): opening a new text-comment composer immediately shows the selected text as a live amber preview highlight (<code>mark.cm-preview</code>) so the reviewer sees exactly what the comment will anchor to. Saving turns it into the real persisted highlight over exactly the previewed text; cancelling via the Cancel button or Escape removes it and stores nothing. The preview is transient chrome (no <code>data-cid</code>, never persisted, excluded from export and print), stays in the text-offset space so a concurrent composer&#x27;s anchors never cross, is fully cleaned up if wrapping throws, and is re-applied if a save cannot complete so the still-open composer keeps its anchor cue.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.166.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -478,15 +485,7 @@
               <li>Deck edge navigation arrows now reveal across a wide left/right hover band (not only a thin edge strip), stay reliably visible, and are a larger, comfortably clickable target. (CMH-DECK-32)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.161.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Deck layer recipe classes so a themed deck needs no per-deck CSS for common needs (CMH-DECK-RECIPE-01/02/03/04): - Status-pill variants <code>.cmh-pill.is-available</code> (green), <code>.is-wip</code> (amber), <code>.is-planned</code> (slate), each with white text at AA contrast. - Metric tiles (<code>.cmh-metric</code>) hover-lift, and the metric value is capped at a fixed stage size with <code>overflow-wrap: break-word</code> so long word-labels no longer overflow the card. - A reference-row recipe (<code>.cmh-refs</code> + <code>.cmh-refs-label</code>) that renders reference links as a horizontal row of pills; on a <code>.cmh-slide-flow</code> flex-column content slide its <code>margin-top: auto</code> pins the row to the bottom of the fixed slide box. - Deck-scoped default prose spacing (paragraphs collapse their top margin, list items gain bottom spacing, lists get a 1.5 line-height) so a deck reads as spaced bullets-over-prose without per-deck CSS; non-deck documents are unaffected.</li>
-              <li><code>deck_validate.py</code> now also gates the reference-pill contrast pair (<code>--slide-link</code> over <code>--cmh-deck-code-bg</code>), so a custom theme cannot ship low-contrast reference links.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">139 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">140 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
