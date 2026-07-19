@@ -44,6 +44,33 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
   background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
   border-radius: 10px; padding: 0.85rem 1rem; overflow-x: auto;
 }
+/* Optional author caption/filename line above a standalone code block (data-code-caption
+   on the <pre>): a cm-skip bar joined seamlessly to the framed code below it, mirroring the
+   KQL caption look. The language pill + Copy button live INSIDE the bar as flex items on the
+   right, so the filename text (which flexes and ellipsizes) can never overlap them for any
+   language-label width; the caption is non-selectable chrome so a drag that starts on it
+   cannot leak the filename into a code comment's quote. Scoped to #commentRoot, --cp-* vars. */
+#commentRoot .cmh-code-wrap.cmh-has-caption { margin: 1.25rem 0; }
+#commentRoot .cmh-code-wrap > .cmh-code-caption {
+  display: flex; align-items: center; gap: 1rem; min-height: 1.4rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem; font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--cp-text-muted); background: var(--cp-surface-soft);
+  border: 1px solid var(--cp-border); border-bottom: 0; border-radius: 10px 10px 0 0;
+  -webkit-user-select: none; user-select: none;
+}
+#commentRoot .cmh-code-caption > .cmh-code-caption-text {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Inside the caption the tools flow inline (not floating over the code). */
+#commentRoot .cmh-code-wrap.cmh-has-caption > .cmh-code-caption > .cm-code-tools {
+  position: static; top: auto; right: auto; flex: none;
+}
+#commentRoot .cmh-code-wrap.cmh-has-caption > pre {
+  margin: 0; padding-top: 0.85rem;
+  border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0;
+}
 #commentRoot pre.mermaid { background: none; border: 0; border-radius: 0; padding: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
 #commentRoot pre.mermaid svg { max-width: none; }
 #commentRoot pre.mermaid.cmh-diagram-scroll-fade {

@@ -18,7 +18,19 @@ public sealed class FlakeFixer
 
 - **Do NOT add `cm-skip`** to a code block. That disables comments on it. The only `<pre>` that should still carry `cm-skip` is `<pre class="mermaid">`.
 - **Optional `class="language-XXX"`** on the inner `<code>` is picked up as `codeLanguage` and emitted in the Copy bundle's fence.
+- **Optional `data-code-caption="..."`** on the `<pre>` renders a caption/filename line above the block (for example `data-code-caption="trigger.kql"`). See "Optional caption / filename line" below.
 - Every eligible code block is wrapped at runtime in `.cmh-code-wrap` and gets an always-visible top-right **Copy** button. The button is `cm-skip`, so it never affects selections or text offsets.
+
+### Optional caption / filename line
+
+Add `data-code-caption` to the `<pre>` to name a code block's source (a filename like `trigger.kql`, or a short description):
+
+```html
+<pre data-code-caption="trigger.kql"><code class="language-kusto">SigninLogs
+| take 10</code></pre>
+```
+
+The runtime renders the value as a `cm-skip` `.cmh-code-caption` bar above the code, inside the block's `.cmh-code-wrap` (which gains a `cmh-has-caption` class), joined seamlessly to the framed block. It is styled consistently in report and deck modes. Because the caption is non-selectable `cm-skip` chrome (like the language pill and Copy button), it stays out of text selection, the offset system, and the Copy payload, so it does not affect syntax highlighting or commenting on the code. An empty or whitespace-only value renders nothing, and a KQL figure (`figure.cmh-kql`) keeps its own `.cmh-kql-cap` and never gets a second caption. Exports serialize the pristine document rather than the runtime-mutated DOM, so the `data-code-caption` opt-in survives Export Offline / Portable and the caption re-renders on reopen without duplicating.
 
 ### Per-comment additions
 

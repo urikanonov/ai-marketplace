@@ -104,6 +104,7 @@ body.cmh-deck-comments-off #headingAddBtn {
   border-color: var(--cmh-deck-code-border);
 }
 #commentRoot[data-cmh-mode="deck"] .slide figure.cmh-kql .cmh-kql-cap,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-code-wrap > .cmh-code-caption,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-bar,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-toobig {
   background: var(--cmh-deck-code-bg-soft);

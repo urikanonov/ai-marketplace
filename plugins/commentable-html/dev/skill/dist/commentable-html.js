@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.168.0";
+const CMH_VERSION = "1.169.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5684,6 +5684,25 @@ function setupCodeCopy() {
     wrap.className = "cmh-code-wrap";
     pre.parentNode.insertBefore(wrap, pre);
     wrap.appendChild(pre);
+    // Optional author caption/filename line (data-code-caption on the <pre>): a cm-skip bar
+    // above the code, so it names the block's source without entering selection, text
+    // offsets, or the copy payload. Reopen is idempotent (a wrapped <pre> returns early
+    // above), so the caption is not duplicated on an exported file (exports serialize the
+    // pristine document, so the caption re-renders from the surviving attribute). A KQL
+    // figure already carries its own caption bar (.cmh-kql-cap), so it never gets a second.
+    const captionText = (pre.getAttribute("data-code-caption") || "").trim();
+    let caption = null;
+    if (captionText && !pre.closest("figure.cmh-kql")) {
+      caption = document.createElement("div");
+      caption.className = "cmh-code-caption cm-skip";
+      const captionLabel = document.createElement("span");
+      captionLabel.className = "cmh-code-caption-text";
+      captionLabel.textContent = captionText;
+      captionLabel.title = captionText;
+      caption.appendChild(captionLabel);
+      wrap.classList.add("cmh-has-caption");
+      wrap.insertBefore(caption, pre);
+    }
     const tools = document.createElement("div");
     tools.className = "cm-code-tools cm-skip";
     // A small language pill (Python, C#, KQL, ...) sits next to the Copy button.
@@ -5707,7 +5726,10 @@ function setupCodeCopy() {
       copyPlain(code.textContent.replace(/\n$/, ""), "Code copied to clipboard.");
     });
     tools.appendChild(btn);
-    wrap.appendChild(tools);
+    // With a caption, the pill + Copy live INSIDE the caption bar as flex items (like the KQL
+    // caption's Run link), so they never overlap the filename for any language-label width;
+    // otherwise they float over the code block's top-right corner as before.
+    (caption || wrap).appendChild(tools);
   });
 }
 
