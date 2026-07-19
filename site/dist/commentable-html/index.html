@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.161.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.162.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,18 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.162.0] - 2026-07-19</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Deck comment scoping: an empty right-click on a slide now offers BOTH &quot;Comment on slide&quot; (a comment tied to that specific slide, whose sidebar card names the slide and whose jump navigates to it) and &quot;Comment on deck&quot; (the deck-wide comment, the relabelled document-wide comment). (CMH-DECK-33)</li>
+              <li>Deck click-to-advance: in present mode (comment panel closed), a plain left-click on non-interactive slide content advances to the next slide; links, buttons, form controls, comment anchors, and deck chrome keep their own behavior, and the open review panel is never yanked forward. (CMH-DECK-31)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deck edge navigation arrows now reveal across a wide left/right hover band (not only a thin edge strip), stay reliably visible, and are a larger, comfortably clickable target. (CMH-DECK-32)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.161.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -433,6 +445,8 @@
               <li><code>deck_validate.py</code> now also gates the reference-pill contrast pair (<code>--slide-link</code> over <code>--cmh-deck-code-bg</code>), so a custom theme cannot ship low-contrast reference links.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.160.1] - 2026-07-19</h3></div>
             <div class="group-label">Security</div>
@@ -440,8 +454,6 @@
               <li>Source provenance now stores only the source filename in <code>data-doc-source</code>, Copy all, and every preserved export. Authoring tools and runtime fallbacks strip directories, drive letters, usernames, and internal project paths while leaving the document comment key, session id, and generated timestamp unchanged (CMH-SEC-03, part of #438).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.160.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -475,14 +487,7 @@
               <li>The shipped <code>pkg/</code> root now carries its own <code>LICENSE</code> (matching the repository root LICENSE) so the always-shipped session hooks are covered by a license even before <code>skill-resources.zip</code> is extracted (CMH-PKG-13).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.156.0] - 2026-07-18</h3></div>
-            <div class="group-label">Security</div>
-            <ul>
-              <li>PPTX deck imports now preflight ZIP central-directory metadata before starting the vendored extractor, rejecting archives with excessive expanded size, entry count, or compression ratio to prevent zip-bomb memory exhaustion (CMH-DECK-29, closes #410).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">133 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">134 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

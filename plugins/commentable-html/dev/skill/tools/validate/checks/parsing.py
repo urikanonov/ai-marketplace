@@ -26,7 +26,7 @@ REQUIRED_IDS = [
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
-    "headingAddBtn", "widgetAddBtn", "menuDocComment",
+    "headingAddBtn", "widgetAddBtn", "menuDocComment", "menuSlideComment",
 ]
 
 # Export/Import was removed before the 1.0.0 release (redundant with Export with embedded comments). Its presence

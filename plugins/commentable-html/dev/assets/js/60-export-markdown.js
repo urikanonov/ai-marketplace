@@ -301,6 +301,7 @@ function _mdCommentsAppendix() {
   live.forEach((c, i) => {
     let where = "";
     if (c.anchorType === "document") where = "document-wide";
+    else if (c.anchorType === "slide") where = 'slide "' + esc(c.slideTitle || c.slideId || "") + '"';
     else if (c.anchorType === "widget") where = 'widget "' + esc(c.widget) + '" / ' + esc(c.partLabel || c.part);
     else if (c.anchorType === "mermaid") where = "mermaid " + esc(c.nodeLabel || c.nodeKey);
     else if (c.anchorType === "diff") where = "diff line";

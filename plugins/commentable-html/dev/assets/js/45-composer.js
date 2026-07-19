@@ -31,7 +31,7 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -102,6 +102,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     el._quote = widget.quote || widget.label || widget.part || widget.widget;
   } else if (mode === "new-document") {
     el._quote = "(document-wide comment)";
+  } else if (mode === "new-slide") {
+    el._slide = slide;
+    el._quote = slide && slide.slideTitle ? ("slide: " + slide.slideTitle) : "(comment on slide)";
   } else {
     el._quote = comment.quote;
     isCodeQuote = !!comment.isCode;
@@ -130,6 +133,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
   } else if (mode === "new-document") {
+    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
+    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+  } else if (mode === "new-slide") {
     const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
     anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
   } else {
@@ -382,6 +388,22 @@ function saveComposerElement(el) {
       id,
       anchorType: "document",
       quote: "(document-wide)",
+      note,
+      createdAt: new Date().toISOString(),
+      section: null,
+      headingPath: [],
+    };
+    comments.push(comment);
+  } else if (el._mode === "new-slide") {
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const s = el._slide || {};
+    const comment = {
+      id,
+      anchorType: "slide",
+      slideId: s.slideId || null,
+      slideTitle: s.slideTitle || "",
+      slideIndex: (typeof s.slideIndex === "number") ? s.slideIndex : -1,
+      quote: "(comment on slide)",
       note,
       createdAt: new Date().toISOString(),
       section: null,

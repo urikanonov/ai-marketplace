@@ -29,6 +29,7 @@ function restoreHighlights() {
   // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
     && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document"
+    && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
@@ -385,6 +386,7 @@ function setupDeck() {
     return !!(
       (overview && !overview.hidden)
       || (modeMenu && !modeMenu.hidden)
+      || _commentMenuOpen()
       || document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
     );
   }
@@ -399,8 +401,8 @@ function setupDeck() {
     const top = Math.max(20, rect.top + rect.height / 2);
     edgePrevBtn.style.top = top + "px";
     edgeNextBtn.style.top = top + "px";
-    edgePrevBtn.style.left = Math.max(12, rect.left + 16) + "px";
-    edgeNextBtn.style.left = Math.max(12, rect.right - 64) + "px";
+    edgePrevBtn.style.left = Math.max(12, rect.left + 20) + "px";
+    edgeNextBtn.style.left = Math.max(12, rect.right - 76) + "px";
   }
 
   function hideEdgeNav() {
@@ -411,11 +413,14 @@ function setupDeck() {
     });
   }
 
-  function syncEdgeNavButton(btn, strength, enabled) {
+  function syncEdgeNavButton(btn, active, enabled) {
     if (!btn) return;
-    const active = enabled && strength > 0;
-    btn.classList.toggle("is-active", active);
-    if (active) btn.style.setProperty("--cmh-deck-edge-opacity", String((0.2 + strength * 0.75).toFixed(3)));
+    const on = enabled && active;
+    btn.classList.toggle("is-active", on);
+    // A fixed, comfortably-visible opacity so the arrow is reliably readable anywhere in the
+    // hover band (not a proximity fade that is near-invisible until the very edge); the button's
+    // own :hover/:focus rule takes it to full opacity.
+    if (on) btn.style.setProperty("--cmh-deck-edge-opacity", "0.92");
     else btn.style.removeProperty("--cmh-deck-edge-opacity");
   }
 
@@ -431,11 +436,14 @@ function setupDeck() {
       return;
     }
     syncEdgeNavPosition();
-    const threshold = Math.min(168, Math.max(80, rect.width * 0.12));
-    const prevStrength = Math.max(0, Math.min(1, (threshold - (clientX - rect.left)) / threshold));
-    const nextStrength = Math.max(0, Math.min(1, (threshold - (rect.right - clientX)) / threshold));
-    syncEdgeNavButton(edgePrevBtn, prevStrength, current > 0);
-    syncEdgeNavButton(edgeNextBtn, nextStrength, current < slides.length - 1);
+    // A generous left/right hover band (about a quarter of the stage, floored/capped to a
+    // usable pixel range) so the arrow appears well before the mouse reaches the very edge and
+    // is easy to hit quickly; the center stays clear so it never blocks slide content.
+    const band = Math.min(320, Math.max(160, rect.width * 0.25));
+    const nearPrev = (clientX - rect.left) <= band;
+    const nearNext = (rect.right - clientX) <= band;
+    syncEdgeNavButton(edgePrevBtn, nearPrev, current > 0);
+    syncEdgeNavButton(edgeNextBtn, nearNext, current < slides.length - 1);
   }
 
   function makeEdgeNav() {
@@ -471,6 +479,69 @@ function setupDeck() {
       if (commentMode || hasBlockingDeckChrome() || isEditableTarget(e.target)) return;
       focusStage();
       updateEdgeNavFromPointer(e.clientX, e.clientY);
+    });
+  }
+
+  // A non-interactive element (plain slide content: a heading, paragraph, image, empty stage
+  // area) has no click behavior of its own, so a plain left-click on it advances the deck - the
+  // natural "click to go forward" a presenter expects. Interactive/effect targets (links,
+  // buttons, form controls, ARIA widgets, focusable custom controls, draggable board parts,
+  // comment anchors, deck chrome, or anything the author marks [data-cmh-no-advance]) keep their
+  // own click and never advance. Gated to present mode (panel closed) so a reviewer working the
+  // open panel is never yanked forward.
+  const _CLICK_ADVANCE_SKIP = "a[href], area[href], button, input, textarea, select, option,"
+    + " label, summary, details, audio, video, iframe, embed, object, svg, canvas,"
+    + " [role='button'], [role='link'], [role='checkbox'], [role='radio'], [role='switch'],"
+    + " [role='tab'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'],"
+    + " [role='slider'], [role='spinbutton'], [role='textbox'], [role='combobox'], [role='option'],"
+    + " [data-cm-part], [data-cids], mark.cm-hl, [contenteditable], [onclick], [tabindex]:not([tabindex='-1']),"
+    + " [data-cmh-no-advance], .cm-skip";
+  // The advance decision must reflect the state when the click GESTURE began, not when the click
+  // event fires: the browser collapses a text selection and other document click listeners hide
+  // the deck comment menu on `mousedown`, so a `click`-time check would see them already gone and
+  // wrongly advance when the user was only dismissing a selection or that menu. Snapshot the
+  // suppressing state at mousedown (capture phase, before those listeners run) and consult it.
+  let _advanceSuppressed = false;
+  function _liveSelection() {
+    const sel = window.getSelection();
+    return !!(sel && !sel.isCollapsed && String(sel).trim());
+  }
+  function _commentMenuOpen() {
+    const menuEl = document.getElementById("contextMenu");
+    return !!(menuEl && !menuEl.hidden);
+  }
+  // The gesture began on an interactive/effect target (or off any slide): a click that RETARGETS
+  // to the slide (press on a button, release over sibling slide content dispatches `click` on the
+  // common .slide ancestor) must not advance, so treat such a start as suppressing.
+  function _downTargetSuppresses(t) {
+    if (!t || !t.closest) return true;
+    const slide = t.closest(".slide");
+    if (!slide || !stage.contains(slide)) return true;
+    return !!t.closest(_CLICK_ADVANCE_SKIP);
+  }
+  function installClickAdvance() {
+    // `pointerdown` (not `mousedown`) fires at the very start of a touch, before the browser
+    // collapses a text selection during the touch sequence, so the snapshot sees the real state.
+    const downEvt = window.PointerEvent ? "pointerdown" : "mousedown";
+    document.addEventListener(downEvt, (e) => {
+      _advanceSuppressed = commentMode || hasBlockingDeckChrome() || _commentMenuOpen()
+        || _liveSelection() || _downTargetSuppresses(e.target);
+    }, true);
+    document.addEventListener("click", (e) => {
+      const suppressed = _advanceSuppressed;
+      _advanceSuppressed = false;
+      // Only a real, plain, unmodified primary click advances; a synthetic/programmatic click, a
+      // modified click, or the macOS Ctrl-click contextmenu gesture is never a "next slide" intent.
+      if (!e.isTrusted || e.defaultPrevented || e.button
+        || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (suppressed) return;
+      if (commentMode || hasBlockingDeckChrome() || _commentMenuOpen() || _liveSelection()) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      const slide = t.closest(".slide");
+      if (!slide || !stage.contains(slide)) return;
+      if (t.closest(_CLICK_ADVANCE_SKIP)) return;
+      if (show(current + 1)) focusStage();
     });
   }
 
@@ -695,6 +766,7 @@ function setupDeck() {
   show(current);
   fitStage();
   makeEdgeNav();
+  installClickAdvance();
   if (typeof ResizeObserver === "function") {
     new ResizeObserver(fitStage).observe(viewport || document.documentElement);
   } else {

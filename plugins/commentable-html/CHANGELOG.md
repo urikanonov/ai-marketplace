@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.162.0] - 2026-07-19
+
+### Added
+
+- Deck comment scoping: an empty right-click on a slide now offers BOTH "Comment on slide" (a comment
+  tied to that specific slide, whose sidebar card names the slide and whose jump navigates to it) and
+  "Comment on deck" (the deck-wide comment, the relabelled document-wide comment). (CMH-DECK-33)
+- Deck click-to-advance: in present mode (comment panel closed), a plain left-click on non-interactive
+  slide content advances to the next slide; links, buttons, form controls, comment anchors, and deck
+  chrome keep their own behavior, and the open review panel is never yanked forward. (CMH-DECK-31)
+
+### Changed
+
+- Deck edge navigation arrows now reveal across a wide left/right hover band (not only a thin edge
+  strip), stay reliably visible, and are a larger, comfortably clickable target. (CMH-DECK-32)
+
 ## [1.161.0] - 2026-07-19
 
 ### Added

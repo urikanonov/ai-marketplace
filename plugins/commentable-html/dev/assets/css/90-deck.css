@@ -402,15 +402,15 @@ body.cmh-deck-comments-off #headingAddBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   padding: 0;
   border-radius: 999px;
   border: 1px solid var(--cp-border, #444);
   background: color-mix(in srgb, var(--cp-surface, #222) 84%, transparent);
   color: var(--cp-text, #fff);
   font: inherit;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
