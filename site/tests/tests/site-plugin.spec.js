@@ -77,8 +77,13 @@ test("plugin, tutorial, and updater footers share the same link structure (SITE-
   const structures = [];
   for (const [path, pluginSource] of pages) {
     await page.goto(path, { waitUntil: "domcontentloaded" });
+    // The shared footer structure is the attribution + nav row. The commentable-html plugin page
+    // additionally carries a page-specific rich-content credit (SITE-CREDIT-01) in a `.credit`
+    // span, which is intentionally NOT part of this shared structure, so exclude it here.
     const links = await page.locator("footer.footer a").evaluateAll((anchors) =>
-      anchors.map((a) => [a.textContent.trim().replace(/\s+/g, " "), a.href])
+      anchors
+        .filter((a) => !a.closest(".credit"))
+        .map((a) => [a.textContent.trim().replace(/\s+/g, " "), a.href])
     );
     expect(links).toEqual([...common, ["Plugin source", pluginSource]]);
     structures.push(links.map(([label]) => label));
@@ -496,4 +501,19 @@ test("the plugin switcher flyout also reveals on keyboard focus (SITE-SWITCH-01)
   await expect(menu).toBeHidden();
   await page.locator(".nav-switcher-trigger").focus();
   await expect(menu).toBeVisible();
+});
+
+
+test("the plugin page footer credits mermaid and Chart.js (SITE-CREDIT-01)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const credit = page.locator("footer.footer .credit");
+  await expect(credit).toHaveCount(1);
+  // User-facing content: assert it is actually visible, not merely present in the DOM (a hidden
+  // credit would still pass count/text checks) - per the repo testing guidelines.
+  await expect(credit).toBeVisible();
+  await expect(credit).toContainText("mermaid");
+  await expect(credit).toContainText("Chart.js");
+  await expect(credit).toContainText("MIT");
+  await expect(credit.locator('a[href="https://mermaid.js.org/"]')).toHaveText("mermaid");
+  await expect(credit.locator('a[href="https://www.chartjs.org/"]')).toHaveText("Chart.js");
 });

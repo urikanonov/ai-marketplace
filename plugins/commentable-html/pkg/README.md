@@ -110,3 +110,11 @@ Contributors: see the [contributing guide](https://github.com/urikanonov/ai-mark
 | `skills/commentable-html/references/` | Detailed reference docs for anchors, layout, charts, validation, exports, and helper tools. |
 
 The skill installs as a compact `skills/commentable-html/skill-resources.zip` that a session-start hook unpacks on first run (retrying the transient Windows Defender file lock the installer does not), so the installed footprint stays small and the `dist/`, `tools/`, and `references/` folders above appear after that first-run extraction. If those extracted files ever go missing (for example an antivirus quarantine), delete the `skills/commentable-html/.skill-resources-*.ok` marker, `.skill-resources.lock`, and `.skill-resources-staging` files and start a new session - the hook re-extracts them. The tutorial and worked examples are not installed - read them online: the [tutorial](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/docs/TUTORIAL.md), the [worked prompts and example reports](https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html/examples), and the [live demos](https://urikanonov.github.io/ai-marketplace/commentable-html/).
+
+## Credits
+
+Rich content is rendered with two third-party open-source libraries, both used under the MIT License:
+[mermaid](https://mermaid.js.org/) for diagrams and [Chart.js](https://www.chartjs.org/) for charts.
+Both are vendored so that `Export Offline` produces a zero-network file; on the online render path
+mermaid is loaded from a version-pinned public CDN (an accepted, documented dependency), while Chart.js
+is vendored or inlined by default and only loads from a pinned CDN on explicit opt-in.

@@ -127,6 +127,13 @@ subset of the [frontend-slides](https://github.com/zarazhangrui/frontend-slides)
 upstream deploy and PDF-export scripts are excluded and a CI gate keeps the vendored subtree pristine;
 see `plugins/commentable-html/dev/skill/vendor/frontend-slides/UPSTREAM.md`.
 
+The `commentable-html` plugin also renders its rich content with two third-party libraries, both used
+under the MIT License: [mermaid](https://mermaid.js.org/) for diagrams and
+[Chart.js](https://www.chartjs.org/) for charts. Both are vendored for zero-network Offline exports
+(`plugins/commentable-html/dev/assets/vendor/UPSTREAM.md`); on the online render path mermaid is loaded
+from a version-pinned jsDelivr CDN URL (a documented, accepted supply-chain risk - see the
+`CMH-SEC-04` accepted-risk entry in `plugins/commentable-html/dev/spec/50-security.md`).
+
 ## License
 
 [MIT](LICENSE) (c) Uri Kanonov
