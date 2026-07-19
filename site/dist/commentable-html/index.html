@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.160.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.160.1<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.160.1] - 2026-07-19</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>Source provenance now stores only the source filename in <code>data-doc-source</code>, Copy all, and every preserved export. Authoring tools and runtime fallbacks strip directories, drive letters, usernames, and internal project paths while leaving the document comment key, session id, and generated timestamp unchanged (CMH-SEC-03, part of #438).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.160.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -433,6 +440,8 @@
               <li>Clicking the &quot;Open comment&quot; hover bubble now also opens an inline on-screen comment dialog next to the highlight, showing the note and an Edit button that opens the composer; clicking elsewhere closes the dialog, and a pointer click there is swallowed so it performs no other action (for example it does not follow a link the highlight sits on) while a keyboard activation still reaches its target. The existing sidebar jump still happens alongside it (CMH-CORE-16, closes #450).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.159.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -440,8 +449,6 @@
               <li>Section review now stays out of the way until you start reviewing: the per-section review badges and the side table-of-contents review-status filter are dormant on a freshly opened document and activate only after you mark a section reviewed or add the first comment (the hover &quot;Mark reviewed&quot; affordance on any heading remains available as the entry point). Each side-TOC entry now shows a single-character status badge - R (reviewed), C (commented), ! (changed), or a hollow badge for unreviewed - rendered as a pseudo-element so it never pollutes the entry text. The reviewed state continues to bake into Portable and Offline exports and now re-activates the review UI when an exported file is reopened. Export also prunes markers for headings that no longer exist, so a shared copy never carries stale review metadata for a removed section.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.158.0] - 2026-07-19</h3></div>
             <div class="group-label">Fixed</div>
@@ -475,14 +482,7 @@
               <li>Copy all machine trailer: all machine-readable JSON (<code>HANDLED_IDS_JSON</code>, <code>NOTES_STATE_JSON</code>, <code>CHECKLIST_STATE_JSON</code>) now lives only inside ONE unconditional final <code>=== CMH MACHINE TRAILER (do not edit) ===</code> block (canonical empty values when there are no changes). The <code>notes_apply.py</code>, <code>checklist_apply.py</code>, and <code>mark_handled.py</code> tools read JSON only from within that fenced trailer, so a forged trailer or state line inside a note body or the document source is ignored rather than winning a last-match over the whole bundle (CMH-COPY-09, CMH-HANDLED-01).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.154.0] - 2026-07-18</h3></div>
-            <div class="group-label">Security</div>
-            <ul>
-              <li>Checklist and notes state maps (<code>_clOverrides</code>, the <code>::cl</code> save/load maps, <code>_noteOverrides</code>) are now built with <code>Object.create(null)</code> at every assignment site; <code>_clLoad</code> additionally re-homes the parsed outer map and each per-checklist inner map onto a null-prototype copy before reading them, and the checklist token lookup uses a <code>hasOwnProperty</code> guard. As a result, a checklist authored with <code>data-cmh-checklist=&quot;__proto__&quot;</code>/<code>&quot;constructor&quot;</code> (or a crafted <code>::cl</code> localStorage payload using <code>__proto__</code>/<code>constructor</code> keys or codes) can no longer write onto or return <code>Object.prototype</code>. A checklist id or item key of <code>constructor</code>/<code>__proto__</code> still works as ordinary data; no behavior changed for legitimate documents (CMH-SEC-02).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">131 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">132 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

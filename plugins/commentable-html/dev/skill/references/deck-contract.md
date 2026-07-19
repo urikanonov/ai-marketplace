@@ -44,7 +44,7 @@ python tools/deck/deck_scaffold.py --slides 5 --label "Draft" --out draft-deck.h
 `--content -` reads the slide fragment from stdin. `--slides N` emits N placeholder slides and must be at
 least 1. `--out` is create-only unless `--force` is supplied, so a normal scaffold cannot overwrite a deck
 that already has stable slide ids and review state. `--key auto` derives a comment key from `--label`;
-`--source` sets `data-doc-source`; `--generated` stamps a deterministic generated timestamp.
+the basename of `--source` sets `data-doc-source`; `--generated` stamps a deterministic generated timestamp.
 
 For PowerPoint input, convert extracted content through `tools/deck/pptx_to_fragment.py` before scaffolding:
 

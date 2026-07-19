@@ -169,7 +169,7 @@ def main(argv=None):
     src.add_argument("--slides", type=int, help="generate N placeholder slides")
     ap.add_argument("--key", default="auto", help='data-comment-key, or "auto" to derive from --label')
     ap.add_argument("--label", required=True, help="human-readable document label")
-    ap.add_argument("--source", help="data-doc-source (the file the agent edits)")
+    ap.add_argument("--source", help="data-doc-source filename (directories are stripped)")
     ap.add_argument("--generated", help="ISO-8601 Generated-on stamp")
     ap.add_argument("--out", required=True, help="output file (create-only unless --force)")
     ap.add_argument("--force", action="store_true", help="overwrite an existing --out")

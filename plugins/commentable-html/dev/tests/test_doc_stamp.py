@@ -4,7 +4,10 @@ validate.py stamps commentable-html-validated only on a strict-clean pass (opt o
 import contextlib
 import io
 import os
+from pathlib import Path
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -68,6 +71,39 @@ class DocStampUnitTests(unittest.TestCase):
     def test_stamp_session_blank_is_noop(self):
         self.assertNotIn(doc_stamp.SESSION_META, doc_stamp.stamp_session("<head></head>", ""))
         self.assertNotIn(doc_stamp.SESSION_META, doc_stamp.stamp_session("<head></head>", None))
+
+    def test_source_basename_strips_posix_and_windows_directories(self):
+        self.assertEqual(
+            doc_stamp.source_basename("/home/alice/internal/report.html"),
+            "report.html",
+        )
+        self.assertEqual(
+            doc_stamp.source_basename(r"C:\Users\alice\internal\report.html"),
+            "report.html",
+        )
+
+    def test_source_basename_never_falls_back_to_sensitive_path_parts(self):
+        self.assertEqual(doc_stamp.source_basename(r"C:\Users\alice\reports\\"), "document")
+        self.assertEqual(
+            doc_stamp.source_basename("https://internal.example/report.html?user=alice#draft"),
+            "report.html",
+        )
+        self.assertEqual(doc_stamp.source_basename("C:report.html"), "report.html")
+        self.assertEqual(doc_stamp.source_basename("/tmp/report#1.html"), "report#1.html")
+        self.assertEqual(doc_stamp.source_basename("/tmp/report?1.html"), "report?1.html")
+
+    def test_committed_html_source_provenance_is_basename_only(self):
+        repo = Path(_paths.PLUGIN_ROOT).parents[1]
+        tracked = subprocess.check_output(
+            ["git", "ls-files", "*.html"], cwd=repo, text=True).splitlines()
+        leaks = []
+        attr_re = re.compile(r'data-doc-source\s*=\s*(["\'])(.*?)\1', re.IGNORECASE)
+        for relative in tracked:
+            html = (repo / relative).read_text(encoding="utf-8")
+            for match in attr_re.finditer(html):
+                if "/" in match.group(2) or "\\" in match.group(2):
+                    leaks.append("%s: %s" % (relative, match.group(2)))
+        self.assertEqual(leaks, [], "path-bearing source provenance: %r" % leaks)
 
     def test_detect_session_reads_copilot_env(self):
         self.assertEqual(doc_stamp.detect_session({"COPILOT_AGENT_SESSION_ID": "cop-1"}),

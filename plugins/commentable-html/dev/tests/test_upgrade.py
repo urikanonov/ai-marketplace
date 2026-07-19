@@ -47,6 +47,46 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertEqual(changed, [])
         self.assertEqual(out, tpl)
 
+    def test_upgrade_reduces_legacy_source_path_to_basename_cmh_sec_03(self):
+        tpl = _tpl()
+        legacy = tpl.replace(
+            'data-doc-source="PORTABLE.html"',
+            r'data-doc-source="C:\Users\alice\Internal Project\report.html"',
+            1,
+        )
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("source provenance", changed)
+        self.assertIn('data-doc-source="report.html"', out)
+        self.assertNotIn("alice", out)
+        self.assertNotIn("Internal Project", out)
+
+    def test_upgrade_normalizes_body_fallback_source_cmh_sec_03(self):
+        tpl = _tpl()
+        legacy = tpl.replace(
+            "<body",
+            r'<body data-doc-source="C:\Users\alice\Internal Project\report.html"',
+            1,
+        )
+        legacy = legacy.replace(' id="commentRoot"', ' id="contentWithoutCommentRoot"', 1)
+        legacy = legacy.replace(' data-doc-source="PORTABLE.html"', "", 1)
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("source provenance", changed)
+        self.assertIn('data-doc-source="report.html"', out)
+        self.assertNotIn("alice", out)
+
+    def test_upgrade_normalizes_every_duplicate_source_attribute_cmh_sec_03(self):
+        tpl = _tpl()
+        legacy = tpl.replace(
+            'data-doc-source="PORTABLE.html"',
+            ('data-doc-source="C:/Users/alice/first/report.html" '
+             'data-doc-source="C:/Users/alice/second/report.html"'),
+            1,
+        )
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("source provenance", changed)
+        self.assertEqual(out.count('data-doc-source="report.html"'), 2)
+        self.assertNotIn("alice", out)
+
     def test_missing_kind_meta_is_added_on_upgrade(self):
         # A pre-kind document (predates the mandatory document-kind meta) is migrated:
         # upgrade adds a default generic kind so it declares one and passes validation.

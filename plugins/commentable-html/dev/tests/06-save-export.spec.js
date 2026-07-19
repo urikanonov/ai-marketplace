@@ -5,8 +5,8 @@ import os from "os";
 import {
   openInline, addTextComment, openToolbarMenu, readDownload, fileUrl, ready,
   stageContent, stageNonPortable,
-  openSidebarExportMenu,
-  clickSidebarExport,
+  openSidebarExportMenu, installClipboardCapture, lastCopied,
+  clickSidebarExport, startStaticServer,
 } from "./helpers.js";
 
 // Once a comment exists the panel is open (the floating toolbar is hidden), so
@@ -72,6 +72,55 @@ test.describe("Save comments / Export plain", () => {
     const m = html.match(/id="embeddedComments">([\s\S]*?)<\/script>/);
     expect(m).toBeTruthy();
     expect(JSON.parse(m[1].trim())[0].note).toBe("embed this note");
+  });
+
+  test("Copy all and Portable export expose only the source basename (CMH-SEC-03)", async ({ page }) => {
+    const sensitiveSource = String.raw`C:\Users\alice\Internal Project\reports\quarterly.html`;
+    const staged = stageContent(
+      '<section><p id="provenance">Review this provenance.</p></section>',
+      { key: "cmh-provenance-basename", source: sensitiveSource },
+    );
+    try {
+      const authored = fs.readFileSync(staged.html, "utf8").replace(
+        '<main id="commentRoot"',
+        '<main title="Section > Overview" id="commentRoot"',
+      );
+      const bodyEnd = authored.toLowerCase().lastIndexOf("</body>");
+      const withLiteral = authored.slice(0, bodyEnd)
+        + `<script>window.__sourceLiteral = '<main id="commentRoot" data-doc-source="C:\\\\Template\\\\literal.html">';</script>\n`
+        + authored.slice(bodyEnd);
+      const withSentinels = "<!--license-sentinel-->\n" + withLiteral + "\n<!--tail-sentinel-->\n";
+      fs.writeFileSync(staged.html, withSentinels);
+      const server = await startStaticServer(staged.dir);
+      try {
+        await installClipboardCapture(page);
+        await page.goto(server.url + "/test-doc.html");
+        await ready(page);
+        await addTextComment(page, "#provenance", "check provenance");
+        await page.click("#btnCopyAll");
+        const bundle = await lastCopied(page);
+        expect(bundle).toContain("Source: quarterly.html");
+        expect(bundle).not.toContain("alice");
+        expect(bundle).not.toContain("Internal Project");
+
+        const [download] = await Promise.all([
+          page.waitForEvent("download"),
+          clickSidebarExport(page, "#btnSaveHtml"),
+        ]);
+        const html = await readDownload(download);
+        expect(html).toContain('data-doc-source="quarterly.html"');
+        expect(html).toMatch(/title="Section (?:>|&gt;) Overview"/);
+        expect(html).toContain("<!--license-sentinel-->");
+        expect(html).toContain("<!--tail-sentinel-->");
+        expect(html).toContain(String.raw`data-doc-source="C:\\Template\\literal.html"`);
+        expect(html).not.toContain("alice");
+        expect(html).not.toContain("Internal Project");
+      } finally {
+        await server.close();
+      }
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
   });
 
   test("sidebar export actions live in a single disclosure and Portable still downloads (CMH-EXP-13)", async ({ page }) => {
