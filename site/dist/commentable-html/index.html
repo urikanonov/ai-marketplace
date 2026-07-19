@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.156.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.157.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,25 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.157.0] - 2026-07-19</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The <code>upgrade.py</code> and <code>retrofit.py</code> authoring tools now preserve the input file&#x27;s dominant newline (detected from the raw bytes) through the transform, so a Windows-authored (CRLF) portable or host HTML file is no longer silently normalized to LF on upgrade/retrofit (CMH-TOOL-08, CMH-TOOL-15, closes #437).</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The shipped <code>pkg/</code> root now carries its own <code>LICENSE</code> (matching the repository root LICENSE) so the always-shipped session hooks are covered by a license even before <code>skill-resources.zip</code> is extracted (CMH-PKG-13).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.156.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
             <ul>
               <li>PPTX deck imports now preflight ZIP central-directory metadata before starting the vendored extractor, rejecting archives with excessive expanded size, entry count, or compression ratio to prevent zip-bomb memory exhaustion (CMH-DECK-29, closes #410).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.155.0] - 2026-07-19</h3></div>
             <div class="group-label">Security</div>
@@ -440,8 +453,6 @@
               <li>Copy all machine trailer: all machine-readable JSON (<code>HANDLED_IDS_JSON</code>, <code>NOTES_STATE_JSON</code>, <code>CHECKLIST_STATE_JSON</code>) now lives only inside ONE unconditional final <code>=== CMH MACHINE TRAILER (do not edit) ===</code> block (canonical empty values when there are no changes). The <code>notes_apply.py</code>, <code>checklist_apply.py</code>, and <code>mark_handled.py</code> tools read JSON only from within that fenced trailer, so a forged trailer or state line inside a note body or the document source is ignored rather than winning a last-match over the whole bundle (CMH-COPY-09, CMH-HANDLED-01).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.154.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
@@ -471,16 +482,7 @@
               <li>The showcase deck&#x27;s top-right brand mark is now the official Commentable HTML logo rendered as a plain image (an inlined, offline-safe <code>data:</code> SVG) instead of a bordered card with a hand-drawn glyph; it still links to the project site with a clear tooltip (CMH-DECK-SHOWCASE-10).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.144.0] - 2026-07-18</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Decks now show a dismissible &quot;Best viewed in landscape&quot; hint on narrow portrait phones only, leaving landscape and non-deck documents unchanged (CMH-DECK-28).</li>
-              <li>The comments sidebar now uses one Export menu for Portable, Offline, Markdown, and Plain HTML actions instead of four always-visible export buttons, while keeping the same export handlers and downloads (CMH-EXP-13).</li>
-              <li>Mobile mermaid diagrams now use a width-based classifier: small diagrams fit the viewport, genuinely wide diagrams keep a scrollable min-width, and overflowing diagrams show an edge-fade cue (CMH-RESP-09).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">127 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">128 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

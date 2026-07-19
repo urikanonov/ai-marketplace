@@ -193,11 +193,22 @@ def _read_utf8(path):
         raise RetrofitError("cannot read input: %s" % exc)
 
 
-def _write_atomic(path, text, copy_assets=False):
+def _detect_newline(path):
+    """Return the input's dominant newline ('\\r\\n' or '\\n') from its raw bytes, so a
+    Windows-authored (CRLF) host file keeps its line endings through the retrofit instead of
+    being silently normalized to LF by the universal-newline reader."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    crlf = raw.count(b"\r\n")
+    lf = raw.count(b"\n") - crlf
+    return "\r\n" if crlf > lf else "\n"
+
+
+def _write_atomic(path, text, copy_assets=False, newline="\n"):
     out_dir = os.path.dirname(os.path.abspath(path)) or "."
     fd, tmp_path = tempfile.mkstemp(prefix=".cmh-retrofit-", suffix=".html", dir=out_dir)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
             fh.write(text)
         if copy_assets:
             new_document._copy_companions(out_dir)
@@ -659,6 +670,7 @@ def main(argv):
                 assets_relative=args.assets_relative,
             )
         html = _read_utf8(args.file)
+        newline = _detect_newline(args.file)
         warning = recommend_kind.warning_for_kind(args.kind, html, filename=args.file)
         if warning:
             sys.stderr.write(warning + "\n")
@@ -707,7 +719,7 @@ def main(argv):
         return 1
 
     try:
-        _write_atomic(out_path, result, copy_assets=(not args.portable and args.copy_assets))
+        _write_atomic(out_path, result, copy_assets=(not args.portable and args.copy_assets), newline=newline)
     except OSError as exc:
         sys.stderr.write("retrofit: cannot write %s: %s\n" % (out_path, exc))
         return 1

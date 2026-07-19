@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.157.0] - 2026-07-19
+
+### Fixed
+
+- The `upgrade.py` and `retrofit.py` authoring tools now preserve the input file's dominant newline
+  (detected from the raw bytes) through the transform, so a Windows-authored (CRLF) portable or host
+  HTML file is no longer silently normalized to LF on upgrade/retrofit (CMH-TOOL-08, CMH-TOOL-15,
+  closes #437).
+
+### Changed
+
+- The shipped `pkg/` root now carries its own `LICENSE` (matching the repository root LICENSE) so the
+  always-shipped session hooks are covered by a license even before `skill-resources.zip` is
+  extracted (CMH-PKG-13).
+
 ## [1.156.0] - 2026-07-18
 
 ### Security

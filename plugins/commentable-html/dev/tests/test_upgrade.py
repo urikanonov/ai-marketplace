@@ -29,6 +29,11 @@ def _tpl():
         return fh.read()
 
 
+def _read_bytes(path):
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
 def _mutate_region_inner(text, name, injector):
     """Return text with `injector` inserted at the start of a region's inner content."""
     b, e = upgrade._region_inner(text, name, "<test>")
@@ -412,6 +417,20 @@ class UpgradeCliTests(unittest.TestCase):
             self.assertIn("STALE", fh.read())  # input untouched
         with open(dst, encoding="utf-8") as fh:
             self.assertNotIn("STALE", fh.read())  # fresh copy written to --out
+
+    def test_cli_preserves_crlf_line_endings(self):
+        # CMH-TOOL-08: a Windows-authored (CRLF) document keeps its dominant newline through
+        # an in-place upgrade instead of being silently normalized to LF.
+        target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n").replace("\n", "\r\n")
+        p = self._write(target)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", p])
+        self.assertEqual(rc, 0)
+        raw = _read_bytes(p)
+        self.assertNotIn(b"STALE", raw)  # region was actually swapped
+        self.assertIn(b"\r\n", raw)
+        self.assertNotIn(b"\n", raw.replace(b"\r\n", b""))  # no lone LF introduced
 
 
 if __name__ == "__main__":
