@@ -96,6 +96,101 @@ test.describe("comment interactions", () => {
     expect(page.url()).toBe(url); // did NOT follow the link
   });
 
+  test("CMH-CORE-16: the bubble opens an inline comment dialog with an Edit button and still opens the sidebar", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "inline dialog note");
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    const bubble = page.locator("#hlBubble");
+    await expect(bubble).toBeVisible();
+    await bubble.click();
+
+    // The inline on-screen dialog shows the note and an Edit button.
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await expect(pop).toContainText("inline dialog note");
+    await expect(pop.locator('[data-act="edit"]')).toBeVisible();
+    // Focus moves into the dialog (its Edit button) on open.
+    await expect(pop.locator('[data-act="edit"]')).toBeFocused();
+
+    // The existing sidebar jump still fires alongside the dialog.
+    await expect(page.locator(".cm-card.active")).toContainText("inline dialog note");
+
+    // Edit opens the composer for that comment and closes the dialog.
+    await pop.locator('[data-act="edit"]').click();
+    await expect(pop).toBeHidden();
+    const composer = page.locator(".cm-composer").last();
+    await expect(composer.locator("textarea")).toHaveValue("inline dialog note");
+  });
+
+  test("CMH-CORE-16: clicking anywhere else closes the inline dialog and swallows the click", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "swallow me");
+    const cid = (await allCids(page))[0];
+    // A probe link outside the dialog whose activation would change the URL hash.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-probe"; a.href = "#navigated"; a.textContent = "probe";
+      a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
+      document.body.appendChild(a);
+    });
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+
+    const url = page.url();
+    await page.locator("#cmh-probe").click();
+    await expect(pop).toBeHidden();
+    expect(page.url()).toBe(url); // the outside click did NOT activate the probe link
+  });
+
+  test("CMH-CORE-16: a keyboard-activated outside click closes the dialog but is not swallowed", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "keyboard me");
+    const cid = (await allCids(page))[0];
+    // A probe link outside the dialog; activating it by keyboard should still work.
+    await page.evaluate(() => {
+      const a = document.createElement("a");
+      a.id = "cmh-kprobe"; a.href = "#navk"; a.textContent = "probe";
+      a.style.position = "fixed"; a.style.top = "4px"; a.style.left = "4px"; a.style.zIndex = "5";
+      document.body.appendChild(a);
+    });
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+
+    // A keyboard activation (Enter on a focused link) is a detail-0 click: it closes the dialog
+    // but is NOT swallowed, so the link still activates (keyboard users are not blocked).
+    await page.locator("#cmh-kprobe").focus();
+    await page.keyboard.press("Enter");
+    await expect(pop).toBeHidden();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe("#navk");
+  });
+
+  test("CMH-CORE-16: Escape and scrolling the anchor out of view close the inline dialog", async ({ page }) => {    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "escape me");
+    const cid = (await allCids(page))[0];
+    const openPop = async () => {
+      await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+      await page.locator("#hlBubble").click();
+      await expect(page.locator(".cm-comment-popover")).toBeVisible();
+    };
+    const pop = page.locator(".cm-comment-popover");
+
+    await openPop();
+    await page.keyboard.press("Escape");
+    await expect(pop).toBeHidden();
+
+    // Scrolling the anchored highlight out of view closes the dialog instead of leaving it
+    // stuck clamped to a viewport edge.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await openPop();
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(pop).toBeHidden();
+  });
+
   test("jump scrolls the document to a highlight that is off-screen", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "top comment");

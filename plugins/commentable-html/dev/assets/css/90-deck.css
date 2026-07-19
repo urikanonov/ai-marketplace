@@ -504,6 +504,31 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   background: var(--cp-accent-hover, #8f1a3d);
   border-color: var(--cp-accent-hover, #8f1a3d);
 }
+.cmh-deck-overview-searchwrap {
+  flex: none;
+}
+.cmh-deck-overview-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--cp-border, #444);
+  background: var(--cp-surface, #fff);
+  color: var(--cp-text, #fff);
+  font: inherit;
+  font-size: 15px;
+}
+.cmh-deck-overview-search::placeholder {
+  color: var(--cp-text-soft, #64748b);
+}
+.cmh-deck-overview-search:focus-visible {
+  outline: none;
+  border-color: var(--cp-accent, #b11f4b);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cp-accent, #b11f4b) 35%, transparent);
+}
+.cmh-deck-overview-card[hidden] {
+  display: none !important;
+}
 .cmh-deck-overview-grid {
   display: flex;
   flex-direction: column;

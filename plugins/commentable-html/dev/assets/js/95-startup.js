@@ -252,6 +252,7 @@ function setupDeck() {
   let counter = null, prevBtn = null, nextBtn = null;
   let edgePrevBtn = null, edgeNextBtn = null;
   let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
+  let overviewSearch = null, overviewCount = null;
   const stageFocusTarget = viewport || stage;
   const slideTitles = slides.map((slide, i) => slideTitle(slide, i));
   // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
@@ -384,7 +385,7 @@ function setupDeck() {
     return !!(
       (overview && !overview.hidden)
       || (modeMenu && !modeMenu.hidden)
-      || document.querySelector(".cm-composer, .cm-modal-overlay")
+      || document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
     );
   }
 
@@ -489,8 +490,27 @@ function setupDeck() {
   function focusOverviewCard(index) {
     const cards = overviewCards();
     if (!cards.length) return;
-    const next = Math.max(0, Math.min(cards.length - 1, index));
-    cards[next].focus();
+    const target = cards[Math.max(0, Math.min(cards.length - 1, index))];
+    if (target && !target.hidden) { target.focus(); return; }
+    const visible = cards.filter((c) => !c.hidden);
+    if (visible.length) visible[0].focus();
+  }
+
+  // Filter the overview cards by a title substring (used by the search box). Non-matching
+  // cards are hidden so keyboard navigation and the visible count follow the filter.
+  function filterOverview(query) {
+    const needle = String(query || "").trim().toLowerCase();
+    let visible = 0;
+    overviewCards().forEach((card, i) => {
+      const hit = !needle || (slideTitles[i] || "").toLowerCase().indexOf(needle) >= 0;
+      card.hidden = !hit;
+      if (hit) visible++;
+    });
+    if (overviewCount) {
+      overviewCount.textContent = needle
+        ? visible + " of " + slides.length
+        : slides.length + (slides.length === 1 ? " slide" : " slides");
+    }
   }
 
   function makeOverview() {
@@ -513,7 +533,10 @@ function setupDeck() {
     title.textContent = "Slide overview";
     const count = document.createElement("span");
     count.className = "cmh-deck-overview-count";
+    count.setAttribute("aria-live", "polite");
+    count.setAttribute("aria-atomic", "true");
     count.textContent = slides.length + (slides.length === 1 ? " slide" : " slides");
+    overviewCount = count;
     titleWrap.appendChild(title);
     titleWrap.appendChild(count);
     const close = document.createElement("button");
@@ -525,6 +548,29 @@ function setupDeck() {
     head.appendChild(titleWrap);
     head.appendChild(close);
 
+    // A search box at the top narrows the slide list by title as the presenter types.
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "cmh-deck-overview-searchwrap";
+    overviewSearch = document.createElement("input");
+    overviewSearch.type = "search";
+    overviewSearch.className = "cmh-deck-overview-search cm-skip";
+    overviewSearch.placeholder = "Filter slides...";
+    overviewSearch.setAttribute("aria-label", "Filter slides by title");
+    overviewSearch.addEventListener("input", () => filterOverview(overviewSearch.value));
+    overviewSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (overviewSearch.value) { overviewSearch.value = ""; filterOverview(""); }
+        else closeOverview();
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        const visible = overviewCards().filter((c) => !c.hidden);
+        if (visible.length) { e.preventDefault(); visible[0].focus(); }
+      }
+    });
+    searchWrap.appendChild(overviewSearch);
+
     overviewGrid = document.createElement("div");
     overviewGrid.className = "cmh-deck-overview-grid";
     overviewGrid.addEventListener("keydown", (e) => {
@@ -533,22 +579,27 @@ function setupDeck() {
         closeOverview();
         return;
       }
-      const cards = overviewCards();
+      const cards = overviewCards().filter((c) => !c.hidden);
+      if (!cards.length) return;
       const at = cards.indexOf(document.activeElement);
       if (e.key === "Tab") {
         e.preventDefault();
-        const next = at < 0 ? current : (at + (e.shiftKey ? -1 : 1) + cards.length) % cards.length;
-        focusOverviewCard(next);
+        const base = at < 0 ? 0 : at;
+        // Shift+Tab off the top of the list returns to the filter box, so the search is
+        // reachable by keyboard without breaking the arrow-key roving over the cards.
+        if (e.shiftKey && base === 0 && overviewSearch) { overviewSearch.focus(); return; }
+        const next = (base + (e.shiftKey ? -1 : 1) + cards.length) % cards.length;
+        cards[next].focus();
         return;
       }
       let next = at;
-      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = at < 0 ? current : at + 1;
-      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = at < 0 ? current : at - 1;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = at < 0 ? 0 : at + 1;
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = at < 0 ? 0 : at - 1;
       else if (e.key === "Home") next = 0;
       else if (e.key === "End") next = cards.length - 1;
       else return;
       e.preventDefault();
-      focusOverviewCard(next);
+      cards[Math.max(0, Math.min(cards.length - 1, next))].focus();
     });
 
     slides.forEach((slide, i) => {
@@ -580,6 +631,7 @@ function setupDeck() {
     });
 
     overview.appendChild(head);
+    overview.appendChild(searchWrap);
     overview.appendChild(overviewGrid);
     document.body.appendChild(overview);
     CMH_INJECTED_CHROME.add(overview);
@@ -589,6 +641,9 @@ function setupDeck() {
   function openOverview() {
     makeOverview();
     overview.hidden = false;
+    // Reset any prior filter so reopening lists every slide.
+    if (overviewSearch) overviewSearch.value = "";
+    filterOverview("");
     document.body.classList.add("cmh-deck-overview-open");
     if (overviewBtn) {
       overviewBtn.setAttribute("aria-expanded", "true");
@@ -657,8 +712,14 @@ function setupDeck() {
   }
   document.addEventListener("keydown", (e) => {
     if (!e.defaultPrevented && overview && !overview.hidden) {
-      if (e.key === "Escape" || (e.key && e.key.toLowerCase() === "o"
-        && !e.altKey && !e.ctrlKey && !e.metaKey)) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeOverview();
+        return;
+      }
+      if (e.key && e.key.toLowerCase() === "o"
+        && !e.altKey && !e.ctrlKey && !e.metaKey
+        && !(e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable))) {
         e.preventDefault();
         closeOverview();
       }
