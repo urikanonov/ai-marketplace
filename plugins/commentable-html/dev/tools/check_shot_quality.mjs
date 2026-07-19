@@ -8,11 +8,13 @@
 //   node tools/check_shot_quality.mjs --report   # print per-image metrics (crisp vs a degraded
 //                                                 # copy) for calibration; never fails
 import { chromium } from "@playwright/test";
+import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const CAPTURE_TOOL = path.join(HERE, "capture_tutorial.mjs");
 const reportMode = process.argv.includes("--report");
 // Optional positional arg overrides the assets dir (used by the negative test to point the gate at
 // a temp dir holding a deliberately degraded image); defaults to the committed docs/assets.
@@ -116,30 +118,64 @@ async function metricsFor(page, base64, withDegraded) {
   }, { b64: base64, withDegraded });
 }
 
+// The authoritative shot set is what the capture tool declares via --print-paths (scene -> shot
+// names), so the gate checks EXACTLY the shots the tool produces: a declared shot that is missing
+// fails, a stray non-shot PNG is ignored, and a real shot can never be silently skipped because its
+// name drifted from a pattern. Returns null if the registry cannot be read (the caller then falls
+// back to scanning the dir for shot-named files - used for the temp-dir override in tests).
+function expectedShots() {
+  try {
+    const out = execFileSync("node", [CAPTURE_TOOL, "--print-paths"], { encoding: "utf8" });
+    const scenes = (JSON.parse(out) || {}).scenes || {};
+    const names = [];
+    for (const [prefix, shots] of Object.entries(scenes)) {
+      for (const shot of shots) names.push(`${prefix}-${shot}.png`);
+    }
+    return names.length ? names.sort() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function run() {
   if (!fs.existsSync(ASSETS)) {
     console.error("check_shot_quality: assets dir not found:", ASSETS);
     return 2;
   }
+  // For the canonical assets dir, check EXACTLY the shots the capture tool declares (a missing one
+  // fails, so the gate can never silently skip a real shot); for an explicit dir override (the
+  // negative test's temp dir), scan the shot-named files that are present.
   let files;
-  try {
-    files = fs.readdirSync(ASSETS).filter((f) => SHOT_NAME_RE.test(f)).sort();
-  } catch (e) {
-    console.error("check_shot_quality: cannot read assets dir", ASSETS, "-", e.message);
-    return 2;
-  }
-  if (!files.length) {
-    console.error("check_shot_quality: no tutorial shots (<scene>-NN-*.png) found in", ASSETS);
-    return 2;
+  const expected = dirArg ? null : expectedShots();
+  if (expected) {
+    files = expected;
+  } else {
+    try {
+      files = fs.readdirSync(ASSETS).filter((f) => SHOT_NAME_RE.test(f)).sort();
+    } catch (e) {
+      console.error("check_shot_quality: cannot read assets dir", ASSETS, "-", e.message);
+      return 2;
+    }
+    if (!files.length) {
+      console.error("check_shot_quality: no tutorial shots (<scene>-NN-*.png) found in", ASSETS);
+      return 2;
+    }
   }
   const browser = await chromium.launch();
   const page = await browser.newPage();
   const problems = [];
   try {
     for (const file of files) {
+      const full = path.join(ASSETS, file);
+      if (!fs.existsSync(full)) {
+        const msg = `${file}: expected tutorial shot is missing`;
+        if (reportMode) console.log(msg);
+        else problems.push(msg);
+        continue;
+      }
       let m;
       try {
-        const base64 = fs.readFileSync(path.join(ASSETS, file)).toString("base64");
+        const base64 = fs.readFileSync(full).toString("base64");
         m = await metricsFor(page, base64, reportMode);
       } catch (e) {
         // A corrupt/undecodable PNG is a real problem for the gate, but --report is best-effort and

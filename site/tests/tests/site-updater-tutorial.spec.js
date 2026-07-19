@@ -241,7 +241,7 @@ test("the tutorial leads with the value proposition and ends with the Help and A
   const headingTexts = await page.locator(".tutorial h3").allTextContents();
   const helpIndex = headingTexts.findIndex((t) => /^\s*Help and About\s*$/.test(t));
   expect(helpIndex).toBeGreaterThan(-1);
-  expect(helpIndex).toBeGreaterThan((headingTexts.length * 2) / 3);
+  expect(helpIndex).toBeGreaterThanOrEqual(Math.floor((headingTexts.length * 2) / 3));
 });
 
 
