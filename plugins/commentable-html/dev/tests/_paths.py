@@ -1,7 +1,7 @@
 """Shared path constants for the commentable-html test suite (marketplace pkg/dev split).
 
 The editable + built skill tree (the STAGE) lives here under dev/skill; the plugin ships a minimal
-pkg/skills/commentable-html (SKILL.md, LICENSE, skill-resources.zip) that a SessionStart hook
+pkg/skills/commentable-html (SKILL.md, LICENSE, THIRD_PARTY_NOTICES.md, skill-resources.zip) that a SessionStart hook
 extracts on first run. Tests import the REAL tools and read the REAL dist/examples from the STAGE
 (PKG below), which build.py assembles into the shipped skill-resources.zip, so a green suite proves
 exactly what ships once extracted. The tools are grouped into per-topic subdirectories

@@ -49,7 +49,7 @@ LEGACY_PRUNE_DIRS = ("docs", "examples")
 # with str.casefold() (NOT os.path.normcase, which only folds case on Windows and is a no-op on
 # macOS/Linux) because Windows and default macOS filesystems are case-insensitive, so a staging dir
 # named e.g. `skill.md` resolves to the real `SKILL.md`.
-_RESERVED_TOP_NAMES = {"SKILL.md", "LICENSE", DEFAULT_ZIP_NAME}
+_RESERVED_TOP_NAMES = {"SKILL.md", "LICENSE", "THIRD_PARTY_NOTICES.md", DEFAULT_ZIP_NAME}
 _RESERVED_TOP_CASEFOLD = {n.casefold() for n in _RESERVED_TOP_NAMES}
 # A fresh grace budget for rolling a failed swap back to the previous version. The main deadline is
 # usually already spent (that is why the swap failed), so rollback needs its own window to clear a
@@ -329,9 +329,9 @@ def _write_marker(skill_dir, version, retries=DEFAULT_RETRIES, backoff=DEFAULT_B
 
 def _is_swappable(skill_dir, entry):
     """A staging top-level entry is installed only if it is a real directory and not a reserved or
-    bookkeeping name, so a (tampered or accidental) zip cannot overwrite SKILL.md/LICENSE/the zip
-    (matched case-insensitively for case-insensitive filesystems), any dot-prefixed marker/lock/
-    staging file, or collide with a `<dir>.skill-resources-old` backup name."""
+    bookkeeping name, so a (tampered or accidental) zip cannot overwrite SKILL.md/LICENSE/
+    THIRD_PARTY_NOTICES.md/the zip (matched case-insensitively for case-insensitive filesystems), any
+    dot-prefixed marker/lock/staging file, or collide with a `<dir>.skill-resources-old` backup name."""
     if entry.startswith(".") or entry.endswith(BACKUP_SUFFIX):
         return False
     if entry.casefold() in _RESERVED_TOP_CASEFOLD:

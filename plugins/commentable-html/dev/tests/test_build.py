@@ -708,6 +708,18 @@ class PackageTests(unittest.TestCase):
                 build.package_text_stamps(stage, os.path.join(d, "pkg"), build.read_version())
             self.assertIn("LICENSE", str(cm.exception))
 
+    def test_packager_fails_on_missing_third_party_notices(self):
+        # THIRD_PARTY_NOTICES.md is a required shipped file (MIT compliance): the packager must fail
+        # closed if the stage lacks it, so a build can never ship the vendored libraries without them.
+        with tempfile.TemporaryDirectory() as d:
+            stage = self._minimal_stage(d)
+            for name in ("SKILL.md", "LICENSE"):
+                with open(os.path.join(stage, name), "w", encoding="utf-8") as fh:
+                    fh.write("x\n")
+            with self.assertRaises(SystemExit) as cm:
+                build.package_text_stamps(stage, os.path.join(d, "pkg"), build.read_version())
+            self.assertIn("THIRD_PARTY_NOTICES.md", str(cm.exception))
+
     def test_package_check_detects_hook_stamp_drift(self):
         v = build.read_version()
         with tempfile.TemporaryDirectory() as d:

@@ -59,9 +59,12 @@ class ThirdPartyNoticesTests(unittest.TestCase):
             self.assertIn("MIT License", text)
             self.assertIn("Permission is hereby granted", text)
             self.assertIn(markers[license_name], text)
-            # Offline export emits the license verbatim inside an HTML comment; a "-->" in the text
-            # would terminate that comment early, so the vendored license must never contain one.
-            self.assertNotIn("-->", text)
+            # Offline export emits the license verbatim inside an HTML comment. A run of two or more
+            # hyphens ("--", and hence "-->") is the only sequence that can prematurely terminate or
+            # invalidate a comment, so the vendored license must contain none - which also makes the
+            # offline notice provably VERBATIM (the "--" neutralizer in 68-export-offline.js never
+            # fires for a shipped license; it remains only as defense-in-depth for a future refresh).
+            self.assertNotIn("--", text)
 
     def test_offline_bundle_embeds_each_license_verbatim(self):
         payload = json.loads(build.build_vendored_rich_libs_json(_paths.ASSETS))
