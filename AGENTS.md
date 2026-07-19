@@ -167,6 +167,23 @@ working example):
 
 Nothing under `dev/` is distributed. `node_modules/`, `test-results/`, and `playwright-report/` are gitignored.
 
+**commentable-html build target (do not build into `pkg/`).** The commentable-html Playwright specs
+(and its Python tool tests) load the BUILT STAGE at `plugins/commentable-html/dev/skill/dist`, NOT
+`pkg/`. After the skill was relocated, `pkg/skills/commentable-html` became a MINIMAL shipped copy
+(`SKILL.md`, `LICENSE`, `skill-resources.zip`) and `dev/skill` became the full editable+built stage the
+tests exercise. So after changing any runtime source under `dev/assets/`, rebuild the STAGE before
+running the suite or the tests silently run stale code. The canonical build (run from
+`plugins/commentable-html/dev`) is:
+
+```bash
+python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples
+```
+
+Note `--out-dir skill` (the stage) and `--pkg-dir ../pkg/skills/commentable-html` (the minimal shipped
+copy) - building with `--out-dir ../pkg/skills/commentable-html` is WRONG (it leaves `dev/skill` stale).
+Easiest is `python scripts/rebuild_all.py` from the repo root, which rebuilds the stage, the Playwright
+fixtures, and the site in the correct order with one command.
+
 ## Spec-and-test discipline (do not add a feature without a spec row and a test)
 
 Every user-facing surface in this repo has a feature specification that maps each behavior to the
@@ -373,9 +390,13 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
    `git checkout --ours -- <files>` - then REBUILD so your change is re-stamped on top of what landed in
    `main`:
    ```bash
-   python plugins/<plugin>/dev/tools/build.py --assets-dir assets --out-dir plugins/<plugin>/pkg/skills/<plugin>
-   node plugins/<plugin>/dev/tests/fixtures/generate.mjs   # commentable-html fixtures embed the version
-   python scripts/build_site_data.py                        # site pages, demos, sitemap, llms
+   # commentable-html's stage lives at dev/skill (NOT pkg); rebuild_all rebuilds the stage,
+   # fixtures, and site in the correct order:
+   python scripts/rebuild_all.py
+   # or, to rebuild just the commentable-html layer, run from plugins/commentable-html/dev:
+   #   python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples
+   #   node tests/fixtures/generate.mjs   # commentable-html fixtures embed the version
+   # then from the repo root: python scripts/build_site_data.py   # site pages, demos, sitemap, llms
    ```
    `git add` the rebuilt files. Never pick `--theirs` (your stale artifact) or `--ours` alone (main's
    artifact without your change) for a generated file - the only correct resolution is to REBUILD. EXCEPTION:
@@ -386,8 +407,9 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
 6. Repeat for each subsequent commit in the rebase that re-conflicts the dist files (each commit
    that touched the source gets a fresh set of generated hashes; always rebuild instead of taking
    either side of the conflict).
-7. Validate at the end: `python scripts/validate_marketplace.py` and
-   `python plugins/<plugin>/dev/tools/build.py ... --check` must both pass.
+7. Validate at the end: `python scripts/validate_marketplace.py` and, from
+   `plugins/<plugin>/dev`, `python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/<plugin> --examples-dir ../examples --check --check-fixtures`
+   (the layer drift guard; note `--out-dir skill`, the stage, NOT `pkg`) must both pass.
 
 ## First-time setup (fresh clone)
 
