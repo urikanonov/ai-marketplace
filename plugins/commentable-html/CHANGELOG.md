@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.160.1] - 2026-07-19
+
+### Security
+
+- Source provenance now stores only the source filename in `data-doc-source`, Copy all, and every
+  preserved export. Authoring tools and runtime fallbacks strip directories, drive letters,
+  usernames, and internal project paths while leaving the document comment key, session id, and
+  generated timestamp unchanged (CMH-SEC-03, part of #438).
+
 ## [1.160.0] - 2026-07-19
 
 ### Added

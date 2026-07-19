@@ -46,6 +46,14 @@ class MakeDocumentTests(unittest.TestCase):
         # Title is synced to the label (best effort).
         self.assertIn("<title>My Report</title>", out)
 
+    def test_source_provenance_is_basename_only_cmh_sec_03(self):
+        source = r"C:\Users\alice\Internal Project\reports\quarterly.md"
+        out = new_document.make_document(
+            _template(), CONTENT, "my-report-v1", "My Report", source)
+        self.assertIn('data-doc-source="quarterly.md"', out)
+        self.assertNotIn("alice", out)
+        self.assertNotIn("Internal Project", out)
+
     def test_output_validates_clean(self):
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", "My Report", "src.md")
         errors, warnings = new_document._self_validate(out)

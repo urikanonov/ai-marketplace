@@ -173,7 +173,7 @@ The document-level attributes live on the content root; no JavaScript edits are 
  data-cmh-content-root
  data-comment-key="migration-plan-comments"
  data-doc-label="Migration Plan review"
- data-doc-source="docs/Archive/Migration-Plan.html"
+ data-doc-source="Migration-Plan.html"
  data-generated="2026-07-13T06:58:02+03:00">
  ...content...
 </main>

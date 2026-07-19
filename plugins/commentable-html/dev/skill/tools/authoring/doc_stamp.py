@@ -11,6 +11,7 @@ current validated stamp - a document that was produced but never strict-validate
 last-resort signal; the skill MUST always finalize and strict-validate before handoff.
 """
 import datetime
+import ntpath
 import os
 import re
 
@@ -39,6 +40,16 @@ _RUNTIME_MARKERS = (
     ("claude", ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")),
     ("copilot", ("COPILOT_CLI",)),
 )
+
+
+def source_basename(source):
+    """Return only the filename portion of a source identifier on either path style."""
+    value = str(source or "")
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", value):
+        value = re.split(r"[?#]", value, maxsplit=1)[0]
+    if value.endswith(("/", "\\")):
+        return "document"
+    return ntpath.basename(os.path.basename(value)) or "document"
 
 
 def now_iso():

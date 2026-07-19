@@ -326,10 +326,10 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
      This block is the only place you customize per document. Set:
        data-comment-key   - unique localStorage key for this doc
        data-doc-label     - human-readable name used in copy
-       data-doc-source    - source path written into the Copy bundle
+       data-doc-source    - source filename written into the Copy bundle
                             and into the agent-instructions block,
                             so the agent knows which file to edit
-                            (falls back to location.pathname).
+                            (directory components are always stripped).
      The five BEGIN/END: commentable-html regions above and below
      stay byte-for-byte identical across docs, so upgrades are a
      clean replace. This wrapper is intentionally NOT marked with

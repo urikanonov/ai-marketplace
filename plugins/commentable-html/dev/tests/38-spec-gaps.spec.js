@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "fs";
 import {
   INLINE, fileUrl, ready, installClipboardCapture, addTextComment, lastCopied, storedComments,
+  clickSidebarExport, readDownload,
 } from "./helpers.js";
 
 const INLINE_HTML = fs.readFileSync(INLINE, "utf8");
@@ -42,8 +43,28 @@ test("body fallback anchors comments when #commentRoot is absent (CMH-CORE-15)",
   await page.locator("#btnCopyAll").click();
   const bundle = await lastCopied(page);
   expect(bundle).toContain("# Commentable HTML - Demo review (1 comment)");
-  expect(bundle).toContain("Source: /body-fallback.html");
+  expect(bundle).toContain("Source: body-fallback.html");
   expect(bundle).toContain("body fallback note");
+});
+
+test("body fallback Portable export strips source directories (CMH-SEC-03)", async ({ page }) => {
+  const url = "http://localhost/body-fallback-export.html";
+  const html = INLINE_HTML
+    .replace(DEMO_ROOT_RE, '<main id="contentWithoutCommentRoot">')
+    .replace("<body", String.raw`<body data-doc-source="C:\Users\alice\Internal Project\report.html"`);
+  await openFromRoute(page, url, html);
+  await addTextComment(page, "main p", "export body fallback", 0);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    clickSidebarExport(page, "#btnSaveHtml"),
+  ]);
+  const exported = await readDownload(download);
+  const body = exported.match(/<body\b[^>]*>/i);
+  expect(body).toBeTruthy();
+  expect(body[0]).toContain('data-doc-source="report.html"');
+  expect(exported).not.toContain("alice");
+  expect(exported).not.toContain("Internal Project");
 });
 
 test("per-block copy failures show Copy failed without opening prompt (CMH-COPY-06)", async ({ page }) => {

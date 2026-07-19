@@ -20,7 +20,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
 | `00-preamble.js` | CMH-CORE, CMH-EXP | IIFE opener; captures `SNAPSHOT_HTML` and `document.currentScript` before any DOM access. |
-| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
+| `01-config.js` | CMH-CORE, CMH-FWDCOMPAT, CMH-DENSITY, CMH-SEC | Auto-discovered config; declares `CMH_VERSION` (build.py stamps it). |
 | `05-persistence.js` | CMH-PERSIST, CMH-EXP | localStorage load/merge/save of the comments array. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY | Section + surrounding-text context capture. |
@@ -45,7 +45,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
 | `60-export-markdown.js` | CMH-MD | Export to Markdown. |
 | `62-sortable-tables.js` | CMH-CONTENT | Sortable tables. |
-| `65-export-portable.js` | CMH-EXP | Export as Portable + shared export snapshot primitives. |
+| `65-export-portable.js` | CMH-EXP, CMH-SEC | Export as Portable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |
 | `67-export-standalone.js` | CMH-MODE | Export standalone (nonportable -> single file). |
 | `68-export-offline.js` | CMH-OFFLINE | Export Offline (portable + rich-content snapshots). |

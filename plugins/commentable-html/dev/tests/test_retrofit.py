@@ -115,13 +115,29 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn('<main id="commentRoot"', html)
         self.assertIn("data-cmh-content-root", html)
         self.assertIn('data-doc-label="Host Report"', html)
-        self.assertIn('data-doc-source="%s"' % src.replace("\\", "\\\\"), html.replace("\\", "\\\\"))
+        self.assertIn('data-doc-source="host.html"', html)
+        self.assertNotIn(os.path.dirname(src), html)
         self.assertRegex(html, r'data-comment-key="[^"]+"')
         self.assertIn('id="handledCommentIds"', html)
         self.assertIn('id="embeddedComments"', html)
         self.assertIn("<section><h2 id=\"intro\">Intro</h2><p>Hello review.</p></section>", html)
         self.assertIn('id="commentableHtmlLayer"', html)
         self._strict_clean(out)
+
+    def test_explicit_source_provenance_is_basename_only_cmh_sec_03(self):
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        out = os.path.join(d, "out.html")
+        sensitive = r"C:\Users\alice\Internal Project\source\host-input.html"
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Host Report", "--source", sensitive,
+            "--out", out,
+        ])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('data-doc-source="host-input.html"', html)
+        self.assertNotIn("alice", html)
+        self.assertNotIn("Internal Project", html)
 
     def test_preserves_crlf_line_endings(self):
         # CMH-TOOL-15: a Windows-authored (CRLF) host file keeps its dominant newline through

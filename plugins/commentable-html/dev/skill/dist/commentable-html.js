@@ -32,9 +32,17 @@ function cmScrollBehavior() {
 
 /* ---------- Config (auto-discovered, never edit per-doc) ---------- */
 const root = document.getElementById("commentRoot") || document.body;
+function _docSourceBasename(source) {
+  const value = String(source == null ? "" : source);
+  const withoutSuffix = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)
+    ? value.split(/[?#]/, 1)[0] : value;
+  if (/[\\/]$/.test(withoutSuffix)) return "document";
+  const parts = withoutSuffix.split(/[\\/]/);
+  return (parts[parts.length - 1] || "document").replace(/^[A-Za-z]:/, "") || "document";
+}
 const COMMENT_KEY = root.dataset.commentKey || ("commentable-html:" + location.pathname);
 const DOC_LABEL   = root.dataset.docLabel   || document.title || location.pathname;
-const DOC_SOURCE  = root.dataset.docSource  || location.pathname;
+const DOC_SOURCE  = _docSourceBasename(root.dataset.docSource || location.pathname);
 // Deck profile: a commentable-native slide deck (see references/deck-contract.md). When
 // active, the layer replaces the flow-document chrome (heading anchors, collapsible
 // sections, side TOC, footer, scroll progress) with slide navigation and commenting.
@@ -54,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.160.0";
+const CMH_VERSION = "1.160.1";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5861,6 +5869,133 @@ function _stripTransientBodyClasses(html) {
 }
 // Exposed for deterministic tests (body-class normalization is pure and worth unit-testing).
 window.__cmhStripTransientBody = function (h) { return _stripTransientBodyClasses(h); };
+function _cmhTagEnd(html, start) {
+  let quote = "";
+  for (let i = start + 1; i < html.length; i += 1) {
+    const ch = html[i];
+    if (quote) {
+      if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === ">") {
+      return i;
+    }
+  }
+  return -1;
+}
+function _cmhTagAttributes(tag) {
+  const attrs = [];
+  let pos = 1;
+  while (pos < tag.length && !/[\s/>]/.test(tag[pos])) pos += 1;
+  while (pos < tag.length) {
+    while (/\s/.test(tag[pos] || "")) pos += 1;
+    if (pos >= tag.length || tag[pos] === ">" || tag[pos] === "/") break;
+    const nameStart = pos;
+    while (pos < tag.length && !/[\s=/>]/.test(tag[pos])) pos += 1;
+    if (pos === nameStart) {
+      pos += 1;
+      continue;
+    }
+    const name = tag.slice(nameStart, pos).toLowerCase();
+    while (/\s/.test(tag[pos] || "")) pos += 1;
+    let valueStart = null;
+    let valueEnd = null;
+    let quote = "";
+    if (tag[pos] === "=") {
+      pos += 1;
+      while (/\s/.test(tag[pos] || "")) pos += 1;
+      if (tag[pos] === '"' || tag[pos] === "'") {
+        quote = tag[pos];
+        pos += 1;
+        valueStart = pos;
+        while (pos < tag.length && tag[pos] !== quote) pos += 1;
+        valueEnd = pos;
+        if (tag[pos] === quote) pos += 1;
+      } else {
+        valueStart = pos;
+        while (pos < tag.length && !/[\s>]/.test(tag[pos])) pos += 1;
+        valueEnd = pos;
+      }
+    }
+    attrs.push({ name, valueStart, valueEnd, quote });
+  }
+  return attrs;
+}
+function _cmhDecodeAttribute(value) {
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = String(value).replace(/</g, "&lt;");
+  return textarea.value;
+}
+function _cmhEncodeAttribute(value, quote) {
+  let encoded = String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  if (quote === '"') return encoded.replace(/"/g, "&quot;");
+  if (quote === "'") return encoded.replace(/'/g, "&#39;");
+  encoded = encoded.replace(/[\s"'`=>]/g, function (ch) {
+    return "&#" + ch.charCodeAt(0) + ";";
+  });
+  return '"' + encoded + '"';
+}
+function _cmhProvenanceRootTag(html) {
+  let body = null;
+  for (let pos = 0; pos < html.length;) {
+    const start = html.indexOf("<", pos);
+    if (start < 0) break;
+    if (html.slice(start, start + 4) === "<!--") {
+      const commentEnd = html.indexOf("-->", start + 4);
+      pos = commentEnd < 0 ? html.length : commentEnd + 3;
+      continue;
+    }
+    if (!/[A-Za-z]/.test(html[start + 1] || "")) {
+      pos = start + 1;
+      continue;
+    }
+    const end = _cmhTagEnd(html, start);
+    if (end < 0) break;
+    const tag = html.slice(start, end + 1);
+    const nameMatch = tag.match(/^<([A-Za-z][\w:-]*)/);
+    const name = nameMatch ? nameMatch[1].toLowerCase() : "";
+    const attrs = _cmhTagAttributes(tag);
+    const range = { start, end: end + 1, tag, attrs };
+    const idAttr = attrs.find(function (attr) { return attr.name === "id"; });
+    const firstId = idAttr && idAttr.valueStart != null
+      ? _cmhDecodeAttribute(tag.slice(idAttr.valueStart, idAttr.valueEnd)) : null;
+    if (firstId === "commentRoot") {
+      return range;
+    }
+    if (name === "body" && body === null) body = range;
+    if (/^(?:script|style|textarea|title|template)$/.test(name)) {
+      const close = html.toLowerCase().indexOf("</" + name, end + 1);
+      if (close < 0) break;
+      const closeEnd = _cmhTagEnd(html, close);
+      pos = closeEnd < 0 ? html.length : closeEnd + 1;
+    } else {
+      pos = end + 1;
+    }
+  }
+  return body;
+}
+function _normalizeDocSourceInHtml(html) {
+  const raw = String(html == null ? "" : html);
+  const rootTag = _cmhProvenanceRootTag(raw);
+  if (!rootTag) return raw;
+  let changed = false;
+  let nextTag = rootTag.tag;
+  const sources = rootTag.attrs.filter(function (attr) {
+    return attr.name === "data-doc-source" && attr.valueStart != null;
+  });
+  for (let i = sources.length - 1; i >= 0; i -= 1) {
+    const attr = sources[i];
+    const source = _cmhDecodeAttribute(rootTag.tag.slice(attr.valueStart, attr.valueEnd));
+    const basename = _docSourceBasename(source);
+    if (basename === source) continue;
+    changed = true;
+    nextTag = nextTag.slice(0, attr.valueStart)
+      + _cmhEncodeAttribute(basename, attr.quote)
+      + nextTag.slice(attr.valueEnd);
+  }
+  if (!changed) return raw;
+  return raw.slice(0, rootTag.start) + nextTag + raw.slice(rootTag.end);
+}
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
@@ -5870,10 +6005,12 @@ async function _getBaseHtml() {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {
       const t = await r.text();
-      if (t && t.includes('id="embeddedComments"')) return _stripTransientBodyClasses(t);
+      if (t && t.includes('id="embeddedComments"')) {
+        return _normalizeDocSourceInHtml(_stripTransientBodyClasses(t));
+      }
     }
   } catch (e) { /* fall through to snapshot */ }
-  return _stripTransientBodyClasses(_snapshotWithTail());
+  return _normalizeDocSourceInHtml(_stripTransientBodyClasses(_snapshotWithTail()));
 }
 function _isInjectedChrome(n) {
   if (n.nodeType !== 1) return false;
