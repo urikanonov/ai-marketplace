@@ -15,7 +15,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   single-character status badge - R (reviewed), C (commented), ! (changed), or a hollow badge for
   unreviewed - rendered as a pseudo-element so it never pollutes the entry text. The reviewed state
   continues to bake into Portable and Offline exports and now re-activates the review UI when an
-  exported file is reopened.
+  exported file is reopened. Export also prunes markers for headings that no longer exist, so a shared
+  copy never carries stale review metadata for a removed section.
 
 ## [1.158.0] - 2026-07-19
 

@@ -10782,7 +10782,7 @@ if (typeof window !== "undefined") {
     hash: cmhSectionHash,
     markers: function () { return reviewMarkers; },
     refresh: function () { refreshReviewUI(); },
-    active: function () { return _reviewActive(); },
+    active: function () { return _reviewReady && !IS_DECK ? _reviewActive() : false; },
     stateOf: function (id) {
       const el = document.getElementById(id);
       if (!el) return null;
@@ -10806,7 +10806,15 @@ if (typeof window !== "undefined") {
 function _applyReviewStateToHtml(html) {
   const src = String(html || "");
   const markers = _sanitizeMarkers(reviewMarkers);
-  const json = JSON.stringify(markers, null, 2).replace(/</g, "\\u003c");
+  // Bake only markers whose heading still exists in the current document, so a stale marker for a
+  // deleted section cannot leak its old headingText/reviewedAt/hash into a shared Portable/Offline
+  // copy. Orphan markers already cannot activate the UI (see _reviewActive); this keeps them out of
+  // the exported artifact as well.
+  const present = Object.create(null);
+  _cmhReviewHeadings().forEach(function (h) { if (h && h.id) present[h.id] = true; });
+  const live = Object.create(null);
+  Object.keys(markers).forEach(function (id) { if (present[id]) live[id] = markers[id]; });
+  const json = JSON.stringify(live, null, 2).replace(/</g, "\\u003c");
   let doc;
   try { doc = new DOMParser().parseFromString(src, "text/html"); } catch (e) { return html; }
   if (!doc || !doc.documentElement) return html;

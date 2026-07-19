@@ -226,6 +226,26 @@ test.describe("section review tracking", () => {
     expect(JSON.parse(m[1].trim())["rv-alpha"]).toBeTruthy();
   });
 
+  test("export prunes orphan markers whose heading no longer exists (CMH-REVIEW-13)", async ({ page }) => {
+    await openReviewDoc(page);
+    // Mark two sections reviewed, then delete one heading so its marker is orphaned. The orphan must
+    // not be baked into the export - it would leak stale headingText/reviewedAt for a section that no
+    // longer exists in the shared copy.
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    await page.locator("#rv-gamma").hover();
+    await page.locator("#rv-gamma .cmh-review-badge").click();
+    await page.evaluate(() => document.getElementById("rv-gamma").remove());
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.click("#btnSaveHtmlTop")]);
+    const html = await readDownload(download);
+    const m = html.match(/<script[^>]*id="reviewedSections"[^>]*>([\s\S]*?)<\/script>/);
+    expect(m).toBeTruthy();
+    const markers = JSON.parse(m[1].trim());
+    expect(markers["rv-alpha"]).toBeTruthy();     // the live heading is kept
+    expect(markers["rv-gamma"]).toBeFalsy();      // the orphan is pruned
+  });
+
   test("the runtime and Python extractors agree on a doc with script/style/void and transformed blocks (CMH-REVIEW-08)", async ({ page }) => {
     await installClipboardCapture(page);
     await denyExternalNetwork(page);
@@ -300,7 +320,13 @@ test.describe("section review tracking", () => {
     expect(await page.evaluate(() => window.__cmhReview.active())).toBe(true);
     await expect(page.locator(".cm-side-toc-review")).toBeVisible();
     await expect(page.locator("nav.cm-side-toc .cmh-toc-mark").first()).toBeVisible();
-    // Clearing the last marker returns the UI to dormant (the reverse transition): filter hidden,
+    // The still-unreviewed entries (beta, gamma) carry a decorative hollow mark that stays out of the
+    // screen-reader announcement (aria-hidden, no label); only marked states expose a role/label.
+    const unrev = page.locator("nav.cm-side-toc .cmh-toc-mark-unreviewed").first();
+    await expect(unrev).toBeVisible();
+    expect(await unrev.getAttribute("aria-hidden")).toBe("true");
+    expect(await unrev.getAttribute("aria-label")).toBeNull();
+    expect(await unrev.getAttribute("role")).toBeNull();
     // marks removed, active() false again.
     await page.locator("#rv-alpha").hover();
     await page.locator("#rv-alpha .cmh-review-badge").click();
@@ -346,6 +372,14 @@ test.describe("section review tracking", () => {
     const linkText = await page.locator('nav.cm-side-toc a:has(.cmh-toc-mark-reviewed)').first().evaluate((el) => el.textContent.trim());
     expect(linkText).toMatch(/Alpha$/);
     expect(linkText).not.toMatch(/^R/);
+    // Accessibility: a non-unreviewed mark exposes its status to assistive tech (role=img + a text
+    // label), while the neutral unreviewed hollow mark stays decorative (aria-hidden) so it is not
+    // announced. The letter itself is a pseudo-element, so the label - not the glyph - is the a11y name.
+    const reviewedMark = page.locator('nav.cm-side-toc .cmh-toc-mark-reviewed').first();
+    expect(await reviewedMark.getAttribute("role")).toBe("img");
+    expect(await reviewedMark.getAttribute("aria-label")).toBe("Reviewed");
+    expect(await page.locator('nav.cm-side-toc .cmh-toc-mark-commented').first().getAttribute("aria-label")).toBe("Commented");
+    expect(await page.locator('nav.cm-side-toc .cmh-toc-mark-changed').first().getAttribute("aria-label")).toBe("Changed");
   });
 
   test("the reviewed state persists through Portable/Offline export and reopening activates the review UI (CMH-REVIEW-12)", async ({ browser }) => {
