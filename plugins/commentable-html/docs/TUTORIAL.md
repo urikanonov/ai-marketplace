@@ -18,7 +18,7 @@ The rest of this tutorial walks through step 2 in detail: every kind of thing yo
 ## 1. Open the example
 
 1. Open [`examples/report-community-garden.html`](../examples/report-community-garden.html) in a modern browser.
-2. If the comments panel is not already open, click **Show** in the floating toolbar (upper right). Once the panel is open the toolbar is hidden; close the panel with the **Hide** button at the top of the panel.
+2. If the comments panel is not already open, click **Comments** in the floating toolbar (upper right). Once the panel is open the toolbar is hidden; close the panel with the **Hide** button at the top of the panel.
 3. Scroll through the plan once to see its sections and the in-page Contents list.
 
 ![The community garden plan open in a browser, with the Contents list and the floating toolbar](assets/garden-01-top-light.png)

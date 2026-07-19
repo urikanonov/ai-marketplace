@@ -11,6 +11,7 @@ Every plugin here is designed to make AI-assisted development workflows faster a
 | Plugin | Description | Install |
 |--------|-------------|---------|
 | `commentable-html` | Turn a standalone HTML report, plan, dashboard, or design doc into a commentable review surface: reviewers select any paragraph, table cell, code block, KQL query, chart, image, or Mermaid diagram, leave inline comments, and export the whole thread back to the agent. Drastically shortens the AI planning and iteration loop by reviewing the artifact in place | `copilot plugin install commentable-html@urikan-ai-marketplace`<br>or `claude plugin install commentable-html@urikan-ai-marketplace` |
+| `multi-duck` | Convene a panel of independent rubber-duck reviewers over your in-flight work (a diff, PR, plan, tests, or commentable HTML plans with their open comments), each on a different model so their blind spots do not overlap, all in parallel, then consolidate the findings and autonomously apply the safe fixes. Two modes: prisms for wide coverage, consensus for cross-model agreement | `copilot plugin install multi-duck@urikan-ai-marketplace`<br>or `claude plugin install multi-duck@urikan-ai-marketplace` |
 | `urikan-ai-marketplace-auto-updater` | Automatically updates all installed plugins from this marketplace on session start (opt-in) | `copilot plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace`<br>or `claude plugin install urikan-ai-marketplace-auto-updater@urikan-ai-marketplace` |
 
 ## Getting Started
