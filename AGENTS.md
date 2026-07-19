@@ -224,7 +224,7 @@ EVERY new workstream starts in its own fresh git worktree branched from the late
 is a MUST for all work (a fix, a feature, a doc or test-only edit), not only when changes run in parallel
 (see "Non-negotiables" above). Even for a single change, do NOT develop on a stale branch and do NOT edit
 the primary working tree in place: concurrent edits to shared, generated files (the site under `site/`, a
-plugin's `pkg/dist/`, `examples/`) collide and produce merge churn, and a branch cut from a stale base
+plugin's `dev/skill/dist/`, `examples/`) collide and produce merge churn, and a branch cut from a stale base
 invites avoidable rebases. Give each workstream its own git worktree, checked out UNDER the repo root in
 `.worktrees/<name>` (which is gitignored, so the nested checkout is never committed):
 
@@ -265,7 +265,7 @@ topic, and sequence the rest. The rules that let this repo run many PRs at once 
   concatenates by directory sort, so a normal feature edit now touches one small partial, not a
   6,000-line monolith - the clobber surface is a single topic file plus, at most, a shared-infra
   partial noted in `MODULES.md`.)
-- Generated files (`site/**`, `pkg/**/dist/**`, `examples/report-*.html`, fixtures, `manifest.json`)
+- Generated files (`site/**`, the commentable-html layer bundle `dev/skill/dist/**`, `examples/report-*.html`, fixtures, `manifest.json`)
   will always "overlap" across PRs, and that is fine: never hand-merge them - take the base version
   and REBUILD (`build.py` then `build_site_data.py`), which is deterministic. See the two sections
   below for the survive-the-clobber check and the rebase mechanics.
@@ -312,7 +312,7 @@ then run `python scripts/build_site_data.py`; never hand-edit a file under `site
 source back into `site/` (that would re-open the self-sourced hole).
 
 **Never hand-edit a generated artifact.** Any file that carries a `DO NOT EDIT` banner - the `site/**`
-pages, `site/dist/assets/styles.css`, and every `pkg/**/dist/**` bundle - is rebuilt from a named source and
+pages, `site/dist/assets/styles.css`, and the commentable-html layer bundle (`dev/skill/dist/**`) - is rebuilt from a named source and
 gated by a `--check` (`site` for the site, `dist-in-sync` / `build.py --check` for the layer). Edit the
 named source and rebuild; a hand-edit to the artifact fails CI. That banner-plus-`--check` pairing is what
 turns the clobber classes below from SILENT into DETECTED. Note the carve-out: not everything under
@@ -324,8 +324,8 @@ it; it never rewrites it). Edit those directly and resolve conflicts on them as 
 The self-sourced surface is now closed for the example reports too: each `examples/report-*.html` is a
 pure build artifact assembled from an INDEPENDENT content source at `dev/examples/src/report-*.html`, so
 `--check` compares the shipped file to a fresh assembly and catches a stale or hand-edited copy of its
-CONTENT (edit demo content in `dev/examples/src/`, never in the shipped `pkg/**/examples/` file).
-`pkg/**/dist/**` bundles, generated fixtures, the `site/dist/**` pages, `styles.css`, and the example reports are
+CONTENT (edit demo content in `dev/examples/src/`, never in the built `examples/report-*.html` file).
+The commentable-html layer bundle (`dev/skill/dist/**`), generated fixtures, the `site/dist/**` pages, `styles.css`, and the example reports are
 therefore all pure artifacts with an independent source and a `--check`, so a stale copy of them fails CI
 (the hand-maintained `site/src/` static files above are the exception - they are sources, not artifacts) -
 but still treat any file that more than one in-flight PR touches as CONTENDED and REBUILD rather than
@@ -383,7 +383,7 @@ Steps for a plugin that uses `dev/VERSION` + `tools/build.py` (e.g. `commentable
    templates and CSS partials, tests, `SPEC.md`, `SKILL.md`): take YOUR version. During a REBASE the sides
    are inverted, so yours is `--theirs`: `git checkout --theirs -- <file>` (`--ours` is `origin/main`). For a
    genuine content conflict inside such a file, merge the two edits by hand.
-4. **Do NOT hand-merge GENERATED artifacts** (`pkg/**/dist/**`, the generated `site/dist/**` pages plus
+4. **Do NOT hand-merge GENERATED artifacts** (the commentable-html layer bundle `dev/skill/dist/**`, the generated `site/dist/**` pages plus
    `site/dist/assets/styles.css`, `manifest.json`, the asset registry, generated fixtures,
    `examples/report-*.html`, `plugin.json`, and the `marketplace.json` version field): take MAIN's clean copy
    FIRST so the file carries no conflict markers - during a rebase that is `--ours`:
