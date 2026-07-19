@@ -155,6 +155,34 @@ class FinalizeTests(unittest.TestCase):
         with open(path, "r", encoding="utf-8") as fh:
             self.assertEqual(fh.read(), original)  # unchanged
 
+    def test_normalizes_ai_typography_in_prose_by_default(self):
+        # CMH-ASCII-01: finalize rewrites AI smart-typography in prose to ASCII, leaving code verbatim.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, "<html><body><p>alpha\u2014beta \u2026 done</p>"
+                          "<pre><code>x\u2014y</code></pre></body></html>")
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, out, err = self._run_main(["finalize.py", path, "--no-highlight", "--no-stamp"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            result = fh.read()
+        self.assertIn("alpha - beta ... done", result)     # prose normalized
+        self.assertIn("<code>x\u2014y</code>", result)      # code left verbatim
+        self.assertNotIn("alpha\u2014beta", result)
+        self.assertIn("normalize", out)
+
+    def test_no_normalize_flag_preserves_ai_typography(self):
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        original = "<html><body><p>alpha\u2014beta</p></body></html>"
+        self._write(path, original)
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(
+                ["finalize.py", path, "--no-normalize", "--no-highlight", "--no-stamp"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), original)  # unchanged
+
     def test_stamps_validated_on_a_strict_clean_finalize(self):
         # CMH-STAMP-02: a strict-clean finalize writes the commentable-html-validated stamp.
         directory = self._tmpdir()

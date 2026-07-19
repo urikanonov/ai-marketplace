@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.166.0] - 2026-07-19
+
+### Added
+
+- CMH-ASCII-01: the document producers now rewrite AI "smart" typography - em/en dashes, the
+  ellipsis glyph, curly quotes, and non-breaking / zero-width spaces - to plain ASCII in visible
+  prose, leaving code, script, style, and HTML comments verbatim. `finalize.py` (reports/plans) and
+  `deck_scaffold.py` (deck slide prose) run the new shared `normalize_typography.py` normalizer by
+  default; opt out with `--no-normalize`. This keeps every report, plan, and deck on the plain-ASCII
+  house style without a hand pass.
+
+### Changed
+
+- Deck hover is smoother (CMH-DECK-21, CMH-DECK-RECIPE-02): table-cell, metric-tile, and
+  reference-pill hovers no longer animate `box-shadow` (a per-frame repaint) and table cells no
+  longer apply a `transform` lift (which relayouts the table). Cells ease only the cheap
+  `background-color` and the highlight ring snaps; tiles and pills keep their lift via the
+  compositor-friendly `transform`. Sweeping the mouse across a large deck table no longer lags.
+
 ## [1.165.0] - 2026-07-19
 
 ### Added
