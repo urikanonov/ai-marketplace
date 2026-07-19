@@ -100,11 +100,10 @@ If discovery yields nothing (no diff, no PR, no markdown plan, no HTML plan, no 
 
 Find the HTML artifacts that represent an in-flight plan and, crucially, extract the reviewer's **open inline comments** so the panel reviews the plan *and* the feedback already on it.
 
-**Where to look** (stop at the first non-empty hit, widen only if needed):
-1. `<scratch>/` (this session's artifacts).
-2. The current working directory and its subdirectories.
-3. Any explicit path/URL in `target` or `guidance`. If `target` is a URL, download it to a local temp file first - the extractor reads a local file path, not a URL.
-4. A commentable HTML this session clearly produced or opened - one named in this chat/session transcript (for example an artifact the `commentable-html` skill just generated, or a file the user explicitly pointed at earlier in this conversation). Use it only when the transcript makes it unambiguous which file is meant.
+**Where to look** (honor the clearly-intended target FIRST; only a targetless run falls through to scratch/cwd discovery):
+1. **Explicit target**: any explicit path/URL in `target` or `guidance`. This always wins - never let a scratch or working-tree file override it. If `target` is a URL, download it to a local temp file first - the extractor reads a local file path, not a URL.
+2. **Session-identified target**: a commentable HTML this session clearly produced or opened - one named in this chat/session transcript (for example an artifact the `commentable-html` skill just generated, or a file the user explicitly pointed at earlier in this conversation). Use it only when the transcript makes it unambiguous which file is meant.
+3. **Targetless run only** (no explicit target from step 1 and no session-identified target from step 2): you may discover a candidate, but ONLY one that is unambiguously tied to this session - first `<scratch>/` (this session's own artifacts), then the current working directory and its subdirectories. Include a cwd/scratch candidate only when it is clearly this session's in-flight plan; if the cwd holds several marked plans, or which file is meant is at all ambiguous, do NOT guess - STOP and ASK.
 
 Do NOT auto-select an arbitrary document from the user's Downloads folder (or anywhere else) by most-recently-modified. The newest file in Downloads is very often unrelated to the review, and feeding it to several models would disclose an unrelated document. If none of the sources above yields a clearly-intended target, STOP and ASK the user which document or target to review (open a prompt / ask them to name or paste the path) rather than reaching into Downloads or guessing.
 

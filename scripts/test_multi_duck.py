@@ -137,11 +137,27 @@ class MultiDuckSkillTests(unittest.TestCase):
 
     def test_targetless_discovery_asks_instead_of_auto_picking_downloads(self):
         # MDUCK-DISCOVER-10: a targetless run does not auto-select the newest Downloads HTML by
-        # mtime; it stops and asks the user when no target is clearly identified.
+        # mtime; it stops and asks the user when no target is clearly identified. An explicit or
+        # session-identified target takes priority over scratch/cwd discovery (a scratch/cwd file
+        # must never override an explicit target), and scratch/cwd is searched only for a targetless
+        # run and only for a candidate unambiguously tied to this session.
         t = _read(SKILL)
         self.assertIn("Do NOT auto-select an arbitrary document from the user's Downloads folder", t)
         self.assertIn("STOP and ASK the user which document or target to review", t)
         self.assertNotIn("Rank by most-recently-modified", t)
+        # Priority invariant: explicit/session-identified targets are honored before scratch/cwd,
+        # and the old stop-at-first-hit ordering (scratch/cwd first) is gone.
+        self.assertNotIn("stop at the first non-empty hit", t)
+        self.assertIn("honor the clearly-intended target FIRST", t)
+        self.assertIn("never let a scratch or working-tree file override it", t)
+        self.assertIn("Targetless run only", t)
+        self.assertIn("unambiguously tied to this session", t)
+        # The explicit-target item must precede the targetless scratch/cwd discovery item in the doc.
+        explicit_pos = t.find("**Explicit target**")
+        targetless_pos = t.find("**Targetless run only**")
+        self.assertGreater(explicit_pos, -1, "discovery must list an explicit-target rule")
+        self.assertGreater(targetless_pos, explicit_pos,
+                           "explicit-target discovery must precede targetless scratch/cwd discovery")
 
     def test_core_safety_invariants_present(self):
         # MDUCK-SAFE-07: the skill encodes its safety guarantees - review-only ducks, untrusted

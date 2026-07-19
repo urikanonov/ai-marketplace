@@ -10,8 +10,10 @@ versioning.
 
 - Targetless runs no longer auto-select the newest matching HTML from the user's Downloads folder.
   The panel now reviews only a target that is explicit in the invocation or clearly identified by
-  the current session; if none is clear, it stops and asks the user which document to review instead
-  of reaching into Downloads.
+  the current session; an explicit or session-identified target takes priority and is never
+  overridden by a scratch or working-tree file, and scratch/cwd discovery runs only for a targetless
+  invocation and only for a candidate unambiguously tied to this session. If none is clear, it stops
+  and asks the user which document to review instead of reaching into Downloads.
 - The commentable-HTML open-comments extractor is now a shipped script
   (`tools/extract_open_comments.py`) that the skill runs by resolving the plugin root, rather than a
   full parser listing rehydrated from SKILL.md on every activation. Behavior is unchanged.
