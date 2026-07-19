@@ -497,3 +497,15 @@ test("the plugin switcher flyout also reveals on keyboard focus (SITE-SWITCH-01)
   await page.locator(".nav-switcher-trigger").focus();
   await expect(menu).toBeVisible();
 });
+
+
+test("the plugin page footer credits mermaid and Chart.js (SITE-CREDIT-01)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const credit = page.locator("footer.footer .credit");
+  await expect(credit).toHaveCount(1);
+  await expect(credit).toContainText("mermaid");
+  await expect(credit).toContainText("Chart.js");
+  await expect(credit).toContainText("MIT");
+  await expect(credit.locator('a[href="https://mermaid.js.org/"]')).toHaveText("mermaid");
+  await expect(credit.locator('a[href="https://www.chartjs.org/"]')).toHaveText("Chart.js");
+});

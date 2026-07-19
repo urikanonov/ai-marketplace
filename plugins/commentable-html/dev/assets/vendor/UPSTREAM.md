@@ -6,6 +6,14 @@ These files are checked-in local copies used only to build fully self-contained
 - `mermaid.min.js` - copied from `mermaid@11.16.0/dist/mermaid.min.js` - MIT
 - `chart.umd.min.js` - copied from `chart.js@4.5.1/dist/chart.umd.min.js` - MIT
 
+Credit: mermaid (https://mermaid.js.org/) and Chart.js (https://www.chartjs.org/) are third-party
+open-source libraries used under the MIT License. The plugin relies on them for diagram and chart
+rendering. On the ONLINE render path mermaid is imported from a version-pinned jsDelivr CDN URL
+(`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.esm.min.mjs`, single-sourced from
+`dev/package.json`), and Chart.js loads from a pinned CDN only on explicit per-document opt-in; the
+vendored copies here back the zero-network `Export Offline` path. The accepted-risk decision to keep
+the CDN import is documented as `CMH-SEC-04` in `dev/spec/50-security.md`.
+
 Build-time use only:
 
 - `dev/tools/build.py` reads these vetted local files and stamps their source into the
