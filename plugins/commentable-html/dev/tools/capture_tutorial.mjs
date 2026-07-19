@@ -205,50 +205,15 @@ function roundedClip(box, size, top = Math.floor(box.y)) {
   };
 }
 
-async function writeNormalizedPng(normalizer, buffer, pathName) {
-  const png = await normalizer.evaluate(async ({ base64, step, scale }) => {
-    const img = new Image();
-    img.src = "data:image/png;base64," + base64;
-    await img.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(img, 0, 0);
-    if (scale > 1) {
-      const small = document.createElement("canvas");
-      small.width = Math.max(1, Math.ceil(canvas.width / scale));
-      small.height = Math.max(1, Math.ceil(canvas.height / scale));
-      const sctx = small.getContext("2d");
-      sctx.imageSmoothingEnabled = true;
-      sctx.drawImage(canvas, 0, 0, small.width, small.height);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(small, 0, 0, canvas.width, canvas.height);
-    }
-    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    for (let i = 0; i < image.data.length; i += 4) {
-      image.data[i] = Math.round(image.data[i] / step) * step;
-      image.data[i + 1] = Math.round(image.data[i + 1] / step) * step;
-      image.data[i + 2] = Math.round(image.data[i + 2] / step) * step;
-      if (image.data[i] === image.data[i + 1] && image.data[i + 1] === image.data[i + 2] && image.data[i] >= 192) {
-        image.data[i] = 255;
-        image.data[i + 1] = 255;
-        image.data[i + 2] = 255;
-      }
-    }
-    ctx.putImageData(image, 0, 0);
-    return canvas.toDataURL("image/png").split(",", 2)[1];
-  }, { base64: buffer.toString("base64"), step: PNG_QUANTIZE_STEP, scale: PNG_DOWNSAMPLE });
-  fs.writeFileSync(pathName, Buffer.from(png, "base64"));
-}
-
-async function writeScreenshot(page, normalizer, pathName, extra = {}) {
+// Save the raw, full-resolution screenshot. The committed tutorial images must stay crisp and
+// true-color for the published tutorial, so the cross-platform determinism normalization (downsample
+// plus color quantize) is applied only when comparing images (see imagesMatch), never to disk.
+async function writeScreenshot(page, pathName, extra = {}) {
   const buffer = await page.screenshot(screenshotOptions(extra));
-  await writeNormalizedPng(normalizer, buffer, pathName);
+  fs.writeFileSync(pathName, buffer);
 }
 
-async function screenshotLocator(page, normalizer, locator, pathName) {
+async function screenshotLocator(page, locator, pathName) {
   if (!await locator.count()) return;
   await locator.first().waitFor({ state: "visible", timeout: 10000 });
   await scrollLocatorToTop(locator, ELEMENT_SHOT_TOP);
@@ -258,7 +223,7 @@ async function screenshotLocator(page, normalizer, locator, pathName) {
   const box = await locator.boundingBox();
   if (!box) return;
   const size = await locator.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
-  await writeScreenshot(page, normalizer, pathName, { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
+  await writeScreenshot(page, pathName, { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
 }
 
 async function ready(page) {
@@ -355,7 +320,6 @@ async function captureScene(scene, targetDir) {
     // triage example's SRI-pinned Chart.js CDN, which the board shot does not need - is aborted.
     await context.route(/^https?:\/\//, (route) => route.abort());
     await routeVendoredMermaid(context);
-    const normalizer = await context.newPage();
     const page = await context.newPage();
     await page.goto(sceneUrl(scene));
     await ready(page);
@@ -363,7 +327,7 @@ async function captureScene(scene, targetDir) {
     await stabilizeCharts(page);
     await settlePaint(page);
 
-    await scene.capture({ page, normalizer, targetDir, scene });
+    await scene.capture({ page, targetDir, scene });
   } finally {
     if (context) await context.close().catch(() => {});
     await browser.close();
@@ -373,7 +337,7 @@ async function captureScene(scene, targetDir) {
 // Capture a region of a FIXED element (the side TOC, the sidebar, the export menu) by clipping its
 // current viewport box - screenshotLocator's scroll-to-top math assumes an in-flow element, so it
 // mis-clips a position:fixed one. The clip is clamped inside the viewport.
-async function screenshotFixedRegion(page, normalizer, locator, pathName, pad = 8) {
+async function screenshotFixedRegion(page, locator, pathName, pad = 8) {
   const target = locator.first();
   if (!await target.count()) return;
   await target.waitFor({ state: "visible", timeout: 10000 });
@@ -387,7 +351,7 @@ async function screenshotFixedRegion(page, normalizer, locator, pathName, pad = 
   const y = Math.max(0, Math.floor(box.y) - pad);
   const width = Math.max(1, Math.min(Math.ceil(box.width) + pad * 2, view.width - x));
   const height = Math.max(1, Math.min(Math.ceil(box.height) + pad * 2, view.height - y));
-  await writeScreenshot(page, normalizer, pathName, { clip: { x, y, width, height } });
+  await writeScreenshot(page, pathName, { clip: { x, y, width, height } });
 }
 
 // Select a block and save a comment on it via the same composer flow the tutorial demonstrates.
@@ -417,10 +381,10 @@ async function addComment(page, locator, text) {
 }
 
 async function captureGarden(ctx) {
-  const { page, normalizer, targetDir, scene } = ctx;
+  const { page, targetDir, scene } = ctx;
   const P = scene.prefix;
 
-  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "01-top-light"),
+  await writeScreenshot(page, shotPath(targetDir, P, "01-top-light"),
     { clip: { x: 0, y: 0, width: 1320, height: 900 } });
   await page.addStyleTag({
     content: ".cm-toolbar{visibility:hidden !important;}"
@@ -429,7 +393,7 @@ async function captureGarden(ctx) {
       + "#diffAddBtn{display:none !important;}",
   });
 
-  await screenshotLocator(page, normalizer, page.locator("figure.cmh-kql").first(),
+  await screenshotLocator(page, page.locator("figure.cmh-kql").first(),
     shotPath(targetDir, P, "02-kql"));
 
   const chart = page.locator("figure.chart").first();
@@ -443,12 +407,12 @@ async function captureGarden(ctx) {
     const box = await chart.boundingBox();
     if (box) {
       const size = await chart.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
-      await writeScreenshot(page, normalizer, shotPath(targetDir, P, "03-chart"),
+      await writeScreenshot(page, shotPath(targetDir, P, "03-chart"),
         { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
     }
   }
 
-  await screenshotLocator(page, normalizer, page.locator(".cmh-diff-host, pre.cmh-diff").first(),
+  await screenshotLocator(page, page.locator(".cmh-diff-host, pre.cmh-diff").first(),
     shotPath(targetDir, P, "04-diff"));
 
   // Section review tracking: mark a below-the-fold heading reviewed so the top viewport shots stay
@@ -471,7 +435,7 @@ async function captureGarden(ctx) {
     // than silently baking an unreviewed shot that then passes --check and drift checks forever.
     await page.waitForFunction((id) => window.__cmhReview
       && window.__cmhReview.stateOf(id) === "reviewed", reviewedId, { timeout: 5000 });
-    await screenshotLocator(page, normalizer, page.locator('[id="' + reviewedId + '"]').first(),
+    await screenshotLocator(page, page.locator('[id="' + reviewedId + '"]').first(),
       shotPath(targetDir, P, "10-review-badge"));
   }
 
@@ -482,7 +446,7 @@ async function captureGarden(ctx) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await waitForStableLayout(page);
   await settlePaint(page);
-  await screenshotFixedRegion(page, normalizer, page.locator("#cmSideToc, .cm-side-toc"),
+  await screenshotFixedRegion(page, page.locator("#cmSideToc, .cm-side-toc"),
     shotPath(targetDir, P, "11-side-toc"));
   await page.setViewportSize({ width: 1320, height: 900 });
   await waitForStableLayout(page);
@@ -505,7 +469,7 @@ async function captureGarden(ctx) {
     const composer = page.locator(".cm-composer").first();
     await composer.waitFor({ state: "visible", timeout: 5000 });
     await waitForStableLayout(page);
-    await writeScreenshot(page, normalizer, shotPath(targetDir, P, "05-composer"),
+    await writeScreenshot(page, shotPath(targetDir, P, "05-composer"),
       { clip: { x: 0, y: 0, width: 1320, height: 900 } });
     await composer.locator("textarea").first().fill("Does this section read clearly? Consider adding one more example.");
     await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
@@ -514,7 +478,7 @@ async function captureGarden(ctx) {
     await waitForStableLayout(page);
   }
 
-  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "06-comment-saved"),
+  await writeScreenshot(page, shotPath(targetDir, P, "06-comment-saved"),
     { clip: { x: 0, y: 0, width: 1320, height: 900 } });
 
   await page.evaluate(() => { window.prompt = () => ""; });
@@ -523,7 +487,7 @@ async function captureGarden(ctx) {
     await copyBtn.click().catch(() => {});
     await page.locator("#toast.show").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
     await waitForStableLayout(page);
-    await writeScreenshot(page, normalizer, shotPath(targetDir, P, "09-copyall"),
+    await writeScreenshot(page, shotPath(targetDir, P, "09-copyall"),
       { clip: { x: 0, y: 0, width: 1320, height: 900 } });
   }
 
@@ -537,7 +501,7 @@ async function captureGarden(ctx) {
   });
   await page.locator(".cm-help-overlay .cm-help").waitFor({ state: "visible", timeout: 5000 });
   await waitForStableLayout(page);
-  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "07-help"),
+  await writeScreenshot(page, shotPath(targetDir, P, "07-help"),
     { clip: { x: 0, y: 0, width: 1320, height: 900 } });
 
   await page.keyboard.press("Escape").catch(() => {});
@@ -556,7 +520,7 @@ async function captureGarden(ctx) {
   await page.mouse.move(1, 1);
   await page.locator(".cm-help-overlay").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
   await waitForStableLayout(page);
-  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "08-top-dark"),
+  await writeScreenshot(page, shotPath(targetDir, P, "08-top-dark"),
     { clip: { x: 0, y: 0, width: 1320, height: 900 } });
 
   // Comment search + sort and the export menu need saved comments and the open sidebar in light
@@ -597,8 +561,29 @@ async function captureGarden(ctx) {
   });
   await page.mouse.move(1, 1);
   await waitForStableLayout(page);
-  await screenshotFixedRegion(page, normalizer, page.locator("#sidebar"),
-    shotPath(targetDir, P, "13-comment-search"), 0);
+  // Clip the sidebar down to the bottom of its last visible comment card (plus a little padding) so
+  // the shot is tight instead of padded out with the empty rest of the full-height fixed panel.
+  const searchClip = await page.evaluate(() => {
+    const sidebar = document.getElementById("sidebar");
+    if (!sidebar) return null;
+    const sb = sidebar.getBoundingClientRect();
+    let contentBottom = sb.top;
+    for (const card of sidebar.querySelectorAll(".cm-card")) {
+      const r = card.getBoundingClientRect();
+      if (r.bottom > contentBottom) contentBottom = r.bottom;
+    }
+    const pad = 16;
+    const height = Math.min(sb.height, Math.max(1, contentBottom - sb.top + pad));
+    return {
+      x: Math.max(0, Math.floor(sb.left)),
+      y: Math.max(0, Math.floor(sb.top)),
+      width: Math.ceil(sb.width),
+      height: Math.ceil(height),
+    };
+  });
+  if (searchClip) {
+    await writeScreenshot(page, shotPath(targetDir, P, "13-comment-search"), { clip: searchClip });
+  }
 
   // Clear the query, then open and shoot the sidebar export menu.
   await page.evaluate(() => {
@@ -613,37 +598,37 @@ async function captureGarden(ctx) {
   await page.locator("#sidebarExportMenu").first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
   await page.mouse.move(1, 1);
   await waitForStableLayout(page);
-  await screenshotFixedRegion(page, normalizer, page.locator("#sidebarExportMenu"),
+  await screenshotFixedRegion(page, page.locator("#sidebarExportMenu"),
     shotPath(targetDir, P, "12-export-menu"), 0);
 }
 
 async function captureChecklist(ctx) {
-  const { page, normalizer, targetDir, scene } = ctx;
+  const { page, targetDir, scene } = ctx;
   const P = scene.prefix;
   await page.addStyleTag({ content: ".cm-toolbar{visibility:hidden !important;}#diffAddBtn{display:none !important;}" });
   await page.mouse.move(1, 1);
   await settlePaint(page);
-  await screenshotLocator(page, normalizer, page.locator(".cmh-checklist").first(),
+  await screenshotLocator(page, page.locator(".cmh-checklist").first(),
     shotPath(targetDir, P, "01-checklist"));
 }
 
 async function captureNote(ctx) {
-  const { page, normalizer, targetDir, scene } = ctx;
+  const { page, targetDir, scene } = ctx;
   const P = scene.prefix;
   await page.addStyleTag({ content: ".cm-toolbar{visibility:hidden !important;}#diffAddBtn{display:none !important;}" });
   await page.mouse.move(1, 1);
   await settlePaint(page);
-  await screenshotLocator(page, normalizer, page.locator(".cmh-note").first(),
+  await screenshotLocator(page, page.locator(".cmh-note").first(),
     shotPath(targetDir, P, "01-note"));
 }
 
 async function captureBoard(ctx) {
-  const { page, normalizer, targetDir, scene } = ctx;
+  const { page, targetDir, scene } = ctx;
   const P = scene.prefix;
   await page.addStyleTag({ content: ".cm-toolbar{visibility:hidden !important;}#diffAddBtn{display:none !important;}" });
   await page.mouse.move(1, 1);
   await settlePaint(page);
-  await screenshotLocator(page, normalizer,
+  await screenshotLocator(page,
     page.locator(".triage-board-demo, [data-cm-widget='incident-triage-board']").first(),
     shotPath(targetDir, P, "01-board"));
 }
@@ -686,12 +671,47 @@ function buildScenes() {
 
 async function imagesMatch(comparePage, expected, actual) {
   if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
-  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta }) => {
+  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta, scale, step }) => {
     async function decode(base64) {
       const img = new Image();
       img.src = "data:image/png;base64," + base64;
       await img.decode();
       return img;
+    }
+    // Normalize BOTH images the same way before diffing: downsample then upsample nearest (to erase
+    // the sub-pixel font antialiasing that differs across platforms) and quantize colors. This keeps
+    // the --check comparison deterministic across OSes WITHOUT degrading the committed PNGs, which
+    // are written to disk raw and crisp.
+    function normalize(img, width, height) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      if (scale > 1) {
+        const small = document.createElement("canvas");
+        small.width = Math.max(1, Math.ceil(width / scale));
+        small.height = Math.max(1, Math.ceil(height / scale));
+        const sctx = small.getContext("2d");
+        sctx.imageSmoothingEnabled = true;
+        sctx.drawImage(canvas, 0, 0, small.width, small.height);
+        ctx.clearRect(0, 0, width, height);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(small, 0, 0, width, height);
+      }
+      const image = ctx.getImageData(0, 0, width, height);
+      const d = image.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = Math.round(d[i] / step) * step;
+        d[i + 1] = Math.round(d[i + 1] / step) * step;
+        d[i + 2] = Math.round(d[i + 2] / step) * step;
+        if (d[i] === d[i + 1] && d[i + 1] === d[i + 2] && d[i] >= 192) {
+          d[i] = 255;
+          d[i + 1] = 255;
+          d[i + 2] = 255;
+        }
+      }
+      return d;
     }
     try {
       const expectedImg = await decode(expectedBase64);
@@ -701,17 +721,10 @@ async function imagesMatch(comparePage, expected, actual) {
       if (widthDelta > maxDimensionDelta || heightDelta > maxDimensionDelta) return 1;
       const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
       const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(expectedImg, 0, 0);
-      const expectedData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(actualImg, 0, 0);
-      const actualData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const expectedData = normalize(expectedImg, width, height);
+      const actualData = normalize(actualImg, width, height);
       let different = 0;
-      const total = canvas.width * canvas.height;
+      const total = width * height;
       for (let i = 0; i < expectedData.length; i += 4) {
         const maxChannelDelta = Math.max(
           Math.abs(expectedData[i] - actualData[i]),
@@ -732,6 +745,8 @@ async function imagesMatch(comparePage, expected, actual) {
     actualBase64: fs.readFileSync(actual).toString("base64"),
     tolerance: PIXEL_CHANNEL_TOLERANCE,
     maxDimensionDelta: MAX_DIMENSION_DELTA,
+    scale: PNG_DOWNSAMPLE,
+    step: PNG_QUANTIZE_STEP,
   });
   return ratio <= MAX_PIXEL_DIFF_RATIO;
 }

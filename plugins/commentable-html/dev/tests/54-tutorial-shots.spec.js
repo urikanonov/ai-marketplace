@@ -33,6 +33,12 @@ const PIXEL_CHANNEL_TOLERANCE = 96;
 // sub-pixel layout jitter that --check tolerates must not fail here.
 const MAX_PIXEL_DIFF_RATIO = 0.2;
 const MAX_DIMENSION_DELTA = 2;
+// The tool degrades BOTH images the same way before diffing (downsample by 2 then upsample nearest,
+// plus a step-64 color quantize) so cross-platform font antialiasing cannot fail the check. The
+// committed PNGs are saved raw/crisp now, so mirror that normalization here to keep this determinism
+// assertion aligned with (never stricter than) the tool's --check budget.
+const PNG_DOWNSAMPLE = 2;
+const PNG_QUANTIZE_STEP = 64;
 
 // Run the capture tool with the example + output dir (and, for the extra scenes, an explicit
 // prefix). With no prefix the tool defaults to "garden", so regenerating the garden tutorial
@@ -58,29 +64,58 @@ function freshDir(name) {
 
 async function imagesMatch(comparePage, expected, actual) {
   if (!fs.existsSync(expected) || !fs.existsSync(actual)) return false;
-  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta }) => {
+  const ratio = await comparePage.evaluate(async ({ expectedBase64, actualBase64, tolerance, maxDimensionDelta, scale, step }) => {
     async function decode(base64) {
       const img = new Image();
       img.src = "data:image/png;base64," + base64;
       await img.decode();
       return img;
     }
+    // Degrade both images identically (downsample then upsample nearest + color-quantize) before
+    // diffing, exactly like capture_tutorial.mjs, so this determinism check is never stricter than
+    // the tool's --check even though the committed PNGs are now saved raw and crisp.
+    function normalize(img, width, height) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      if (scale > 1) {
+        const small = document.createElement("canvas");
+        small.width = Math.max(1, Math.ceil(width / scale));
+        small.height = Math.max(1, Math.ceil(height / scale));
+        const sctx = small.getContext("2d");
+        sctx.imageSmoothingEnabled = true;
+        sctx.drawImage(canvas, 0, 0, small.width, small.height);
+        ctx.clearRect(0, 0, width, height);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(small, 0, 0, width, height);
+      }
+      const image = ctx.getImageData(0, 0, width, height);
+      const d = image.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = Math.round(d[i] / step) * step;
+        d[i + 1] = Math.round(d[i + 1] / step) * step;
+        d[i + 2] = Math.round(d[i + 2] / step) * step;
+        if (d[i] === d[i + 1] && d[i + 1] === d[i + 2] && d[i] >= 192) {
+          d[i] = 255;
+          d[i + 1] = 255;
+          d[i + 2] = 255;
+        }
+      }
+      return d;
+    }
     try {
       const expectedImg = await decode(expectedBase64);
       const actualImg = await decode(actualBase64);
       if (Math.abs(expectedImg.naturalWidth - actualImg.naturalWidth) > maxDimensionDelta
         || Math.abs(expectedImg.naturalHeight - actualImg.naturalHeight) > maxDimensionDelta) return 1;
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
-      canvas.height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(expectedImg, 0, 0);
-      const expectedData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(actualImg, 0, 0);
-      const actualData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const width = Math.min(expectedImg.naturalWidth, actualImg.naturalWidth);
+      const height = Math.min(expectedImg.naturalHeight, actualImg.naturalHeight);
+      const expectedData = normalize(expectedImg, width, height);
+      const actualData = normalize(actualImg, width, height);
       let different = 0;
-      const total = canvas.width * canvas.height;
+      const total = width * height;
       for (let i = 0; i < expectedData.length; i += 4) {
         const maxChannelDelta = Math.max(
           Math.abs(expectedData[i] - actualData[i]),
@@ -99,6 +134,8 @@ async function imagesMatch(comparePage, expected, actual) {
     actualBase64: fs.readFileSync(actual).toString("base64"),
     tolerance: PIXEL_CHANNEL_TOLERANCE,
     maxDimensionDelta: MAX_DIMENSION_DELTA,
+    scale: PNG_DOWNSAMPLE,
+    step: PNG_QUANTIZE_STEP,
   });
   return ratio <= MAX_PIXEL_DIFF_RATIO;
 }
