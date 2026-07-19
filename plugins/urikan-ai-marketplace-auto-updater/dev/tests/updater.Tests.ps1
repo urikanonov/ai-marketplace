@@ -446,7 +446,10 @@ try {
         $savedRoot15 = $env:CLAUDE_PLUGIN_ROOT
         $savedConfig15 = $env:CLAUDE_CONFIG_DIR
         try {
-            $env:PATH = "$bin15;$savedPath15"
+            # Use the platform's real PATH separator (";" on Windows, ":" on Linux/macOS) - the
+            # dispatcher runs under a real POSIX shell/pwsh which splits PATH on ":" on non-Windows,
+            # so a hardcoded ";" here would silently hide the stub CLI from command resolution.
+            $env:PATH = "$bin15$([IO.Path]::PathSeparator)$savedPath15"
             $env:CLAUDE_PLUGIN_ROOT = $pkgRoot
             $env:CLAUDE_CONFIG_DIR = $home15
             & $bashExe15 "-c" $h.command | Out-Null
