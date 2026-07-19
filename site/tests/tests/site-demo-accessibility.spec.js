@@ -233,6 +233,9 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
 
 test("demo mounts inside the iframe on the plugin page (CSP allows it)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  // The demo iframe is lazy-loaded far down the page; scroll it into view so it loads (as a
+  // real reader reaching the section would), then assert it mounts under the page CSP.
+  await page.locator("#demo iframe").scrollIntoViewIfNeeded();
   const frame = page.frameLocator("#demo iframe");
   await expect(frame.locator(".cm-toolbar")).toHaveCount(1, { timeout: 20000 });
   await expect(frame.locator("#btnCopyAll")).toBeAttached({ timeout: 20000 });

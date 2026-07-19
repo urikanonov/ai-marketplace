@@ -470,6 +470,9 @@ test("demo slider exposes and loads the Showcase deck (SITE-DEMO-10)", async ({ 
   await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /deck-showcase\.html/);
   await expect(page.locator("#demo-title")).toHaveText("Showcase Deck");
   await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-showcase");
+  // Scroll the lazy demo iframe into view so it loads promptly (as a reader reaching it would),
+  // then assert the deck mounts inside it.
+  await page.locator("#demo-iframe").scrollIntoViewIfNeeded();
   const frame = page.frameLocator("#demo-iframe");
   await expect(frame.locator("#commentRoot[data-cmh-mode='deck']")).toHaveCount(1, { timeout: 15000 });
   await expect(frame.locator(".cmh-deck-mode-toggle")).toBeVisible();
@@ -516,4 +519,85 @@ test("the plugin page footer credits mermaid and Chart.js (SITE-CREDIT-01)", asy
   await expect(credit).toContainText("MIT");
   await expect(credit.locator('a[href="https://mermaid.js.org/"]')).toHaveText("mermaid");
   await expect(credit.locator('a[href="https://www.chartjs.org/"]')).toHaveText("Chart.js");
+});
+
+
+test("the plugin page leads with a review-workflow showcase and a real UI screenshot above the feature grid (SITE-PLUGIN-23)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+
+  // The hero lead itself lands the one-line value prop, not only the prose lower down.
+  await expect(page.locator("header.hero p.lead")).toContainText(/code review for your AI's plans and reports/i);
+
+  const showcase = page.locator("#showcase");
+  await expect(showcase).toHaveCount(1);
+
+  // The showcase leads the page: it is the FIRST element after the hero header (not buried below
+  // other blocks), so the value proposition is on the first screen.
+  const afterHero = await page.evaluate(() => {
+    const showcase = document.querySelector("#showcase");
+    return showcase.previousElementSibling === document.querySelector("main > header.hero");
+  });
+  expect(afterHero).toBe(true);
+
+  // A real product screenshot (the specific landing crop), framed, with descriptive alt text naming
+  // the actual UI, that decodes (a synced asset served from tutorial/assets, not broken/placeholder).
+  const img = showcase.locator("img.showcase-img");
+  await expect(img).toBeVisible();
+  await expect(img).toHaveAttribute("src", /tutorial\/assets\/landing-composer\.png$/);
+  await expect(img).toHaveAttribute("alt", /inline comment window/i);
+  await expect(img).toHaveAttribute("alt", /Write your review comment/i);
+  await img.scrollIntoViewIfNeeded();
+  await expect.poll(() => img.evaluate((el) => el.naturalWidth)).toBeGreaterThan(0);
+
+  // The concrete review workflow (Select -> Comment inline -> Copy all -> Reload) renders as four
+  // numbered steps, so a first-time visitor sees how they would use it without scrolling.
+  await expect(showcase.locator(".showcase-flow .showcase-step")).toHaveCount(4);
+  for (const label of ["Select", "Comment inline", "Copy all", "Reload"]) {
+    await expect(showcase.locator(".showcase-flow")).toContainText(label);
+  }
+  // The steps expose explicit ARIA list semantics (role="list" is the VoiceOver safeguard for the
+  // list-style:none list, whose implicit role Safari drops); pin the attribute so removing it fails.
+  const flow = showcase.locator("ol.showcase-flow");
+  await expect(flow).toHaveAttribute("role", "list");
+  await expect(flow.getByRole("listitem")).toHaveCount(4);
+
+  // The showcase CTA bridges straight to the live demo.
+  await expect(showcase.locator(".showcase-cta")).toHaveAttribute("href", "#demo");
+
+  // The showcase sits ABOVE both Install and the feature grid in document order.
+  const placement = await page.evaluate(() => {
+    const showcase = document.querySelector("#showcase");
+    const install = document.querySelector("#install");
+    const features = document.querySelector("#features");
+    const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+    return {
+      beforeInstall: Boolean(showcase.compareDocumentPosition(install) & FOLLOWING),
+      beforeFeatures: Boolean(showcase.compareDocumentPosition(features) & FOLLOWING),
+    };
+  });
+  expect(placement.beforeInstall).toBe(true);
+  expect(placement.beforeFeatures).toBe(true);
+});
+
+
+test("the showcase screenshot scales within a mobile viewport with no horizontal overflow (SITE-PLUGIN-24)", async ({ page }) => {
+  await page.setViewportSize({ width: 380, height: 900 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+
+  const img = page.locator("#showcase img.showcase-img");
+  await expect(img).toBeVisible();
+  // The image scales down responsively and stays FULLY within the viewport - both its left and
+  // right edges are on-screen (not merely narrower than the viewport while shifted off an edge).
+  const box = await img.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(380);
+  // The showcase block itself introduces no horizontal overflow at phone width.
+  const noOverflow = await page
+    .locator("#showcase")
+    .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(noOverflow).toBe(true);
+  // The two-column grid collapses to a single column: the screenshot stacks above the steps.
+  const shot = await page.locator("#showcase .showcase-shot").boundingBox();
+  const copy = await page.locator("#showcase .showcase-copy").boundingBox();
+  expect(shot.y + shot.height).toBeLessThanOrEqual(copy.y + 1);
 });
