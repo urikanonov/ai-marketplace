@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.167.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.168.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.168.0] - 2026-07-19</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The validator now ERRORS in NonPortable mode when a baked absolute or <code>file://</code> companion reference resolves inside an OS temporary directory that is not the document&#x27;s own folder (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment layer once the OS reaps the temp directory - the exact failure behind a shared document whose CSS/JS 404&#x27;d after handoff. Temp detection is cross-platform and root-anchored (<code>TMPDIR</code>/<code>TEMP</code>/ <code>TMP</code> and <code>tempfile.gettempdir()</code>, symlink-resolved via <code>realpath</code>, plus <code>/tmp</code>, <code>/var/tmp</code>, <code>/var/folders</code>, <code>/windows/temp</code>, and per-user <code>AppData/Local/Temp</code>), so a durable project folder named <code>tmp</code> is never mis-flagged; relative refs and a companion sitting beside the document are never flagged. The message points at a Portable single-file export or copying <code>dist/</code> to a durable folder.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.167.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Preview highlight while composing a text comment (CMH-CORE-17): opening a new text-comment composer immediately shows the selected text as a live amber preview highlight (<code>mark.cm-preview</code>) so the reviewer sees exactly what the comment will anchor to. Saving turns it into the real persisted highlight over exactly the previewed text; cancelling via the Cancel button or Escape removes it and stores nothing. The preview is transient chrome (no <code>data-cid</code>, never persisted, excluded from export and print), stays in the text-offset space so a concurrent composer&#x27;s anchors never cross, is fully cleaned up if wrapping throws, and is re-applied if a save cannot complete so the still-open composer keeps its anchor cue.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.166.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -443,8 +452,6 @@
               <li>Deck hover is smoother (CMH-DECK-21, CMH-DECK-RECIPE-02): table-cell, metric-tile, and reference-pill hovers no longer animate <code>box-shadow</code> (a per-frame repaint) and table cells no longer apply a <code>transform</code> lift (which relayouts the table). Cells ease only the cheap <code>background-color</code> and the highlight ring snaps; tiles and pills keep their lift via the compositor-friendly <code>transform</code>. Sweeping the mouse across a large deck table no longer lags.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.165.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -479,14 +486,7 @@
               <li><code>deck_validate.py</code> now also gates the reference-pill contrast pair (<code>--slide-link</code> over <code>--cmh-deck-code-bg</code>), so a custom theme cannot ship low-contrast reference links.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.160.1] - 2026-07-19</h3></div>
-            <div class="group-label">Security</div>
-            <ul>
-              <li>Source provenance now stores only the source filename in <code>data-doc-source</code>, Copy all, and every preserved export. Authoring tools and runtime fallbacks strip directories, drive letters, usernames, and internal project paths while leaving the document comment key, session id, and generated timestamp unchanged (CMH-SEC-03, part of #438).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">138 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">139 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
