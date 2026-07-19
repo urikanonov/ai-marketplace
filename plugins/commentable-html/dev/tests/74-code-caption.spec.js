@@ -117,16 +117,28 @@ test("data-code-caption on a KQL figure pre does not add a second caption (CMH-C
   await expect(page.locator(".cmh-code-wrap.cmh-has-caption")).toHaveCount(0);
 });
 
-test("a long caption does not overlap the language pill and Copy button, even a wide one (CMH-CODE-05)", async ({ page }) => {
+test("a long caption is clipped and never overlaps the language pill and Copy button, even a wide one (CMH-CODE-05)", async ({ page }) => {
+  // A narrow viewport guarantees the long filename actually overflows the caption bar, so the
+  // separation assertion below is meaningful rather than trivially true (per testing-guidelines).
+  await page.setViewportSize({ width: 480, height: 900 });
   await openContent(page, `
 <h2>Long caption</h2>
-<pre data-code-caption="src/handlers/very-long-file-name-that-reaches-the-edge.ts"><code class="language-typescript">export const run = () => 1;</code></pre>`, "cmh-code-caption-long");
+<pre data-code-caption="src/handlers/very-long-file-name-that-reaches-the-edge-and-keeps-going.ts"><code class="language-typescript">export const run = () => 1;</code></pre>`, "cmh-code-caption-long");
   const wrap = page.locator(".cmh-code-wrap.cmh-has-caption");
   // A wide language pill (TypeScript) is the worst case for overlap.
   await expect(wrap.locator(".cm-code-tools .cm-code-lang", { hasText: "TypeScript" })).toHaveCount(1);
+  const textEl = page.locator(".cmh-code-caption-text");
+  // Premise: the filename genuinely overflows its box AND is visibly clipped (overflow hidden +
+  // ellipsis), so removing the clipping would make this fail rather than staying green.
+  const state = await textEl.evaluate((el) => ({
+    overflowing: el.scrollWidth > el.clientWidth + 1,
+    clipped: getComputedStyle(el).overflowX === "hidden",
+  }));
+  expect(state.overflowing).toBe(true);
+  expect(state.clipped).toBe(true);
   const toolsBox = await wrap.locator(".cm-code-tools").boundingBox();
-  const textRight = await page.locator(".cmh-code-caption-text").evaluate((el) => el.getBoundingClientRect().right);
-  // The filename text (ellipsized) ends before the inline tools cluster - no overlap for any pill width.
+  const textRight = await textEl.evaluate((el) => el.getBoundingClientRect().right);
+  // The clipped caption box ends before the inline tools cluster - no overlap for any pill width.
   expect(textRight).toBeLessThanOrEqual(toolsBox.x + 1);
 });
 
