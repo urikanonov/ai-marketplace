@@ -317,6 +317,7 @@ test("Export Offline embeds the MIT license notice beside each inlined library (
   test.setTimeout(60000);
   const staged = stageContent(CONTENT, { key: "cmh-offline-notice", source: "offline-notice.html" });
   const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
   try {
     await routeRichContentLocal(page);
     await installClipboardCapture(page);
@@ -341,11 +342,30 @@ test("Export Offline embeds the MIT license notice beside each inlined library (
     expect(mermaidNotice).toContain("Permission is hereby granted");
     expect(chartNotice).toContain("Copyright (c) 2014-2024 Chart.js Contributors");
     expect(chartNotice).toContain("Permission is hereby granted");
+    // Exactly one notice per library on a fresh export.
+    expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+    expect((exportedHtml.match(/Third-party notice - Chart\.js/g) || []).length).toBe(1);
     // The notice is a comment, never an executed script, so it cannot run and stays under the CSP.
     expect(exportedHtml).not.toContain("Third-party notice - mermaid is bundled inline for offline use under the MIT License:</script>");
+
+    // Idempotency: re-exporting the (zero-network) offline file must NOT accumulate duplicate
+    // notices - the prior notice comment is stripped and re-emitted exactly once.
+    const exportedPath = path.join(outDir, "offline-notice.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    await page.goto(fileUrl(exportedPath));
+    await ready(page);
+    await openSidebarExportMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    const reExportedHtml = await capturedDownloadText(page);
+    expect((reExportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+    expect((reExportedHtml.match(/Third-party notice - Chart\.js/g) || []).length).toBe(1);
   } finally {
     await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
 

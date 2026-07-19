@@ -106,6 +106,17 @@ function _stripOfflineNetworkLoads(doc) {
   });
 }
 function _stripOfflineRichRenderers(doc) {
+  // On a re-export of an already-offline document, remove any previously inlined library notice
+  // comments so they are re-emitted exactly once (the inlined lib scripts below are stripped and
+  // re-added the same way); otherwise each re-export would append another duplicate notice.
+  const head = doc.head || doc.querySelector("head");
+  if (head) {
+    Array.prototype.slice.call(head.childNodes).forEach(function (n) {
+      if (n.nodeType === 8 && /Third-party notice - .* bundled inline for offline use under the MIT License:/.test(n.nodeValue || "")) {
+        if (n.parentNode) n.parentNode.removeChild(n);
+      }
+    });
+  }
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||

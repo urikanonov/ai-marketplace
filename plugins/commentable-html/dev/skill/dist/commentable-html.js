@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.164.0";
+const CMH_VERSION = "1.165.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6659,6 +6659,17 @@ function _stripOfflineNetworkLoads(doc) {
   });
 }
 function _stripOfflineRichRenderers(doc) {
+  // On a re-export of an already-offline document, remove any previously inlined library notice
+  // comments so they are re-emitted exactly once (the inlined lib scripts below are stripped and
+  // re-added the same way); otherwise each re-export would append another duplicate notice.
+  const head = doc.head || doc.querySelector("head");
+  if (head) {
+    Array.prototype.slice.call(head.childNodes).forEach(function (n) {
+      if (n.nodeType === 8 && /Third-party notice - .* bundled inline for offline use under the MIT License:/.test(n.nodeValue || "")) {
+        if (n.parentNode) n.parentNode.removeChild(n);
+      }
+    });
+  }
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||

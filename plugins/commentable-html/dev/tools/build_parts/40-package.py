@@ -4,7 +4,7 @@
 # docs/, vendor/, dist/, examples/) is assembled into a single deterministic
 # skill-resources.zip that a SessionStart hook extracts on first run (retrying
 # the transient Windows Defender file lock the installer does not). The shipped
-# SKILL.md and LICENSE stay unzipped (the agent discovers the skill from SKILL.md
+# SKILL.md, LICENSE, and THIRD_PARTY_NOTICES.md stay unzipped (the agent discovers the skill from SKILL.md
 # before extraction), and the hook configs carry the version-stamped marker name.
 # --------------------------------------------------------------------------- #
 import io
@@ -155,7 +155,8 @@ def _stamp_hooks(text, version):
 
 
 def package_text_stamps(stage_dir, pkg_dir, version):
-    """Return {path: text} for the shipped-pkg TEXT artifacts (the unzipped SKILL.md and LICENSE
+    """Return {path: text} for the shipped-pkg TEXT artifacts (the unzipped SKILL.md, LICENSE, and
+    THIRD_PARTY_NOTICES.md
     copies, and the two hook configs with their version-stamped marker/arg). The zip itself is
     bytes and is handled separately."""
     out = {}

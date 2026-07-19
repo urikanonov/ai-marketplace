@@ -637,7 +637,7 @@ class StampHelperTests(unittest.TestCase):
 
 class PackageTests(unittest.TestCase):
     """CMH-PKG-11: build.py assembles a deterministic skill-resources.zip and --check (check_package)
-    catches drift in the zip contents or the shipped SKILL.md/LICENSE/hook stamps."""
+    catches drift in the zip contents or the shipped SKILL.md/LICENSE/THIRD_PARTY_NOTICES.md/hook stamps."""
 
     def test_resources_zip_is_deterministic(self):
         a = build.build_resources_zip_bytes(_paths.PKG)
@@ -691,7 +691,7 @@ class PackageTests(unittest.TestCase):
                                  info.filename + ": mode must be a fixed 0o644")
 
     def test_packager_fails_on_missing_shipped_file(self):
-        # A stage missing a required shipped file (SKILL.md/LICENSE) must fail closed, so --check and
+        # A stage missing a required shipped file (SKILL.md/LICENSE/THIRD_PARTY_NOTICES.md) must fail closed, so --check and
         # write cannot silently leave a stale shipped copy in place.
         with tempfile.TemporaryDirectory() as d:
             stage = self._minimal_stage(d)  # has the 4 runtime dirs but no SKILL.md / LICENSE
