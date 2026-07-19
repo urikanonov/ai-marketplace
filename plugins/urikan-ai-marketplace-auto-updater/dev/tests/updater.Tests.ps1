@@ -164,6 +164,55 @@ exit 0
     return $bin
 }
 
+# Resolves the native filesystem path of a POSIX utility as $bashExe's own (unmodified) PATH sees
+# it, translating a Git-Bash POSIX path (e.g. "/usr/bin/mkdir") to its native Windows path via
+# cygpath so it can be copied with PowerShell's own Copy-Item. Returns $null if not found or if the
+# name resolves to a shell builtin/function (no standalone file to copy - those need no PATH entry
+# anyway, since builtins are always available regardless of PATH).
+function Resolve-NativeUtilPath([string]$bashExe, [string]$name) {
+    $posix = ((& $bashExe "-c" "command -v $name 2>/dev/null") -join "").Trim()
+    if (-not $posix) { return $null }
+    if ($IsWindows) {
+        $native = ((& $bashExe "-c" "cygpath -w -- '$posix' 2>/dev/null") -join "").Trim()
+        if ($native -and (Test-Path -LiteralPath $native -PathType Leaf)) { return $native }
+        return $null
+    }
+    if (Test-Path -LiteralPath $posix -PathType Leaf) { return $posix }
+    return $null
+}
+
+# Copies the specific external utilities the missing-pwsh branch needs (mkdir, date, printf, cat)
+# into a fresh directory. Needed because Remove-PwshFromPath below may exclude a directory that
+# happens to colocate pwsh with coreutils (e.g. Ubuntu's /usr/bin ships both), which would
+# otherwise silently break the branch's own mkdir/date/printf calls, not just hide pwsh.
+function New-PwshFreeUtilBin([string]$root, [string]$bashExe) {
+    $dir = Join-Path $root "safebin"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    foreach ($name in @("mkdir", "date", "printf", "cat")) {
+        $native = Resolve-NativeUtilPath $bashExe $name
+        if ($native) {
+            $destName = if ($IsWindows) { Split-Path -Leaf $native } else { $name }
+            Copy-Item -LiteralPath $native -Destination (Join-Path $dir $destName) -Force -ErrorAction SilentlyContinue
+        }
+    }
+    return $dir
+}
+
+# Builds a PATH string with every directory that contains a real pwsh binary removed, so
+# `command -v pwsh` genuinely fails inside the real if/then/else/fi dispatcher - proving the whole
+# command takes the missing-pwsh branch on its own merits, rather than assuming its control flow by
+# regex-extracting the else branch's text and running only that in isolation.
+function Remove-PwshFromPath([string]$path) {
+    $sep = [IO.Path]::PathSeparator
+    $pwshNames = if ($IsWindows) { @("pwsh.exe", "pwsh.cmd", "pwsh.bat") } else { @("pwsh") }
+    $dirs = ($path -split [regex]::Escape($sep)) | Where-Object { $_ }
+    $kept = $dirs | Where-Object {
+        $dir = $_
+        -not ($pwshNames | Where-Object { Test-Path -LiteralPath (Join-Path $dir $_) -PathType Leaf })
+    }
+    return ($kept -join $sep)
+}
+
 Write-Host "== UPD-01 self-exclusion =="
 try {
     Reset-Mock
@@ -273,30 +322,32 @@ try {
     Assert-True ($bash -like "*command -v pwsh*") "UPD-07: bash field probes for pwsh"
     Assert-True ($bash -like "*plugin-data*" -and $bash -like "*$self.log*") "UPD-07: bash field targets the plugin-data log"
     Assert-True ($bash -like "*not found on PATH*") "UPD-07: bash field logs a discoverable skip note"
-    # Functional check of the else (missing-pwsh) branch: actually run it under a real POSIX
-    # shell (bash on Linux, Git Bash on Windows - see Get-FunctionalBashExe) against a sandbox
-    # COPILOT_HOME, proving the real path/quoting resolve and the skip note is written, not just
-    # that the text matches a pattern.
+    # Functional check of the WHOLE if/then/else/fi dispatcher (not a regex-extracted branch):
+    # run the real, unmodified $bash string itself under a real POSIX shell (bash on Linux, Git
+    # Bash on Windows - see Get-FunctionalBashExe), in a sandbox PATH where the real pwsh binary
+    # has been genuinely removed (not merely a fabricated snippet standing in for it), so a
+    # malformed conditional, wrong probe, or quoting/control-flow regression in the full command
+    # would surface here - proving the missing-pwsh path is taken on its own merits.
     $bashExe = Get-FunctionalBashExe
     if ($bashExe) {
-        $elseBranch = $null
-        if ($bash -match "else\s+(.*);\s*fi\s*$") { $elseBranch = $Matches[1] }
-        if ($elseBranch) {
-            $home7 = Join-Path ([IO.Path]::GetTempPath()) ("b7-" + [Guid]::NewGuid().ToString("N"))
-            New-Item -ItemType Directory -Force -Path $home7 | Out-Null
-            $prev = $env:COPILOT_HOME
-            try {
-                $env:COPILOT_HOME = $home7
-                & $bashExe "-c" $elseBranch | Out-Null
-            } finally {
-                if ($null -eq $prev) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $prev }
-            }
-            $logPath = Join-Path (Join-Path $home7 "plugin-data") "$self.log"
-            Assert-True ((Test-Path $logPath) -and ((Get-Content -Raw $logPath) -like "*not found on PATH*")) "UPD-07: else branch writes the skip note to the log"
-            Remove-Item -Recurse -Force $home7
-        } else {
-            Write-Host "  (could not isolate else branch; structural checks only)"
+        $home7 = Join-Path ([IO.Path]::GetTempPath()) ("b7-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $home7 | Out-Null
+        $safeBin7 = New-PwshFreeUtilBin $home7 $bashExe
+        $savedPath7 = $env:PATH
+        $prev = $env:COPILOT_HOME
+        try {
+            $env:PATH = "$safeBin7$([IO.Path]::PathSeparator)$(Remove-PwshFromPath $savedPath7)"
+            $probe7 = ((& $bashExe "-c" "command -v pwsh 2>/dev/null") -join "").Trim()
+            Assert-True ([string]::IsNullOrEmpty($probe7)) "UPD-07: sandbox PATH genuinely lacks pwsh (precondition for the missing-pwsh branch)"
+            $env:COPILOT_HOME = $home7
+            & $bashExe "-c" $bash | Out-Null
+        } finally {
+            $env:PATH = $savedPath7
+            if ($null -eq $prev) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $prev }
         }
+        $logPath = Join-Path (Join-Path $home7 "plugin-data") "$self.log"
+        Assert-True ((Test-Path $logPath) -and ((Get-Content -Raw $logPath) -like "*not found on PATH*")) "UPD-07: the real if/then/else/fi dispatcher (run whole, not just its else branch) takes the missing-pwsh path and writes the skip note"
+        Remove-Item -Recurse -Force $home7
     } else {
         Write-Host "  (bash unavailable; structural checks only)"
     }
