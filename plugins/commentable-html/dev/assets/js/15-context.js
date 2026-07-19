@@ -181,5 +181,6 @@ function removeHighlight(comment) {
   else if (comment.anchorType === "image") clearImageHighlight(comment.id);
   else if (comment.anchorType === "widget") clearWidgetHighlight(comment.id);
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
+  else if (comment.anchorType === "slide") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }

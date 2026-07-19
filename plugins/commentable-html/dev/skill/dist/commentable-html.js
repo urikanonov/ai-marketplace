@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.161.0";
+const CMH_VERSION = "1.162.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -563,6 +563,7 @@ function removeHighlight(comment) {
   else if (comment.anchorType === "image") clearImageHighlight(comment.id);
   else if (comment.anchorType === "widget") clearWidgetHighlight(comment.id);
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
+  else if (comment.anchorType === "slide") { /* no anchored highlight to remove */ }
   else unwrapMarks(comment.id);
 }
 /* ---------- Mermaid commenting layer ----------
@@ -3229,6 +3230,40 @@ function setupValidationBanner() {
 // highlight and no offsets; it just carries a note about the whole document.
 function openDocumentComposer() { return createComposerElement({ mode: "new-document" }); }
 
+// Deck-only: a comment tied to a specific slide (raised by "Comment on slide" on an empty
+// right-click). Like a document comment it has no text highlight, but it records the slide
+// id/title/index so the sidebar can label it and its jump can navigate to that slide.
+function _deckSlideMeta(slideEl) {
+  if (!slideEl) return null;
+  // Index within the SAME slide set the deck runtime uses (the stage), so a persisted slideIndex
+  // matches window.__cmhDeck's indexing for the id-less jump fallback.
+  const scope = root.querySelector(".deck-stage") || root;
+  const slides = Array.prototype.slice.call(scope.querySelectorAll(".slide"));
+  const index = slides.indexOf(slideEl);
+  const explicit = slideEl.getAttribute("data-slide-title") || slideEl.getAttribute("aria-label");
+  const heading = slideEl.querySelector("h1,h2,h3,h4,h5,h6");
+  const text = explicit || (heading && heading.textContent) || slideEl.getAttribute("data-slide-id");
+  // Cap the derived title so an over-long heading cannot bloat every sidebar card and Copy-all
+  // line; the full slide is still identified by its id.
+  const title = (text || ("Slide " + (index + 1))).replace(/\s+/g, " ").trim().slice(0, 120);
+  return { slideId: slideEl.getAttribute("data-slide-id"), slideTitle: title, slideIndex: index };
+}
+function openSlideComposer(slideId) {
+  let slideEl = null;
+  if (slideId) {
+    // Match by getAttribute rather than an attribute selector so the runtime never inlines a
+    // literal data-slide-id attribute string (which a scaffold's slide-id count would miscount).
+    const scope = root.querySelector(".deck-stage") || root;
+    const all = Array.prototype.slice.call(scope.querySelectorAll(".slide"));
+    slideEl = all.filter(function (s) { return s.getAttribute("data-slide-id") === slideId; })[0] || null;
+  }
+  // Fall back to the active slide when the id is missing or did not resolve (e.g. a slide
+  // authored without a data-slide-id), so the comment still ties to the on-screen slide.
+  if (!slideEl) slideEl = root.querySelector(".slide.active") || root.querySelector(".slide");
+  const meta = _deckSlideMeta(slideEl) || { slideId: slideId || null, slideTitle: "", slideIndex: -1 };
+  return createComposerElement({ mode: "new-slide", slide: meta });
+}
+
 /* ---------- Selection handling ---------- */
 function selectionInRoot() {
   const sel = window.getSelection();
@@ -3251,11 +3286,20 @@ function selectionInRoot() {
 // floating "Add comment" popup (raised from the selection/mouseup path) for commenting.
 const _coarsePointer = !!(window.matchMedia
   && window.matchMedia("(hover: none), (pointer: coarse)").matches);
+let pendingSlideId = null;
 function _setMenuMode(mode) {
   const mc = document.getElementById("menuComment");
+  const ms = document.getElementById("menuSlideComment");
   const md = document.getElementById("menuDocComment");
+  // In a deck, an empty right-click offers BOTH a slide-scoped comment and a deck-wide comment;
+  // a flat document offers only the single document-wide comment.
+  const deckDoc = (mode === "document") && IS_DECK;
   if (mc) mc.hidden = (mode !== "text");
-  if (md) md.hidden = (mode !== "document");
+  if (ms) ms.hidden = !deckDoc;
+  if (md) {
+    md.hidden = (mode !== "document");
+    md.textContent = IS_DECK ? "Comment on deck" : "Comment on document";
+  }
 }
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
@@ -3282,6 +3326,15 @@ document.addEventListener("contextmenu", (e) => {
   if (t.closest && t.closest("a[href], img, canvas, svg, button, input, textarea, select, [data-cm-part], mark.cm-hl")) { hideMenu(); return; }
   e.preventDefault();
   pendingRange = null; pendingQuote = ""; pendingDiffSel = null;
+  // In a deck, remember which slide the empty right-click landed on so a slide-scoped comment
+  // ties to it; fall back to the active slide when the click was on the stage margin.
+  if (IS_DECK) {
+    const slideEl = t.closest && t.closest(".slide");
+    pendingSlideId = slideEl ? slideEl.getAttribute("data-slide-id")
+      : (window.__cmhDeck ? window.__cmhDeck.activeSlideId() : null);
+  } else {
+    pendingSlideId = null;
+  }
   _setMenuMode("document");
   showMenu(e.clientX, e.clientY);
 });
@@ -3461,6 +3514,8 @@ document.getElementById("menuComment").addEventListener("click", () => {
 });
 const _menuDocBtn = document.getElementById("menuDocComment");
 if (_menuDocBtn) _menuDocBtn.addEventListener("click", () => { hideMenu(); openDocumentComposer(); });
+const _menuSlideBtn = document.getElementById("menuSlideComment");
+if (_menuSlideBtn) _menuSlideBtn.addEventListener("click", () => { hideMenu(); openSlideComposer(pendingSlideId); });
 /* ---------- Composer (per-instance, parallel-safe) ---------- */
 function bringToFront(el) { el.style.zIndex = ++composerZ; }
 
@@ -3494,7 +3549,7 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -3565,6 +3620,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     el._quote = widget.quote || widget.label || widget.part || widget.widget;
   } else if (mode === "new-document") {
     el._quote = "(document-wide comment)";
+  } else if (mode === "new-slide") {
+    el._slide = slide;
+    el._quote = slide && slide.slideTitle ? ("slide: " + slide.slideTitle) : "(comment on slide)";
   } else {
     el._quote = comment.quote;
     isCodeQuote = !!comment.isCode;
@@ -3593,6 +3651,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
   } else if (mode === "new-document") {
+    const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
+    anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
+  } else if (mode === "new-slide") {
     const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
     anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
   } else {
@@ -3851,6 +3912,22 @@ function saveComposerElement(el) {
       headingPath: [],
     };
     comments.push(comment);
+  } else if (el._mode === "new-slide") {
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const s = el._slide || {};
+    const comment = {
+      id,
+      anchorType: "slide",
+      slideId: s.slideId || null,
+      slideTitle: s.slideTitle || "",
+      slideIndex: (typeof s.slideIndex === "number") ? s.slideIndex : -1,
+      quote: "(comment on slide)",
+      note,
+      createdAt: new Date().toISOString(),
+      section: null,
+      headingPath: [],
+    };
+    comments.push(comment);
   } else {
     const r = rangeFromOffsets(el._start, el._end);
     if (!r) {
@@ -3954,17 +4031,7 @@ function renderComments() {
     if (typeof refreshReviewUI === "function") refreshReviewUI();
     return;
   }
-  const sortKey = (c) => (c.anchorType === "document")
-    ? -1
-    : (c.anchorType === "mermaid")
-    ? (1e12 + (c.diagramIndex || 0) * 1000)
-    : (c.anchorType === "diff")
-    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
-    : (c.anchorType === "image")
-    ? (3e12 + (c.imageIndex || 0))
-    : (c.anchorType === "widget")
-    ? (4e12 + _widgetOrderKey(c))
-    : (typeof c.start === "number" ? c.start : 0);
+  const sortKey = _anchorSortKey;
   const sorted = (commentSort === "time-asc")
     ? [...comments].sort((a, b) => (commentTimeValue(a) - commentTimeValue(b)) || (sortKey(a) - sortKey(b)))
     : (commentSort === "time-desc")
@@ -3976,6 +4043,7 @@ function renderComments() {
     const isImage = c.anchorType === "image";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
+    const isSlide = c.anchorType === "slide";
     const path = (c.headingPath && c.headingPath.length)
       ? c.headingPath.map(h => escapeHtml(h.text)).join(" &rsaquo; ")
       : (c.section ? escapeHtml(c.section) : "");
@@ -3990,6 +4058,8 @@ function renderComments() {
       quoteHtml = `<div class="quote"><span class="ctx">${escapeHtml(c.widget || "widget")}: </span><span class="quoted">"${escapeHtml(c.partLabel || c.part || "")}"</span></div>`;
     } else if (isDocument) {
       quoteHtml = `<div class="quote"><span class="quoted">(document-wide comment)</span></div>`;
+    } else if (isSlide) {
+      quoteHtml = `<div class="quote"><span class="ctx">slide: </span><span class="quoted">"${escapeHtml(c.slideTitle || c.slideId || "")}"</span></div>`;
     } else if (c.isCode) {
       // Code-block quotes are rendered as a single preformatted block (no before/after
       // ctx) because surrounding code lines look misleading when collapsed to one line.
@@ -4016,6 +4086,8 @@ function renderComments() {
       pinBits.push(`part "${escapeHtml(c.partLabel || c.part || "")}"`);
     } else if (isDocument) {
       pinBits.push("document-wide");
+    } else if (isSlide) {
+      pinBits.push(`slide "${escapeHtml(c.slideTitle || c.slideId || "")}"`);
     } else {
       if (c.isCode) {
         pinBits.push(c.codeLanguage ? `code (${escapeHtml(c.codeLanguage)})` : "code block");
@@ -4025,9 +4097,13 @@ function renderComments() {
       // on the sidebar card, which only surfaces reader-facing anchor info.
     }
     const pinHtml = pinBits.length ? `<div class="pin">${pinBits.join(" - ")}</div>` : "";
-    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isWidget ? "element" : "text";
-    const cardClass = isDocument ? "cm-card cm-card-doc" : "cm-card";
-    const jumpBtn = isDocument ? "" : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
+    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isWidget ? "element" : isSlide ? "slide" : "text";
+    const cardClass = isDocument ? "cm-card cm-card-doc" : isSlide ? "cm-card cm-card-doc cm-card-slide" : "cm-card";
+    // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
+    // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
+    const jumpBtn = isDocument ? "" : isSlide
+      ? `<button type="button" data-act="jump" title="Go to this slide">jump</button>`
+      : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
     return `
     <article class="${cardClass}" data-cid="${c.id}">
       ${sectionHtml}
@@ -4063,6 +4139,24 @@ function renderComments() {
 function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
   return o == null ? 1e9 : o;
+}
+// Order key that groups comments by anchor family (text by document position, then the non-text
+// anchor bands) so the sidebar list and the Copy-all bundle sort identically. Kept in one place
+// so a new anchor type is added once, not in every renderer that sorts comments.
+function _anchorSortKey(c) {
+  return (c.anchorType === "document")
+    ? -1
+    : (c.anchorType === "mermaid")
+    ? (1e12 + (c.diagramIndex || 0) * 1000)
+    : (c.anchorType === "diff")
+    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
+    : (c.anchorType === "image")
+    ? (3e12 + (c.imageIndex || 0))
+    : (c.anchorType === "widget")
+    ? (4e12 + _widgetOrderKey(c))
+    : (c.anchorType === "slide")
+    ? (5e12 + (typeof c.slideIndex === "number" && c.slideIndex >= 0 ? c.slideIndex : 0))
+    : (typeof c.start === "number" ? c.start : 0);
 }
 // The display name for a board in the sidebar: its author-supplied aria-label if present,
 // else the raw data-cm-widget name.
@@ -4132,6 +4226,17 @@ function scrollToAnchor(c) {
     // document start) so a document-wide comment card does not strand the presenter.
     if (window.__cmhDeck) window.__cmhDeck.showSlide(0);
     else window.scrollTo({ top: 0, behavior: cmScrollBehavior() });
+    flashActive(c.id);
+    return;
+  }
+  else if (c.anchorType === "slide") {
+    // A slide-scoped comment navigates the deck to its owning slide.
+    if (window.__cmhDeck) {
+      if (!(c.slideId && window.__cmhDeck.showSlideById(c.slideId))
+        && typeof c.slideIndex === "number" && c.slideIndex >= 0) {
+        window.__cmhDeck.showSlide(c.slideIndex);
+      }
+    }
     flashActive(c.id);
     return;
   }
@@ -4806,17 +4911,7 @@ function buildCopyText() {
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
   const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
   if (!liveComments.length && !stateChanges.length && !clChanges.length && !noteChanges.length) return "";
-  const sortKey = (c) => (c.anchorType === "document")
-    ? -1
-    : (c.anchorType === "mermaid")
-    ? (1e12 + (c.diagramIndex || 0) * 1000)
-    : (c.anchorType === "diff")
-    ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
-    : (c.anchorType === "image")
-    ? (3e12 + (c.imageIndex || 0))
-    : (c.anchorType === "widget")
-    ? (4e12 + _widgetOrderKey(c))
-    : (typeof c.start === "number" ? c.start : 0);
+  const sortKey = _anchorSortKey;
   const sorted = [...liveComments].sort((a, b) => sortKey(a) - sortKey(b));
   const lines = [];
   // Structured one-line metadata fields must not carry newlines/tabs, or a poisoned
@@ -4863,7 +4958,8 @@ function buildCopyText() {
     const isImage = c.anchorType === "image";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
-    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isWidget ? " (widget)" : isDocument ? " (document)" : ""}`);
+    const isSlide = c.anchorType === "slide";
+    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
     lines.push(`Id: ${c.id}`);
     lines.push(`When: ${formatTime(c.createdAt)}${c.updatedAt ? " (edited " + formatTime(c.updatedAt) + ")" : ""}`);
     if (c.headingPath && c.headingPath.length) {
@@ -4922,6 +5018,11 @@ function buildCopyText() {
       pushNote(c.note);
     } else if (isDocument) {
       lines.push("Anchor: document-wide (not tied to a specific element)");
+      lines.push("");
+      lines.push("Comment:");
+      pushNote(c.note);
+    } else if (isSlide) {
+      lines.push(`Anchor: slide "${oneLine(c.slideTitle || c.slideId || "")}"${c.slideId ? " (id " + oneLine(c.slideId) + ")" : ""}`);
       lines.push("");
       lines.push("Comment:");
       pushNote(c.note);
@@ -5403,6 +5504,7 @@ function _mdCommentsAppendix() {
   live.forEach((c, i) => {
     let where = "";
     if (c.anchorType === "document") where = "document-wide";
+    else if (c.anchorType === "slide") where = 'slide "' + esc(c.slideTitle || c.slideId || "") + '"';
     else if (c.anchorType === "widget") where = 'widget "' + esc(c.widget) + '" / ' + esc(c.partLabel || c.part);
     else if (c.anchorType === "mermaid") where = "mermaid " + esc(c.nodeLabel || c.nodeKey);
     else if (c.anchorType === "diff") where = "diff line";
@@ -7713,6 +7815,7 @@ function _printHeadingPath(c) {
 function _printAnchorLabel(c) {
   if (!c) return "Comment";
   if (c.anchorType === "document") return "Document-wide comment";
+  if (c.anchorType === "slide") return "Slide comment" + (c.slideTitle ? ' - "' + c.slideTitle + '"' : "");
   if (c.anchorType === "mermaid") {
     return c.nodeKey && c.nodeKey !== "__diagram__" ? "Mermaid node " + c.nodeKey : "Mermaid diagram";
   }
@@ -7728,6 +7831,7 @@ function _printAnchorLabel(c) {
 function _printQuote(c) {
   if (!c) return "";
   if (c.anchorType === "document") return "(document-wide comment)";
+  if (c.anchorType === "slide") return c.slideTitle ? ('slide: "' + c.slideTitle + '"') : "(comment on slide)";
   if (c.anchorType === "image") return c.imageAlt || c.quote || c.imageSrc || "";
   if (c.anchorType === "widget") return c.partLabel || c.part || c.quote || "";
   if (c.anchorType === "mermaid") return c.nodeLabel || c.nodeKey || c.quote || "";
@@ -8206,6 +8310,7 @@ function restoreHighlights() {
   // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
     && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document"
+    && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
@@ -8562,6 +8667,7 @@ function setupDeck() {
     return !!(
       (overview && !overview.hidden)
       || (modeMenu && !modeMenu.hidden)
+      || _commentMenuOpen()
       || document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
     );
   }
@@ -8576,8 +8682,8 @@ function setupDeck() {
     const top = Math.max(20, rect.top + rect.height / 2);
     edgePrevBtn.style.top = top + "px";
     edgeNextBtn.style.top = top + "px";
-    edgePrevBtn.style.left = Math.max(12, rect.left + 16) + "px";
-    edgeNextBtn.style.left = Math.max(12, rect.right - 64) + "px";
+    edgePrevBtn.style.left = Math.max(12, rect.left + 20) + "px";
+    edgeNextBtn.style.left = Math.max(12, rect.right - 76) + "px";
   }
 
   function hideEdgeNav() {
@@ -8588,11 +8694,14 @@ function setupDeck() {
     });
   }
 
-  function syncEdgeNavButton(btn, strength, enabled) {
+  function syncEdgeNavButton(btn, active, enabled) {
     if (!btn) return;
-    const active = enabled && strength > 0;
-    btn.classList.toggle("is-active", active);
-    if (active) btn.style.setProperty("--cmh-deck-edge-opacity", String((0.2 + strength * 0.75).toFixed(3)));
+    const on = enabled && active;
+    btn.classList.toggle("is-active", on);
+    // A fixed, comfortably-visible opacity so the arrow is reliably readable anywhere in the
+    // hover band (not a proximity fade that is near-invisible until the very edge); the button's
+    // own :hover/:focus rule takes it to full opacity.
+    if (on) btn.style.setProperty("--cmh-deck-edge-opacity", "0.92");
     else btn.style.removeProperty("--cmh-deck-edge-opacity");
   }
 
@@ -8608,11 +8717,14 @@ function setupDeck() {
       return;
     }
     syncEdgeNavPosition();
-    const threshold = Math.min(168, Math.max(80, rect.width * 0.12));
-    const prevStrength = Math.max(0, Math.min(1, (threshold - (clientX - rect.left)) / threshold));
-    const nextStrength = Math.max(0, Math.min(1, (threshold - (rect.right - clientX)) / threshold));
-    syncEdgeNavButton(edgePrevBtn, prevStrength, current > 0);
-    syncEdgeNavButton(edgeNextBtn, nextStrength, current < slides.length - 1);
+    // A generous left/right hover band (about a quarter of the stage, floored/capped to a
+    // usable pixel range) so the arrow appears well before the mouse reaches the very edge and
+    // is easy to hit quickly; the center stays clear so it never blocks slide content.
+    const band = Math.min(320, Math.max(160, rect.width * 0.25));
+    const nearPrev = (clientX - rect.left) <= band;
+    const nearNext = (rect.right - clientX) <= band;
+    syncEdgeNavButton(edgePrevBtn, nearPrev, current > 0);
+    syncEdgeNavButton(edgeNextBtn, nearNext, current < slides.length - 1);
   }
 
   function makeEdgeNav() {
@@ -8648,6 +8760,69 @@ function setupDeck() {
       if (commentMode || hasBlockingDeckChrome() || isEditableTarget(e.target)) return;
       focusStage();
       updateEdgeNavFromPointer(e.clientX, e.clientY);
+    });
+  }
+
+  // A non-interactive element (plain slide content: a heading, paragraph, image, empty stage
+  // area) has no click behavior of its own, so a plain left-click on it advances the deck - the
+  // natural "click to go forward" a presenter expects. Interactive/effect targets (links,
+  // buttons, form controls, ARIA widgets, focusable custom controls, draggable board parts,
+  // comment anchors, deck chrome, or anything the author marks [data-cmh-no-advance]) keep their
+  // own click and never advance. Gated to present mode (panel closed) so a reviewer working the
+  // open panel is never yanked forward.
+  const _CLICK_ADVANCE_SKIP = "a[href], area[href], button, input, textarea, select, option,"
+    + " label, summary, details, audio, video, iframe, embed, object, svg, canvas,"
+    + " [role='button'], [role='link'], [role='checkbox'], [role='radio'], [role='switch'],"
+    + " [role='tab'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'],"
+    + " [role='slider'], [role='spinbutton'], [role='textbox'], [role='combobox'], [role='option'],"
+    + " [data-cm-part], [data-cids], mark.cm-hl, [contenteditable], [onclick], [tabindex]:not([tabindex='-1']),"
+    + " [data-cmh-no-advance], .cm-skip";
+  // The advance decision must reflect the state when the click GESTURE began, not when the click
+  // event fires: the browser collapses a text selection and other document click listeners hide
+  // the deck comment menu on `mousedown`, so a `click`-time check would see them already gone and
+  // wrongly advance when the user was only dismissing a selection or that menu. Snapshot the
+  // suppressing state at mousedown (capture phase, before those listeners run) and consult it.
+  let _advanceSuppressed = false;
+  function _liveSelection() {
+    const sel = window.getSelection();
+    return !!(sel && !sel.isCollapsed && String(sel).trim());
+  }
+  function _commentMenuOpen() {
+    const menuEl = document.getElementById("contextMenu");
+    return !!(menuEl && !menuEl.hidden);
+  }
+  // The gesture began on an interactive/effect target (or off any slide): a click that RETARGETS
+  // to the slide (press on a button, release over sibling slide content dispatches `click` on the
+  // common .slide ancestor) must not advance, so treat such a start as suppressing.
+  function _downTargetSuppresses(t) {
+    if (!t || !t.closest) return true;
+    const slide = t.closest(".slide");
+    if (!slide || !stage.contains(slide)) return true;
+    return !!t.closest(_CLICK_ADVANCE_SKIP);
+  }
+  function installClickAdvance() {
+    // `pointerdown` (not `mousedown`) fires at the very start of a touch, before the browser
+    // collapses a text selection during the touch sequence, so the snapshot sees the real state.
+    const downEvt = window.PointerEvent ? "pointerdown" : "mousedown";
+    document.addEventListener(downEvt, (e) => {
+      _advanceSuppressed = commentMode || hasBlockingDeckChrome() || _commentMenuOpen()
+        || _liveSelection() || _downTargetSuppresses(e.target);
+    }, true);
+    document.addEventListener("click", (e) => {
+      const suppressed = _advanceSuppressed;
+      _advanceSuppressed = false;
+      // Only a real, plain, unmodified primary click advances; a synthetic/programmatic click, a
+      // modified click, or the macOS Ctrl-click contextmenu gesture is never a "next slide" intent.
+      if (!e.isTrusted || e.defaultPrevented || e.button
+        || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (suppressed) return;
+      if (commentMode || hasBlockingDeckChrome() || _commentMenuOpen() || _liveSelection()) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      const slide = t.closest(".slide");
+      if (!slide || !stage.contains(slide)) return;
+      if (t.closest(_CLICK_ADVANCE_SKIP)) return;
+      if (show(current + 1)) focusStage();
     });
   }
 
@@ -8872,6 +9047,7 @@ function setupDeck() {
   show(current);
   fitStage();
   makeEdgeNav();
+  installClickAdvance();
   if (typeof ResizeObserver === "function") {
     new ResizeObserver(fitStage).observe(viewport || document.documentElement);
   } else {

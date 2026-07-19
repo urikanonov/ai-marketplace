@@ -20,11 +20,20 @@ function selectionInRoot() {
 // floating "Add comment" popup (raised from the selection/mouseup path) for commenting.
 const _coarsePointer = !!(window.matchMedia
   && window.matchMedia("(hover: none), (pointer: coarse)").matches);
+let pendingSlideId = null;
 function _setMenuMode(mode) {
   const mc = document.getElementById("menuComment");
+  const ms = document.getElementById("menuSlideComment");
   const md = document.getElementById("menuDocComment");
+  // In a deck, an empty right-click offers BOTH a slide-scoped comment and a deck-wide comment;
+  // a flat document offers only the single document-wide comment.
+  const deckDoc = (mode === "document") && IS_DECK;
   if (mc) mc.hidden = (mode !== "text");
-  if (md) md.hidden = (mode !== "document");
+  if (ms) ms.hidden = !deckDoc;
+  if (md) {
+    md.hidden = (mode !== "document");
+    md.textContent = IS_DECK ? "Comment on deck" : "Comment on document";
+  }
 }
 document.addEventListener("contextmenu", (e) => {
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
@@ -51,6 +60,15 @@ document.addEventListener("contextmenu", (e) => {
   if (t.closest && t.closest("a[href], img, canvas, svg, button, input, textarea, select, [data-cm-part], mark.cm-hl")) { hideMenu(); return; }
   e.preventDefault();
   pendingRange = null; pendingQuote = ""; pendingDiffSel = null;
+  // In a deck, remember which slide the empty right-click landed on so a slide-scoped comment
+  // ties to it; fall back to the active slide when the click was on the stage margin.
+  if (IS_DECK) {
+    const slideEl = t.closest && t.closest(".slide");
+    pendingSlideId = slideEl ? slideEl.getAttribute("data-slide-id")
+      : (window.__cmhDeck ? window.__cmhDeck.activeSlideId() : null);
+  } else {
+    pendingSlideId = null;
+  }
   _setMenuMode("document");
   showMenu(e.clientX, e.clientY);
 });
@@ -230,3 +248,5 @@ document.getElementById("menuComment").addEventListener("click", () => {
 });
 const _menuDocBtn = document.getElementById("menuDocComment");
 if (_menuDocBtn) _menuDocBtn.addEventListener("click", () => { hideMenu(); openDocumentComposer(); });
+const _menuSlideBtn = document.getElementById("menuSlideComment");
+if (_menuSlideBtn) _menuSlideBtn.addEventListener("click", () => { hideMenu(); openSlideComposer(pendingSlideId); });
