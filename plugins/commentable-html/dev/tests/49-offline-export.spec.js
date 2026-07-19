@@ -555,3 +555,64 @@ test("NonPortable export ignores region marker text in content (CMH-FWDCOMPAT-01
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });
+
+// The offline export replaces the CDN mermaid loader with its own vendored-inline re-init; that
+// re-init must carry the same "render hidden diagrams off-screen with mermaid.render()" logic as the
+// live loader, so an offline-exported report with a diagram in a collapsed section renders it
+// correctly at load (not as a broken zero-size layout), with zero network (CMH-MMD-07).
+test("CMH-MMD-07: Export Offline renders a collapsed-section diagram correctly at load with zero network", async ({ page, browser }) => {
+  test.setTimeout(60000);
+  const CONTENT_COLLAPSED = `
+<section><h2>Intro</h2><p id="intro-note">lead-in prose so the content column is wide.</p></section>
+<section class="cmh-section-collapsed" id="sec-diagram"><h2>Narrative arc</h2>
+<pre class="mermaid cm-skip">flowchart LR
+  A["Act 1<br/>The Gap"] --> B["Act 2<br/>Flagship"] --> C["Act 3<br/>Tour"] --> D["Act 4<br/>Dev"] --> E["Act 5<br/>Hood"] --> F["Act 6<br/>Close"]
+</pre></section>`;
+  const staged = stageContent(CONTENT_COLLAPSED, { key: "cmh-offline-collapsed-mmd", source: "offline-collapsed.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/mermaid");
+
+    const exportedPath = path.join(outDir, "offline-collapsed.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    const external = [];
+    page2.on("request", (request) => { if (/^https?:\/\//.test(request.url())) external.push(request.url()); });
+    await page2.setViewportSize({ width: 1600, height: 900 });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    // The diagram is rendered off-screen at load even though its section stays collapsed, with zero
+    // network - so its nodes exist and are correctly laid out without any reveal.
+    await expect
+      .poll(() => page2.locator("#sec-diagram pre.mermaid svg g.node").count(), { timeout: 20000 })
+      .toBe(6);
+    const viewBoxWidth = await page2.evaluate(() => {
+      const svg = document.querySelector("#sec-diagram pre.mermaid svg");
+      const vb = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+      return vb.length === 4 ? vb[2] : 0;
+    });
+    expect(viewBoxWidth).toBeGreaterThan(400);
+    expect(external).toEqual([]);
+  } finally {
+    await server.close();
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});

@@ -373,4 +373,14 @@ function setupMermaidLayer() {
       mermaidDiagrams.forEach(updateMermaidWidthClass);
     });
   }
+  // A diagram rendered while its section was collapsed had its wide/scroll-fade class computed against
+  // a zero-size (window-fallback) container; recompute it when the host gains its real size on reveal.
+  if (typeof ResizeObserver === "function") {
+    if (setupMermaidLayer._widthObs) setupMermaidLayer._widthObs.disconnect();
+    const widthObs = new ResizeObserver(function (entries) {
+      entries.forEach(function (e) { updateMermaidWidthClass(e.target); });
+    });
+    mermaidDiagrams.forEach(function (host) { widthObs.observe(host); });
+    setupMermaidLayer._widthObs = widthObs;
+  }
 }

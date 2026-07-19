@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.157.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.158.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.158.0] - 2026-07-19</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A Mermaid diagram authored inside a collapsible section that is collapsed (<code>display:none</code>) at load no longer renders as a tiny, broken graph. Drawing a diagram in place with <code>mermaid.run()</code> while its container has a zero-size box produced a degenerate <code>~16px</code> viewBox with the nodes stacked on top of each other, and mermaid never re-measured it, so it stayed broken once the section was revealed. The loader now renders each hidden diagram by running mermaid on an OFF-SCREEN CLONE (a <code>1000px</code> sandbox) and moving the rendered SVG into the real element - reusing mermaid&#x27;s own source extraction (so <code>&lt;br/&gt;</code> labels and entities match a visible diagram) and error handling (a malformed diagram leaves no stray SVG in the page). Every diagram is therefore laid out correctly at load - correct the moment its section is revealed and also correct if the collapsed section is printed. Renders are serialized so rendering many diagrams at once cannot corrupt them, and one malformed diagram does not starve its siblings (CMH-MMD-07). Deck slides (hidden with <code>visibility:hidden</code>, not <code>display:none</code>) keep their existing eager render. On reveal the wide/scroll-fade classification is recomputed against the diagram&#x27;s now-real container width, and the loader exposes <code>window.__cmhMermaidReady</code> for print/screenshot automation. The Export Offline vendored-inline re-init carries the same logic, so offline-exported reports render collapsed-section diagrams correctly with zero network.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.157.0] - 2026-07-19</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -436,6 +443,8 @@
               <li>The shipped <code>pkg/</code> root now carries its own <code>LICENSE</code> (matching the repository root LICENSE) so the always-shipped session hooks are covered by a license even before <code>skill-resources.zip</code> is extracted (CMH-PKG-13).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.156.0] - 2026-07-18</h3></div>
             <div class="group-label">Security</div>
@@ -443,8 +452,6 @@
               <li>PPTX deck imports now preflight ZIP central-directory metadata before starting the vendored extractor, rejecting archives with excessive expanded size, entry count, or compression ratio to prevent zip-bomb memory exhaustion (CMH-DECK-29, closes #410).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.155.0] - 2026-07-19</h3></div>
             <div class="group-label">Security</div>
@@ -474,15 +481,7 @@
               <li>Bounded <code>mergeCommentSets()</code> against a pathological <code>embeddedComments</code> array or a poisoned cross-document <code>localStorage</code> array under a matching <code>data-comment-key</code>: the merged comment count is now capped at a generous <code>CMH_MAX_COMMENTS</code> bound, and any comment whose <code>start</code>/<code>end</code> is present but not a finite, non-negative, ordered, in-range offset is dropped, so startup&#x27;s <code>backfillContext()</code>/<code>restoreHighlights()</code> per-comment document walk can no longer be driven into unbounded O(comment_count x document_size) work by untrusted input. Normal documents with realistic comment counts and offsets are unaffected (CMH-PERSIST-04).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.145.0] - 2026-07-18</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Deck comment-options menu (all decks): the menu surface is now a 3-state RADIO GROUP of mutually exclusive options - <code>Comments off</code>, <code>Comments on, panel closed</code>, and <code>Comments on, panel open</code> - of which exactly one is selected (<code>menuitemradio</code>, <code>aria-checked</code>), so choosing one is clearly a single pick rather than a set of independent toggles. <code>Comments off</code> stays disabled while any comment exists (so feedback is never stranded), the site link remains a menu item, and full keyboard navigation is preserved (opening focuses the checked option) (CMH-DECK-11).</li>
-              <li>The showcase deck&#x27;s top-right brand mark is now the official Commentable HTML logo rendered as a plain image (an inlined, offline-safe <code>data:</code> SVG) instead of a bordered card with a hand-drawn glyph; it still links to the project site with a clear tooltip (CMH-DECK-SHOWCASE-10).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">128 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">129 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
