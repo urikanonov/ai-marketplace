@@ -196,6 +196,18 @@ class SiteTutorialMarkdownTests(unittest.TestCase):
         self.assertIn("`examples/report-community-garden.html`", out)
         self.assertNotIn("../examples/", out)
 
+    def test_toolbar_open_button_label_is_comments_not_show(self):
+        # SITE-BUILD-04: the floating toolbar button that opens the comments
+        # panel is labelled "Comments" (confirmed in 54-sidebar-toggle.js).
+        # The tutorial must instruct readers to click "Comments" and must not
+        # use the stale "Show" label so this drift cannot regress silently.
+        tutorial = os.path.join(os.path.dirname(__file__), "..", "plugins",
+                                "commentable-html", "docs", "TUTORIAL.md")
+        with open(tutorial, encoding="utf-8") as fh:
+            out = bsd.site_tutorial_markdown(fh.read())
+        self.assertIn("click **Comments**", out)
+        self.assertNotIn("click **Show**", out)
+
 class DemoFullscreenTests(unittest.TestCase):
     def test_link_accessible_name_announces_new_tab(self):
         out = bsd.render_demo_fullscreen_link()
