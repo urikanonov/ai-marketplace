@@ -19,7 +19,7 @@ CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 # is checked by its own dedicated-block error, not listed here to avoid a
 # duplicate diagnostic.)
 REQUIRED_IDS = [
-    "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "hlBubble", "toast",
+    "sidebar", "commentList", "contextMenu", "mermaidAddBtn", "diffAddBtn", "imageAddBtn", "linkAddBtn", "hlBubble", "toast",
     "toolbarCount", "sidebarCount",
     "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll",
     "btnCloseSidebar", "menuComment",

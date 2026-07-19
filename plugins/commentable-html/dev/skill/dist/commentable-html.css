@@ -1324,6 +1324,16 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
 
 /* ---------------------------------------------------------------------------
+   Link comment layer (CMH-LINK) - author-facing <a href> links get a subtle
+   hover cue and a floating #linkAddBtn; a commented link keeps a warning
+   underline + ring so the reader can see which references carry feedback. The
+   affordance button is separate, so activating it never navigates and a normal
+   click still follows the link. --------------------------------------------- */
+#commentRoot a.cm-link-commentable:hover { text-decoration-thickness: 2px; outline: 1px dashed var(--cp-accent); outline-offset: 2px; border-radius: 2px; }
+#commentRoot a.cm-link-hl { outline: 2px solid var(--cp-warning); outline-offset: 2px; border-radius: 2px; text-decoration-color: var(--cp-warning); }
+#commentRoot a.cm-link-hl.cm-link-active { outline-width: 3px; box-shadow: 0 0 0 3px var(--cp-accent-soft); }
+.cm-link-add { position: fixed; z-index: 200; }
+/* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
    syntax highlighting. The .cmh-kql-* token spans are baked into the code by
    tools/kql_highlight.py; these rules only supply the frame and token colors, so
@@ -1746,6 +1756,7 @@ body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
 body.cmh-deck-comments-off #menuComment,
 body.cmh-deck-comments-off #mermaidAddBtn,
 body.cmh-deck-comments-off #imageAddBtn,
+body.cmh-deck-comments-off #linkAddBtn,
 body.cmh-deck-comments-off #diffAddBtn,
 body.cmh-deck-comments-off #widgetAddBtn,
 body.cmh-deck-comments-off #headingAddBtn {

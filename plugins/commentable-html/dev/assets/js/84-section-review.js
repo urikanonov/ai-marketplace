@@ -85,6 +85,7 @@ function _cmhAnchorElFor(c) {
   if (c.anchorType === "mermaid" && typeof findMermaidNode === "function") return findMermaidNode(c.diagramIndex, c.nodeKey);
   if (c.anchorType === "diff" && typeof findDiffLineEls === "function") return (findDiffLineEls(c.diffIndex, c.lineKey) || [])[0] || null;
   if (c.anchorType === "image" && typeof findImageEl === "function") return findImageEl(c.imageIndex);
+  if (c.anchorType === "link" && typeof resolveLinkEl === "function") return resolveLinkEl(c);
   if (c.anchorType === "widget" && typeof findWidgetPart === "function") return findWidgetPart(c.widget, c.part);
   return null; // document-wide comments belong to no section
 }

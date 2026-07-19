@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.171.0] - 2026-07-19
+
+### Added
+
+- Link handling for author-facing references (CMH-LINK-01..04): at render time every external
+  `<a href>` in the document is stamped `target="_blank"` + `rel="noopener noreferrer"` so a
+  reference opens in a new tab and the reader keeps their place (same-page `#` fragments, `.cm-skip`
+  UI chrome, and `javascript:` links are left untouched, and an author-set `target` is respected).
+  Each link is now commentable like an image or mermaid node: hovering or keyboard-focusing a link
+  reveals a floating `Add Comment` affordance that anchors an `anchorType: "link"` comment to that
+  link (by index + href/text) without navigating - a normal click (or Enter) still follows the link,
+  while the floating button or the non-navigating `Alt+Enter` chord opens the composer. Links are
+  classified by their normalized protocol (only `http`/`https`/`file`), so control-char-obfuscated
+  `javascript:`, `mailto:`/`tel:`, and `data:` links are never stamped or made commentable, and the
+  `_blank` rel-enforcement is case-insensitive (reverse-tabnabbing defense). Link comments ring the
+  link, list a card, flash on jump, and survive reload, Copy all, Export Markdown, and Export Offline.
+
 ## [1.170.0] - 2026-07-19
 
 ### Changed

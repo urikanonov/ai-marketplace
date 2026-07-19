@@ -16,6 +16,8 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
 | `50-content.css` | CMH-CONTENT, CMH-STATS | Default content styling (sections, tables, badges, document-overview strip). |
 | `60-images.css` | CMH-IMG | Image comment layer. |
+| `60-images.css` | CMH-IMG | Image comment layer. |
+| `61-links.css` | CMH-LINK | Author-facing link comment layer (hover cue, commented-link ring, floating add button). |
 | `70-kql.css` | CMH-KQL, CMH-CODE | Kusto query figure + KQL token styling; standalone code-block frame and optional caption. |
 | `80-focus.css` | CMH-A11Y | Shared themed focus ring for interactive controls. |
 | `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |

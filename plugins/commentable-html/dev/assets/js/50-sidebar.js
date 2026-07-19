@@ -81,6 +81,7 @@ function renderComments() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
@@ -94,6 +95,8 @@ function renderComments() {
     } else if (isImage) {
       const mediaLbl = c.imageKind === "chart" ? "chart: " : "image: ";
       quoteHtml = `<div class="quote"><span class="ctx">${mediaLbl}</span><span class="quoted">${escapeHtml(c.imageAlt || c.quote || c.imageSrc || "")}</span></div>`;
+    } else if (isLink) {
+      quoteHtml = `<div class="quote"><span class="ctx">link: </span><span class="quoted">${escapeHtml(c.linkText || c.quote || c.linkHref || "")}</span></div>`;
     } else if (isWidget) {
       quoteHtml = `<div class="quote"><span class="ctx">${escapeHtml(c.widget || "widget")}: </span><span class="quoted">"${escapeHtml(c.partLabel || c.part || "")}"</span></div>`;
     } else if (isDocument) {
@@ -121,6 +124,10 @@ function renderComments() {
       pinBits.push(`${c.imageKind === "chart" ? "chart" : "image"} ${(Number(c.imageIndex) || 0) + 1}`);
       const src = String(c.imageSrc == null ? "" : c.imageSrc);
       if (src) pinBits.push(escapeHtml(src.length > 60 ? src.slice(0, 57) + "..." : src));
+    } else if (isLink) {
+      pinBits.push(`link ${(Number(c.linkIndex) || 0) + 1}`);
+      const href = String(c.linkHref == null ? "" : c.linkHref);
+      if (href) pinBits.push(escapeHtml(href.length > 60 ? href.slice(0, 57) + "..." : href));
     } else if (isWidget) {
       pinBits.push(`widget "${escapeHtml(c.widget || "")}"`);
       pinBits.push(`part "${escapeHtml(c.partLabel || c.part || "")}"`);
@@ -137,7 +144,7 @@ function renderComments() {
       // on the sidebar card, which only surfaces reader-facing anchor info.
     }
     const pinHtml = pinBits.length ? `<div class="pin">${pinBits.join(" - ")}</div>` : "";
-    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isWidget ? "element" : isSlide ? "slide" : "text";
+    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isLink ? "link" : isWidget ? "element" : isSlide ? "slide" : "text";
     const cardClass = isDocument ? "cm-card cm-card-doc" : isSlide ? "cm-card cm-card-doc cm-card-slide" : "cm-card";
     // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
     // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
@@ -192,6 +199,8 @@ function _anchorSortKey(c) {
     ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
     : (c.anchorType === "image")
     ? (3e12 + (c.imageIndex || 0))
+    : (c.anchorType === "link")
+    ? (3.5e12 + (Number.isFinite(Number(c.linkIndex)) ? Number(c.linkIndex) : 0))
     : (c.anchorType === "widget")
     ? (4e12 + _widgetOrderKey(c))
     : (c.anchorType === "slide")
@@ -260,6 +269,7 @@ function scrollToAnchor(c) {
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
   else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
+  else if (c.anchorType === "link") { el = resolveLinkEl(c); if (el) flashLink(c.id); }
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
   else if (c.anchorType === "document") {
     // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
