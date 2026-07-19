@@ -27,6 +27,29 @@ pre mark.cm-hl, code mark.cm-hl {
   padding: 0 2px;
   border-radius: 3px;
 }
+/* Composing preview: the amber highlight shown over the selected text while a new-comment
+   composer is open, before it is saved. It looks like the saved highlight (same amber fill)
+   with a dashed outline cue that it is provisional. It carries no data-cid, so it is inert
+   (no hover bubble, no click-to-open). padding is 0 (vs mark.cm-hl's 1px) so the preview does
+   not reflow the line while composing - the important moment the reviewer is reading it; the
+   saved highlight's 1px padding settles in only on save. The dashed outline is drawn outside
+   the box (no reflow). */
+mark.cm-preview {
+  background: rgba(245, 158, 11, 0.32);
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
+  outline: 1px dashed rgba(245, 158, 11, 0.9);
+  outline-offset: 1px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+html[data-theme="dark"] mark.cm-preview { background: rgba(251, 191, 36, 0.28); }
+pre mark.cm-preview, code mark.cm-preview {
+  padding: 0 2px;
+  border-radius: 3px;
+}
 
 :root {
   --cm-sidebar-w: 400px;
@@ -2485,6 +2508,15 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   #commentRoot {
     background: var(--cp-bg) !important;
     color: var(--cp-text) !important;
+  }
+
+  /* The composing preview highlight is transient chrome: print the underlying text
+     plainly rather than with the provisional amber fill and dashed outline. */
+  mark.cm-preview {
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0 !important;
   }
 
   #commentRoot section.cmh-section-collapsed > * {
