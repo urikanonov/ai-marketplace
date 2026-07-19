@@ -482,13 +482,14 @@ function setupDeck() {
     });
   }
 
-  // A non-interactive element (plain slide content: a heading, paragraph, image, empty stage
-  // area) has no click behavior of its own, so a plain left-click on it advances the deck - the
-  // natural "click to go forward" a presenter expects. Interactive/effect targets (links,
-  // buttons, form controls, ARIA widgets, focusable custom controls, draggable board parts,
-  // comment anchors, deck chrome, or anything the author marks [data-cmh-no-advance]) keep their
-  // own click and never advance. Gated to present mode (panel closed) so a reviewer working the
-  // open panel is never yanked forward.
+  // A click on EMPTY slide space (the stage margins, the gaps between blocks, a layout wrapper's
+  // padding) has no content of its own, so it advances the deck - the natural "click to go forward"
+  // a presenter expects. A click on slide TEXT (a heading, paragraph, list item, table cell, or any
+  // inline run) never advances, because the reader may be selecting it to comment; the same holds
+  // for interactive/effect targets (links, buttons, form controls, ARIA widgets, focusable custom
+  // controls, draggable board parts, comment anchors, deck chrome, or anything the author marks
+  // [data-cmh-no-advance]), which keep their own click. This one rule applies in BOTH present mode
+  // and the open review panel, so a reviewer can still page through by clicking empty space.
   const _CLICK_ADVANCE_SKIP = "a[href], area[href], button, input, textarea, select, option,"
     + " label, summary, details, audio, video, iframe, embed, object, svg, canvas,"
     + " [role='button'], [role='link'], [role='checkbox'], [role='radio'], [role='switch'],"
@@ -496,6 +497,30 @@ function setupDeck() {
     + " [role='slider'], [role='spinbutton'], [role='textbox'], [role='combobox'], [role='option'],"
     + " [data-cm-part], [data-cids], mark.cm-hl, [contenteditable], [onclick], [tabindex]:not([tabindex='-1']),"
     + " [data-cmh-no-advance], .cm-skip";
+  // A click ADVANCES only when it lands on empty slide space. Whether a click is on "text" is
+  // decided by the POINT it lands on, not by element ancestry: hit-test the client rects of the
+  // slide's text nodes against the pointer coordinates. This is robust where an ancestry walk is
+  // not - a wrapper (or the `.slide` itself) that carries loose text no longer taints a click on
+  // genuine empty space, and clicking the empty tail of a paragraph's last line still advances.
+  function _pointOnText(slide, x, y) {
+    if (!slide) return false;
+    const walker = document.createTreeWalker(slide, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        return (n.nodeValue && n.nodeValue.trim()) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      }
+    });
+    const range = document.createRange();
+    let node;
+    while ((node = walker.nextNode())) {
+      range.selectNodeContents(node);
+      const rects = range.getClientRects();
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true;
+      }
+    }
+    return false;
+  }
   // The advance decision must reflect the state when the click GESTURE began, not when the click
   // event fires: the browser collapses a text selection and other document click listeners hide
   // the deck comment menu on `mousedown`, so a `click`-time check would see them already gone and
@@ -510,22 +535,30 @@ function setupDeck() {
     const menuEl = document.getElementById("contextMenu");
     return !!(menuEl && !menuEl.hidden);
   }
-  // The gesture began on an interactive/effect target (or off any slide): a click that RETARGETS
-  // to the slide (press on a button, release over sibling slide content dispatches `click` on the
-  // common .slide ancestor) must not advance, so treat such a start as suppressing.
-  function _downTargetSuppresses(t) {
-    if (!t || !t.closest) return true;
-    const slide = t.closest(".slide");
+  // A visible hover bubble (raised by hovering a saved highlight) is transient chrome: an empty
+  // click that dismisses it must not also advance the deck, like the context menu and popover.
+  function _hlBubbleOpen() {
+    const b = document.getElementById("hlBubble");
+    return !!(b && !b.hidden);
+  }
+  // A point suppresses advance when it is off any slide, on an interactive/effect target, or on
+  // rendered text. `el` is the element under the point (from elementFromPoint at click time, which
+  // sees the true release target even when a press-on-empty / release-on-control gesture retargets
+  // the `click` event to the common .slide ancestor).
+  function _pointSuppresses(el, x, y) {
+    if (!el || !el.closest) return true;
+    const slide = el.closest(".slide");
     if (!slide || !stage.contains(slide)) return true;
-    return !!t.closest(_CLICK_ADVANCE_SKIP);
+    if (el.closest(_CLICK_ADVANCE_SKIP)) return true;
+    return _pointOnText(slide, x, y);
   }
   function installClickAdvance() {
     // `pointerdown` (not `mousedown`) fires at the very start of a touch, before the browser
     // collapses a text selection during the touch sequence, so the snapshot sees the real state.
     const downEvt = window.PointerEvent ? "pointerdown" : "mousedown";
     document.addEventListener(downEvt, (e) => {
-      _advanceSuppressed = commentMode || hasBlockingDeckChrome() || _commentMenuOpen()
-        || _liveSelection() || _downTargetSuppresses(e.target);
+      _advanceSuppressed = hasBlockingDeckChrome() || _commentMenuOpen() || _hlBubbleOpen()
+        || _liveSelection() || _pointSuppresses(e.target, e.clientX, e.clientY);
     }, true);
     document.addEventListener("click", (e) => {
       const suppressed = _advanceSuppressed;
@@ -535,12 +568,11 @@ function setupDeck() {
       if (!e.isTrusted || e.defaultPrevented || e.button
         || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       if (suppressed) return;
-      if (commentMode || hasBlockingDeckChrome() || _commentMenuOpen() || _liveSelection()) return;
-      const t = e.target;
-      if (!t || !t.closest) return;
-      const slide = t.closest(".slide");
-      if (!slide || !stage.contains(slide)) return;
-      if (t.closest(_CLICK_ADVANCE_SKIP)) return;
+      if (hasBlockingDeckChrome() || _commentMenuOpen() || _hlBubbleOpen() || _liveSelection()) return;
+      const x = e.clientX, y = e.clientY;
+      const el = (typeof document.elementFromPoint === "function"
+        ? document.elementFromPoint(x, y) : null) || e.target;
+      if (_pointSuppresses(el, x, y)) return;
       if (show(current + 1)) focusStage();
     });
   }

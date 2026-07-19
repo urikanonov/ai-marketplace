@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.170.0] - 2026-07-19
+
+### Changed
+
+- Deck comment-scope menu now stacks its options vertically with "Comment on deck" above
+  "Comment on slide" (CMH-DECK-34).
+- In deck mode a plain click on EMPTY slide space advances to the next slide in BOTH present and
+  review-panel-open modes; a click on text (or any interactive target) never advances, so text
+  stays selectable for commenting. "Empty" is decided by hit-testing the click POINT against the
+  slide's text rects, so a wrapper/slide carrying loose text no longer blocks advancing, and a
+  keyboard activation of a focused control never advances (CMH-DECK-31).
+- Saved text highlights and the composing preview both paint a band slightly shorter than the line
+  box (zero horizontal padding, no reflow), so a highlight that wraps across two lines now shows
+  visible vertical spacing between the lines (CMH-SEL-02).
+- Deck pills lift on hover: the reusable `.cmh-pill` recipe gains a hover-lift for all decks
+  (CMH-DECK-RECIPE-05), and the showcase byline pills lift on hover (CMH-DECK-SHOWCASE-16).
+
+### Showcase deck
+
+- Refreshed the title and Act 1 promise copy: the title reads "Plan with AI, visually rich review
+  inline, repeat.", the Act 1 paragraph is rephrased, the redundant "reviewed end to end" pill is
+  removed, and the "Copy all" control is emphasized in its pill (CMH-DECK-SHOWCASE-13).
+- The Chat / Markdown / HTML comparison table now marks the Commentable HTML row's winning cells
+  with a distinct green fill and check glyph so the differentiators stand out (CMH-DECK-SHOWCASE-14).
+- The title slide embeds a real screenshot of a document with selected text and the Add-comment
+  popup, so the review workflow is visible up front (CMH-DECK-SHOWCASE-15).
+- The top-right site logo sits further into the corner and its tooltip reads just "Commentable
+  HTML" (CMH-DECK-SHOWCASE-10).
+
 ## [1.169.0] - 2026-07-19
 
 ### Added
