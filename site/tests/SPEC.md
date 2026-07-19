@@ -180,6 +180,7 @@ suite (see `.github/workflows/pages.yml`).
 | SITE-TUT-04 | The tutorial-page nav brand link returns to the commentable-html plugin home, not the hub root. | `site/tests/tests/site-updater-tutorial.spec.js` - `tutorial brand keeps the user in the commentable-html section` |
 | SITE-TUT-05 | The tutorial's example-file links resolve to the live demo report under `../demo/` (not a GitHub blob URL), so a reader opens the running report in the browser. | `site/tests/tests/site-updater-tutorial.spec.js` - `tutorial example links open the live demo, not a GitHub blob` |
 | SITE-TUT-06 | The tutorial page footer matches the commentable-html plugin page footer: it links to the contributing guide, the feature-request form, the issue chooser, and the commentable-html plugin source tree (plus the author's LinkedIn), instead of a lone `source: TUTORIAL.md` link. | `site/tests/tests/site-updater-tutorial.spec.js` - `the tutorial page footer matches the commentable-html footer links (SITE-TUT-06)` |
+| SITE-TUT-07 | Each tutorial content image is keyboard-activatable (`tabindex="0"`, `role="button"`, an accessible name) and Enter/Space opens the lightbox; while the lightbox is open, Tab and Shift+Tab never move focus outside the overlay; and closing it (Escape or the close button) restores focus to the image that opened it. | `site/tests/tests/site-updater-tutorial.spec.js` - `tutorial image lightbox opens via keyboard, traps Tab, and restores focus on close (SITE-TUT-07)` |
 
 ## Shared footer
 

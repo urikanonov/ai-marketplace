@@ -244,8 +244,11 @@
 
     function open(img) {
       full.setAttribute("src", img.currentSrc || img.src);
-      full.setAttribute("alt", img.getAttribute("alt") || "");
-      lastFocus = document.activeElement;
+      full.setAttribute("alt", img.getAttribute("alt") || "Enlarged image");
+      // Restore focus to the triggering image itself (not document.activeElement),
+      // since a click does not always move focus there (e.g. Firefox/Safari on a
+      // non-natively-focusable element).
+      lastFocus = img;
       overlay.removeAttribute("hidden");
       close.focus();
     }
@@ -259,8 +262,24 @@
     }
 
     images.forEach(function (img) {
+      if (!img.hasAttribute("tabindex")) {
+        img.setAttribute("tabindex", "0");
+      }
+      if (!img.hasAttribute("role")) {
+        img.setAttribute("role", "button");
+      }
+      if (!(img.getAttribute("aria-label") || "").trim()) {
+        var name = img.getAttribute("alt");
+        img.setAttribute("aria-label", name ? "View " + name + " enlarged" : "View image enlarged");
+      }
       img.addEventListener("click", function () {
         open(img);
+      });
+      img.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+          e.preventDefault();
+          open(img);
+        }
       });
     });
     overlay.addEventListener("click", function (e) {
@@ -270,10 +289,41 @@
       }
     });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && !overlay.hasAttribute("hidden")) {
-        hide();
+      if (overlay.hasAttribute("hidden")) {
+        return;
       }
-    });
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        hide();
+        return;
+      }
+      if (e.key === "Tab") {
+        // Trap Tab/Shift+Tab within the overlay so focus cannot escape into the page behind it.
+        var focusable = Array.prototype.slice
+          .call(overlay.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])'))
+          .filter(function (el) {
+            return el.offsetParent !== null || el === document.activeElement;
+          });
+        if (!focusable.length) {
+          return;
+        }
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        var active = document.activeElement;
+        if (e.shiftKey) {
+          if (active === first || !overlay.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last || !overlay.contains(active)) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    }, true);
   }
 
   function initInstallTabs() {
