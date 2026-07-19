@@ -784,23 +784,31 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   display: flex;
   flex-direction: column;
 }
-/* Un-confine a lone diagram from a half column: flatten a .cmh-cols-2 into the slide's flex column
-   (text stacks above) and let the column holding the diagram grow, so the diagram uses the full
-   slide width instead of a half-width column. */
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2,
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2 {
+/* Un-confine a lone diagram from a half column: flatten ONLY the .cmh-cols-2 that actually holds the
+   diagram (:has) into the slide's flex column so its columns stack in DOM order, and let the column
+   holding the diagram grow, so the diagram uses the full slide width instead of a half-width column.
+   A sibling text-only .cmh-cols-2 on the same slide keeps its two-column layout. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2:has(.cm-mermaid-host),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2:has(.cm-mermaid-host) {
   display: contents;
 }
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2 > *:has(.cm-mermaid-host),
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2 > *:has(.cm-mermaid-host) {
+/* Propagate the flex context through a direct-child wrapper (a column of the flattened grid, or a
+   plain wrapper around the diagram) so the host still grows to the full remaining height. flex:1 1 0%
+   (equal share from a zero basis) keeps sizing stable when fitDeckDiagram momentarily collapses one
+   SVG to measure it, so two diagrams on a forced .cmh-slide-diagram slide never steal each other's
+   space. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2:has(.cm-mermaid-host) > *:has(.cm-mermaid-host),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2:has(.cm-mermaid-host) > *:has(.cm-mermaid-host),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram > *:has(.cm-mermaid-host):not(.cmh-cols-2),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide > *:has(.cm-mermaid-host):not(.cmh-cols-2) {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-height: 0;
 }
 #commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cm-mermaid-host,
 #commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cm-mermaid-host {
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-height: 0;
 }
 #commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cm-mermaid-host > svg,

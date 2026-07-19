@@ -1126,7 +1126,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       }, { timeout: 10000 }).toBe(true);
       const m = await fitMetrics(page);
       // ... and still fills a meaningful fraction of the available height (not the tiny intrinsic size).
-      expect(m.svgH).toBeGreaterThanOrEqual(m.contentH * 0.6);
+      expect(m.svgH).toBeGreaterThanOrEqual(m.contentH * 0.8);
       // Height-bound: it never overflows the width either.
       expect(m.svgW).toBeLessThanOrEqual(m.contentW + 2);
     } finally {
@@ -1156,9 +1156,74 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       await expect.poll(async () => {
         const m = await fitMetrics(page);
         return m.svgW / m.contentW;
-      }, { timeout: 10000 }).toBeGreaterThanOrEqual(0.7);
+      }, { timeout: 10000 }).toBeGreaterThanOrEqual(0.85);
       const m = await fitMetrics(page);
       expect(m.svgW).toBeLessThanOrEqual(m.contentW + 2);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-DECK-35: a diagram nested in wrappers is still bounded to the slide (no overflow)", async ({ page }) => {
+    // The opt-in .cmh-slide-diagram allows arbitrary wrapping; a diagram nested below a direct child
+    // must still contain-fit within the slide (its own height is content-driven, not space-driven,
+    // so an unbounded fit would overflow/clip the fixed stage). A tall chain makes the regression loud.
+    const slides =
+      '<section class="slide active cmh-slide-diagram" data-slide-id="slide-nested"><h2>Nested</h2>'
+      + '<div class="wrap-a"><div class="wrap-b">'
+      + '<pre class="mermaid cm-skip">flowchart TB\n'
+      + ' A[Alpha]-->B[Beta]\n B-->C[Gamma]\n C-->D[Delta]\n D-->E[Epsilon]\n E-->F[Zeta]</pre>'
+      + '</div></div></section>';
+    const { dir } = stageDeck(slides, { key: "cmh-deck-mermaid-nested" });
+    const server = await startStaticServer(dir);
+    try {
+      await installClipboardCapture(page);
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/deck.html");
+      await ready(page);
+      await expect.poll(() => page.locator(".slide.active .cm-mermaid-host > svg").count(), { timeout: 20000 }).toBe(1);
+      // Bounded to the slide content box: no orders-of-magnitude overflow / clip.
+      await expect.poll(async () => {
+        const m = await fitMetrics(page);
+        return m.svgH <= m.contentH + 2 && m.svgW <= m.contentW + 2;
+      }, { timeout: 10000 }).toBe(true);
+      const m = await fitMetrics(page);
+      // Still meaningfully large, not collapsed to the intrinsic size.
+      expect(m.svgH).toBeGreaterThanOrEqual(m.contentH * 0.6);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-DECK-35: a bullets+diagram two-column slide is NOT auto-flattened (opt-in only)", async ({ page }) => {
+    // A slide the author deliberately laid out as two columns keeps that layout: the automatic rule
+    // must not silently collapse a .cmh-cols-2. Only the explicit .cmh-slide-diagram opt-in un-confines.
+    const slides =
+      '<section class="slide active" data-slide-id="slide-keepcols"><h2>Keep</h2>'
+      + '<div class="cmh-cols-2">'
+      + '<div><ul><li>First point</li><li>Second point</li></ul></div>'
+      + '<div><pre class="mermaid cm-skip">flowchart LR\n A[Alpha]-->B[Beta]\n B-->C[Gamma]</pre></div>'
+      + '</div></section>';
+    const { dir } = stageDeck(slides, { key: "cmh-deck-mermaid-keepcols" });
+    const server = await startStaticServer(dir);
+    try {
+      await installClipboardCapture(page);
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/deck.html");
+      await ready(page);
+      await expect.poll(() => page.locator(".slide.active .cm-mermaid-host > svg").count(), { timeout: 20000 }).toBe(1);
+      // Not auto-classified: the two-column grid is preserved (still a grid, not display:contents).
+      await expect(page.locator(".slide.active.cmh-deck-diagram-slide")).toHaveCount(0);
+      const preserved = await page.evaluate(() => {
+        const grid = document.querySelector(".slide.active .cmh-cols-2");
+        return grid ? getComputedStyle(grid).display : null;
+      });
+      expect(preserved).toBe("grid");
+      // The diagram stays boxed in its half-width column (well under the full slide width).
+      const m = await fitMetrics(page);
+      expect(m.svgW).toBeLessThan(m.contentW * 0.65);
     } finally {
       await server.close();
       fs.rmSync(dir, { recursive: true, force: true });
