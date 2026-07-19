@@ -1,0 +1,280 @@
+// Tutorial screenshot quality gate (dev-only, not shipped). Reads every committed tutorial image
+// under docs/assets and fails a shot that is blurry, faded/quantized, under-resolved, carries a
+// large blank vertical margin (an oversized clip), or is washed with a load-animation yellow cast -
+// the exact classes of low-quality screenshot issue #462 flags. It reads the static committed PNG
+// bytes (never a fresh capture), so the metrics are deterministic across platforms.
+//
+// Usage:
+//   node tools/check_shot_quality.mjs            # gate: exit non-zero if any image fails
+//   node tools/check_shot_quality.mjs --report   # print per-image metrics for calibration; never fails
+import { chromium } from "@playwright/test";
+import { execFileSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const CAPTURE_TOOL = path.join(HERE, "capture_tutorial.mjs");
+const reportMode = process.argv.includes("--report");
+// Optional positional arg overrides the assets dir (used by the negative tests to point the gate at
+// a temp dir holding a deliberately degraded image); defaults to the committed docs/assets.
+const dirArg = process.argv.slice(2).find((a) => !a.startsWith("--"));
+const ASSETS = dirArg ? path.resolve(dirArg) : path.resolve(HERE, "..", "..", "docs", "assets");
+
+// Thresholds calibrated (see report mode) so every current crisp shot clears them with margin while
+// the specific low-quality classes fail. Values reference the observed crisp-shot distribution:
+//   sharpness: crisp shots score >=280 (variance of the Laplacian); a smooth-blurred shot scores low.
+//   richness:  crisp shots have >=4% off-grid pixels; a color-quantized/faded shot has ~0.
+//   dimensions: the smallest legitimate shot is a 70px-tall badge strip, so a 64px floor only trips
+//     a grossly under-resolved image; an exact-resolution regression (e.g. a 1x recapture) is also
+//     pinned by capture_tutorial.mjs --check.
+//   vBand: fraction of contiguous blank rows at the top+bottom edges (an oversized clip's dead
+//     space). Only judged for shots at least MARGIN_MIN_HEIGHT tall, where max legit vBand is ~0.11;
+//     a short element strip's inherent vertical padding is exempt. Horizontal blank is NOT gated
+//     because full-width badge/checklist strips legitimately have narrow content.
+//   cast: fraction of strong-yellow pixels; a legit yellow highlight is <=2.2%, the load-flash wash
+//     covers a large area, so 0.10 separates them.
+const MIN_SHARPNESS = 60;
+const MIN_RICHNESS = 0.02;
+const MIN_DIM = 64;            // both width and height must be at least this many pixels.
+const MARGIN_MIN_HEIGHT = 400; // only judge the vertical blank margin on shots at least this tall.
+const MAX_VBAND = 0.25;        // max fraction of blank top+bottom rows before it reads as dead space.
+const MAX_CAST = 0.10;         // max fraction of strong-yellow pixels before it reads as a load-flash cast.
+// Only the committed tutorial shots follow the <scene>-NN-<name>.png naming (garden-01-top-light,
+// note-01-note, triage-01-board, ...). Restrict the gate to that pattern so a future non-shot PNG (a
+// flat logo or icon) dropped into docs/assets is not falsely failed as faded/quantized.
+const SHOT_NAME_RE = /^[a-z]+-\d{2}-[a-z0-9-]+\.png$/;
+
+// Compute the quality metrics of a decoded image, and (for calibration) of a copy degraded exactly
+// the way the old normalization degraded shots, so a threshold can sit cleanly between the two.
+async function metricsFor(page, base64, withDegraded) {
+  return page.evaluate(async ({ b64, withDegraded }) => {
+    const img = new Image();
+    img.src = "data:image/png;base64," + b64;
+    await img.decode();
+    const width = img.naturalWidth;
+    const height = img.naturalHeight;
+
+    function measure(data) {
+      const n = width * height;
+      const luma = new Float64Array(n);
+      for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+        luma[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      }
+      let sum = 0;
+      let sumSq = 0;
+      let count = 0;
+      for (let y = 1; y < height - 1; y += 1) {
+        for (let x = 1; x < width - 1; x += 1) {
+          const idx = y * width + x;
+          const lap = luma[idx - 1] + luma[idx + 1] + luma[idx - width] + luma[idx + width] - 4 * luma[idx];
+          sum += lap;
+          sumSq += lap * lap;
+          count += 1;
+        }
+      }
+      const mean = count ? sum / count : 0;
+      const sharpness = count ? sumSq / count - mean * mean : 0;
+      // A channel value is "on the degradation grid" if it is a multiple of the quantize step or the
+      // pure white the old normalization snapped near-white pixels to. Anti-aliased (crisp) shots
+      // have many off-grid gradient pixels; a color-quantized shot has almost none.
+      const step = 64;
+      let offGrid = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const onGrid = (v) => v % step === 0 || v === 255;
+        if (!onGrid(data[i]) || !onGrid(data[i + 1]) || !onGrid(data[i + 2])) offGrid += 1;
+      }
+      // Contiguous fully-blank edge bands (measured against the top-left background pixel): the
+      // defect the issue calls out is an oversized capture clip that leaves dead space, which shows
+      // up as whole rows/cols matching the background at an edge (typically a blank band BELOW the
+      // content). Measuring per-edge bands - not the total bounding box - passes a legitimately
+      // content-sparse wide strip (a full-width badge, a spaced checklist, whose blank is
+      // horizontal) while still catching a clip that runs past the content vertically. A row/col is
+      // "blank" when every pixel matches the top-left background within bgDelta.
+      const bg0 = data[0];
+      const bg1 = data[1];
+      const bg2 = data[2];
+      const bgDelta = 24;
+      const rowBlank = (y) => {
+        for (let x = 0; x < width; x += 1) {
+          const i = (y * width + x) * 4;
+          if (Math.abs(data[i] - bg0) > bgDelta || Math.abs(data[i + 1] - bg1) > bgDelta
+            || Math.abs(data[i + 2] - bg2) > bgDelta) return false;
+        }
+        return true;
+      };
+      const colBlank = (x) => {
+        for (let y = 0; y < height; y += 1) {
+          const i = (y * width + x) * 4;
+          if (Math.abs(data[i] - bg0) > bgDelta || Math.abs(data[i + 1] - bg1) > bgDelta
+            || Math.abs(data[i + 2] - bg2) > bgDelta) return false;
+        }
+        return true;
+      };
+      let top = 0;
+      while (top < height && rowBlank(top)) top += 1;
+      let bottom = 0;
+      while (bottom < height - top && rowBlank(height - 1 - bottom)) bottom += 1;
+      let left = 0;
+      while (left < width && colBlank(left)) left += 1;
+      let right = 0;
+      while (right < width - left && colBlank(width - 1 - right)) right += 1;
+      const vBand = height ? (top + bottom) / height : 0;
+      const hBand = width ? (left + right) / width : 0;
+
+      // Yellow-cast fraction: the captured load-flash frame washes a large area of the page with a
+      // semi-transparent yellow (high red and green, low blue). A legitimate yellow highlight mark
+      // covers only a tiny fraction of a shot, so a high fraction flags the animation artifact.
+      let yellow = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        if (r > 150 && g > 130 && b < Math.min(r, g) - 45) yellow += 1;
+      }
+      const cast = n ? yellow / n : 0;
+
+      // sharpMeasurable is false for an image thinner than 3px in either dimension (no interior
+      // pixel exists for a 3x3 Laplacian), so the caller skips the sharpness floor for it rather
+      // than false-failing a legitimately tiny strip as blurry.
+      return { sharpness, richness: offGrid / n, vBand, hBand, cast, sharpMeasurable: count > 0 };
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    const crisp = measure(ctx.getImageData(0, 0, width, height).data);
+    // The degraded copy is only needed by --report (to show the crisp-vs-degraded gap). The gate
+    // uses only the crisp metrics, so skip the extra full-image passes when not reporting.
+    if (!withDegraded) return { width, height, crisp, degraded: null };
+
+    // Degraded copy: downsample by 2 (smoothing) then upsample nearest, and quantize colors - the
+    // exact old normalization - so report mode shows the gap the thresholds must sit inside.
+    const scale = 2;
+    const small = document.createElement("canvas");
+    small.width = Math.max(1, Math.ceil(width / scale));
+    small.height = Math.max(1, Math.ceil(height / scale));
+    const sctx = small.getContext("2d");
+    sctx.imageSmoothingEnabled = true;
+    sctx.drawImage(canvas, 0, 0, small.width, small.height);
+    ctx.clearRect(0, 0, width, height);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(small, 0, 0, width, height);
+    const dImage = ctx.getImageData(0, 0, width, height);
+    const d = dImage.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = Math.round(d[i] / 64) * 64;
+      d[i + 1] = Math.round(d[i + 1] / 64) * 64;
+      d[i + 2] = Math.round(d[i + 2] / 64) * 64;
+      if (d[i] === d[i + 1] && d[i + 1] === d[i + 2] && d[i] >= 192) {
+        d[i] = 255;
+        d[i + 1] = 255;
+        d[i + 2] = 255;
+      }
+    }
+    const degraded = measure(d);
+    return { width, height, crisp, degraded };
+  }, { b64: base64, withDegraded });
+}
+
+// The authoritative shot set is what the capture tool declares via --print-paths (scene -> shot
+// names), so the gate checks EXACTLY the shots the tool produces: a declared shot that is missing
+// fails, a stray non-shot PNG is ignored, and a real shot can never be silently skipped because its
+// name drifted from a pattern. Returns null if the registry cannot be read (the caller then falls
+// back to scanning the dir for shot-named files - used for the temp-dir override in tests).
+function expectedShots() {
+  try {
+    const out = execFileSync("node", [CAPTURE_TOOL, "--print-paths"], { encoding: "utf8" });
+    const scenes = (JSON.parse(out) || {}).scenes || {};
+    const names = [];
+    for (const [prefix, shots] of Object.entries(scenes)) {
+      for (const shot of shots) names.push(`${prefix}-${shot}.png`);
+    }
+    return names.length ? names.sort() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function run() {
+  if (!fs.existsSync(ASSETS)) {
+    console.error("check_shot_quality: assets dir not found:", ASSETS);
+    return 2;
+  }
+  // For the canonical assets dir, check EXACTLY the shots the capture tool declares (a missing one
+  // fails, so the gate can never silently skip a real shot); for an explicit dir override (the
+  // negative test's temp dir), scan the shot-named files that are present.
+  let files;
+  const expected = dirArg ? null : expectedShots();
+  if (expected) {
+    files = expected;
+  } else {
+    try {
+      files = fs.readdirSync(ASSETS).filter((f) => SHOT_NAME_RE.test(f)).sort();
+    } catch (e) {
+      console.error("check_shot_quality: cannot read assets dir", ASSETS, "-", e.message);
+      return 2;
+    }
+    if (!files.length) {
+      console.error("check_shot_quality: no tutorial shots (<scene>-NN-*.png) found in", ASSETS);
+      return 2;
+    }
+  }
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  const problems = [];
+  try {
+    for (const file of files) {
+      const full = path.join(ASSETS, file);
+      if (!fs.existsSync(full)) {
+        const msg = `${file}: expected tutorial shot is missing`;
+        if (reportMode) console.log(msg);
+        else problems.push(msg);
+        continue;
+      }
+      let m;
+      try {
+        const base64 = fs.readFileSync(full).toString("base64");
+        m = await metricsFor(page, base64, reportMode);
+      } catch (e) {
+        // A corrupt/undecodable PNG is a real problem for the gate, but --report is best-effort and
+        // must never fail; either way, keep scanning the rest of the shots.
+        const msg = `${file}: unreadable or corrupt image (${e.message})`;
+        if (reportMode) console.log(msg);
+        else problems.push(msg);
+        continue;
+      }
+      if (reportMode) {
+        console.log(
+          `${file.padEnd(30)} ${m.width}x${m.height}  sharp=${m.crisp.sharpness.toFixed(1)}`
+          + ` (deg ${m.degraded.sharpness.toFixed(1)}) rich=${m.crisp.richness.toFixed(3)}`
+          + ` (deg ${m.degraded.richness.toFixed(3)}) vBand=${m.crisp.vBand.toFixed(3)}`
+          + ` hBand=${m.crisp.hBand.toFixed(3)} cast=${m.crisp.cast.toFixed(3)}`);
+        continue;
+      }
+      const failed = [];
+      if (m.crisp.sharpMeasurable && m.crisp.sharpness < MIN_SHARPNESS) failed.push(`blurry (sharpness ${m.crisp.sharpness.toFixed(1)} < ${MIN_SHARPNESS})`);
+      if (m.crisp.richness < MIN_RICHNESS) failed.push(`faded/quantized (richness ${m.crisp.richness.toFixed(3)} < ${MIN_RICHNESS})`);
+      if (m.width < MIN_DIM || m.height < MIN_DIM) failed.push(`under-resolved (${m.width}x${m.height}, min side < ${MIN_DIM}px)`);
+      if (m.height >= MARGIN_MIN_HEIGHT && m.crisp.vBand > MAX_VBAND) failed.push(`whitespace (blank vertical margin ${(m.crisp.vBand * 100).toFixed(0)}% > ${MAX_VBAND * 100}%)`);
+      if (m.crisp.cast > MAX_CAST) failed.push(`color-cast (yellow ${(m.crisp.cast * 100).toFixed(0)}% > ${MAX_CAST * 100}%)`);
+      if (failed.length) problems.push(`${file}: ${failed.join("; ")}`);
+    }
+  } finally {
+    await page.close().catch(() => {});
+    await browser.close();
+  }
+  if (reportMode) return 0;
+  if (problems.length) {
+    for (const p of problems) console.error(p);
+    console.error("check_shot_quality: one or more tutorial screenshots are low quality. Regenerate"
+      + " them with `npm run shots` after fixing the capture, and confirm they are crisp.");
+    return 1;
+  }
+  console.log(`check_shot_quality: all ${files.length} tutorial screenshots pass the quality gate`);
+  return 0;
+}
+
+run().then((code) => process.exit(code)).catch((e) => { console.error(e); process.exit(1); });

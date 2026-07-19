@@ -149,12 +149,24 @@ writes `garden-01-top-light.png` through `garden-13-comment-search.png`, plus `t
 `checklist-01-checklist.png`, and `note-01-note.png`, into
 `../docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
 capture clock, random seed, viewport, locale, timezone, reduced motion, browser font rendering flags,
-and capture fonts, then normalizes PNG output so repeated runs produce byte-identical files on the
-same browser environment. Check committed screenshots for drift without rewriting them:
+and capture fonts, then writes each shot to disk raw and full-resolution (crisp and true-color). The
+determinism normalization (downsample plus color-quantize) is applied only when comparing images for
+the drift check, never to what is written to disk, so repeated runs stay in sync without degrading the
+committed files. Check committed screenshots for drift without rewriting them:
 
 ```powershell
 npm run shots:check
 ```
+
+A separate quality gate rejects a blurry, faded/color-quantized, under-resolved, whitespace-heavy
+(oversized-clip), or load-flash yellow-cast shot so a low-quality screenshot can never reach the
+published tutorial. It reads the committed PNG bytes (deterministic across platforms):
+
+```powershell
+npm run shots:quality
+```
+
+`npm test` runs both the drift check and the quality gate (`tests/55-shot-quality.spec.js`).
 
 To capture a single scene of a different example, pass overrides (the prefix selects the capture
 recipe: `garden`, `triage`, `checklist`, or `note`):

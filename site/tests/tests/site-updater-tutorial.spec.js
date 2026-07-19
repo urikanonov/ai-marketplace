@@ -230,6 +230,21 @@ test("tutorial image lightbox opens via keyboard, traps Tab, and restores focus 
 });
 
 
+test("the tutorial leads with the value proposition and ends with the Help and About reference (SITE-TUT-08)", async ({ page }) => {
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  // Leads with a value-proposition paragraph (not example-file logistics). Match a short durable
+  // phrase so prose refinements of the value prop do not break the test.
+  await expect(page.locator(".tutorial p").first()).toContainText(/interactive review surface|hand.*back to an AI/i);
+  // Help and About moved out of the opening steps to the end: it sits in the last third of the
+  // section list. Kept order-tolerant (not pinned to strictly-last) so appending a later section
+  // does not falsely fail this while still catching a regression that moves it back near the top.
+  const headingTexts = await page.locator(".tutorial h3").allTextContents();
+  const helpIndex = headingTexts.findIndex((t) => /^\s*Help and About\s*$/.test(t));
+  expect(helpIndex).toBeGreaterThan(-1);
+  expect(helpIndex).toBeGreaterThanOrEqual(Math.floor((headingTexts.length * 2) / 3));
+});
+
+
 test("tutorial brand keeps the user in the commentable-html section", async ({ page }) => {
   await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
   // The brand icon returns to the commentable-html plugin home, not the hub root.

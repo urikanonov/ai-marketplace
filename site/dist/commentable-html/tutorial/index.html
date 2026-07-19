@@ -55,10 +55,11 @@
         <article class="tutorial section-block">
           <!-- BEGIN:tutorial -->
           <h2>Commentable HTML tutorial: Planning a Community Garden</h2>
+          <p>Commentable HTML turns any report, plan, or document into an interactive review surface you can hand straight back to an AI agent. Open the file in your browser, leave inline comments on anything - prose, tables, code, KQL, charts, Mermaid diagrams, diffs, or images - then click <strong>Copy all</strong> and paste the batch back to the agent to address. There is no app to install, no account, and no server: the whole review layer travels inside the single HTML file, and your comments persist in the browser as you iterate.</p>
           <p>This walkthrough uses <a href="../demo/report-community-garden.html"><code>examples/report-community-garden.html</code></a> as a running example. It is a single self-contained file with prose, tables, a KQL query, a Chart.js chart, images, Mermaid diagrams, and a code-review diff, so it lets you try every kind of comment in one place.</p>
           <p><strong>Were you sent a commentable HTML file to review?</strong> You do not need an agent or an account. Select any text, click <strong>Add Comment</strong>, and when you are done click <strong>Copy all</strong> (to hand your notes to an agent) or <strong>Export as Portable</strong> (to send the file back with your comments baked in). The steps below show every kind of thing you can comment on.</p>
           <h3>The review workflow</h3>
-          <p>Commentable HTML turns any report into a review you can hand straight back to an AI agent. The loop has four steps:</p>
+          <p>The review loop has four steps:</p>
           <ol>
           <li><strong>Generate.</strong> Ask an AI chat or terminal agent to produce your report or document as a commentable HTML file.</li>
           <li><strong>Review.</strong> Open the file in your browser and leave inline comments anywhere: text, tables, code, KQL, charts, diagrams, diffs, or images.</li>
@@ -79,15 +80,7 @@
           <li>It reads <strong>Portable</strong> (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads <strong>Offline</strong> when the file is also ready for a zero-network handoff: any Mermaid diagrams or charts keep working from inlined vendored runtimes and remote loaders are stripped. It reads <strong>Not portable</strong> (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.</li>
           <li>Next to the bubble, the version indicator shows <code>v&lt;x.y.z&gt;</code>, telling you which Commentable HTML runtime produced the file.</li>
           </ol>
-          <h3>3. Open Help &amp; About</h3>
-          <ol>
-          <li>Click <strong>Help &amp; About</strong> in the sidebar header.</li>
-          <li>The first topic is the review workflow above; the rest cover every control, gesture, keyboard shortcut, the document-type bubble, exports, and the section menu. Use the search box to jump to an answer.</li>
-          <li>For faster work, open the <strong>Tips and shortcuts</strong> topic: right-click to comment, re-select the same text to reopen its comment, sort back to document order, toggle diff syntax, and the keyboard shortcuts.</li>
-          <li>Close it with the X button, Escape, or by clicking the backdrop.</li>
-          </ol>
-          <p><img src="assets/garden-07-help.png" alt="The Help and About dialog, opened to the review-workflow topic" loading="lazy" /></p>
-          <h3>4. Comment on prose</h3>
+          <h3>3. Comment on prose</h3>
           <ol>
           <li>Go to <strong>Overview</strong>.</li>
           <li>Select the phrase <code>underused corner lot</code>.</li>
@@ -97,13 +90,13 @@
           </ol>
           <p><img src="assets/garden-05-composer.png" alt="The comment composer open on a selected phrase, with the quoted text and a note field" loading="lazy" /></p>
           <p><img src="assets/garden-06-comment-saved.png" alt="The saved comment highlighted in the text with its card in the sidebar" loading="lazy" /></p>
-          <h3>5. Comment on a table cell</h3>
+          <h3>4. Comment on a table cell</h3>
           <ol>
           <li>Go to <strong>Garden Layout</strong>.</li>
           <li>In the bed allocation table, select the text <code>Use a removable trellis</code>.</li>
           <li>Click <strong>Add Comment</strong> and save a note. The card records which table cell you commented on, so the agent can find it later.</li>
           </ol>
-          <h3>6. Comment on the KQL block</h3>
+          <h3>5. Comment on the KQL block</h3>
           <ol>
           <li>Go to <strong>Planting Schedule</strong>.</li>
           <li>In the KQL card, select a short span inside the query.</li>
@@ -111,7 +104,7 @@
           <li>The <strong>Run in Azure Data Explorer</strong> link opens the same query in the Azure Data Explorer web UI, and the cluster name copies to your clipboard when you click it.</li>
           </ol>
           <p><img src="assets/garden-02-kql.png" alt="A highlighted KQL block with a Run in Azure Data Explorer link and a Copy button" loading="lazy" /></p>
-          <h3>7. Comment on the chart</h3>
+          <h3>6. Comment on the chart</h3>
           <ol>
           <li>Stay in <strong>Planting Schedule</strong> and find the watering-needs chart.</li>
           <li>Move the mouse over the bars to read the tooltip.</li>
@@ -119,13 +112,13 @@
           <li>Save a note. A commented chart gets a highlighted outline so you can see at a glance which figures have feedback.</li>
           </ol>
           <p><img src="assets/garden-03-chart.png" alt="The bar chart of weekly watering needs with a commentable caption" loading="lazy" /></p>
-          <h3>8. Comment on an image</h3>
+          <h3>7. Comment on an image</h3>
           <ol>
           <li>Go to <strong>Site Selection</strong> or <strong>Garden Layout</strong>.</li>
           <li>Hover an image (or focus it and press Enter).</li>
           <li>Click the floating <strong>Add Comment</strong> button at the image corner and save a note. The comment is anchored to the whole image and quotes its alt text.</li>
           </ol>
-          <h3>9. Comment on a Mermaid diagram</h3>
+          <h3>8. Comment on a Mermaid diagram</h3>
           <p>Mermaid diagrams render when you open the file in a modern browser. If one does not render, its source stays readable as plain text.</p>
           <ol>
           <li>Go to <strong>Risks and Mitigations</strong> and find the planting decision flowchart.</li>
@@ -133,7 +126,7 @@
           <li>Click the floating <strong>Add Comment</strong> button on the node and save a note. The node gets a colored ring and the comment attaches to that node, so it survives edits to the rest of the diagram.</li>
           <li>You can also comment on gantt bars, sequence-diagram messages, and subgraphs the same way, or hover an empty part of a diagram to comment on the whole thing.</li>
           </ol>
-          <h3>10. Comment on a diff line</h3>
+          <h3>9. Comment on a diff line</h3>
           <ol>
           <li>In <strong>Risks and Mitigations</strong>, find the <code>watering_schedule.py</code> diff.</li>
           <li>Hover the added line <code>+ if rainfall_mm &gt;= 8:</code> and click the floating <strong>Add Comment</strong> button to comment on the whole line.</li>
@@ -141,7 +134,7 @@
           <li>Use the diff header button to switch between views: it reads <strong>To inline view</strong> while side-by-side and <strong>To side-by-side view</strong> while inline. Your comments stay attached either way.</li>
           </ol>
           <p><img src="assets/garden-04-diff.png" alt="The unified diff block with the view toggle and a syntax-highlight toggle" loading="lazy" /></p>
-          <h3>11. Work a review checklist</h3>
+          <h3>10. Work a review checklist</h3>
           <p>Some reports embed interactive review checklists - grouped items whose state you cycle as you verify each one. The community garden plan does not use them, so this step uses <a href="../demo/report-checklist.html"><code>examples/report-checklist.html</code></a>, which is built around a release-readiness checklist.</p>
           <ol>
           <li>Open <a href="../demo/report-checklist.html"><code>examples/report-checklist.html</code></a>.</li>
@@ -149,7 +142,7 @@
           <li>Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item&#x27;s text and click <strong>Add Comment</strong> to leave a note on that specific check.</li>
           </ol>
           <p><img src="assets/checklist-01-checklist.png" alt="A grouped review checklist with tickable items under Backend and Frontend headings" loading="lazy" /></p>
-          <h3>12. Edit a review note</h3>
+          <h3>11. Edit a review note</h3>
           <p>Notes are editable free-text fields authors embed for context, verdicts, or reviewer input. Each starts from an authored baseline you can edit in place. The garden plan has none, so this step uses <a href="../demo/report-notes.html"><code>examples/report-notes.html</code></a>.</p>
           <ol>
           <li>Open <a href="../demo/report-notes.html"><code>examples/report-notes.html</code></a>.</li>
@@ -157,7 +150,7 @@
           <li>Your changes are saved with the document and appear as a note card in the sidebar (with jump and reset), so the agent can cement them back into the source. You can also select the note text and click <strong>Add Comment</strong> to leave a tracked comment on it.</li>
           </ol>
           <p><img src="assets/note-01-note.png" alt="An editable note field labeled Verdict with a single/multi-line toggle" loading="lazy" /></p>
-          <h3>13. Track review progress per section</h3>
+          <h3>12. Track review progress per section</h3>
           <p>Every section heading carries a small review badge so you can mark sections as you finish them and see at a glance what is left.</p>
           <ol>
           <li>Hover a section heading to reveal its badge, then click the badge to mark that section <strong>Reviewed</strong>. The badge turns green and stays visible.</li>
@@ -165,7 +158,7 @@
           <li>Use these badges together with the section filter in the side navigation (next step) to focus on unreviewed or changed sections.</li>
           </ol>
           <p><img src="assets/garden-10-review-badge.png" alt="A section heading showing a green Reviewed badge" loading="lazy" /></p>
-          <h3>14. Navigate, search, and filter sections</h3>
+          <h3>13. Navigate, search, and filter sections</h3>
           <ol>
           <li>Widen the browser window to at least 1400px. A generated section navigation appears on the left (separate from the author Contents list near the top) and highlights the section you are reading.</li>
           <li>The nav has a search box at the top: type to filter the section list down to matching headings.</li>
@@ -173,21 +166,21 @@
           <li>The nav buttons let you <strong>Expand All</strong> or <strong>Collapse All</strong> sections at once and <strong>Scroll to Top</strong> or <strong>Scroll to Bottom</strong> of the document. In the document itself, each section title also has a small caret to its left: click the caret to collapse or expand that one section (clicking a collapsed section&#x27;s title expands it again).</li>
           </ol>
           <p><img src="assets/garden-11-side-toc.png" alt="The left section navigation with its search box, review-status filter, and expand/collapse and scroll controls" loading="lazy" /></p>
-          <h3>15. Search and sort your comments</h3>
+          <h3>14. Search and sort your comments</h3>
           <p>Once you have several comments, the sidebar helps you find and order them.</p>
           <ol>
           <li>Type in the comment search box at the top of the panel to filter the list to comments whose quoted text or note matches your query; the header shows how many of the total are shown.</li>
           <li>Use the sort buttons to order comments by their position in the document, ascending or descending, instead of the order you added them.</li>
           </ol>
           <p><img src="assets/garden-13-comment-search.png" alt="The comments panel filtered by a search query, with the sort controls and a shown-of-total count" loading="lazy" /></p>
-          <h3>16. Hand your comments back</h3>
+          <h3>15. Hand your comments back</h3>
           <ol>
           <li>Click <strong>Copy all</strong> in the toolbar or the sidebar.</li>
           <li>This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.</li>
           <li>Paste the bundle back to the agent. It addresses each comment and marks it handled in the same file.</li>
           </ol>
           <p><img src="assets/garden-09-copyall.png" alt="The Copy all action with the comments panel populated" loading="lazy" /></p>
-          <h3>17. Use the export menu</h3>
+          <h3>16. Use the export menu</h3>
           <p>The sidebar&#x27;s export menu gathers the ways to save or share the file in one place.</p>
           <ol>
           <li>Click <strong>Export</strong> in the comments panel header to open the menu.</li>
@@ -195,11 +188,11 @@
           <li>The <strong>Clear</strong> button next to Export removes every comment so you can start the review over.</li>
           </ol>
           <p><img src="assets/garden-12-export-menu.png" alt="The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML" loading="lazy" /></p>
-          <h3>18. Refresh and repeat</h3>
+          <h3>17. Refresh and repeat</h3>
           <p>Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.</p>
           <p>To share the review with another person instead, use the export menu&#x27;s <strong>Portable</strong> action to bake the comments into a single self-contained copy, or <strong>Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
           <p>Use <strong>Export Offline</strong> for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the <strong>Offline</strong> badge while keeping live diagrams and chart tooltips.</p>
-          <h3>19. Review a board document</h3>
+          <h3>18. Review a board document</h3>
           <p>Not every commentable file is a prose report. A board document (<code>kind: board</code>) renders as columns of cards - handy for triaging incidents, tickets, or tasks. The <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a> report is one.</p>
           <ol>
           <li>Open <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a>.</li>
@@ -209,6 +202,15 @@
           <h3>Dark theme</h3>
           <p>The layer follows your browser or OS theme and stays readable in both. Everything above works identically in dark mode.</p>
           <p><img src="assets/garden-08-top-dark.png" alt="The community garden plan in dark theme" loading="lazy" /></p>
+          <h3>Help and About</h3>
+          <p>Commentable HTML has a built-in reference for every control, gesture, and keyboard shortcut. Open it whenever you want the full picture.</p>
+          <ol>
+          <li>Click <strong>Help &amp; About</strong> in the sidebar header.</li>
+          <li>The first topic is the review workflow above; the rest cover every control, gesture, keyboard shortcut, the document-type bubble, exports, and the section menu. Use the search box to jump to an answer.</li>
+          <li>For faster work, open the <strong>Tips and shortcuts</strong> topic: right-click to comment, re-select the same text to reopen its comment, sort back to document order, toggle diff syntax, and the keyboard shortcuts.</li>
+          <li>Close it with the X button, Escape, or by clicking the backdrop.</li>
+          </ol>
+          <p><img src="assets/garden-07-help.png" alt="The Help and About dialog, opened to the review-workflow topic" loading="lazy" /></p>
           <!-- END:tutorial -->
         </article>
       </div>
