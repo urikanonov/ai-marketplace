@@ -1,0 +1,82 @@
+/* Hero showcase: a real product screenshot paired with the concrete four-step review loop,
+   placed right after the hero (above Install and the feature grid) so the concrete value
+   proposition - comment inline, then round-trip to the agent - leads the page instead of being
+   buried below Install and the feature grid. A plain <div> (not a <section>) so it does not shift
+   the section striping below it. */
+/* Vertical padding only - the nested .wrap already provides the 20px horizontal gutter, so
+   adding it here too would double the side margins and over-shrink the screenshot on mobile. */
+.showcase { padding: 8px 0 40px; }
+.showcase-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 36px;
+  align-items: center;
+}
+
+/* Framed screenshot: a subtle browser-chrome mock (dots bar) plus border, rounded corners, and
+   a drop shadow so it reads as a polished product shot rather than a raw screengrab. */
+.showcase-shot { margin: 0; min-width: 0; }
+.showcase-frame {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius);
+  box-shadow: var(--cp-shadow);
+  overflow: hidden;
+}
+.showcase-dots {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  background: var(--cp-surface-soft);
+  border-bottom: 1px solid var(--cp-border);
+}
+.showcase-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--cp-border-strong); }
+/* Scale down responsively - never a fixed width that could overflow a small screen. */
+.showcase-img { display: block; width: 100%; height: auto; }
+.showcase-caption {
+  margin-top: 12px;
+  font-size: 0.9rem;
+  color: var(--cp-text-muted);
+  text-align: center;
+}
+
+.showcase-copy { min-width: 0; }
+.showcase-title { margin-bottom: 10px; }
+.showcase-lead {
+  font-size: 1.05rem;
+  color: var(--cp-text-muted);
+  margin-bottom: 22px;
+}
+.showcase-flow {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0 0 24px;
+}
+.showcase-step { display: flex; gap: 14px; align-items: flex-start; }
+.showcase-step-n {
+  flex: 0 0 auto;
+  width: 2em;
+  height: 2em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.showcase-step-body h3 { font-size: 1.02rem; margin-bottom: 2px; }
+.showcase-step-body p { color: var(--cp-text-muted); font-size: 0.95rem; }
+.showcase-cta { display: inline-flex; }
+
+/* Mobile: stack the screenshot above the steps; the image already scales to 100% width so it
+   never overflows or forces a horizontal scroll. */
+@media (max-width: 760px) {
+  .showcase { padding: 4px 0 28px; }
+  .showcase-grid { grid-template-columns: 1fr; gap: 22px; }
+  .showcase-lead { font-size: 1rem; }
+}
