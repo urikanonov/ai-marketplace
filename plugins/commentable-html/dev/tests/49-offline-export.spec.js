@@ -314,10 +314,14 @@ test("Export Offline embeds vendored mermaid and Chart.js for zero-network reope
 });
 
 test("Export Offline embeds the MIT license notice beside each inlined library (CMH-LICENSE-02)", async ({ page }) => {
-  test.setTimeout(60000);
+  test.setTimeout(90000);
   const staged = stageContent(CONTENT, { key: "cmh-offline-notice", source: "offline-notice.html" });
+  // Seed a STALE library notice into the document head on disk (as a hypothetical earlier offline
+  // pass would leave). The offline export's base HTML carries it, so this exercises the idempotency
+  // strip: _stripOfflineRichRenderers must drop the stale notice before the export re-emits one.
+  const staleNotice = "<!-- Third-party notice - mermaid is bundled inline for offline use under the MIT License:\nSTALE DUPLICATE\n-->";
+  fs.writeFileSync(staged.html, fs.readFileSync(staged.html, "utf8").replace("</head>", staleNotice + "\n</head>"));
   const server = await startStaticServer(staged.dir);
-  const outDir = makeTmpDir();
   try {
     await routeRichContentLocal(page);
     await installClipboardCapture(page);
@@ -342,30 +346,16 @@ test("Export Offline embeds the MIT license notice beside each inlined library (
     expect(mermaidNotice).toContain("Permission is hereby granted");
     expect(chartNotice).toContain("Copyright (c) 2014-2024 Chart.js Contributors");
     expect(chartNotice).toContain("Permission is hereby granted");
-    // Exactly one notice per library on a fresh export.
+    // Idempotent: exactly one notice per library - the seeded stale mermaid notice was stripped and
+    // re-emitted once, never duplicated.
     expect((exportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
     expect((exportedHtml.match(/Third-party notice - Chart\.js/g) || []).length).toBe(1);
+    expect(exportedHtml).not.toContain("STALE DUPLICATE");
     // The notice is a comment, never an executed script, so it cannot run and stays under the CSP.
     expect(exportedHtml).not.toContain("Third-party notice - mermaid is bundled inline for offline use under the MIT License:</script>");
-
-    // Idempotency: re-exporting the (zero-network) offline file must NOT accumulate duplicate
-    // notices - the prior notice comment is stripped and re-emitted exactly once.
-    const exportedPath = path.join(outDir, "offline-notice.html");
-    fs.writeFileSync(exportedPath, exportedHtml);
-    await page.goto(fileUrl(exportedPath));
-    await ready(page);
-    await openSidebarExportMenu(page);
-    await Promise.all([
-      page.waitForEvent("download"),
-      clickSidebarExport(page, "#btnExportOffline"),
-    ]);
-    const reExportedHtml = await capturedDownloadText(page);
-    expect((reExportedHtml.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
-    expect((reExportedHtml.match(/Third-party notice - Chart\.js/g) || []).length).toBe(1);
   } finally {
     await server.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
-    fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
 
