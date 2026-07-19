@@ -1,10 +1,12 @@
-# The shipped skill dir must contain ONLY the three packaged files (SKILL.md, LICENSE, and
-# skill-resources.zip). Running the SessionStart extractor against this SOURCE tree - which happens
-# during local testing or when a duck/agent runs the hook here - unpacks the zip in place, leaving
-# tools/, references/, dist/, vendor/, and a .skill-resources-<version>.ok marker behind. Ignore
-# every such extraction artifact so a polluted tree can never be accidentally staged or committed
-# (test_shipped_skill_dir_is_minimal is the CI backstop; this keeps it from ever getting that far).
+# The shipped skill dir must contain ONLY the four packaged files (SKILL.md, LICENSE,
+# THIRD_PARTY_NOTICES.md, and skill-resources.zip). Running the SessionStart extractor against this
+# SOURCE tree - which happens during local testing or when a duck/agent runs the hook here - unpacks
+# the zip in place, leaving tools/, references/, dist/, vendor/, and a .skill-resources-<version>.ok
+# marker behind. Ignore every such extraction artifact so a polluted tree can never be accidentally
+# staged or committed (test_shipped_skill_dir_is_minimal is the CI backstop; this keeps it from ever
+# getting that far).
 pkg/skills/commentable-html/*
 !pkg/skills/commentable-html/SKILL.md
 !pkg/skills/commentable-html/LICENSE
+!pkg/skills/commentable-html/THIRD_PARTY_NOTICES.md
 !pkg/skills/commentable-html/skill-resources.zip

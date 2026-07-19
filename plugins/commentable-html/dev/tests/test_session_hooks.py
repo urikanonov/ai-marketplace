@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Tests for the shipped SessionStart hooks and the minimal packaged skill (pkg/dev split).
 
-The plugin ships a compact skills/commentable-html (SKILL.md, LICENSE, skill-resources.zip) plus a
-SessionStart hook that extracts the zip on first run. These tests pin the shipped wiring:
+The plugin ships a compact skills/commentable-html (SKILL.md, LICENSE, THIRD_PARTY_NOTICES.md,
+skill-resources.zip) plus a SessionStart hook that extracts the zip on first run. These tests pin the
+shipped wiring:
 
-- CMH-PKG-07 the shipped skill dir is minimal (only SKILL.md, LICENSE, skill-resources.zip);
+- CMH-PKG-07 the shipped skill dir is minimal (only SKILL.md, LICENSE, THIRD_PARTY_NOTICES.md,
+  skill-resources.zip);
 - CMH-PKG-08 the zip carries the runtime dirs (tools/references/dist/vendor) and NOT the large
   tutorial/examples, and unpacks to reproduce the runtime tools;
 - CMH-PKG-09 both hook configs (Copilot hooks.json + Claude hooks/hooks.json) do a version-stamped
@@ -57,9 +59,10 @@ class MinimalPackageTests(unittest.TestCase):
     # CMH-PKG-07
     def test_shipped_skill_dir_is_minimal(self):
         entries = sorted(os.listdir(PKG_SHIPPED))
-        self.assertEqual(entries, ["LICENSE", "SKILL.md", "skill-resources.zip"],
-                         "the shipped skill dir must carry only SKILL.md, LICENSE, and the zip; "
-                         "everything else ships inside skill-resources.zip")
+        self.assertEqual(entries, ["LICENSE", "SKILL.md", "THIRD_PARTY_NOTICES.md", "skill-resources.zip"],
+                         "the shipped skill dir must carry only SKILL.md, LICENSE, "
+                         "THIRD_PARTY_NOTICES.md, and the zip; everything else ships inside "
+                         "skill-resources.zip")
 
     # CMH-PKG-08
     def test_zip_carries_runtime_dirs_but_not_tutorial_or_examples(self):

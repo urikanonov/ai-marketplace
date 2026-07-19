@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.166.0";
+const CMH_VERSION = "1.168.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3672,6 +3672,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   }
   positionComposerNear(el, anchorRect);
+  if (mode === "new") applyComposerPreview(el);
 
   const cleanups = [];
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
@@ -3746,6 +3747,66 @@ function attachDrag(el, handle, cleanups) {
   cleanups.push(addListener(document, "touchend", onUp));
 }
 
+// Preview highlight while composing a NEW text comment. The moment the composer opens,
+// wrap the pending range in a transient mark.cm-preview so the reviewer sees exactly what
+// the comment will anchor to. The preview carries NO data-cid (so the hover bubble, the
+// highlight click handler, and the popover all treat it as inert - none of them act on a
+// mark without a cid) and is NOT .cm-skip (so it stays counted in the text-offset space,
+// keeping any concurrent composer's stored offsets correct). It is removed on cancel and
+// converted into the real highlight on save. Whitespace-only gap nodes are left unwrapped:
+// the saved highlight paints those transparently anyway (mark.cm-hl.cm-hl-gap), so the
+// preview matches its appearance. File exports rebuild highlights from the embedded
+// comments array over a pristine snapshot, so a live preview never leaks into a saved file.
+function applyComposerPreview(el) {
+  if (!el || el._mode !== "new") return;
+  if (typeof el._start !== "number" || typeof el._end !== "number") return;
+  const r = rangeFromOffsets(el._start, el._end);
+  if (!r) return;
+  // Track the created marks on the composer up front (the array is mutated in place), so a
+  // mid-loop throw is still fully cleanable by the catch below - otherwise a partially
+  // wrapped set of preview marks would leak into the live DOM with no reference.
+  const marks = [];
+  el._previewMarks = marks;
+  try {
+    getTextNodes().filter(n => r.intersectsNode(n)).forEach(tn => {
+      let s = 0, e = tn.nodeValue.length;
+      if (tn === r.startContainer) s = r.startOffset;
+      if (tn === r.endContainer)   e = r.endOffset;
+      if (s >= e) return;
+      // Skip a whitespace-only span BEFORE splitting the node, so a gap between inline
+      // elements never leaves a fragmented (but unwrapped, untracked) text node behind.
+      if (!tn.nodeValue.slice(s, e).trim()) return;
+      if (e < tn.nodeValue.length) tn.splitText(e);
+      let target = tn;
+      if (s > 0) target = tn.splitText(s);
+      const m = document.createElement("mark");
+      m.className = "cm-preview";
+      target.parentNode.insertBefore(m, target);
+      m.appendChild(target);
+      marks.push(m);
+    });
+  } catch (e2) { clearComposerPreview(el); return; }
+  // Drop the native selection so the amber preview reads exactly like a saved highlight
+  // (the browser's own selection tint would otherwise double up over it), but only once an
+  // amber preview actually stands in for it.
+  if (marks.length) {
+    try { window.getSelection().removeAllRanges(); } catch (e3) { /* headless / detached */ }
+  }
+}
+
+function clearComposerPreview(el) {
+  const marks = el && el._previewMarks;
+  if (el) el._previewMarks = null;
+  if (!marks || !marks.length) return;
+  marks.forEach(m => {
+    const parent = m.parentNode;
+    if (!parent) return;
+    while (m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+    parent.normalize();
+  });
+}
+
 function flashComposer(el) {
   el.classList.remove("flash");
   void el.offsetWidth;
@@ -3781,6 +3842,7 @@ function openComposerForEdit(comment) {
 
 function closeComposerElement(el) {
   if (!el || !openComposers.has(el)) return;
+  clearComposerPreview(el);
   openComposers.delete(el);
   if (el._editingId) openEditComposers.delete(el._editingId);
   if (lastFocusedComposer === el) lastFocusedComposer = null;
@@ -3929,8 +3991,20 @@ function saveComposerElement(el) {
     };
     comments.push(comment);
   } else {
+    // Convert the composing preview into the real highlight. First confirm the stored
+    // offsets still anchor while the preview is up, so a failed re-anchor leaves the preview
+    // (and its anchor cue) intact rather than stripping it from a still-open composer. Then
+    // drop the preview marks so wrapRangeWithMark re-wraps the original text with the
+    // comment's cid rather than nesting inside a preview mark.
+    if (!rangeFromOffsets(el._start, el._end)) {
+      showToast("Could not re-anchor that selection (the text may have changed). Try again.");
+      return;
+    }
+    clearComposerPreview(el);
     const r = rangeFromOffsets(el._start, el._end);
     if (!r) {
+      // Unreachable in practice (the preflight above just resolved it and unwrapping the
+      // preview does not change character offsets); guard defensively without a no-op re-apply.
       showToast("Could not re-anchor that selection (the text may have changed). Try again.");
       return;
     }
@@ -3947,7 +4021,11 @@ function saveComposerElement(el) {
       wrapRangeWithMark(r, id);
     } catch (e) {
       comments.pop();
+      // Roll back any partial mark.cm-hl the wrap created before throwing, so the failed
+      // save leaves no orphan highlight and the re-applied preview does not nest over one.
+      unwrapMarks(id);
       showToast("Could not highlight that range (it may overlap an existing comment). Comment was not saved.");
+      applyComposerPreview(el);
       return;
     }
     window.getSelection().removeAllRanges();
@@ -6659,6 +6737,17 @@ function _stripOfflineNetworkLoads(doc) {
   });
 }
 function _stripOfflineRichRenderers(doc) {
+  // On a re-export of an already-offline document, remove any previously inlined library notice
+  // comments so they are re-emitted exactly once (the inlined lib scripts below are stripped and
+  // re-added the same way); otherwise each re-export would append another duplicate notice.
+  const head = doc.head || doc.querySelector("head");
+  if (head) {
+    Array.prototype.slice.call(head.childNodes).forEach(function (n) {
+      if (n.nodeType === 8 && /Third-party notice - .* bundled inline for offline use under the MIT License:/.test(n.nodeValue || "")) {
+        if (n.parentNode) n.parentNode.removeChild(n);
+      }
+    });
+  }
   doc.querySelectorAll("script[src]").forEach(function (s) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
@@ -6694,6 +6783,8 @@ function _ensureOfflineVendoredRichLibsPromise() {
     return {
       mermaid: await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
       chartjs: await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
+      mermaidLicense: String(payload.mermaidLicense || ""),
+      chartjsLicense: String(payload.chartjsLicense || ""),
     };
   })();
   return _offlineVendoredRichLibsPromise;
@@ -6732,6 +6823,17 @@ function _offlineAppendInlineScript(doc, head, code, attrs) {
   s.textContent = _escClose(String(code || ""));
   head.appendChild(s);
 }
+function _offlineAppendLibNotice(doc, head, name, license) {
+  // MIT requires the copyright + permission notice to accompany a redistributed copy of the library.
+  // The Offline export inlines the library bytes, so emit its notice as an HTML comment beside it.
+  // Neutralize any "--" so the comment cannot terminate early or serialize as invalid HTML (the
+  // vendored MIT texts have none today; this keeps it safe if an upstream refresh introduces one).
+  const text = String(license || "").replace(/-{2,}/g, function (m) { return m.split("").join(" "); });
+  if (!text.trim()) return;
+  head.appendChild(doc.createComment(
+    " Third-party notice - " + name + " is bundled inline for offline use under the MIT License:\n"
+    + text + "\n"));
+}
 function _offlineHoistChartScripts(doc) {
   const body = doc.body || doc.querySelector("body");
   if (!body) return;
@@ -6758,10 +6860,12 @@ async function _offlineInlineRichLibs(doc) {
   const bundle = await _offlineVendoredRichLibs();
   if (needCharts) {
     if (!bundle.chartjs) throw new Error("Offline export is missing the vendored Chart.js bundle.");
+    _offlineAppendLibNotice(doc, head, "Chart.js", bundle.chartjsLicense);
     _offlineAppendInlineScript(doc, head, bundle.chartjs, { "data-cmh-offline-lib": "chartjs" });
   }
   if (needMermaid) {
     if (!bundle.mermaid) throw new Error("Offline export is missing the vendored mermaid bundle.");
+    _offlineAppendLibNotice(doc, head, "mermaid", bundle.mermaidLicense);
     _offlineAppendInlineScript(doc, head, bundle.mermaid, { "data-cmh-offline-lib": "mermaid" });
     _offlineAppendInlineScript(doc, head,
       "(function(){\n"

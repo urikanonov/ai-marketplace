@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.166.0`
+**Version:** `1.168.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
@@ -114,6 +114,7 @@ Use the tools rather than manual region editing. If manual fallback is unavoidab
 - Section cards for a report/plan: `tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block in `<section>` so the document renders as boxed cards (`#commentRoot > section`); `new_document.py` (report/plan fragments) and `finalize.py` run it by default, so hand-wrapping is only needed for externally produced HTML. The validator warns (CMH-VAL-14) when top-level content is not sectioned.
 - Document overview strip for a report/plan (section count, word count, reading time): `tools/authoring/doc_stats.py` bakes a `cm-skip` strip under the `<h1>` title; `new_document.py`, `finalize.py`, and `retrofit.py` run it by default (opt out with `--no-stats`).
 - Local images in a standalone doc: `tools/authoring/inline_images.py --strict`.
+- Plain-ASCII typography: `tools/authoring/normalize_typography.py` rewrites AI smart-typography (em/en dashes, ellipsis, curly quotes, nbsp) in a document's prose to plain ASCII, leaving code/script/style/comments verbatim; `finalize.py` and `deck_scaffold.py` run it by default (opt out with `--no-normalize`).
 - Layered checklist markup: `tools/checklist/checklist_scaffold.py`.
 - Editable notes-field markup: `tools/notes/notes_scaffold.py`.
 - Full deterministic finalization and strict validation:

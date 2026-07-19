@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import {
   openInline,
   openKitchenSink,
-  selectText,
   ready,
   fileUrl,
   INLINE,
@@ -13,7 +12,18 @@ import {
 } from "./helpers.js";
 
 async function openComposerFromSelection(page, selector, index = 0) {
-  await selectText(page, selector, { index });
+  // Select the element's full contents rather than a text-offset range so the second
+  // composer collides with the first even though the composing preview (CMH-CORE-17)
+  // wraps the selected text and splits its text nodes.
+  await page.evaluate(({ sel, i }) => {
+    const el = document.querySelectorAll(sel)[i];
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(range);
+    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 40, clientY: 40 }));
+  }, { sel: selector, i: index });
   await expect(page.locator("#menuComment")).toBeVisible();
   await page.locator("#menuComment").evaluate((button) => button.click());
   return page.locator(".cm-composer").last();

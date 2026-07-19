@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.166.0] - 2026-07-19
+## [1.168.0] - 2026-07-19
 
 ### Changed
 
@@ -12,10 +12,55 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   reference resolves inside an OS temporary directory that is not the document's own folder
   (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment
   layer once the OS reaps the temp directory - the exact failure behind a shared document whose
-  CSS/JS 404'd after handoff. Temp detection is cross-platform (`TMPDIR`/`TEMP`/`TMP`,
-  `tempfile.gettempdir()`, and `AppData/Local/Temp`, `/tmp`, `/var/tmp`, `/var/folders`); relative
-  refs and a companion sitting beside the document are never flagged. The message points at a
-  Portable single-file export or copying `dist/` to a durable folder.
+  CSS/JS 404'd after handoff. Temp detection is cross-platform and root-anchored (`TMPDIR`/`TEMP`/
+  `TMP` and `tempfile.gettempdir()`, symlink-resolved via `realpath`, plus `/tmp`, `/var/tmp`,
+  `/var/folders`, `/windows/temp`, and per-user `AppData/Local/Temp`), so a durable project folder
+  named `tmp` is never mis-flagged; relative refs and a companion sitting beside the document are
+  never flagged. The message points at a Portable single-file export or copying `dist/` to a
+  durable folder.
+
+## [1.167.0] - 2026-07-19
+
+### Added
+
+- Preview highlight while composing a text comment (CMH-CORE-17): opening a new text-comment
+  composer immediately shows the selected text as a live amber preview highlight
+  (`mark.cm-preview`) so the reviewer sees exactly what the comment will anchor to. Saving turns
+  it into the real persisted highlight over exactly the previewed text; cancelling via the Cancel
+  button or Escape removes it and stores nothing. The preview is transient chrome (no `data-cid`,
+  never persisted, excluded from export and print), stays in the text-offset space so a concurrent
+  composer's anchors never cross, is fully cleaned up if wrapping throws, and is re-applied if a
+  save cannot complete so the still-open composer keeps its anchor cue.
+
+## [1.166.0] - 2026-07-19
+
+### Added
+
+- CMH-ASCII-01: the document producers now rewrite AI "smart" typography - em/en dashes, the
+  ellipsis glyph, curly quotes, and non-breaking / zero-width spaces - to plain ASCII in visible
+  prose, leaving code, script, style, and HTML comments verbatim. `finalize.py` (reports/plans) and
+  `deck_scaffold.py` (deck slide prose) run the new shared `normalize_typography.py` normalizer by
+  default; opt out with `--no-normalize`. This keeps every report, plan, and deck on the plain-ASCII
+  house style without a hand pass.
+
+### Changed
+
+- Deck hover is smoother (CMH-DECK-21, CMH-DECK-RECIPE-02): table-cell, metric-tile, and
+  reference-pill hovers no longer animate `box-shadow` (a per-frame repaint) and table cells no
+  longer apply a `transform` lift (which relayouts the table). Cells ease only the cheap
+  `background-color` and the highlight ring snaps; tiles and pills keep their lift via the
+  compositor-friendly `transform`. Sweeping the mouse across a large deck table no longer lags.
+
+## [1.165.0] - 2026-07-19
+
+### Added
+
+- Third-party MIT license notices for the vendored rich-content libraries (mermaid, Chart.js). The
+  upstream license texts are vendored under `dev/assets/vendor/*.LICENSE`, `build.py` assembles them
+  into a shipped `THIRD_PARTY_NOTICES.md` (copied unzipped beside the plugin LICENSE and gated by
+  `build.py --check`), and `Export Offline` now embeds each bundled library's MIT notice as an HTML
+  comment beside the inlined library, so a redistributed offline artifact carries the required
+  copyright and permission notice.
 
 ## [1.163.0] - 2026-07-19
 
