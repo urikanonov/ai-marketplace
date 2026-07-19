@@ -1,12 +1,12 @@
 // Tutorial screenshot quality gate (dev-only, not shipped). Reads every committed tutorial image
-// under docs/assets and fails if any is too blurry, too faded/quantized, or too small - the exact
-// classes of low-quality screenshot that used to reach the published tutorial. It reads the static
-// committed PNG bytes (never a fresh capture), so the metrics are deterministic across platforms.
+// under docs/assets and fails a shot that is blurry, faded/quantized, under-resolved, carries a
+// large blank vertical margin (an oversized clip), or is washed with a load-animation yellow cast -
+// the exact classes of low-quality screenshot issue #462 flags. It reads the static committed PNG
+// bytes (never a fresh capture), so the metrics are deterministic across platforms.
 //
 // Usage:
 //   node tools/check_shot_quality.mjs            # gate: exit non-zero if any image fails
-//   node tools/check_shot_quality.mjs --report   # print per-image metrics (crisp vs a degraded
-//                                                 # copy) for calibration; never fails
+//   node tools/check_shot_quality.mjs --report   # print per-image metrics for calibration; never fails
 import { chromium } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
@@ -16,19 +16,30 @@ import { fileURLToPath } from "url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CAPTURE_TOOL = path.join(HERE, "capture_tutorial.mjs");
 const reportMode = process.argv.includes("--report");
-// Optional positional arg overrides the assets dir (used by the negative test to point the gate at
+// Optional positional arg overrides the assets dir (used by the negative tests to point the gate at
 // a temp dir holding a deliberately degraded image); defaults to the committed docs/assets.
 const dirArg = process.argv.slice(2).find((a) => !a.startsWith("--"));
 const ASSETS = dirArg ? path.resolve(dirArg) : path.resolve(HERE, "..", "..", "docs", "assets");
 
-// Thresholds calibrated so every current crisp shot clears them with margin while a shot degraded
-// by the old downsample+quantize normalization fails. Richness is the primary gate: a color-
-// quantized (faded/banded) shot has ZERO off-grid pixels, while every real crisp shot has at least
-// ~4% of them. Sharpness is a secondary floor against a smooth-blur regression. A resolution
-// regression (e.g. capturing at 1x) is already caught by capture_tutorial.mjs --check, which pins
-// each shot's dimensions, so no dimension floor is needed here. See report mode for the calibration.
-const MIN_SHARPNESS = 60;      // variance of the Laplacian on luma; a smooth-blurred shot scores low.
-const MIN_RICHNESS = 0.02;     // fraction of off-grid pixels; a color-quantized/faded shot scores 0.
+// Thresholds calibrated (see report mode) so every current crisp shot clears them with margin while
+// the specific low-quality classes fail. Values reference the observed crisp-shot distribution:
+//   sharpness: crisp shots score >=280 (variance of the Laplacian); a smooth-blurred shot scores low.
+//   richness:  crisp shots have >=4% off-grid pixels; a color-quantized/faded shot has ~0.
+//   dimensions: the smallest legitimate shot is a 70px-tall badge strip, so a 64px floor only trips
+//     a grossly under-resolved image; an exact-resolution regression (e.g. a 1x recapture) is also
+//     pinned by capture_tutorial.mjs --check.
+//   vBand: fraction of contiguous blank rows at the top+bottom edges (an oversized clip's dead
+//     space). Only judged for shots at least MARGIN_MIN_HEIGHT tall, where max legit vBand is ~0.11;
+//     a short element strip's inherent vertical padding is exempt. Horizontal blank is NOT gated
+//     because full-width badge/checklist strips legitimately have narrow content.
+//   cast: fraction of strong-yellow pixels; a legit yellow highlight is <=2.2%, the load-flash wash
+//     covers a large area, so 0.10 separates them.
+const MIN_SHARPNESS = 60;
+const MIN_RICHNESS = 0.02;
+const MIN_DIM = 64;            // both width and height must be at least this many pixels.
+const MARGIN_MIN_HEIGHT = 400; // only judge the vertical blank margin on shots at least this tall.
+const MAX_VBAND = 0.25;        // max fraction of blank top+bottom rows before it reads as dead space.
+const MAX_CAST = 0.10;         // max fraction of strong-yellow pixels before it reads as a load-flash cast.
 // Only the committed tutorial shots follow the <scene>-NN-<name>.png naming (garden-01-top-light,
 // note-01-note, triage-01-board, ...). Restrict the gate to that pattern so a future non-shot PNG (a
 // flat logo or icon) dropped into docs/assets is not falsely failed as faded/quantized.
@@ -73,10 +84,60 @@ async function metricsFor(page, base64, withDegraded) {
         const onGrid = (v) => v % step === 0 || v === 255;
         if (!onGrid(data[i]) || !onGrid(data[i + 1]) || !onGrid(data[i + 2])) offGrid += 1;
       }
+      // Contiguous fully-blank edge bands (measured against the top-left background pixel): the
+      // defect the issue calls out is an oversized capture clip that leaves dead space, which shows
+      // up as whole rows/cols matching the background at an edge (typically a blank band BELOW the
+      // content). Measuring per-edge bands - not the total bounding box - passes a legitimately
+      // content-sparse wide strip (a full-width badge, a spaced checklist, whose blank is
+      // horizontal) while still catching a clip that runs past the content vertically. A row/col is
+      // "blank" when every pixel matches the top-left background within bgDelta.
+      const bg0 = data[0];
+      const bg1 = data[1];
+      const bg2 = data[2];
+      const bgDelta = 24;
+      const rowBlank = (y) => {
+        for (let x = 0; x < width; x += 1) {
+          const i = (y * width + x) * 4;
+          if (Math.abs(data[i] - bg0) > bgDelta || Math.abs(data[i + 1] - bg1) > bgDelta
+            || Math.abs(data[i + 2] - bg2) > bgDelta) return false;
+        }
+        return true;
+      };
+      const colBlank = (x) => {
+        for (let y = 0; y < height; y += 1) {
+          const i = (y * width + x) * 4;
+          if (Math.abs(data[i] - bg0) > bgDelta || Math.abs(data[i + 1] - bg1) > bgDelta
+            || Math.abs(data[i + 2] - bg2) > bgDelta) return false;
+        }
+        return true;
+      };
+      let top = 0;
+      while (top < height && rowBlank(top)) top += 1;
+      let bottom = 0;
+      while (bottom < height - top && rowBlank(height - 1 - bottom)) bottom += 1;
+      let left = 0;
+      while (left < width && colBlank(left)) left += 1;
+      let right = 0;
+      while (right < width - left && colBlank(width - 1 - right)) right += 1;
+      const vBand = height ? (top + bottom) / height : 0;
+      const hBand = width ? (left + right) / width : 0;
+
+      // Yellow-cast fraction: the captured load-flash frame washes a large area of the page with a
+      // semi-transparent yellow (high red and green, low blue). A legitimate yellow highlight mark
+      // covers only a tiny fraction of a shot, so a high fraction flags the animation artifact.
+      let yellow = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        if (r > 150 && g > 130 && b < Math.min(r, g) - 45) yellow += 1;
+      }
+      const cast = n ? yellow / n : 0;
+
       // sharpMeasurable is false for an image thinner than 3px in either dimension (no interior
       // pixel exists for a 3x3 Laplacian), so the caller skips the sharpness floor for it rather
       // than false-failing a legitimately tiny strip as blurry.
-      return { sharpness, richness: offGrid / n, sharpMeasurable: count > 0 };
+      return { sharpness, richness: offGrid / n, vBand, hBand, cast, sharpMeasurable: count > 0 };
     }
 
     const canvas = document.createElement("canvas");
@@ -188,13 +249,17 @@ async function run() {
       if (reportMode) {
         console.log(
           `${file.padEnd(30)} ${m.width}x${m.height}  sharp=${m.crisp.sharpness.toFixed(1)}`
-          + ` (deg ${m.degraded.sharpness.toFixed(1)})  rich=${m.crisp.richness.toFixed(3)}`
-          + ` (deg ${m.degraded.richness.toFixed(3)})`);
+          + ` (deg ${m.degraded.sharpness.toFixed(1)}) rich=${m.crisp.richness.toFixed(3)}`
+          + ` (deg ${m.degraded.richness.toFixed(3)}) vBand=${m.crisp.vBand.toFixed(3)}`
+          + ` hBand=${m.crisp.hBand.toFixed(3)} cast=${m.crisp.cast.toFixed(3)}`);
         continue;
       }
       const failed = [];
       if (m.crisp.sharpMeasurable && m.crisp.sharpness < MIN_SHARPNESS) failed.push(`blurry (sharpness ${m.crisp.sharpness.toFixed(1)} < ${MIN_SHARPNESS})`);
       if (m.crisp.richness < MIN_RICHNESS) failed.push(`faded/quantized (richness ${m.crisp.richness.toFixed(3)} < ${MIN_RICHNESS})`);
+      if (m.width < MIN_DIM || m.height < MIN_DIM) failed.push(`under-resolved (${m.width}x${m.height}, min side < ${MIN_DIM}px)`);
+      if (m.height >= MARGIN_MIN_HEIGHT && m.crisp.vBand > MAX_VBAND) failed.push(`whitespace (blank vertical margin ${(m.crisp.vBand * 100).toFixed(0)}% > ${MAX_VBAND * 100}%)`);
+      if (m.crisp.cast > MAX_CAST) failed.push(`color-cast (yellow ${(m.crisp.cast * 100).toFixed(0)}% > ${MAX_CAST * 100}%)`);
       if (failed.length) problems.push(`${file}: ${failed.join("; ")}`);
     }
   } finally {

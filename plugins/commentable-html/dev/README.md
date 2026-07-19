@@ -158,8 +158,9 @@ committed files. Check committed screenshots for drift without rewriting them:
 npm run shots:check
 ```
 
-A separate quality gate rejects a blurry or faded/color-quantized shot so a low-quality screenshot can
-never reach the published tutorial. It reads the committed PNG bytes (deterministic across platforms):
+A separate quality gate rejects a blurry, faded/color-quantized, under-resolved, whitespace-heavy
+(oversized-clip), or load-flash yellow-cast shot so a low-quality screenshot can never reach the
+published tutorial. It reads the committed PNG bytes (deterministic across platforms):
 
 ```powershell
 npm run shots:quality

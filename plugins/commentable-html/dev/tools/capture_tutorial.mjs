@@ -500,9 +500,14 @@ async function captureGarden(ctx) {
     if (t) t.click();
   });
   await page.locator(".cm-help-overlay .cm-help").waitFor({ state: "visible", timeout: 5000 });
+  // Capture the Help dialog cleanly (issue #462): the .cm-help-overlay backdrop dims and blurs the
+  // whole page behind the dialog, which reads as faded and blurry. Neutralize the backdrop dim/blur
+  // and clip to the dialog bounds instead of shooting the full dimmed page.
+  await page.addStyleTag({ content: ".cm-help-overlay{background:transparent !important;"
+    + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}" });
   await waitForStableLayout(page);
-  await writeScreenshot(page, shotPath(targetDir, P, "07-help"),
-    { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+  await screenshotFixedRegion(page, page.locator(".cm-help-overlay .cm-help"),
+    shotPath(targetDir, P, "07-help"), 0);
 
   await page.keyboard.press("Escape").catch(() => {});
   await page.evaluate(() => {
