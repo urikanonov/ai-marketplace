@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.167.0] - 2026-07-19
+
+### Added
+
+- Preview highlight while composing a text comment (CMH-CORE-17): opening a new text-comment
+  composer immediately shows the selected text as a live amber preview highlight
+  (`mark.cm-preview`) so the reviewer sees exactly what the comment will anchor to. Saving turns
+  it into the real persisted highlight over exactly the previewed text; cancelling via the Cancel
+  button or Escape removes it and stores nothing. The preview is transient chrome (no `data-cid`,
+  never persisted, excluded from export and print), stays in the text-offset space so a concurrent
+  composer's anchors never cross, is fully cleaned up if wrapping throws, and is re-applied if a
+  save cannot complete so the still-open composer keeps its anchor cue.
+
 ## [1.166.0] - 2026-07-19
 
 ### Added
