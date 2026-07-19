@@ -432,6 +432,20 @@ class UpgradeCliTests(unittest.TestCase):
         self.assertIn(b"\r\n", raw)
         self.assertNotIn(b"\n", raw.replace(b"\r\n", b""))  # no lone LF introduced
 
+    def test_cli_keeps_lf_when_lf_is_dominant_despite_a_stray_crlf(self):
+        # CMH-TOOL-08: newline preservation follows the DOMINANT style, not the mere presence of
+        # a CRLF. A mostly-LF document with one stray CRLF stays LF after upgrade.
+        target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n").replace("\n", "\r\n", 1)
+        self.assertIn("\r\n", target)  # exactly one stray CRLF, the rest LF
+        p = self._write(target)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = upgrade.main(["upgrade.py", p])
+        self.assertEqual(rc, 0)
+        raw = _read_bytes(p)
+        self.assertNotIn(b"STALE", raw)  # region was actually swapped
+        self.assertNotIn(b"\r\n", raw)  # dominant LF preserved; the stray CRLF did not win
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
