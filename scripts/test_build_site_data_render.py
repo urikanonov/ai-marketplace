@@ -471,7 +471,7 @@ class AutoUpdaterPageTests(unittest.TestCase):
         # The auto-updater CHANGELOG.md now lives at the plugin root and is rendered on its page.
         html = bsd.render_plugin_changelog(bsd.REPO_ROOT, self.UPDATER)
         self.assertIn('class="release"', html)
-        self.assertIn("[1.1.0]", html)
+        self.assertIn("[1.4.1]", html)
 
 
 class MultiDuckPageTests(unittest.TestCase):

@@ -4,6 +4,12 @@ All notable changes to the multi-duck plugin are documented here. The format fol
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to semantic
 versioning.
 
+## [1.0.1] - 2026-07-19
+
+### Added
+
+- The shipped plugin package now includes the MIT license text.
+
 ## [1.0.0]
 
 - Initial release of multi-duck: convene a panel of independent rubber-duck reviewers over the
