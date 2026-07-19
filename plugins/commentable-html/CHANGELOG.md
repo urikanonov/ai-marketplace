@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.160.0] - 2026-07-19
+
+### Added
+
+- The deck slide-overview navigator now has a search box at the top that filters the slide list by
+  title as you type; keyboard navigation and the count follow the filter, and reopening the overview
+  resets it (CMH-DECK-30).
+- Clicking the "Open comment" hover bubble now also opens an inline on-screen comment dialog next to
+  the highlight, showing the note and an Edit button that opens the composer; clicking elsewhere closes
+  the dialog, and a pointer click there is swallowed so it performs no other action (for example it does
+  not follow a link the highlight sits on) while a keyboard activation still reaches its target. The
+  existing sidebar jump still happens alongside it (CMH-CORE-16, closes #450).
+
 ## [1.159.0] - 2026-07-19
 
 ### Changed

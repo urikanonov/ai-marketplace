@@ -57,12 +57,14 @@ hlBubble.addEventListener("mouseleave", scheduleHideHlBubble);
 hlBubble.addEventListener("click", (e) => {
   e.preventDefault(); e.stopPropagation();
   const id = hlBubbleCid;
+  const mark = hlBubbleMark;
   hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null;
   if (!id) return;
   openSidebar();
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
   if (card) card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   flashActive(id);
+  if (typeof openCommentPopover === "function") openCommentPopover(id, mark);
 });
 window.addEventListener("scroll", () => {
   if (hlBubble.hidden) return;

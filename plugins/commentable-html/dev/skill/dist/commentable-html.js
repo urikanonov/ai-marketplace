@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.159.0";
+const CMH_VERSION = "1.160.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4392,12 +4392,14 @@ hlBubble.addEventListener("mouseleave", scheduleHideHlBubble);
 hlBubble.addEventListener("click", (e) => {
   e.preventDefault(); e.stopPropagation();
   const id = hlBubbleCid;
+  const mark = hlBubbleMark;
   hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null;
   if (!id) return;
   openSidebar();
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
   if (card) card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   flashActive(id);
+  if (typeof openCommentPopover === "function") openCommentPopover(id, mark);
 });
 window.addEventListener("scroll", () => {
   if (hlBubble.hidden) return;
@@ -4574,6 +4576,118 @@ function setupSidebarResize() {
     }
   });
 }
+/* ---------- Inline comment dialog (opened from the hover bubble) ----------
+   Clicking the hover bubble opens a small on-screen dialog next to the highlight showing the
+   comment note and an Edit button (which opens the composer for that comment). A click anywhere
+   else closes the dialog; a pointer click there is also swallowed so it performs no other action
+   (for example it does not follow a link the highlight sits on), while a keyboard-activated click
+   still reaches its target. The sidebar jump still runs alongside this from 52-hover-bubble.js. */
+let commentPopover = null;
+let _popoverAnchorMark = null;
+let _popoverDismiss = null;
+let _popoverKeydown = null;
+
+function _positionCommentPopover(mark) {
+  if (!commentPopover || !mark) return false;
+  const rect = mark.getClientRects()[0] || mark.getBoundingClientRect();
+  // Close instead of clamping when the anchor is scrolled/clipped out of view, matching the
+  // hover bubble and the other floating affordances (they all use _clipAwareRect).
+  const visible = (typeof _clipAwareRect === "function") ? _clipAwareRect(mark, rect) : rect;
+  if (!visible) return false;
+  const w = commentPopover.offsetWidth || 320;
+  const h = commentPopover.offsetHeight || 160;
+  const margin = 8;
+  let left = visible.left;
+  let top = visible.bottom + margin;
+  if (top + h > window.innerHeight) top = Math.max(margin, visible.top - h - margin);
+  left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin));
+  top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin));
+  commentPopover.style.left = left + "px";
+  commentPopover.style.top = top + "px";
+  return true;
+}
+
+function closeCommentPopover() {
+  if (!commentPopover) return;
+  if (_popoverDismiss) { document.removeEventListener("click", _popoverDismiss, true); _popoverDismiss = null; }
+  if (_popoverKeydown) { document.removeEventListener("keydown", _popoverKeydown, true); _popoverKeydown = null; }
+  commentPopover.remove();
+  commentPopover = null;
+  _popoverAnchorMark = null;
+}
+
+function openCommentPopover(id, mark) {
+  closeCommentPopover();
+  const c = comments.find((x) => x.id === id);
+  if (!c) return;
+  _popoverAnchorMark = mark && root.contains(mark) ? mark : root.querySelector(`mark.cm-hl[data-cid="${id}"]`);
+  if (!_popoverAnchorMark) return;
+
+  const el = document.createElement("div");
+  el.className = "cm-comment-popover cm-skip";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", "Comment");
+  const noteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
+  el.setAttribute("aria-describedby", noteId);
+  el.innerHTML =
+    '<div class="cm-comment-popover-note" id="' + noteId + '"></div>'
+    + '<div class="cm-comment-popover-meta"></div>'
+    + '<div class="cm-comment-popover-acts">'
+    + '<button type="button" data-act="close">Close</button>'
+    + '<button type="button" class="primary" data-act="edit">Edit</button>'
+    + "</div>";
+  el.querySelector(".cm-comment-popover-note").textContent = c.note;
+  el.querySelector(".cm-comment-popover-meta").textContent =
+    formatTime(c.updatedAt || c.createdAt) + (c.updatedAt ? " (edited)" : "");
+  document.body.appendChild(el);
+  commentPopover = el;
+  if (!_positionCommentPopover(_popoverAnchorMark)) { closeCommentPopover(); return; }
+
+  el.querySelector('[data-act="edit"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    closeCommentPopover();
+    openComposerForEdit(c);
+  });
+  el.querySelector('[data-act="close"]').addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    closeCommentPopover();
+  });
+
+  // A click outside the dialog closes it. A pointer click (detail > 0) is also swallowed
+  // (capture-phase preventDefault + stopPropagation) so it performs no other action - for
+  // example it does not follow a link the highlight sits on. A keyboard-activated click
+  // (Enter/Space, detail 0) closes the dialog but is allowed to proceed, so a keyboard user
+  // is never blocked from activating an outside control. Clicks inside pass through.
+  _popoverDismiss = (e) => {
+    if (!commentPopover) return;
+    if (e.target && e.target.closest && e.target.closest(".cm-comment-popover")) return;
+    if (e.detail > 0) { e.preventDefault(); e.stopPropagation(); }
+    closeCommentPopover();
+  };
+  _popoverKeydown = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeCommentPopover(); }
+  };
+  // Register on the next tick so the opening click (on the bubble) does not immediately close it.
+  setTimeout(() => {
+    if (!commentPopover) return;
+    document.addEventListener("click", _popoverDismiss, true);
+    document.addEventListener("keydown", _popoverKeydown, true);
+  }, 0);
+
+  const editBtn = el.querySelector('[data-act="edit"]');
+  if (editBtn) editBtn.focus();
+}
+
+// Keep the dialog pinned to its highlight while scrolling / resizing; close it if the anchor goes
+// away or scrolls out of view (matching the hover bubble's clip-aware behavior).
+window.addEventListener("scroll", () => {
+  if (!commentPopover) return;
+  if (!(_popoverAnchorMark && root.contains(_popoverAnchorMark) && _positionCommentPopover(_popoverAnchorMark))) closeCommentPopover();
+}, true);
+window.addEventListener("resize", () => {
+  if (!commentPopover) return;
+  if (!(_popoverAnchorMark && root.contains(_popoverAnchorMark) && _positionCommentPopover(_popoverAnchorMark))) closeCommentPopover();
+});
 /* ---------- Sidebar open/close ---------- */
 function updateSidebarToggle() {
   const btn = document.getElementById("btnToggleSidebar");
@@ -5768,7 +5882,7 @@ function _isInjectedChrome(n) {
   // the captured set; it always carries one of these layer classes, which host tail
   // content (a chart canvas, its data/init scripts) never uses.
   const cls = (n.getAttribute && n.getAttribute("class")) || "";
-  return /(^|\s)(cm-tooltip|cm-composer|cm-modal-overlay|cm-toast)(\s|$)/.test(cls);
+  return /(^|\s)(cm-tooltip|cm-composer|cm-comment-popover|cm-modal-overlay|cm-toast)(\s|$)/.test(cls);
 }
 function _snapshotWithTail() {
   // SNAPSHOT_HTML is pristine (captured before any runtime mutation) but stops at the
@@ -8178,6 +8292,7 @@ function setupDeck() {
   let counter = null, prevBtn = null, nextBtn = null;
   let edgePrevBtn = null, edgeNextBtn = null;
   let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
+  let overviewSearch = null, overviewCount = null;
   const stageFocusTarget = viewport || stage;
   const slideTitles = slides.map((slide, i) => slideTitle(slide, i));
   // Start clean: a stale comment-mode class (e.g. from a serialized live DOM) must not fight
@@ -8310,7 +8425,7 @@ function setupDeck() {
     return !!(
       (overview && !overview.hidden)
       || (modeMenu && !modeMenu.hidden)
-      || document.querySelector(".cm-composer, .cm-modal-overlay")
+      || document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
     );
   }
 
@@ -8415,8 +8530,27 @@ function setupDeck() {
   function focusOverviewCard(index) {
     const cards = overviewCards();
     if (!cards.length) return;
-    const next = Math.max(0, Math.min(cards.length - 1, index));
-    cards[next].focus();
+    const target = cards[Math.max(0, Math.min(cards.length - 1, index))];
+    if (target && !target.hidden) { target.focus(); return; }
+    const visible = cards.filter((c) => !c.hidden);
+    if (visible.length) visible[0].focus();
+  }
+
+  // Filter the overview cards by a title substring (used by the search box). Non-matching
+  // cards are hidden so keyboard navigation and the visible count follow the filter.
+  function filterOverview(query) {
+    const needle = String(query || "").trim().toLowerCase();
+    let visible = 0;
+    overviewCards().forEach((card, i) => {
+      const hit = !needle || (slideTitles[i] || "").toLowerCase().indexOf(needle) >= 0;
+      card.hidden = !hit;
+      if (hit) visible++;
+    });
+    if (overviewCount) {
+      overviewCount.textContent = needle
+        ? visible + " of " + slides.length
+        : slides.length + (slides.length === 1 ? " slide" : " slides");
+    }
   }
 
   function makeOverview() {
@@ -8439,7 +8573,10 @@ function setupDeck() {
     title.textContent = "Slide overview";
     const count = document.createElement("span");
     count.className = "cmh-deck-overview-count";
+    count.setAttribute("aria-live", "polite");
+    count.setAttribute("aria-atomic", "true");
     count.textContent = slides.length + (slides.length === 1 ? " slide" : " slides");
+    overviewCount = count;
     titleWrap.appendChild(title);
     titleWrap.appendChild(count);
     const close = document.createElement("button");
@@ -8451,6 +8588,29 @@ function setupDeck() {
     head.appendChild(titleWrap);
     head.appendChild(close);
 
+    // A search box at the top narrows the slide list by title as the presenter types.
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "cmh-deck-overview-searchwrap";
+    overviewSearch = document.createElement("input");
+    overviewSearch.type = "search";
+    overviewSearch.className = "cmh-deck-overview-search cm-skip";
+    overviewSearch.placeholder = "Filter slides...";
+    overviewSearch.setAttribute("aria-label", "Filter slides by title");
+    overviewSearch.addEventListener("input", () => filterOverview(overviewSearch.value));
+    overviewSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (overviewSearch.value) { overviewSearch.value = ""; filterOverview(""); }
+        else closeOverview();
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        const visible = overviewCards().filter((c) => !c.hidden);
+        if (visible.length) { e.preventDefault(); visible[0].focus(); }
+      }
+    });
+    searchWrap.appendChild(overviewSearch);
+
     overviewGrid = document.createElement("div");
     overviewGrid.className = "cmh-deck-overview-grid";
     overviewGrid.addEventListener("keydown", (e) => {
@@ -8459,22 +8619,27 @@ function setupDeck() {
         closeOverview();
         return;
       }
-      const cards = overviewCards();
+      const cards = overviewCards().filter((c) => !c.hidden);
+      if (!cards.length) return;
       const at = cards.indexOf(document.activeElement);
       if (e.key === "Tab") {
         e.preventDefault();
-        const next = at < 0 ? current : (at + (e.shiftKey ? -1 : 1) + cards.length) % cards.length;
-        focusOverviewCard(next);
+        const base = at < 0 ? 0 : at;
+        // Shift+Tab off the top of the list returns to the filter box, so the search is
+        // reachable by keyboard without breaking the arrow-key roving over the cards.
+        if (e.shiftKey && base === 0 && overviewSearch) { overviewSearch.focus(); return; }
+        const next = (base + (e.shiftKey ? -1 : 1) + cards.length) % cards.length;
+        cards[next].focus();
         return;
       }
       let next = at;
-      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = at < 0 ? current : at + 1;
-      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = at < 0 ? current : at - 1;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = at < 0 ? 0 : at + 1;
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = at < 0 ? 0 : at - 1;
       else if (e.key === "Home") next = 0;
       else if (e.key === "End") next = cards.length - 1;
       else return;
       e.preventDefault();
-      focusOverviewCard(next);
+      cards[Math.max(0, Math.min(cards.length - 1, next))].focus();
     });
 
     slides.forEach((slide, i) => {
@@ -8506,6 +8671,7 @@ function setupDeck() {
     });
 
     overview.appendChild(head);
+    overview.appendChild(searchWrap);
     overview.appendChild(overviewGrid);
     document.body.appendChild(overview);
     CMH_INJECTED_CHROME.add(overview);
@@ -8515,6 +8681,9 @@ function setupDeck() {
   function openOverview() {
     makeOverview();
     overview.hidden = false;
+    // Reset any prior filter so reopening lists every slide.
+    if (overviewSearch) overviewSearch.value = "";
+    filterOverview("");
     document.body.classList.add("cmh-deck-overview-open");
     if (overviewBtn) {
       overviewBtn.setAttribute("aria-expanded", "true");
@@ -8583,8 +8752,14 @@ function setupDeck() {
   }
   document.addEventListener("keydown", (e) => {
     if (!e.defaultPrevented && overview && !overview.hidden) {
-      if (e.key === "Escape" || (e.key && e.key.toLowerCase() === "o"
-        && !e.altKey && !e.ctrlKey && !e.metaKey)) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeOverview();
+        return;
+      }
+      if (e.key && e.key.toLowerCase() === "o"
+        && !e.altKey && !e.ctrlKey && !e.metaKey
+        && !(e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable))) {
         e.preventDefault();
         closeOverview();
       }

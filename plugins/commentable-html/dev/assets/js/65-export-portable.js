@@ -53,7 +53,7 @@ function _isInjectedChrome(n) {
   // the captured set; it always carries one of these layer classes, which host tail
   // content (a chart canvas, its data/init scripts) never uses.
   const cls = (n.getAttribute && n.getAttribute("class")) || "";
-  return /(^|\s)(cm-tooltip|cm-composer|cm-modal-overlay|cm-toast)(\s|$)/.test(cls);
+  return /(^|\s)(cm-tooltip|cm-composer|cm-comment-popover|cm-modal-overlay|cm-toast)(\s|$)/.test(cls);
 }
 function _snapshotWithTail() {
   // SNAPSHOT_HTML is pristine (captured before any runtime mutation) but stops at the

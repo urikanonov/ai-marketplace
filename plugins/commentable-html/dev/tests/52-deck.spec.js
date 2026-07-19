@@ -321,6 +321,104 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     ]);
   });
 
+  test("CMH-DECK-30: the overview has a search filter that narrows the slide list by title", async ({ page }) => {
+    await openDeck(page);
+    const overview = page.locator(".cmh-deck-overview");
+    const overviewButton = page.locator(".cmh-deck-nav").getByRole("button", { name: "Slide overview", exact: true });
+    await overviewButton.click();
+    await expect(overview).toBeVisible();
+
+    const search = overview.locator(".cmh-deck-overview-search");
+    await expect(search).toBeVisible();
+    const visibleCards = overview.locator(".cmh-deck-overview-card:visible");
+    await expect(visibleCards).toHaveCount(3);
+
+    // Filtering by a title substring hides the non-matching slides.
+    await search.fill("two");
+    await expect(visibleCards).toHaveCount(1);
+    await expect(visibleCards.locator(".cmh-deck-overview-card-label")).toHaveText("Two");
+    await expect(overview.locator(".cmh-deck-overview-count")).toHaveText("1 of 3");
+
+    // Clearing the filter restores every slide.
+    await search.fill("");
+    await expect(visibleCards).toHaveCount(3);
+
+    // A filtered card still jumps to its slide and closes the overview.
+    await search.fill("three");
+    await expect(visibleCards).toHaveCount(1);
+    await visibleCards.click();
+    await expect(overview).toBeHidden();
+    expect(await activeId(page)).toBe("slide-00000003");
+
+    // Reopening resets the filter so every slide is listed again.
+    await overviewButton.click();
+    await expect(overview).toBeVisible();
+    await expect(search).toHaveValue("");
+    await expect(visibleCards).toHaveCount(3);
+  });
+
+  test("CMH-DECK-30: filter keyboard nav stays on visible cards; search stays reachable and does not eat the o shortcut", async ({ page }) => {
+    await openDeck(page);
+    const overview = page.locator(".cmh-deck-overview");
+    const overviewButton = page.locator(".cmh-deck-nav").getByRole("button", { name: "Slide overview", exact: true });
+    await overviewButton.click();
+    await expect(overview).toBeVisible();
+    const search = overview.locator(".cmh-deck-overview-search");
+    const visibleCards = overview.locator(".cmh-deck-overview-card:visible");
+    const activeSlideId = () => page.evaluate(() =>
+      document.activeElement && document.activeElement.getAttribute("data-slide-id"));
+
+    // A zero-match filter empties the grid and the count reads "0 of 3".
+    await search.fill("zzz");
+    await expect(visibleCards).toHaveCount(0);
+    await expect(overview.locator(".cmh-deck-overview-count")).toHaveText("0 of 3");
+
+    // Filter to the two slides containing "t" (Two, Three); arrow nav skips the hidden "One".
+    await search.fill("t");
+    await expect(visibleCards).toHaveCount(2);
+    await search.press("ArrowDown");
+    expect(await activeSlideId()).toBe("slide-00000002");
+    await page.keyboard.press("ArrowDown");
+    expect(await activeSlideId()).toBe("slide-00000003");
+    await page.keyboard.press("Home");
+    expect(await activeSlideId()).toBe("slide-00000002");
+
+    // Shift+Tab off the top of the list returns focus to the filter box (keyboard reachable).
+    await page.keyboard.press("Shift+Tab");
+    expect(await page.evaluate(() =>
+      document.activeElement === document.querySelector(".cmh-deck-overview-search"))).toBe(true);
+
+    // Typing "o" in the filter box narrows, it does NOT close the overview.
+    await search.fill("");
+    await search.press("o");
+    await expect(overview).toBeVisible();
+    await expect(search).toHaveValue("o");
+
+    // But pressing "o" while a card has focus still closes the overview.
+    await search.fill("");
+    await search.press("ArrowDown");
+    await page.keyboard.press("o");
+    await expect(overview).toBeHidden();
+  });
+
+  test("CMH-CORE-16: the inline dialog opens and Escape-closes inside a deck", async ({ page }) => {
+    await openDeck(page);
+    // Add a comment on the active slide (auto-opens the panel), then return to closed mode.
+    await addTextComment(page, ".slide.active p", "deck popover note");
+    await leaveCommentMode(page);
+    const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
+
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await expect(pop).toContainText("deck popover note");
+
+    // The dialog is always dismissible in a deck (no stuck state): Escape closes it.
+    await page.keyboard.press("Escape");
+    await expect(pop).toBeHidden();
+  });
+
   test("CMH-DECK-05: the stage refits on viewport resize and open mode narrows it", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openDeck(page);
