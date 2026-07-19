@@ -122,22 +122,30 @@ def _file_url_to_path(ref):
     return os.path.abspath(url2pathname(raw))
 
 
-# Well-known OS temporary-directory path fragments (posix-normalized, lowercase), for when a
-# companion ref was baked on a different machine than the one validating it, so the current
-# TMPDIR/gettempdir() roots do not match. Anchored with surrounding slashes so a legitimate
-# folder like ".../mytmp/" (no leading slash before "tmp") is never matched.
-_TEMP_PATH_FRAGMENTS = (
-    "/appdata/local/temp/",   # Windows per-user temp
-    "/windows/temp/",         # Windows system temp
-    "/tmp/",                  # POSIX temp
-    "/var/tmp/",              # POSIX persistent temp
-    "/var/folders/",          # macOS per-user temp
-    "/private/var/folders/",  # macOS per-user temp (resolved)
+# Well-known OS temporary-directory path fragments (posix-normalized, lowercase). These are the
+# cross-machine fallback for when a companion ref was baked on a different machine than the one
+# validating it, so the current TMPDIR/gettempdir() roots do not match. The root-level POSIX/mac
+# temps are ANCHORED to the filesystem root (after stripping an optional drive letter) so a durable
+# project folder literally named "tmp" or "var" (e.g. ".../home/user/tmp/dist/") is never matched;
+# only a genuine root temp like "/tmp/..." or "/var/folders/..." is. AppData/Local/Temp is per-user
+# (it appears after "/users/<name>/"), so it stays a substring - specific enough not to false-match.
+_TEMP_ROOT_ANCHORED = (
+    "/tmp/", "/var/tmp/", "/var/folders/", "/private/var/folders/",
+    "/private/tmp/", "/windows/temp/",
 )
+_TEMP_SUBSTRING = ("/appdata/local/temp/",)
+
+
+def _canonical(path):
+    """Absolute, symlink-resolved, case-normalized path. realpath canonicalizes macOS
+    /var -> /private/var and Windows 8.3 short names (when the path exists) so temp-root and
+    same-directory comparisons do not diverge on aliases; for a non-existent path it degrades
+    to a lexical abspath, which is still correct for the string-fragment fallback."""
+    return os.path.normcase(os.path.realpath(os.path.abspath(path)))
 
 
 def _temp_roots():
-    """Absolute, normcased OS temp roots for this machine (env overrides + gettempdir)."""
+    """Absolute, canonicalized OS temp roots for this machine (env overrides + gettempdir)."""
     roots = []
     for var in ("TMPDIR", "TEMP", "TMP"):
         val = os.environ.get(var)
@@ -150,7 +158,7 @@ def _temp_roots():
     out = []
     for r in roots:
         try:
-            out.append(os.path.normcase(os.path.abspath(r)))
+            out.append(_canonical(r))
         except Exception:
             pass
     return out
@@ -162,22 +170,30 @@ def _is_temp_path(target):
     if not target:
         return False
     try:
-        norm = os.path.normcase(os.path.abspath(target))
+        norm = _canonical(target)
     except Exception:
-        return False
-    for root in _temp_roots():
-        if norm == root or norm.startswith(root + os.sep):
-            return True
+        norm = None
+    if norm is not None:
+        for root in _temp_roots():
+            if norm == root or norm.startswith(root + os.sep):
+                return True
+    # Cross-machine fallback: match well-known temp path shapes in the raw ref string, with a
+    # drive letter stripped so the anchored roots compare uniformly across Windows and POSIX.
+    # The optional leading slash handles a Windows drive baked into a file:// path that is being
+    # validated on POSIX (url2pathname keeps it as "/c:/windows/temp/...").
     posix = target.replace("\\", "/").lower()
-    return any(frag in posix for frag in _TEMP_PATH_FRAGMENTS)
+    drive_stripped = re.sub(r"^/?[a-z]:", "", posix)
+    if any(drive_stripped.startswith(frag) for frag in _TEMP_ROOT_ANCHORED):
+        return True
+    return any(frag in drive_stripped for frag in _TEMP_SUBSTRING)
 
 
 def _same_dir(a, b):
-    """True when two directory paths are the same location (case-normalized, absolute)."""
+    """True when two directory paths are the same location (symlink-resolved, case-normalized)."""
     if not a or not b:
         return False
     try:
-        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+        return _canonical(a) == _canonical(b)
     except Exception:
         return False
 

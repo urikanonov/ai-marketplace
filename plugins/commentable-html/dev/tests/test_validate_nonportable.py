@@ -224,6 +224,60 @@ class NonPortableTests(unittest.TestCase):
         self.assertTrue(any("temporary directory" in e for e in errors),
                         "expected a temp-directory error, got: %r" % errors)
 
+    def test_project_tmp_folder_absolute_ref_is_not_temp_flagged(self):
+        # CMH-VAL-16 false-positive guard: a durable project folder literally named "tmp"
+        # (the "/tmp/" segment is NOT at the filesystem root) must never be treated as an OS
+        # temp dir. Anchoring the fragment match to the root is what prevents this.
+        durable = "file:///home/user/tmp/my_project/commentable-html.css"
+        html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % durable)
+        with tempfile.TemporaryDirectory() as docdir:
+            doc = os.path.join(docdir, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, _ = validate.validate(doc)
+        self.assertFalse(any("temporary directory" in e for e in errors),
+                         "a durable project folder named 'tmp' must not be temp-flagged: %r" % errors)
+
+    def test_cross_machine_mac_temp_fragment_errors(self):
+        # CMH-VAL-16 cross-machine fallback: a file:// ref hard-coded into a macOS per-user temp
+        # path (/private/var/folders/...) is flagged even on a non-mac validating machine (where
+        # it never matches _temp_roots), because the anchored path fragment recognizes it.
+        mac = "file:///private/var/folders/ab/cd/T/cmh-x/dist/commentable-html.css"
+        html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % mac)
+        with tempfile.TemporaryDirectory() as docdir:
+            doc = os.path.join(docdir, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, _ = validate.validate(doc)
+        self.assertTrue(any("temporary directory" in e for e in errors),
+                        "a baked macOS temp path must be flagged cross-machine: %r" % errors)
+
+    def test_temp_absolute_ref_errors_with_base_dir_none(self):
+        # CMH-VAL-16 with deferred placement: base_dir=None still catches a baked absolute temp
+        # companion ref, because an absolute path is broken regardless of the file's final home.
+        with tempfile.TemporaryDirectory() as tmpassets:
+            p = os.path.join(tmpassets, "commentable-html.css")
+            with open(p, "w", encoding="utf-8") as fh:
+                fh.write("/* stub */")
+            url = Path(p).resolve().as_uri()
+        html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % url)
+        with tempfile.TemporaryDirectory() as docdir:
+            doc = os.path.join(docdir, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, _ = validate.validate(doc, base_dir=None)
+        self.assertTrue(any("temporary directory" in e for e in errors),
+                        "base_dir=None must still catch a baked absolute temp ref: %r" % errors)
+
+    def test_cross_machine_windows_temp_on_posix_form_errors(self):
+        # CMH-VAL-16 cross-machine fallback: a Windows drive baked into a file:// path can appear
+        # as "/C:/Windows/Temp/..." when validated on POSIX (url2pathname keeps the leading slash);
+        # the optional-slash drive strip must still recognize it as a temp path.
+        from checks import resources as _r
+        self.assertTrue(_r._is_temp_path("/C:/Windows/Temp/cmh/commentable-html.js"))
+        self.assertTrue(_r._is_temp_path("/C:/Users/x/AppData/Local/Temp/cmh/commentable-html.js"))
+        self.assertFalse(_r._is_temp_path("/C:/repo/windows/temp/commentable-html.js"))
+
     def test_relative_companion_ref_is_not_temp_flagged(self):
         # CMH-VAL-16 carve-out: a RELATIVE companion ref bakes no absolute location, so even
         # when the document itself is validated from a temp directory it is never temp-flagged
