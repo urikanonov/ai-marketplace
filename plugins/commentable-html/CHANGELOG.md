@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.161.0] - 2026-07-19
+
+### Added
+
+- Deck layer recipe classes so a themed deck needs no per-deck CSS for common needs (CMH-DECK-RECIPE-01/02/03/04):
+  - Status-pill variants `.cmh-pill.is-available` (green), `.is-wip` (amber), `.is-planned` (slate), each with white text at AA contrast.
+  - Metric tiles (`.cmh-metric`) hover-lift, and the metric value is capped at a fixed stage size with `overflow-wrap: break-word` so long word-labels no longer overflow the card.
+  - A reference-row recipe (`.cmh-refs` + `.cmh-refs-label`) that renders reference links as a horizontal row of pills; on a `.cmh-slide-flow` flex-column content slide its `margin-top: auto` pins the row to the bottom of the fixed slide box.
+  - Deck-scoped default prose spacing (paragraphs collapse their top margin, list items gain bottom spacing, lists get a 1.5 line-height) so a deck reads as spaced bullets-over-prose without per-deck CSS; non-deck documents are unaffected.
+- `deck_validate.py` now also gates the reference-pill contrast pair (`--slide-link` over `--cmh-deck-code-bg`), so a custom theme cannot ship low-contrast reference links.
+
 ## [1.160.1] - 2026-07-19
 
 ### Security

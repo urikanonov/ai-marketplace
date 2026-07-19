@@ -59,6 +59,7 @@ DECK_CONTRAST_VARIABLE_PAIRS = (
     ("--slide-fg", "--stage-bg", "deck theme variables --slide-fg/--stage-bg"),
     ("--slide-fg-muted", "--slide-bg", "deck theme variables --slide-fg-muted/--slide-bg"),
     ("--slide-link", "--slide-bg", "deck theme variables --slide-link/--slide-bg"),
+    ("--slide-link", "--cmh-deck-code-bg", "deck theme variables ref-link/code bg (recipe .cmh-refs a)"),
     ("--slide-accent-fg", "--slide-accent", "deck theme variables --slide-accent-fg/--slide-accent"),
     ("--slide-accent", "--slide-bg", "deck theme variables --slide-accent/--slide-bg (recipe accent text)"),
     ("--cmh-deck-code-text", "--cmh-deck-code-bg", "deck theme variables code text/bg"),

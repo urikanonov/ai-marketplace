@@ -208,6 +208,14 @@ class DeckValidateTests(unittest.TestCase):
         errs = _errors(bad)
         self.assertTrue(any("code text/bg" in e for e in errs), errs)
 
+    def test_cmh_deck_theme_03_ref_link_over_code_bg_pair_fails(self):
+        # The .cmh-refs a reference pill draws --slide-link over --cmh-deck-code-bg; a custom theme
+        # that collapses that pair to near-identical dark values must be rejected by deck_validate.
+        bad = _inject(self.html,
+                      "<style>:root{--slide-link:#334155;--cmh-deck-code-bg:#1e293b;}</style>")
+        errs = _errors(bad)
+        self.assertTrue(any("ref-link/code bg" in e for e in errs), errs)
+
     def test_cmh_deck_12_non_finite_rgb_does_not_crash(self):
         self.assertEqual(_errors(_inject(
             self.html, '<p style="color:#000; background:rgb(inf 0 0)">Bad color</p>')), [])
