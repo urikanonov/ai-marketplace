@@ -271,12 +271,19 @@ class NonPortableTests(unittest.TestCase):
 
     def test_cross_machine_windows_temp_on_posix_form_errors(self):
         # CMH-VAL-16 cross-machine fallback: a Windows drive baked into a file:// path can appear
-        # as "/C:/Windows/Temp/..." when validated on POSIX (url2pathname keeps the leading slash);
-        # the optional-slash drive strip must still recognize it as a temp path.
+        # as "/C:/Windows/Temp/..." when validated on POSIX (url2pathname keeps the leading slash),
+        # or as "<cwd>/C:/Windows/Temp/..." after os.path.abspath rewrites a bare drive ref on POSIX.
+        # Both anchor at the drive-letter boundary and must be recognized as temp paths.
         from checks import resources as _r
         self.assertTrue(_r._is_temp_path("/C:/Windows/Temp/cmh/commentable-html.js"))
         self.assertTrue(_r._is_temp_path("/C:/Users/x/AppData/Local/Temp/cmh/commentable-html.js"))
+        self.assertTrue(_r._is_temp_path("/home/runner/work/repo/C:/Windows/Temp/cmh/x.js"))
+        self.assertTrue(_r._is_temp_path("/home/runner/work/repo/C:/Users/x/AppData/Local/Temp/cmh/x.js"))
+        # Durable look-alikes (a "windows/temp" or "appdata/local/temp" segment NOT at a drive/user
+        # root) must NOT be flagged.
         self.assertFalse(_r._is_temp_path("/C:/repo/windows/temp/commentable-html.js"))
+        self.assertFalse(_r._is_temp_path("/D:/repo/appdata/local/temp/commentable-html.js"))
+        self.assertFalse(_r._is_temp_path("/home/user/appdata/local/temp/commentable-html.js"))
 
     def test_relative_companion_ref_is_not_temp_flagged(self):
         # CMH-VAL-16 carve-out: a RELATIVE companion ref bakes no absolute location, so even

@@ -122,18 +122,20 @@ def _file_url_to_path(ref):
     return os.path.abspath(url2pathname(raw))
 
 
-# Well-known OS temporary-directory path fragments (posix-normalized, lowercase). These are the
-# cross-machine fallback for when a companion ref was baked on a different machine than the one
-# validating it, so the current TMPDIR/gettempdir() roots do not match. The root-level POSIX/mac
-# temps are ANCHORED to the filesystem root (after stripping an optional drive letter) so a durable
-# project folder literally named "tmp" or "var" (e.g. ".../home/user/tmp/dist/") is never matched;
-# only a genuine root temp like "/tmp/..." or "/var/folders/..." is. AppData/Local/Temp is per-user
-# (it appears after "/users/<name>/"), so it stays a substring - specific enough not to false-match.
+# Well-known OS temporary-directory path shapes, as the cross-machine fallback for when a companion
+# ref was baked on a different machine than the one validating it (so the current TMPDIR/gettempdir()
+# roots do not match). Every fragment is ANCHORED to a filesystem/drive root so a durable project
+# folder that merely CONTAINS a "tmp"/"var"/"appdata/local/temp" segment (e.g. "/home/user/tmp/dist/"
+# or "D:/repo/appdata/local/temp/") is never matched - only a genuine root temp is. The match runs
+# against the path AT/AFTER a drive-letter boundary, so a foreign Windows path that was abspath'd on
+# POSIX ("<cwd>/c:/windows/temp/...") still anchors at its drive root.
 _TEMP_ROOT_ANCHORED = (
     "/tmp/", "/var/tmp/", "/var/folders/", "/private/var/folders/",
     "/private/tmp/", "/windows/temp/",
 )
-_TEMP_SUBSTRING = ("/appdata/local/temp/",)
+# Windows AppData temp is per-user, so it is anchored to a user-profile prefix (/users/<name>/)
+# rather than the drive root: a durable ".../appdata/local/temp/" without a /users/ prefix is not it.
+_TEMP_USER_PROFILE_RE = re.compile(r"^/users/[^/]+/appdata/local/temp/")
 
 
 def _canonical(path):
@@ -164,6 +166,15 @@ def _temp_roots():
     return out
 
 
+def _rooted_at_drive(posix):
+    """Return the path at/after the first drive-letter boundary (e.g. "c:/windows/temp/x" or
+    "<cwd>/c:/windows/temp/x" -> "/windows/temp/x"), or the whole POSIX path when it has no drive
+    (already rooted at "/"). This normalizes a foreign Windows path abspath'd on POSIX so temp
+    detection anchors at the drive root instead of a spurious "<cwd>/" prefix."""
+    m = re.search(r"(?:^|/)[a-z]:(/.*)$", posix)
+    return m.group(1) if m else posix
+
+
 def _is_temp_path(target):
     """True when an absolute filesystem path resolves inside an OS temporary directory,
     which the OS may delete at any time - a baked companion path there is a handoff hazard."""
@@ -177,15 +188,23 @@ def _is_temp_path(target):
         for root in _temp_roots():
             if norm == root or norm.startswith(root + os.sep):
                 return True
-    # Cross-machine fallback: match well-known temp path shapes in the raw ref string, with a
-    # drive letter stripped so the anchored roots compare uniformly across Windows and POSIX.
-    # The optional leading slash handles a Windows drive baked into a file:// path that is being
-    # validated on POSIX (url2pathname keeps it as "/c:/windows/temp/...").
-    posix = target.replace("\\", "/").lower()
-    drive_stripped = re.sub(r"^/?[a-z]:", "", posix)
-    if any(drive_stripped.startswith(frag) for frag in _TEMP_ROOT_ANCHORED):
+    # Cross-machine fallback: match well-known temp path shapes in the raw ref string, anchored at
+    # the filesystem/drive root so a durable folder merely containing a "tmp"/"appdata/local/temp"
+    # segment is not mis-flagged, while a foreign Windows temp path abspath'd on POSIX still matches.
+    rooted = _rooted_at_drive(target.replace("\\", "/").lower())
+    if any(rooted.startswith(frag) for frag in _TEMP_ROOT_ANCHORED):
         return True
-    return any(frag in drive_stripped for frag in _TEMP_SUBSTRING)
+    return _TEMP_USER_PROFILE_RE.search(rooted) is not None
+
+
+def _same_dir(a, b):
+    """True when two directory paths are the same location (symlink-resolved, case-normalized)."""
+    if not a or not b:
+        return False
+    try:
+        return _canonical(a) == _canonical(b)
+    except Exception:
+        return False
 
 
 def _same_dir(a, b):
