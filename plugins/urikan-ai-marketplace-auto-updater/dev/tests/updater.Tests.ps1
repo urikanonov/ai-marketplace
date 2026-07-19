@@ -119,6 +119,51 @@ function Get-ClaudeLog([string]$claudeHome) {
     if (Test-Path $log) { return (Get-Content -Path $log -Raw) } else { return "" }
 }
 
+# --- Helpers for functionally EXECUTING the real hooks.json command strings (UPD-06/07/15),
+# instead of only pattern-matching their text, against an isolated temp sandbox. ---
+
+# Resolves a real POSIX shell for these functional checks. On Windows this must be Git Bash (the
+# same bash.exe Git for Windows ships, which is what a bash-type hook actually runs under on the
+# windows-latest runner and under Claude Code on Windows) rather than an ambiguous `bash` on PATH:
+# a plain `Get-Command bash` can resolve to WSL's bash.exe instead, which is a different OS layer
+# with different path semantics and would not represent the real invocation.
+function Get-FunctionalBashExe {
+    if ($IsWindows) {
+        $gitBash = "C:\Program Files\Git\bin\bash.exe"
+        if (Test-Path $gitBash) { return $gitBash }
+        return $null
+    }
+    $cmd = Get-Command bash -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    return $null
+}
+
+# Writes a stub CLI under $root/bin (a Windows .cmd on Windows, a POSIX shell script elsewhere)
+# that appends its invocation args to $logPath, then returns the bin directory to prepend to PATH.
+# Used so a functional check can exercise the real "plugin update" call path without ever
+# touching a real CLI, the network, or the user's real plugin/marketplace directories.
+function New-StubCli([string]$root, [string]$name, [string]$logPath) {
+    $bin = Join-Path $root "bin"
+    New-Item -ItemType Directory -Force -Path $bin | Out-Null
+    if ($IsWindows) {
+        $path = Join-Path $bin "$name.cmd"
+        @"
+@echo off
+echo %* >> "$logPath"
+exit /b 0
+"@ | Set-Content -Path $path -Encoding ascii
+    } else {
+        $path = Join-Path $bin $name
+        @"
+#!/bin/sh
+echo "`$@" >> "$logPath"
+exit 0
+"@ | Set-Content -Path $path -Encoding ascii
+        & chmod +x $path
+    }
+    return $bin
+}
+
 Write-Host "== UPD-01 self-exclusion =="
 try {
     Reset-Mock
@@ -191,6 +236,34 @@ try {
     Assert-True ($ps -match "-ExecutionPolicy\s+Bypass") "UPD-06: powershell field bypasses ExecutionPolicy"
     Assert-True ($ps -match "-File\s+\./hooks/marketplace-update\.ps1") "UPD-06: powershell field invokes the script via -File"
     Assert-True ($ps -match "-NoProfile") "UPD-06: powershell field uses -NoProfile"
+
+    # Functional check: actually spawn the unmodified "powershell ..." command line from
+    # hooks.json (its relative -File path resolves via the working directory, exactly as the CLI
+    # runs it from the plugin root) under real Windows PowerShell 5.1, against a sandbox
+    # COPILOT_HOME with one installed plugin and a stubbed `copilot` CLI. This proves the real
+    # quoting, -File path resolution, and end-to-end behavior, not just the command text.
+    if ($IsWindows -and (Get-Command powershell -ErrorAction SilentlyContinue)) {
+        $home6 = Join-Path ([IO.Path]::GetTempPath()) ("upd06-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path (Join-Path (Join-Path $home6 "installed-plugins") "$marketplace\alpha") | Out-Null
+        $stubLog6 = Join-Path $home6 "stub-calls.log"
+        $bin6 = New-StubCli $home6 "copilot" $stubLog6
+        $savedPath6 = $env:PATH
+        $savedHome6 = $env:COPILOT_HOME
+        try {
+            $env:PATH = "$bin6;$savedPath6"
+            $env:COPILOT_HOME = $home6
+            $proc = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $ps) -WorkingDirectory $pkgRoot -NoNewWindow -Wait -PassThru
+            Assert-True ($proc.ExitCode -eq 0) "UPD-06: the real powershell command line exits cleanly under Windows PowerShell 5.1"
+        } finally {
+            $env:PATH = $savedPath6
+            if ($null -eq $savedHome6) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $savedHome6 }
+        }
+        Assert-True ((Test-Path $stubLog6) -and ((Get-Content -Raw $stubLog6) -like "*plugin update alpha@$marketplace*")) "UPD-06: the real command resolves the sandbox and updates the installed plugin"
+        Assert-True ((Get-Log $home6) -like "*pass complete: 1 plugin(s) checked*") "UPD-06: the real command completes the pass and logs it"
+        Remove-Item -Recurse -Force $home6
+    } else {
+        Write-Host "  (Windows PowerShell unavailable; structural checks only)"
+    }
 } catch { $script:failures += "UPD-06 threw: $_" }
 
 Write-Host "== UPD-07 missing-pwsh log signal in bash field =="
@@ -200,11 +273,12 @@ try {
     Assert-True ($bash -like "*command -v pwsh*") "UPD-07: bash field probes for pwsh"
     Assert-True ($bash -like "*plugin-data*" -and $bash -like "*$self.log*") "UPD-07: bash field targets the plugin-data log"
     Assert-True ($bash -like "*not found on PATH*") "UPD-07: bash field logs a discoverable skip note"
-    # Functional check of the else (missing-pwsh) branch on POSIX shells, where this field
-    # actually runs. On Windows the powershell field is used instead, and git-bash mangles
-    # Windows paths, so the structural checks above stand in there.
-    $bashExe = Get-Command bash -ErrorAction SilentlyContinue
-    if ($bashExe -and -not $IsWindows) {
+    # Functional check of the else (missing-pwsh) branch: actually run it under a real POSIX
+    # shell (bash on Linux, Git Bash on Windows - see Get-FunctionalBashExe) against a sandbox
+    # COPILOT_HOME, proving the real path/quoting resolve and the skip note is written, not just
+    # that the text matches a pattern.
+    $bashExe = Get-FunctionalBashExe
+    if ($bashExe) {
         $elseBranch = $null
         if ($bash -match "else\s+(.*);\s*fi\s*$") { $elseBranch = $Matches[1] }
         if ($elseBranch) {
@@ -213,7 +287,7 @@ try {
             $prev = $env:COPILOT_HOME
             try {
                 $env:COPILOT_HOME = $home7
-                & $bashExe.Source "-c" $elseBranch | Out-Null
+                & $bashExe "-c" $elseBranch | Out-Null
             } finally {
                 if ($null -eq $prev) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $prev }
             }
@@ -354,6 +428,40 @@ try {
     Assert-True (($h.command -match "MINGW") -and ($h.command -match "MSYS") -and ($h.command -match "CYGWIN")) "UPD-15: handler branches on uname for Windows (MINGW/MSYS/CYGWIN)"
     Assert-True ($h.command -match "pwsh") "UPD-15: handler runs pwsh on macOS/Linux"
     Assert-True ($h.command -match "powershell") "UPD-15: handler runs Windows PowerShell on Windows"
+
+    # Functional check: actually execute the real dispatcher command under a real POSIX shell
+    # (bash on Linux, Git Bash on Windows), with CLAUDE_PLUGIN_ROOT/CLAUDE_CONFIG_DIR pointed at a
+    # sandbox and a stub `claude` CLI on PATH, so the real uname dispatch, the CLAUDE_PLUGIN_ROOT
+    # placeholder substitution into the -File path, and the CLAUDE_CONFIG_DIR path resolution are
+    # all proven end to end - not just matched as text.
+    $bashExe15 = Get-FunctionalBashExe
+    if ($bashExe15) {
+        $home15 = Join-Path ([IO.Path]::GetTempPath()) ("upd15-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $home15 | Out-Null
+        (@{ enabledPlugins = @{ "commentable-html@$marketplace" = $true } } | ConvertTo-Json -Depth 5) |
+            Set-Content -Path (Join-Path $home15 "settings.json") -Encoding utf8
+        $stubLog15 = Join-Path $home15 "stub-calls.log"
+        $bin15 = New-StubCli $home15 "claude" $stubLog15
+        $savedPath15 = $env:PATH
+        $savedRoot15 = $env:CLAUDE_PLUGIN_ROOT
+        $savedConfig15 = $env:CLAUDE_CONFIG_DIR
+        try {
+            $env:PATH = "$bin15;$savedPath15"
+            $env:CLAUDE_PLUGIN_ROOT = $pkgRoot
+            $env:CLAUDE_CONFIG_DIR = $home15
+            & $bashExe15 "-c" $h.command | Out-Null
+            Assert-True ($LASTEXITCODE -eq 0) "UPD-15: the real dispatcher command exits cleanly"
+        } finally {
+            $env:PATH = $savedPath15
+            if ($null -eq $savedRoot15) { Remove-Item Env:CLAUDE_PLUGIN_ROOT -ErrorAction SilentlyContinue } else { $env:CLAUDE_PLUGIN_ROOT = $savedRoot15 }
+            if ($null -eq $savedConfig15) { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue } else { $env:CLAUDE_CONFIG_DIR = $savedConfig15 }
+        }
+        Assert-True ((Test-Path $stubLog15) -and ((Get-Content -Raw $stubLog15) -like "*plugin update commentable-html@$marketplace*")) "UPD-15: the real dispatcher resolves CLAUDE_PLUGIN_ROOT and updates the sandboxed plugin"
+        Assert-True ((Get-ClaudeLog $home15) -like "*pass complete: 1 plugin(s) checked*") "UPD-15: the real dispatcher resolves CLAUDE_CONFIG_DIR and completes the pass"
+        Remove-Item -Recurse -Force $home15
+    } else {
+        Write-Host "  (no functional POSIX shell available; structural checks only)"
+    }
 } catch { $script:failures += "UPD-15 threw: $_" }
 
 Write-Host "== UPD-16 The update script logs a completed pass =="
