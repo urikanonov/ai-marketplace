@@ -244,8 +244,11 @@
 
     function open(img) {
       full.setAttribute("src", img.currentSrc || img.src);
-      full.setAttribute("alt", img.getAttribute("alt") || "");
-      lastFocus = document.activeElement;
+      full.setAttribute("alt", img.getAttribute("alt") || "Enlarged image");
+      // Restore focus to the triggering image itself (not document.activeElement),
+      // since a click does not always move focus there (e.g. Firefox/Safari on a
+      // non-natively-focusable element).
+      lastFocus = img;
       overlay.removeAttribute("hidden");
       close.focus();
     }
@@ -259,9 +262,13 @@
     }
 
     images.forEach(function (img) {
-      img.setAttribute("tabindex", "0");
-      img.setAttribute("role", "button");
-      if (!img.hasAttribute("aria-label")) {
+      if (!img.hasAttribute("tabindex")) {
+        img.setAttribute("tabindex", "0");
+      }
+      if (!img.hasAttribute("role")) {
+        img.setAttribute("role", "button");
+      }
+      if (!(img.getAttribute("aria-label") || "").trim()) {
         var name = img.getAttribute("alt");
         img.setAttribute("aria-label", name ? "View " + name + " enlarged" : "View image enlarged");
       }
@@ -286,6 +293,8 @@
         return;
       }
       if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
         hide();
         return;
       }
@@ -314,7 +323,7 @@
           }
         }
       }
-    });
+    }, true);
   }
 
   function initInstallTabs() {

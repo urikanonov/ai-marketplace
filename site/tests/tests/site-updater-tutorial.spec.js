@@ -172,6 +172,8 @@ test("clicking a tutorial image opens a full-size lightbox that Escape closes", 
   expect(await overlay.locator("img").getAttribute("src")).toContain(src);
   await page.keyboard.press("Escape");
   await expect(overlay).toBeHidden();
+  // Escape restores focus to the clicked image itself, not just document.activeElement.
+  await expect(firstImg).toBeFocused();
 });
 
 
@@ -197,6 +199,34 @@ test("tutorial image lightbox opens via keyboard, traps Tab, and restores focus 
   await page.keyboard.press("Escape");
   await expect(overlay).toBeHidden();
   await expect(firstImg).toBeFocused();
+
+  // Reopening a *different* image and closing via the close button (not Escape)
+  // also restores focus to that specific image, not the first one.
+  const secondImg = page.locator(".tutorial img").nth(1);
+  await secondImg.focus();
+  await secondImg.press("Enter");
+  await expect(overlay).toBeVisible();
+  await overlay.locator(".lightbox-close").click();
+  await expect(overlay).toBeHidden();
+  await expect(secondImg).toBeFocused();
+
+  // The Space key also activates the trigger (not just Enter).
+  const thirdImg = page.locator(".tutorial img").nth(2);
+  await thirdImg.focus();
+  await page.keyboard.press(" ");
+  await expect(overlay).toBeVisible();
+  await expect(overlay.locator(".lightbox-close")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(overlay).toBeHidden();
+  await expect(thirdImg).toBeFocused();
+
+  // Clicking the backdrop (outside the image) also dismisses and restores focus.
+  await thirdImg.focus();
+  await page.keyboard.press(" ");
+  await expect(overlay).toBeVisible();
+  await overlay.click({ position: { x: 5, y: 5 } });
+  await expect(overlay).toBeHidden();
+  await expect(thirdImg).toBeFocused();
 });
 
 
