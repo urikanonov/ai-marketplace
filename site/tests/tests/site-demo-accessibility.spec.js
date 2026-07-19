@@ -240,7 +240,7 @@ test("demo mounts inside the iframe on the plugin page (CSP allows it)", async (
 
 
 test("all demo reports load and their toolbars mount", async ({ page }) => {
-  for (const report of ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html"]) {
+  for (const report of ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "report-notes.html"]) {
     await page.goto("/commentable-html/demo/" + report, { waitUntil: "domcontentloaded" });
     await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });
     await expect(page.locator("#btnCopyAll")).toBeAttached({ timeout: 15000 });

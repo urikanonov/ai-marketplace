@@ -1,8 +1,10 @@
 // Deterministic tutorial screenshot capture for the commentable-html plugin (dev-only, not shipped).
-// With no arguments it regenerates every tutorial screenshot (the garden-*.png images that
-// docs/TUTORIAL.md embeds) from the shipped community-garden example into docs/assets. Use --check
-// to capture into repo-root tmp/ and compare against the committed docs/assets images without
-// writing them. Optional positional overrides let it capture any example:
+// With no arguments it regenerates every tutorial screenshot from four scenes: the community-garden
+// walkthrough (garden-*.png), the incident triage board (triage-*.png), a review checklist
+// (checklist-*.png), and an editable note (note-*.png), writing into docs/assets.
+// Use --check to capture into repo-root tmp/ and compare against the committed docs/assets images
+// without writing them. Optional positional overrides capture ONLY the scene named by the prefix
+// (default "garden") from any example:
 //   node capture_tutorial.mjs [--check] [example.html] [outDir] [prefix]
 // Defaults: example = pkg/.../examples/report-community-garden.html, outDir = pkg/.../docs/assets,
 // prefix = "garden". From dev/, run `npm run shots` or `npm run shots:check`.
@@ -25,13 +27,30 @@ if (unknownFlag) {
   process.exit(2);
 }
 const positional = argv.filter((a) => !a.startsWith("--"));
-const htmlArg = positional[0] || path.join(PLUGIN, "examples", "report-community-garden.html");
-const outDir = positional[1] || path.join(PLUGIN, "docs", "assets");
+const DEFAULT_GARDEN = path.join(PLUGIN, "examples", "report-community-garden.html");
+const DEFAULT_TRIAGE = path.join(PLUGIN, "examples", "report-triage.html");
+const DEFAULT_CHECKLIST = path.join(PLUGIN, "examples", "report-checklist.html");
+const DEFAULT_NOTES = path.join(PLUGIN, "examples", "report-notes.html");
+const DEFAULT_OUT = path.join(PLUGIN, "docs", "assets");
+const htmlArg = positional[0] || DEFAULT_GARDEN;
+const outDir = positional[1] || DEFAULT_OUT;
 const prefix = path.basename(positional[2] || "garden");
-const SHOTS = [
+// The community-garden walkthrough shots (docs/TUTORIAL.md embeds them as garden-*.png).
+const GARDEN_SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
+  "10-review-badge", "11-side-toc", "12-export-menu", "13-comment-search",
 ];
+// Checklists, notes, and the incident triage board render in their own example reports, so each
+// gets a small scene of its own (checklist-*.png, note-*.png, triage-*.png).
+const CHECKLIST_SHOTS = ["01-checklist"];
+const NOTE_SHOTS = ["01-note"];
+const TRIAGE_SHOTS = ["01-board"];
+// Single source of truth for the scene set and each scene's shot names, used by BOTH the default
+// multi-scene run (buildScenes) and the --print-paths registry, so the drift-guard test cannot pass
+// while a scene has been dropped from SCENE_ORDER.
+const SCENE_SHOTS = { garden: GARDEN_SHOTS, triage: TRIAGE_SHOTS, checklist: CHECKLIST_SHOTS, note: NOTE_SHOTS };
+const SCENE_ORDER = ["garden", "triage", "checklist", "note"];
 const PNG_QUANTIZE_STEP = 64;
 const PNG_DOWNSAMPLE = 2;
 const PIXEL_CHANNEL_TOLERANCE = 96;
@@ -40,17 +59,18 @@ const MAX_DIMENSION_DELTA = 2;
 const ELEMENT_SHOT_TOP = 24;
 
 if (printPaths) {
-  console.log(JSON.stringify({ example: htmlArg, outDir, prefix, check: checkMode }));
+  // Emit the authoritative scene -> shot-names registry, derived from SCENE_ORDER so the drift-guard
+  // test consumes exactly the scene set the default run captures (dropping a scene from SCENE_ORDER
+  // drops it here too, failing the test) instead of re-declaring the shot lists.
+  const scenes = {};
+  for (const key of SCENE_ORDER) scenes[key] = SCENE_SHOTS[key];
+  console.log(JSON.stringify({ example: htmlArg, outDir, prefix, check: checkMode, scenes }));
   process.exit(0);
 }
 
-if (!fs.existsSync(htmlArg)) {
-  console.error("capture_tutorial: example not found:", htmlArg);
-  process.exit(2);
-}
-const url = pathToFileURL(path.resolve(htmlArg)).href;
+function sceneUrl(scene) { return pathToFileURL(path.resolve(scene.example)).href; }
 
-function shotPath(dir, name) { return path.join(dir, `${prefix}-${name}.png`); }
+function shotPath(dir, pfx, name) { return path.join(dir, `${pfx}-${name}.png`); }
 function screenshotOptions(extra = {}) { return { animations: "disabled", caret: "hide", ...extra }; }
 
 async function settlePaint(page) {
@@ -166,7 +186,9 @@ async function routeVendoredMermaid(context) {
       await route.fulfill({ path: fileName, contentType: "application/javascript" });
       return;
     }
-    await route.continue();
+    // Fail closed: if the vendored file is missing, abort rather than reach the network, so the
+    // capture never silently depends on CDN reachability (it must stay hermetic and deterministic).
+    await route.abort();
   });
 }
 
@@ -302,7 +324,7 @@ async function stabilizeCharts(page) {
   await waitForStableLayout(page);
 }
 
-async function captureAll(targetDir) {
+async function captureScene(scene, targetDir) {
   fs.mkdirSync(targetDir, { recursive: true });
   const browser = await chromium.launch({
     args: [
@@ -321,125 +343,345 @@ async function captureAll(targetDir) {
       locale: "en-US",
       timezoneId: "UTC",
       reducedMotion: "reduce",
-      permissions: ["clipboard-read", "clipboard-write"],
+      // Only clipboard-WRITE is needed (the Copy-all shot writes to the clipboard); the capture never
+      // READS it, so do not grant clipboard-read (narrower exposure when run on an arbitrary example).
+      permissions: ["clipboard-write"],
     });
     await freezeClock(context);
     await freezeRandom(context);
+    // Fail closed: block every remote fetch so capture is hermetic and deterministic. The vendored
+    // mermaid route is registered AFTER this (Playwright matches the most-recently-added route
+    // first), so mermaid is still served from node_modules while every other egress - e.g. the
+    // triage example's SRI-pinned Chart.js CDN, which the board shot does not need - is aborted.
+    await context.route(/^https?:\/\//, (route) => route.abort());
     await routeVendoredMermaid(context);
     const normalizer = await context.newPage();
     const page = await context.newPage();
-    await page.goto(url);
+    await page.goto(sceneUrl(scene));
     await ready(page);
     await freezeMotion(page);
     await stabilizeCharts(page);
     await settlePaint(page);
 
-    await writeScreenshot(page, normalizer, shotPath(targetDir, "01-top-light"),
-      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
-    await page.addStyleTag({
-      content: ".cm-toolbar{visibility:hidden !important;}"
-        + ".cm-code-lang,.cm-code-copy{box-shadow:none !important;"
-        + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}"
-        + "#diffAddBtn{display:none !important;}",
-    });
-
-    await screenshotLocator(page, normalizer, page.locator("figure.cmh-kql").first(),
-      shotPath(targetDir, "02-kql"));
-
-    const chart = page.locator("figure.chart").first();
-    if (await chart.count()) {
-      await chart.waitFor({ state: "visible", timeout: 10000 });
-      await scrollLocatorToTop(chart, ELEMENT_SHOT_TOP);
-      await page.mouse.move(1, 1);
-      await stabilizeCharts(page);
-      await settlePaint(page);
-      await waitForStableElement(chart);
-      const box = await chart.boundingBox();
-      if (box) {
-        const size = await chart.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
-        await writeScreenshot(page, normalizer, shotPath(targetDir, "03-chart"),
-          { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
-      }
-    }
-
-    await screenshotLocator(page, normalizer, page.locator(".cmh-diff-host, pre.cmh-diff").first(),
-      shotPath(targetDir, "04-diff"));
-
-    await page.evaluate(() => window.scrollTo(0, 0));
-    const para = page.locator("#commentRoot p").first();
-    await para.scrollIntoViewIfNeeded();
-    await para.evaluate((el) => {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(r);
-      el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    });
-    const addBtn = page.locator(".cm-add-comment, [data-cm-add], button:has-text('Add comment')").first();
-    if (await addBtn.count()) {
-      await addBtn.waitFor({ state: "visible", timeout: 5000 });
-      await addBtn.click();
-      const composer = page.locator(".cm-composer").first();
-      await composer.waitFor({ state: "visible", timeout: 5000 });
-      await waitForStableLayout(page);
-      await writeScreenshot(page, normalizer, shotPath(targetDir, "05-composer"),
-        { clip: { x: 0, y: 0, width: 1320, height: 900 } });
-      await composer.locator("textarea").first().fill("Does this section read clearly? Consider adding one more example.");
-      await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
-      await page.locator("#commentRoot mark.cm-hl").first().waitFor({ state: "visible", timeout: 5000 });
-      await expectNoComposer(page);
-      await waitForStableLayout(page);
-    }
-
-    await writeScreenshot(page, normalizer, shotPath(targetDir, "06-comment-saved"),
-      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
-
-    await page.evaluate(() => { window.prompt = () => ""; });
-    const copyBtn = page.locator("#btnCopyAll");
-    if (await copyBtn.count()) {
-      await copyBtn.click().catch(() => {});
-      await page.locator("#toast.show").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
-      await waitForStableLayout(page);
-      await writeScreenshot(page, normalizer, shotPath(targetDir, "09-copyall"),
-        { clip: { x: 0, y: 0, width: 1320, height: 900 } });
-    }
-
-    await page.evaluate(() => {
-      const b = document.getElementById("btnHelp");
-      if (b && b.offsetParent !== null) { b.click(); return; }
-      const m = document.getElementById("btnToolbarMenu");
-      if (m) m.click();
-      const t = document.getElementById("btnHelpTop");
-      if (t) t.click();
-    });
-    await page.locator(".cm-help-overlay .cm-help").waitFor({ state: "visible", timeout: 5000 });
-    await waitForStableLayout(page);
-    await writeScreenshot(page, normalizer, shotPath(targetDir, "07-help"),
-      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
-
-    await page.keyboard.press("Escape").catch(() => {});
-    await page.evaluate(() => {
-      const menu = document.getElementById("toolbarMenu");
-      if (menu) menu.hidden = true;
-      const menuButton = document.getElementById("btnToolbarMenu");
-      if (menuButton) menuButton.setAttribute("aria-expanded", "false");
-      const toastEl = document.getElementById("toast");
-      if (toastEl) toastEl.classList.remove("show");
-      document.querySelectorAll(".cm-tooltip").forEach((el) => el.remove());
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      document.documentElement.setAttribute("data-theme", "dark");
-      window.scrollTo(0, 0);
-    });
-    await page.mouse.move(1, 1);
-    await page.locator(".cm-help-overlay").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
-    await waitForStableLayout(page);
-    await writeScreenshot(page, normalizer, shotPath(targetDir, "08-top-dark"),
-      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+    await scene.capture({ page, normalizer, targetDir, scene });
   } finally {
     if (context) await context.close().catch(() => {});
     await browser.close();
   }
+}
+
+// Capture a region of a FIXED element (the side TOC, the sidebar, the export menu) by clipping its
+// current viewport box - screenshotLocator's scroll-to-top math assumes an in-flow element, so it
+// mis-clips a position:fixed one. The clip is clamped inside the viewport.
+async function screenshotFixedRegion(page, normalizer, locator, pathName, pad = 8) {
+  const target = locator.first();
+  if (!await target.count()) return;
+  await target.waitFor({ state: "visible", timeout: 10000 });
+  await page.mouse.move(1, 1);
+  await settlePaint(page);
+  await waitForStableElement(target);
+  const box = await target.boundingBox();
+  if (!box) return;
+  const view = page.viewportSize() || { width: 1320, height: 900 };
+  const x = Math.max(0, Math.floor(box.x) - pad);
+  const y = Math.max(0, Math.floor(box.y) - pad);
+  const width = Math.max(1, Math.min(Math.ceil(box.width) + pad * 2, view.width - x));
+  const height = Math.max(1, Math.min(Math.ceil(box.height) + pad * 2, view.height - y));
+  await writeScreenshot(page, normalizer, pathName, { clip: { x, y, width, height } });
+}
+
+// Select a block and save a comment on it via the same composer flow the tutorial demonstrates.
+async function addComment(page, locator, text) {
+  const el = locator.first();
+  if (!await el.count()) return false;
+  await el.scrollIntoViewIfNeeded();
+  await el.evaluate((node) => {
+    const r = document.createRange();
+    r.selectNodeContents(node);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  const addBtn = page.locator(".cm-add-comment, [data-cm-add], button:has-text('Add comment')").first();
+  if (!await addBtn.count()) return false;
+  await addBtn.waitFor({ state: "visible", timeout: 5000 });
+  await addBtn.click();
+  const composer = page.locator(".cm-composer").first();
+  await composer.waitFor({ state: "visible", timeout: 5000 });
+  await composer.locator("textarea").first().fill(text);
+  await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
+  await expectNoComposer(page);
+  await waitForStableLayout(page);
+  return true;
+}
+
+async function captureGarden(ctx) {
+  const { page, normalizer, targetDir, scene } = ctx;
+  const P = scene.prefix;
+
+  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "01-top-light"),
+    { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+  await page.addStyleTag({
+    content: ".cm-toolbar{visibility:hidden !important;}"
+      + ".cm-code-lang,.cm-code-copy{box-shadow:none !important;"
+      + "backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}"
+      + "#diffAddBtn{display:none !important;}",
+  });
+
+  await screenshotLocator(page, normalizer, page.locator("figure.cmh-kql").first(),
+    shotPath(targetDir, P, "02-kql"));
+
+  const chart = page.locator("figure.chart").first();
+  if (await chart.count()) {
+    await chart.waitFor({ state: "visible", timeout: 10000 });
+    await scrollLocatorToTop(chart, ELEMENT_SHOT_TOP);
+    await page.mouse.move(1, 1);
+    await stabilizeCharts(page);
+    await settlePaint(page);
+    await waitForStableElement(chart);
+    const box = await chart.boundingBox();
+    if (box) {
+      const size = await chart.evaluate((el) => ({ width: el.offsetWidth, height: el.offsetHeight }));
+      await writeScreenshot(page, normalizer, shotPath(targetDir, P, "03-chart"),
+        { clip: roundedClip(box, size, ELEMENT_SHOT_TOP) });
+    }
+  }
+
+  await screenshotLocator(page, normalizer, page.locator(".cmh-diff-host, pre.cmh-diff").first(),
+    shotPath(targetDir, P, "04-diff"));
+
+  // Section review tracking: mark a below-the-fold heading reviewed so the top viewport shots stay
+  // unchanged, then shoot that heading's green Reviewed badge. Doing it before the side-TOC shot
+  // also lights the section's status dot there.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await waitForStableLayout(page);
+  const reviewedId = await page.evaluate(() => {
+    const root = document.getElementById("commentRoot") || document.body;
+    const headings = Array.from(root.querySelectorAll("h2[id], h3[id]"));
+    const target = headings.find((h) => h.getBoundingClientRect().top > window.innerHeight)
+      || headings[headings.length - 1];
+    if (!target) return null;
+    const badge = target.querySelector(":scope > .cmh-review-badge");
+    if (badge) badge.click();
+    return target.id;
+  });
+  if (reviewedId) {
+    // No .catch here: if the badge never reaches the reviewed state, fail the capture loudly rather
+    // than silently baking an unreviewed shot that then passes --check and drift checks forever.
+    await page.waitForFunction((id) => window.__cmhReview
+      && window.__cmhReview.stateOf(id) === "reviewed", reviewedId, { timeout: 5000 });
+    await screenshotLocator(page, normalizer, page.locator('[id="' + reviewedId + '"]').first(),
+      shotPath(targetDir, P, "10-review-badge"));
+  }
+
+  // Side table-of-contents nav renders only at wide widths; widen the viewport for this one shot.
+  // Its element clip covers doc-search, the review-status filter, section fold/expand, and go
+  // top/bottom together.
+  await page.setViewportSize({ width: 1500, height: 900 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await waitForStableLayout(page);
+  await settlePaint(page);
+  await screenshotFixedRegion(page, normalizer, page.locator("#cmSideToc, .cm-side-toc"),
+    shotPath(targetDir, P, "11-side-toc"));
+  await page.setViewportSize({ width: 1320, height: 900 });
+  await waitForStableLayout(page);
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const para = page.locator("#commentRoot p").first();
+  await para.scrollIntoViewIfNeeded();
+  await para.evaluate((el) => {
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  const addBtn = page.locator(".cm-add-comment, [data-cm-add], button:has-text('Add comment')").first();
+  if (await addBtn.count()) {
+    await addBtn.waitFor({ state: "visible", timeout: 5000 });
+    await addBtn.click();
+    const composer = page.locator(".cm-composer").first();
+    await composer.waitFor({ state: "visible", timeout: 5000 });
+    await waitForStableLayout(page);
+    await writeScreenshot(page, normalizer, shotPath(targetDir, P, "05-composer"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+    await composer.locator("textarea").first().fill("Does this section read clearly? Consider adding one more example.");
+    await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
+    await page.locator("#commentRoot mark.cm-hl").first().waitFor({ state: "visible", timeout: 5000 });
+    await expectNoComposer(page);
+    await waitForStableLayout(page);
+  }
+
+  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "06-comment-saved"),
+    { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+
+  await page.evaluate(() => { window.prompt = () => ""; });
+  const copyBtn = page.locator("#btnCopyAll");
+  if (await copyBtn.count()) {
+    await copyBtn.click().catch(() => {});
+    await page.locator("#toast.show").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+    await waitForStableLayout(page);
+    await writeScreenshot(page, normalizer, shotPath(targetDir, P, "09-copyall"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+  }
+
+  await page.evaluate(() => {
+    const b = document.getElementById("btnHelp");
+    if (b && b.offsetParent !== null) { b.click(); return; }
+    const m = document.getElementById("btnToolbarMenu");
+    if (m) m.click();
+    const t = document.getElementById("btnHelpTop");
+    if (t) t.click();
+  });
+  await page.locator(".cm-help-overlay .cm-help").waitFor({ state: "visible", timeout: 5000 });
+  await waitForStableLayout(page);
+  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "07-help"),
+    { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.evaluate(() => {
+    const menu = document.getElementById("toolbarMenu");
+    if (menu) menu.hidden = true;
+    const menuButton = document.getElementById("btnToolbarMenu");
+    if (menuButton) menuButton.setAttribute("aria-expanded", "false");
+    const toastEl = document.getElementById("toast");
+    if (toastEl) toastEl.classList.remove("show");
+    document.querySelectorAll(".cm-tooltip").forEach((el) => el.remove());
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    document.documentElement.setAttribute("data-theme", "dark");
+    window.scrollTo(0, 0);
+  });
+  await page.mouse.move(1, 1);
+  await page.locator(".cm-help-overlay").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+  await waitForStableLayout(page);
+  await writeScreenshot(page, normalizer, shotPath(targetDir, P, "08-top-dark"),
+    { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+
+  // Comment search + sort and the export menu need saved comments and the open sidebar in light
+  // theme, so capture them last: restore the theme, make sure the panel is open, and add two more
+  // comments so a query filters the list to a subset.
+  await page.evaluate(() => {
+    document.documentElement.setAttribute("data-theme", "light");
+    const menu = document.getElementById("sidebarExportMenu");
+    if (menu) menu.hidden = true;
+    if (!document.body.classList.contains("sidebar-open")) {
+      const t = document.getElementById("btnToggleSidebar");
+      if (t) t.click();
+    }
+    window.scrollTo(0, 0);
+  });
+  await waitForStableLayout(page);
+  // The comment-search shot needs these two comments (plus the earlier one) so a query filters to a
+  // subset; treat seeding as a required precondition and fail loudly rather than bake a shot of an
+  // empty/wrong list that then passes --check forever.
+  if (!await addComment(page, page.locator("#commentRoot p").nth(2),
+    "Frost risk: call out the last spring frost date near here.")) {
+    throw new Error("capture: could not seed the first search/sort comment (garden-13-comment-search)");
+  }
+  if (!await addComment(page, page.locator("#commentRoot p").nth(3),
+    "Can we track the compost delivery schedule too?")) {
+    throw new Error("capture: could not seed the second search/sort comment (garden-13-comment-search)");
+  }
+
+  // Type a query that filters the list; the sidebar shot shows the search box, the shown/total
+  // count, and the sort controls together.
+  await page.evaluate(() => {
+    const input = document.getElementById("cmSearchInput");
+    if (input) {
+      input.value = "frost";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  });
+  await page.mouse.move(1, 1);
+  await waitForStableLayout(page);
+  await screenshotFixedRegion(page, normalizer, page.locator("#sidebar"),
+    shotPath(targetDir, P, "13-comment-search"), 0);
+
+  // Clear the query, then open and shoot the sidebar export menu.
+  await page.evaluate(() => {
+    const input = document.getElementById("cmSearchInput");
+    if (input) {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const btn = document.getElementById("btnSidebarExportMenu");
+    if (btn) btn.click();
+  });
+  await page.locator("#sidebarExportMenu").first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  await page.mouse.move(1, 1);
+  await waitForStableLayout(page);
+  await screenshotFixedRegion(page, normalizer, page.locator("#sidebarExportMenu"),
+    shotPath(targetDir, P, "12-export-menu"), 0);
+}
+
+async function captureChecklist(ctx) {
+  const { page, normalizer, targetDir, scene } = ctx;
+  const P = scene.prefix;
+  await page.addStyleTag({ content: ".cm-toolbar{visibility:hidden !important;}#diffAddBtn{display:none !important;}" });
+  await page.mouse.move(1, 1);
+  await settlePaint(page);
+  await screenshotLocator(page, normalizer, page.locator(".cmh-checklist").first(),
+    shotPath(targetDir, P, "01-checklist"));
+}
+
+async function captureNote(ctx) {
+  const { page, normalizer, targetDir, scene } = ctx;
+  const P = scene.prefix;
+  await page.addStyleTag({ content: ".cm-toolbar{visibility:hidden !important;}#diffAddBtn{display:none !important;}" });
+  await page.mouse.move(1, 1);
+  await settlePaint(page);
+  await screenshotLocator(page, normalizer, page.locator(".cmh-note").first(),
+    shotPath(targetDir, P, "01-note"));
+}
+
+async function captureBoard(ctx) {
+  const { page, normalizer, targetDir, scene } = ctx;
+  const P = scene.prefix;
+  await page.addStyleTag({ content: ".cm-toolbar{visibility:hidden !important;}#diffAddBtn{display:none !important;}" });
+  await page.mouse.move(1, 1);
+  await settlePaint(page);
+  await screenshotLocator(page, normalizer,
+    page.locator(".triage-board-demo, [data-cm-widget='incident-triage-board']").first(),
+    shotPath(targetDir, P, "01-board"));
+}
+
+// Each scene renders a feature in the example that actually contains it. The default no-argument run
+// regenerates every scene into docs/assets; a positional override runs one scene chosen by prefix.
+// Shot lists come from SCENE_SHOTS (the single source of truth shared with --print-paths).
+const SCENE_DEFS = {
+  garden: { example: DEFAULT_GARDEN, shots: SCENE_SHOTS.garden, capture: captureGarden },
+  triage: { example: DEFAULT_TRIAGE, shots: SCENE_SHOTS.triage, capture: captureBoard },
+  checklist: { example: DEFAULT_CHECKLIST, shots: SCENE_SHOTS.checklist, capture: captureChecklist },
+  note: { example: DEFAULT_NOTES, shots: SCENE_SHOTS.note, capture: captureNote },
+};
+
+function buildScenes() {
+  if (positional.length > 0) {
+    if (positional.length > 3) {
+      console.error("capture_tutorial: too many positional args (expected [example] [outDir] [prefix]):", positional.join(" "));
+      process.exit(2);
+    }
+    // A 3rd positional arg names the scene; reject an unknown one instead of silently capturing the
+    // wrong scene's shots. Own-property lookup so "constructor"/"__proto__" cannot resolve to an
+    // inherited Object member (and the 2-arg default keeps prefix "garden", a real own key).
+    const known = Object.prototype.hasOwnProperty.call(SCENE_DEFS, prefix);
+    if (positional.length >= 3 && !known) {
+      console.error("capture_tutorial: unknown scene prefix:", prefix, "(known:", SCENE_ORDER.join(", ") + ")");
+      process.exit(2);
+    }
+    const def = known ? SCENE_DEFS[prefix] : SCENE_DEFS.garden;
+    return [{ prefix, example: htmlArg, outDir, shots: def.shots, capture: def.capture }];
+  }
+  return SCENE_ORDER.map((key) => ({
+    prefix: key,
+    example: SCENE_DEFS[key].example,
+    outDir: DEFAULT_OUT,
+    shots: SCENE_DEFS[key].shots,
+    capture: SCENE_DEFS[key].capture,
+  }));
 }
 
 async function imagesMatch(comparePage, expected, actual) {
@@ -494,22 +736,25 @@ async function imagesMatch(comparePage, expected, actual) {
   return ratio <= MAX_PIXEL_DIFF_RATIO;
 }
 
-async function checkScreenshots() {
-  const checkDir = path.join(REPO, "tmp", "tutorial-shots-check", String(process.pid));
-  fs.rmSync(checkDir, { recursive: true, force: true });
+async function checkScreenshots(scenes) {
+  const checkRoot = path.join(REPO, "tmp", "tutorial-shots-check", String(process.pid));
+  fs.rmSync(checkRoot, { recursive: true, force: true });
   let stale = false;
   try {
-    await captureAll(checkDir);
+    const problems = [];
     const compareBrowser = await chromium.launch();
     const comparePage = await compareBrowser.newPage();
-    const problems = [];
     try {
-      for (const name of SHOTS) {
-        const file = `${prefix}-${name}.png`;
-        const expected = path.join(outDir, file);
-        const actual = path.join(checkDir, file);
-        if (!fs.existsSync(expected)) problems.push(`${file} missing`);
-        else if (!await imagesMatch(comparePage, expected, actual)) problems.push(`${file} differs`);
+      for (const scene of scenes) {
+        const checkDir = path.join(checkRoot, scene.prefix);
+        await captureScene(scene, checkDir);
+        for (const name of scene.shots) {
+          const file = `${scene.prefix}-${name}.png`;
+          const expected = path.join(scene.outDir, file);
+          const actual = path.join(checkDir, file);
+          if (!fs.existsSync(expected)) problems.push(`${file} missing`);
+          else if (!await imagesMatch(comparePage, expected, actual)) problems.push(`${file} differs`);
+        }
       }
     } finally {
       await comparePage.close().catch(() => {});
@@ -519,55 +764,75 @@ async function checkScreenshots() {
       stale = true;
       for (const problem of problems) console.error(problem);
       console.error("capture_tutorial: tutorial screenshots are stale. Run npm run shots from plugins/commentable-html/dev.");
-      console.error("capture_tutorial: fresh screenshots were kept in", checkDir);
+      console.error("capture_tutorial: fresh screenshots were kept in", checkRoot);
       return 1;
     }
     console.log("tutorial screenshots are in sync");
     return 0;
   } finally {
-    if (!stale) fs.rmSync(checkDir, { recursive: true, force: true });
+    if (!stale) fs.rmSync(checkRoot, { recursive: true, force: true });
   }
 }
 
-async function regenerateScreenshots() {
-  const freshDir = path.join(REPO, "tmp", "tutorial-shots-generate", String(process.pid));
-  fs.rmSync(freshDir, { recursive: true, force: true });
+async function regenerateScreenshots(scenes) {
+  const freshRoot = path.join(REPO, "tmp", "tutorial-shots-generate", String(process.pid));
+  fs.rmSync(freshRoot, { recursive: true, force: true });
   try {
-    await captureAll(freshDir);
-    fs.mkdirSync(outDir, { recursive: true });
     let compareBrowser = null;
     let comparePage = null;
-    let written = 0;
     try {
-      for (const name of SHOTS) {
-        const file = `${prefix}-${name}.png`;
-        const target = path.join(outDir, file);
-        const fresh = path.join(freshDir, file);
-        if (fs.existsSync(target) && !comparePage) {
-          compareBrowser = await chromium.launch();
-          comparePage = await compareBrowser.newPage();
+      for (const scene of scenes) {
+        const freshDir = path.join(freshRoot, scene.prefix);
+        await captureScene(scene, freshDir);
+        fs.mkdirSync(scene.outDir, { recursive: true });
+        let written = 0;
+        for (const name of scene.shots) {
+          const file = `${scene.prefix}-${name}.png`;
+          const target = path.join(scene.outDir, file);
+          const fresh = path.join(freshDir, file);
+          if (!fs.existsSync(fresh)) {
+            console.error(`${scene.prefix} scene did not capture ${file} (a shot's target element may be missing)`);
+            process.exitCode = 1;
+            continue;
+          }
+          if (fs.existsSync(target) && !comparePage) {
+            compareBrowser = await chromium.launch();
+            comparePage = await compareBrowser.newPage();
+          }
+          if (!fs.existsSync(target) || !await imagesMatch(comparePage, target, fresh)) {
+            fs.copyFileSync(fresh, target);
+            written += 1;
+          }
         }
-        if (!fs.existsSync(target) || !await imagesMatch(comparePage, target, fresh)) {
-          fs.copyFileSync(fresh, target);
-          written += 1;
-        }
+        console.log("captured shots with prefix", scene.prefix, "->", scene.outDir, `(${written} updated)`);
       }
     } finally {
       if (comparePage) await comparePage.close().catch(() => {});
       if (compareBrowser) await compareBrowser.close();
     }
-    console.log("captured shots with prefix", prefix, "->", outDir, `(${written} updated)`);
+    // A per-shot capture miss set process.exitCode above; surface it as a clear final failure so a
+    // reader does not mistake the per-scene "captured shots ..." trailer for full success.
+    if (process.exitCode === 1) {
+      console.error("capture_tutorial: one or more shots were not captured (see errors above); the committed images may be incomplete.");
+    }
   } finally {
-    fs.rmSync(freshDir, { recursive: true, force: true });
+    fs.rmSync(freshRoot, { recursive: true, force: true });
   }
 }
 
 const run = async () => {
+  const scenes = buildScenes();
+  for (const scene of scenes) {
+    if (!fs.existsSync(scene.example)) {
+      console.error("capture_tutorial: example not found:", scene.example);
+      process.exit(2);
+    }
+  }
   if (checkMode) {
-    process.exitCode = await checkScreenshots();
+    process.exitCode = await checkScreenshots(scenes);
     return;
   }
-  await regenerateScreenshots();
+  await regenerateScreenshots(scenes);
 };
 
 run().catch((e) => { console.error(e); process.exit(1); });

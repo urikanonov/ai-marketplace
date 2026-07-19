@@ -48,3 +48,6 @@ plugins/tmp/
 
 # Stray dist from a bare build.py run (default out-dir); the real dist is under pkg/
 plugins/commentable-html/dev/dist/
+
+# Scratch patch/diff dumps (never commit; use tmp/)
+*.diff.txt

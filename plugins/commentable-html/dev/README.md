@@ -135,17 +135,18 @@ The taxi example has no images, so it needs no inlining - just validate it.
 
 ## Regenerating tutorial screenshots
 
-The tutorial (`../docs/TUTORIAL.md`) embeds nine `garden-*.png`
-screenshots captured from the community-garden example. Regenerate all of them with one command from
-`dev/`:
+The tutorial (`../docs/TUTORIAL.md`) embeds four scenes of screenshots: thirteen `garden-*.png`
+shots from the community-garden example plus one shot each from the triage-board
+(`triage-01-board.png`), checklist (`checklist-01-checklist.png`), and notes (`note-01-note.png`)
+examples. Regenerate all of them with one command from `dev/`:
 
 ```powershell
 npm run shots
 ```
 
-`npm run shots` runs `tools/capture_tutorial.mjs` with no arguments: it drives
-`../examples/report-community-garden.html` and writes
-`garden-01-top-light.png` through `garden-09-copyall.png` into
+`npm run shots` runs `tools/capture_tutorial.mjs` with no arguments: it drives all four scenes and
+writes `garden-01-top-light.png` through `garden-13-comment-search.png`, plus `triage-01-board.png`,
+`checklist-01-checklist.png`, and `note-01-note.png`, into
 `../docs/assets/` at a fixed 1320x900 viewport (2x scale). It pins the
 capture clock, random seed, viewport, locale, timezone, reduced motion, browser font rendering flags,
 and capture fonts, then normalizes PNG output so repeated runs produce byte-identical files on the
@@ -155,7 +156,8 @@ same browser environment. Check committed screenshots for drift without rewritin
 npm run shots:check
 ```
 
-To capture a different example, pass overrides:
+To capture a single scene of a different example, pass overrides (the prefix selects the capture
+recipe: `garden`, `triage`, `checklist`, or `note`):
 
 ```powershell
 node tools\capture_tutorial.mjs <example.html> <outDir> <prefix>

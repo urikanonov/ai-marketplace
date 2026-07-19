@@ -141,22 +141,71 @@
           <li>Use the diff header button to switch between views: it reads <strong>To inline view</strong> while side-by-side and <strong>To side-by-side view</strong> while inline. Your comments stay attached either way.</li>
           </ol>
           <p><img src="assets/garden-04-diff.png" alt="The unified diff block with the view toggle and a syntax-highlight toggle" loading="lazy" /></p>
-          <h3>11. Navigate and collapse sections</h3>
+          <h3>11. Work a review checklist</h3>
+          <p>Some reports embed interactive review checklists - grouped items whose state you cycle as you verify each one. The community garden plan does not use them, so this step uses <a href="../demo/report-checklist.html"><code>examples/report-checklist.html</code></a>, which is built around a release-readiness checklist.</p>
           <ol>
-          <li>Widen the browser window to at least 1400px. A generated section menu appears on the left (separate from the author Contents list near the top) and highlights the section you are reading; it has its own collapse toggle.</li>
-          <li>In the document itself, each section title has a small caret to its left: click the caret to collapse or expand that section. When a section is collapsed, clicking its title also expands it again.</li>
+          <li>Open <a href="../demo/report-checklist.html"><code>examples/report-checklist.html</code></a>.</li>
+          <li>Click an item&#x27;s box to cycle its state: blank, done (green check), failed (red cross), or unresolved (amber question). A group heading rolls up the state of its items, and clicking it propagates a state to every item beneath it.</li>
+          <li>Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item&#x27;s text and click <strong>Add Comment</strong> to leave a note on that specific check.</li>
           </ol>
-          <h3>12. Hand your comments back</h3>
+          <p><img src="assets/checklist-01-checklist.png" alt="A grouped review checklist with tickable items under Backend and Frontend headings" loading="lazy" /></p>
+          <h3>12. Edit a review note</h3>
+          <p>Notes are editable free-text fields authors embed for context, verdicts, or reviewer input. Each starts from an authored baseline you can edit in place. The garden plan has none, so this step uses <a href="../demo/report-notes.html"><code>examples/report-notes.html</code></a>.</p>
+          <ol>
+          <li>Open <a href="../demo/report-notes.html"><code>examples/report-notes.html</code></a>.</li>
+          <li>Click into a note and edit its text; use its single/multi-line toggle to switch the field height for longer entries.</li>
+          <li>Your changes are saved with the document and appear as a note card in the sidebar (with jump and reset), so the agent can cement them back into the source. You can also select the note text and click <strong>Add Comment</strong> to leave a tracked comment on it.</li>
+          </ol>
+          <p><img src="assets/note-01-note.png" alt="An editable note field labeled Verdict with a single/multi-line toggle" loading="lazy" /></p>
+          <h3>13. Track review progress per section</h3>
+          <p>Every section heading carries a small review badge so you can mark sections as you finish them and see at a glance what is left.</p>
+          <ol>
+          <li>Hover a section heading to reveal its badge, then click the badge to mark that section <strong>Reviewed</strong>. The badge turns green and stays visible.</li>
+          <li>A section you have not touched shows the default <strong>unreviewed</strong> state (no marker). The badge also reflects two more states automatically: a section you have commented on shows a <strong>Commented</strong> badge, and one whose content changed since your last visit shows a <strong>Changed</strong> badge.</li>
+          <li>Use these badges together with the section filter in the side navigation (next step) to focus on unreviewed or changed sections.</li>
+          </ol>
+          <p><img src="assets/garden-10-review-badge.png" alt="A section heading showing a green Reviewed badge" loading="lazy" /></p>
+          <h3>14. Navigate, search, and filter sections</h3>
+          <ol>
+          <li>Widen the browser window to at least 1400px. A generated section navigation appears on the left (separate from the author Contents list near the top) and highlights the section you are reading.</li>
+          <li>The nav has a search box at the top: type to filter the section list down to matching headings.</li>
+          <li>Below it, a review-status filter (All / Reviewed / Unreviewed / Commented / Changed) narrows the list to sections in that state, and a status dot next to each entry shows its review state. Use it with the per-section badges from the previous step to jump straight to what still needs attention.</li>
+          <li>The nav buttons let you <strong>Expand All</strong> or <strong>Collapse All</strong> sections at once and <strong>Scroll to Top</strong> or <strong>Scroll to Bottom</strong> of the document. In the document itself, each section title also has a small caret to its left: click the caret to collapse or expand that one section (clicking a collapsed section&#x27;s title expands it again).</li>
+          </ol>
+          <p><img src="assets/garden-11-side-toc.png" alt="The left section navigation with its search box, review-status filter, and expand/collapse and scroll controls" loading="lazy" /></p>
+          <h3>15. Search and sort your comments</h3>
+          <p>Once you have several comments, the sidebar helps you find and order them.</p>
+          <ol>
+          <li>Type in the comment search box at the top of the panel to filter the list to comments whose quoted text or note matches your query; the header shows how many of the total are shown.</li>
+          <li>Use the sort buttons to order comments by their position in the document, ascending or descending, instead of the order you added them.</li>
+          </ol>
+          <p><img src="assets/garden-13-comment-search.png" alt="The comments panel filtered by a search query, with the sort controls and a shown-of-total count" loading="lazy" /></p>
+          <h3>16. Hand your comments back</h3>
           <ol>
           <li>Click <strong>Copy all</strong> in the toolbar or the sidebar.</li>
           <li>This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.</li>
           <li>Paste the bundle back to the agent. It addresses each comment and marks it handled in the same file.</li>
           </ol>
           <p><img src="assets/garden-09-copyall.png" alt="The Copy all action with the comments panel populated" loading="lazy" /></p>
-          <h3>13. Refresh and repeat</h3>
+          <h3>17. Use the export menu</h3>
+          <p>The sidebar&#x27;s export menu gathers the ways to save or share the file in one place.</p>
+          <ol>
+          <li>Click <strong>Export</strong> in the comments panel header to open the menu.</li>
+          <li>Choose an option: <strong>Portable</strong> bakes your comments into a single self-contained copy, <strong>Offline</strong> makes a zero-network copy after diagrams and charts have rendered, <strong>Markdown</strong> writes the comment bundle to a <code>.md</code> file, and <strong>Plain HTML</strong> hands over a clean copy with the commenting layer removed.</li>
+          <li>The <strong>Clear</strong> button next to Export removes every comment so you can start the review over.</li>
+          </ol>
+          <p><img src="assets/garden-12-export-menu.png" alt="The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML" loading="lazy" /></p>
+          <h3>18. Refresh and repeat</h3>
           <p>Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.</p>
-          <p>To share the review with another person instead, use <strong>Export as Portable</strong> to bake the comments into a single self-contained copy, or <strong>Export to Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
+          <p>To share the review with another person instead, use the export menu&#x27;s <strong>Portable</strong> action to bake the comments into a single self-contained copy, or <strong>Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
           <p>Use <strong>Export Offline</strong> for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the <strong>Offline</strong> badge while keeping live diagrams and chart tooltips.</p>
+          <h3>19. Review a board document</h3>
+          <p>Not every commentable file is a prose report. A board document (<code>kind: board</code>) renders as columns of cards - handy for triaging incidents, tickets, or tasks. The <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a> report is one.</p>
+          <ol>
+          <li>Open <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a>.</li>
+          <li>Read the cards across the columns, then select any card text and click <strong>Add Comment</strong> to leave a note, just as you would in a prose report.</li>
+          </ol>
+          <p><img src="assets/triage-01-board.png" alt="An incident triage board with cards arranged in status columns" loading="lazy" /></p>
           <h3>Dark theme</h3>
           <p>The layer follows your browser or OS theme and stays readable in both. Everything above works identically in dark mode.</p>
           <p><img src="assets/garden-08-top-dark.png" alt="The community garden plan in dark theme" loading="lazy" /></p>
