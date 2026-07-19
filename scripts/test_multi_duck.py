@@ -21,6 +21,8 @@ COPILOT_MKT = os.path.join(REPO_ROOT, ".github", "plugin", "marketplace.json")
 CLAUDE_MKT = os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json")
 COPILOT_PJ = os.path.join(PKG, "plugin.json")
 CLAUDE_PJ = os.path.join(PKG, ".claude-plugin", "plugin.json")
+LICENSE = os.path.join(PKG, "LICENSE")
+ROOT_LICENSE = os.path.join(REPO_ROOT, "LICENSE")
 
 # Punctuation the repo house style forbids (em dash, en dash, ellipsis).
 _FORBIDDEN = "\u2014\u2013\u2026"
@@ -53,7 +55,7 @@ class MultiDuckRegistrationTests(unittest.TestCase):
     def test_registered_in_both_marketplaces_with_matching_identity(self):
         # MDUCK-REG-01: multi-duck is registered in the Copilot and Claude marketplace manifests, and
         # the shared identity fields (version, source, description, keywords) match across both plus
-        # the two plugin.json files, at 1.0.0.
+        # the two plugin.json files, at 1.0.1.
         cop = _entry(COPILOT_MKT, PLUGIN)
         cla = _entry(CLAUDE_MKT, PLUGIN)
         self.assertIsNotNone(cop, "multi-duck missing from Copilot marketplace")
@@ -63,7 +65,7 @@ class MultiDuckRegistrationTests(unittest.TestCase):
         cop_pj = _json(COPILOT_PJ)
         cla_pj = _json(CLAUDE_PJ)
         versions = {cop["version"], cla["version"], cop_pj["version"], cla_pj["version"]}
-        self.assertEqual(versions, {"1.0.0"})
+        self.assertEqual(versions, {"1.0.1"})
         descs = {cop["description"], cla["description"],
                  cop_pj["description"], cla_pj["description"]}
         self.assertEqual(len(descs), 1, "description must be byte-identical across all four manifests")
@@ -80,6 +82,14 @@ class MultiDuckRegistrationTests(unittest.TestCase):
         self.assertEqual(cop_pj["name"], PLUGIN)
         self.assertEqual(cop_pj["license"], "MIT")
         self.assertEqual(cop_pj["author"], {"name": "Uri Kanonov", "email": "urikanonov@gmail.com"})
+
+    def test_shipped_package_includes_canonical_mit_license(self):
+        # MDUCK-LICENSE-08: installs include the full canonical MIT text, not only a manifest label.
+        with open(ROOT_LICENSE, "rb") as fh:
+            expected = fh.read()
+        with open(LICENSE, "rb") as fh:
+            actual = fh.read()
+        self.assertEqual(actual, expected)
 
 
 class MultiDuckSkillTests(unittest.TestCase):

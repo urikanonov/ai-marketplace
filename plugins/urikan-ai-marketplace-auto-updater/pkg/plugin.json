@@ -1,7 +1,7 @@
 {
   "name": "urikan-ai-marketplace-auto-updater",
   "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "author": {
     "name": "Uri Kanonov",
     "email": "urikanonov@gmail.com"

@@ -10,6 +10,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pkgRoot = Join-Path (Split-Path -Parent (Split-Path -Parent $here)) "pkg"
 $hookScript = Join-Path (Join-Path $pkgRoot "hooks") "marketplace-update.ps1"
 $hooksJson = Join-Path $pkgRoot "hooks.json"
+$repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $pkgRoot))
 $marketplace = "urikan-ai-marketplace"
 $self = "urikan-ai-marketplace-auto-updater"
 
@@ -436,6 +437,18 @@ try {
     Assert-True ($skill -match "(?i)custom") "UPD-19: skill offers a custom interval"
     Assert-True ($skill -match "(?im)24 hours.*default") "UPD-19: 24 hours is presented as the default"
 } catch { $script:failures += "UPD-19 threw: $_" }
+
+Write-Host "== UPD-20 shipped package includes the canonical MIT license =="
+try {
+    $license = Join-Path $pkgRoot "LICENSE"
+    $canonicalLicense = Join-Path $repoRoot "LICENSE"
+    Assert-True (Test-Path $license) "UPD-20: LICENSE ships in the package root"
+    if (Test-Path $license) {
+        $actual = [IO.File]::ReadAllBytes($license)
+        $expected = [IO.File]::ReadAllBytes($canonicalLicense)
+        Assert-True ([Linq.Enumerable]::SequenceEqual($actual, $expected)) "UPD-20: shipped LICENSE matches the canonical MIT text"
+    }
+} catch { $script:failures += "UPD-20 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue
