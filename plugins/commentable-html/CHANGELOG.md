@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.164.0] - 2026-07-19
+
+### Added
+
+- Third-party MIT license notices for the vendored rich-content libraries (mermaid, Chart.js). The
+  upstream license texts are vendored under `dev/assets/vendor/*.LICENSE`, `build.py` assembles them
+  into a shipped `THIRD_PARTY_NOTICES.md` (copied unzipped beside the plugin LICENSE and gated by
+  `build.py --check`), and `Export Offline` now embeds each bundled library's MIT notice as an HTML
+  comment beside the inlined library, so a redistributed offline artifact carries the required
+  copyright and permission notice.
+
 ## [1.163.0] - 2026-07-19
 
 ### Changed

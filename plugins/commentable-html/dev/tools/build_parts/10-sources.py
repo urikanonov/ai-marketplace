@@ -84,6 +84,10 @@ def build_vendored_rich_libs_json(assets_dir):
         "encoding": "gzip+base64",
         "mermaidGzipBase64": base64.b64encode(read_vendored_gz(vendor_dir, "mermaid.min.js")).decode("ascii"),
         "chartjsGzipBase64": base64.b64encode(read_vendored_gz(vendor_dir, "chart.umd.min.js")).decode("ascii"),
+        # MIT notices travel with the inlined library bytes so an Offline export is a compliant
+        # redistribution (68-export-offline.js emits them as an HTML comment beside each inlined lib).
+        "mermaidLicense": read_vendored_license(vendor_dir, "mermaid.LICENSE"),
+        "chartjsLicense": read_vendored_license(vendor_dir, "chart.umd.LICENSE"),
     }
     return (json.dumps(payload, separators=(",", ":"))
             .replace("<", "\\u003C")

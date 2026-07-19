@@ -313,6 +313,42 @@ test("Export Offline embeds vendored mermaid and Chart.js for zero-network reope
   }
 });
 
+test("Export Offline embeds the MIT license notice beside each inlined library (CMH-LICENSE-02)", async ({ page }) => {
+  test.setTimeout(60000);
+  const staged = stageContent(CONTENT, { key: "cmh-offline-notice", source: "offline-notice.html" });
+  const server = await startStaticServer(staged.dir);
+  try {
+    await routeRichContentLocal(page);
+    await installClipboardCapture(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await addTextComment(page, "#offline-note", "notice check");
+    await openSidebarExportMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      clickSidebarExport(page, "#btnExportOffline"),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    // Both libraries are inlined for this doc, so both MIT notices must travel with them, each inside
+    // an HTML comment (a notice, not executable content) that carries the verbatim upstream copyright.
+    const comments = [...exportedHtml.matchAll(/<!--([\s\S]*?)-->/g)].map((m) => m[1]);
+    const mermaidNotice = comments.find((c) => c.includes("Third-party notice - mermaid"));
+    const chartNotice = comments.find((c) => c.includes("Third-party notice - Chart.js"));
+    expect(mermaidNotice, "mermaid MIT notice comment").toBeTruthy();
+    expect(chartNotice, "Chart.js MIT notice comment").toBeTruthy();
+    expect(mermaidNotice).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+    expect(mermaidNotice).toContain("Permission is hereby granted");
+    expect(chartNotice).toContain("Copyright (c) 2014-2024 Chart.js Contributors");
+    expect(chartNotice).toContain("Permission is hereby granted");
+    // The notice is a comment, never an executed script, so it cannot run and stays under the CSP.
+    expect(exportedHtml).not.toContain("Third-party notice - mermaid is bundled inline for offline use under the MIT License:</script>");
+  } finally {
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
 test("editing an already-offline document preserves offline mode and offline export is idempotent (CMH-OFFLINE-03)", async ({ page }) => {
   const offlineContent = `
 <h1>Already offline</h1>

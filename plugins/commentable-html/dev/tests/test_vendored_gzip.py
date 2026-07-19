@@ -32,6 +32,12 @@ class VendoredGzipReproTests(unittest.TestCase):
             fh.write(mermaid)
         with open(os.path.join(vendor, "chart.umd.min.js"), "wb") as fh:
             fh.write(chart)
+        # build_vendored_rich_libs_json also reads the vendored MIT license texts into the bundle,
+        # so a synthetic vendor dir must provide them too.
+        with open(os.path.join(vendor, "mermaid.LICENSE"), "w", encoding="utf-8") as fh:
+            fh.write("The MIT License (MIT)\n\nCopyright (c) mermaid\n")
+        with open(os.path.join(vendor, "chart.umd.LICENSE"), "w", encoding="utf-8") as fh:
+            fh.write("The MIT License (MIT)\n\nCopyright (c) Chart.js Contributors\n")
         return vendor
 
     def test_blob_reads_committed_gz_not_recompressed(self):

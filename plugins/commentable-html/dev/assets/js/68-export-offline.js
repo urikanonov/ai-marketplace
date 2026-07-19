@@ -141,6 +141,8 @@ function _ensureOfflineVendoredRichLibsPromise() {
     return {
       mermaid: await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
       chartjs: await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
+      mermaidLicense: String(payload.mermaidLicense || ""),
+      chartjsLicense: String(payload.chartjsLicense || ""),
     };
   })();
   return _offlineVendoredRichLibsPromise;
@@ -179,6 +181,17 @@ function _offlineAppendInlineScript(doc, head, code, attrs) {
   s.textContent = _escClose(String(code || ""));
   head.appendChild(s);
 }
+function _offlineAppendLibNotice(doc, head, name, license) {
+  // MIT requires the copyright + permission notice to accompany a redistributed copy of the library.
+  // The Offline export inlines the library bytes, so emit its notice as an HTML comment beside it.
+  // Neutralize any "--" so the comment cannot terminate early or serialize as invalid HTML (the
+  // vendored MIT texts have none today; this keeps it safe if an upstream refresh introduces one).
+  const text = String(license || "").replace(/-{2,}/g, function (m) { return m.split("").join(" "); });
+  if (!text.trim()) return;
+  head.appendChild(doc.createComment(
+    " Third-party notice - " + name + " is bundled inline for offline use under the MIT License:\n"
+    + text + "\n"));
+}
 function _offlineHoistChartScripts(doc) {
   const body = doc.body || doc.querySelector("body");
   if (!body) return;
@@ -205,10 +218,12 @@ async function _offlineInlineRichLibs(doc) {
   const bundle = await _offlineVendoredRichLibs();
   if (needCharts) {
     if (!bundle.chartjs) throw new Error("Offline export is missing the vendored Chart.js bundle.");
+    _offlineAppendLibNotice(doc, head, "Chart.js", bundle.chartjsLicense);
     _offlineAppendInlineScript(doc, head, bundle.chartjs, { "data-cmh-offline-lib": "chartjs" });
   }
   if (needMermaid) {
     if (!bundle.mermaid) throw new Error("Offline export is missing the vendored mermaid bundle.");
+    _offlineAppendLibNotice(doc, head, "mermaid", bundle.mermaidLicense);
     _offlineAppendInlineScript(doc, head, bundle.mermaid, { "data-cmh-offline-lib": "mermaid" });
     _offlineAppendInlineScript(doc, head,
       "(function(){\n"
