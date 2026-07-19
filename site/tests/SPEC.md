@@ -186,7 +186,7 @@ suite (see `.github/workflows/pages.yml`).
 
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |
-| SITE-FOOTER-01 | The commentable-html plugin page, tutorial page, and auto-updater page share the same footer structure and link labels: the author's LinkedIn profile, Contribute, Request a feature, File an issue, and Plugin source. The Plugin source link points to the page's owning plugin tree, so the tutorial uses the commentable-html source and the updater uses the auto-updater source. | `site/tests/tests/site-plugin.spec.js` - `plugin, tutorial, and updater footers share the same link structure (SITE-FOOTER-01)` |
+| SITE-FOOTER-01 | The commentable-html plugin page, tutorial page, and auto-updater page share the same footer attribution and navigation structure and link labels: the author's LinkedIn profile, Contribute, Request a feature, File an issue, and Plugin source. The Plugin source link points to the page's owning plugin tree, so the tutorial uses the commentable-html source and the updater uses the auto-updater source. The commentable-html plugin page additionally carries a page-specific rich-content credit (SITE-CREDIT-01) that is not part of this shared structure. | `site/tests/tests/site-plugin.spec.js` - `plugin, tutorial, and updater footers share the same link structure (SITE-FOOTER-01)` |
 
 ## Security, portability, and accessibility
 

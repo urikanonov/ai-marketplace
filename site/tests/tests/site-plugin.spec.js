@@ -77,8 +77,13 @@ test("plugin, tutorial, and updater footers share the same link structure (SITE-
   const structures = [];
   for (const [path, pluginSource] of pages) {
     await page.goto(path, { waitUntil: "domcontentloaded" });
+    // The shared footer structure is the attribution + nav row. The commentable-html plugin page
+    // additionally carries a page-specific rich-content credit (SITE-CREDIT-01) in a `.credit`
+    // span, which is intentionally NOT part of this shared structure, so exclude it here.
     const links = await page.locator("footer.footer a").evaluateAll((anchors) =>
-      anchors.map((a) => [a.textContent.trim().replace(/\s+/g, " "), a.href])
+      anchors
+        .filter((a) => !a.closest(".credit"))
+        .map((a) => [a.textContent.trim().replace(/\s+/g, " "), a.href])
     );
     expect(links).toEqual([...common, ["Plugin source", pluginSource]]);
     structures.push(links.map(([label]) => label));

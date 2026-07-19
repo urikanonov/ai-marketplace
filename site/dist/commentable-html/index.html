@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.162.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.163.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.163.0] - 2026-07-19</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Documented the online mermaid CDN import as a by-design accepted supply-chain risk (CMH-SEC-04): the runtime loads mermaid from a version-pinned jsDelivr URL (single-sourced from the mermaid dependency), with a zero-network vendored fallback via Export Offline. Credited the third-party rich-content libraries the plugin renders with - mermaid and Chart.js, both MIT - in the plugin README, the marketplace README, the site plugin page, and the vendored-libraries provenance doc.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.162.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -437,6 +444,8 @@
               <li>Deck edge navigation arrows now reveal across a wide left/right hover band (not only a thin edge strip), stay reliably visible, and are a larger, comfortably clickable target. (CMH-DECK-32)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.161.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -445,8 +454,6 @@
               <li><code>deck_validate.py</code> now also gates the reference-pill contrast pair (<code>--slide-link</code> over <code>--cmh-deck-code-bg</code>), so a custom theme cannot ship low-contrast reference links.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.160.1] - 2026-07-19</h3></div>
             <div class="group-label">Security</div>
@@ -476,18 +483,7 @@
               <li>A Mermaid diagram authored inside a collapsible section that is collapsed (<code>display:none</code>) at load no longer renders as a tiny, broken graph. Drawing a diagram in place with <code>mermaid.run()</code> while its container has a zero-size box produced a degenerate <code>~16px</code> viewBox with the nodes stacked on top of each other, and mermaid never re-measured it, so it stayed broken once the section was revealed. The loader now renders each hidden diagram by running mermaid on an OFF-SCREEN CLONE (a <code>1000px</code> sandbox) and moving the rendered SVG into the real element - reusing mermaid&#x27;s own source extraction (so <code>&lt;br/&gt;</code> labels and entities match a visible diagram) and error handling (a malformed diagram leaves no stray SVG in the page). Every diagram is therefore laid out correctly at load - correct the moment its section is revealed and also correct if the collapsed section is printed. Renders are serialized so rendering many diagrams at once cannot corrupt them, and one malformed diagram does not starve its siblings (CMH-MMD-07). Deck slides (hidden with <code>visibility:hidden</code>, not <code>display:none</code>) keep their existing eager render. On reveal the wide/scroll-fade classification is recomputed against the diagram&#x27;s now-real container width, and the loader exposes <code>window.__cmhMermaidReady</code> for print/screenshot automation. The Export Offline vendored-inline re-init carries the same logic, so offline-exported reports render collapsed-section diagrams correctly with zero network.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.157.0] - 2026-07-19</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The <code>upgrade.py</code> and <code>retrofit.py</code> authoring tools now preserve the input file&#x27;s dominant newline (detected from the raw bytes) through the transform, so a Windows-authored (CRLF) portable or host HTML file is no longer silently normalized to LF on upgrade/retrofit (CMH-TOOL-08, CMH-TOOL-15, closes #437).</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The shipped <code>pkg/</code> root now carries its own <code>LICENSE</code> (matching the repository root LICENSE) so the always-shipped session hooks are covered by a license even before <code>skill-resources.zip</code> is extracted (CMH-PKG-13).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">134 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">135 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

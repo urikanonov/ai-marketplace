@@ -12,7 +12,8 @@ rendering. On the ONLINE render path mermaid is imported from a version-pinned j
 (`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.esm.min.mjs`, single-sourced from
 `dev/package.json`), and Chart.js loads from a pinned CDN only on explicit per-document opt-in; the
 vendored copies here back the zero-network `Export Offline` path. The accepted-risk decision to keep
-the CDN import is documented as `CMH-SEC-04` in `dev/spec/50-security.md`.
+ONLY that pinned mermaid CDN import is documented as `CMH-SEC-04` in `dev/spec/50-security.md`;
+Chart.js CDN loading stays opt-in (pinned plus SRI) and in scope for review.
 
 Build-time use only:
 

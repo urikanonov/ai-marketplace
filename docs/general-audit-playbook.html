@@ -1340,14 +1340,19 @@ flowchart TD
   file and defer anything risky, architectural, or judgment-heavy for explicit maintainer review; record the rest as
   surfaced-but-not-taken. Split the backlog into workstreams with disjoint hand-edited file ownership so parallel
   work never collides.</p>
-  <p>Respect the accepted-risk registry. Before flagging anything, consult the documented by-design accepted risks
-  recorded in the security specs (for commentable-html, the <code>CMH-SEC-*</code> rows in
-  <code>plugins/commentable-html/dev/spec/50-security.md</code>). A risk that already carries an accepted-risk row
-  with its rationale is a settled maintainer decision, not a finding: do not re-surface it. For example the runtime
-  mermaid diagram library loads from a version-pinned jsDelivr CDN URL on the online render path (with a zero-network
-  vendored fallback via Export Offline); that CDN dependency is documented as an accepted risk (<code>CMH-SEC-04</code>,
-  decision <a href="https://github.com/urikanonov/ai-marketplace/issues/451">#451</a>) and is out of scope. Only raise it
-  again if the underlying facts change (for example the import stops being version-pinned).</p>
+  <p>Respect the accepted-risk registry, but only for rows that are actually accepted risks. Before flagging
+  anything, consult the security spec and honor the rows EXPLICITLY labeled <code>Accepted risk (by design...)</code> -
+  for commentable-html, that is <code>CMH-SEC-04</code> in <code>plugins/commentable-html/dev/spec/50-security.md</code>.
+  Such a row is a settled maintainer decision, not a finding: do not re-surface it unless its stated facts change.
+  This is NOT a blanket exemption for the whole <code>CMH-SEC-*</code> family: the other rows (for example
+  <code>CMH-SEC-01</code> through <code>CMH-SEC-03</code>) are security CONTROLS, and a change that breaks a
+  control's stated property is a real finding you MUST raise. For example, the runtime mermaid diagram library
+  loads from a version-pinned jsDelivr CDN URL on the online render path (a dynamic ESM import that cannot carry
+  SRI, with a zero-network vendored fallback via Export Offline); that specific pinned import is the accepted risk
+  (<code>CMH-SEC-04</code>, decision <a href="https://github.com/urikanonov/ai-marketplace/issues/451">#451</a>)
+  and is out of scope, but Chart.js CDN loading (opt-in, pinned plus SRI per <code>CMH-CHART-03</code>) is NOT
+  accepted and stays in scope. Re-raise the mermaid item only if its facts change (a different host or path, an
+  unpinned version, a newly auto-loaded CDN dependency, or removal of the offline fallback).</p>
 
   <h3 id="issue-first">4. Issue-first orchestration</h3>
   <p>Before any code, track each accepted workstream as a GitHub Issue: search first to consolidate, then create or
