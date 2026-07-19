@@ -508,6 +508,9 @@ test("the plugin page footer credits mermaid and Chart.js (SITE-CREDIT-01)", asy
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const credit = page.locator("footer.footer .credit");
   await expect(credit).toHaveCount(1);
+  // User-facing content: assert it is actually visible, not merely present in the DOM (a hidden
+  // credit would still pass count/text checks) - per the repo testing guidelines.
+  await expect(credit).toBeVisible();
   await expect(credit).toContainText("mermaid");
   await expect(credit).toContainText("Chart.js");
   await expect(credit).toContainText("MIT");
