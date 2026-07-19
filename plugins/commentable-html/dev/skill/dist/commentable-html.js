@@ -54,7 +54,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.158.0";
+const CMH_VERSION = "1.159.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7073,6 +7073,7 @@ const _cmSectionEntries = [];
 let _cmTocItems = [];
 let _cmTocLinks = [];
 let _cmReviewFilterBtns = null;
+let _cmReviewFilterEl = null;
 function setupCollapsibleSections() {
   _cmSectionToggles.length = 0;
   _cmSectionEntries.length = 0;
@@ -7192,6 +7193,10 @@ function setupSideToc() {
   reviewFilter.className = "cm-side-toc-review cm-skip";
   reviewFilter.setAttribute("role", "group");
   reviewFilter.setAttribute("aria-label", "Filter sections by review state");
+  // Dormant by default: the filter is revealed by updateTocReviewMarks() once the review UI is active
+  // (a section is marked reviewed or the first comment is added), so a first-time reader never sees it.
+  reviewFilter.hidden = true;
+  _cmReviewFilterEl = reviewFilter;
   _cmReviewFilterBtns = {};
   [["all", "All"], ["reviewed", "Reviewed"], ["unreviewed", "Unreviewed"], ["commented", "Commented"], ["changed", "Changed"]]
     .forEach(function (pair) {
@@ -7406,21 +7411,45 @@ function _resetReviewFilterUI() {
     });
   }
 }
-function updateTocReviewDots(states) {
+// Single-character status marks shown next to each side-TOC entry once the review UI is active.
+// The letter is rendered as a CSS pseudo-element (data-cmh-mark) so it never enters the TOC link
+// text that search and deep-links read. Unreviewed is a hollow badge (no letter).
+const _CMH_TOC_MARK_CHAR = { reviewed: "R", commented: "C", changed: "!", unreviewed: "" };
+function updateTocReviewMarks(states, active) {
+  // The segmented filter appears only when active; when dormant, hide it and reset any lingering
+  // filter to All so no section is left collapsed behind a control the reader can no longer see.
+  if (_cmReviewFilterEl) {
+    _cmReviewFilterEl.hidden = !active;
+    if (!active && _cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter("all");
+  }
   if (!_cmTocLinks || !_cmTocLinks.length) return;
   for (let i = 0; i < _cmTocLinks.length; i++) {
     const a = _cmTocLinks[i];
     const item = _cmTocItems[i];
-    let dot = a.querySelector(":scope > .cmh-toc-dot");
-    if (!dot) {
-      dot = document.createElement("span");
-      dot.className = "cmh-toc-dot";
-      dot.setAttribute("aria-hidden", "true");
-      a.insertBefore(dot, a.firstChild);
+    let mark = a.querySelector(":scope > .cmh-toc-mark");
+    if (!active) { if (mark) mark.remove(); continue; }
+    if (!mark) {
+      mark = document.createElement("span");
+      mark.className = "cmh-toc-mark";
+      a.insertBefore(mark, a.firstChild);
     }
     const info = (item && item.el) ? states.get(item.el) : null;
     const state = info ? info.state : "unreviewed";
-    dot.className = "cmh-toc-dot cmh-toc-dot-" + state;
+    const label = state.charAt(0).toUpperCase() + state.slice(1);
+    mark.className = "cmh-toc-mark cmh-toc-mark-" + state;
+    mark.dataset.cmhMark = _CMH_TOC_MARK_CHAR[state] || "";
+    mark.title = label;
+    // Announce a meaningful status to screen readers (the letter is a CSS pseudo-element, so a plain
+    // title/aria-hidden would be inaudible); the neutral "unreviewed" hollow mark stays decorative.
+    if (state === "unreviewed") {
+      mark.setAttribute("aria-hidden", "true");
+      mark.removeAttribute("role");
+      mark.removeAttribute("aria-label");
+    } else {
+      mark.removeAttribute("aria-hidden");
+      mark.setAttribute("role", "img");
+      mark.setAttribute("aria-label", label);
+    }
   }
 }
 
@@ -7779,6 +7808,7 @@ function _ensureBadge(heading) {
 function refreshReviewUI() {
   if (IS_DECK || !_reviewReady) return;
   const states = computeSectionStates();
+  const active = _reviewActive(states);
   _cmhReviewHeadings().forEach(function (heading) {
     const info = states.get(heading) || { state: "unreviewed" };
     const badge = _ensureBadge(heading);
@@ -7795,8 +7825,23 @@ function refreshReviewUI() {
     badge.setAttribute("aria-label", label + " - click to " + action);
     badge.title = badge.getAttribute("aria-label");
   });
-  if (typeof updateTocReviewDots === "function") updateTocReviewDots(states);
-  if (_cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter(_cmReviewFilter, states);
+  if (typeof updateTocReviewMarks === "function") updateTocReviewMarks(states, active);
+  if (active && _cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter(_cmReviewFilter, states);
+}
+
+// The review UI stays dormant until the reviewer actually starts: it activates once the document has
+// at least one comment OR at least one CURRENT section carries a non-unreviewed state (reviewed,
+// changed, or commented). Deriving activation from the computed states - not the raw marker map -
+// means a stale marker for a heading that no longer exists cannot leave the UI stuck active with no
+// way to clear it. Until active, only the hover "Mark reviewed" affordance shows, so a first-time
+// reader sees a clean, un-chromed document.
+function _reviewActive(states) {
+  if (typeof comments !== "undefined" && !!comments && comments.length > 0) return true;
+  const map = states || computeSectionStates();
+  for (const info of map.values()) {
+    if (info && info.state !== "unreviewed") return true;
+  }
+  return false;
 }
 
 function setupSectionReview() {
@@ -7814,6 +7859,7 @@ if (typeof window !== "undefined") {
     hash: cmhSectionHash,
     markers: function () { return reviewMarkers; },
     refresh: function () { refreshReviewUI(); },
+    active: function () { return _reviewActive(); },
     stateOf: function (id) {
       const el = document.getElementById(id);
       if (!el) return null;

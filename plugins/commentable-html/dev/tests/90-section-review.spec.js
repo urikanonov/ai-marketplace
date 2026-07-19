@@ -145,8 +145,8 @@ test.describe("section review tracking", () => {
     await page.locator("#rv-alpha").hover();
     await page.locator("#rv-alpha .cmh-review-badge").click(); // alpha reviewed; beta/gamma unreviewed
     await expect(page.locator("nav.cm-side-toc")).toBeVisible();
-    // Per-entry dot reflects the reviewed state.
-    await expect(page.locator("nav.cm-side-toc .cmh-toc-dot-reviewed")).toHaveCount(1);
+    // Per-entry status mark reflects the reviewed state.
+    await expect(page.locator("nav.cm-side-toc .cmh-toc-mark-reviewed")).toHaveCount(1);
     // Filter to Reviewed: alpha stays expanded, beta collapses.
     await page.locator(".cm-side-toc-review-btn.cmh-review-filter-reviewed").click();
     await expect(page.locator("section:has(> #rv-alpha)")).not.toHaveClass(/cmh-section-collapsed/);
@@ -280,5 +280,106 @@ test.describe("section review tracking", () => {
       const got = await page.evaluate((t) => window.__cmhReview.hash(t), entry.text);
       expect(got, JSON.stringify(entry.text)).toBe(entry.hash);
     }
+  });
+
+  test("the review filter and TOC status marks stay dormant until the first review or comment (CMH-REVIEW-10)", async ({ page }) => {
+    await openReviewDoc(page);
+    // Dormant on first open: the segmented filter is hidden, no TOC status marks exist, and no
+    // heading shows a persistent (non-hover) badge.
+    await expect(page.locator(".cm-side-toc-review")).toBeHidden();
+    // No status marker of either the old (dot) or new (mark) shape is painted while dormant - this is
+    // genuinely red against the pre-change runtime, which always painted a per-entry dot.
+    await expect(page.locator("nav.cm-side-toc .cmh-toc-mark, nav.cm-side-toc .cmh-toc-dot")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__cmhReview.active())).toBe(false);
+    // No persistent state badge shows when dormant - only the hover-only unreviewed affordance exists.
+    await expect(page.locator("#commentRoot .cmh-review-reviewed, #commentRoot .cmh-review-commented, #commentRoot .cmh-review-changed")).toHaveCount(0);
+    await expect(page.locator("#rv-alpha .cmh-review-badge")).toHaveClass(/cmh-review-unreviewed/);
+    // Marking a section reviewed via the hover affordance activates the review UI.
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    expect(await page.evaluate(() => window.__cmhReview.active())).toBe(true);
+    await expect(page.locator(".cm-side-toc-review")).toBeVisible();
+    await expect(page.locator("nav.cm-side-toc .cmh-toc-mark").first()).toBeVisible();
+    // Clearing the last marker returns the UI to dormant (the reverse transition): filter hidden,
+    // marks removed, active() false again.
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    expect(await page.evaluate(() => window.__cmhReview.active())).toBe(false);
+    await expect(page.locator(".cm-side-toc-review")).toBeHidden();
+    await expect(page.locator("nav.cm-side-toc .cmh-toc-mark")).toHaveCount(0);
+  });
+
+  test("adding the first comment activates the dormant review UI (CMH-REVIEW-10)", async ({ page }) => {
+    await openReviewDoc(page);
+    await expect(page.locator(".cm-side-toc-review")).toBeHidden();
+    expect(await page.evaluate(() => window.__cmhReview.active())).toBe(false);
+    await addTextComment(page, "#rv-beta-body", "first comment activates review");
+    expect(await page.evaluate(() => window.__cmhReview.active())).toBe(true);
+    await expect(page.locator(".cm-side-toc-review")).toBeVisible();
+    await expect(page.locator("nav.cm-side-toc .cmh-toc-mark").first()).toBeVisible();
+  });
+
+  test("each TOC entry shows a single-character status badge reflecting its state (CMH-REVIEW-11)", async ({ page }) => {
+    await openReviewDoc(page);
+    // alpha reviewed, beta commented, gamma reviewed-then-changed.
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    await page.locator("#rv-gamma").hover();
+    await page.locator("#rv-gamma .cmh-review-badge").click();
+    await page.evaluate(() => document.getElementById("rv-gamma-body").insertAdjacentText("beforeend", " changed gamma"));
+    await addTextComment(page, "#rv-beta-body", "note on beta");
+    await refresh(page);
+    // Each entry carries a single-character mark rendered as a pseudo-element (data-cmh-mark), so it
+    // does not pollute the TOC link text. Reviewed=R, Commented=C, Changed=!, unreviewed is hollow.
+    await expect(page.locator('nav.cm-side-toc .cmh-toc-mark-reviewed[data-cmh-mark="R"]')).toHaveCount(1);
+    await expect(page.locator('nav.cm-side-toc .cmh-toc-mark-commented[data-cmh-mark="C"]')).toHaveCount(1);
+    await expect(page.locator('nav.cm-side-toc .cmh-toc-mark-changed[data-cmh-mark="!"]')).toHaveCount(1);
+    // The mark letter is a CSS pseudo-element, so the mark span carries no text of its own (the TOC
+    // link text - and the search/deep-link readers - never see the letter).
+    const markText = await page.locator('nav.cm-side-toc .cmh-toc-mark-reviewed').first().evaluate((el) => el.textContent);
+    expect(markText).toBe("");
+    // Pin the pseudo-element rendering (a regression that dropped `content: attr(data-cmh-mark)` would
+    // leave the letter invisible) and confirm the TOC link text stays the clean heading title with no
+    // leading letter injected.
+    const afterContent = await page.locator('nav.cm-side-toc .cmh-toc-mark-reviewed').first().evaluate((el) => getComputedStyle(el, "::after").content);
+    expect(afterContent).toContain("R");
+    const linkText = await page.locator('nav.cm-side-toc a:has(.cmh-toc-mark-reviewed)').first().evaluate((el) => el.textContent.trim());
+    expect(linkText).toMatch(/Alpha$/);
+    expect(linkText).not.toMatch(/^R/);
+  });
+
+  test("the reviewed state persists through Portable/Offline export and reopening activates the review UI (CMH-REVIEW-12)", async ({ browser }) => {
+    const tmpDir = path.join(DEV, "..", "..", "..", "tmp", "review-export-spec");
+    fs.mkdirSync(tmpDir, { recursive: true });
+    for (const [btn, name] of [["#btnSaveHtmlTop", "portable"], ["#btnExportOfflineTop", "offline"]]) {
+      const authorCtx = await browser.newContext();
+      const authorPage = await authorCtx.newPage();
+      await openReviewDoc(authorPage);
+      await authorPage.locator("#rv-alpha").hover();
+      await authorPage.locator("#rv-alpha .cmh-review-badge").click();
+      await openToolbarMenu(authorPage);
+      const [download] = await Promise.all([authorPage.waitForEvent("download"), authorPage.click(btn)]);
+      const exported = await readDownload(download);
+      expect(exported, name).toMatch(/id="reviewedSections"/);
+      const out = path.join(tmpDir, `${name}.html`);
+      fs.writeFileSync(out, exported);
+      await authorCtx.close();
+      // Reopen in a SEPARATE, clean context (empty localStorage) so the ONLY possible source of the
+      // reviewed state is the baked reviewedSections block - not localStorage carried over from the
+      // authoring session. This proves the state truly travels inside the exported file.
+      const reopenCtx = await browser.newContext();
+      const page = await reopenCtx.newPage();
+      await denyExternalNetwork(page);
+      await page.setViewportSize({ width: 1400, height: 900 });
+      await page.goto(fileUrl(out));
+      await ready(page);
+      expect(await page.evaluate(() => window.__cmhReview.active()), name).toBe(true);
+      expect(await stateOf(page, "rv-alpha"), name).toBe("reviewed");
+      await expect(page.locator("#rv-alpha .cmh-review-badge"), name).toHaveClass(/cmh-review-reviewed/);
+      await expect(page.locator(".cm-side-toc-review"), name).toBeVisible();
+      await expect(page.locator('nav.cm-side-toc .cmh-toc-mark-reviewed[data-cmh-mark="R"]'), name).toHaveCount(1);
+      await reopenCtx.close();
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });
