@@ -689,6 +689,13 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   color: var(--slide-accent-fg, #0b0b0f);
   font-weight: 700;
   letter-spacing: 0.02em;
+  /* Hover-lift: animate only the cheap transform (not box-shadow, and not a brightness filter that
+     could push a custom theme's pill fill below its AA text contrast) so the deck hover stays smooth
+     and every themed pill keeps its vetted contrast. */
+  transition: transform 0.15s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill:hover {
+  transform: translateY(-2px);
 }
 /* Reusable status-pill variants: green Available, amber WIP, slate Planned (white text, AA-safe). */
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-available { background: #1a7f37; color: #ffffff; }

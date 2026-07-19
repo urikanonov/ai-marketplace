@@ -713,7 +713,7 @@ test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark
     await expect(logo).toHaveCount(1);
     await expect(logo).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
     await expect(logo).toHaveAttribute("target", "_blank");
-    await expect(logo).toHaveAttribute("title", "Commentable HTML - open the project site");
+    await expect(logo).toHaveAttribute("title", "Commentable HTML");
     // The official Commentable HTML logo rendered as a plain image (not the old bordered card).
     const img = logo.locator("img.show-corner-logo-img");
     await expect(img).toHaveCount(1);
@@ -737,9 +737,9 @@ test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark
       };
     });
     expect(pos.rightGap).toBeGreaterThanOrEqual(0);
-    expect(pos.rightGap).toBeLessThan(pos.slideWidth * 0.08);
+    expect(pos.rightGap).toBeLessThan(pos.slideWidth * 0.06);
     expect(pos.topGap).toBeGreaterThanOrEqual(0);
-    expect(pos.topGap).toBeLessThan(pos.slideHeight * 0.12);
+    expect(pos.topGap).toBeLessThan(pos.slideHeight * 0.05);
   } finally {
     await server.close();
   }
@@ -751,6 +751,93 @@ test("CMH-DECK-SHOWCASE-11: showcase amber title highlights do not paint a halo 
     await showSlideWith(page, ".show-mark");
     await expect(page.locator(".slide.active .show-mark").first()).toBeVisible();
     await expect(page.locator(".slide.active .show-mark").first()).toHaveCSS("box-shadow", "none");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-13: the title and Act 1 promise slides carry the refreshed copy", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    // Title (header) slide: the refreshed pitch headline replaces the old "Keep comments" line.
+    const header = page.locator('[data-slide-id="slide-21860f4e"]');
+    await expect(header.locator("h1")).toContainText("Plan with AI, visually rich review inline, repeat.");
+    await expect(header.locator("h1")).not.toContainText("Keep");
+
+    // Act 1 promise slide: the paragraph is rephrased and the redundant pill is gone.
+    const act1 = page.locator('[data-slide-id="slide-76b2501c"]');
+    await expect(act1.locator("p.showcase-comment-target")).toContainText("only the running example");
+    await expect(act1.locator("p.showcase-comment-target")).not.toContainText("just the running example");
+    await expect(act1).not.toContainText("reviewed end to end");
+    // The Copy all control is emphasized inside its pill.
+    await expect(act1.locator(".show-byline kbd")).toHaveText("Copy all");
+    await expect(act1.locator(".show-pill").first()).toContainText("Copy all handoff");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-14: the comparison table marks the Commentable HTML row's winning cells", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const row = page.locator("table.show-compare-table tr.show-best-row");
+    await expect(row).toHaveCount(1);
+    await expect(row.locator("td").first()).toHaveText("Commentable HTML");
+    const best = row.locator("td.show-best");
+    await expect(best).toHaveCount(3);
+    await expect(best.nth(0)).toContainText("Rich view");
+    await expect(best.nth(1)).toContainText("Yes");
+    await expect(best.nth(2)).toContainText("Copy all bundle");
+    // The winning cells carry a visible check glyph via ::before.
+    const marker = await best.first().evaluate((el) => getComputedStyle(el, "::before").content);
+    expect(marker).toContain("\u2713");
+    // ...and a distinct GREEN fill (green channel dominant, not the default transparent cell).
+    const bg = await best.first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    const rgb = (bg.match(/\d+(\.\d+)?/g) || []).map(Number);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(rgb[1]).toBeGreaterThan(rgb[0]);
+    expect(rgb[1]).toBeGreaterThan(rgb[2]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-15: the title slide embeds a real UI screenshot of a document and the Add Comment popup", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const shot = page.locator('[data-slide-id="slide-21860f4e"] figure.show-ui-shot img.show-ui-shot-img');
+    await expect(shot).toHaveCount(1);
+    await expect(shot).toHaveAttribute("src", /^data:image\/png;base64,/);
+    await expect(shot).toHaveAttribute("alt", /Add Comment/i);
+    // The embedded PNG decodes to a real, non-trivial raster image.
+    const dims = await shot.evaluate((img) => new Promise((res) => {
+      if (img.complete && img.naturalWidth) return res({ w: img.naturalWidth, h: img.naturalHeight });
+      img.addEventListener("load", () => res({ w: img.naturalWidth, h: img.naturalHeight }), { once: true });
+      img.addEventListener("error", () => res({ w: 0, h: 0 }), { once: true });
+    }));
+    expect(dims.w).toBeGreaterThan(600);
+    expect(dims.h).toBeGreaterThan(200);
+    // The restructured header slide (text + screenshot) must not overflow the fixed 1080px stage.
+    const overflow = await page.evaluate(() => {
+      const s = document.querySelector('[data-slide-id="slide-21860f4e"]');
+      return { scroll: s.scrollHeight, client: s.clientHeight };
+    });
+    expect(overflow.scroll).toBeLessThanOrEqual(overflow.client + 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-16: showcase byline pills lift on hover", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    const pill = page.locator(".slide.active .show-pill").first();
+    await expect(pill).toBeVisible();
+    const transition = await pill.evaluate((el) => getComputedStyle(el).transitionProperty);
+    expect(transition).toContain("transform");
+    expect(await pill.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
+    await pill.hover();
+    await expect(pill).not.toHaveCSS("transform", "none");
   } finally {
     await server.close();
   }

@@ -1,54 +1,69 @@
 mark.cm-hl {
-  background: rgba(245, 158, 11, 0.32);
+  --cm-hl-bg: rgba(245, 158, 11, 0.32);
   color: inherit;
-  padding: 1px 0;
+  padding: 0;
   border-radius: 2px;
   cursor: pointer;
-  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
-  transition: background 0.15s;
+  /* Paint the highlight as a centered band a little SHORTER than the line box instead of a
+     full-height fill, so a highlight that wraps across two lines shows clear vertical space
+     between the lines (box-decoration-break: clone gives each wrapped fragment its own band).
+     Zero padding keeps the mark from reflowing the text it wraps. */
+  background-color: transparent;
+  background-image: linear-gradient(var(--cm-hl-bg), var(--cm-hl-bg));
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  background-size: 100% 1em;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-mark.cm-hl:hover { background: rgba(245, 158, 11, 0.5); }
-mark.cm-hl.active { background: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); }
+mark.cm-hl:hover { --cm-hl-bg: rgba(245, 158, 11, 0.5); }
+mark.cm-hl.active { --cm-hl-bg: rgba(245, 158, 11, 0.7); outline: 2px solid var(--cp-warning); outline-offset: 1px; }
 mark.cm-hl.cm-hl-gap {
   display: contents;
   background: transparent;
+  background-image: none;
   box-shadow: none;
   padding: 0;
   cursor: inherit;
 }
-html[data-theme="dark"] mark.cm-hl { background: rgba(251, 191, 36, 0.28); }
-html[data-theme="dark"] mark.cm-hl:hover { background: rgba(251, 191, 36, 0.42); }
-html[data-theme="dark"] mark.cm-hl.active { background: rgba(251, 191, 36, 0.6); }
-/* Code-block highlights: the mark lives inside <pre>/<code>. Keep its background but make
-   it behave well across line wraps and preserve the monospace baseline. */
+html[data-theme="dark"] mark.cm-hl { --cm-hl-bg: rgba(251, 191, 36, 0.28); }
+html[data-theme="dark"] mark.cm-hl:hover { --cm-hl-bg: rgba(251, 191, 36, 0.42); }
+html[data-theme="dark"] mark.cm-hl.active { --cm-hl-bg: rgba(251, 191, 36, 0.6); }
+/* Code-block highlights: the mark lives inside <pre>/<code>. Keep a solid full-height fill (a
+   short band would leave the monospace baseline looking clipped) and the tighter box. */
 pre mark.cm-hl, code mark.cm-hl {
   padding: 0 2px;
   border-radius: 3px;
+  background-color: var(--cm-hl-bg);
+  background-image: none;
 }
 /* Composing preview: the amber highlight shown over the selected text while a new-comment
-   composer is open, before it is saved. It looks like the saved highlight (same amber fill)
-   with a dashed outline cue that it is provisional. It carries no data-cid, so it is inert
-   (no hover bubble, no click-to-open). padding is 0 (vs mark.cm-hl's 1px) so the preview does
-   not reflow the line while composing - the important moment the reviewer is reading it; the
-   saved highlight's 1px padding settles in only on save. The dashed outline is drawn outside
-   the box (no reflow). */
+   composer is open, before it is saved. It looks like the saved highlight (same amber band,
+   CMH-SEL-02) with a dashed outline cue that it is provisional. It carries no data-cid, so it is
+   inert (no hover bubble, no click-to-open). It uses the same short-band paint as mark.cm-hl so
+   the preview and the saved highlight are visually identical (only the dashed outline differs),
+   and the band never reflows the line. The dashed outline is drawn outside the box (no reflow). */
 mark.cm-preview {
-  background: rgba(245, 158, 11, 0.32);
+  --cm-hl-bg: rgba(245, 158, 11, 0.32);
   color: inherit;
   padding: 0;
   border-radius: 2px;
-  box-shadow: 0 -1px 0 rgba(245, 158, 11, 0.55) inset;
+  background-color: transparent;
+  background-image: linear-gradient(var(--cm-hl-bg), var(--cm-hl-bg));
+  background-repeat: no-repeat;
+  background-position: 0 50%;
+  background-size: 100% 1em;
   outline: 1px dashed rgba(245, 158, 11, 0.9);
   outline-offset: 1px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-html[data-theme="dark"] mark.cm-preview { background: rgba(251, 191, 36, 0.28); }
+html[data-theme="dark"] mark.cm-preview { --cm-hl-bg: rgba(251, 191, 36, 0.28); }
 pre mark.cm-preview, code mark.cm-preview {
   padding: 0 2px;
   border-radius: 3px;
+  background-color: var(--cm-hl-bg);
+  background-image: none;
 }
 
 :root {
@@ -708,7 +723,11 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   .cm-card .meta .acts button { min-height: 44px; padding: 0.4rem 0.7rem; }
 }
 
-.cm-menu { position: fixed; z-index: 200; }
+/* Stack the menu's options vertically (one pill below the next) with a small gap, so a deck's
+   two comment-scope options ("Comment on deck" above "Comment on slide") read as a clear list
+   rather than a side-by-side pair. */
+.cm-menu { position: fixed; z-index: 200; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.cm-menu button { justify-content: center; }
 
 /* Add-comment affordances: the text-selection menu button and the floating
    image / diff / mermaid buttons all share ONE accent-pill look + hover, so the
@@ -2359,6 +2378,13 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   color: var(--slide-accent-fg, #0b0b0f);
   font-weight: 700;
   letter-spacing: 0.02em;
+  /* Hover-lift: animate only the cheap transform (not box-shadow, and not a brightness filter that
+     could push a custom theme's pill fill below its AA text contrast) so the deck hover stays smooth
+     and every themed pill keeps its vetted contrast. */
+  transition: transform 0.15s ease;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-pill:hover {
+  transform: translateY(-2px);
 }
 /* Reusable status-pill variants: green Available, amber WIP, slate Planned (white text, AA-safe). */
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-pill.is-available { background: #1a7f37; color: #ffffff; }

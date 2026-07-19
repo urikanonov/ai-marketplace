@@ -113,6 +113,20 @@ test.describe("deck recipe classes (CMH-DECK-RECIPE)", () => {
     expect(overflow).toBe(true);
   });
 
+  test("CMH-DECK-RECIPE-05: deck pills lift on hover without animating box-shadow", async ({ page }) => {
+    await page.goto(fileUrl(deck));
+    await ready(page);
+    // The lift animates cheap transform (not box-shadow) so the deck hover stays smooth.
+    const transition = await computed(page, ".cmh-pill.is-available", "transition-property");
+    expect(transition).toContain("transform");
+    expect(transition).not.toContain("box-shadow");
+    const before = await computed(page, ".cmh-pill.is-available", "transform");
+    expect(before).toBe("none");
+    await page.hover(".cmh-pill.is-available");
+    // Auto-retrying assertion: the lift transform lands once the hover transition runs.
+    await expect(page.locator(".cmh-pill.is-available").first()).not.toHaveCSS("transform", "none");
+  });
+
   test("CMH-DECK-RECIPE-03: reference rows render as horizontal pills pinned to the slide bottom", async ({ page }) => {
     await page.goto(fileUrl(deck));
     await ready(page);

@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.169.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.170.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,31 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.170.0] - 2026-07-19</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deck comment-scope menu now stacks its options vertically with &quot;Comment on deck&quot; above &quot;Comment on slide&quot; (CMH-DECK-34).</li>
+              <li>In deck mode a plain click on EMPTY slide space advances to the next slide in BOTH present and review-panel-open modes; a click on text (or any interactive target) never advances, so text stays selectable for commenting. &quot;Empty&quot; is decided by hit-testing the click POINT against the slide&#x27;s text rects, so a wrapper/slide carrying loose text no longer blocks advancing, and a keyboard activation of a focused control never advances (CMH-DECK-31).</li>
+              <li>Saved text highlights and the composing preview both paint a band slightly shorter than the line box (zero horizontal padding, no reflow), so a highlight that wraps across two lines now shows visible vertical spacing between the lines (CMH-SEL-02).</li>
+              <li>Deck pills lift on hover: the reusable <code>.cmh-pill</code> recipe gains a hover-lift for all decks (CMH-DECK-RECIPE-05), and the showcase byline pills lift on hover (CMH-DECK-SHOWCASE-16).</li>
+            </ul>
+            <div class="group-label">Showcase deck</div>
+            <ul>
+              <li>Refreshed the title and Act 1 promise copy: the title reads &quot;Plan with AI, visually rich review inline, repeat.&quot;, the Act 1 paragraph is rephrased, the redundant &quot;reviewed end to end&quot; pill is removed, and the &quot;Copy all&quot; control is emphasized in its pill (CMH-DECK-SHOWCASE-13).</li>
+              <li>The Chat / Markdown / HTML comparison table now marks the Commentable HTML row&#x27;s winning cells with a distinct green fill and check glyph so the differentiators stand out (CMH-DECK-SHOWCASE-14).</li>
+              <li>The title slide embeds a real screenshot of a document with selected text and the Add-comment popup, so the review workflow is visible up front (CMH-DECK-SHOWCASE-15).</li>
+              <li>The top-right site logo sits further into the corner and its tooltip reads just &quot;Commentable HTML&quot; (CMH-DECK-SHOWCASE-10).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.169.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Code blocks can carry an optional filename/description caption line: add <code>data-code-caption</code> to a <code>&lt;pre&gt;</code> (for example <code>data-code-caption=&quot;trigger.kql&quot;</code>) and the runtime renders a <code>cm-skip</code>, non-selectable caption bar above the code, laid out like the KQL caption bar (filename on the left, the language pill and Copy button inline on the right) so no language-label width overlaps the filename. It is styled consistently in report and deck modes, leaves the language pill, Copy button, syntax highlighting, and commenting on the code intact (a caption-crossing drag cannot leak the filename into a comment&#x27;s quote), never doubles a KQL figure&#x27;s own caption, and survives Export Offline (the caption re-renders from the surviving attribute on reopen). (CMH-CODE-05)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.168.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -439,8 +458,6 @@
               <li>The validator now ERRORS in NonPortable mode when a baked absolute or <code>file://</code> companion reference resolves inside an OS temporary directory that is not the document&#x27;s own folder (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment layer once the OS reaps the temp directory - the exact failure behind a shared document whose CSS/JS 404&#x27;d after handoff. Temp detection is cross-platform and root-anchored (<code>TMPDIR</code>/<code>TEMP</code>/ <code>TMP</code> and <code>tempfile.gettempdir()</code>, symlink-resolved via <code>realpath</code>, plus <code>/tmp</code>, <code>/var/tmp</code>, <code>/var/folders</code>, <code>/windows/temp</code>, and per-user <code>AppData/Local/Temp</code>), so a durable project folder named <code>tmp</code> is never mis-flagged; relative refs and a companion sitting beside the document are never flagged. The message points at a Portable single-file export or copying <code>dist/</code> to a durable folder.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.167.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -473,19 +490,7 @@
               <li>Documented the online mermaid CDN import as a by-design accepted supply-chain risk (CMH-SEC-04): the runtime loads mermaid from a version-pinned jsDelivr URL (single-sourced from the mermaid dependency), with a zero-network vendored fallback via Export Offline. Credited the third-party rich-content libraries the plugin renders with - mermaid and Chart.js, both MIT - in the plugin README, the marketplace README, the site plugin page, and the vendored-libraries provenance doc.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.162.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Deck comment scoping: an empty right-click on a slide now offers BOTH &quot;Comment on slide&quot; (a comment tied to that specific slide, whose sidebar card names the slide and whose jump navigates to it) and &quot;Comment on deck&quot; (the deck-wide comment, the relabelled document-wide comment). (CMH-DECK-33)</li>
-              <li>Deck click-to-advance: in present mode (comment panel closed), a plain left-click on non-interactive slide content advances to the next slide; links, buttons, form controls, comment anchors, and deck chrome keep their own behavior, and the open review panel is never yanked forward. (CMH-DECK-31)</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Deck edge navigation arrows now reveal across a wide left/right hover band (not only a thin edge strip), stay reliably visible, and are a larger, comfortably clickable target. (CMH-DECK-32)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">140 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">141 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
