@@ -14,6 +14,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = "multi-duck"
 PKG = os.path.join(REPO_ROOT, "plugins", "multi-duck", "pkg")
 SKILL = os.path.join(PKG, "skills", "multi-duck", "SKILL.md")
+EXTRACTOR = os.path.join(PKG, "skills", "multi-duck", "tools", "extract_open_comments.py")
 README = os.path.join(PKG, "README.md")
 CHANGELOG = os.path.join(REPO_ROOT, "plugins", "multi-duck", "CHANGELOG.md")
 SPEC = os.path.join(REPO_ROOT, "plugins", "multi-duck", "dev", "SPEC.md")
@@ -65,7 +66,7 @@ class MultiDuckRegistrationTests(unittest.TestCase):
         cop_pj = _json(COPILOT_PJ)
         cla_pj = _json(CLAUDE_PJ)
         versions = {cop["version"], cla["version"], cop_pj["version"], cla_pj["version"]}
-        self.assertEqual(versions, {"1.0.1"})
+        self.assertEqual(versions, {"1.0.2"})
         descs = {cop["description"], cla["description"],
                  cop_pj["description"], cla_pj["description"]}
         self.assertEqual(len(descs), 1, "description must be byte-identical across all four manifests")
@@ -120,6 +121,43 @@ class MultiDuckSkillTests(unittest.TestCase):
         self.assertIn("selection rule is model diversity first", t)
         self.assertIn("current example roster for the GitHub Copilot CLI", t)
         self.assertIn("substitute the equivalents your host exposes", t)
+
+    def test_extractor_is_shipped_and_referenced_not_inlined(self):
+        # MDUCK-EXTRACT-09: the open-comments extractor ships as a real file under tools/, SKILL.md
+        # references it via the plugin root, and the inline parser listing is gone (not rehydrated
+        # from the doc on every run).
+        self.assertTrue(os.path.isfile(EXTRACTOR),
+                        "multi-duck must ship tools/extract_open_comments.py")
+        t = _read(SKILL)
+        self.assertIn("tools/extract_open_comments.py", t)
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/skills/multi-duck/tools/extract_open_comments.py", t)
+        # The old inline HTMLParser listing must not reappear in the doc.
+        self.assertNotIn("from html.parser import HTMLParser", t)
+        self.assertNotIn("class _Doc(HTMLParser)", t)
+
+    def test_targetless_discovery_asks_instead_of_auto_picking_downloads(self):
+        # MDUCK-DISCOVER-10: a targetless run does not auto-select the newest Downloads HTML by
+        # mtime; it stops and asks the user when no target is clearly identified. An explicit or
+        # session-identified target takes priority over scratch/cwd discovery (a scratch/cwd file
+        # must never override an explicit target), and scratch/cwd is searched only for a targetless
+        # run and only for a candidate unambiguously tied to this session.
+        t = _read(SKILL)
+        self.assertIn("Do NOT auto-select an arbitrary document from the user's Downloads folder", t)
+        self.assertIn("STOP and ASK the user which document or target to review", t)
+        self.assertNotIn("Rank by most-recently-modified", t)
+        # Priority invariant: explicit/session-identified targets are honored before scratch/cwd,
+        # and the old stop-at-first-hit ordering (scratch/cwd first) is gone.
+        self.assertNotIn("stop at the first non-empty hit", t)
+        self.assertIn("honor the clearly-intended target FIRST", t)
+        self.assertIn("never let a scratch or working-tree file override it", t)
+        self.assertIn("Targetless run only", t)
+        self.assertIn("unambiguously tied to this session", t)
+        # The explicit-target item must precede the targetless scratch/cwd discovery item in the doc.
+        explicit_pos = t.find("**Explicit target**")
+        targetless_pos = t.find("**Targetless run only**")
+        self.assertGreater(explicit_pos, -1, "discovery must list an explicit-target rule")
+        self.assertGreater(targetless_pos, explicit_pos,
+                           "explicit-target discovery must precede targetless scratch/cwd discovery")
 
     def test_core_safety_invariants_present(self):
         # MDUCK-SAFE-07: the skill encodes its safety guarantees - review-only ducks, untrusted

@@ -4,6 +4,20 @@ All notable changes to the multi-duck plugin are documented here. The format fol
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to semantic
 versioning.
 
+## [1.0.2] - 2026-07-19
+
+### Changed
+
+- Targetless runs no longer auto-select the newest matching HTML from the user's Downloads folder.
+  The panel now reviews only a target that is explicit in the invocation or clearly identified by
+  the current session; an explicit or session-identified target takes priority and is never
+  overridden by a scratch or working-tree file, and scratch/cwd discovery runs only for a targetless
+  invocation and only for a candidate unambiguously tied to this session. If none is clear, it stops
+  and asks the user which document to review instead of reaching into Downloads.
+- The commentable-HTML open-comments extractor is now a shipped script
+  (`tools/extract_open_comments.py`) that the skill runs by resolving the plugin root, rather than a
+  full parser listing rehydrated from SKILL.md on every activation. Behavior is unchanged.
+
 ## [1.0.1] - 2026-07-19
 
 ### Added
