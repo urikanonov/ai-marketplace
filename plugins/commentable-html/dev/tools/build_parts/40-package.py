@@ -4,7 +4,7 @@
 # docs/, vendor/, dist/, examples/) is assembled into a single deterministic
 # skill-resources.zip that a SessionStart hook extracts on first run (retrying
 # the transient Windows Defender file lock the installer does not). The shipped
-# SKILL.md and LICENSE stay unzipped (the agent discovers the skill from SKILL.md
+# SKILL.md, LICENSE, and THIRD_PARTY_NOTICES.md stay unzipped (the agent discovers the skill from SKILL.md
 # before extraction), and the hook configs carry the version-stamped marker name.
 # --------------------------------------------------------------------------- #
 import io
@@ -20,8 +20,10 @@ PACKAGE_ZIP_NAME = "skill-resources.zip"
 # to run the skill - they live on the site - so they stay in the repo staging tree but ship with
 # neither the zip nor the installed package.
 PACKAGE_BULKY_DIRS = ("tools", "references", "vendor", "dist")
-# Files copied unzipped into the shipped skill dir (SKILL.md is discovered pre-extraction).
-PACKAGE_SHIPPED_FILES = ("SKILL.md", "LICENSE")
+# Files copied unzipped into the shipped skill dir (SKILL.md is discovered pre-extraction; the
+# LICENSE and THIRD_PARTY_NOTICES.md sit beside it so the plugin's own license and the bundled
+# third-party MIT notices are visible without unpacking the zip).
+PACKAGE_SHIPPED_FILES = ("SKILL.md", "LICENSE", "THIRD_PARTY_NOTICES.md")
 # Extensions read as raw bytes; everything else is LF-normalized text so the zip is byte-identical
 # regardless of the checkout's line endings (deterministic --check across platforms).
 _PACKAGE_BINARY_EXTS = {
@@ -153,7 +155,8 @@ def _stamp_hooks(text, version):
 
 
 def package_text_stamps(stage_dir, pkg_dir, version):
-    """Return {path: text} for the shipped-pkg TEXT artifacts (the unzipped SKILL.md and LICENSE
+    """Return {path: text} for the shipped-pkg TEXT artifacts (the unzipped SKILL.md, LICENSE, and
+    THIRD_PARTY_NOTICES.md
     copies, and the two hook configs with their version-stamped marker/arg). The zip itself is
     bytes and is handled separately."""
     out = {}

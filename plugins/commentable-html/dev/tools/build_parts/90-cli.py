@@ -46,7 +46,7 @@ def main(argv):
                         help="directory that receives dist/PORTABLE.html and dist/ (default: the skill root)")
     parser.add_argument("--pkg-dir", default=None,
                         help="the shipped skill dir; when set, assemble skill-resources.zip and the "
-                             "unzipped SKILL.md/LICENSE copies here and stamp the hook version there")
+                             "unzipped SKILL.md/LICENSE/THIRD_PARTY_NOTICES.md copies here and stamp the hook version there")
     parser.add_argument("--examples-dir", default=None,
                         help="directory that receives the built example reports/prompts "
                              "(default: <out-dir>/examples)")
