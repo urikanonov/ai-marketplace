@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.165.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.166.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,25 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.166.0] - 2026-07-19</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>CMH-ASCII-01: the document producers now rewrite AI &quot;smart&quot; typography - em/en dashes, the ellipsis glyph, curly quotes, and non-breaking / zero-width spaces - to plain ASCII in visible prose, leaving code, script, style, and HTML comments verbatim. <code>finalize.py</code> (reports/plans) and <code>deck_scaffold.py</code> (deck slide prose) run the new shared <code>normalize_typography.py</code> normalizer by default; opt out with <code>--no-normalize</code>. This keeps every report, plan, and deck on the plain-ASCII house style without a hand pass.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deck hover is smoother (CMH-DECK-21, CMH-DECK-RECIPE-02): table-cell, metric-tile, and reference-pill hovers no longer animate <code>box-shadow</code> (a per-frame repaint) and table cells no longer apply a <code>transform</code> lift (which relayouts the table). Cells ease only the cheap <code>background-color</code> and the highlight ring snaps; tiles and pills keep their lift via the compositor-friendly <code>transform</code>. Sweeping the mouse across a large deck table no longer lags.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.165.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Third-party MIT license notices for the vendored rich-content libraries (mermaid, Chart.js). The upstream license texts are vendored under <code>dev/assets/vendor/*.LICENSE</code>, <code>build.py</code> assembles them into a shipped <code>THIRD_PARTY_NOTICES.md</code> (copied unzipped beside the plugin LICENSE and gated by <code>build.py --check</code>), and <code>Export Offline</code> now embeds each bundled library&#x27;s MIT notice as an HTML comment beside the inlined library, so a redistributed offline artifact carries the required copyright and permission notice.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.163.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -439,8 +452,6 @@
               <li>Documented the online mermaid CDN import as a by-design accepted supply-chain risk (CMH-SEC-04): the runtime loads mermaid from a version-pinned jsDelivr URL (single-sourced from the mermaid dependency), with a zero-network vendored fallback via Export Offline. Credited the third-party rich-content libraries the plugin renders with - mermaid and Chart.js, both MIT - in the plugin README, the marketplace README, the site plugin page, and the vendored-libraries provenance doc.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.162.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -476,14 +487,7 @@
               <li>Clicking the &quot;Open comment&quot; hover bubble now also opens an inline on-screen comment dialog next to the highlight, showing the note and an Edit button that opens the composer; clicking elsewhere closes the dialog, and a pointer click there is swallowed so it performs no other action (for example it does not follow a link the highlight sits on) while a keyboard activation still reaches its target. The existing sidebar jump still happens alongside it (CMH-CORE-16, closes #450).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.159.0] - 2026-07-19</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Section review now stays out of the way until you start reviewing: the per-section review badges and the side table-of-contents review-status filter are dormant on a freshly opened document and activate only after you mark a section reviewed or add the first comment (the hover &quot;Mark reviewed&quot; affordance on any heading remains available as the entry point). Each side-TOC entry now shows a single-character status badge - R (reviewed), C (commented), ! (changed), or a hollow badge for unreviewed - rendered as a pseudo-element so it never pollutes the entry text. The reviewed state continues to bake into Portable and Offline exports and now re-activates the review UI when an exported file is reopened. Export also prunes markers for headings that no longer exist, so a shared copy never carries stale review metadata for a removed section.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">136 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">137 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

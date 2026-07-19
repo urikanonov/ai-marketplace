@@ -256,6 +256,16 @@ test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losi
     await showSlideWith(page, ".showcase-chart-slide");
     await enterCommentMode(page);
     const cell = page.locator(".slide.active table.show-table tbody tr").nth(1).locator("td").nth(2);
+    // Perf (CMH-DECK-21): sweeping the mouse across cells felt laggy because each cell animated
+    // box-shadow (a per-frame repaint) and a transform lift (which relayouts the table). The hover
+    // now eases only the cheap background-color; the highlight ring snaps and no transform is applied.
+    // Token-match the comma-separated transition-property list so a substring like transform-origin
+    // cannot pass by accident.
+    const cellTransitions = (await cell.evaluate((el) => getComputedStyle(el).transitionProperty))
+      .split(",").map((s) => s.trim());
+    expect(cellTransitions).toContain("background-color");
+    expect(cellTransitions).not.toContain("box-shadow");
+    expect(cellTransitions).not.toContain("transform");
     const before = await cell.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -265,6 +275,8 @@ test("CMH-DECK-21: showcase deck table cells gain a hover highlight without losi
     });
     await cell.hover();
     await expect.poll(() => cell.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe(before.boxShadow);
+    // No transform lift is applied to the cell on hover (a lift would relayout the table).
+    expect(await cell.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
     const hovered = await cell.evaluate((el) => {
       const style = getComputedStyle(el);
       return {

@@ -20,7 +20,7 @@ EXPECTED = {
     "blocks": ["chart_block", "diff_block", "highlight_code", "highlight_document"],
     "authoring": ["new_document", "generate_toc", "doc_stats", "inline_images", "finalize",
                   "fix_skip", "wrap_sections", "mark_handled", "mark_reviewed", "section_hash",
-                  "upgrade", "retrofit", "doc_stamp", "recommend_kind"],
+                  "upgrade", "retrofit", "doc_stamp", "recommend_kind", "normalize_typography"],
     "validate": ["validate"],
 }
 

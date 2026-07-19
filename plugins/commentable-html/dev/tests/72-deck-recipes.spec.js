@@ -92,6 +92,9 @@ test.describe("deck recipe classes (CMH-DECK-RECIPE)", () => {
     // Hover-lift is wired through a transform transition on the tile.
     const transition = await computed(page, ".cmh-metric", "transition-property");
     expect(transition).toContain("transform");
+    // Perf: the lift must NOT animate box-shadow (per-frame repaint that made hover feel laggy);
+    // box-shadow snaps while the compositor-friendly transform eases. Token-match the list.
+    expect(transition.split(",").map((s) => s.trim())).not.toContain("box-shadow");
     // Hovering actually applies a lift transform (proves the :hover rule fires, not just the transition).
     const beforeHover = await computed(page, ".cmh-metric", "transform");
     expect(beforeHover).toBe("none");
@@ -134,6 +137,9 @@ test.describe("deck recipe classes (CMH-DECK-RECIPE)", () => {
     // Each reference link is a pill (fully rounded).
     const radius = await computed(page, ".cmh-refs a", "border-radius");
     expect(radius).toBe("999px");
+    // Perf: the reference-pill hover lift does not animate box-shadow.
+    expect((await computed(page, ".cmh-refs a", "transition-property")).split(",").map((s) => s.trim()))
+      .not.toContain("box-shadow");
     // Two links sit side by side on one row (same top offset).
     const sameRow = await page.evaluate(() => {
       const links = document.querySelectorAll(".cmh-refs a");

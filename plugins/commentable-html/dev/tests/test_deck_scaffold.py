@@ -69,6 +69,43 @@ class DeckScaffoldTests(unittest.TestCase):
         self.assertIn('class="slide active"', html)
         self.assertEqual(html.count('class="slide active"'), 1)
 
+    def test_scaffold_normalizes_ai_typography_in_slide_prose(self):
+        # CMH-ASCII-01: deck_scaffold rewrites AI smart-typography in slide prose to ASCII,
+        # leaving code blocks verbatim.
+        content = os.path.join(self.tmp, "slides.html")
+        Path(content).write_text(
+            '<section class="slide"><h2>Roadmap\u2014Q3</h2>'
+            "<p>ship it \u2026 soon</p>"
+            "<pre><code>a\u2014b</code></pre></section>",
+            encoding="utf-8")
+        html = self._make("--content", content)
+        self.assertIn("Roadmap - Q3", html)
+        self.assertIn("ship it ... soon", html)
+        self.assertIn("a\u2014b", html)                 # code left verbatim
+        self.assertNotIn("Roadmap\u2014Q3", html)
+
+    def test_no_normalize_flag_preserves_ai_typography(self):
+        content = os.path.join(self.tmp, "slides.html")
+        Path(content).write_text(
+            '<section class="slide"><h2>Roadmap\u2014Q3</h2><p>body text</p></section>',
+            encoding="utf-8")
+        html = self._make("--content", content, "--no-normalize")
+        self.assertIn("Roadmap\u2014Q3", html)
+
+    def test_scaffold_normalizes_ai_typography_in_label(self):
+        # CMH-ASCII-01: the plain-text --label is normalized before it is baked into the title and
+        # data-doc-label, even when it looks like markup.
+        content = os.path.join(self.tmp, "slides.html")
+        Path(content).write_text(
+            '<section class="slide"><h2>Title</h2><p>body</p></section>', encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, TOOL, "--content", content, "--label", "Draft \u2014 <b>v1</b>",
+             "--source", self.out, "--out", self.out],
+            capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        html = Path(self.out).read_text(encoding="utf-8")
+        self.assertNotIn("\u2014", html)   # no em-dash survives anywhere (title + data-doc-label)
+
     def test_deck_body_has_no_editor_fonts_or_script(self):
         html = self._make("--slides", "2")
         body = html.split("BEGIN: commentable-html - CONTENT", 1)[1].split(
