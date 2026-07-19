@@ -87,6 +87,21 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertEqual(out.count('data-doc-source="report.html"'), 2)
         self.assertNotIn("alice", out)
 
+    def test_upgrade_ignores_source_like_text_inside_another_attribute_cmh_sec_03(self):
+        tpl = _tpl()
+        authored_title = r'''title='example data-doc-source="C:\Template\literal.html"' '''
+        legacy = tpl.replace(
+            'data-doc-source="PORTABLE.html"',
+            (authored_title
+             + 'data-doc-source="C:&#92;Users&#92;alice&#92;report.html"'),
+            1,
+        )
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("source provenance", changed)
+        self.assertIn(authored_title, out)
+        self.assertIn('data-doc-source="report.html"', out)
+        self.assertNotIn("alice", out)
+
     def test_missing_kind_meta_is_added_on_upgrade(self):
         # A pre-kind document (predates the mandatory document-kind meta) is migrated:
         # upgrade adds a default generic kind so it declares one and passes validation.

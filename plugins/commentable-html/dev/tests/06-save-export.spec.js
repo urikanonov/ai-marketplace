@@ -83,7 +83,12 @@ test.describe("Save comments / Export plain", () => {
     try {
       const authored = fs.readFileSync(staged.html, "utf8").replace(
         '<main id="commentRoot"',
-        '<main title="Section > Overview" id="commentRoot"',
+        `<meta content=' id="commentRoot"'>\n`
+          + `<main title='Section > Overview data-doc-source="C:\\\\Template\\\\literal.html"' `
+          + 'id="comment&#82;oot"',
+      ).replace(
+        `data-doc-source="${sensitiveSource}"`,
+        "data-doc-source=\"C:&#92;Users&#92;alice&#92;Internal Project&#92;reports&#92;quarterly.html\"",
       );
       const bodyEnd = authored.toLowerCase().lastIndexOf("</body>");
       const withLiteral = authored.slice(0, bodyEnd)
@@ -109,7 +114,7 @@ test.describe("Save comments / Export plain", () => {
         ]);
         const html = await readDownload(download);
         expect(html).toContain('data-doc-source="quarterly.html"');
-        expect(html).toMatch(/title="Section (?:>|&gt;) Overview"/);
+        expect(html).toContain(`title='Section > Overview data-doc-source="C:\\\\Template\\\\literal.html"'`);
         expect(html).toContain("<!--license-sentinel-->");
         expect(html).toContain("<!--tail-sentinel-->");
         expect(html).toContain(String.raw`data-doc-source="C:\\Template\\literal.html"`);

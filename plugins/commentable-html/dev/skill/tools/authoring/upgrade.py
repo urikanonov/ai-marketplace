@@ -110,6 +110,49 @@ class _RootSourceFinder(HTMLParser):
         self.handle_starttag(tag, attrs)
 
 
+def _raw_tag_attributes(tag):
+    attrs = []
+    pos = 1
+    while pos < len(tag) and tag[pos] not in " \t\r\n/>":
+        pos += 1
+    while pos < len(tag):
+        while pos < len(tag) and tag[pos].isspace():
+            pos += 1
+        if pos >= len(tag) or tag[pos] in ">/":
+            break
+        name_start = pos
+        while pos < len(tag) and tag[pos] not in " \t\r\n=/>":
+            pos += 1
+        if pos == name_start:
+            pos += 1
+            continue
+        name = tag[name_start:pos].lower()
+        while pos < len(tag) and tag[pos].isspace():
+            pos += 1
+        value_start = value_end = None
+        quote = ""
+        if pos < len(tag) and tag[pos] == "=":
+            pos += 1
+            while pos < len(tag) and tag[pos].isspace():
+                pos += 1
+            if pos < len(tag) and tag[pos] in "\"'":
+                quote = tag[pos]
+                pos += 1
+                value_start = pos
+                while pos < len(tag) and tag[pos] != quote:
+                    pos += 1
+                value_end = pos
+                if pos < len(tag):
+                    pos += 1
+            else:
+                value_start = pos
+                while pos < len(tag) and not tag[pos].isspace() and tag[pos] != ">":
+                    pos += 1
+                value_end = pos
+        attrs.append((name, value_start, value_end, quote))
+    return attrs
+
+
 def _normalize_source_provenance(html):
     finder = _RootSourceFinder(html)
     finder.feed(html)
@@ -117,22 +160,22 @@ def _normalize_source_provenance(html):
     if result is None:
         return html, False
     start, end, tag = result
-    attr_re = re.compile(
-        r'(\sdata-doc-source\s*=\s*)(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))',
-        re.IGNORECASE,
-    )
-    changed = [False]
-
-    def replacement(match):
-        source = _html.unescape(next(v for v in match.groups()[1:] if v is not None))
+    changed = False
+    new_tag = tag
+    source_attrs = [
+        attr for attr in _raw_tag_attributes(tag)
+        if attr[0] == "data-doc-source" and attr[1] is not None
+    ]
+    for _name, value_start, value_end, quote in reversed(source_attrs):
+        source = _html.unescape(tag[value_start:value_end])
         basename = doc_stamp.source_basename(source)
         if basename == source:
-            return match.group(0)
-        changed[0] = True
-        return match.group(1) + '"%s"' % _html.escape(basename, quote=True)
-
-    new_tag = attr_re.sub(replacement, tag)
-    if not changed[0]:
+            continue
+        changed = True
+        escaped = _html.escape(basename, quote=True)
+        replacement = escaped if quote else '"%s"' % escaped
+        new_tag = new_tag[:value_start] + replacement + new_tag[value_end:]
+    if not changed:
         return html, False
     return html[:start] + new_tag + html[end:], True
 
