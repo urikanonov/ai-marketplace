@@ -31,7 +31,7 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -97,6 +97,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     el._image = image;
     el._quote = image.quote;
+  } else if (mode === "new-link") {
+    el._link = link;
+    el._quote = link.quote;
   } else if (mode === "new-widget") {
     el._widget = widget;
     el._quote = widget.quote || widget.label || widget.part || widget.widget;
@@ -129,6 +132,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     const imgEl = findImageEl(image.imageIndex);
     anchorRect = imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  } else if (mode === "new-link") {
+    const aEl = findLinkEl(link.linkIndex);
+    anchorRect = aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   } else if (mode === "new-widget") {
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
@@ -146,6 +152,8 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
     } else if (comment.anchorType === "image") {
       anchorEl = findImageEl(comment.imageIndex);
+    } else if (comment.anchorType === "link") {
+      anchorEl = resolveLinkEl(comment);
     } else if (comment.anchorType === "widget") {
       anchorEl = findWidgetPart(comment.widget, comment.part);
     } else {
@@ -312,6 +320,7 @@ function openComposerForEdit(comment) {
       if (comment.anchorType === "mermaid") anchorEl = findMermaidNode(comment.diagramIndex, comment.nodeKey);
       else if (comment.anchorType === "diff") anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
       else if (comment.anchorType === "image") anchorEl = findImageEl(comment.imageIndex);
+      else if (comment.anchorType === "link") anchorEl = resolveLinkEl(comment);
       else if (comment.anchorType === "widget") anchorEl = findWidgetPart(comment.widget, comment.part);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
@@ -422,6 +431,26 @@ function saveComposerElement(el) {
     comments.push(comment);
     if (!applyImageHighlight(comment)) {
       showToast("Comment saved, but the image could not be highlighted.");
+    }
+  } else if (el._mode === "new-link") {
+    const info = el._link;
+    const a = findLinkEl(info.linkIndex);
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const ctx = a ? captureMermaidContext(a) : { section: null, headingPath: [] };
+    const comment = {
+      id,
+      anchorType: "link",
+      linkIndex: info.linkIndex,
+      linkHref: info.href,
+      linkText: info.text,
+      quote: info.quote,
+      note,
+      createdAt: new Date().toISOString(),
+      ...ctx,
+    };
+    comments.push(comment);
+    if (!applyLinkHighlight(comment)) {
+      showToast("Comment saved, but the link could not be highlighted.");
     }
   } else if (el._mode === "new-widget") {
     const info = el._widget;

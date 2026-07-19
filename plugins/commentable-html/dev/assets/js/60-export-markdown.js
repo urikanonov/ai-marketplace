@@ -306,6 +306,7 @@ function _mdCommentsAppendix() {
     else if (c.anchorType === "mermaid") where = "mermaid " + esc(c.nodeLabel || c.nodeKey);
     else if (c.anchorType === "diff") where = "diff line";
     else if (c.anchorType === "image") where = (c.imageKind === "chart" ? "chart" : "image") + " " + ((c.imageIndex || 0) + 1);
+    else if (c.anchorType === "link") where = "link " + ((Number(c.linkIndex) || 0) + 1);
     else if (c.quote) where = '"' + esc(oneLine(c.quote).slice(0, 80)) + '"';
     out.push("");
     out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment"));

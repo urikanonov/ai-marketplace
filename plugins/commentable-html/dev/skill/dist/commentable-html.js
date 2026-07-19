@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.170.0";
+const CMH_VERSION = "1.171.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -561,6 +561,7 @@ function removeHighlight(comment) {
   if (comment.anchorType === "mermaid") clearMermaidHighlight(comment.id);
   else if (comment.anchorType === "diff") clearDiffHighlight(comment.id);
   else if (comment.anchorType === "image") clearImageHighlight(comment.id);
+  else if (comment.anchorType === "link") clearLinkHighlight(comment.id);
   else if (comment.anchorType === "widget") clearWidgetHighlight(comment.id);
   else if (comment.anchorType === "document") { /* no anchored highlight to remove */ }
   else if (comment.anchorType === "slide") { /* no anchored highlight to remove */ }
@@ -2118,6 +2119,216 @@ if (imageAddBtn) {
     openImageComposer(info);
   });
 }
+/* ---------- Link comment layer ----------
+   Two runtime behaviours for author-facing <a href> links inside #commentRoot:
+   1. At render time, every external reference is stamped target="_blank" +
+      rel="noopener noreferrer" so opening a reference keeps the reader's place
+      (authors do not hand-stamp each link).
+   2. Each link is made commentable, mirroring the image/mermaid layers: hovering
+      or keyboard-focusing a link reveals a floating #linkAddBtn that anchors a
+      comment to that link by (linkIndex) + href/text fallback. The affordance is a
+      separate floating button, so activating it does not navigate and a normal
+      click still follows the link. Same-page "#" fragments (e.g. the TOC), UI
+      chrome (.cm-skip), and javascript: links are excluded. */
+const linkAddBtn = document.getElementById("linkAddBtn");
+const linkEls = [];
+let pendingLink = null;
+let linkAddHideTimer = null;
+let linkActiveEl = null;
+
+// Author-facing reference links only: real href, not UI chrome, not an in-page
+// fragment (those navigate within the document, so a new tab would be wrong and
+// commenting on a TOC entry is not the intent). Classification is by the browser-
+// NORMALIZED protocol (a.protocol), not a string match on the raw href, so an
+// obfuscated scheme (java\tscript:, embedded control chars) cannot slip past: only
+// real document references are eligible - http/https, or a relative/root-relative
+// URL that inherits the document's http(s)/file protocol. Everything else
+// (javascript:, mailto:, tel:, data:, blob:, ...) is excluded, so a mailto/tel link
+// is never stamped target=_blank (which would strand the reader on a dead tab).
+function _cmhCommentableLink(a) {
+  if (!a || a.tagName !== "A" || !a.hasAttribute("href")) return false;
+  if (a.closest(".cm-skip")) return false;
+  const raw = (a.getAttribute("href") || "").trim();
+  if (!raw || raw.charAt(0) === "#") return false; // same-page fragment
+  let proto = "";
+  try { proto = new URL(a.href, document.baseURI).protocol.toLowerCase(); }
+  catch (e) { proto = (a.protocol || "").toLowerCase(); }
+  return proto === "http:" || proto === "https:" || proto === "file:";
+}
+// Render-time defaults. Two independent concerns:
+// - NEW-TAB stamping: open author-facing document references (http/https/file only) in a new
+//   tab by default (never fragments, UI chrome, or non-document schemes like mailto:/tel:).
+// - rel ENFORCEMENT (reverse-tabnabbing defense): whenever the effective target is _blank
+//   (case-insensitively) on ANY author link - even a data:/blob: link an author pre-set - ensure
+//   rel="noopener noreferrer" is present. This is decoupled from commentability on purpose so a
+//   pre-targeted non-reference link is not left without the secure rel.
+function stampLinkTargets() {
+  root.querySelectorAll("a[href]").forEach((a) => {
+    if (a.closest(".cm-skip")) return; // never touch runtime UI chrome
+    if (_cmhCommentableLink(a) && !a.getAttribute("target")) a.setAttribute("target", "_blank");
+    if ((a.getAttribute("target") || "").trim().toLowerCase() === "_blank") {
+      const rel = (a.getAttribute("rel") || "").split(/\s+/).filter(Boolean);
+      let changed = false;
+      ["noopener", "noreferrer"].forEach((t) => { if (rel.indexOf(t) === -1) { rel.push(t); changed = true; } });
+      if (changed || !a.hasAttribute("rel")) a.setAttribute("rel", rel.join(" "));
+    }
+  });
+}
+function indexLinks() {
+  linkEls.length = 0;
+  root.querySelectorAll("a[href]").forEach((a) => {
+    if (!_cmhCommentableLink(a)) return;
+    const i = linkEls.length;
+    a.classList.add("cm-link-commentable");
+    a.dataset.cmLinkIndex = String(i);
+    linkEls.push(a);
+  });
+}
+function findLinkEl(index) {
+  if (!/^\d+$/.test(String(index))) return null;
+  return linkEls[index] || root.querySelector(`[data-cm-link-index="${index}"]`) || null;
+}
+// Resolve a link comment to its current element: by index first, then heal by stored
+// href if the index is stale (the document re-ordered). Used everywhere a link anchor
+// is looked up (highlight, jump, edit, section review) so all consumers relocate the
+// same way - not just the highlight restore.
+function resolveLinkEl(comment) {
+  if (!comment) return null;
+  let a = findLinkEl(comment.linkIndex);
+  if ((!a || (comment.linkHref && a.getAttribute("href") !== comment.linkHref)) && comment.linkHref) {
+    const byHref = linkEls.find((l) => l.getAttribute("href") === comment.linkHref);
+    if (byHref) a = byHref;
+  }
+  return a || null;
+}
+function linkInfo(a) {
+  const i = parseInt(a.dataset.cmLinkIndex, 10) || 0;
+  const href = (a.getAttribute("href") || "").replace(/[\r\n\t]+/g, " ").trim();
+  const text = (a.textContent || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  const shortHref = href.length > 120 ? href.slice(0, 117) + "..." : href;
+  const quote = text || ("link: " + (shortHref || "(no href)"));
+  return { linkIndex: i, href, text, quote };
+}
+function applyLinkHighlight(comment) {
+  const a = resolveLinkEl(comment);
+  if (!a) return false;
+  // A link can carry several comments; track them all in data-cids (first in
+  // data-cid for legacy selectors), like the image and mermaid layers.
+  a.classList.add("cm-link-hl");
+  const cids = (a.getAttribute("data-cids") || "").split(/\s+/).filter(Boolean);
+  if (!cids.includes(comment.id)) cids.push(comment.id);
+  a.setAttribute("data-cids", cids.join(" "));
+  a.setAttribute("data-cid", cids[0]);
+  return true;
+}
+function _linkCids(a) {
+  return (a.getAttribute("data-cids") || a.getAttribute("data-cid") || "").split(/\s+/).filter(Boolean);
+}
+function clearLinkHighlight(id) {
+  root.querySelectorAll("a.cm-link-hl").forEach((a) => {
+    const cids = _linkCids(a);
+    const rest = cids.filter((c) => c !== id);
+    if (rest.length === cids.length) return;
+    if (rest.length) {
+      a.setAttribute("data-cids", rest.join(" "));
+      a.setAttribute("data-cid", rest[0]);
+    } else {
+      a.classList.remove("cm-link-hl", "cm-link-active");
+      a.removeAttribute("data-cid");
+      a.removeAttribute("data-cids");
+    }
+  });
+}
+function flashLink(id) {
+  const a = [...root.querySelectorAll("a.cm-link-hl")].find((l) => _linkCids(l).includes(id));
+  if (!a) return;
+  a.classList.add("cm-link-active");
+  setTimeout(() => a.classList.remove("cm-link-active"), 2200);
+}
+function positionLinkAdd(a) {
+  // Anchor to the first line of the link (an inline link can wrap across lines, so
+  // getBoundingClientRect would span both; use the first client rect).
+  const rects = a.getClientRects();
+  const rect = rects.length ? rects[0] : a.getBoundingClientRect();
+  const visible = _clipAwareRect(a, rect);
+  if (!visible) return false;
+  const btnW = linkAddBtn.offsetWidth || 110;
+  const btnH = linkAddBtn.offsetHeight || 26;
+  const bounds = _floatingBounds(a);
+  const left = visible.right - btnW;
+  let top = visible.top - btnH - 4;
+  if (top < bounds.top) top = visible.bottom + 4;
+  linkAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
+  linkAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
+  return true;
+}
+function showLinkAddFor(a) {
+  const rect = a.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return;
+  pendingLink = linkInfo(a);
+  if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
+  linkAddBtn.hidden = false;
+  if (!positionLinkAdd(a)) { linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null; return; }
+  _activeAdd = { el: a, btn: linkAddBtn, position: () => positionLinkAdd(a), clear: () => { pendingLink = null; } };
+}
+function scheduleHideLinkAdd() {
+  if (linkAddHideTimer) clearTimeout(linkAddHideTimer);
+  linkAddHideTimer = setTimeout(() => {
+    // Keep it visible while the pointer is over the button OR the button itself holds
+    // focus, so a keyboard user moving to the button does not have it hidden from under them.
+    if (!linkAddBtn.matches(":hover") && document.activeElement !== linkAddBtn) {
+      linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null;
+    }
+  }, 220);
+}
+function openLinkComposer(info) {
+  return createComposerElement({ mode: "new-link", link: info });
+}
+function setupLinkLayer() {
+  if (!linkAddBtn) return;
+  stampLinkTargets();
+  indexLinks();
+  linkEls.forEach((a) => {
+    if (!a._cmLinkAttached) {
+      a._cmLinkAttached = true;
+      a.addEventListener("mouseenter", () => { linkActiveEl = a; showLinkAddFor(a); });
+      a.addEventListener("mouseleave", scheduleHideLinkAdd);
+      // Keyboard focus reveals the affordance too. Enter and Space keep their native
+      // behavior (Enter follows the link, Space scrolls), so the only keyboard comment
+      // entry point is the non-navigating Alt+Enter chord below - a normal activation
+      // still navigates.
+      a.addEventListener("focus", () => { linkActiveEl = a; showLinkAddFor(a); });
+      a.addEventListener("blur", scheduleHideLinkAdd);
+      a.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+          e.preventDefault();
+          linkAddBtn.hidden = true;
+          linkActiveEl = null;
+          openLinkComposer(linkInfo(a));
+        }
+      });
+    }
+  });
+  comments.forEach((c) => { if (c.anchorType === "link") applyLinkHighlight(c); });
+}
+if (linkAddBtn) {
+  linkAddBtn.addEventListener("mouseenter", () => {
+    if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
+  });
+  linkAddBtn.addEventListener("focus", () => {
+    if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
+  });
+  linkAddBtn.addEventListener("mouseleave", scheduleHideLinkAdd);
+  linkAddBtn.addEventListener("blur", scheduleHideLinkAdd);
+  linkAddBtn.addEventListener("click", () => {
+    if (!pendingLink) return;
+    const info = pendingLink;
+    pendingLink = null;
+    linkAddBtn.hidden = true;
+    linkActiveEl = null;
+    openLinkComposer(info);
+  });
+}
 /* ---------- Commentable widgets and SVG nodes (generic opt-in) ----------
    Any element marked data-cm-widget declares a commentable widget. Descendants marked
    data-cm-part (with an optional data-cm-part-label) become individually commentable even
@@ -3549,7 +3760,7 @@ function positionComposerNear(el, anchorRect) {
   el.style.top  = top + "px";
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -3615,6 +3826,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     el._image = image;
     el._quote = image.quote;
+  } else if (mode === "new-link") {
+    el._link = link;
+    el._quote = link.quote;
   } else if (mode === "new-widget") {
     el._widget = widget;
     el._quote = widget.quote || widget.label || widget.part || widget.widget;
@@ -3647,6 +3861,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-image") {
     const imgEl = findImageEl(image.imageIndex);
     anchorRect = imgEl ? imgEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
+  } else if (mode === "new-link") {
+    const aEl = findLinkEl(link.linkIndex);
+    anchorRect = aEl ? aEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   } else if (mode === "new-widget") {
     const p = findWidgetPart(widget.widget, widget.part);
     anchorRect = p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
@@ -3664,6 +3881,8 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
     } else if (comment.anchorType === "image") {
       anchorEl = findImageEl(comment.imageIndex);
+    } else if (comment.anchorType === "link") {
+      anchorEl = resolveLinkEl(comment);
     } else if (comment.anchorType === "widget") {
       anchorEl = findWidgetPart(comment.widget, comment.part);
     } else {
@@ -3830,6 +4049,7 @@ function openComposerForEdit(comment) {
       if (comment.anchorType === "mermaid") anchorEl = findMermaidNode(comment.diagramIndex, comment.nodeKey);
       else if (comment.anchorType === "diff") anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
       else if (comment.anchorType === "image") anchorEl = findImageEl(comment.imageIndex);
+      else if (comment.anchorType === "link") anchorEl = resolveLinkEl(comment);
       else if (comment.anchorType === "widget") anchorEl = findWidgetPart(comment.widget, comment.part);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
@@ -3940,6 +4160,26 @@ function saveComposerElement(el) {
     comments.push(comment);
     if (!applyImageHighlight(comment)) {
       showToast("Comment saved, but the image could not be highlighted.");
+    }
+  } else if (el._mode === "new-link") {
+    const info = el._link;
+    const a = findLinkEl(info.linkIndex);
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const ctx = a ? captureMermaidContext(a) : { section: null, headingPath: [] };
+    const comment = {
+      id,
+      anchorType: "link",
+      linkIndex: info.linkIndex,
+      linkHref: info.href,
+      linkText: info.text,
+      quote: info.quote,
+      note,
+      createdAt: new Date().toISOString(),
+      ...ctx,
+    };
+    comments.push(comment);
+    if (!applyLinkHighlight(comment)) {
+      showToast("Comment saved, but the link could not be highlighted.");
     }
   } else if (el._mode === "new-widget") {
     const info = el._widget;
@@ -4119,6 +4359,7 @@ function renderComments() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
@@ -4132,6 +4373,8 @@ function renderComments() {
     } else if (isImage) {
       const mediaLbl = c.imageKind === "chart" ? "chart: " : "image: ";
       quoteHtml = `<div class="quote"><span class="ctx">${mediaLbl}</span><span class="quoted">${escapeHtml(c.imageAlt || c.quote || c.imageSrc || "")}</span></div>`;
+    } else if (isLink) {
+      quoteHtml = `<div class="quote"><span class="ctx">link: </span><span class="quoted">${escapeHtml(c.linkText || c.quote || c.linkHref || "")}</span></div>`;
     } else if (isWidget) {
       quoteHtml = `<div class="quote"><span class="ctx">${escapeHtml(c.widget || "widget")}: </span><span class="quoted">"${escapeHtml(c.partLabel || c.part || "")}"</span></div>`;
     } else if (isDocument) {
@@ -4159,6 +4402,10 @@ function renderComments() {
       pinBits.push(`${c.imageKind === "chart" ? "chart" : "image"} ${(Number(c.imageIndex) || 0) + 1}`);
       const src = String(c.imageSrc == null ? "" : c.imageSrc);
       if (src) pinBits.push(escapeHtml(src.length > 60 ? src.slice(0, 57) + "..." : src));
+    } else if (isLink) {
+      pinBits.push(`link ${(Number(c.linkIndex) || 0) + 1}`);
+      const href = String(c.linkHref == null ? "" : c.linkHref);
+      if (href) pinBits.push(escapeHtml(href.length > 60 ? href.slice(0, 57) + "..." : href));
     } else if (isWidget) {
       pinBits.push(`widget "${escapeHtml(c.widget || "")}"`);
       pinBits.push(`part "${escapeHtml(c.partLabel || c.part || "")}"`);
@@ -4175,7 +4422,7 @@ function renderComments() {
       // on the sidebar card, which only surfaces reader-facing anchor info.
     }
     const pinHtml = pinBits.length ? `<div class="pin">${pinBits.join(" - ")}</div>` : "";
-    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isWidget ? "element" : isSlide ? "slide" : "text";
+    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isLink ? "link" : isWidget ? "element" : isSlide ? "slide" : "text";
     const cardClass = isDocument ? "cm-card cm-card-doc" : isSlide ? "cm-card cm-card-doc cm-card-slide" : "cm-card";
     // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
     // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
@@ -4230,6 +4477,8 @@ function _anchorSortKey(c) {
     ? (2e12 + (c.diffIndex || 0) * 1e6 + (parseInt(c.lineKey, 10) || 0))
     : (c.anchorType === "image")
     ? (3e12 + (c.imageIndex || 0))
+    : (c.anchorType === "link")
+    ? (3.5e12 + (Number.isFinite(Number(c.linkIndex)) ? Number(c.linkIndex) : 0))
     : (c.anchorType === "widget")
     ? (4e12 + _widgetOrderKey(c))
     : (c.anchorType === "slide")
@@ -4298,6 +4547,7 @@ function scrollToAnchor(c) {
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
   else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
+  else if (c.anchorType === "link") { el = resolveLinkEl(c); if (el) flashLink(c.id); }
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
   else if (c.anchorType === "document") {
     // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
@@ -5034,10 +5284,11 @@ function buildCopyText() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
-    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
+    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
     lines.push(`Id: ${c.id}`);
     lines.push(`When: ${formatTime(c.createdAt)}${c.updatedAt ? " (edited " + formatTime(c.updatedAt) + ")" : ""}`);
     if (c.headingPath && c.headingPath.length) {
@@ -5086,6 +5337,14 @@ function buildCopyText() {
       const mediaWord = c.imageKind === "chart" ? "chart" : "image";
       lines.push(`Anchor: ${mediaWord} #${(c.imageIndex || 0) + 1}${sSrc ? " (" + sSrc + ")" : ""}`);
       if (c.imageAlt) lines.push(`Alt: ${oneLine(c.imageAlt)}`);
+      lines.push("");
+      lines.push("Comment:");
+      pushNote(c.note);
+    } else if (isLink) {
+      const rawHref = oneLine(c.linkHref);
+      const sHref = rawHref.length > 100 ? rawHref.slice(0, 100) + "..." : rawHref;
+      lines.push(`Anchor: link #${(Number(c.linkIndex) || 0) + 1}${sHref ? " (" + sHref + ")" : ""}`);
+      if (c.linkText) lines.push(`Text: ${oneLine(c.linkText)}`);
       lines.push("");
       lines.push("Comment:");
       pushNote(c.note);
@@ -5587,6 +5846,7 @@ function _mdCommentsAppendix() {
     else if (c.anchorType === "mermaid") where = "mermaid " + esc(c.nodeLabel || c.nodeKey);
     else if (c.anchorType === "diff") where = "diff line";
     else if (c.anchorType === "image") where = (c.imageKind === "chart" ? "chart" : "image") + " " + ((c.imageIndex || 0) + 1);
+    else if (c.anchorType === "link") where = "link " + ((Number(c.linkIndex) || 0) + 1);
     else if (c.quote) where = '"' + esc(oneLine(c.quote).slice(0, 80)) + '"';
     out.push("");
     out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment"));
@@ -5849,7 +6109,7 @@ function recomputeTextOffsets(persist) {
   let changed = false;
   const allNodes = getTextNodes();
   comments.forEach(function (c) {
-    if (c.anchorType === "mermaid" || c.anchorType === "diff" || c.anchorType === "image") return;
+    if (c.anchorType === "mermaid" || c.anchorType === "diff" || c.anchorType === "image" || c.anchorType === "link") return;
     const marks = [...root.querySelectorAll('mark.cm-hl[data-cid="' + c.id + '"]')];
     if (!marks.length) return;
     const fT = firstTextNodeIn(marks[0]);
@@ -7950,6 +8210,7 @@ function _printAnchorLabel(c) {
     return "Diff" + (c.diffLabel ? " " + c.diffLabel : "") + (line ? " - " + line : "");
   }
   if (c.anchorType === "image") return (c.imageKind === "chart" ? "Chart" : "Image") + " " + ((Number(c.imageIndex) || 0) + 1);
+  if (c.anchorType === "link") return "Link" + (c.linkText ? ' - "' + c.linkText + '"' : "");
   if (c.anchorType === "widget") return "Widget " + (c.widget || "widget") + (c.partLabel || c.part ? " - " + (c.partLabel || c.part) : "");
   if (c.isCode) return c.codeLanguage ? "Code block (" + c.codeLanguage + ")" : "Code block";
   return "Text selection";
@@ -7959,6 +8220,7 @@ function _printQuote(c) {
   if (c.anchorType === "document") return "(document-wide comment)";
   if (c.anchorType === "slide") return c.slideTitle ? ('slide: "' + c.slideTitle + '"') : "(comment on slide)";
   if (c.anchorType === "image") return c.imageAlt || c.quote || c.imageSrc || "";
+  if (c.anchorType === "link") return c.linkText || c.quote || c.linkHref || "";
   if (c.anchorType === "widget") return c.partLabel || c.part || c.quote || "";
   if (c.anchorType === "mermaid") return c.nodeLabel || c.nodeKey || c.quote || "";
   return c.quote || "";
@@ -8102,6 +8364,7 @@ function _cmhAnchorElFor(c) {
   if (c.anchorType === "mermaid" && typeof findMermaidNode === "function") return findMermaidNode(c.diagramIndex, c.nodeKey);
   if (c.anchorType === "diff" && typeof findDiffLineEls === "function") return (findDiffLineEls(c.diffIndex, c.lineKey) || [])[0] || null;
   if (c.anchorType === "image" && typeof findImageEl === "function") return findImageEl(c.imageIndex);
+  if (c.anchorType === "link" && typeof resolveLinkEl === "function") return resolveLinkEl(c);
   if (c.anchorType === "widget" && typeof findWidgetPart === "function") return findWidgetPart(c.widget, c.part);
   return null; // document-wide comments belong to no section
 }
@@ -8435,8 +8698,8 @@ function restoreHighlights() {
   // treating an offsetless entry as trivially sane. This keeps the per-comment restore
   // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
-    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document"
-    && c.anchorType !== "slide"
+    && c.anchorType !== "image" && c.anchorType !== "link" && c.anchorType !== "widget"
+    && c.anchorType !== "document" && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
@@ -8631,6 +8894,7 @@ backfillContext();
 restoreHighlights();
 setupMermaidLayer();
 setupImageLayer();
+setupLinkLayer();
 setupWidgetLayer();
 setupChecklistLayer();
 setupChartContainment();

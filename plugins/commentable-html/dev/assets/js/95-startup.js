@@ -28,8 +28,8 @@ function restoreHighlights() {
   // treating an offsetless entry as trivially sane. This keeps the per-comment restore
   // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
-    && c.anchorType !== "image" && c.anchorType !== "widget" && c.anchorType !== "document"
-    && c.anchorType !== "slide"
+    && c.anchorType !== "image" && c.anchorType !== "link" && c.anchorType !== "widget"
+    && c.anchorType !== "document" && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   sorted.forEach(c => {
@@ -224,6 +224,7 @@ backfillContext();
 restoreHighlights();
 setupMermaidLayer();
 setupImageLayer();
+setupLinkLayer();
 setupWidgetLayer();
 setupChecklistLayer();
 setupChartContainment();

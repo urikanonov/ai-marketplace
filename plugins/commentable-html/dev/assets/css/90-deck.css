@@ -57,6 +57,7 @@ body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
 body.cmh-deck-comments-off #menuComment,
 body.cmh-deck-comments-off #mermaidAddBtn,
 body.cmh-deck-comments-off #imageAddBtn,
+body.cmh-deck-comments-off #linkAddBtn,
 body.cmh-deck-comments-off #diffAddBtn,
 body.cmh-deck-comments-off #widgetAddBtn,
 body.cmh-deck-comments-off #headingAddBtn {

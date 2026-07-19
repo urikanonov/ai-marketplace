@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.170.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.171.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,6 +426,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.171.0] - 2026-07-19</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Link handling for author-facing references (CMH-LINK-01..04): at render time every external <code>&lt;a href&gt;</code> in the document is stamped <code>target=&quot;_blank&quot;</code> + <code>rel=&quot;noopener noreferrer&quot;</code> so a reference opens in a new tab and the reader keeps their place (same-page <code>#</code> fragments, <code>.cm-skip</code> UI chrome, and <code>javascript:</code> links are left untouched, and an author-set <code>target</code> is respected). Each link is now commentable like an image or mermaid node: hovering or keyboard-focusing a link reveals a floating <code>Add Comment</code> affordance that anchors an <code>anchorType: &quot;link&quot;</code> comment to that link (by index + href/text) without navigating - a normal click (or Enter) still follows the link, while the floating button or the non-navigating <code>Alt+Enter</code> chord opens the composer. Links are classified by their normalized protocol (only <code>http</code>/<code>https</code>/<code>file</code>), so control-char-obfuscated <code>javascript:</code>, <code>mailto:</code>/<code>tel:</code>, and <code>data:</code> links are never stamped or made commentable, and the <code>_blank</code> rel-enforcement is case-insensitive (reverse-tabnabbing defense). Link comments ring the link, list a card, flash on jump, and survive reload, Copy all, Export Markdown, and Export Offline.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.170.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -442,6 +449,8 @@
               <li>The top-right site logo sits further into the corner and its tooltip reads just &quot;Commentable HTML&quot; (CMH-DECK-SHOWCASE-10).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.169.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -449,8 +458,6 @@
               <li>Code blocks can carry an optional filename/description caption line: add <code>data-code-caption</code> to a <code>&lt;pre&gt;</code> (for example <code>data-code-caption=&quot;trigger.kql&quot;</code>) and the runtime renders a <code>cm-skip</code>, non-selectable caption bar above the code, laid out like the KQL caption bar (filename on the left, the language pill and Copy button inline on the right) so no language-label width overlaps the filename. It is styled consistently in report and deck modes, leaves the language pill, Copy button, syntax highlighting, and commenting on the code intact (a caption-crossing drag cannot leak the filename into a comment&#x27;s quote), never doubles a KQL figure&#x27;s own caption, and survives Export Offline (the caption re-renders from the surviving attribute on reopen). (CMH-CODE-05)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.168.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -483,14 +490,7 @@
               <li>Third-party MIT license notices for the vendored rich-content libraries (mermaid, Chart.js). The upstream license texts are vendored under <code>dev/assets/vendor/*.LICENSE</code>, <code>build.py</code> assembles them into a shipped <code>THIRD_PARTY_NOTICES.md</code> (copied unzipped beside the plugin LICENSE and gated by <code>build.py --check</code>), and <code>Export Offline</code> now embeds each bundled library&#x27;s MIT notice as an HTML comment beside the inlined library, so a redistributed offline artifact carries the required copyright and permission notice.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.163.0] - 2026-07-19</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Documented the online mermaid CDN import as a by-design accepted supply-chain risk (CMH-SEC-04): the runtime loads mermaid from a version-pinned jsDelivr URL (single-sourced from the mermaid dependency), with a zero-network vendored fallback via Export Offline. Credited the third-party rich-content libraries the plugin renders with - mermaid and Chart.js, both MIT - in the plugin README, the marketplace README, the site plugin page, and the vendored-libraries provenance doc.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">141 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">142 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

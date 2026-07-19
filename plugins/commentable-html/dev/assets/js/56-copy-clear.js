@@ -50,10 +50,11 @@ function buildCopyText() {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
     const isImage = c.anchorType === "image";
+    const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
-    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
+    lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
     lines.push(`Id: ${c.id}`);
     lines.push(`When: ${formatTime(c.createdAt)}${c.updatedAt ? " (edited " + formatTime(c.updatedAt) + ")" : ""}`);
     if (c.headingPath && c.headingPath.length) {
@@ -102,6 +103,14 @@ function buildCopyText() {
       const mediaWord = c.imageKind === "chart" ? "chart" : "image";
       lines.push(`Anchor: ${mediaWord} #${(c.imageIndex || 0) + 1}${sSrc ? " (" + sSrc + ")" : ""}`);
       if (c.imageAlt) lines.push(`Alt: ${oneLine(c.imageAlt)}`);
+      lines.push("");
+      lines.push("Comment:");
+      pushNote(c.note);
+    } else if (isLink) {
+      const rawHref = oneLine(c.linkHref);
+      const sHref = rawHref.length > 100 ? rawHref.slice(0, 100) + "..." : rawHref;
+      lines.push(`Anchor: link #${(Number(c.linkIndex) || 0) + 1}${sHref ? " (" + sHref + ")" : ""}`);
+      if (c.linkText) lines.push(`Text: ${oneLine(c.linkText)}`);
       lines.push("");
       lines.push("Comment:");
       pushNote(c.note);
