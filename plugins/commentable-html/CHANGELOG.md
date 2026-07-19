@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.166.0] - 2026-07-19
+
+### Changed
+
+- The validator now ERRORS in NonPortable mode when a baked absolute or `file://` companion
+  reference resolves inside an OS temporary directory that is not the document's own folder
+  (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment
+  layer once the OS reaps the temp directory - the exact failure behind a shared document whose
+  CSS/JS 404'd after handoff. Temp detection is cross-platform (`TMPDIR`/`TEMP`/`TMP`,
+  `tempfile.gettempdir()`, and `AppData/Local/Temp`, `/tmp`, `/var/tmp`, `/var/folders`); relative
+  refs and a companion sitting beside the document are never flagged. The message points at a
+  Portable single-file export or copying `dist/` to a durable folder.
+
 ## [1.163.0] - 2026-07-19
 
 ### Changed

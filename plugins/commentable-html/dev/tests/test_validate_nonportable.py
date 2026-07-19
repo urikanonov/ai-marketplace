@@ -181,6 +181,76 @@ class NonPortableTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         self.assertTrue(any("absolute path" in w for w in warnings), warnings)
 
+    def test_file_url_companion_ref_in_temp_dir_errors(self):
+        # CMH-VAL-16: a file:// companion ref BAKED into a temp directory that is NOT the
+        # document's own folder is an ERROR - the OS reaps the temp dir and the shared
+        # document silently loses its whole layer (the exact real-world failure).
+        with tempfile.TemporaryDirectory() as docdir, tempfile.TemporaryDirectory() as tmpassets:
+            urls = {}
+            for ext in (".css", ".js", ".assets.js"):
+                p = os.path.join(tmpassets, "commentable-html%s" % ext)
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write("/* stub */")
+                urls[ext] = Path(p).resolve().as_uri()
+            html = (build_nonportable()
+                    .replace('href="commentable-html.css"', 'href="%s"' % urls[".css"])
+                    .replace('src="commentable-html.js"', 'src="%s"' % urls[".js"])
+                    .replace('src="commentable-html.assets.js"', 'src="%s"' % urls[".assets.js"]))
+            doc = os.path.join(docdir, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, _ = validate.validate(doc)
+        self.assertTrue(any("temporary directory" in e for e in errors),
+                        "expected a temp-directory error, got: %r" % errors)
+
+    def test_absolute_companion_path_in_temp_dir_errors(self):
+        # CMH-VAL-16: a plain absolute path (not file://) into a temp directory other than
+        # the document's folder is also an error, not merely the soft absolute-path warning.
+        with tempfile.TemporaryDirectory() as docdir, tempfile.TemporaryDirectory() as tmpassets:
+            paths = {}
+            for ext in (".css", ".js", ".assets.js"):
+                p = os.path.join(tmpassets, "commentable-html%s" % ext)
+                with open(p, "w", encoding="utf-8") as fh:
+                    fh.write("/* stub */")
+                paths[ext] = p.replace("\\", "/")
+            html = (build_nonportable()
+                    .replace('href="commentable-html.css"', 'href="%s"' % paths[".css"])
+                    .replace('src="commentable-html.js"', 'src="%s"' % paths[".js"])
+                    .replace('src="commentable-html.assets.js"', 'src="%s"' % paths[".assets.js"]))
+            doc = os.path.join(docdir, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, _ = validate.validate(doc)
+        self.assertTrue(any("temporary directory" in e for e in errors),
+                        "expected a temp-directory error, got: %r" % errors)
+
+    def test_relative_companion_ref_is_not_temp_flagged(self):
+        # CMH-VAL-16 carve-out: a RELATIVE companion ref bakes no absolute location, so even
+        # when the document itself is validated from a temp directory it is never temp-flagged
+        # (the default hermetic test harness lives under the OS temp dir).
+        errors, warnings = self._validate(build_nonportable())
+        self.assertFalse(any("temporary directory" in e for e in errors),
+                         "relative refs must never be temp-flagged: %r" % errors)
+        self.assertEqual(errors, [], errors)
+
+    def test_beside_document_absolute_temp_path_is_not_temp_flagged(self):
+        # CMH-VAL-16 carve-out: an absolute companion path that sits BESIDE the document (same
+        # directory) keeps the existing absolute-path warning and is NOT escalated to a temp
+        # error, even though the shared harness dir is under the OS temp root.
+        with tempfile.TemporaryDirectory() as d:
+            for ext in (".css", ".js", ".assets.js"):
+                with open(os.path.join(d, "commentable-html%s" % ext), "w") as fh:
+                    fh.write("/* stub */")
+            css = os.path.join(d, "commentable-html.css").replace("\\", "/")
+            html = build_nonportable().replace('href="commentable-html.css"', 'href="%s"' % css)
+            doc = os.path.join(d, "doc.html")
+            with open(doc, "w", encoding="utf-8", newline="") as fh:
+                fh.write(html)
+            errors, warnings = validate.validate(doc)
+        self.assertFalse(any("temporary directory" in e for e in errors),
+                         "a beside-the-doc absolute path must not be temp-flagged: %r" % errors)
+        self.assertTrue(any("absolute path" in w for w in warnings), warnings)
+
     def test_file_url_companion_refs_validate_clean(self):
         with tempfile.TemporaryDirectory() as d:
             urls = {}

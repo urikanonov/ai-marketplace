@@ -4,6 +4,7 @@ and the NonPortable vs Portable/offline determination."""
 
 import re
 import os
+import tempfile
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 from urllib.request import url2pathname
@@ -121,6 +122,66 @@ def _file_url_to_path(ref):
     return os.path.abspath(url2pathname(raw))
 
 
+# Well-known OS temporary-directory path fragments (posix-normalized, lowercase), for when a
+# companion ref was baked on a different machine than the one validating it, so the current
+# TMPDIR/gettempdir() roots do not match. Anchored with surrounding slashes so a legitimate
+# folder like ".../mytmp/" (no leading slash before "tmp") is never matched.
+_TEMP_PATH_FRAGMENTS = (
+    "/appdata/local/temp/",   # Windows per-user temp
+    "/windows/temp/",         # Windows system temp
+    "/tmp/",                  # POSIX temp
+    "/var/tmp/",              # POSIX persistent temp
+    "/var/folders/",          # macOS per-user temp
+    "/private/var/folders/",  # macOS per-user temp (resolved)
+)
+
+
+def _temp_roots():
+    """Absolute, normcased OS temp roots for this machine (env overrides + gettempdir)."""
+    roots = []
+    for var in ("TMPDIR", "TEMP", "TMP"):
+        val = os.environ.get(var)
+        if val:
+            roots.append(val)
+    try:
+        roots.append(tempfile.gettempdir())
+    except Exception:
+        pass
+    out = []
+    for r in roots:
+        try:
+            out.append(os.path.normcase(os.path.abspath(r)))
+        except Exception:
+            pass
+    return out
+
+
+def _is_temp_path(target):
+    """True when an absolute filesystem path resolves inside an OS temporary directory,
+    which the OS may delete at any time - a baked companion path there is a handoff hazard."""
+    if not target:
+        return False
+    try:
+        norm = os.path.normcase(os.path.abspath(target))
+    except Exception:
+        return False
+    for root in _temp_roots():
+        if norm == root or norm.startswith(root + os.sep):
+            return True
+    posix = target.replace("\\", "/").lower()
+    return any(frag in posix for frag in _TEMP_PATH_FRAGMENTS)
+
+
+def _same_dir(a, b):
+    """True when two directory paths are the same location (case-normalized, absolute)."""
+    if not a or not b:
+        return False
+    try:
+        return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+    except Exception:
+        return False
+
+
 def _nonportable_css_refs(html):
     return [_ref_path(a["href"]) for a in _find_tag_attrs(html, "link")
             if "commentable-html" in a.get("href", "").lower()
@@ -183,14 +244,17 @@ def _check_nonportable(html, base_dir, id_counts):
     # base_dir; when base_dir is None the placement is deferred (e.g. generation-time
     # validation of a not-yet-placed document), so existence is not checked - the
     # structure is still validated.
+    doc_dir = os.path.abspath(base_dir) if base_dir is not None else None
     for ref in css_refs + js_refs:
         if re.match(r"(?:https?:)?//", ref, re.I):
             errors.append('nonportable mode: companion reference "%s" must be a local file, not a remote/CDN URL (the layer must stay self-contained)' % ref)
             continue
         norm = ref.replace("\\", "/")
         file_target = _file_url_to_path(ref)
+        baked_absolute = False
         if file_target is not None:
             target = file_target
+            baked_absolute = True
         elif re.match(r"[a-zA-Z][a-zA-Z0-9+.\-]*:", ref) and not re.match(r"[a-zA-Z]:[\\/]", ref):
             errors.append('nonportable mode: companion reference "%s" must be a local file, not a non-file URL scheme' % ref)
             continue
@@ -198,12 +262,22 @@ def _check_nonportable(html, base_dir, id_counts):
             # Absolute path: usable but leaks a local directory and is not portable.
             warnings.append('nonportable mode: companion reference "%s" is an absolute path (it leaks a local directory and is not portable) - prefer a relative path to the skill dist/ folder' % ref)
             target = os.path.abspath(ref)
+            baked_absolute = True
         elif base_dir is not None:
             # Relative ref resolved against the document folder; a subdirectory or
             # ../ path to the skill dist/ folder is the intended nonportable workflow.
             target = os.path.abspath(os.path.join(os.path.abspath(base_dir), norm))
         else:
             target = None
+        # CMH-VAL-16: a BAKED absolute/file:// companion ref pointing INTO an OS temp
+        # directory that is not the document's own folder is an error, not a soft warning:
+        # the OS reaps the temp dir, so the shared document silently loses its whole layer.
+        # Relative refs bake no absolute location, and a companion sitting beside the
+        # document (even in temp) keeps its existing behavior, so neither is flagged.
+        if baked_absolute and target is not None and _is_temp_path(target) \
+                and not _same_dir(os.path.dirname(target), doc_dir):
+            errors.append('nonportable mode: companion reference "%s" resolves inside a temporary directory, which the OS deletes - the shared document will lose its layer. Export a Portable (single-file) copy, or copy dist/ to a durable folder next to the document' % ref)
+            continue
         if target is not None and (base_dir is not None or file_target is not None) and not os.path.exists(target):
             errors.append('nonportable mode: referenced companion file not found: %s (point the <link>/<script src> at the skill dist/ folder, or copy dist/ next to the document)' % ref)
 
