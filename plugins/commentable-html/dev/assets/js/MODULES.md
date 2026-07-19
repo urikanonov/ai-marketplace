@@ -39,7 +39,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `50-sidebar.js` | CMH-SIDE | Sidebar rendering. |
 | `51-comment-search.js` | CMH-SEARCH | Comment search / filter row: case-insensitive filter of the rendered cards, shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
-| `53-comment-popover.js` | CMH-CORE | Inline on-screen comment dialog opened from the hover bubble (note + Edit button; outside click closes and is swallowed). |
+| `53-comment-popover.js` | CMH-CORE | Inline on-screen comment dialog opened from the hover bubble (note + Edit button; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |

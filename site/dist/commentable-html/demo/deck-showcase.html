@@ -8381,12 +8381,11 @@ function setupSidebarResize() {
 /* ---------- Inline comment dialog (opened from the hover bubble) ----------
    Clicking the hover bubble opens a small on-screen dialog next to the highlight showing the
    comment note and an Edit button (which opens the composer for that comment). A click anywhere
-   else closes the dialog and is swallowed, so the outside click performs no other action (for
-   example it does not follow a link the highlight sits on). The sidebar jump still runs alongside
-   this from 52-hover-bubble.js. */
+   else closes the dialog; a pointer click there is also swallowed so it performs no other action
+   (for example it does not follow a link the highlight sits on), while a keyboard-activated click
+   still reaches its target. The sidebar jump still runs alongside this from 52-hover-bubble.js. */
 let commentPopover = null;
 let _popoverAnchorMark = null;
-let _popoverOpener = null;
 let _popoverDismiss = null;
 let _popoverKeydown = null;
 
@@ -8417,10 +8416,6 @@ function closeCommentPopover() {
   commentPopover.remove();
   commentPopover = null;
   _popoverAnchorMark = null;
-  // Return focus to whatever had it before the dialog opened, if still connected.
-  const opener = _popoverOpener;
-  _popoverOpener = null;
-  if (opener && opener.isConnected) { try { opener.focus(); } catch (e) {} }
 }
 
 function openCommentPopover(id, mark) {
@@ -8429,8 +8424,6 @@ function openCommentPopover(id, mark) {
   if (!c) return;
   _popoverAnchorMark = mark && root.contains(mark) ? mark : root.querySelector(`mark.cm-hl[data-cid="${id}"]`);
   if (!_popoverAnchorMark) return;
-  _popoverOpener = (document.activeElement && document.activeElement !== document.body
-    && root.contains(document.activeElement)) ? document.activeElement : null;
 
   const el = document.createElement("div");
   el.className = "cm-comment-popover cm-skip";

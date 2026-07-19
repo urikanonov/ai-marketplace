@@ -12,10 +12,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   title as you type; keyboard navigation and the count follow the filter, and reopening the overview
   resets it (CMH-DECK-30).
 - Clicking the "Open comment" hover bubble now also opens an inline on-screen comment dialog next to
-  the highlight, showing the note and an Edit button that opens the composer; a click anywhere else
-  closes the dialog and is swallowed so it performs no other action (for example it does not follow a
-  link the highlight sits on). The existing sidebar jump still happens alongside it (CMH-CORE-16,
-  closes #450).
+  the highlight, showing the note and an Edit button that opens the composer; clicking elsewhere closes
+  the dialog, and a pointer click there is swallowed so it performs no other action (for example it does
+  not follow a link the highlight sits on) while a keyboard activation still reaches its target. The
+  existing sidebar jump still happens alongside it (CMH-CORE-16, closes #450).
 
 ## [1.159.0] - 2026-07-19
 

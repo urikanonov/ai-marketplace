@@ -112,6 +112,11 @@ test.describe("comment interactions", () => {
     await expect(pop.locator('[data-act="edit"]')).toBeVisible();
     // Focus moves into the dialog (its Edit button) on open.
     await expect(pop.locator('[data-act="edit"]')).toBeFocused();
+    // The dialog is a labelled dialog whose note is associated via aria-describedby.
+    await expect(pop).toHaveAttribute("role", "dialog");
+    const noteId = await pop.locator(".cm-comment-popover-note").getAttribute("id");
+    expect(noteId).toBeTruthy();
+    expect(await pop.getAttribute("aria-describedby")).toBe(noteId);
 
     // The existing sidebar jump still fires alongside the dialog.
     await expect(page.locator(".cm-card.active")).toContainText("inline dialog note");
