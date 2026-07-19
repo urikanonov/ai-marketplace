@@ -178,6 +178,43 @@ test("CMH-DECK-EXPORT-01: Export Offline keeps the deck mermaid + chart live, va
     // rather than visible while the first slide is active.
     await expect(page2.locator("#commentRoot pre.mermaid svg").first()).toBeAttached();
     expect(await page2.locator("#commentRoot pre.mermaid svg g").count()).toBeGreaterThan(0);
+    // CMH-MMD-08: deck node labels stay fully visible after Export Offline too - the offline mermaid
+    // re-init renders a deck with SVG <text> labels (htmlLabels:false), which scale with the stage and
+    // do not clip. Navigate to the diagram slide and assert every label fits its node box.
+    const mmdSlideId = await page2.locator("pre.mermaid").first().evaluate((el) => el.closest(".slide").dataset.slideId);
+    await page2.evaluate((id) => window.__cmhDeck.showSlideById(id), mmdSlideId);
+    await expect.poll(() => page2.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    const offlineClipped = await page2.evaluate(() => {
+      const svg = document.querySelector(".slide.active pre.mermaid svg");
+      const clipped = [];
+      let nodeForeignObjects = 0;
+      let edgeForeignObjects = 0;
+      svg.querySelectorAll("g.node").forEach((node) => {
+        const text = (node.textContent || "").trim();
+        if (node.querySelector("foreignObject")) nodeForeignObjects += 1;
+        const div = node.querySelector("foreignObject div");
+        if (div && div.scrollWidth - div.clientWidth > 1) {
+          clipped.push({ text, over: div.scrollWidth - div.clientWidth });
+          return;
+        }
+        const label = node.querySelector("text.nodeLabel, .nodeLabel, text");
+        const shape = node.querySelector("rect, polygon, circle, ellipse");
+        if (label && shape && label.getBBox && shape.getBBox && label.getBBox().width > shape.getBBox().width + 2) {
+          clipped.push({ text, labelWidth: Math.round(label.getBBox().width), shapeWidth: Math.round(shape.getBBox().width) });
+        }
+      });
+      svg.querySelectorAll("g.edgeLabel").forEach((edge) => {
+        if (edge.querySelector("foreignObject")) edgeForeignObjects += 1;
+        const div = edge.querySelector("foreignObject div");
+        if (div && div.scrollWidth - div.clientWidth > 1) {
+          clipped.push({ text: (edge.textContent || "").trim(), mode: "edge", over: div.scrollWidth - div.clientWidth });
+        }
+      });
+      return { clipped, nodeForeignObjects, edgeForeignObjects };
+    });
+    expect(offlineClipped.nodeForeignObjects, "offline deck node labels must be SVG <text>, not foreignObject").toBe(0);
+    expect(offlineClipped.edgeForeignObjects, "offline deck edge labels must be SVG <text>, not foreignObject").toBe(0);
+    expect(offlineClipped.clipped, "clipped offline deck labels: " + JSON.stringify(offlineClipped.clipped)).toEqual([]);
     const chartState = await page2.evaluate(() => {
       const canvas = document.getElementById("showcaseChart");
       if (!canvas) return null;

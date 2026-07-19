@@ -131,6 +131,15 @@ function mermaidNodeKey(nodeEl) {
   return "label:";
 }
 function mermaidNodeLabel(nodeEl) {
+  // Mermaid SVG <text> labels (htmlLabels:false, used for decks) split a wrapped label into per-line
+  // `tspan.text-outer-tspan` rows with NO separator between them, so a plain textContent read drops the
+  // space at each wrap point ("exact spot" -> "exactspot"). Rejoin the rows with a space so the label
+  // used for the anchor key, the comment quote, and Copy all matches the rendered words. HTML labels
+  // (reports) have no such rows and fall through to textContent unchanged.
+  const rows = nodeEl.querySelectorAll ? nodeEl.querySelectorAll("tspan.text-outer-tspan") : null;
+  if (rows && rows.length > 1) {
+    return Array.from(rows).map(r => (r.textContent || "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  }
   return (nodeEl.textContent || "").trim().replace(/\s+/g, " ");
 }
 function findMermaidNode(diagramIndex, nodeKey) {
@@ -145,6 +154,16 @@ function findMermaidNode(diagramIndex, nodeKey) {
     const want = nodeKey.slice(6);
     for (const n of candidates) {
       if (mermaidNodeLabel(n) === want) return n;
+    }
+    // Whitespace-insensitive fallback: an anchor saved before a diagram switched between HTML labels
+    // (report) and SVG <text> labels (deck) can differ ONLY in wrap-point spacing (for example an old
+    // "You comment on the exact spot" vs a rendered "exactspot", or the reverse). Match on the
+    // space-stripped label so such comments still re-anchor and keep their ring/jump across the change.
+    const wantStripped = want.replace(/\s+/g, "");
+    if (wantStripped) {
+      for (const n of candidates) {
+        if (mermaidNodeLabel(n).replace(/\s+/g, "") === wantStripped) return n;
+      }
     }
   }
   if (nodeKey && nodeKey.startsWith("id:")) {

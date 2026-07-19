@@ -44,7 +44,11 @@ The skill does **not** load mermaid. The host page must include a mermaid script
  try {
  const m = (await import("./vendor/mermaid.esm.min.mjs")).default;
  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
- m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+ // A deck (a `.deck-stage` document) renders its slides inside a CSS-scaled stage; mermaid's HTML
+ // (foreignObject) labels re-flow against that scale and clip, so a deck uses SVG <text> labels
+ // (htmlLabels:false). Reports keep the richer HTML labels.
+ const htmlLabels = !document.querySelector(".deck-stage");
+ m.initialize({ startOnLoad: false, theme, securityLevel: "strict", htmlLabels, flowchart: { htmlLabels, curve: "basis" } });
  if (document.readyState === "loading") {
  document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
  } else {

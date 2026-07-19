@@ -35,7 +35,13 @@
     try {
       const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@{{MERMAID_VERSION}}/dist/mermaid.esm.min.mjs")).default;
       const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
+      // A deck renders its slides inside a CSS-scaled 1920x1080 stage (transform: scale). mermaid's
+      // default HTML labels live in a <foreignObject>, whose HTML Chromium re-lays-out against that
+      // scaled context, so a node box sized from the unscaled measurement is too small and wider labels
+      // clip mid-word. SVG <text> labels (htmlLabels:false) scale with the diagram and never re-flow, so
+      // a deck renders correctly; non-deck documents keep the richer HTML labels (line breaks, entities).
+      const htmlLabels = !document.querySelector(".deck-stage");
+      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", htmlLabels, flowchart: { htmlLabels, curve: "basis" } });
       const isHidden = (el) => !(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
       // mermaid shares internal state across renders, so serialize every render on one chain to avoid
       // the corruption that appears when many diagrams render at once.
