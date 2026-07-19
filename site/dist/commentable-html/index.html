@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.171.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.172.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -426,12 +426,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.172.0] - 2026-07-19</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Deck mermaid node/edge labels no longer clip mid-word (CMH-MMD-08). A deck renders its slides inside a CSS-scaled 1920x1080 stage, and mermaid&#x27;s default HTML (<code>&lt;foreignObject&gt;</code>) labels are re-laid-out by the browser against that scale, so a node box sized from the unscaled measurement is too small and wider labels (for example <code>You comment on the exact spot</code>) were cut off. On a deck the mermaid loader now initializes with <code>htmlLabels: false</code>, rendering labels as SVG <code>&lt;text&gt;</code> that scales with the diagram and never re-flows, so every label stays fully visible inside its node box. Reports keep the richer HTML labels. The same choice is applied by the live loader and the Export Offline re-init.</li>
+              <li>Deck mermaid comment labels keep the space at a wrapped-line boundary. mermaid splits an SVG <code>&lt;text&gt;</code> label into per-line <code>tspan</code> rows with no separator, so the anchor key, comment quote, and Copy all had dropped the wrap-point space (<code>exact spot</code> -&gt; <code>exactspot</code>); <code>mermaidNodeLabel()</code> now rejoins the rows with a space.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.171.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Link handling for author-facing references (CMH-LINK-01..04): at render time every external <code>&lt;a href&gt;</code> in the document is stamped <code>target=&quot;_blank&quot;</code> + <code>rel=&quot;noopener noreferrer&quot;</code> so a reference opens in a new tab and the reader keeps their place (same-page <code>#</code> fragments, <code>.cm-skip</code> UI chrome, and <code>javascript:</code> links are left untouched, and an author-set <code>target</code> is respected). Each link is now commentable like an image or mermaid node: hovering or keyboard-focusing a link reveals a floating <code>Add Comment</code> affordance that anchors an <code>anchorType: &quot;link&quot;</code> comment to that link (by index + href/text) without navigating - a normal click (or Enter) still follows the link, while the floating button or the non-navigating <code>Alt+Enter</code> chord opens the composer. Links are classified by their normalized protocol (only <code>http</code>/<code>https</code>/<code>file</code>), so control-char-obfuscated <code>javascript:</code>, <code>mailto:</code>/<code>tel:</code>, and <code>data:</code> links are never stamped or made commentable, and the <code>_blank</code> rel-enforcement is case-insensitive (reverse-tabnabbing defense). Link comments ring the link, list a card, flash on jump, and survive reload, Copy all, Export Markdown, and Export Offline.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.170.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -449,8 +459,6 @@
               <li>The top-right site logo sits further into the corner and its tooltip reads just &quot;Commentable HTML&quot; (CMH-DECK-SHOWCASE-10).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.169.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -483,14 +491,7 @@
               <li>Deck hover is smoother (CMH-DECK-21, CMH-DECK-RECIPE-02): table-cell, metric-tile, and reference-pill hovers no longer animate <code>box-shadow</code> (a per-frame repaint) and table cells no longer apply a <code>transform</code> lift (which relayouts the table). Cells ease only the cheap <code>background-color</code> and the highlight ring snaps; tiles and pills keep their lift via the compositor-friendly <code>transform</code>. Sweeping the mouse across a large deck table no longer lags.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.165.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Third-party MIT license notices for the vendored rich-content libraries (mermaid, Chart.js). The upstream license texts are vendored under <code>dev/assets/vendor/*.LICENSE</code>, <code>build.py</code> assembles them into a shipped <code>THIRD_PARTY_NOTICES.md</code> (copied unzipped beside the plugin LICENSE and gated by <code>build.py --check</code>), and <code>Export Offline</code> now embeds each bundled library&#x27;s MIT notice as an HTML comment beside the inlined library, so a redistributed offline artifact carries the required copyright and permission notice.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">142 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">143 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

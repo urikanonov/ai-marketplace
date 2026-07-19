@@ -184,6 +184,173 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
   }
 });
 
+test("CMH-MMD-08: deck Mermaid node labels are fully visible inside their node box", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+
+    const result = await page.evaluate(() => {
+      const svg = document.querySelector(".slide.active pre.mermaid svg");
+      const labels = [];
+      const clipped = [];
+      let nodeForeignObjects = 0;
+      let svgTextLabels = 0;
+      svg.querySelectorAll("g.node").forEach((node) => {
+        const text = (node.textContent || "").trim();
+        if (text) labels.push(text);
+        if (node.querySelector("foreignObject")) nodeForeignObjects += 1;
+        if (node.querySelector("text.nodeLabel, .nodeLabel text, tspan.text-outer-tspan, text")) svgTextLabels += 1;
+        // HTML-label mode: the label lives in a foreignObject whose box mermaid sizes from a width
+        // measurement. Inside a deck's CSS-scaled stage that measurement is wrong, so the box is too
+        // small and the content clips - scrollWidth (content) then exceeds clientWidth (box).
+        const div = node.querySelector("foreignObject div");
+        if (div && div.scrollWidth - div.clientWidth > 1) {
+          clipped.push({ text, mode: "html", over: div.scrollWidth - div.clientWidth });
+          return;
+        }
+        // SVG-<text>-label mode: the rendered label must fit within the node shape (user units, so
+        // the deck's uniform scale cancels out).
+        const label = node.querySelector("text.nodeLabel, .nodeLabel, text");
+        const shape = node.querySelector("rect, polygon, circle, ellipse");
+        if (label && shape && label.getBBox && shape.getBBox) {
+          const lw = label.getBBox().width;
+          const sw = shape.getBBox().width;
+          if (lw > sw + 2) clipped.push({ text, mode: "svg", labelWidth: Math.round(lw), shapeWidth: Math.round(sw) });
+        }
+      });
+      // Issue #476 covers node AND edge labels. Edge labels also drop out of foreignObject under
+      // htmlLabels:false; assert the labeled showcase edge renders and uses SVG text (no foreignObject,
+      // and no clipped foreignObject box).
+      let edgeForeignObjects = 0;
+      const edgeTexts = [];
+      svg.querySelectorAll("g.edgeLabel").forEach((edge) => {
+        if (edge.querySelector("foreignObject")) edgeForeignObjects += 1;
+        const div = edge.querySelector("foreignObject div");
+        if (div && div.scrollWidth - div.clientWidth > 1) {
+          clipped.push({ text: (edge.textContent || "").trim(), mode: "edge-html", over: div.scrollWidth - div.clientWidth });
+        }
+        const t = (edge.textContent || "").trim();
+        if (t) edgeTexts.push(t);
+      });
+      return { labels, clipped, nodeForeignObjects, svgTextLabels, edgeForeignObjects, edgeTexts };
+    });
+
+    // The deck must actually be in the fixed SVG-<text> label mode (htmlLabels:false), not merely
+    // "no clip observed at this viewport": assert node labels carry SVG text and NO foreignObject, so
+    // a regression back to HTML labels fails even if the clip does not reproduce on this browser.
+    expect(result.nodeForeignObjects, "deck node labels must not use a foreignObject").toBe(0);
+    expect(result.svgTextLabels, "deck node labels must be SVG <text>").toBeGreaterThanOrEqual(5);
+    // Edge labels are covered too: the showcase's labeled edge renders and uses SVG text.
+    expect(result.edgeForeignObjects, "deck edge labels must not use a foreignObject").toBe(0);
+    expect(result.edgeTexts.some((t) => t.replace(/\s+/g, "").includes("commentonanyelement")),
+      "the labeled showcase edge must render its text").toBe(true);
+    // A known long label from the showcase flowchart must be rendered (SVG <text> wrapping can drop
+    // the space at a wrap point, so compare with whitespace removed)...
+    const normalized = result.labels.map((t) => t.replace(/\s+/g, ""));
+    expect(normalized, "expected the long showcase node label to be rendered")
+      .toContain("Youcommentontheexactspot");
+    // ...and no node or edge label may be clipped by its box.
+    expect(result.clipped, "clipped deck labels: " + JSON.stringify(result.clipped)).toEqual([]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-MMD-08: deck mermaid comment labels preserve spaces across SVG-text wrapping", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+    await enterCommentMode(page);
+
+    // The wrapped node's raw textContent drops the wrap-point space ("You comment on the exactspot"),
+    // so the runtime must rejoin the SVG <text> rows to anchor and label it with the spaced words.
+    const idx = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")];
+      return nodes.findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot"));
+    });
+    expect(idx, "expected the wrapped showcase node to be present").toBeGreaterThanOrEqual(0);
+    const node = page.locator(".slide.active pre.mermaid svg g.node").nth(idx);
+    await node.hover();
+    await expect(page.locator("#mermaidAddBtn")).toBeVisible();
+    await page.locator("#mermaidAddBtn").click();
+    const composer = page.locator(".cm-composer").last();
+    await expect(composer).toBeVisible();
+    await composer.locator("textarea").fill("label spacing check");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+
+    // Copy all quotes the anchored node with its spaces intact, not the space-dropped "exactspot".
+    await page.evaluate(() => document.getElementById("btnCopyAll").click());
+    const bundle = await copiedBundle(page);
+    expect(bundle).toContain("You comment on the exact spot");
+    expect(bundle).not.toContain("exactspot");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches after the label mode change", async ({ page }) => {
+  const server = await openShowcaseDeck(page, { mermaid: true });
+  try {
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+    await enterCommentMode(page);
+
+    const idx = await page.evaluate(() =>
+      [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")]
+        .findIndex((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot")));
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const node = page.locator(".slide.active pre.mermaid svg g.node").nth(idx);
+    await node.hover();
+    await expect(page.locator("#mermaidAddBtn")).toBeVisible();
+    await page.locator("#mermaidAddBtn").click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("legacy anchor");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+    await expect(node).toHaveClass(/cm-mermaid-hl/);
+
+    // Rewrite the persisted anchor to a space-DROPPED label key (the form an SVG-text deck produced
+    // before the rejoin fix, or an HTML deck whose wrapped label concatenated without a space), then
+    // reload. The current rendered/rejoined label keeps the space ("You comment on the exact spot"),
+    // so the exact `label:` match fails and only the whitespace-insensitive fallback can re-anchor it.
+    const rewrote = await page.evaluate(() => {
+      const root = document.getElementById("commentRoot");
+      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
+      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      let changed = false;
+      arr.forEach((c) => {
+        if (c && typeof c.nodeKey === "string" && c.nodeKey.replace(/\s+/g, "") === "label:Youcommentontheexactspot") {
+          c.nodeKey = "label:You comment on the exactspot";
+          changed = true;
+        }
+      });
+      localStorage.setItem(key, JSON.stringify(arr));
+      return changed;
+    });
+    expect(rewrote, "expected a persisted mermaid anchor to rewrite").toBe(true);
+
+    await page.reload();
+    await ready(page);
+    await showSlideWith(page, ".slide pre.mermaid");
+    await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
+    await settle(page);
+
+    const reanchored = await page.evaluate(() =>
+      [...document.querySelectorAll(".slide.active pre.mermaid svg g.node")]
+        .some((n) => (n.textContent || "").replace(/\s+/g, "").includes("Youcommentontheexactspot")
+          && n.classList.contains("cm-mermaid-hl")));
+    expect(reanchored, "the legacy-keyed comment must re-ring its node via the whitespace-insensitive fallback").toBe(true);
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-DECK-10: showcase deck table headers have readable contrast", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {

@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.172.0] - 2026-07-19
+
+### Fixed
+
+- Deck mermaid node/edge labels no longer clip mid-word (CMH-MMD-08). A deck renders its slides inside
+  a CSS-scaled 1920x1080 stage, and mermaid's default HTML (`<foreignObject>`) labels are re-laid-out
+  by the browser against that scale, so a node box sized from the unscaled measurement is too small and
+  wider labels (for example `You comment on the exact spot`) were cut off. On a deck the mermaid loader
+  now initializes with `htmlLabels: false`, rendering labels as SVG `<text>` that scales with the
+  diagram and never re-flows, so every label stays fully visible inside its node box. Reports keep the
+  richer HTML labels. The same choice is applied by the live loader and the Export Offline re-init.
+- Deck mermaid comment labels keep the space at a wrapped-line boundary. mermaid splits an SVG `<text>`
+  label into per-line `tspan` rows with no separator, so the anchor key, comment quote, and Copy all
+  had dropped the wrap-point space (`exact spot` -> `exactspot`); `mermaidNodeLabel()` now rejoins the
+  rows with a space.
+
 ## [1.171.0] - 2026-07-19
 
 ### Added
