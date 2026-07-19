@@ -123,6 +123,31 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertIn('id="commentableHtmlLayer"', html)
         self._strict_clean(out)
 
+    def test_preserves_crlf_line_endings(self):
+        # CMH-TOOL-15: a Windows-authored (CRLF) host file keeps its dominant newline through
+        # the retrofit instead of being silently normalized to LF.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML.replace("\n", "\r\n"))
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host Report", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        raw = _read_bytes(out)
+        self.assertIn(b"\r\n", raw)
+        self.assertNotIn(b"\n", raw.replace(b"\r\n", b""))  # no lone LF introduced
+        self._strict_clean(out)
+
+    def test_keeps_lf_when_lf_is_dominant_despite_a_stray_crlf(self):
+        # CMH-TOOL-15: newline preservation follows the DOMINANT style, not the mere presence of
+        # a CRLF. A mostly-LF host with one stray CRLF stays LF after retrofit.
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML.replace("\n", "\r\n", 1))
+        out = os.path.join(d, "out.html")
+        code, _stdout, stderr = self._run(["retrofit.py", src, "--label", "Host Report", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        raw = _read_bytes(out)
+        self.assertNotIn(b"\r\n", raw)  # dominant LF preserved; the stray CRLF did not win
+        self._strict_clean(out)
+
     def test_kind_is_stamped_and_required(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)

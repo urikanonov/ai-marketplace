@@ -95,6 +95,15 @@ class MinimalPackageTests(unittest.TestCase):
 
 
 class HookWiringTests(unittest.TestCase):
+    # CMH-PKG-13
+    def test_pkg_root_ships_license_matching_repo_root(self):
+        pkg_license = os.path.join(PLUGIN_DIR, "LICENSE")
+        self.assertTrue(os.path.isfile(pkg_license),
+                        "the shipped pkg root must carry a LICENSE covering the hooks: %s" % pkg_license)
+        repo_license = os.path.normpath(os.path.join(PLUGIN_DIR, "..", "..", "..", "LICENSE"))
+        self.assertEqual(_read(pkg_license), _read(repo_license),
+                         "the pkg root LICENSE must match the repository root LICENSE")
+
     def test_extractor_ships_next_to_the_hooks(self):
         self.assertTrue(os.path.isfile(os.path.join(HOOKS, "extract_resources.py")))
 

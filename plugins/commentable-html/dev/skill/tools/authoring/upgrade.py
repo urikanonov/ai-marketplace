@@ -275,6 +275,17 @@ def _read(path):
         return fh.read()
 
 
+def _detect_newline(path):
+    """Return the input's dominant newline ('\\r\\n' or '\\n') from its raw bytes, so a
+    Windows-authored (CRLF) document keeps its line endings through the upgrade instead of
+    being silently normalized to LF by the universal-newline reader."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    crlf = raw.count(b"\r\n")
+    lf = raw.count(b"\n") - crlf
+    return "\r\n" if crlf > lf else "\n"
+
+
 def main(argv):
     p = argparse.ArgumentParser(description="Upgrade a commentable-html file's layer regions from a template.")
     p.add_argument("file", help="the deployed commentable-html file to upgrade")
@@ -290,6 +301,7 @@ def main(argv):
     try:
         target = _read(args.file)
         template = _read(args.template)
+        newline = _detect_newline(args.file)
     except OSError as exc:
         sys.stderr.write("cannot read file: %s\n" % exc)
         return 2
@@ -319,7 +331,7 @@ def main(argv):
     warnings = []
     fd, tmp_path = tempfile.mkstemp(prefix=".cmh-upgrade-", suffix=".html", dir=out_dir)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
             fh.write(new_html)
 
         # Self-check the result with the validator when it is importable, so the
