@@ -272,6 +272,7 @@ function _ensureBadge(heading) {
 function refreshReviewUI() {
   if (IS_DECK || !_reviewReady) return;
   const states = computeSectionStates();
+  const active = _reviewActive(states);
   _cmhReviewHeadings().forEach(function (heading) {
     const info = states.get(heading) || { state: "unreviewed" };
     const badge = _ensureBadge(heading);
@@ -288,8 +289,23 @@ function refreshReviewUI() {
     badge.setAttribute("aria-label", label + " - click to " + action);
     badge.title = badge.getAttribute("aria-label");
   });
-  if (typeof updateTocReviewDots === "function") updateTocReviewDots(states);
-  if (_cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter(_cmReviewFilter, states);
+  if (typeof updateTocReviewMarks === "function") updateTocReviewMarks(states, active);
+  if (active && _cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter(_cmReviewFilter, states);
+}
+
+// The review UI stays dormant until the reviewer actually starts: it activates once the document has
+// at least one comment OR at least one CURRENT section carries a non-unreviewed state (reviewed,
+// changed, or commented). Deriving activation from the computed states - not the raw marker map -
+// means a stale marker for a heading that no longer exists cannot leave the UI stuck active with no
+// way to clear it. Until active, only the hover "Mark reviewed" affordance shows, so a first-time
+// reader sees a clean, un-chromed document.
+function _reviewActive(states) {
+  if (typeof comments !== "undefined" && !!comments && comments.length > 0) return true;
+  const map = states || computeSectionStates();
+  for (const info of map.values()) {
+    if (info && info.state !== "unreviewed") return true;
+  }
+  return false;
 }
 
 function setupSectionReview() {
@@ -307,6 +323,7 @@ if (typeof window !== "undefined") {
     hash: cmhSectionHash,
     markers: function () { return reviewMarkers; },
     refresh: function () { refreshReviewUI(); },
+    active: function () { return _reviewReady && !IS_DECK ? _reviewActive() : false; },
     stateOf: function (id) {
       const el = document.getElementById(id);
       if (!el) return null;
@@ -330,7 +347,15 @@ if (typeof window !== "undefined") {
 function _applyReviewStateToHtml(html) {
   const src = String(html || "");
   const markers = _sanitizeMarkers(reviewMarkers);
-  const json = JSON.stringify(markers, null, 2).replace(/</g, "\\u003c");
+  // Bake only markers whose heading still exists in the current document, so a stale marker for a
+  // deleted section cannot leak its old headingText/reviewedAt/hash into a shared Portable/Offline
+  // copy. Orphan markers already cannot activate the UI (see _reviewActive); this keeps them out of
+  // the exported artifact as well.
+  const present = Object.create(null);
+  _cmhReviewHeadings().forEach(function (h) { if (h && h.id) present[h.id] = true; });
+  const live = Object.create(null);
+  Object.keys(markers).forEach(function (id) { if (present[id]) live[id] = markers[id]; });
+  const json = JSON.stringify(live, null, 2).replace(/</g, "\\u003c");
   let doc;
   try { doc = new DOMParser().parseFromString(src, "text/html"); } catch (e) { return html; }
   if (!doc || !doc.documentElement) return html;

@@ -42,15 +42,25 @@ h5:focus-within > .cmh-review-unreviewed, h6:focus-within > .cmh-review-unreview
 .cmh-review-changed { color: var(--cmh-review-changed); background: var(--cmh-review-changed-soft); border-color: var(--cmh-review-changed-border); }
 .cmh-review-commented { color: var(--cmh-review-commented); background: var(--cmh-review-commented-soft); border-color: var(--cmh-review-commented-border); }
 
-/* Side-TOC per-entry state dot, painted by refreshReviewUI(). */
-.cmh-toc-dot { display: inline-block; width: 0.5em; height: 0.5em; border-radius: 50%; margin-right: 0.45em; vertical-align: middle; background: transparent; border: 1px solid var(--cp-border, #ccc); }
-.cmh-toc-dot-reviewed { background: var(--cmh-review-ok); border-color: var(--cmh-review-ok); }
-.cmh-toc-dot-changed { background: var(--cmh-review-changed); border-color: var(--cmh-review-changed); }
-.cmh-toc-dot-commented { background: var(--cmh-review-commented); border-color: var(--cmh-review-commented); }
-.cmh-toc-dot-unreviewed { background: transparent; }
+/* Side-TOC per-entry single-character status mark, painted by updateTocReviewMarks() once the review
+   UI is active. The letter is a ::after pseudo-element so it never enters the TOC link text. */
+.cmh-toc-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; width: 1.15em; height: 1.15em; margin-right: 0.45em; vertical-align: middle;
+  font-size: 0.62rem; font-weight: 700; line-height: 1; letter-spacing: 0;
+  border-radius: 0.28em; border: 1px solid var(--cp-border, #ccc);
+  background: transparent; color: var(--cp-text-soft, #666);
+}
+.cmh-toc-mark::after { content: attr(data-cmh-mark); }
+.cmh-toc-mark-reviewed { color: var(--cmh-review-ok); border-color: var(--cmh-review-ok-border); background: var(--cmh-review-ok-soft); }
+.cmh-toc-mark-changed { color: var(--cmh-review-changed); border-color: var(--cmh-review-changed-border); background: var(--cmh-review-changed-soft); }
+.cmh-toc-mark-commented { color: var(--cmh-review-commented); border-color: var(--cmh-review-commented-border); background: var(--cmh-review-commented-soft); }
+.cmh-toc-mark-unreviewed { background: transparent; }
 
-/* The segmented review filter in the side-TOC head. */
+/* The segmented review filter in the side-TOC head. Hidden until the review UI is active (its
+   `hidden` attribute must win over the base display:flex, hence the attribute-qualified rule). */
 .cm-side-toc-review { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0 0 0.4rem; }
+.cm-side-toc-review[hidden] { display: none; }
 .cm-side-toc-review-btn {
   flex: 1 1 auto; min-width: fit-content;
   font-size: 0.68rem; font-weight: 600; padding: 0.15rem 0.4rem;

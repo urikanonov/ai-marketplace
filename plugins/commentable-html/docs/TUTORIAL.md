@@ -132,7 +132,7 @@ Every section heading carries a small review badge so you can mark sections as y
 
 1. Widen the browser window to at least 1400px. A generated section navigation appears on the left (separate from the author Contents list near the top) and highlights the section you are reading.
 2. The nav has a search box at the top: type to filter the section list down to matching headings.
-3. Below it, a review-status filter (All / Reviewed / Unreviewed / Commented / Changed) narrows the list to sections in that state, and a status dot next to each entry shows its review state. Use it with the per-section badges from the previous step to jump straight to what still needs attention.
+3. Below it, once you have marked a section reviewed or added a comment, a review-status filter (All / Reviewed / Unreviewed / Commented / Changed) appears and narrows the list to sections in that state, and a single-character status badge next to each entry shows its review state (R reviewed, C commented, ! changed, hollow unreviewed). Until you start reviewing, these controls stay out of the way. Use them with the per-section badges from the previous step to jump straight to what still needs attention.
 4. The nav buttons let you **Expand All** or **Collapse All** sections at once and **Scroll to Top** or **Scroll to Bottom** of the document. In the document itself, each section title also has a small caret to its left: click the caret to collapse or expand that one section (clicking a collapsed section's title expands it again).
 
 ![The left section navigation with its search box, review-status filter, and expand/collapse and scroll controls](assets/garden-11-side-toc.png)

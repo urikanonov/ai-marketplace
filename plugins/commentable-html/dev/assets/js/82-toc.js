@@ -140,6 +140,7 @@ const _cmSectionEntries = [];
 let _cmTocItems = [];
 let _cmTocLinks = [];
 let _cmReviewFilterBtns = null;
+let _cmReviewFilterEl = null;
 function setupCollapsibleSections() {
   _cmSectionToggles.length = 0;
   _cmSectionEntries.length = 0;
@@ -259,6 +260,10 @@ function setupSideToc() {
   reviewFilter.className = "cm-side-toc-review cm-skip";
   reviewFilter.setAttribute("role", "group");
   reviewFilter.setAttribute("aria-label", "Filter sections by review state");
+  // Dormant by default: the filter is revealed by updateTocReviewMarks() once the review UI is active
+  // (a section is marked reviewed or the first comment is added), so a first-time reader never sees it.
+  reviewFilter.hidden = true;
+  _cmReviewFilterEl = reviewFilter;
   _cmReviewFilterBtns = {};
   [["all", "All"], ["reviewed", "Reviewed"], ["unreviewed", "Unreviewed"], ["commented", "Commented"], ["changed", "Changed"]]
     .forEach(function (pair) {
@@ -473,21 +478,45 @@ function _resetReviewFilterUI() {
     });
   }
 }
-function updateTocReviewDots(states) {
+// Single-character status marks shown next to each side-TOC entry once the review UI is active.
+// The letter is rendered as a CSS pseudo-element (data-cmh-mark) so it never enters the TOC link
+// text that search and deep-links read. Unreviewed is a hollow badge (no letter).
+const _CMH_TOC_MARK_CHAR = { reviewed: "R", commented: "C", changed: "!", unreviewed: "" };
+function updateTocReviewMarks(states, active) {
+  // The segmented filter appears only when active; when dormant, hide it and reset any lingering
+  // filter to All so no section is left collapsed behind a control the reader can no longer see.
+  if (_cmReviewFilterEl) {
+    _cmReviewFilterEl.hidden = !active;
+    if (!active && _cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter("all");
+  }
   if (!_cmTocLinks || !_cmTocLinks.length) return;
   for (let i = 0; i < _cmTocLinks.length; i++) {
     const a = _cmTocLinks[i];
     const item = _cmTocItems[i];
-    let dot = a.querySelector(":scope > .cmh-toc-dot");
-    if (!dot) {
-      dot = document.createElement("span");
-      dot.className = "cmh-toc-dot";
-      dot.setAttribute("aria-hidden", "true");
-      a.insertBefore(dot, a.firstChild);
+    let mark = a.querySelector(":scope > .cmh-toc-mark");
+    if (!active) { if (mark) mark.remove(); continue; }
+    if (!mark) {
+      mark = document.createElement("span");
+      mark.className = "cmh-toc-mark";
+      a.insertBefore(mark, a.firstChild);
     }
     const info = (item && item.el) ? states.get(item.el) : null;
     const state = info ? info.state : "unreviewed";
-    dot.className = "cmh-toc-dot cmh-toc-dot-" + state;
+    const label = state.charAt(0).toUpperCase() + state.slice(1);
+    mark.className = "cmh-toc-mark cmh-toc-mark-" + state;
+    mark.dataset.cmhMark = _CMH_TOC_MARK_CHAR[state] || "";
+    mark.title = label;
+    // Announce a meaningful status to screen readers (the letter is a CSS pseudo-element, so a plain
+    // title/aria-hidden would be inaudible); the neutral "unreviewed" hollow mark stays decorative.
+    if (state === "unreviewed") {
+      mark.setAttribute("aria-hidden", "true");
+      mark.removeAttribute("role");
+      mark.removeAttribute("aria-label");
+    } else {
+      mark.removeAttribute("aria-hidden");
+      mark.setAttribute("role", "img");
+      mark.setAttribute("aria-label", label);
+    }
   }
 }
 

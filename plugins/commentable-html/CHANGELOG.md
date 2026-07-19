@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.159.0] - 2026-07-19
+
+### Changed
+
+- Section review now stays out of the way until you start reviewing: the per-section review badges
+  and the side table-of-contents review-status filter are dormant on a freshly opened document and
+  activate only after you mark a section reviewed or add the first comment (the hover "Mark reviewed"
+  affordance on any heading remains available as the entry point). Each side-TOC entry now shows a
+  single-character status badge - R (reviewed), C (commented), ! (changed), or a hollow badge for
+  unreviewed - rendered as a pseudo-element so it never pollutes the entry text. The reviewed state
+  continues to bake into Portable and Offline exports and now re-activates the review UI when an
+  exported file is reopened. Export also prunes markers for headings that no longer exist, so a shared
+  copy never carries stale review metadata for a removed section.
+
 ## [1.158.0] - 2026-07-19
 
 ### Fixed

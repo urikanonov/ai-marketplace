@@ -58,9 +58,6 @@ test("a pre-feature document gains a working section-review UI after upgrade.py 
   await page.goto(fileUrl(target));
   await ready(page);
   expect(await page.evaluate(() => typeof window.__cmhReview)).toBe("object");
-  // Assert the side-TOC review filter is actually VISIBLE (not merely attached): the swapped-in CSS
-  // must render it, which is the user-facing promise of the feature reaching an upgraded document.
-  await expect(page.locator(".cm-side-toc-review")).toBeVisible();
   // The upgrade brings the runtime but never re-adds document state, so the upgraded file carries
   // NO baked reviewedSections block: the feature works purely from the swapped-in runtime. Assert on
   // the parsed DOM (robust to attribute quoting/order), not a single serialization of the raw text.
@@ -78,6 +75,9 @@ test("a pre-feature document gains a working section-review UI after upgrade.py 
   await badge.click();
   await expect(badge).toHaveClass(/cmh-review-reviewed/);
   expect(await page.evaluate((i) => window.__cmhReview.stateOf(i), id)).toBe("reviewed");
+  // Marking a section reviewed activates the (dormant-until-first-review) UI: the swapped-in CSS now
+  // renders the side-TOC review filter, the user-facing promise of the feature reaching the document.
+  await expect(page.locator(".cm-side-toc-review")).toBeVisible();
 
   // The marker persists across reload (localStorage), proving the feature is fully live post-upgrade.
   await page.reload();
