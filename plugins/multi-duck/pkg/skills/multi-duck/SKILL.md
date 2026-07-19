@@ -103,8 +103,10 @@ Find the HTML artifacts that represent an in-flight plan and, crucially, extract
 **Where to look** (stop at the first non-empty hit, widen only if needed):
 1. `<scratch>/` (this session's artifacts).
 2. The current working directory and its subdirectories.
-3. The user's Downloads folder (`$env:USERPROFILE\Downloads` on Windows, `$HOME/Downloads` on macOS and Linux) - the commentable-html **Save in HTML** button downloads there. Rank by most-recently-modified and only take files that match the commentable markers below, so you do not pull in unrelated HTML.
-4. Any explicit path/URL in `target` or `guidance`. If `target` is a URL, download it to a local temp file first - the extractor reads a local file path, not a URL.
+3. Any explicit path/URL in `target` or `guidance`. If `target` is a URL, download it to a local temp file first - the extractor reads a local file path, not a URL.
+4. A commentable HTML this session clearly produced or opened - one named in this chat/session transcript (for example an artifact the `commentable-html` skill just generated, or a file the user explicitly pointed at earlier in this conversation). Use it only when the transcript makes it unambiguous which file is meant.
+
+Do NOT auto-select an arbitrary document from the user's Downloads folder (or anywhere else) by most-recently-modified. The newest file in Downloads is very often unrelated to the review, and feeding it to several models would disclose an unrelated document. If none of the sources above yields a clearly-intended target, STOP and ASK the user which document or target to review (open a prompt / ask them to name or paste the path) rather than reaching into Downloads or guessing.
 
 **How to recognize a commentable HTML plan** (grep for any of):
 - `BEGIN: commentable-html v2` banner comments.
@@ -118,85 +120,12 @@ A plain (non-commentable) HTML plan still counts if it is clearly an in-flight d
 - The **open inline comments**: parse the JSON array in `<script id="embeddedComments">` and the JSON array in `<script id="handledCommentIds">`; the **open** set is every embedded comment whose `id` is NOT in `handledCommentIds`. Each open comment carries a heading path (`where`), the quoted/anchored text (or a mermaid `diagram + node`), and the reviewer's note. These are the human review comments already on the plan - the panel must treat them like PR reviewer comments: do not re-flag them, and do weigh them as known concerns.
 - The `data-doc-source` (which source file, if any, the HTML backs) and `data-doc-label`.
 
-Use a small extractor rather than eyeballing the HTML. Save this as `<scratch>/multi-duck/extract_comments.py` and run `python <scratch>/multi-duck/extract_comments.py <path-to-file.html>`, passing both paths as literal argv arguments rather than building a shell string (if you must use a shell, single-quote each path and escape embedded single quotes - double quotes do NOT stop `$()`/backtick substitution). If `python` is not found, try `python3` or `py`. This stays portable across hosts and operating systems, unlike a shell here-string:
+Use the extractor shipped with this skill rather than eyeballing the HTML or rehydrating a parser from this document. The skill bundles it at `tools/extract_open_comments.py`; resolve the skill's own directory the way your host locates plugin files and run that file:
 
-```python
-import json, re, sys
-from html.parser import HTMLParser
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
-html = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+- **Claude Code**: it is at `${CLAUDE_PLUGIN_ROOT}/skills/multi-duck/tools/extract_open_comments.py`.
+- **GitHub Copilot CLI**: it sits in this skill's own directory (the folder that contains this `SKILL.md`), at `tools/extract_open_comments.py` beside it; use that absolute path.
 
-def script_json(idv):
-    # Require a whitespace-delimited id so data-id / aria-id decoys cannot match.
-    m = re.search(r'<script\b[^>]*\sid\s*=\s*["\']%s["\'][^>]*>(.*?)</script>' % re.escape(idv),
-                  html, re.I | re.S)
-    if not m:
-        return []
-    try:
-        data = json.loads(m.group(1).strip() or "[]")
-    except Exception:
-        return []
-    return data if isinstance(data, list) else []
-
-def cid(c):
-    i = c.get("id")
-    return i if isinstance(i, (str, int)) else None
-
-embedded = [c for c in script_json("embeddedComments") if isinstance(c, dict)]
-handled = {i for i in script_json("handledCommentIds") if isinstance(i, (str, int))}
-open_c = [c for c in embedded if cid(c) not in handled]
-
-def where(c):
-    if c.get("section"):
-        return c["section"]
-    path = c.get("headingPath")
-    if isinstance(path, list):
-        crumb = " > ".join(h.get("text", "") for h in path if isinstance(h, dict))
-        if crumb:
-            return crumb
-    return c.get("where") or c.get("anchor") or ""
-
-class _Doc(HTMLParser):
-    # HTMLParser ignores <!-- comments -->, so a commented-out demo #commentRoot is skipped for free.
-    VOID = {"area","base","br","col","embed","hr","img","input","link","meta","param","source","track","wbr"}
-    def __init__(self, root_id=None, root_tag=None):
-        super().__init__(); self.parts = []; self._stack = []; self._skip = 0
-        self.root_id = root_id; self.root_tag = root_tag; self._cap = None
-        self.label = ""; self.source = ""
-    def handle_starttag(self, tag, attrs):
-        if tag in ("script", "style"): self._skip += 1
-        if tag not in self.VOID:
-            self._stack.append(tag)
-            a = dict(attrs)
-            if self._cap is None and (a.get("id") == self.root_id or tag == self.root_tag):
-                self._cap = len(self._stack)
-                self.label = a.get("data-doc-label") or self.label
-                self.source = a.get("data-doc-source") or self.source
-    def handle_endtag(self, tag):
-        if tag in ("script", "style") and self._skip: self._skip -= 1
-        if tag not in self.VOID and self._stack:
-            if self._cap is not None and self._cap == len(self._stack): self._cap = None
-            self._stack.pop()
-    def handle_data(self, data):
-        if not self._skip and self._cap is not None and data.strip():
-            self.parts.append(data.strip())
-
-root = _Doc(root_id="commentRoot"); root.feed(html)
-text = " ".join(root.parts)
-if not text:
-    body = _Doc(root_tag="body"); body.feed(html); text = " ".join(body.parts)
-
-print("LABEL:", root.label); print("SOURCE:", root.source)
-print("OPEN_COMMENTS:", len(open_c), "of", len(embedded), "embedded")
-for c in open_c:
-    quote = (c.get("quote") or c.get("nodeLabel") or "")[:200]
-    note = c.get("note") or c.get("text") or ""
-    print(f'- [{cid(c)}] {where(c)} | quoted: {quote!r} | note: {note}')
-print("PLAN_TEXT:", text[:200000])
-```
+Run it as `python <skill-dir>/tools/extract_open_comments.py <path-to-file.html>`, passing the HTML path as a literal argv argument rather than building a shell string (if you must use a shell, single-quote the path and escape embedded single quotes - double quotes do NOT stop `$()`/backtick substitution). If `python` is not found, try `python3` or `py`. The script is standard-library only, so it stays portable across hosts and operating systems. It prints `LABEL:`, `SOURCE:`, an `OPEN_COMMENTS: <n> of <m> embedded` count, one `- [id] where | quoted: ... | note: ...` line per OPEN comment (embedded minus handled), and the rendered `PLAN_TEXT:`. If, and only if, the shipped file cannot be resolved (an unusual install), fall back to a small equivalent extractor you write to `<scratch>/multi-duck/extract_open_comments.py`: parse the `<script id="embeddedComments">` and `<script id="handledCommentIds">` JSON arrays, take the open set as embedded comments whose `id` is not in the handled ids, and render the `#commentRoot` text (falling back to `<body>`) with the script/style content skipped.
 
 Adapt field names if the file uses different keys (open the `embeddedComments` block and read the first object's keys). Copy the emitted `PLAN_TEXT` (the rendered plan) plus this open-comments list into `context.md`, one block per HTML plan.
 

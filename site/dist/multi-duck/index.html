@@ -89,7 +89,7 @@
           <a class="btn" href="#how">How it works</a>
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">View source</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.0.1<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.0.2<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -249,12 +249,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.0.2] - 2026-07-19</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Targetless runs no longer auto-select the newest matching HTML from the user&#x27;s Downloads folder. The panel now reviews only a target that is explicit in the invocation or clearly identified by the current session; if none is clear, it stops and asks the user which document to review instead of reaching into Downloads.</li>
+              <li>The commentable-HTML open-comments extractor is now a shipped script (<code>tools/extract_open_comments.py</code>) that the skill runs by resolving the plugin root, rather than a full parser listing rehydrated from SKILL.md on every activation. Behavior is unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.0.1] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The shipped plugin package now includes the MIT license text.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 1 older release</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.0.0]</h3></div>
             <ul>
@@ -264,6 +274,7 @@
               <li>Dual-host: runs on both Claude Code and the GitHub Copilot CLI, with a host mapping for the reviewer subagent, per-duck model selection, parallel launch, result collection, and tracking.</li>
             </ul>
           </div>
+          </details>
           <!-- END:changelog -->
         </div>
       </div>
