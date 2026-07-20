@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, lastCopied, addTextComment } from "./helpers.js";
+import { openInline, ready, lastCopied, addTextComment, stageContent, fileUrl } from "./helpers.js";
 
 // Requests column values in the template demo table, keyed by Service, so a test can
 // assert numeric (not lexicographic) ordering.
@@ -53,6 +53,76 @@ test.describe("copy buttons + sortable tables", () => {
     expect(kql.before).toContain("counter(");
     expect(kql.text.trim().startsWith("1")).toBe(false);
   });
+
+  test("code and KQL line gutters stay aligned when the ambient line-height is 'normal' (CMH-CODE-07)", async ({ page }) => {
+    // A container whose line-height is the keyword `normal` - AND a direct `code { line-height:
+    // normal }` theme reset, which beats the inherited <pre> value on the <code> the gutter actually
+    // measures - used to leave getComputedStyle(...).lineHeight === "normal"; setupCodeLineNumbers()
+    // then fell back to a hardcoded 20px per line and the gutter numbers drifted down a tall block.
+    // The pinned numeric line-height on both the code <pre> and its <code> makes the computed value a
+    // stable px so the gutter step tracks the real text line height even against that reset. A large
+    // font makes a `normal` line box clearly taller than the old 20px fallback, so the drift (and its
+    // absence after the fix) is measurable, and over 24 lines any per-line drift is amplified.
+    const codeLines = Array.from({ length: 24 }, (_, i) => `row_${i + 1}=compute(${i + 1});`).join("\n");
+    const kqlLines = Array.from({ length: 24 }, (_, i) => `| where Step==${i + 1}`).join("\n");
+    const nestedLines = Array.from({ length: 24 }, (_, i) => `nested_${i + 1}=step(${i + 1});`).join("\n");
+    const content =
+      "<style>.cmh-lh-probe code { line-height: normal; }</style>"
+      + '<div class="cmh-lh-probe" style="line-height: normal; font-size: 24px;">'
+      + '<pre><code class="language-python">' + codeLines + "</code></pre>"
+      + '<figure class="cmh-kql"><figcaption class="cmh-kql-cap"><span class="cmh-kql-title">Q</span></figcaption>'
+      + '<pre><code class="language-kusto">' + kqlLines + "</code></pre></figure>"
+      // A <code> nested below the <pre> (not a direct child): setupCodeLineNumbers() still measures it
+      // via pre.querySelector("code"), so the pin must reach it as a descendant, not just `> code`.
+      + '<pre class="cmh-nested-probe"><span><code class="language-python">' + nestedLines + "</code></span></pre>"
+      + "</div>";
+    const { html } = stageContent(content, { key: "cmh-code-lineheight-normal" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+
+    for (const sel of ["#commentRoot code.language-python", "#commentRoot figure.cmh-kql code.language-kusto"]) {
+      const code = page.locator(sel).first();
+      await expect(code).toBeVisible();
+      const m = await code.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const gutterLines = [...el.querySelectorAll(".cmh-code-gutter > .cmh-code-line")];
+        const first = parseFloat(gutterLines[0].style.top);
+        const last = parseFloat(gutterLines[gutterLines.length - 1].style.top);
+        const lineH = parseFloat(gutterLines[0].style.height);
+        const step = gutterLines.length > 1 ? (last - first) / (gutterLines.length - 1) : lineH;
+        // Rendered per-line height of the code text itself (a block with no vertical padding).
+        const rendered = el.clientHeight / gutterLines.length;
+        // Cumulative bottom of the gutter (last line top + its height) vs the rendered text height:
+        // a per-line drift of even ~1.5px would compound to tens of px over 24 lines and fail here.
+        const gutterBottom = last + lineH;
+        return { lineHeight: cs.lineHeight, step, rendered, count: gutterLines.length,
+          gutterBottom, clientHeight: el.clientHeight };
+      });
+      expect(m.count).toBe(24);
+      // The pinned CSS line-height means getComputedStyle never returns the keyword `normal` - even
+      // with a direct `code { line-height: normal }` reset - so the gutter never falls back to 20px.
+      expect(m.lineHeight).not.toBe("normal");
+      expect(parseFloat(m.lineHeight)).toBeGreaterThan(0);
+      // The gutter's per-line step matches the computed line-height and the actual rendered text
+      // line height, and its cumulative bottom lands on the block's rendered text height (no drift).
+      expect(Math.abs(m.step - m.rendered)).toBeLessThan(1.5);
+      expect(Math.abs(m.step - parseFloat(m.lineHeight))).toBeLessThan(1.5);
+      expect(Math.abs(m.gutterBottom - m.clientHeight)).toBeLessThan(2);
+    }
+
+    // The nested <code> (measured via pre.querySelector("code")) is pinned as a descendant, so it
+    // computes a numeric px line-height and its gutter never falls back to 20px either.
+    const nested = page.locator("#commentRoot pre.cmh-nested-probe code.language-python").first();
+    await expect(nested).toBeVisible();
+    const n = await nested.evaluate((el) => ({
+      lineHeight: getComputedStyle(el).lineHeight,
+      count: el.querySelectorAll(".cmh-code-gutter > .cmh-code-line").length,
+    }));
+    expect(n.count).toBe(24);
+    expect(n.lineHeight).not.toBe("normal");
+    expect(parseFloat(n.lineHeight)).toBeGreaterThan(0);
+  });
+
 
   test("selection and Copy buttons exclude generated line numbers (CMH-CODE-04)", async ({ page }) => {
     await openInline(page);

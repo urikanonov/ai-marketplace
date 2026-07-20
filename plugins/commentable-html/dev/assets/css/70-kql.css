@@ -44,6 +44,23 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-kql-run:hover { color: 
   background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
   border-radius: 10px; padding: 0.85rem 1rem; overflow-x: auto;
 }
+/* Pin a deterministic numeric line-height on the gutter-bearing code/KQL blocks - both the <pre>
+   and the measured <code> - so the per-line gutter that setupCodeLineNumbers() overlays always
+   reads a stable px line-height from getComputedStyle(target).lineHeight and never falls back to a
+   hardcoded 20px. Without this, a report/deck/theme whose ambient line-height (or a
+   `code { line-height: normal }` reset) leaves the computed value the keyword `normal` makes the JS
+   parseFloat to NaN, so the line numbers sit above the text and drift down a tall block. Value 1.55
+   is the base body line-height (assets/template.shell.html), so there is no visual change to the
+   shipped defaults. The mermaid and diff <pre> are excluded (they are not gutter-bearing, so their
+   own typography is left untouched), and the <code> is covered at a specificity above a bare
+   `code { line-height: ... }` rule so the pin holds even when a theme resets line-height directly on
+   the <code> the gutter measures. The <code> is matched as a descendant (not a direct child) so it
+   still covers the target setupCodeLineNumbers() picks via pre.querySelector("code"), even if the
+   <code> is nested below the <pre>. */
+#commentRoot pre:not(.mermaid):not(.cmh-diff):not(.cmh-diff-raw),
+#commentRoot pre:not(.mermaid):not(.cmh-diff):not(.cmh-diff-raw) code {
+  line-height: 1.55;
+}
 /* Optional author caption/filename line above a standalone code block (data-code-caption
    on the <pre>): a cm-skip bar joined seamlessly to the framed code below it, mirroring the
    KQL caption look. The language pill + Copy button live INSIDE the bar as flex items on the
