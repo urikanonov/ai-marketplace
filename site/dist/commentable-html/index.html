@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.185.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.187.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,12 +451,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.187.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Typing in an editable note (<code>data-cmh-note</code>) no longer freezes a large document. The note <code>input</code> handler used to re-render the whole sidebar synchronously on every keystroke, and that render runs two full-document tree walks (a <code>getTextNodes</code> walk plus the section-review scan), so each keystroke cost O(document) work (hundreds of ms on a report with tens of thousands of text nodes). The typing path now persists the edit synchronously but coalesces a keystroke burst into a single debounced re-render (a note&#x27;s document position does not move while its text is edited). The lightweight UI (portability badge, Copy-all affordance, first-change sidebar auto-open) updates synchronously but only on the note-dirty transition, so a burst does no per-keystroke document scan; per-keystroke cost is bounded independent of document size. Programmatic reset / clear-all still render immediately. (CMH-NOTE-17)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.185.0] - 2026-07-20</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li><code>SKILL.md</code> now opens with a single upfront <code>## Capabilities</code> list (above the detailed Steps) that names the tested tool or contract for every capability - create/retrofit/upgrade, the document kinds (including the flat <code>slides</code> kind vs a real deck), the review surface (including per-section &quot;Mark reviewed&quot; tracking), highlighted code, KQL, diffs, mermaid, charts, images, the layout tools, layered checklists and editable notes fields (scaffold and apply), commentable widgets, animated decks, output modes, and theming (including deck theme presets) - and directs the agent to use the named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed that CMH already supports editable notes fields and considered building its own. A companion <code>## Always validate before handoff (MUST)</code> section states the mandatory <code>finalize.py --strict</code> + <code>validate.py --strict</code> (plus <code>deck_validate.py --strict</code> for decks) pass upfront so it cannot be missed. (CMH-DOC-17)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.182.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -464,8 +473,6 @@
               <li>Saving a text comment on a selection that overlaps an existing text highlight is now rejected with the &quot;Comment was not saved&quot; toast instead of silently nesting a <code>mark.cm-hl</code> inside the existing one. A nested highlight made the OUTER comment effectively unclickable (click/hover/popover handlers resolve to the innermost mark), contradicting CMH-CORE-11. The composer&#x27;s text-save path now runs a <code>rangeOverlapsHighlight</code> pre-check (in <code>assets/js/15-context.js</code>) BEFORE wrapping - it derives each existing highlight&#x27;s LIVE character interval from a single text-node walk and rejects the save when the new selection overlaps one (a half-open test, so it stays correct even when a comment&#x27;s stored offsets are stale relative to the DOM - for example after a table sort leaves a multi-row highlight discontiguous - and a touching, non-overlapping adjacent selection is still allowed). <code>restoreHighlights</code> (<code>assets/js/95-startup.js</code>) applies persisted text comments sorted by start and skips wrapping any whose range overlaps one already highlighted (an O(n) sweep), so a legacy/crafted overlapping set keeps only the first-applied highlight - mirroring the diff sub-range guard - while the overlapping comment stays listed in the sidebar. Editing the existing comment on the same range (CMH-CORE-10) is unaffected (CMH-CORE-11).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.181.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -499,14 +506,7 @@
               <li><code>tools/authoring/upgrade.py</code> now re-emits the shell-baked mermaid loader bootstrap from the template, so the deck label fix (CMH-MMD-08) and any future change to the loader in <code>assets/template.shell.html</code> reach already-generated documents on upgrade (CMH-MMD-09). The bootstrap is baked into the document <code>&lt;head&gt;</code> at scaffold time, OUTSIDE the swappable CSS / COMMENT UI / JS regions, so a region swap alone never touched it: a deck generated before CMH-MMD-08 kept its old bootstrap after an upgrade and its mermaid labels still clipped. The swap replaces the <code>&lt;head&gt;</code> <code>&lt;script type=&quot;module&quot;&gt;</code> mermaid loader (and its <code>&lt;!-- Mermaid loader --&gt;</code> comment); it is scoped to <code>&lt;head&gt;</code> so authored body/CONTENT can never be mistaken for the loader, identifies the loader by a mermaid <code>import(&quot;...mermaid...&quot;)</code> so loaders predating the <code>pre.mermaid, div.mermaid</code> guard match too, preserves a hand-vendored offline loader (a local/relative mermaid import; a protocol-relative <code>//host</code> import counts as remote) rather than re-pointing it at the CDN, is document-kind-agnostic (the <code>.deck-stage</code> gate is a runtime check, so a non-deck report keeps HTML labels) and idempotent, and <code>--check</code> now flags a stale bootstrap. The Export Offline re-init is not shell-baked (it lives in the swapped JS region) and was already refreshed by the JS swap.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.174.0] - 2026-07-19</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Deck mermaid diagrams now scale to fill the available slide AREA using both width and height (contain-to-fit), not just the width (CMH-DECK-35, building on CMH-DECK-26), and are bounded to the slide so they never overflow or clip (even when nested in wrappers). A slide whose only non-text content is a single diagram and that is not laid out as a <code>.cmh-cols-2</code> is auto-detected as a diagram slide (<code>cmh-deck-diagram-slide</code>) and laid out as a flex column, and the runtime sizes the rendered SVG to the largest aspect-preserving box that fits the slide&#x27;s fixed content area. A slide the author laid out as two columns keeps that layout - the automatic rule never flattens a <code>.cmh-cols-2</code>; the opt-in <code>.cmh-slide-diagram</code> recipe forces the fill and un-confines a lone diagram from its half column to the full slide width. The fit recomputes on resize and on slide activation, composes with CMH-MMD-08 (<code>htmlLabels: false</code>) so labels stay crisp, and survives Export Offline.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">150 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">151 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
