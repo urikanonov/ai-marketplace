@@ -31,8 +31,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def discover_test_files(repo_root: Path) -> list[Path]:
-    """Return every plugins/*/dev/tests/test_*.py file, sorted deterministically."""
+def _display_path(p: Path) -> str:
+    """Repo-relative POSIX path for logging, falling back to the raw path if outside."""
+    try:
+        return p.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(p)
+
+
 def discover_test_files(repo_root: Path) -> list[Path]:
     """Return every plugins/*/dev/tests/**/test_*.py file, sorted deterministically.
 
@@ -43,24 +49,40 @@ def discover_test_files(repo_root: Path) -> list[Path]:
     return sorted(files, key=lambda p: p.relative_to(repo_root).as_posix())
 
 
-def check_no_stem_collisions(files: list[Path]) -> None:
-    """Fail LOUDLY if two test files share a basename.
+def discover_importable_modules(repo_root: Path) -> list[Path]:
+    """Return every .py under plugins/*/dev/tests/** (tests AND helper modules).
 
-    The runner loads each test file by its module basename with the tests dir on
-    sys.path (mirroring `unittest discover`), so two files with the same basename in
-    different plugins would resolve to the SAME module - silently running one twice and
-    dropping the other. That is a false green, so refuse to run instead of hiding it.
+    These are the modules that can be imported by bare basename off sys.path when a test
+    does `import _paths` etc., so this is the full set the collision guard must cover.
+    """
+    files = (
+        p for p in repo_root.glob("plugins/*/dev/tests/**/*.py")
+        if "__pycache__" not in p.parts
+    )
+    return sorted(files, key=lambda p: p.relative_to(repo_root).as_posix())
+
+
+def check_no_stem_collisions(files: list[Path]) -> None:
+    """Fail LOUDLY if two modules share a basename.
+
+    The runner loads test files (and, transitively, their helper modules) by bare module
+    basename with the tests dir on sys.path (mirroring `unittest discover`), so two files
+    with the same basename in different plugins would resolve to the SAME module - silently
+    running/importing one and dropping the other. That is a false green, so refuse to run
+    instead of hiding it.
     """
     seen: dict[str, Path] = {}
     for f in files:
         prior = seen.get(f.stem)
         if prior is not None:
             raise SystemExit(
-                "error: duplicate test-file basename across plugin suites would "
-                f"silently drop a suite: {prior} and {f} both import as '{f.stem}'. "
-                "Rename one so every plugins/*/dev/tests test file has a unique basename."
+                "error: duplicate module basename across plugin test dirs would "
+                f"silently mis-resolve an import: {prior} and {f} both import as "
+                f"'{f.stem}'. Rename one so every plugins/*/dev/tests module basename is "
+                "unique."
             )
         seen[f.stem] = f
+
 
 
 def select_shard(files: list[Path], index: int, total: int) -> list[Path]:
@@ -182,9 +204,9 @@ def main(argv: list[str] | None = None) -> int:
         print("error: no plugin Python test suites were discovered "
               "(expected at least one plugins/*/dev/tests/test_*.py)", file=sys.stderr)
         return 1
-    # Loading by basename is only safe when basenames are globally unique; fail loudly
-    # rather than silently dropping a colliding suite.
-    check_no_stem_collisions(all_files)
+    # Loading by basename is only safe when basenames are globally unique across all the
+    # tests-dir modules (tests AND helpers); fail loudly rather than silently mis-resolving.
+    check_no_stem_collisions(discover_importable_modules(REPO_ROOT))
 
     files = all_files
     if args.changed_only:
@@ -198,14 +220,18 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"No changed-plugin Python suites vs {args.base_ref}; nothing to run.")
                 return 0
 
-    files = select_shard(files, index, total)
+    try:
+        files = select_shard(files, index, total)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if not files:
         print(f"Shard {index}/{total}: no test files assigned; nothing to run.")
         return 0
 
     print(f"Shard {index}/{total}: running {len(files)} test file(s):")
     for f in files:
-        print(f"  {f.relative_to(REPO_ROOT).as_posix()}")
+        print(f"  {_display_path(f)}")
 
     suite, load_errors = _load_suite(files)
     runner = unittest.TextTestRunner(verbosity=args.verbose)

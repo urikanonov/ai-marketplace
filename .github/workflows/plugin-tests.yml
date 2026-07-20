@@ -75,18 +75,30 @@ jobs:
             echo "Could not resolve the PR base/head; running the plugin suites (fail-safe)."
             exit 0
           fi
-          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA") || {
+          # Use -z (NUL-separated, unquoted) so a non-ASCII plugin path is not C-quoted to
+          # `"plugins/...` and missed by the ^plugins/ matcher (which would wrongly skip the
+          # suites). A git-diff failure fails SAFE to running.
+          changed=$(git diff --name-only -z "$BASE_SHA...$HEAD_SHA" | tr '\0' '\n') || {
             echo "run_plugin=true" >> "$GITHUB_OUTPUT"
             echo "git diff failed; running the plugin suites (fail-safe)."
             exit 0
           }
           echo "Changed files:"; echo "$changed"
-          if echo "$changed" | grep -Eq '^(plugins/|\.github/workflows/plugin-tests\.yml$|scripts/run_plugin_python_tests\.py$)'; then
+          # Distinguish grep "no match" (exit 1) from a grep ERROR (exit >1). An error must
+          # fail the job (the gate then fails closed), never be misread as "no plugin change".
+          set +e
+          printf '%s\n' "$changed" | grep -Eq '^(plugins/|\.github/workflows/plugin-tests\.yml$|scripts/run_plugin_python_tests\.py$)'
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
             echo "run_plugin=true" >> "$GITHUB_OUTPUT"
             echo "A plugin-affecting file changed; running the plugin suites."
-          else
+          elif [ "$rc" -eq 1 ]; then
             echo "run_plugin=false" >> "$GITHUB_OUTPUT"
             echo "No plugin-affecting file changed; skipping the plugin suites."
+          else
+            echo "::error::could not classify changed files (grep exit $rc)"
+            exit 1
           fi
 
   playwright:
@@ -125,7 +137,7 @@ jobs:
       - name: Install dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts
       - name: Verify committed test fixtures
-        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == '1/4'
+        if: matrix.plugin == 'plugins/commentable-html' && startsWith(matrix.shard, '1/')
         working-directory: .
         run: node plugins/commentable-html/dev/tests/fixtures/generate.mjs --check
       - name: Resolve Playwright cache key inputs
@@ -151,7 +163,7 @@ jobs:
         if: steps.pwcache.outputs.cache-hit == 'true'
         run: npx playwright install chromium
       - name: Save Playwright browser cache
-        if: steps.pwcache.outputs.cache-hit != 'true' && matrix.shard == '1/4'
+        if: steps.pwcache.outputs.cache-hit != 'true' && startsWith(matrix.shard, '1/')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -159,7 +171,7 @@ jobs:
       # The tutorial-screenshot check is not shardable, so run it once (on shard 1 of the
       # commentable-html suite that owns it) instead of in every shard.
       - name: Verify tutorial screenshots (once)
-        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == '1/4'
+        if: matrix.plugin == 'plugins/commentable-html' && startsWith(matrix.shard, '1/')
         run: npm run shots:check
       - name: Run Playwright tests (shard)
         run: npx playwright test "--shard=${SHARD}"

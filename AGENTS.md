@@ -160,9 +160,11 @@ The suite is SHARDED across runners (`playwright test --shard=i/N`), and the plu
 critical path is a fraction of a single serial run. A `changes` job first decides whether the event
 touches a plugin (any `plugins/**` file, this workflow, or the shared Python runner); a PR that does
 not is allowed to SKIP both heavy suites, and the aggregate `plugin-tests` gate treats that
-intentional skip as success (failing SAFE - if the diff cannot be computed, the suites run). The
-`plugin-tests` gate still fails if no plugin test suite is discovered at all, so an accidentally
-removed suite cannot pass silently.
+intentional skip as success (failing SAFE - if the diff cannot be computed, the suites run). The gate
+is otherwise fail-CLOSED: only an explicit `run_plugin=false` from a SUCCESSFUL `changes` job counts as
+a legitimate skip, so a failed or timed-out `changes` job (or any unexpected `run_plugin` value) reds
+the gate instead of silently skipping. The `plugin-tests` gate still fails if no plugin test suite is
+discovered at all, so an accidentally removed suite cannot pass silently.
 
 To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/commentable-html/dev/` for a
 working example):
