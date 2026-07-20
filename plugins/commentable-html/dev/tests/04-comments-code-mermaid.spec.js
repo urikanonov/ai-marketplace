@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import {
   openInline, addTextComment, installClipboardCapture, ready,
-  startStaticServer, routeMermaidLocal, stageInline, stageContent, SKILL,
+  startStaticServer, routeMermaidLocal, stageInline, stageContent, SKILL, EXAMPLES,
 } from "./helpers.js";
 
 test.describe("code comments", () => {
@@ -360,6 +360,39 @@ test.describe("mermaid diagram sizing (report / non-deck)", () => {
     } finally {
       await server.close();
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-10: the shipped report-metrics example renders every gallery diagram at a real size", async ({ page }) => {
+    // The shipped example reports must carry the CANONICAL loader (regen_example re-emits it), so
+    // report-metrics' 7-diagram gallery renders correctly instead of collapsed/tiny/empty (issue
+    // #520). The old naive loader ran every diagram at once (mermaid shared-state corruption) and
+    // never exposed window.__cmhMermaidReady, so awaiting it below fails on the pre-fix example.
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const server = await startStaticServer(EXAMPLES);
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/report-metrics.html");
+      await ready(page);
+      // Only the canonical loader publishes __cmhMermaidReady; await it so the serialized render
+      // chain has finished for every diagram before measuring.
+      await page.waitForFunction(() => window.__cmhMermaidReady, null, { timeout: 20000 });
+      await page.evaluate(() => window.__cmhMermaidReady);
+      const sizes = await page.$$eval("#commentRoot pre.mermaid, #commentRoot div.mermaid", (hosts) =>
+        hosts.map((h) => {
+          const svg = h.querySelector("svg");
+          const vb = svg ? (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number) : [];
+          return { hasSvg: !!svg, viewBoxWidth: vb.length === 4 ? vb[2] : 0 };
+        }));
+      // The gallery has several diagrams and each rendered a non-degenerate SVG (the collapsed/
+      // corrupted render produced a ~16px viewBox or no SVG at all).
+      expect(sizes.length).toBeGreaterThan(1);
+      for (const s of sizes) {
+        expect(s.hasSvg).toBe(true);
+        expect(s.viewBoxWidth).toBeGreaterThan(80);
+      }
+    } finally {
+      await server.close();
     }
   });
 });

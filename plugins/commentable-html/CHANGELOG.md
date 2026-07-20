@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.193.0] - 2026-07-20
+
+### Fixed
+
+- Mermaid diagrams in the shipped example reports (`examples/report-*.html`) no longer render
+  collapsed / tiny / empty with reserved whitespace on the deployed site. `build.py`'s
+  `regen_example` swaps each example's layer regions but had left the mermaid loader
+  `<script type="module">` verbatim from the source, so the examples shipped an OLD naive loader
+  (one `mermaid.run()` over all diagrams at once, which corrupts them via mermaid's shared internal
+  state, and an in-place render of a hidden diagram, which draws a tiny box) even though
+  `dist/PORTABLE.html` carried the fixed canonical loader. `regen_example` now re-emits the canonical
+  loader (serialized render chain + off-screen hidden render) into every example, so a report's
+  diagrams render at a real size. (CMH-MMD-10)
+
 ## [1.191.0] - 2026-07-20
 
 ### Fixed

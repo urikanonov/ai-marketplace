@@ -31,6 +31,7 @@ sys.path.insert(0, TOOLS)
 sys.path.insert(0, _paths.DEV_TOOLS)  # maintainer-only build tool (build.py lives in dev/)
 import build  # noqa: E402  (from dev/tools)
 import validate  # noqa: E402  (from pkg/tools)
+import upgrade  # noqa: E402  (from pkg/tools; for the mermaid-matcher parity test)
 
 # Point build's module globals at the split layout so a no-arg build.build_all() reads the
 # canonical assets from dev/ and targets the shipped outputs under pkg/. The individual tests
@@ -267,6 +268,151 @@ class BuildTests(unittest.TestCase):
             self.assertIn(p, out)
             self.assertIn("mermaid@%s/dist/" % mv, out[p])
             self.assertNotIn("mermaid@9.9.9/dist/", out[p])
+
+    def _loader(self, html):
+        span = build._mermaid_bootstrap_span(html, "<test>")
+        return html[span[0]:span[1]] if span else None
+
+    def test_build_examples_reemits_canonical_mermaid_loader_cmh_mmd_10(self):
+        # regen_example re-emits the CANONICAL mermaid loader (from PORTABLE.html) into every
+        # example, so a shipped report never keeps a stale/naive loader that renders many diagrams
+        # concurrently (mermaid shared-state corruption) or a hidden diagram in place (a tiny/empty
+        # box) - issue #520. A drifted naive loader in the source is replaced by the fixed one.
+        mv = build.read_mermaid_version()
+        version = _read(os.path.join(_paths.DEV, "VERSION")).strip()
+        portable = _read(os.path.join(DIST, "PORTABLE.html"))
+        port_loader = self._loader(portable)
+        # The canonical loader serializes renders and renders hidden diagrams off-screen.
+        self.assertIn("renderHidden", port_loader)
+        self.assertIn("__cmhMermaidReady", port_loader)
+        # Drift a real example's loader to the OLD naive form (one m.run(), no serialization/hidden).
+        naive = (
+            '<!-- Mermaid loader. old naive form -->\n'
+            '<script type="module">\n'
+            '  if (document.querySelector("pre.mermaid, div.mermaid")) {\n'
+            '    const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@%s/dist/mermaid.esm.min.mjs")).default;\n'
+            '    m.initialize({ startOnLoad: false });\n'
+            '    m.run().catch(() => {});\n'
+            '  }\n'
+            '</script>' % mv)
+        src = _read(os.path.join(_paths.EXAMPLES, "report-community-garden.html"))
+        sp = build._mermaid_bootstrap_span(src, "<fixture>")
+        drifted = src[:sp[0]] + naive + src[sp[1]:]
+        self.assertIn("m.run().catch(() => {})", drifted)
+        self.assertNotIn("renderHidden", self._loader(drifted))  # fixture is genuinely naive
+        out = build.regen_example(drifted, portable, version, mv, "report-community-garden.html")
+        self.assertEqual(self._loader(out), port_loader)   # example now carries the canonical loader
+        self.assertIn("renderHidden", self._loader(out))
+        self.assertNotIn("m.run().catch(() => {})", out)   # the naive form is gone
+
+    def test_mermaid_bootstrap_span_is_head_scoped_and_import_based_cmh_mmd_10(self):
+        # The loader is found by a <head> module script that imports mermaid - NOT by an exact comment
+        # or attribute spelling - so a reworded comment / extra attribute is still recognized and an
+        # authored module <script> in the body can never be mistaken for the loader.
+        head_loader = ('<html><head><!-- Mermaid loader -->\n'
+                       '<script nonce="n" type="module">const m=(await import("https://cdn/mermaid@1/dist/m.mjs")).default;</script>\n'
+                       '</head><body><script type="module">import("./not-mermaid.js");</script></body></html>')
+        got = self._loader(head_loader)
+        self.assertIsNotNone(got)
+        self.assertIn("mermaid@1", got)            # the head loader, not the body module
+        self.assertIn("<!-- Mermaid loader", got)  # the preceding comment travels with it
+        # A reworded comment still matches (import-based, not comment-text based).
+        self.assertIsNotNone(build._mermaid_bootstrap_span(
+            '<head><!-- boot the diagrams --><script type="module">await import("https://x/mermaid@2/m.mjs");</script></head>', "<t>"))
+        # A diagram-free head (no mermaid import) yields None, so a report without diagrams is untouched.
+        self.assertIsNone(build._mermaid_bootstrap_span(
+            '<head><script type="module">import("./app.js");</script></head>', "<t>"))
+        # A mermaid module only in the BODY is not the loader (head-scoped).
+        self.assertIsNone(build._mermaid_bootstrap_span(
+            '<head></head><body><script type="module">import("https://x/mermaid@1/m.mjs");</script></body>', "<t>"))
+
+    def test_regen_example_preserves_vendored_loader_cmh_mmd_10(self):
+        # A hand-vendored offline example loader (a RELATIVE mermaid import per the SKILL.md recipe)
+        # must NOT be clobbered back to the CDN, which would silently reintroduce a network fetch.
+        mv = build.read_mermaid_version()
+        version = _read(os.path.join(_paths.DEV, "VERSION")).strip()
+        portable = _read(os.path.join(DIST, "PORTABLE.html"))
+        src = _read(os.path.join(_paths.EXAMPLES, "report-community-garden.html"))
+        sp = build._mermaid_bootstrap_span(src, "<fixture>")
+        vendored = ('<!-- Mermaid loader (vendored offline) -->\n<script type="module">\n'
+                    '  const m = (await import("./mermaid.esm.min.mjs")).default;\n'
+                    '  m.run();\n</script>')
+        v = src[:sp[0]] + vendored + src[sp[1]:]
+        out = build.regen_example(v, portable, version, mv, "<vendored>")
+        self.assertIn('import("./mermaid.esm.min.mjs")', self._loader(out))  # left untouched
+        self.assertNotIn("renderHidden", self._loader(out))
+
+    def test_regen_example_raises_when_portable_has_no_loader_cmh_mmd_10(self):
+        # Fail closed: an example that carries a loader but a PORTABLE with none (should never happen)
+        # must raise, not silently ship the stale loader.
+        mv = build.read_mermaid_version()
+        version = _read(os.path.join(_paths.DEV, "VERSION")).strip()
+        portable = _read(os.path.join(DIST, "PORTABLE.html"))
+        ps = build._mermaid_bootstrap_span(portable, "<portable>")
+        portable_noloader = portable[:ps[0]] + portable[ps[1]:]
+        src = _read(os.path.join(_paths.EXAMPLES, "report-community-garden.html"))
+        with self.assertRaisesRegex(SystemExit, "has no mermaid loader to re-emit"):
+            build.regen_example(src, portable_noloader, version, mv, "report-community-garden.html")
+
+    def test_regen_example_raises_when_diagram_present_but_no_loader_cmh_mmd_10(self):
+        # Fail closed: an example that HAS a mermaid diagram host but NO head loader would ship a
+        # diagram that never renders, so the build rejects it instead of silently skipping the swap.
+        mv = build.read_mermaid_version()
+        version = _read(os.path.join(_paths.DEV, "VERSION")).strip()
+        portable = _read(os.path.join(DIST, "PORTABLE.html"))
+        src = _read(os.path.join(_paths.EXAMPLES, "report-community-garden.html"))
+        ps = build._mermaid_bootstrap_span(src, "<fixture>")
+        # Strip the loader block; the report still contains its authored `<pre class="mermaid ...">`.
+        no_loader = src[:ps[0]] + src[ps[1]:]
+        self.assertIsNone(build._mermaid_bootstrap_span(no_loader, "<fixture>"))
+        self.assertIsNotNone(build._MERMAID_HOST_RE.search(no_loader))
+        with self.assertRaisesRegex(SystemExit, "mermaid diagrams but no head mermaid loader"):
+            build.regen_example(no_loader, portable, version, mv, "report-community-garden.html")
+        # A highlighted `class="language-mermaid"` CODE sample is NOT a diagram host: `mermaid` there
+        # is not a whole class token, so it must not trip the fail-closed guard.
+        self.assertIsNotNone(build._MERMAID_HOST_RE.search('<pre class="mermaid cm-skip">flowchart</pre>'))
+        self.assertIsNone(build._MERMAID_HOST_RE.search('<pre class="language-mermaid">flowchart TB</pre>'))
+
+    def test_mermaid_bootstrap_span_ambiguous_head_loaders_cmh_mmd_10(self):
+        # Two head module scripts that both import mermaid: the one bound to the "Mermaid loader"
+        # comment wins; with no comment to disambiguate, the build fails closed.
+        both = ('<head>'
+                '<script type="module">await import("https://x/mermaid@1/m.mjs");</script>'
+                '<!-- Mermaid loader --><script type="module">await import("https://x/mermaid@2/m.mjs");</script>'
+                '</head>')
+        span = build._mermaid_bootstrap_span(both, "<t>")
+        self.assertIn("mermaid@2", both[span[0]:span[1]])  # the commented one wins
+        ambiguous = ('<head>'
+                     '<script type="module">await import("https://x/mermaid@1/m.mjs");</script>'
+                     '<script type="module">await import("https://x/mermaid@2/m.mjs");</script>'
+                     '</head>')
+        with self.assertRaisesRegex(SystemExit, "multiple mermaid loader scripts"):
+            build._mermaid_bootstrap_span(ambiguous, "<t>")
+
+    def test_build_mermaid_matcher_agrees_with_upgrade_cmh_mmd_10(self):
+        # The head-scoped, import-based matcher is duplicated in build_parts and in the shipped
+        # upgrade.py (build_parts are concatenated and cannot import the shipped tool). Pin the two so
+        # a future one-sided change to either fails loudly instead of silently drifting.
+        portable = _read(os.path.join(DIST, "PORTABLE.html"))
+        garden = _read(os.path.join(_paths.EXAMPLES, "report-community-garden.html"))
+        cases = [
+            portable,
+            garden,
+            '<head><!-- Mermaid loader --><script nonce="n" type="module">await import("https://cdn/mermaid@1/m.mjs");</script></head>',
+            '<head><script type="module">await import("https://x/mermaid@2/m.mjs");</script></head>',
+            '<head><script type="module">import("./app.js");</script></head>',              # no mermaid import
+            '<head></head><body><script type="module">import("https://x/mermaid@1/m.mjs");</script></body>',  # body only
+        ]
+        for html in cases:
+            self.assertEqual(
+                build._mermaid_bootstrap_span(html, "<parity>"),
+                upgrade._mermaid_bootstrap_span(html, "<parity>"),
+                "build and upgrade mermaid-loader span disagree")
+        for loader in ['await import("./mermaid.esm.min.mjs")',
+                       'await import("https://cdn/mermaid@1/m.mjs")',
+                       'await import("//cdn/mermaid@1/m.mjs")']:
+            self.assertEqual(build._mermaid_loader_is_vendored(loader),
+                             upgrade._mermaid_loader_is_vendored(loader))
 
     def test_region_inner_rejects_duplicate_begin_marker(self):
         text = ("/* ============================================================\n"
