@@ -105,6 +105,27 @@ test("CMH-NOTE-06: Clear all comments also reverts note edits to baseline", asyn
   await expect(page.locator(".cm-card-note")).toHaveCount(1);
   await page.click("#btnClearAll");
   await expect(page.locator(".cm-modal")).toBeVisible();
+  // The confirm names the note reset alongside the comment deletion (a comment is present here).
+  await expect(page.locator(".cm-modal")).toContainText(
+    "Delete all 1 comment(s) and reset any tracked widget, checklist, and note changes");
+  await page.locator(".cm-modal").getByRole("button", { name: "OK" }).click();
+  await expect(page.locator(".cm-card-note")).toHaveCount(0);
+  await expect(field(page)).toHaveValue("No blocking risks yet.");
+  expect(await storedNotes(page)).toBeNull();
+});
+
+test("CMH-NOTE-06: Clear all reverts a note-only change even with no comment present", async ({ page }) => {
+  await open(page, DOC, "cmh-note-06b");
+  // A note edit is the ONLY pending change (no comments, no checklist/widget changes). Clear all
+  // used to treat this as "nothing to clear" and no-op; it must now open the confirm and reset it.
+  await field(page).fill(HOSTILE);
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await page.click("#btnClearAll");
+  await expect(page.locator(".cm-modal")).toBeVisible();
+  // With no comment present, the confirm names only the resets - no "Delete all 0 comment(s)" clause.
+  await expect(page.locator(".cm-modal")).toContainText(
+    "Reset any tracked widget, checklist, and note changes");
+  await expect(page.locator(".cm-modal")).not.toContainText("comment(s)");
   await page.locator(".cm-modal").getByRole("button", { name: "OK" }).click();
   await expect(page.locator(".cm-card-note")).toHaveCount(0);
   await expect(field(page)).toHaveValue("No blocking risks yet.");

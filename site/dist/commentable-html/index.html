@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.189.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.190.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,12 +451,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.190.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>Clear all comments</code> now also resets a note-only change. Its early-return guard checked comments, widget-state, and checklist changes but omitted <code>notesChanges()</code>, so on a document whose only pending change was an edited <code>data-cmh-note</code> field (no comments, no checklist/widget changes) clicking Clear all was a silent no-op and left the note edit in place. The guard now includes note changes, and the confirm dialog names the widget, checklist, and note resets it performs. (CMH-NOTE-06)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.189.0] - 2026-07-20</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Each side-TOC review-filter button (All / Reviewed / Unreviewed / Commented / Changed) now shows a live per-state count as an inline <code>(N)</code> beside its label - <code>All</code> shows the total section count and the four states partition it, so at a glance you see how many sections are in each state. The count refreshes as sections are marked reviewed, commented, or changed. The count span is <code>aria-hidden</code> and its number is folded into each button&#x27;s accessible name so it is announced once, and the label and count stay on one line per button (the group wraps into rows without overflowing the sidebar, even with two-digit counts) (CMH-REVIEW-14).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.188.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -469,8 +478,6 @@
               <li>Showcase deck slide 18 (&quot;Three portability modes&quot;) now tags each part with a colorful source pill (folder / CDN / inlined / storage / seed), matching the site&#x27;s &quot;Three portability modes&quot; theme, instead of plain table text; the Portable and Offline handoffs keep both the seed and storage pills (CMH-DECK-SHOWCASE-17).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.187.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -500,18 +507,7 @@
               <li>Pinned that code/KQL line-number gutters stay aligned when a collapsed section is revealed (CMH-CODE-06). Unlike the canvas chart above, the gutter needs no reveal recompute: the browser resolves a numeric <code>line-height</code> to a px value via <code>getComputedStyle</code> even for a <code>display:none</code> block, so the gutter offsets laid down while collapsed already match the visible line-height after reveal. A regression test locks that invariant in.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.180.0] - 2026-07-20</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The comments sidebar <code>Hide</code> button is now accent-tinted (an accent-soft background with accent text and border, and a solid-accent hover) so it stands out clearly and reads as distinct from the neutral <code>Help &amp; About</code> button beside it (CMH-SIDE-09).</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The overflow (<code>...</code>) menu header now shows the running layer version (<code>v&lt;version&gt;</code>) between the portability badge and the brand icon; the version is decorative text and does not change the menu button tab order (CMH-MENU-ICON-03).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">153 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">154 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
