@@ -114,6 +114,47 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertIn("kind meta", changed)
         self.assertIn(marker, out)
 
+    def test_missing_favicon_is_added_on_upgrade(self):
+        # A pre-favicon document (predates the shell-baked favicon) is migrated: upgrade adds
+        # the template's CMH favicon <link rel="icon"> so the tab shows the CMH mark and the
+        # document passes the validator's favicon check.
+        tpl = _tpl()
+        favicon = upgrade._template_favicon(tpl)
+        self.assertTrue(favicon, "template is missing a favicon to migrate")
+        legacy = tpl.replace(favicon + "\n", "", 1)
+        self.assertFalse(upgrade._has_favicon(legacy))
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("favicon", changed)
+        self.assertTrue(upgrade._has_favicon(out))
+        self.assertIn(favicon, out)
+
+    def test_existing_favicon_is_not_duplicated_on_upgrade(self):
+        # A document that already declares a favicon (even a reordered/legacy rel) must not
+        # gain a second one: upgrade detects the existing icon link and reports no favicon change.
+        tpl = _tpl()
+        favicon = upgrade._template_favicon(tpl)
+        reordered = '<link href="/f.ico" rel="shortcut icon" />'
+        legacy = tpl.replace(favicon, reordered, 1)
+        self.assertTrue(upgrade._has_favicon(legacy))
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertNotIn("favicon", changed)
+        self.assertEqual(len(re.findall(r'<link\b[^>]*\brel=["\'][^"\']*icon', out, re.I)), 1,
+                         "upgrade duplicated the favicon link")
+        self.assertIn(reordered, out)
+
+    def test_apple_touch_icon_only_document_gets_a_real_favicon_on_upgrade(self):
+        # A document whose head declares only rel="apple-touch-icon" has no tab favicon (that rel
+        # token is not "icon"), so upgrade must still add the CMH favicon rather than treating the
+        # apple-touch-icon as one - detection is token-exact, matching the validator.
+        tpl = _tpl()
+        favicon = upgrade._template_favicon(tpl)
+        legacy = tpl.replace(favicon, '<link rel="apple-touch-icon" href="/a.png" />', 1)
+        self.assertFalse(upgrade._has_favicon(legacy))
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("favicon", changed)
+        self.assertTrue(upgrade._has_favicon(out))
+        self.assertIn('rel="apple-touch-icon"', out)
+
     def test_version_meta_is_bumped_to_template_version(self):
         # An older deployed document self-reports its old runtime version in the head
         # <meta commentable-html-version>. upgrade must restamp it to the template's

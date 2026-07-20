@@ -29,16 +29,76 @@
      block degrades to readable source text. For a fully self-contained artifact, vendor a
      local copy of mermaid and import it by relative path (see SKILL.md). -->
 <script type="module">
-  try {
-    const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
-    const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-    m.initialize({ startOnLoad: false, theme, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" } });
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
-    } else {
-      m.run().catch(() => {});
-    }
-  } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  // Only reach out to the mermaid CDN when the document actually contains a diagram, so a
+  // diagram-free document (including a deck) makes no network request at all.
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    try {
+      const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
+      const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
+      // A deck renders its slides inside a CSS-scaled 1920x1080 stage (transform: scale). mermaid's
+      // default HTML labels live in a <foreignObject>, whose HTML Chromium re-lays-out against that
+      // scaled context, so a node box sized from the unscaled measurement is too small and wider labels
+      // clip mid-word. SVG <text> labels (htmlLabels:false) scale with the diagram and never re-flow, so
+      // a deck renders correctly; non-deck documents keep the richer HTML labels (line breaks, entities).
+      const htmlLabels = !document.querySelector(".deck-stage");
+      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", htmlLabels, flowchart: { htmlLabels, curve: "basis" } });
+      const isHidden = (el) => !(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+      // mermaid shares internal state across renders, so serialize every render on one chain to avoid
+      // the corruption that appears when many diagrams render at once.
+      let chain = Promise.resolve();
+      const runVisible = (nodes) => {
+        if (!nodes.length) return;
+        chain = chain.then(() => m.run({ nodes }).catch(() => {}), () => {});
+      };
+      // A diagram whose container is hidden (display:none, e.g. a collapsed section) has a zero-size
+      // box, so rendering it in place with mermaid.run draws a tiny, clipped, permanently-broken
+      // layout. Instead run mermaid on an off-screen CLONE that has a real width, then move the
+      // rendered SVG into the real element. This reuses mermaid.run's own source extraction (so <br/>
+      // labels, entities, and indentation match a visible diagram) and its error handling (a malformed
+      // diagram leaves no stray node), and the diagram is laid out correctly AT LOAD - so it is correct
+      // whether its section is later revealed on screen or printed while still collapsed.
+      const renderHidden = (el) => {
+        if (el.hasAttribute("data-processed")) return;
+        chain = chain.then(() => {
+          if (el.hasAttribute("data-processed")) return;
+          const sandbox = document.createElement("div");
+          sandbox.setAttribute("aria-hidden", "true");
+          sandbox.style.cssText = "position:fixed;left:-99999px;top:0;width:1000px;visibility:hidden;pointer-events:none;";
+          const clone = el.cloneNode(true);
+          clone.removeAttribute("id");
+          clone.removeAttribute("data-processed");
+          sandbox.appendChild(clone);
+          document.body.appendChild(sandbox);
+          const cleanup = () => { if (sandbox.parentNode) sandbox.parentNode.removeChild(sandbox); };
+          let ran;
+          try { ran = m.run({ nodes: [clone] }); } catch (e) { cleanup(); return; }
+          return Promise.resolve(ran).then(() => {
+            const svg = clone.querySelector("svg");
+            if (svg && !el.hasAttribute("data-processed")) {
+              el.textContent = "";
+              el.appendChild(svg);
+              el.setAttribute("data-processed", "true");
+            }
+            cleanup();
+          }, cleanup);
+        }, () => {});
+      };
+      const start = () => {
+        const all = [...document.querySelectorAll("pre.mermaid, div.mermaid")];
+        runVisible(all.filter((el) => !el.hasAttribute("data-processed") && !isHidden(el)));
+        all.filter((el) => !el.hasAttribute("data-processed") && isHidden(el)).forEach(renderHidden);
+        // Diagrams render asynchronously; expose a promise that settles once every render has
+        // finished so a print/screenshot pipeline can await it (or poll for
+        // `pre.mermaid:not([data-processed])`) instead of racing the render.
+        window.__cmhMermaidReady = chain;
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", start);
+      } else {
+        start();
+      }
+    } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+  }
 </script>
 
 <style>
@@ -1069,6 +1129,18 @@ h5:focus-within > .cmh-review-unreviewed, h6:focus-within > .cmh-review-unreview
 .cm-mermaid-host.cm-mermaid-hl { outline: 2px solid var(--cp-accent); outline-offset: 4px; border-radius: 6px; }
 /* Gantt/sequence labels are SVG <text> with no child shape; tint the text itself. */
 text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; font-weight: 700; }
+/* CMH-MMD-10: a NARROW report diagram (natural width well under the content column) grows toward the
+   column instead of being marooned by mermaid's intrinsic-width inline max-width. The cap
+   (--cmh-diagram-cap, set by updateMermaidWidthClass) is a modest multiple of the intrinsic width so
+   a tiny diagram never balloons; the SVG is centered. Covers both pre.mermaid and div.mermaid hosts
+   (both carry .cm-mermaid-host). Report-only - a deck has its own contain-fit rules. */
+#commentRoot .cm-mermaid-host.cmh-diagram-narrow svg {
+  width: 100%;
+  max-width: min(100%, var(--cmh-diagram-cap, 100%)) !important;
+  height: auto;
+  display: block;
+  margin-inline: auto;
+}
 @keyframes cm-mermaid-pulse {
   0%, 100% { filter: drop-shadow(0 0 4px var(--cp-accent)); }
   50%      { filter: drop-shadow(0 0 14px var(--cp-accent)); }
@@ -3874,19 +3946,38 @@ function mermaidIntrinsicWidth(host) {
   } catch (e) {}
   return svg.getBoundingClientRect().width || 0;
 }
+// Narrow-diagram scale-up thresholds (#516). Only a diagram whose intrinsic width is BELOW
+// NARROW_ENTER of the column is scaled up; once narrow it stays narrow until it exceeds NARROW_EXIT
+// (hysteresis) so that scaling a diagram taller - which can toggle a document scrollbar and shrink
+// the container by a scrollbar width on the reveal/resize ResizeObserver - cannot flip a diagram
+// sitting near the boundary back and forth. NARROW_CAP bounds the scale so a tiny diagram never balloons.
+const NARROW_ENTER = 0.82, NARROW_EXIT = 0.90, NARROW_CAP = 1.4;
 function updateMermaidWidthClass(host) {
   if (!host) return;
   // A diagram-fit slide sizes the SVG to contain-fit (see fitDeckDiagram); the wide/scroll-fade
   // affordance (and its narrow-viewport min-width rule) would fight that, so never apply it there.
   // Only relevant in a deck: outside deck mode the classes drive horizontal scroll for wide diagrams.
   if (IS_DECK && host.closest && host.closest(".slide.cmh-deck-diagram-slide, .slide.cmh-slide-diagram")) {
-    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade");
+    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade", "cmh-diagram-narrow");
+    host.style.removeProperty("--cmh-diagram-cap");
     return;
   }
   const container = host.clientWidth || host.getBoundingClientRect().width || window.innerWidth || 0;
   const natural = mermaidIntrinsicWidth(host);
   const wide = natural > Math.max(container + 80, 520);
   host.classList.toggle("cmh-diagram-wide", wide);
+  // A diagram whose natural width is well under the column would otherwise stay pinned to that
+  // intrinsic width by mermaid's inline max-width, marooned with dead space (#516). Mark it narrow
+  // and expose a capped target width so the CSS scales it up toward the column without ballooning a
+  // tiny one. Report-only - deck slides have their own contain-fit sizing. `natural` is the viewBox
+  // width (stable, not the CSS-grown rendered width), so scaling can never feed back into `natural`.
+  const ratio = (natural > 0 && container > 0) ? natural / container : 1;
+  const wasNarrow = host.classList.contains("cmh-diagram-narrow");
+  const narrow = !wide && !IS_DECK && natural > 0 && container > 0 &&
+    ratio < (wasNarrow ? NARROW_EXIT : NARROW_ENTER);
+  host.classList.toggle("cmh-diagram-narrow", narrow);
+  if (narrow) host.style.setProperty("--cmh-diagram-cap", Math.round(natural * NARROW_CAP) + "px");
+  else host.style.removeProperty("--cmh-diagram-cap");
   const syncFade = () => {
     host.classList.toggle("cmh-diagram-scroll-fade", wide && host.scrollWidth > host.clientWidth + 1);
   };

@@ -458,14 +458,36 @@
             </ul>
           </div>
           <div class="release">
+            <div class="rel-head"><h3>[1.192.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Report (non-deck) Mermaid diagrams in the shipped example reports and the deployed-site demos no longer collapse to a tiny frozen bar when their section is hidden at load. The examples carried the OLD naive in-place <code>mermaid.run()</code> loader (a diagram whose section was <code>display:none</code> at load rendered a degenerate ~16px SVG that never re-measured), because <code>build.py</code>&#x27;s <code>regen_example</code> swaps only the CSS / COMMENT UI / JS layer regions and never re-emitted the shell-baked <code>&lt;head&gt;</code> mermaid loader. <code>regen_example</code> now re-emits the canonical loader from <code>PORTABLE.html</code> into every example (the same <code>&lt;head&gt;</code>-scoped, ambiguity-guarded, vendored-safe re-emit <code>upgrade.py</code> does), so an example single-sources the loader and honors CMH-MMD-07 (CMH-MMD-09).</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Report (non-deck) Mermaid diagrams whose natural width is well under the content column now scale up toward the column instead of being marooned by mermaid&#x27;s intrinsic-width inline <code>max-width</code>. A <code>cmh-diagram-narrow</code> class (set by <code>updateMermaidWidthClass</code> with hysteresis, so scaling a diagram taller cannot flip it back and forth on the reveal/resize observer) grows the SVG to a capped <code>min(100%, natural * 1.4)</code>, centered, for both <code>pre.mermaid</code> and <code>div.mermaid</code> hosts. Wide diagrams (which scroll) and deck diagrams (own fit) are unaffected (CMH-MMD-10).</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
+            <div class="rel-head"><h3>[1.191.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The full-screen demo reports on the site (and the shipped <code>report-taxi.html</code> / <code>report-community-garden.html</code> examples) now carry the commentable-html favicon, so a browser tab shows the CMH mark instead of the generic globe. Those two example sources predated the shell-baked favicon and were the only ones missing it.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The validator now warns (an error under <code>--strict</code>, the mandatory finalize path) when a document has no <code>&lt;link rel=&quot;icon&quot;&gt;</code> favicon in its head, so a missing favicon is caught before handoff (CMH-KIND-05). <code>retrofit.py</code> injects the CMH favicon when the host head has none, and <code>upgrade.py</code> adds it when migrating a pre-favicon document (neither duplicates an existing one).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.190.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li><code>Clear all comments</code> now also resets a note-only change. Its early-return guard checked comments, widget-state, and checklist changes but omitted <code>notesChanges()</code>, so on a document whose only pending change was an edited <code>data-cmh-note</code> field (no comments, no checklist/widget changes) clicking Clear all was a silent no-op and left the note edit in place. The guard now includes note changes, and the confirm dialog names the widget, checklist, and note resets it performs. (CMH-NOTE-06)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.189.0] - 2026-07-20</h3></div>
             <div class="group-label">Added</div>
@@ -492,21 +514,7 @@
               <li>Typing in an editable note (<code>data-cmh-note</code>) no longer freezes a large document. The note <code>input</code> handler used to re-render the whole sidebar synchronously on every keystroke, and that render runs two full-document tree walks (a <code>getTextNodes</code> walk plus the section-review scan), so each keystroke cost O(document) work (hundreds of ms on a report with tens of thousands of text nodes). The typing path now persists the edit synchronously but coalesces a keystroke burst into a single debounced re-render (a note&#x27;s document position does not move while its text is edited). The lightweight UI (portability badge, Copy-all affordance, first-change sidebar auto-open) updates synchronously but only on the note-dirty transition, so a burst does no per-keystroke document scan; per-keystroke cost is bounded independent of document size. Programmatic reset / clear-all still render immediately. (CMH-NOTE-17)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.185.0] - 2026-07-20</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>SKILL.md</code> now opens with a single upfront <code>## Capabilities</code> list (above the detailed Steps) that names the tested tool or contract for every capability - create/retrofit/upgrade, the document kinds (including the flat <code>slides</code> kind vs a real deck), the review surface (including per-section &quot;Mark reviewed&quot; tracking), highlighted code, KQL, diffs, mermaid, charts, images, the layout tools, layered checklists and editable notes fields (scaffold and apply), commentable widgets, animated decks, output modes, and theming (including deck theme presets) - and directs the agent to use the named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed that CMH already supports editable notes fields and considered building its own. A companion <code>## Always validate before handoff (MUST)</code> section states the mandatory <code>finalize.py --strict</code> + <code>validate.py --strict</code> (plus <code>deck_validate.py --strict</code> for decks) pass upfront so it cannot be missed. (CMH-DOC-17)</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.182.0] - 2026-07-20</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Saving a text comment on a selection that overlaps an existing text highlight is now rejected with the &quot;Comment was not saved&quot; toast instead of silently nesting a <code>mark.cm-hl</code> inside the existing one. A nested highlight made the OUTER comment effectively unclickable (click/hover/popover handlers resolve to the innermost mark), contradicting CMH-CORE-11. The composer&#x27;s text-save path now runs a <code>rangeOverlapsHighlight</code> pre-check (in <code>assets/js/15-context.js</code>) BEFORE wrapping - it derives each existing highlight&#x27;s LIVE character interval from a single text-node walk and rejects the save when the new selection overlaps one (a half-open test, so it stays correct even when a comment&#x27;s stored offsets are stale relative to the DOM - for example after a table sort leaves a multi-row highlight discontiguous - and a touching, non-overlapping adjacent selection is still allowed). <code>restoreHighlights</code> (<code>assets/js/95-startup.js</code>) applies persisted text comments sorted by start and skips wrapping any whose range overlaps one already highlighted (an O(n) sweep), so a legacy/crafted overlapping set keeps only the first-applied highlight - mirroring the diff sub-range guard - while the overlapping comment stays listed in the sidebar. Editing the existing comment on the same range (CMH-CORE-10) is unaffected (CMH-CORE-11).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">155 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">157 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

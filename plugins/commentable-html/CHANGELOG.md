@@ -19,6 +19,44 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   and pins the box so the chart displays at its intended size; the shipped definite-width chart pattern
   is unaffected (CMH-CHART-10).
 
+## [1.192.0] - 2026-07-20
+
+### Fixed
+
+- Report (non-deck) Mermaid diagrams in the shipped example reports and the deployed-site demos no
+  longer collapse to a tiny frozen bar when their section is hidden at load. The examples carried the
+  OLD naive in-place `mermaid.run()` loader (a diagram whose section was `display:none` at load
+  rendered a degenerate ~16px SVG that never re-measured), because `build.py`'s `regen_example` swaps
+  only the CSS / COMMENT UI / JS layer regions and never re-emitted the shell-baked `<head>` mermaid
+  loader. `regen_example` now re-emits the canonical loader from `PORTABLE.html` into every example
+  (the same `<head>`-scoped, ambiguity-guarded, vendored-safe re-emit `upgrade.py` does), so an
+  example single-sources the loader and honors CMH-MMD-07 (CMH-MMD-09).
+
+### Changed
+
+- Report (non-deck) Mermaid diagrams whose natural width is well under the content column now scale
+  up toward the column instead of being marooned by mermaid's intrinsic-width inline `max-width`. A
+  `cmh-diagram-narrow` class (set by `updateMermaidWidthClass` with hysteresis, so scaling a diagram
+  taller cannot flip it back and forth on the reveal/resize observer) grows the SVG to a capped
+  `min(100%, natural * 1.4)`, centered, for both `pre.mermaid` and `div.mermaid` hosts. Wide diagrams
+  (which scroll) and deck diagrams (own fit) are unaffected (CMH-MMD-10).
+
+## [1.191.0] - 2026-07-20
+
+### Fixed
+
+- The full-screen demo reports on the site (and the shipped `report-taxi.html` /
+  `report-community-garden.html` examples) now carry the commentable-html favicon, so a browser
+  tab shows the CMH mark instead of the generic globe. Those two example sources predated the
+  shell-baked favicon and were the only ones missing it.
+
+### Added
+
+- The validator now warns (an error under `--strict`, the mandatory finalize path) when a document
+  has no `<link rel="icon">` favicon in its head, so a missing favicon is caught before handoff
+  (CMH-KIND-05). `retrofit.py` injects the CMH favicon when the host head has none, and
+  `upgrade.py` adds it when migrating a pre-favicon document (neither duplicates an existing one).
+
 ## [1.190.0] - 2026-07-20
 
 ### Fixed

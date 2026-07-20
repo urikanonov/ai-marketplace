@@ -36,6 +36,7 @@ from html.parser import HTMLParser
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _favicon  # noqa: E402
 import doc_stamp  # noqa: E402
 SKILL_ROOT = _toolpath.SKILL_ROOT
 DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
@@ -207,6 +208,39 @@ def _insert_kind_meta(html, kind):
     if m:
         return html[:m.end()] + "\n" + tag + html[m.end():], True
     return html, False
+
+
+def _has_favicon(html):
+    """True when the document's head declares a usable favicon (rel token `icon` + non-empty
+    href). Detection matches the validator (see tools/authoring/_favicon.py); it is head-scoped,
+    so `apple-touch-icon` / `mask-icon`, an empty-href icon, a commented-out link, and a body-level
+    icon link do NOT count."""
+    return _favicon.head_has_favicon(html or "")
+
+
+def _template_favicon(template_html):
+    """Return the template's favicon <link rel="icon"> tag, or None."""
+    return _favicon.template_favicon_tag(template_html or "")
+
+
+def _insert_favicon(html, favicon_tag):
+    """Insert the favicon <link> into <head>, right after the version meta, else right after the
+    <head> open tag. Scoped to <head> (like _set_version_meta) so a version-meta-like literal in
+    the body or a script string can never be the insertion anchor. Returns (new_html, inserted?)."""
+    head = _HEAD_RE.search(html)
+    if not head:
+        return html, False
+    hs, he = head.start(), head.end()
+    head_text = head.group(0)
+    m = _VERSION_META_TAG_RE.search(head_text)
+    anchor = m.end() if m else re.match(r"<head\b[^>]*>", head_text, re.IGNORECASE).end()
+    # Insert on its own line after the anchor, consuming the anchor's existing line break so no
+    # blank line is introduced.
+    nl = re.match(r"[ \t]*\r?\n", head_text[anchor:])
+    if nl:
+        anchor += nl.end()
+    new_head = head_text[:anchor] + favicon_tag + "\n" + head_text[anchor:]
+    return html[:hs] + new_head + html[he:], True
 
 
 # The head version meta. Region swaps leave <head> alone, so an upgraded document keeps
@@ -476,6 +510,15 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         out, added = _insert_kind_meta(out, "generic")
         if added:
             changed.append("kind meta")
+    # Migrate a pre-favicon document: add the CMH favicon <link rel="icon"> from the template
+    # if the head declares none, so an upgraded document shows the CMH tab mark instead of the
+    # generic globe and passes the validator's favicon check. Order-independent detection.
+    if not _has_favicon(out):
+        favicon = _template_favicon(template_html)
+        if favicon:
+            out, added = _insert_favicon(out, favicon)
+            if added:
+                changed.append("favicon")
     return out, changed
 
 

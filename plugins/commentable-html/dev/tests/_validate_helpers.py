@@ -54,6 +54,11 @@ EXPECTED_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS
 CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"
 CONTENT_END = "<!-- END: commentable-html - CONTENT -->"
 
+# The CMH favicon link the template shell bakes into the head. A minimal valid document
+# must carry a favicon (validate.check_favicon warns otherwise), so the builders below
+# include it; a test that specifically exercises the missing-favicon path removes it.
+FAVICON_LINK = '<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=\'http://www.w3.org/2000/svg\'%20viewBox=\'0%200%2024%2024\'%3E%3C/svg%3E" />'
+
 
 # --------------------------------------------------------------------------- #
 # Minimal valid document builder. Region markers sit ALONE on their own line
@@ -188,6 +193,7 @@ def build(css=None, body=None, kind="generic"):
     return (
         '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
         + kind_meta
+        + FAVICON_LINK + "\n"
         + '<script type="application/json" id="commentableHtmlLayer">'
         + '{"version":"1.0.0","mode":"portable","regions":'
         + json.dumps(EXPECTED_REGIONS, separators=(",", ":"))
@@ -283,6 +289,7 @@ def build_nonportable(version=NONPORTABLE_VERSION, link=True, runtime=True, asse
         '<script type="application/json" id="commentableHtmlLayer">%s</script>'
         % json.dumps({"version": version, "mode": "nonportable", "regions": EXPECTED_REGIONS},
                      separators=(",", ":")),
+        FAVICON_LINK,
         "<style>\n:root { --cp-bg: #fff; --cp-text: #000; }\n</style>",
     ]
     if link:
