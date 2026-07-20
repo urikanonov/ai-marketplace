@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.192.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.193.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,7 +451,7 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.192.0] - 2026-07-20</h3></div>
+            <div class="rel-head"><h3>[1.193.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>A standalone built-in canvas chart (<code>canvas.cmh-chart</code> with inline <code>data-cmh-chart-points</code>/<code>-source</code>) placed directly in a shrink-to-fit container (<code>width: max-content</code>, an <code>inline-block</code>, a float, or an auto-sized <code>inline-flex</code>/grid item) - rather than inside the shipped definite-width <code>figure.chart &gt; .chart-wrap</code> - no longer renders <code>dpr x</code> oversized on a HiDPI screen (<code>devicePixelRatio &gt; 1</code>). The renderer now measures the chart&#x27;s logical size against a bitmap reset to the authored size (which is devicePixelRatio-independent, so the canvas&#x27;s own dpr-scaled bitmap cannot drive its container&#x27;s width - the feedback loop - and which preserves the aspect ratio so an auto-height chart is not squared), falls back to the authored <code>width</code>/<code>height</code> attributes when the container collapses without the canvas, and pins the box so the chart displays at its intended size; the shipped definite-width chart pattern is unaffected (CMH-CHART-10).</li>
