@@ -12,6 +12,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   presenters can step one slide back with the key many slide tools use (CMH-DECK-05). It respects the
   same guards as the other navigation keys: it does not move slides while a comment field or other
   editable target is focused, or while the comment-options menu or other blocking deck chrome is open.
+  Because `Backspace` uniquely carries a legacy browser "history back" default, the deck suppresses that
+  default whenever it owns the key (including at the first-slide boundary, where the step back is a
+  no-op) so a viewer is never navigated away from the deck.
 
 ## [1.175.0] - 2026-07-19
 

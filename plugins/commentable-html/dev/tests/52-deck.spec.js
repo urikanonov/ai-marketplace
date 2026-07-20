@@ -109,6 +109,15 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("slide-00000002");
     await page.keyboard.press("Home");
     expect(await activeId(page)).toBe("slide-00000001");
+    // Backspace on the first slide is a no-op, but the deck still suppresses the browser's
+    // legacy "history back" default so a viewer is never navigated away from the deck.
+    const backspacePrevented = await page.evaluate(() => {
+      const ev = new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true });
+      document.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    expect(backspacePrevented).toBe(true);
+    expect(await activeId(page)).toBe("slide-00000001");
     await page.keyboard.press("End");
     expect(await activeId(page)).toBe("slide-00000003");
     await expect(page.locator(".cmh-deck-count")).toHaveText("3 / 3");
@@ -510,6 +519,11 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     });
     await page.locator("#probe").press("ArrowRight");
     expect(await activeId(page)).toBe("slide-00000001");
+    // Backspace inside a text field deletes text (isEditableTarget gate) instead of navigating.
+    await page.evaluate(() => { const ta = document.getElementById("probe"); ta.value = "ab"; ta.focus(); ta.setSelectionRange(2, 2); });
+    await page.locator("#probe").press("Backspace");
+    expect(await activeId(page)).toBe("slide-00000001");
+    expect(await page.locator("#probe").inputValue()).toBe("a");
     // contenteditable is gated the same way
     await page.evaluate(() => {
       const ce = document.createElement("div");

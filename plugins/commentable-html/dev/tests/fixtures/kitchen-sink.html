@@ -12904,7 +12904,9 @@ function setupDeck() {
     if (e.key === "ArrowRight" || e.key === "PageDown") {
       if (show(current + 1)) e.preventDefault();
     } else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "Backspace") {
-      if (show(current - 1)) e.preventDefault();
+      // Backspace carries a legacy browser "history back" default; the deck owns it, so
+      // suppress that default even at the first slide where show() is a no-op.
+      if (show(current - 1) || e.key === "Backspace") e.preventDefault();
     } else if (e.key === "Home") {
       if (show(0)) e.preventDefault();
     } else if (e.key === "End") {
