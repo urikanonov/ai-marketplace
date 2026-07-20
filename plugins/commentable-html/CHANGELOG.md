@@ -9,11 +9,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 ### Changed
 
 - `SKILL.md` now opens with a single upfront `## Capabilities` list (above the detailed Steps) that
-  names the tested tool or contract for every capability - the review surface, highlighted code, KQL,
-  diffs, mermaid, charts, images, layout, layered checklists, editable notes fields, commentable
-  widgets, document forms and decks, output modes, and theming - and directs the agent to use the
-  named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed
-  that CMH already supports editable notes fields and considered building its own. A companion
+  names the tested tool or contract for every capability - create/retrofit/upgrade, the document
+  kinds (including the flat `slides` kind vs a real deck), the review surface (including per-section
+  "Mark reviewed" tracking), highlighted code, KQL, diffs, mermaid, charts, images, the layout tools,
+  layered checklists and editable notes fields (scaffold and apply), commentable widgets, animated
+  decks, output modes, and theming - and directs the agent to use the named tool rather than invent a
+  novel mechanism. This closes a discovery gap where an agent missed that CMH already supports
+  editable notes fields and considered building its own. A companion
   `## Always validate before handoff (MUST)` section states the mandatory
   `finalize.py --strict` + `validate.py --strict` pass upfront so it cannot be missed. (CMH-DOC-17)
 

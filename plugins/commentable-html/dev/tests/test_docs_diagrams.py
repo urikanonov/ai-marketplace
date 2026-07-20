@@ -602,24 +602,47 @@ class CapabilitiesOverviewDocsTests(unittest.TestCase):
     def test_capabilities_list_names_every_tested_tool(self):
         cap = self._skill().split("## Capabilities", 1)[1].split("\n## ", 1)[0]
         # The gap that triggered this: editable notes fields, plus the other interactive/content
-        # capabilities, must each name their tested tool/contract in the upfront list.
+        # and create/retrofit capabilities, must each name their tested tool/contract in the
+        # upfront list so no capability is missed and no ad-hoc mechanism is invented.
         for tool in (
+            "tools/authoring/new_document.py",
+            "tools/authoring/retrofit.py",
+            "tools/authoring/upgrade.py",
+            "tools/authoring/mark_reviewed.py",
+            "tools/authoring/generate_toc.py",
+            "tools/authoring/wrap_sections.py",
+            "tools/authoring/doc_stats.py",
+            "tools/authoring/fix_skip.py",
+            "tools/authoring/inline_images.py",
             "tools/notes/notes_scaffold.py",
+            "tools/notes/notes_apply.py",
             "tools/checklist/checklist_scaffold.py",
+            "tools/checklist/checklist_apply.py",
             "tools/blocks/highlight_code.py",
             "tools/kusto/kql_highlight.py",
             "tools/blocks/diff_block.py",
             "tools/blocks/chart_block.py",
-            "tools/authoring/inline_images.py",
             "tools/deck/deck_scaffold.py",
         ):
             self.assertIn(tool, cap, f"upfront Capabilities list must name {tool}")
-        # And each tool's owning reference is linked from the same list.
+        # The `slides` flat kind must be named alongside the real-deck tool so they are not confused.
+        self.assertIn("slides", cap)
+        # And each capability's owning reference is linked from the same list.
         for ref in (
-            "references/notes-contract.md",
-            "references/checklist-contract.md",
-            "references/commentable-widgets.md",
             "references/interaction-model.md",
+            "references/code-blocks.md",
+            "references/kusto-query-blocks.md",
+            "references/code-review-diffs.md",
+            "references/mermaid-diagrams.md",
+            "references/charts-embedding.md",
+            "references/charts-recipes.md",
+            "references/images-commentable.md",
+            "references/document-layout.md",
+            "references/content-conventions.md",
+            "references/checklist-contract.md",
+            "references/notes-contract.md",
+            "references/commentable-widgets.md",
+            "references/exports.md",
         ):
             self.assertIn(ref, cap, f"upfront Capabilities list must link {ref}")
 

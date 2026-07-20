@@ -13,33 +13,34 @@ This plugin installs into both Claude Code and the GitHub Copilot CLI (add the m
 
 ## Capabilities (use the tested tool - never invent a mechanism)
 
-commentable-html already ships a tested tool or contract for every capability below. When a request calls for one of these, USE THE NAMED TOOL/CONTRACT and its reference - do NOT hand-author fragile markup or reach for a novel mechanism of your own; the runtime, validator, and tests only cover these tested paths, and inventing an alternative is exactly how a document ships broken. Each has richer guidance in the linked reference and in Step 3b below.
+commentable-html already ships a tested tool or contract for every capability below. When a request calls for one of these, USE THE NAMED TOOL/CONTRACT and its reference - do NOT hand-author fragile markup or reach for a novel mechanism of your own; the runtime, validator, and tests only cover these tested paths, and inventing an alternative is exactly how a document ships broken. Where a bullet names a tool, run it; where it names only a contract/reference, follow that. Step 3b has the full command detail.
 
-- **Review surface (every document):** reviewers select prose, table cells, headings, code lines, KQL, diffs, mermaid, charts, images, or widgets and leave inline comments; `localStorage` persistence; **Copy all** and embedded-comment export; handled-id pruning. See [Interaction model](references/interaction-model.md).
+- **Create, retrofit, convert:** new document from a fragment - `tools/authoring/new_document.py`; retrofit existing HTML - `tools/authoring/retrofit.py`; upgrade an already-layered file - `tools/authoring/upgrade.py`. Kinds are `report`, `plan`, `slides`, `board`, or `generic` (`--kind`); `slides` is a flat document, and only the deck tool below makes a real deck.
+- **Review surface (every document):** reviewers select prose, table cells, headings, code lines, KQL, diffs, mermaid, charts, images, or widgets and leave inline comments; per-section "Mark reviewed" tracking with a TOC filter (bake markers with `tools/authoring/mark_reviewed.py`); `localStorage` persistence; **Copy all**, embedded-comment export, and handled-id pruning (`tools/authoring/mark_handled.py`). See [Interaction model](references/interaction-model.md).
 - **Highlighted code + copy button** - `tools/blocks/highlight_code.py` or `tools/blocks/highlight_document.py`. See [Code blocks](references/code-blocks.md).
 - **Runnable KQL block + Run-in-ADE link** - `tools/kusto/kql_highlight.py` (bare link: `tools/kusto/kusto_link.py`). See [Kusto query blocks](references/kusto-query-blocks.md).
 - **Unified code-review diff** - `tools/blocks/diff_block.py`. See [Code review diffs](references/code-review-diffs.md).
-- **Mermaid diagram** with structural comments. See [Mermaid diagrams](references/mermaid-diagrams.md).
-- **Chart.js chart** - `tools/blocks/chart_block.py`. See [Chart embedding](references/charts-embedding.md).
+- **Mermaid diagram** with structural comments; mark bare source blocks `cm-skip` with `tools/authoring/fix_skip.py`. See [Mermaid diagrams](references/mermaid-diagrams.md).
+- **Chart.js chart** - `tools/blocks/chart_block.py`. See [Chart embedding](references/charts-embedding.md) and [Chart recipes](references/charts-recipes.md).
 - **Commentable image** - `tools/authoring/inline_images.py`. See [Images](references/images-commentable.md).
-- **Table of contents, section cards, doc-overview stats strip, sortable tables, callouts and asides.** See [Document layout](references/document-layout.md).
-- **Layered checklist** - `tools/checklist/checklist_scaffold.py`. See [Layered checklist contract](references/checklist-contract.md).
-- **Editable notes fields** - `tools/notes/notes_scaffold.py`. See [Editable notes-field contract](references/notes-contract.md).
-- **Commentable widgets, SVG parts, draggable slots (`data-cm-part`), and document-wide comments.** See [Commentable widgets](references/commentable-widgets.md).
-- **Document forms:** report, plan, board, or generic (`--kind`), and a real animated slide **deck** built with `tools/deck/deck_scaffold.py`. See the Deck capability section below.
+- **Layout and structure:** table of contents + heading ids - `tools/authoring/generate_toc.py`; section cards - `tools/authoring/wrap_sections.py`; doc-overview stats strip - `tools/authoring/doc_stats.py`; plus sortable tables, callouts, asides, ADO links, cross-references, and design-token mapping. See [Document layout](references/document-layout.md) and [Content conventions](references/content-conventions.md).
+- **Layered checklist** - scaffold with `tools/checklist/checklist_scaffold.py`, apply returned reviewer state with `tools/checklist/checklist_apply.py`. See [Layered checklist contract](references/checklist-contract.md).
+- **Editable notes fields** - scaffold with `tools/notes/notes_scaffold.py`, apply returned reviewer state with `tools/notes/notes_apply.py`. See [Editable notes-field contract](references/notes-contract.md).
+- **Commentable widgets, SVG parts, draggable slots, and document-wide comments** (the `data-cm-*` markup contract). See [Commentable widgets](references/commentable-widgets.md).
+- **Animated slide deck** - a real fixed-stage deck (not a flat `slides` document) built with `tools/deck/deck_scaffold.py`. See the Deck capability section below.
 - **Output modes:** NonPortable (fast iteration), Portable (peer review), Offline (zero-network handoff), plus Plain HTML / Markdown export. See [Exports](references/exports.md).
 - **Theming and branding:** `--cp-*` theme tokens, deck theme presets, reusable brand profiles (`--brand`), and chrome density (`data-cm-density`). See [Document layout](references/document-layout.md).
 
 ## Always validate before handoff (MUST)
 
-Before you return, save, or share ANY commentable-html document, you MUST finalize it and pass strict validation, and fix everything they report:
+Before you hand a commentable-html document to the user - return its path, share it, or call it done - you MUST finalize the saved file and pass strict validation, and fix everything they report:
 
 ```bash
 python tools/authoring/finalize.py <file> --strict
 python tools/validate/validate.py --strict <file.html>
 ```
 
-A document that skipped this is NOT done - it can ship with monochrome code or a broken review layer. If Python is unavailable, say so EXPLICITLY (so the user knows the file is unverified) and run the manual checks in [Validation](references/validation.md). Full guidance is in Step 4 below.
+A document that skipped this is NOT done - it can ship with monochrome code or a broken review layer. `finalize.py` bakes syntax highlighting, section cards, the doc-overview stats strip, and plain-ASCII typography normalization (`tools/authoring/normalize_typography.py`), then validates. If Python is unavailable, say so EXPLICITLY (so the user knows the file is unverified) and run the manual checks in [Validation](references/validation.md). Full guidance is in Step 4 below.
 
 ## Review loops
 
