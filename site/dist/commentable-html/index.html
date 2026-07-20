@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.192.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.193.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,6 +451,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.193.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A standalone built-in canvas chart (<code>canvas.cmh-chart</code> with inline <code>data-cmh-chart-points</code>/<code>-source</code>) placed directly in a shrink-to-fit container (<code>width: max-content</code>, an <code>inline-block</code>, a float, or an auto-sized <code>inline-flex</code>/grid item) - rather than inside the shipped definite-width <code>figure.chart &gt; .chart-wrap</code> - no longer renders <code>dpr x</code> oversized on a HiDPI screen (<code>devicePixelRatio &gt; 1</code>). The renderer now measures the chart&#x27;s logical size against a bitmap reset to the authored size (which is devicePixelRatio-independent, so the canvas&#x27;s own dpr-scaled bitmap cannot drive its container&#x27;s width - the feedback loop - and which preserves the aspect ratio so an auto-height chart is not squared), falls back to the authored <code>width</code>/<code>height</code> attributes when the container collapses without the canvas, and pins the box so the chart displays at its intended size; the shipped definite-width chart pattern is unaffected (CMH-CHART-10).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.192.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -461,6 +468,8 @@
               <li>Report (non-deck) Mermaid diagrams whose natural width is well under the content column now scale up toward the column instead of being marooned by mermaid&#x27;s intrinsic-width inline <code>max-width</code>. A <code>cmh-diagram-narrow</code> class (set by <code>updateMermaidWidthClass</code> with hysteresis, so scaling a diagram taller cannot flip it back and forth on the reveal/resize observer) grows the SVG to a capped <code>min(100%, natural * 1.4)</code>, centered, for both <code>pre.mermaid</code> and <code>div.mermaid</code> hosts. Wide diagrams (which scroll) and deck diagrams (own fit) are unaffected (CMH-MMD-10).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.191.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -472,8 +481,6 @@
               <li>The validator now warns (an error under <code>--strict</code>, the mandatory finalize path) when a document has no <code>&lt;link rel=&quot;icon&quot;&gt;</code> favicon in its head, so a missing favicon is caught before handoff (CMH-KIND-05). <code>retrofit.py</code> injects the CMH favicon when the host head has none, and <code>upgrade.py</code> adds it when migrating a pre-favicon document (neither duplicates an existing one).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.190.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -507,14 +514,7 @@
               <li>Typing in an editable note (<code>data-cmh-note</code>) no longer freezes a large document. The note <code>input</code> handler used to re-render the whole sidebar synchronously on every keystroke, and that render runs two full-document tree walks (a <code>getTextNodes</code> walk plus the section-review scan), so each keystroke cost O(document) work (hundreds of ms on a report with tens of thousands of text nodes). The typing path now persists the edit synchronously but coalesces a keystroke burst into a single debounced re-render (a note&#x27;s document position does not move while its text is edited). The lightweight UI (portability badge, Copy-all affordance, first-change sidebar auto-open) updates synchronously but only on the note-dirty transition, so a burst does no per-keystroke document scan; per-keystroke cost is bounded independent of document size. Programmatic reset / clear-all still render immediately. (CMH-NOTE-17)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.185.0] - 2026-07-20</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>SKILL.md</code> now opens with a single upfront <code>## Capabilities</code> list (above the detailed Steps) that names the tested tool or contract for every capability - create/retrofit/upgrade, the document kinds (including the flat <code>slides</code> kind vs a real deck), the review surface (including per-section &quot;Mark reviewed&quot; tracking), highlighted code, KQL, diffs, mermaid, charts, images, the layout tools, layered checklists and editable notes fields (scaffold and apply), commentable widgets, animated decks, output modes, and theming (including deck theme presets) - and directs the agent to use the named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed that CMH already supports editable notes fields and considered building its own. A companion <code>## Always validate before handoff (MUST)</code> section states the mandatory <code>finalize.py --strict</code> + <code>validate.py --strict</code> (plus <code>deck_validate.py --strict</code> for decks) pass upfront so it cannot be missed. (CMH-DOC-17)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">156 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">157 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
