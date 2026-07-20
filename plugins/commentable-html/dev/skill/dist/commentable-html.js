@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.180.0";
+const CMH_VERSION = "1.181.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2100,6 +2100,39 @@ function setupInteractiveCharts() {
       }
     });
     window.addEventListener("scroll", hideChartTooltip, true);
+  }
+  // A chart drawn while its section was collapsed (display:none) read clientWidth 0 and fell back to
+  // the width attribute (760), so its bitmap is wrong for the real column width and looks blurry once
+  // revealed - and a window resize was the only thing that re-drew it. Re-render each chart ONCE when
+  // its section is revealed, i.e. when its box goes from zero-size to a real size (mirrors the Mermaid
+  // width-class ResizeObserver in 20-mermaid.js). This is a one-shot reveal hook, not a perpetual
+  // size mirror: re-rendering on every size change would, for a standalone canvas.cmh-chart in a
+  // shrink-to-fit container on a HiDPI screen, keep enlarging the bitmap (each render sets the bitmap
+  // from clientWidth, which in a shrink-to-fit box tracks the bitmap) and never settle. Genuine window
+  // resizes of an already-visible chart are handled by the resize listener above.
+  if (typeof ResizeObserver === "function") {
+    if (setupInteractiveCharts._revealObs) setupInteractiveCharts._revealObs.disconnect();
+    const obs = new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) {
+        const canvas = entry.target;
+        if (Math.round(canvas.clientWidth) === 0) { canvas._cmhWasHidden = true; return; }
+        if (!canvas._cmhWasHidden) return; // already visible; the reveal has been handled
+        canvas._cmhWasHidden = false;
+        renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+        if (chartTooltipCanvas === canvas && canvas._cmhChart && canvas._cmhChart.activeIndex >= 0) {
+          const point = canvas._cmhChart.points[canvas._cmhChart.activeIndex];
+          if (point) _showChartTooltip(canvas, point);
+        }
+      });
+    });
+    charts.forEach(function (canvas) {
+      // Arm synchronously from the current visibility so a reveal that lands before the observer's
+      // first (async) delivery is still handled: if that initial callback arrives already non-zero,
+      // _cmhWasHidden is set and the reveal re-render still fires.
+      if (Math.round(canvas.clientWidth) === 0) canvas._cmhWasHidden = true;
+      obs.observe(canvas);
+    });
+    setupInteractiveCharts._revealObs = obs;
   }
 }
 
