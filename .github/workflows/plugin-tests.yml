@@ -75,7 +75,11 @@ jobs:
             echo "Could not resolve the PR base/head; running the plugin suites (fail-safe)."
             exit 0
           fi
-          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA") || {
+            echo "run_plugin=true" >> "$GITHUB_OUTPUT"
+            echo "git diff failed; running the plugin suites (fail-safe)."
+            exit 0
+          }
           echo "Changed files:"; echo "$changed"
           if echo "$changed" | grep -Eq '^(plugins/|\.github/workflows/plugin-tests\.yml$|scripts/run_plugin_python_tests\.py$)'; then
             echo "run_plugin=true" >> "$GITHUB_OUTPUT"
@@ -95,13 +99,13 @@ jobs:
       # Shard each plugin's Playwright suite across runners. A GitHub-hosted ubuntu runner
       # has 4 vCPUs, so `workers` cannot go past 4 on one runner (and the specs spawn a
       # python subprocess that thrashes beyond that); fanning the suite out across shards is
-      # the lever that cuts the critical path. Keep SHARD_TOTAL equal to the shard list length.
+      # the lever that cuts the critical path. The shard is a single "index/total" string so
+      # the count lives in ONE place - dropping an entry cannot silently orphan tests.
       matrix:
         plugin: ${{ fromJSON(needs.discover.outputs.plugins) }}
-        shard: [1, 2, 3, 4]
+        shard: ["1/4", "2/4", "3/4", "4/4"]
     env:
-      SHARD_INDEX: ${{ matrix.shard }}
-      SHARD_TOTAL: "4"
+      SHARD: ${{ matrix.shard }}
     defaults:
       run:
         working-directory: ${{ matrix.plugin }}/dev
@@ -121,7 +125,7 @@ jobs:
       - name: Install dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts
       - name: Verify committed test fixtures
-        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == 1
+        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == '1/4'
         working-directory: .
         run: node plugins/commentable-html/dev/tests/fixtures/generate.mjs --check
       - name: Resolve Playwright cache key inputs
@@ -147,7 +151,7 @@ jobs:
         if: steps.pwcache.outputs.cache-hit == 'true'
         run: npx playwright install chromium
       - name: Save Playwright browser cache
-        if: steps.pwcache.outputs.cache-hit != 'true' && matrix.shard == 1
+        if: steps.pwcache.outputs.cache-hit != 'true' && matrix.shard == '1/4'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -155,10 +159,10 @@ jobs:
       # The tutorial-screenshot check is not shardable, so run it once (on shard 1 of the
       # commentable-html suite that owns it) instead of in every shard.
       - name: Verify tutorial screenshots (once)
-        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == 1
+        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == '1/4'
         run: npm run shots:check
       - name: Run Playwright tests (shard)
-        run: npx playwright test "--shard=${SHARD_INDEX}/${SHARD_TOTAL}"
+        run: npx playwright test "--shard=${SHARD}"
 
   python:
     needs: changes
@@ -170,11 +174,11 @@ jobs:
       # Shard the plugins' Python (unittest) suites across runners the same way. The runner
       # keeps the per-file, in-process execution model of `unittest discover`, so no new
       # shared-state parallelism is introduced; different files just run on different runners.
+      # The shard is a single "index/total" string (one source of truth for the count).
       matrix:
-        shard: [1, 2, 3]
+        shard: ["1/3", "2/3", "3/3"]
     env:
-      SHARD_INDEX: ${{ matrix.shard }}
-      SHARD_TOTAL: "3"
+      SHARD: ${{ matrix.shard }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -185,7 +189,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run plugin Python test suites (shard)
-        run: python scripts/run_plugin_python_tests.py "--shard=${SHARD_INDEX}/${SHARD_TOTAL}" --require-discovered
+        run: python scripts/run_plugin_python_tests.py "--shard=${SHARD}" --require-discovered
 
   plugin-tests:
     needs: [changes, discover, playwright, python]
@@ -195,13 +199,14 @@ jobs:
     steps:
       - name: Gate on plugin test results
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
           RUN_PLUGIN: ${{ needs.changes.outputs.run_plugin }}
           DISCOVER_RESULT: ${{ needs.discover.result }}
           PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
           PYTHON_RESULT: ${{ needs.python.result }}
           DISCOVERED: ${{ needs.discover.outputs.plugins }}
         run: |
-          echo "run_plugin=$RUN_PLUGIN discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
+          echo "changes=$CHANGES_RESULT run_plugin=$RUN_PLUGIN discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
           # The discovery guard runs regardless, so an accidentally removed suite still fails
           # the gate even on a PR that skips the heavy suites.
           if [ "$DISCOVER_RESULT" != "success" ]; then
@@ -212,7 +217,18 @@ jobs:
             echo "::error::no plugin test suites were discovered; expected at least one plugins/*/dev/package.json"
             exit 1
           fi
-          if [ "$RUN_PLUGIN" != "true" ]; then
+          # Fail CLOSED if the changes job did not succeed, or produced an unexpected value:
+          # only an explicit run_plugin=false is a legitimate skip. Otherwise a failed/timed-out
+          # changes job (empty output) could silently skip the suites and still report green.
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes job did not succeed (result: $CHANGES_RESULT); cannot trust the skip decision"
+            exit 1
+          fi
+          if [ "$RUN_PLUGIN" != "true" ] && [ "$RUN_PLUGIN" != "false" ]; then
+            echo "::error::unexpected run_plugin value: '$RUN_PLUGIN' (expected true or false)"
+            exit 1
+          fi
+          if [ "$RUN_PLUGIN" = "false" ]; then
             echo "No plugin-affecting change; the Playwright and Python suites were intentionally skipped."
             exit 0
           fi

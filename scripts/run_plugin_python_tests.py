@@ -33,8 +33,34 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def discover_test_files(repo_root: Path) -> list[Path]:
     """Return every plugins/*/dev/tests/test_*.py file, sorted deterministically."""
-    files = repo_root.glob("plugins/*/dev/tests/test_*.py")
+def discover_test_files(repo_root: Path) -> list[Path]:
+    """Return every plugins/*/dev/tests/**/test_*.py file, sorted deterministically.
+
+    Recurses (like `unittest discover`) so a future nested test package is not silently
+    dropped.
+    """
+    files = repo_root.glob("plugins/*/dev/tests/**/test_*.py")
     return sorted(files, key=lambda p: p.relative_to(repo_root).as_posix())
+
+
+def check_no_stem_collisions(files: list[Path]) -> None:
+    """Fail LOUDLY if two test files share a basename.
+
+    The runner loads each test file by its module basename with the tests dir on
+    sys.path (mirroring `unittest discover`), so two files with the same basename in
+    different plugins would resolve to the SAME module - silently running one twice and
+    dropping the other. That is a false green, so refuse to run instead of hiding it.
+    """
+    seen: dict[str, Path] = {}
+    for f in files:
+        prior = seen.get(f.stem)
+        if prior is not None:
+            raise SystemExit(
+                "error: duplicate test-file basename across plugin suites would "
+                f"silently drop a suite: {prior} and {f} both import as '{f.stem}'. "
+                "Rename one so every plugins/*/dev/tests test file has a unique basename."
+            )
+        seen[f.stem] = f
 
 
 def select_shard(files: list[Path], index: int, total: int) -> list[Path]:
@@ -80,11 +106,13 @@ def filter_by_plugins(files: list[Path], plugins: set[str], repo_root: Path) -> 
     return [f for f in files if plugin_of(f, repo_root) in plugins]
 
 
-def _git_changed_paths(base_ref: str, repo_root: Path) -> list[str]:
+def _git_changed_paths(base_ref: str, repo_root: Path) -> list[str] | None:
     """Repo-relative paths changed on HEAD since its merge-base with base_ref.
 
     Uses the three-dot form so only changes introduced by the branch are considered.
-    Returns [] (run nothing) if the base ref cannot be resolved locally.
+    Returns None if the change set cannot be determined (base ref unresolvable or git
+    failed) - the caller then runs EVERYTHING (fail-safe), never silently nothing.
+    An empty list means the ref resolved and genuinely nothing changed.
     """
     try:
         subprocess.run(
@@ -92,20 +120,27 @@ def _git_changed_paths(base_ref: str, repo_root: Path) -> list[str]:
             cwd=repo_root, check=True, capture_output=True,
         )
     except (subprocess.CalledProcessError, OSError):
-        return []
+        return None
     try:
         res = subprocess.run(
             ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
             cwd=repo_root, check=True, capture_output=True, text=True,
         )
     except (subprocess.CalledProcessError, OSError):
-        return []
+        return None
     return [line for line in res.stdout.splitlines() if line.strip()]
 
 
-def _load_suite(files: list[Path]) -> unittest.TestSuite:
+def _load_suite(files: list[Path]) -> tuple[unittest.TestSuite, list[str]]:
+    """Load the given test files by basename (mirrors `unittest discover`).
+
+    Returns the suite and a list of load-error messages. A module that fails to import
+    is turned into a loud error (and, via unittest, a failing test) rather than crashing
+    the runner mid-load, so every shard reports its own problems.
+    """
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
+    errors: list[str] = []
     seen_dirs: list[str] = []
     for f in files:
         d = str(f.parent)
@@ -113,8 +148,13 @@ def _load_suite(files: list[Path]) -> unittest.TestSuite:
             sys.path.insert(0, d)
             seen_dirs.append(d)
     for f in files:
-        suite.addTests(loader.loadTestsFromName(f.stem))
-    return suite
+        try:
+            suite.addTests(loader.loadTestsFromName(f.stem))
+        except Exception as exc:  # noqa: BLE001 - report any import-time failure loudly
+            msg = f"{f}: failed to load ({type(exc).__name__}: {exc})"
+            errors.append(msg)
+            print(f"::error::{msg}", file=sys.stderr)
+    return suite, errors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -142,14 +182,21 @@ def main(argv: list[str] | None = None) -> int:
         print("error: no plugin Python test suites were discovered "
               "(expected at least one plugins/*/dev/tests/test_*.py)", file=sys.stderr)
         return 1
+    # Loading by basename is only safe when basenames are globally unique; fail loudly
+    # rather than silently dropping a colliding suite.
+    check_no_stem_collisions(all_files)
 
     files = all_files
     if args.changed_only:
-        touched = changed_plugins(_git_changed_paths(args.base_ref, REPO_ROOT))
-        files = filter_by_plugins(files, touched, REPO_ROOT)
-        if not files:
-            print(f"No changed-plugin Python suites vs {args.base_ref}; nothing to run.")
-            return 0
+        changed = _git_changed_paths(args.base_ref, REPO_ROOT)
+        if changed is None:
+            print(f"Could not determine changes vs {args.base_ref}; "
+                  "running ALL plugin suites (fail-safe).")
+        else:
+            files = filter_by_plugins(files, changed_plugins(changed), REPO_ROOT)
+            if not files:
+                print(f"No changed-plugin Python suites vs {args.base_ref}; nothing to run.")
+                return 0
 
     files = select_shard(files, index, total)
     if not files:
@@ -160,10 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     for f in files:
         print(f"  {f.relative_to(REPO_ROOT).as_posix()}")
 
-    suite = _load_suite(files)
+    suite, load_errors = _load_suite(files)
     runner = unittest.TextTestRunner(verbosity=args.verbose)
     result = runner.run(suite)
-    return 0 if result.wasSuccessful() else 1
+    return 0 if result.wasSuccessful() and not load_errors else 1
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ loading/running is not (CI runs the real suites).
 """
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import run_plugin_python_tests as rp
 
@@ -84,7 +85,51 @@ class DiscoverTests(unittest.TestCase):
         rels = [f.relative_to(rp.REPO_ROOT).as_posix() for f in files]
         self.assertEqual(rels, sorted(rels))
         for r in rels:
-            self.assertRegex(r, r"^plugins/[^/]+/dev/tests/test_.*\.py$")
+            self.assertRegex(r, r"^plugins/[^/]+/dev/tests/(.+/)?test_.*\.py$")
+
+    def test_real_repo_has_no_stem_collisions(self):
+        # The runner loads by basename, so the real repo must keep them unique.
+        rp.check_no_stem_collisions(rp.discover_test_files(rp.REPO_ROOT))  # must not raise
+
+
+class CollisionGuardTests(unittest.TestCase):
+    def test_raises_on_duplicate_basename_across_plugins(self):
+        files = [
+            Path("plugins/a/dev/tests/test_dup.py"),
+            Path("plugins/b/dev/tests/test_dup.py"),
+        ]
+        with self.assertRaises(SystemExit):
+            rp.check_no_stem_collisions(files)
+
+    def test_ok_on_unique_basenames(self):
+        files = [
+            Path("plugins/a/dev/tests/test_one.py"),
+            Path("plugins/b/dev/tests/test_two.py"),
+        ]
+        rp.check_no_stem_collisions(files)  # must not raise
+
+
+class MainTests(unittest.TestCase):
+    def test_malformed_shard_returns_2(self):
+        self.assertEqual(rp.main(["--shard", "abc"]), 2)
+
+    def test_require_discovered_empty_returns_1(self):
+        with mock.patch.object(rp, "discover_test_files", return_value=[]):
+            self.assertEqual(rp.main(["--require-discovered"]), 1)
+
+    def test_empty_shard_is_noop_success(self):
+        one = [rp.REPO_ROOT / "plugins/x/dev/tests/test_only.py"]
+        with mock.patch.object(rp, "discover_test_files", return_value=one):
+            # shard 3 of 3 over a single file gets nothing -> success, runs no tests.
+            self.assertEqual(rp.main(["--shard", "3/3"]), 0)
+
+
+class GitChangedPathsTests(unittest.TestCase):
+    def test_unresolvable_base_ref_returns_none(self):
+        # None (not []) signals "could not determine" so the caller runs everything.
+        self.assertIsNone(
+            rp._git_changed_paths("refs/does/not/exist/ever", rp.REPO_ROOT)
+        )
 
 
 if __name__ == "__main__":
