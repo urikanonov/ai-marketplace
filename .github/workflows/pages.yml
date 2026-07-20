@@ -82,9 +82,14 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
-      - name: Install Playwright browser and system deps
+      - name: Install Playwright browser and system deps (cache miss)
+        if: steps.pwcache.outputs.cache-hit != 'true'
         working-directory: site/tests
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright browser (cache hit)
+        if: steps.pwcache.outputs.cache-hit == 'true'
+        working-directory: site/tests
+        run: npx playwright install chromium
       - name: Save Playwright browser cache
         if: steps.pwcache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

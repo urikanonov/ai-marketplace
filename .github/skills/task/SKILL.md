@@ -57,8 +57,13 @@ python scripts/task.py stale --minutes 15
 # 5. Share the implementation plan for approval before coding.
 python scripts/task.py plan 188 "1. Rebase onto main  2. Fix  3. Test"
 
-# 6. Tick each acceptance criterion as you finish it (1-based).
+# 6. Tick each acceptance criterion as you finish it (1-based), or --all at once.
+# Always use this - it round-trips the body as one string and writes via --body-file, so it
+# never corrupts the Markdown. Never hand-edit the body with raw gh: `$b = gh issue view -q .body`
+# captures multi-line output as an ARRAY (newlines dropped) and rejoins with no separator,
+# collapsing every blank line and heading.
 python scripts/task.py check-ac 188 1
+python scripts/task.py check-ac 188 --all
 
 # 7. Record the final summary; open the PR with `Closes #188` to close the issue.
 python scripts/task.py finish 188 "Enforced a CSS min-width and covered it with a test."
