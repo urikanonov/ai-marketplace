@@ -291,17 +291,16 @@ def bump_last_active(body, stamp):
 
 def set_session(body, session):
     """Return body with the 'Handling session' line set to `session`, inserting it after the
-    Branch line when absent. An empty session returns the body unchanged (any existing session
-    line is preserved), so a beater that does not know its session id never erases a known one.
+    Branch line (or, failing that, before the Last active line) when absent. An empty session
+    returns the body unchanged (any existing session line is preserved), so a beater that does not
+    know its session id never erases a known one. Removes ALL existing handling-session lines first
+    (a crafted/legacy body could carry duplicates or a malformed one), then writes exactly one.
     Used by the heartbeat so the board reflects the session currently beating.
     """
     if not session:
         return body
     line = f"- Handling session: `{assert_valid_session(session)}`"
-    # Replace ANY existing handling-session line (even a malformed one) so we never leave a stale or
-    # duplicate line behind; only insert when none exists.
-    if re.search(r"^- Handling session:", body, re.M):
-        return re.sub(r"^- Handling session:.*$", lambda m: line, body, count=1, flags=re.M)
+    body = re.sub(r"(?m)^- Handling session:.*\n?", "", body)  # drop any/all existing lines
     if re.search(r"^- Branch: `[^`]+`.*$", body, re.M):
         return re.sub(r"^(- Branch: `[^`]+`.*)$", lambda m: m.group(1) + "\n" + line,
                       body, count=1, flags=re.M)
@@ -393,13 +392,23 @@ def parse_session(body):
     return m.group(1) if m else None
 
 
+def _valid_session_or_empty(session):
+    """Return the session id if it passes assert_valid_session, else '' - so a parsed value from a
+    crafted/legacy status comment (e.g. spaces inside the code span) can never propagate into
+    set_session and raise mid-heartbeat."""
+    try:
+        return assert_valid_session(session) if session else ""
+    except ValueError:
+        return ""
+
+
 def _session_at_newest(matches, newest):
-    """Return the handling session from the trusted comment carrying the `newest` timestamp (the
-    most recent heartbeat), or '' - so converging duplicates attribute ownership to the newest
-    beat rather than the (possibly older) canonical survivor."""
+    """Return the VALID handling session from the trusted comment carrying the `newest` timestamp
+    (the most recent heartbeat), or '' - so converging duplicates attribute ownership to the newest
+    beat rather than the (possibly older) canonical survivor. A malformed stored value is ignored."""
     for c in matches:
         if parse_last_active(c.get("body", "")) == newest:
-            s = parse_session(c.get("body", ""))
+            s = _valid_session_or_empty(parse_session(c.get("body", "")))
             if s:
                 return s
     return ""
@@ -671,9 +680,9 @@ def _beat_once(number, branch, session=""):
     # that duplicate's session (else ours, else the survivor's). set_session with '' preserves the
     # survivor's existing line, so a session is never wrongly dropped.
     if is_newer(stamp, newest):
-        sid = session or parse_session(survivor["body"]) or ""
+        sid = session or _valid_session_or_empty(parse_session(survivor["body"]))
     else:
-        sid = _session_at_newest(matches, newest) or session or parse_session(survivor["body"]) or ""
+        sid = _session_at_newest(matches, newest) or session or _valid_session_or_empty(parse_session(survivor["body"]))
     try:
         base = bump_last_active(survivor["body"], target)
     except ValueError:

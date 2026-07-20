@@ -352,6 +352,14 @@ class SetSessionTests(unittest.TestCase):
         self.assertEqual(task.parse_session(out), "good-sess")
         self.assertNotIn("broken-no-backticks", out)
 
+    def test_dedupes_multiple_existing_session_lines(self):
+        body = (task.STATUS_MARKER + "\n- Branch: `issue-5-foo`\n"
+                "- Handling session: `a`\n- Handling session: `b`\n"
+                "- Last active (UTC): 2026-07-18T13:55:00Z\n")
+        out = task.set_session(body, "c")
+        self.assertEqual(out.count("Handling session"), 1)
+        self.assertEqual(task.parse_session(out), "c")
+
 
 class SessionArgTests(unittest.TestCase):
     class _Args:
@@ -758,6 +766,16 @@ class BeatOnceRoutingTests(unittest.TestCase):
         self.assertIn("2099-01-01T00:00:00Z", edited)          # newest timestamp
         self.assertEqual(task.parse_session(edited), "sess-B")  # newest heartbeat's session
         self.assertEqual(stub.deleted, [2])                     # duplicate pruned after commit
+
+    def test_malformed_stored_session_does_not_crash_the_beat(self):
+        # A crafted/legacy comment whose session code span contains a space would raise if fed back
+        # into set_session; the beat must sanitize it to '' and simply refresh the timestamp.
+        body = (task.STATUS_MARKER + "\n- Branch: `issue-7-foo`\n"
+                "- Handling session: `bad session`\n- Last active (UTC): 2026-07-18T10:00:00Z\n")
+        with _StubComments(self._trusted(body)) as stub:
+            task._beat_once(7, None, "")  # must not raise
+        self.assertEqual(len(stub.edited), 1)
+        self.assertIn("- Last active (UTC):", stub.edited[0][1])
 
     def test_untrusted_marker_comment_is_not_adopted(self):
         planted = [{"id": 1, "body": task.status_body("evil", "2026-07-18T10:00:00Z"), "assoc": "NONE"}]
