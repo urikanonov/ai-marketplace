@@ -1056,6 +1056,12 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("slide-00000001");
     await page.keyboard.press("PageDown");
     expect(await activeId(page)).toBe("slide-00000001");
+    // Backspace is guarded the same way: it must not step back while blocking chrome is open.
+    await page.evaluate(() => window.__cmhDeck.showSlide(1));
+    expect(await activeId(page)).toBe("slide-00000002");
+    await page.keyboard.press("Backspace");
+    expect(await activeId(page)).toBe("slide-00000002");
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
     // Escape closes the menu and returns focus to the trigger.
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
