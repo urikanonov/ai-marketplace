@@ -101,7 +101,7 @@ When a newer version of the skill ships, upgrading a deployed HTML is mechanical
 3. **For HANDLED IDS and EMBEDDED COMMENTS:** keep the existing regions intact. The agent owns the HANDLED IDS array and **Export as Portable** owns the EMBEDDED COMMENTS snapshot; the skill never overwrites them on upgrade.
 4. **Leave the `#commentRoot` element alone.** Its `data-*` attributes carry the document's per-instance config, so `data-comment-key` continues to point at the same `localStorage` bucket and comments survive the upgrade.
 
-Net result: an upgrade is "replace three regions (CSS, COMMENT UI, JS), leave three things alone (HANDLED IDS, EMBEDDED COMMENTS, `#commentRoot`), done". No merge, no per-doc patching.
+Net result: an upgrade is "replace three regions (CSS, COMMENT UI, JS), leave three things alone (HANDLED IDS, EMBEDDED COMMENTS, `#commentRoot`), done". No merge, no per-doc patching. The `upgrade.py` helper additionally re-emits the shell-baked mermaid loader bootstrap in `<head>` (outside the regions) so deck/mermaid shell fixes reach already-generated documents; a hand-vendored offline loader (relative mermaid `import(...)`) is left alone so the upgrade never re-points it at the CDN.
 
 ### Upgrade safety and check mode
 
@@ -113,8 +113,8 @@ python tools/authoring/upgrade.py <file.html> --check
 ```
 
 `--check` does not write. It prints that the file is up to date and exits 0 when no layer region would
-change; it prints the stale region list and exits 1 when CSS, COMMENT UI, JS, or the default kind-meta
-migration would change.
+change; it prints the stale region list and exits 1 when CSS, COMMENT UI, JS, the shell mermaid loader
+bootstrap, or the default kind-meta migration would change.
 
 The JS region has one load-bearing footgun: the real `END: commentable-html - JS` marker is the LAST real
 region marker in the file. `dist/PORTABLE.html` contains earlier marker-like strings inside the JS body, so

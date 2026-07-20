@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.174.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.175.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,12 +451,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.175.0] - 2026-07-19</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>tools/authoring/upgrade.py</code> now re-emits the shell-baked mermaid loader bootstrap from the template, so the deck label fix (CMH-MMD-08) and any future change to the loader in <code>assets/template.shell.html</code> reach already-generated documents on upgrade (CMH-MMD-09). The bootstrap is baked into the document <code>&lt;head&gt;</code> at scaffold time, OUTSIDE the swappable CSS / COMMENT UI / JS regions, so a region swap alone never touched it: a deck generated before CMH-MMD-08 kept its old bootstrap after an upgrade and its mermaid labels still clipped. The swap replaces the <code>&lt;head&gt;</code> <code>&lt;script type=&quot;module&quot;&gt;</code> mermaid loader (and its <code>&lt;!-- Mermaid loader --&gt;</code> comment); it is scoped to <code>&lt;head&gt;</code> so authored body/CONTENT can never be mistaken for the loader, identifies the loader by a mermaid <code>import(&quot;...mermaid...&quot;)</code> so loaders predating the <code>pre.mermaid, div.mermaid</code> guard match too, preserves a hand-vendored offline loader (a local/relative mermaid import; a protocol-relative <code>//host</code> import counts as remote) rather than re-pointing it at the CDN, is document-kind-agnostic (the <code>.deck-stage</code> gate is a runtime check, so a non-deck report keeps HTML labels) and idempotent, and <code>--check</code> now flags a stale bootstrap. The Export Offline re-init is not shell-baked (it lives in the swapped JS region) and was already refreshed by the JS swap.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.174.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Deck mermaid diagrams now scale to fill the available slide AREA using both width and height (contain-to-fit), not just the width (CMH-DECK-35, building on CMH-DECK-26), and are bounded to the slide so they never overflow or clip (even when nested in wrappers). A slide whose only non-text content is a single diagram and that is not laid out as a <code>.cmh-cols-2</code> is auto-detected as a diagram slide (<code>cmh-deck-diagram-slide</code>) and laid out as a flex column, and the runtime sizes the rendered SVG to the largest aspect-preserving box that fits the slide&#x27;s fixed content area. A slide the author laid out as two columns keeps that layout - the automatic rule never flattens a <code>.cmh-cols-2</code>; the opt-in <code>.cmh-slide-diagram</code> recipe forces the fill and un-confines a lone diagram from its half column to the full slide width. The fit recomputes on resize and on slide activation, composes with CMH-MMD-08 (<code>htmlLabels: false</code>) so labels stay crisp, and survives Export Offline.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.172.0] - 2026-07-19</h3></div>
             <div class="group-label">Fixed</div>
@@ -465,8 +474,6 @@
               <li>Deck mermaid comment labels keep the space at a wrapped-line boundary. mermaid splits an SVG <code>&lt;text&gt;</code> label into per-line <code>tspan</code> rows with no separator, so the anchor key, comment quote, and Copy all had dropped the wrap-point space (<code>exact spot</code> -&gt; <code>exactspot</code>); <code>mermaidNodeLabel()</code> now rejoins the rows with a space.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.171.0] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -505,14 +512,7 @@
               <li>The validator now ERRORS in NonPortable mode when a baked absolute or <code>file://</code> companion reference resolves inside an OS temporary directory that is not the document&#x27;s own folder (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment layer once the OS reaps the temp directory - the exact failure behind a shared document whose CSS/JS 404&#x27;d after handoff. Temp detection is cross-platform and root-anchored (<code>TMPDIR</code>/<code>TEMP</code>/ <code>TMP</code> and <code>tempfile.gettempdir()</code>, symlink-resolved via <code>realpath</code>, plus <code>/tmp</code>, <code>/var/tmp</code>, <code>/var/folders</code>, <code>/windows/temp</code>, and per-user <code>AppData/Local/Temp</code>), so a durable project folder named <code>tmp</code> is never mis-flagged; relative refs and a companion sitting beside the document are never flagged. The message points at a Portable single-file export or copying <code>dist/</code> to a durable folder.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.167.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Preview highlight while composing a text comment (CMH-CORE-17): opening a new text-comment composer immediately shows the selected text as a live amber preview highlight (<code>mark.cm-preview</code>) so the reviewer sees exactly what the comment will anchor to. Saving turns it into the real persisted highlight over exactly the previewed text; cancelling via the Cancel button or Escape removes it and stores nothing. The preview is transient chrome (no <code>data-cid</code>, never persisted, excluded from export and print), stays in the text-offset space so a concurrent composer&#x27;s anchors never cross, is fully cleaned up if wrapping throws, and is re-applied if a save cannot complete so the still-open composer keeps its anchor cue.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">144 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">145 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

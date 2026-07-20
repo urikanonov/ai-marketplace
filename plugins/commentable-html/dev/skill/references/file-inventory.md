@@ -38,7 +38,7 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 - `new_document.py` - builds a fresh commentable document from a content fragment (NonPortable by default; `--portable` for a single self-contained file).
 - `recommend_kind.py` - recommends `report`, `plan`, or `slides` from filename and content signals before choosing `--kind`.
 - `retrofit.py` - injects the layer into an existing unlayered HTML file, validates before writing, and leaves the target unchanged on failure.
-- `upgrade.py` - upgrades CSS, COMMENT UI, and JS regions from the current `dist/PORTABLE.html`.
+- `upgrade.py` - upgrades the CSS, COMMENT UI, and JS regions and re-emits the shell-baked mermaid loader bootstrap from the current `dist/PORTABLE.html`.
 - `finalize.py` - runs safe assembly steps (including AI-typography normalization by default; `--no-normalize` to skip), then validates.
 - `normalize_typography.py` - rewrites AI smart-typography (em/en dashes, ellipsis, curly quotes, nbsp/zero-width spaces) to plain ASCII in a document's prose, leaving code/script/style/comments verbatim (`--check`/`--out`/in-place). Run automatically by `finalize.py` and `deck_scaffold.py`.
 - `diff_block.py` - emits escaped `pre.cmh-diff` review blocks.
