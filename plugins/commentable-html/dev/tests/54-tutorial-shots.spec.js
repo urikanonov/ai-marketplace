@@ -170,7 +170,10 @@ test("--print-paths resolves the shipped tutorial defaults (CMH-TUT-SHOTS-01)", 
 });
 
 test("regenerates every garden shot into a nested out dir, and --check passes on fresh output (CMH-TUT-SHOTS-01)", async () => {
-  test.setTimeout(180000);
+  // Widest budget of the garden tests: this one runs three serial capture subprocesses (capture,
+  // overwrite-capture, and the --check re-capture), so give it extra headroom over the CI-slowed
+  // (2x settle deadline) captures.
+  test.setTimeout(240000);
   // A nonexistent NESTED output dir also exercises recursive out-dir creation.
   const outA = path.join(freshDir("regen"), "nested", "assets");
   const r1 = capture(EXAMPLE, outA);
@@ -276,8 +279,8 @@ for (const scene of EXTRA_SCENES) {
 // guards the tool/spec shot contract: a SCENE_ORDER drift that dropped a scene, or a shot added to
 // the tool but not the spec (or vice versa), is caught here. The actual all-scenes `--check` freshness
 // run is NOT repeated here (it would re-capture every scene, the heaviest single step): the required
-// `plugin-tests` fast-shard-1 step already runs `capture_tutorial.mjs --check`, so duplicating it in
-// the suite only slowed the heavy job.
+// `plugin-tests` heavy-job shard 1/3 `shots:check` step already runs `capture_tutorial.mjs --check`,
+// so duplicating it in the suite only slowed the heavy job.
 test("the no-arg default run's shot registry matches the spec's scene lists (CMH-TUT-SHOTS-01)", async () => {
   const dry = spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--print-paths"], { encoding: "utf8" });
   expect(dry.error, String(dry.error)).toBeFalsy();

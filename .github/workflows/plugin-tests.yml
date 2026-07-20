@@ -175,7 +175,7 @@ jobs:
   # project today; a future plugin suite that wants the split defines `fast`/`heavy` projects too.
   playwright-heavy:
     needs: [changes, discover]
-    if: ${{ needs.changes.outputs.run_plugin == 'true' && contains(fromJSON(needs.discover.outputs.plugins), 'plugins/commentable-html') }}
+    if: ${{ needs.changes.outputs.run_plugin == 'true' && needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' && contains(fromJSON(needs.discover.outputs.plugins), 'plugins/commentable-html') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -309,12 +309,26 @@ jobs:
             echo "::error::plugin Playwright (fast) tests did not pass (result: $PLAYWRIGHT_RESULT)"
             exit 1
           fi
-          # The heavy job is skipped when no plugin defines a heavy project; a legitimate skip is OK,
-          # but a failure/cancellation is not.
-          if [ "$PLAYWRIGHT_HEAVY_RESULT" != "success" ] && [ "$PLAYWRIGHT_HEAVY_RESULT" != "skipped" ]; then
-            echo "::error::plugin Playwright (heavy) tests did not pass (result: $PLAYWRIGHT_HEAVY_RESULT)"
-            exit 1
-          fi
+          # commentable-html owns the heavy project (and the once-only tutorial-shots freshness
+          # check). When it is discovered on a plugin-affecting change, the heavy job MUST have run
+          # and succeeded - `skipped` is a legitimate outcome ONLY when no plugin defines a heavy
+          # project, so requiring success here locks the shots-freshness invariant against a future
+          # accidental narrowing of the heavy job's `if`.
+          case "$DISCOVERED" in
+            *'"plugins/commentable-html"'*)
+              if [ "$PLAYWRIGHT_HEAVY_RESULT" != "success" ]; then
+                echo "::error::commentable-html was discovered, so the heavy Playwright job must run and pass (result: $PLAYWRIGHT_HEAVY_RESULT)"
+                exit 1
+              fi
+              ;;
+            *)
+              # No heavy-project owner discovered: a skip is fine, a failure/cancellation is not.
+              if [ "$PLAYWRIGHT_HEAVY_RESULT" != "success" ] && [ "$PLAYWRIGHT_HEAVY_RESULT" != "skipped" ]; then
+                echo "::error::plugin Playwright (heavy) tests did not pass (result: $PLAYWRIGHT_HEAVY_RESULT)"
+                exit 1
+              fi
+              ;;
+          esac
           if [ "$PYTHON_RESULT" != "success" ]; then
             echo "::error::plugin Python tests did not pass (result: $PYTHON_RESULT)"
             exit 1
