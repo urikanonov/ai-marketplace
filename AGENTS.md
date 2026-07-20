@@ -803,8 +803,14 @@ dropped work can be resumed), every agent working an issue MUST do two things, b
 
 The maintainer (or another agent looking for work) runs `python scripts/task.py stale [--minutes N]` to
 list in-progress `task` issues whose heartbeat is missing or older than N minutes - the definitive
-"nobody is working this" list, each row naming the branch to resume from. The heartbeat helpers are pure
-and unit-tested in `scripts/test_task.py` (the required `validate` check runs them).
+"nobody is working this" list, each row naming the branch to resume from. For a fuller picture,
+`python scripts/task.py board` prints a board of every open `task` issue with its handling Copilot
+session id, its branch, its last activity (UTC), and an active/stale/none state (`--all-labels` widens
+it to every open issue; `--json` emits rows). The handling session id is the Copilot CLI session on the
+issue: `start`/`claim`/`heartbeat` stamp it into the "Work status" comment automatically from the
+`COPILOT_AGENT_SESSION_ID` environment variable (override with `--session-id`), so the board shows which
+session owns each issue. The heartbeat helpers are pure and unit-tested in `scripts/test_task.py` (the
+required `validate` check runs them).
 
 ## Driving a PR or issue to completion (drive-to-merge)
 

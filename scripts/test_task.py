@@ -229,6 +229,24 @@ class ParserTests(unittest.TestCase):
         args = task.build_parser().parse_args(["stale"])
         self.assertEqual(args.minutes, task.HEARTBEAT_STALE_MINUTES)
 
+    def test_heartbeat_accepts_session_id(self):
+        args = task.build_parser().parse_args(["heartbeat", "5", "--session-id", "sess-9"])
+        self.assertEqual(args.session_id, "sess-9")
+
+    def test_claim_accepts_session_id(self):
+        args = task.build_parser().parse_args(["claim", "5", "--session-id", "sess-9"])
+        self.assertEqual(args.session_id, "sess-9")
+
+    def test_board_parses_defaults_and_flags(self):
+        args = task.build_parser().parse_args(["board"])
+        self.assertFalse(args.json)
+        self.assertFalse(args.all_labels)
+        self.assertEqual(args.minutes, task.HEARTBEAT_STALE_MINUTES)
+        args = task.build_parser().parse_args(["board", "--json", "--all-labels", "--minutes", "30"])
+        self.assertTrue(args.json)
+        self.assertTrue(args.all_labels)
+        self.assertEqual(args.minutes, 30)
+
     def test_start_parses_slug_and_name(self):
         args = task.build_parser().parse_args(["start", "5", "--slug", "Fix Thing", "--name", "wt"])
         self.assertEqual(args.slug, "Fix Thing")
@@ -263,6 +281,69 @@ class StatusBodyTests(unittest.TestCase):
         for bad in ["--force", "has`tick", "has space", " ", ""]:
             with self.assertRaises(ValueError):
                 task.status_body(bad, "2026-07-18T13:55:00Z")
+
+    def test_includes_handling_session_when_given(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", "sess-abc123")
+        self.assertIn("- Handling session: `sess-abc123`", body)
+        self.assertEqual(task.parse_session(body), "sess-abc123")
+        task.assert_ascii(body, "status body")  # still plain ASCII
+
+    def test_omits_handling_session_when_absent(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        self.assertNotIn("Handling session", body)
+        self.assertIsNone(task.parse_session(body))
+
+    def test_rejects_bad_session(self):
+        for bad in ["has`tick", "has space"]:
+            with self.assertRaises(ValueError):
+                task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", bad)
+
+
+class ParseSessionTests(unittest.TestCase):
+    def test_reads_session_back(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", "061a371f-d345")
+        self.assertEqual(task.parse_session(body), "061a371f-d345")
+
+    def test_returns_none_when_absent(self):
+        self.assertIsNone(task.parse_session("no session line"))
+
+
+class BoardRowTests(unittest.TestCase):
+    NOW = datetime(2026, 7, 18, 14, 0, 0, tzinfo=timezone.utc)
+
+    def test_active_row_from_fresh_status(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:58:00Z", "sess-1")
+        row = task.board_row({"number": 5, "title": "Do a thing"}, body, self.NOW)
+        self.assertEqual(row["number"], 5)
+        self.assertEqual(row["session"], "sess-1")
+        self.assertEqual(row["branch"], "issue-5-foo")
+        self.assertEqual(row["last_active"], "2026-07-18T13:58:00Z")
+        self.assertEqual(row["state"], "active")
+
+    def test_stale_row_from_old_status(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T10:00:00Z", "sess-1")
+        row = task.board_row({"number": 5, "title": "Old"}, body, self.NOW)
+        self.assertEqual(row["state"], "stale")
+
+    def test_none_row_when_no_status_comment(self):
+        row = task.board_row({"number": 9, "title": "Untouched"}, "", self.NOW)
+        self.assertEqual(row["state"], "none")
+        self.assertEqual(row["session"], "")
+        self.assertEqual(row["branch"], "")
+        self.assertEqual(row["last_active"], "")
+
+
+class FormatBoardTests(unittest.TestCase):
+    def test_table_has_headers_and_row_data(self):
+        rows = [{"number": 5, "title": "Do a thing", "session": "sess-1",
+                 "branch": "issue-5-foo", "last_active": "2026-07-18T13:58:00Z", "state": "active"}]
+        out = task.format_board(rows)
+        for token in ("Issue", "State", "Session", "Branch", "Last active", "Title",
+                      "5", "sess-1", "issue-5-foo", "2026-07-18T13:58:00Z", "active", "Do a thing"):
+            self.assertIn(token, out)
+
+    def test_empty_rows_is_a_message_not_a_crash(self):
+        self.assertIn("No open", task.format_board([]))
 
 
 class AssertValidBranchTests(unittest.TestCase):
@@ -658,7 +739,7 @@ class _StubStartBoundary:
         self._orig = (task._run, task._capture, task._upsert_status)
         task._run = self._run
         task._capture = lambda args: ""
-        task._upsert_status = lambda number, branch, stamp=None: self.upserts.append((number, branch))
+        task._upsert_status = lambda number, branch, stamp=None, session="": self.upserts.append((number, branch))
         return self
 
     def __exit__(self, *exc):
