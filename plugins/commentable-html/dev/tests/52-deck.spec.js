@@ -95,7 +95,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       window.__evts = [];
       document.addEventListener("cmh:slidechange", (e) => window.__evts.push(e.detail));
     });
-    // ArrowRight / Space / PageDown advance; ArrowLeft / PageUp go back; Home / End jump to ends.
+    // ArrowRight / Space / PageDown advance; ArrowLeft / PageUp / Backspace go back; Home / End jump to ends.
     await page.keyboard.press("ArrowRight");
     expect(await activeId(page)).toBe("slide-00000002");
     await expect(page.locator(".cmh-deck-count")).toHaveText("2 / 3");
@@ -105,6 +105,8 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("slide-00000002");
     await page.keyboard.press("PageDown");
     expect(await activeId(page)).toBe("slide-00000003");
+    await page.keyboard.press("Backspace");
+    expect(await activeId(page)).toBe("slide-00000002");
     await page.keyboard.press("Home");
     expect(await activeId(page)).toBe("slide-00000001");
     await page.keyboard.press("End");

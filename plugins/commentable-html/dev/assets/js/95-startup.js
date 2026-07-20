@@ -845,7 +845,7 @@ function setupDeck() {
     if (commentMode || e.defaultPrevented || isEditableTarget(e.target) || hasBlockingDeckChrome()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown") {
       if (show(current + 1)) e.preventDefault();
-    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "Backspace") {
       if (show(current - 1)) e.preventDefault();
     } else if (e.key === "Home") {
       if (show(0)) e.preventDefault();

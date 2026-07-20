@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.178.0] - 2026-07-20
+
+### Added
+
+- Deck mode now accepts `Backspace` as a "previous slide" key, alongside `ArrowLeft` and `PageUp`, so
+  presenters can step one slide back with the key many slide tools use (CMH-DECK-05). It respects the
+  same guards as the other navigation keys: it does not move slides while a comment field or other
+  editable target is focused, or while the comment-options menu or other blocking deck chrome is open.
+
 ## [1.175.0] - 2026-07-19
 
 ### Fixed
