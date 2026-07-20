@@ -25,13 +25,26 @@ _CONTENT_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*(["\'])commentRoot\1[^>]
 # documents; regen_example re-emits it into every example so an example single-sources the canonical
 # loader from PORTABLE and can never ship a stale pre-CMH-MMD-07 loader (the old naive in-place
 # `mermaid.run()`) that renders a collapsed-at-load diagram as a degenerate ~16px SVG.
+# These helpers are a hand-maintained MIRROR of upgrade.py's `_mermaid_bootstrap_span` /
+# `_mermaid_loader_is_vendored`; the cross-implementation differential test
+# (tests/test_examples.py::MermaidLoaderMirrorTests) pins them to identical behavior so they can
+# never diverge - keep the two matchers byte-for-byte equivalent in logic.
 _MODULE_SCRIPT_RE = re.compile(
-    r'<script\b[^>]*\btype=(["\'])module\1[^>]*>[\s\S]*?</script>', re.IGNORECASE)
+    r'<script\b[^>]*\btype=(["\'])module\1[^>]*>([\s\S]*?)</script>', re.IGNORECASE)
 # Keyed on "mermaid" INSIDE the import string literal (with a capture group for the specifier, used
 # by the vendored check), so a script that only mentions mermaid in a comment is not matched.
-_MERMAID_IMPORT_RE = re.compile(r'import\(\s*(["\'])([^"\']*mermaid[^"\']*)\1', re.IGNORECASE)
+_MERMAID_IMPORT_RE = re.compile(
+    r'import\(\s*(["\'])([^"\']*mermaid[^"\']*)\1', re.IGNORECASE | re.DOTALL)
 _MERMAID_LOADER_COMMENT_RE = re.compile(
     r'[ \t]*<!--\s*Mermaid loader\b[\s\S]*?-->[ \t]*\r?\n?', re.IGNORECASE)
+# A remote specifier: scheme-bearing (`https://`) or protocol-relative (`//host/...`). Anything else
+# (`./x`, `../x`, `/x`, bare) is local/vendored. Anchored at the start so a local specifier whose
+# query/fragment merely CONTAINS `://` (e.g. `./mermaid.mjs?src=https://cdn/x`) is not misread as
+# remote (mirrors upgrade.py._URL_SCHEME_RE).
+_URL_SCHEME_RE = re.compile(r'[a-z][a-z0-9+.-]*://', re.IGNORECASE)
+# The document <head>. `<head\b` (word boundary) so a `<header>` element - or a `<head`-prefixed
+# string in a pre-head comment - is not mistaken for the head, exactly like upgrade.py._HEAD_RE.
+_HEAD_RE = re.compile(r"<head\b[^>]*>.*?</head>", re.IGNORECASE | re.DOTALL)
 
 
 def _nearest_loader_comment_start(head, start):
@@ -49,14 +62,16 @@ def _mermaid_loader_span(html, where="<example>"):
     """(start, end) offsets of the <head> mermaid loader block - the module <script> that boots
     mermaid via a dynamic mermaid `import(...)`, plus its immediately-preceding "Mermaid loader"
     comment - or None. Scoped to <head> so an authored body module script is never mistaken for the
-    loader. When more than one head module imports mermaid, the one bound to the "Mermaid loader"
-    comment wins; otherwise ambiguity is an error (mirrors upgrade.py._mermaid_bootstrap_span)."""
-    lo = html.lower()
-    hs, he = lo.find("<head"), lo.find("</head>")
-    if hs == -1 or he == -1 or he <= hs:
+    loader. The mermaid `import(...)` is matched in the script BODY (not the opening tag), so a decoy
+    import string in an attribute is ignored. When more than one head module imports mermaid, the one
+    bound to the "Mermaid loader" comment wins; otherwise ambiguity is an error (mirrors
+    upgrade.py._mermaid_bootstrap_span)."""
+    head_m = _HEAD_RE.search(html or "")
+    if head_m is None:
         return None
-    head = html[hs:he]
-    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(head) if _MERMAID_IMPORT_RE.search(m.group(0))]
+    head = head_m.group(0)
+    base = head_m.start()
+    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(head) if _MERMAID_IMPORT_RE.search(m.group(2))]
     if not candidates:
         return None
     if len(candidates) > 1:
@@ -65,7 +80,7 @@ def _mermaid_loader_span(html, where="<example>"):
             raise SystemExit("build: %s has ambiguous mermaid loader scripts in <head>" % where)
         candidates = commented
     m = candidates[0]
-    return hs + _nearest_loader_comment_start(head, m.start()), hs + m.end()
+    return base + _nearest_loader_comment_start(head, m.start()), base + m.end()
 
 
 def _mermaid_loader_is_vendored(bootstrap):
@@ -75,7 +90,7 @@ def _mermaid_loader_is_vendored(bootstrap):
     hand-vendored loader back at the CDN (mirrors upgrade.py._mermaid_loader_is_vendored)."""
     for m in _MERMAID_IMPORT_RE.finditer(bootstrap or ""):
         spec = m.group(2).strip()
-        if "://" not in spec and not spec.startswith("//"):
+        if not (_URL_SCHEME_RE.match(spec) or spec.startswith("//")):
             return True   # a local/relative specifier: hand-vendored
     return False
 

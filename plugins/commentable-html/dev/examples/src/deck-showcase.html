@@ -22,28 +22,14 @@
   })();
 </script>
 
-<!-- Mermaid loader. The commentable layer auto-detects pre.mermaid / div.mermaid
-     elements once mermaid renders them to SVG, so no per-doc wiring is required.
-     Diagrams render by default; if mermaid cannot load (network unavailable / CDN blocked) the
-     block degrades to readable source text. For a fully self-contained artifact, vendor a
-     local copy of mermaid and import it by relative path (see SKILL.md). -->
+<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
+     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
+     block is a placeholder only - edit the loader in the shell template, not here; an edit
+     here has no effect on the built example. -->
 <script type="module">
-  // Only reach out to the mermaid CDN when the document actually contains a diagram, so a
-  // diagram-free document (including a deck) makes no network request at all.
+  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
   if (document.querySelector("pre.mermaid, div.mermaid")) {
-    try {
-      const m = (await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs")).default;
-      const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
-      // A deck's scaled stage re-flows HTML (<foreignObject>) mermaid labels so wider labels clip; SVG
-      // <text> labels (htmlLabels:false) scale cleanly. Use them for a deck; keep HTML labels elsewhere.
-      const htmlLabels = !document.querySelector(".deck-stage");
-      m.initialize({ startOnLoad: false, theme, securityLevel: "strict", htmlLabels, flowchart: { htmlLabels, curve: "basis" } });
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => m.run().catch(() => {}));
-      } else {
-        m.run().catch(() => {});
-      }
-    } catch (e) { /* network unavailable or blocked: pre.mermaid stays as source text */ }
+    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
   }
 </script>
 
