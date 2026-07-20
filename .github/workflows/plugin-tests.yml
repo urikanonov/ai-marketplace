@@ -108,10 +108,11 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # Shard each plugin's Playwright suite across runners. A GitHub-hosted ubuntu runner
-      # has 4 vCPUs, so `workers` cannot go past 4 on one runner (and the specs spawn a
-      # python subprocess that thrashes beyond that); fanning the suite out across shards is
-      # the lever that cuts the critical path. The shard is a single "index/total" string so
+      # The FAST Playwright project (everything except the heavy browser-subprocess specs),
+      # sharded across runners. A GitHub-hosted ubuntu runner has 4 vCPUs, so `workers` cannot go
+      # past 4 on one runner; fanning the suite out across shards is the lever that cuts the
+      # critical path. The heavy specs run in the separate `playwright-heavy` job below so their
+      # capture subprocesses do not thrash a shard. The shard is a single "index/total" string so
       # the count lives in ONE place - dropping an entry cannot silently orphan tests.
       matrix:
         plugin: ${{ fromJSON(needs.discover.outputs.plugins) }}
@@ -136,10 +137,6 @@ jobs:
         run: test -f package-lock.json || { echo "::error::this plugin's dev/ needs a committed package-lock.json for npm ci"; exit 1; }
       - name: Install dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts
-      - name: Verify committed test fixtures
-        if: matrix.plugin == 'plugins/commentable-html' && startsWith(matrix.shard, '1/')
-        working-directory: .
-        run: node plugins/commentable-html/dev/tests/fixtures/generate.mjs --check
       - name: Resolve Playwright cache key inputs
         id: pw
         shell: bash
@@ -168,13 +165,76 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
-      # The tutorial-screenshot check is not shardable, so run it once (on shard 1 of the
-      # commentable-html suite that owns it) instead of in every shard.
+      - name: Run Playwright tests (fast project shard)
+        run: npx playwright test --project=fast "--shard=${SHARD}"
+
+  # The HEAVY Playwright project: the browser-subprocess specs (tutorial-screenshot capture) that
+  # spawn their own chromium and cannot parallelize past a few concurrent browsers without OS
+  # thrash. Run in their OWN sharded job (parallel to the fast shards) at a bounded worker count so
+  # one serial screenshot block no longer gates a fast shard. Only commentable-html defines a heavy
+  # project today; a future plugin suite that wants the split defines `fast`/`heavy` projects too.
+  playwright-heavy:
+    needs: [changes, discover]
+    if: ${{ needs.changes.outputs.run_plugin == 'true' && needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' && contains(fromJSON(needs.discover.outputs.plugins), 'plugins/commentable-html') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/3", "2/3", "3/3"]
+    env:
+      SHARD: ${{ matrix.shard }}
+    defaults:
+      run:
+        working-directory: plugins/commentable-html/dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/commentable-html/dev/package-lock.json
+      - name: Install dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts
+      - name: Resolve Playwright cache key inputs
+        id: pw
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'process.stdout.write("version=" + require("@playwright/test/package.json").version + "\n")' >> "$GITHUB_OUTPUT"
+          echo "imageos=${ImageOS:-$RUNNER_OS}" >> "$GITHUB_OUTPUT"
+      - name: Restore Playwright browser cache
+        id: pwcache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
+      - name: Install Playwright browser and system deps (cache miss)
+        if: steps.pwcache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browser (cache hit)
+        if: steps.pwcache.outputs.cache-hit == 'true'
+        run: npx playwright install chromium
+      # The once-only commentable-html checks run here (on heavy shard 1) rather than on a fast shard,
+      # so they do not make a fast shard the critical path. The fixtures --check and the tutorial
+      # screenshot --check both belong with the commentable-html suite the heavy job owns.
+      - name: Verify committed test fixtures (once)
+        if: matrix.shard == '1/3'
+        run: node tests/fixtures/generate.mjs --check
       - name: Verify tutorial screenshots (once)
-        if: matrix.plugin == 'plugins/commentable-html' && startsWith(matrix.shard, '1/')
+        if: matrix.shard == '1/3'
         run: npm run shots:check
-      - name: Run Playwright tests (shard)
-        run: npx playwright test "--shard=${SHARD}"
+      # workers=3 (below the runner's 4 vCPUs): each heavy test spawns its OWN capture chromium
+      # subprocess, so 3 workers keep the peak concurrent-browser count off the OS-thrash ceiling
+      # that could flake the wall-clock settle deadlines. The heavy specs isolate their scratch per
+      # process id and each writes to its own out dir (validated stable, no retries, on the 4-vCPU
+      # CI runner), so they run in parallel here without thrashing a shard.
+      - name: Run Playwright tests (heavy project shard)
+        run: npx playwright test --project=heavy "--shard=${SHARD}" --workers=3
 
   python:
     needs: changes
@@ -188,7 +248,7 @@ jobs:
       # shared-state parallelism is introduced; different files just run on different runners.
       # The shard is a single "index/total" string (one source of truth for the count).
       matrix:
-        shard: ["1/3", "2/3", "3/3"]
+        shard: ["1/4", "2/4", "3/4", "4/4"]
     env:
       SHARD: ${{ matrix.shard }}
     steps:
@@ -204,7 +264,7 @@ jobs:
         run: python scripts/run_plugin_python_tests.py "--shard=${SHARD}" --require-discovered
 
   plugin-tests:
-    needs: [changes, discover, playwright, python]
+    needs: [changes, discover, playwright, playwright-heavy, python]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -215,10 +275,11 @@ jobs:
           RUN_PLUGIN: ${{ needs.changes.outputs.run_plugin }}
           DISCOVER_RESULT: ${{ needs.discover.result }}
           PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
+          PLAYWRIGHT_HEAVY_RESULT: ${{ needs.playwright-heavy.result }}
           PYTHON_RESULT: ${{ needs.python.result }}
           DISCOVERED: ${{ needs.discover.outputs.plugins }}
         run: |
-          echo "changes=$CHANGES_RESULT run_plugin=$RUN_PLUGIN discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
+          echo "changes=$CHANGES_RESULT run_plugin=$RUN_PLUGIN discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT playwright-heavy=$PLAYWRIGHT_HEAVY_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
           # The discovery guard runs regardless, so an accidentally removed suite still fails
           # the gate even on a PR that skips the heavy suites.
           if [ "$DISCOVER_RESULT" != "success" ]; then
@@ -245,9 +306,29 @@ jobs:
             exit 0
           fi
           if [ "$PLAYWRIGHT_RESULT" != "success" ]; then
-            echo "::error::plugin Playwright tests did not pass (result: $PLAYWRIGHT_RESULT)"
+            echo "::error::plugin Playwright (fast) tests did not pass (result: $PLAYWRIGHT_RESULT)"
             exit 1
           fi
+          # commentable-html owns the heavy project (and the once-only tutorial-shots freshness
+          # check). When it is discovered on a plugin-affecting change, the heavy job MUST have run
+          # and succeeded - `skipped` is a legitimate outcome ONLY when no plugin defines a heavy
+          # project, so requiring success here locks the shots-freshness invariant against a future
+          # accidental narrowing of the heavy job's `if`.
+          case "$DISCOVERED" in
+            *'"plugins/commentable-html"'*)
+              if [ "$PLAYWRIGHT_HEAVY_RESULT" != "success" ]; then
+                echo "::error::commentable-html was discovered, so the heavy Playwright job must run and pass (result: $PLAYWRIGHT_HEAVY_RESULT)"
+                exit 1
+              fi
+              ;;
+            *)
+              # No heavy-project owner discovered: a skip is fine, a failure/cancellation is not.
+              if [ "$PLAYWRIGHT_HEAVY_RESULT" != "success" ] && [ "$PLAYWRIGHT_HEAVY_RESULT" != "skipped" ]; then
+                echo "::error::plugin Playwright (heavy) tests did not pass (result: $PLAYWRIGHT_HEAVY_RESULT)"
+                exit 1
+              fi
+              ;;
+          esac
           if [ "$PYTHON_RESULT" != "success" ]; then
             echo "::error::plugin Python tests did not pass (result: $PYTHON_RESULT)"
             exit 1

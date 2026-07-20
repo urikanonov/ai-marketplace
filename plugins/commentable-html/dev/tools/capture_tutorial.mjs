@@ -14,6 +14,11 @@ import fs from "fs";
 import { fileURLToPath, pathToFileURL } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+// The in-browser layout/scroll settle loops throw on a wall-clock deadline that was sized for a
+// single browser. Under CI parallelism (the heavy Playwright job runs several capture subprocesses
+// at once, each its own chromium) rendering is CPU-contended and can miss those deadlines, so scale
+// them up on CI. No cost when a page settles quickly (the loop exits as soon as it is stable).
+const SETTLE_SCALE = process.env.CI ? 2 : 1;
 // The tutorial example and screenshots live at the plugin top level (not shipped, not in the zip).
 const PLUGIN = path.resolve(HERE, "..", "..");
 const REPO = path.resolve(HERE, "..", "..", "..", "..");
@@ -81,7 +86,7 @@ async function settlePaint(page) {
 }
 
 async function waitForStableElement(locator, frames = 3) {
-  await locator.evaluate(async (el, wantedFrames) => {
+  await locator.evaluate(async (el, { wantedFrames, deadlineMs }) => {
     const snapshot = () => {
       const rect = el.getBoundingClientRect();
       return [
@@ -97,7 +102,7 @@ async function waitForStableElement(locator, frames = 3) {
     };
     let previous = snapshot();
     let stable = 0;
-    const deadline = performance.now() + 5000;
+    const deadline = performance.now() + deadlineMs;
     while (stable < wantedFrames) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const next = snapshot();
@@ -105,14 +110,14 @@ async function waitForStableElement(locator, frames = 3) {
       previous = next;
       if (performance.now() > deadline) throw new Error("element layout did not settle");
     }
-  }, frames);
+  }, { wantedFrames: frames, deadlineMs: 5000 * SETTLE_SCALE });
 }
 
 async function scrollLocatorToTop(locator, topMargin) {
-  await locator.evaluate(async (el, margin) => {
+  await locator.evaluate(async (el, { margin, deadlineMs }) => {
     const wanted = Math.max(0, Math.round(window.scrollY + el.getBoundingClientRect().top - margin));
     window.scrollTo(0, wanted);
-    const deadline = performance.now() + 5000;
+    const deadline = performance.now() + deadlineMs;
     let stable = 0;
     let previous = "";
     while (stable < 3) {
@@ -127,11 +132,11 @@ async function scrollLocatorToTop(locator, topMargin) {
       previous = current;
       if (performance.now() > deadline) throw new Error("scroll did not settle");
     }
-  }, topMargin);
+  }, { margin: topMargin, deadlineMs: 5000 * SETTLE_SCALE });
 }
 
 async function waitForStableLayout(page, frames = 2) {
-  await page.evaluate(async (wantedFrames) => {
+  await page.evaluate(async ({ wantedFrames, deadlineMs }) => {
     const snapshot = () => {
       const root = document.documentElement;
       const body = document.body;
@@ -149,7 +154,7 @@ async function waitForStableLayout(page, frames = 2) {
     };
     let previous = snapshot();
     let stable = 0;
-    const deadline = performance.now() + 3000;
+    const deadline = performance.now() + deadlineMs;
     while (stable < wantedFrames) {
       await new Promise((resolve) => requestAnimationFrame(resolve));
       const next = snapshot();
@@ -157,7 +162,7 @@ async function waitForStableLayout(page, frames = 2) {
       previous = next;
       if (performance.now() > deadline) throw new Error("page layout did not settle");
     }
-  }, frames);
+  }, { wantedFrames: frames, deadlineMs: 3000 * SETTLE_SCALE });
 }
 
 async function waitForFonts(page) {
