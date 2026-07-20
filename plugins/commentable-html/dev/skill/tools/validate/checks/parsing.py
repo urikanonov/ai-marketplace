@@ -112,6 +112,12 @@ VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input",
 
 _HEADING_TAGS = frozenset(("h1", "h2", "h3", "h4", "h5", "h6"))
 
+# Elements allowed in <head>. The first START tag outside this set (and every <body> / closing
+# </head>) ends the head, so a favicon <link> is only counted while it is head-scoped. This
+# mirrors tools/authoring/_favicon.py so the validator and the authoring tools agree.
+_HEAD_TAGS = frozenset(("html", "head", "base", "link", "meta", "title", "noscript", "style",
+                        "script", "template"))
+
 # A start tag that implicitly closes an open <p> (a pragmatic HTML5 subset).
 P_CLOSERS = {
     "address", "article", "aside", "blockquote", "details", "div", "dl",
@@ -230,7 +236,8 @@ class _DocParser(HTMLParser):
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
-        self.icon_links = []     # [{"rel": str, "href": str}] for every <link rel~="icon"> (favicon)
+        self.icon_links = []     # [{"rel": str, "href": str}] for every head <link rel~="icon">
+        self._head_ended = False # True once the head is over (a <body>/</head>/first flow element)
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
         self.body_attrs = None           # attrs dict of the REAL <body> start tag (first one)
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
@@ -311,15 +318,17 @@ class _DocParser(HTMLParser):
     def _record(self, tag, ad, own_skip):
         if self._in_template():
             return  # inert template content
+        if not self._head_ended and (tag == "body" or tag not in _HEAD_TAGS):
+            self._head_ended = True
         if tag == "body" and self.body_attrs is None:
             self.body_attrs = ad
         if tag == "meta":
             nm = (ad.get("name") or "").strip().lower()
             if nm and nm not in self.metas:
                 self.metas[nm] = ad.get("content") or ""
-        if tag == "link" and self.body_attrs is None:
-            # Head-scoped: only a <link rel~="icon"> BEFORE the real <body> is a favicon a browser
-            # tab honors, so a body-level icon link does not satisfy the favicon check.
+        if tag == "link" and not self._head_ended:
+            # Head-scoped: only a <link rel~="icon"> in the head is a favicon a browser tab honors,
+            # so a body-level icon link does not satisfy the favicon check.
             rels = (ad.get("rel") or "").lower().split()
             if "icon" in rels:
                 self.icon_links.append({"rel": ad.get("rel") or "", "href": ad.get("href") or ""})
@@ -434,6 +443,8 @@ class _DocParser(HTMLParser):
 
     def handle_endtag(self, tag):
         tag = tag.lower()
+        if tag == "head":
+            self._head_ended = True
         if tag == "script" and self._cur_script is not None:
             pos, ad = self._cur_script
             self.scripts.append({"pos": pos, "attrs": ad, "body": "".join(self._cur_body)})

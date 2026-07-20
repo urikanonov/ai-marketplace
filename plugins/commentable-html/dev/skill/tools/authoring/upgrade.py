@@ -211,19 +211,16 @@ def _insert_kind_meta(html, kind):
 
 
 def _has_favicon(html):
-    """True when the document's <head> declares a usable favicon (rel token `icon` + non-empty
-    href). Detection matches the validator (see tools/authoring/_favicon.py), so `apple-touch-icon`
-    / `mask-icon` and an empty-href icon do NOT count and a commented-out link is ignored."""
-    head = _HEAD_RE.search(html or "")
-    scope = head.group(0) if head else (html or "")
-    return _favicon.head_has_favicon(scope)
+    """True when the document's head declares a usable favicon (rel token `icon` + non-empty
+    href). Detection matches the validator (see tools/authoring/_favicon.py); it is head-scoped,
+    so `apple-touch-icon` / `mask-icon`, an empty-href icon, a commented-out link, and a body-level
+    icon link do NOT count."""
+    return _favicon.head_has_favicon(html or "")
 
 
 def _template_favicon(template_html):
     """Return the template's favicon <link rel="icon"> tag, or None."""
-    head = _HEAD_RE.search(template_html or "")
-    scope = head.group(0) if head else (template_html or "")
-    return _favicon.template_favicon_tag(scope)
+    return _favicon.template_favicon_tag(template_html or "")
 
 
 def _insert_favicon(html, favicon_tag):
@@ -235,13 +232,14 @@ def _insert_favicon(html, favicon_tag):
         return html, False
     hs, he = head.start(), head.end()
     head_text = head.group(0)
-    tag = favicon_tag + "\n"
     m = _VERSION_META_TAG_RE.search(head_text)
-    if m:
-        new_head = head_text[:m.end()] + "\n" + tag + head_text[m.end():]
-        return html[:hs] + new_head + html[he:], True
-    hm = re.match(r"<head\b[^>]*>", head_text, re.IGNORECASE)
-    new_head = head_text[:hm.end()] + "\n" + tag + head_text[hm.end():]
+    anchor = m.end() if m else re.match(r"<head\b[^>]*>", head_text, re.IGNORECASE).end()
+    # Insert on its own line after the anchor, consuming the anchor's existing line break so no
+    # blank line is introduced.
+    nl = re.match(r"[ \t]*\r?\n", head_text[anchor:])
+    if nl:
+        anchor += nl.end()
+    new_head = head_text[:anchor] + favicon_tag + "\n" + head_text[anchor:]
     return html[:hs] + new_head + html[he:], True
 
 

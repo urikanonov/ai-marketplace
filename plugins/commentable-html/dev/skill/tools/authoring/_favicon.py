@@ -6,13 +6,23 @@ exact token `icon` (so `rel="icon"` and `rel="shortcut icon"` count, but `apple-
 check (checks/kind.py `check_favicon` over the parser's `icon_links`, which uses
 `"icon" in rel.split()` plus a non-empty href), so the tools inject a favicon exactly when the
 validator would warn. Keeping this in one place stops the tools' detection from drifting away from
-the validator's. Detection is quote-style and attribute-order agnostic and ignores links inside
-HTML comments (a commented-out `<link>` does not count).
-"""
-import re
+the validator's.
 
-_LINK_TAG_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+Detection uses `html.parser.HTMLParser` (the same tokenizer the validator uses) rather than a raw
+regex so that: attributes are parsed exactly (a `data-rel` / `data-href` is never mistaken for
+`rel` / `href`); a `<link>` that appears only as text inside a `<script>`, `<style>`, or an HTML
+comment does NOT count; and adversarial input (unterminated comments/tags) cannot trigger the
+quadratic backtracking a two-stage regex scan is prone to. Detection is head-scoped: only links
+before the document's body (the `<body>` tag, a `</head>`, or the first flow-content element that
+implicitly ends the head) are considered.
+"""
+from html.parser import HTMLParser
+
+# Elements allowed in <head>; the first START tag outside this set (and every `<body>` /
+# closing `</head>`) ends the head, matching how a browser stops head parsing.
+_HEAD_TAGS = frozenset({
+    "html", "head", "base", "link", "meta", "title", "noscript", "style", "script", "template",
+})
 
 
 def rel_is_favicon(rel_value):
@@ -20,33 +30,57 @@ def rel_is_favicon(rel_value):
     return "icon" in (rel_value or "").lower().split()
 
 
-def _attr(tag, name):
-    """Return the value of attribute `name` in a single start tag (double/single/unquoted), or None."""
-    m = re.search(r'\b%s\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s"\'>]+))' % name, tag, re.IGNORECASE)
-    if not m:
-        return None
-    return m.group(2) if m.group(2) is not None else (
-        m.group(3) if m.group(3) is not None else m.group(4))
+class _FaviconFinder(HTMLParser):
+    """Collect the raw text of each favicon `<link>` start tag found in the head, in order."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tags = []
+        self._head_ended = False
+
+    def _consider(self, tag, attrs):
+        if self._head_ended:
+            return
+        if tag == "body" or tag not in _HEAD_TAGS:
+            self._head_ended = True
+            return
+        if tag != "link":
+            return
+        ad = {}
+        for k, v in attrs:
+            k = (k or "").lower()
+            if k not in ad:
+                ad[k] = v or ""
+        if rel_is_favicon(ad.get("rel")) and (ad.get("href") or "").strip():
+            self.tags.append(self.get_starttag_text())
+
+    def handle_starttag(self, tag, attrs):
+        self._consider(tag.lower(), attrs)
+
+    def handle_startendtag(self, tag, attrs):
+        self._consider(tag.lower(), attrs)
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "head":
+            self._head_ended = True
 
 
-def _favicon_link_tags(head_html):
-    """Yield each favicon `<link>` start tag in `head_html` (comments stripped)."""
-    scope = _HTML_COMMENT_RE.sub("", head_html or "")
-    for m in _LINK_TAG_RE.finditer(scope):
-        tag = m.group(0)
-        if rel_is_favicon(_attr(tag, "rel")) and (_attr(tag, "href") or "").strip():
-            yield tag
+def _find(html):
+    finder = _FaviconFinder()
+    try:
+        finder.feed(html or "")
+        finder.close()
+    except Exception:
+        pass
+    return finder.tags
 
 
-def head_has_favicon(head_html):
-    """True when `head_html` declares at least one usable favicon link."""
-    for _tag in _favicon_link_tags(head_html):
-        return True
-    return False
+def head_has_favicon(html):
+    """True when `html`'s head declares at least one usable favicon link."""
+    return bool(_find(html))
 
 
 def template_favicon_tag(template_html):
-    """Return the favicon `<link>` tag from a template's head, or None when it has none."""
-    for tag in _favicon_link_tags(template_html):
-        return tag
-    return None
+    """Return the verbatim favicon `<link>` tag from a template's head, or None when it has none."""
+    tags = _find(template_html)
+    return tags[0] if tags else None

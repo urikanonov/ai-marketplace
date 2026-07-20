@@ -605,5 +605,71 @@ class RetrofitCliTests(unittest.TestCase):
         self._strict_clean(out)
 
 
+class FaviconHelperTests(unittest.TestCase):
+    """Direct tests for the shared favicon helper (tools/authoring/_favicon.py). It must match the
+    validator's HTMLParser-based, token-exact, head-scoped detection so retrofit/upgrade inject a
+    favicon exactly when the validator would warn."""
+
+    def setUp(self):
+        import _favicon
+        self.f = _favicon
+
+    def test_rel_token_is_exact_not_substring(self):
+        self.assertTrue(self.f.rel_is_favicon("icon"))
+        self.assertTrue(self.f.rel_is_favicon("shortcut icon"))
+        self.assertTrue(self.f.rel_is_favicon("ICON"))
+        self.assertFalse(self.f.rel_is_favicon("apple-touch-icon"))
+        self.assertFalse(self.f.rel_is_favicon("mask-icon"))
+        self.assertFalse(self.f.rel_is_favicon(""))
+        self.assertFalse(self.f.rel_is_favicon(None))
+
+    def test_head_has_favicon_true_for_real_icon(self):
+        self.assertTrue(self.f.head_has_favicon('<head><link rel="icon" href="/f.ico"></head>'))
+        self.assertTrue(self.f.head_has_favicon('<head><link rel="shortcut icon" href="/f.ico" /></head>'))
+
+    def test_empty_or_missing_href_is_not_a_favicon(self):
+        self.assertFalse(self.f.head_has_favicon('<head><link rel="icon" href=""></head>'))
+        self.assertFalse(self.f.head_has_favicon('<head><link rel="icon"></head>'))
+
+    def test_apple_touch_icon_is_not_a_favicon(self):
+        self.assertFalse(self.f.head_has_favicon('<head><link rel="apple-touch-icon" href="/a.png"></head>'))
+
+    def test_data_attributes_do_not_count(self):
+        # data-rel / data-href must NOT be read as rel / href (the regex bug round 2 found).
+        self.assertFalse(self.f.head_has_favicon('<head><link data-rel="icon" href="/x.ico"></head>'))
+        self.assertFalse(self.f.head_has_favicon('<head><link rel="icon" data-href="/x.ico"></head>'))
+
+    def test_link_inside_script_or_style_or_comment_does_not_count(self):
+        self.assertFalse(self.f.head_has_favicon(
+            '<head><script>var s = "<link rel=\\"icon\\" href=\\"/x.ico\\">";</script></head>'))
+        self.assertFalse(self.f.head_has_favicon(
+            '<head><style>/* <link rel="icon" href="/x.ico"> */</style></head>'))
+        self.assertFalse(self.f.head_has_favicon('<head><!-- <link rel="icon" href="/x.ico"> --></head>'))
+
+    def test_detection_is_head_scoped(self):
+        # A favicon after the head (body-level, or after a flow element that implicitly ends the
+        # head) does not count.
+        self.assertFalse(self.f.head_has_favicon(
+            '<head></head><body><link rel="icon" href="/b.ico"></body>'))
+        self.assertFalse(self.f.head_has_favicon('<div><link rel="icon" href="/b.ico"></div>'))
+
+    def test_no_quadratic_blowup_on_adversarial_input(self):
+        # The old two-stage regex scan was O(n^2) on many unterminated <!-- / <link delimiters;
+        # the HTMLParser-based helper must handle a large adversarial head quickly.
+        import time
+        payload = "<head>" + ("<!--" * 60000) + ("<link " * 60000) + "</head>"
+        start = time.monotonic()
+        self.assertFalse(self.f.head_has_favicon(payload))
+        self.assertLess(time.monotonic() - start, 5.0)
+
+    def test_template_favicon_tag_returns_verbatim_tag(self):
+        head = '<head>\n<link rel="icon" href="data:image/svg+xml,%3Csvg%3E%3C/svg%3E" />\n</head>'
+        tag = self.f.template_favicon_tag(head)
+        self.assertIsNotNone(tag)
+        self.assertIn('rel="icon"', tag)
+        self.assertIn(tag, head)
+        self.assertIsNone(self.f.template_favicon_tag("<head></head>"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
