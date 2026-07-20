@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.191.0";
+const CMH_VERSION = "1.192.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -699,19 +699,38 @@ function mermaidIntrinsicWidth(host) {
   } catch (e) {}
   return svg.getBoundingClientRect().width || 0;
 }
+// Narrow-diagram scale-up thresholds (#516). Only a diagram whose intrinsic width is BELOW
+// NARROW_ENTER of the column is scaled up; once narrow it stays narrow until it exceeds NARROW_EXIT
+// (hysteresis) so that scaling a diagram taller - which can toggle a document scrollbar and shrink
+// the container by a scrollbar width on the reveal/resize ResizeObserver - cannot flip a diagram
+// sitting near the boundary back and forth. NARROW_CAP bounds the scale so a tiny diagram never balloons.
+const NARROW_ENTER = 0.82, NARROW_EXIT = 0.90, NARROW_CAP = 1.4;
 function updateMermaidWidthClass(host) {
   if (!host) return;
   // A diagram-fit slide sizes the SVG to contain-fit (see fitDeckDiagram); the wide/scroll-fade
   // affordance (and its narrow-viewport min-width rule) would fight that, so never apply it there.
   // Only relevant in a deck: outside deck mode the classes drive horizontal scroll for wide diagrams.
   if (IS_DECK && host.closest && host.closest(".slide.cmh-deck-diagram-slide, .slide.cmh-slide-diagram")) {
-    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade");
+    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade", "cmh-diagram-narrow");
+    host.style.removeProperty("--cmh-diagram-cap");
     return;
   }
   const container = host.clientWidth || host.getBoundingClientRect().width || window.innerWidth || 0;
   const natural = mermaidIntrinsicWidth(host);
   const wide = natural > Math.max(container + 80, 520);
   host.classList.toggle("cmh-diagram-wide", wide);
+  // A diagram whose natural width is well under the column would otherwise stay pinned to that
+  // intrinsic width by mermaid's inline max-width, marooned with dead space (#516). Mark it narrow
+  // and expose a capped target width so the CSS scales it up toward the column without ballooning a
+  // tiny one. Report-only - deck slides have their own contain-fit sizing. `natural` is the viewBox
+  // width (stable, not the CSS-grown rendered width), so scaling can never feed back into `natural`.
+  const ratio = (natural > 0 && container > 0) ? natural / container : 1;
+  const wasNarrow = host.classList.contains("cmh-diagram-narrow");
+  const narrow = !wide && !IS_DECK && natural > 0 && container > 0 &&
+    ratio < (wasNarrow ? NARROW_EXIT : NARROW_ENTER);
+  host.classList.toggle("cmh-diagram-narrow", narrow);
+  if (narrow) host.style.setProperty("--cmh-diagram-cap", Math.round(natural * NARROW_CAP) + "px");
+  else host.style.removeProperty("--cmh-diagram-cap");
   const syncFade = () => {
     host.classList.toggle("cmh-diagram-scroll-fade", wide && host.scrollWidth > host.clientWidth + 1);
   };

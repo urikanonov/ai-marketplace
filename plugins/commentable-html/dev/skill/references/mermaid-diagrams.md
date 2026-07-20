@@ -35,6 +35,16 @@ flowchart TD
 4. Saving writes an `anchorType: "mermaid"` comment keyed by `(diagramIndex, nodeKey)`, applies `cm-mermaid-hl`, and adds a sidebar card.
 5. Highlights restore across reload after mermaid finishes rendering and round-trip through **Copy all**, **Export as Portable**, and handled-id pruning.
 
+### Diagram width and dense layouts
+
+In a normal (non-deck) report, a diagram that does not naturally fill the content column looks small in two distinct ways. The runtime fixes one; authoring fixes the other.
+
+- **Pattern A - an intrinsically narrow diagram (handled automatically).** A linear `flowchart TD` pipeline is tall and thin, so its intrinsic SVG width is well under the column and mermaid's inline `max-width:<intrinsic>px` marooned it in the middle with large horizontal dead space. The runtime now classifies such a host `cmh-diagram-narrow` (symmetric to the existing `cmh-diagram-wide`) and scales the SVG up toward the column, capped at `min(100%, natural * 1.4)` and centered, so no authoring change is needed. Wide diagrams (which scroll) and deck diagrams (which fit their slide) are unaffected.
+- **Pattern B - a sparse layout (an authoring choice).** A diagram whose SVG already fills the width but whose NODES are small with large internal gaps cannot be fixed by scaling - the emptiness is inside the viewBox. This is a layout decision, so author it dense:
+  - Prefer `flowchart LR` over `flowchart TD` for a linear pipeline: a left-to-right row uses the wide column, where a top-down column is tall and thin (the Pattern A shape).
+  - Keep architecture subgraphs dense: lay subgraphs out `LR` with `direction TB` inside each, so the two clusters sit side by side rather than being pushed far apart.
+  - Avoid long cross-subgraph edges (for example `-. implemented by .->` spanning the whole diagram) and isolated/orphan nodes; dagre spreads nodes apart to route them, which is exactly what strands nodes and opens the internal gaps.
+
 ### Mermaid loader and CDN-fallback guidance
 
 The skill does **not** load mermaid. The host page must include a mermaid script, and diagrams should render by default. For generated reports, vendor mermaid next to the HTML and import it by relative path:
