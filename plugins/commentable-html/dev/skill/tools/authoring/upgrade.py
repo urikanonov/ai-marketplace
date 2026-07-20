@@ -209,6 +209,37 @@ def _insert_kind_meta(html, kind):
     return html, False
 
 
+_FAVICON_LINK_RE = re.compile(r'<link\b[^>]*\brel\s*=\s*["\'][^"\']*\bicon\b', re.IGNORECASE)
+
+
+def _has_favicon(html):
+    """True when <head> declares a favicon (<link rel~="icon">), order-independent."""
+    head = _HEAD_RE.search(html or "")
+    scope = head.group(0) if head else (html or "")
+    return bool(_FAVICON_LINK_RE.search(scope))
+
+
+def _template_favicon(template_html):
+    """Return the template's favicon <link rel="icon"> tag, or None."""
+    head = _HEAD_RE.search(template_html or "")
+    scope = head.group(0) if head else (template_html or "")
+    m = re.search(r'<link\s+rel="icon"[^>]*>', scope, re.IGNORECASE)
+    return m.group(0) if m else None
+
+
+def _insert_favicon(html, favicon_tag):
+    """Insert the favicon <link> into <head>, preferring the spot right after the version
+    meta, else right after <head>. Returns (new_html, inserted?)."""
+    tag = favicon_tag + "\n"
+    m = re.search(r'<meta\s+name="commentable-html-version"[^>]*>[ \t]*\n?', html, re.IGNORECASE)
+    if m:
+        return html[:m.end()] + tag + html[m.end():], True
+    m = re.search(r"<head[^>]*>", html, re.IGNORECASE)
+    if m:
+        return html[:m.end()] + "\n" + tag + html[m.end():], True
+    return html, False
+
+
 # The head version meta. Region swaps leave <head> alone, so an upgraded document keeps
 # self-reporting its OLD runtime version unless we restamp this to the template's version
 # (the same value the build stamps into a fresh document). Matched order-independently so a
@@ -476,6 +507,15 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         out, added = _insert_kind_meta(out, "generic")
         if added:
             changed.append("kind meta")
+    # Migrate a pre-favicon document: add the CMH favicon <link rel="icon"> from the template
+    # if the head declares none, so an upgraded document shows the CMH tab mark instead of the
+    # generic globe and passes the validator's favicon check. Order-independent detection.
+    if not _has_favicon(out):
+        favicon = _template_favicon(template_html)
+        if favicon:
+            out, added = _insert_favicon(out, favicon)
+            if added:
+                changed.append("favicon")
     return out, changed
 
 

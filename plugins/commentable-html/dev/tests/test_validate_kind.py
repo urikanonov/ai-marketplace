@@ -104,5 +104,31 @@ class ValidateBodyAndKindTests(ValidateAssertions, unittest.TestCase):
         self.assertOkNoWarn(build(kind="Report", body=self._report_body()))
 
 
+class FaviconTests(ValidateAssertions, unittest.TestCase):
+    def test_favicon_present_is_clean(self):
+        # CMH-KIND-05: the minimal builder includes the CMH favicon link, so a document
+        # that declares a favicon validates with no favicon warning.
+        self.assertOkNoWarn(build())
+
+    def test_missing_favicon_warns(self):
+        # CMH-KIND-05: a document with no <link rel="icon"> in its head shows the browser's
+        # generic globe (the bug seen on the full-screen demo reports) - warn about it.
+        doc = build().replace(FAVICON_LINK + "\n", "", 1)
+        self.assertNotIn('rel="icon"', doc, "fixture setup: favicon link not removed")
+        self.assertWarn(doc, "no favicon")
+
+    def test_empty_href_favicon_warns(self):
+        # An icon <link> with an empty/absent href does not actually set a favicon, so it
+        # must not satisfy the check.
+        doc = build().replace(FAVICON_LINK, '<link rel="icon" href="" />', 1)
+        self.assertWarn(doc, "no favicon")
+
+    def test_shortcut_icon_rel_is_accepted(self):
+        # The legacy "shortcut icon" rel value (space-separated tokens including "icon") is a
+        # valid favicon declaration and must satisfy the check.
+        doc = build().replace(FAVICON_LINK, '<link rel="shortcut icon" href="/f.ico" />', 1)
+        self.assertOkNoWarn(doc)
+
+
 if __name__ == "__main__":
     unittest.main()

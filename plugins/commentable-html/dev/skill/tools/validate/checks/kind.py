@@ -49,6 +49,25 @@ def check_document_kind(parser):
     return []
 
 
+def check_favicon(parser):
+    """Warn when the document declares no favicon (<link rel="icon">).
+
+    Every commentable-html document should carry the CMH favicon so a browser tab (and
+    especially a full-screen tab) shows the CMH mark rather than the generic globe. The
+    template shell bakes a `<link rel="icon" href="data:image/svg+xml,...">` into the
+    head, so a document produced by the toolchain has one; this check catches a
+    standalone/legacy document (or a hand-authored head) that omits it. A missing favicon
+    is a cosmetic/branding defect, not a functional one, so it is a WARNING (enforced
+    under --strict, the mandatory finalize path). Returns a list of warning strings.
+    """
+    for link in parser.icon_links:
+        if (link.get("href") or "").strip():
+            return []
+    return ['no favicon: the document has no <link rel="icon" href="..."> in its head, so a '
+            'browser tab shows the generic globe instead of the commentable-html mark - add '
+            "the CMH favicon link (see dev/assets/template.shell.html)"]
+
+
 def check_section_reference_links(parser):
     """Warn when a section cross-reference in #commentRoot prose is NOT a link.
 

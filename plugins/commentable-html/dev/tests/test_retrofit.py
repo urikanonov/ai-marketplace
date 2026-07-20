@@ -369,7 +369,38 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertNotIn('href="commentable-html.css"', html)
         self._strict_clean(out)
 
-    def test_nonportable_asset_options_match_new_document(self):
+    def test_favicon_is_added_when_host_head_has_none(self):
+        # A host with no <link rel="icon"> would leave the browser tab showing the generic
+        # globe and trip the validator's favicon check; retrofit injects the CMH favicon.
+        self.assertNotIn('rel="icon"', HOST_HTML, "fixture must start without a favicon")
+        d = self._tmpdir()
+        src = self._write(d, "host.html", HOST_HTML)
+        out = os.path.join(d, "fav.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Fav Host", "--portable", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertEqual(len(re.findall(r'<link\b[^>]*\brel="icon"', html)), 1,
+                         "retrofit should inject exactly one CMH favicon")
+        self._strict_clean(out)
+
+    def test_existing_host_favicon_is_not_duplicated(self):
+        # A host that already declares a favicon keeps its own and gets no injected duplicate.
+        host = HOST_HTML.replace("<title>Host Report</title>",
+                                 '<title>Host Report</title>\n<link rel="icon" href="/host.ico">')
+        d = self._tmpdir()
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "fav.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Fav Host", "--portable", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('href="/host.ico"', html)
+        self.assertEqual(len(re.findall(r'<link\b[^>]*\brel="icon"', html)), 1,
+                         "retrofit must not add a second favicon when the host already has one")
+        self._strict_clean(out)
+
+
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
 

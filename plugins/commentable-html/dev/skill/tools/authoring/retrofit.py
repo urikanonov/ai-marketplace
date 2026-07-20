@@ -515,6 +515,17 @@ def _insert_title_if_missing(text, head, label):
     return "<title>%s</title>\n" % _html.escape(label)
 
 
+def _insert_favicon_if_missing(text, head, template):
+    """Return the template's favicon <link rel="icon"> (with a trailing newline) when the host
+    head declares none, else "". A retrofitted host often has no favicon, which would leave the
+    browser tab showing the generic globe and trip the validator's favicon check; mirror
+    _insert_title_if_missing and add the CMH favicon when it is absent."""
+    head_text = text[head.start_end:head.end_start]
+    if re.search(r'<link\b[^>]*\brel\s*=\s*["\'][^"\']*\bicon\b', head_text, re.I):
+        return ""
+    return _one_line(template, r'<link\s+rel="icon"[^>]*>', "favicon")
+
+
 def _collision_warnings(original):
     warnings = []
     if CSS_COLLISION_RE.search(original):
@@ -540,9 +551,10 @@ def build_retrofit(html, args, out_path):
     head_insert, body_top, body_bottom = _layer_parts(
         args.portable, args.kind, include_kind=existing_kind_meta is None)
     title_insert = _insert_title_if_missing(html, head, args.label)
+    favicon_insert = _insert_favicon_if_missing(html, head, _template(args.portable))
 
     edits = [
-        (head.end_start, head.end_start, "\n" + title_insert + head_insert),
+        (head.end_start, head.end_start, "\n" + title_insert + favicon_insert + head_insert),
         (body.start_end, body.start_end, "\n" + body_top),
         (body.end_start, body.end_start, "\n" + body_bottom),
     ]
@@ -558,7 +570,7 @@ def build_retrofit(html, args, out_path):
         wrapped = ("\n" + root_open + "\n" + new_document.BEGIN_MARKER + "\n"
                    + body_inner.strip("\n") + "\n" + new_document.END_MARKER + "\n</%s>\n" % root_tag)
         edits = [
-            (head.end_start, head.end_start, "\n" + title_insert + head_insert),
+            (head.end_start, head.end_start, "\n" + title_insert + favicon_insert + head_insert),
             (body.start_end, body.end_start, "\n" + body_top + wrapped + body_bottom + "\n"),
         ]
     else:

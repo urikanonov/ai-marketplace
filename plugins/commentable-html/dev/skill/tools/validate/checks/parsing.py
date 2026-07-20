@@ -230,6 +230,7 @@ class _DocParser(HTMLParser):
         self.js_end_marker_pos = None
         self.all_ids = []        # every element id value, in document order
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
+        self.icon_links = []     # [{"rel": str, "href": str}] for every <link rel~="icon"> (favicon)
         self.comment_root_attrs = None   # attrs dict of the id=commentRoot element
         self.body_attrs = None           # attrs dict of the REAL <body> start tag (first one)
         self.mermaid_blocks = []         # [{"cm_skip": bool, "has_svg": bool}] for pre/div.mermaid
@@ -316,6 +317,10 @@ class _DocParser(HTMLParser):
             nm = (ad.get("name") or "").strip().lower()
             if nm and nm not in self.metas:
                 self.metas[nm] = ad.get("content") or ""
+        if tag == "link":
+            rels = (ad.get("rel") or "").lower().split()
+            if "icon" in rels:
+                self.icon_links.append({"rel": ad.get("rel") or "", "href": ad.get("href") or ""})
         if tag == "canvas":
             self.canvases.append({"skip": self._skip_ancestor() or own_skip, "attrs": ad})
         elif tag == "figcaption":

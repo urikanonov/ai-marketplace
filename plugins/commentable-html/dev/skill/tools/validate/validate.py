@@ -162,6 +162,7 @@ from checks.kind import (  # noqa: F401,E402
     _KIND_META_NAME,
     _SECTION_DIR_RE,
     check_document_kind,
+    check_favicon,
     check_mermaid_renders,
     check_section_reference_links,
 )
