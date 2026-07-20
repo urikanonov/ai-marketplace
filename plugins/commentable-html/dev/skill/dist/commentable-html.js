@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.187.0";
+const CMH_VERSION = "1.188.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3487,6 +3487,13 @@ function jumpToNote(id) {
   if (!note || !note.container) return;
   if (note.foldable && note.collapsed) { note.collapsed = false; _noteApplyFold(note); }
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(note.container);
+  // Deck-aware: a note can live on an inactive slide, which scrollIntoView cannot reveal, so
+  // navigate to its owning slide first (mirrors the comment-card deck jump in 95-startup.js). A
+  // no-op outside deck mode (window.__cmhDeck is undefined), so report jumps are unchanged.
+  if (window.__cmhDeck && typeof window.__cmhDeck.showSlideById === "function") {
+    const slide = note.container.closest(".slide[data-slide-id]");
+    if (slide) window.__cmhDeck.showSlideById(slide.getAttribute("data-slide-id"));
+  }
   note.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   note.container.classList.add("cmh-note-flash");
   setTimeout(() => note.container.classList.remove("cmh-note-flash"), 2200);
