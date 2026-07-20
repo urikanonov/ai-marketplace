@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.181.0] - 2026-07-20
+
+### Fixed
+
+- A built-in canvas chart (a `canvas.cmh-chart` / `figure.chart canvas` with inline
+  `data-cmh-chart-points`/`-source`) authored inside a collapsible `<section>` that is collapsed
+  (`display:none`) at load now re-renders at its real column width the moment its section is revealed,
+  instead of staying blurry until the next window resize (CMH-CHART-09). While collapsed the canvas
+  reads `clientWidth` 0 and draws its bitmap to the width fallback (the `width` attribute, else 760),
+  so it was sized for the wrong width; a reveal `ResizeObserver` on each chart canvas re-draws it once
+  on the transition from zero-size to visible (mirroring the Mermaid width-class observer from
+  CMH-MMD-07). It is a one-shot reveal hook, not a perpetual size mirror, so a standalone
+  `canvas.cmh-chart` in a shrink-to-fit container on a HiDPI screen cannot keep enlarging its own
+  bitmap; genuine window resizes stay handled by the existing resize listener. This is the same
+  render-while-hidden class as #430 (Mermaid).
+- Pinned that code/KQL line-number gutters stay aligned when a collapsed section is revealed
+  (CMH-CODE-06). Unlike the canvas chart above, the gutter needs no reveal recompute: the browser
+  resolves a numeric `line-height` to a px value via `getComputedStyle` even for a `display:none`
+  block, so the gutter offsets laid down while collapsed already match the visible line-height after
+  reveal. A regression test locks that invariant in.
+
 ## [1.180.0] - 2026-07-20
 
 ### Changed

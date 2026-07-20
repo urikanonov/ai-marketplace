@@ -7,7 +7,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "r=\"${CLAUDE_PLUGIN_ROOT}\"; d=\"$r/skills/commentable-html\"; m=\"$d/.skill-resources-1.180.0.ok\"; [ -f \"$m\" ] && exit 0; py=\"\"; for c in python3 python py; do p=$(command -v \"$c\" 2>/dev/null) || continue; case \"$p\" in *WindowsApps*) continue;; esac; \"$p\" -I -c pass >/dev/null 2>&1 && { py=\"$p\"; break; }; done; [ -n \"$py\" ] && \"$py\" -I \"$r/hooks/extract_resources.py\" --version 1.180.0 --agent claude >/dev/null 2>&1; true",
+            "command": "r=\"${CLAUDE_PLUGIN_ROOT}\"; d=\"$r/skills/commentable-html\"; m=\"$d/.skill-resources-1.181.0.ok\"; [ -f \"$m\" ] && exit 0; py=\"\"; for c in python3 python py; do p=$(command -v \"$c\" 2>/dev/null) || continue; case \"$p\" in *WindowsApps*) continue;; esac; \"$p\" -I -c pass >/dev/null 2>&1 && { py=\"$p\"; break; }; done; [ -n \"$py\" ] && \"$py\" -I \"$r/hooks/extract_resources.py\" --version 1.181.0 --agent claude >/dev/null 2>&1; true",
             "timeout": 120
           }
         ]
