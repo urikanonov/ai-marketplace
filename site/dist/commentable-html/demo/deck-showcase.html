@@ -1044,8 +1044,8 @@ h5:focus-within > .cmh-review-unreviewed, h6:focus-within > .cmh-review-unreview
 /* The live per-state count sits inline beside the label and never wraps, so a two-digit count
    still keeps each button on one line; the group flex-wraps into rows within the sidebar so it
    never overflows horizontally. The count keeps the button's own text color (no opacity dimming)
-   so its small digits stay above the WCAG AA contrast floor; tabular-nums stops the width jittering
-   between one- and two-digit counts. */
+   so its small digits stay above the WCAG AA contrast floor; tabular-nums keeps equal-length
+   counts from jittering as they change (the flex layout absorbs the one- to two-digit step). */
 .cm-side-toc-review-btn-count { font-variant-numeric: tabular-nums; }
 .cm-side-toc-review-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 .cm-side-toc-review-btn[aria-pressed="true"] { background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg, #fff); }

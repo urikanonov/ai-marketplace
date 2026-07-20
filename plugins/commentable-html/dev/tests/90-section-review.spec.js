@@ -259,6 +259,14 @@ test.describe("section review tracking", () => {
     await page.locator(`.cm-card[data-cid="${bcid}"] [data-act="del"]`).click();
     await expect(count("commented")).toHaveText("(0)");
     await expect(count("unreviewed")).toHaveText("(3)");
+    // Changed transition: editing alpha's reviewed content flips it to Changed, and the Changed
+    // count follows (guards against the tally omitting the changed state).
+    await page.evaluate(() => document.getElementById("rv-alpha-body").insertAdjacentText("beforeend", " edited"));
+    await refresh(page);
+    expect(await stateOf(page, "rv-alpha")).toBe("changed");
+    await expect(count("changed")).toHaveText("(1)");
+    await expect(count("reviewed")).toHaveText("(0)");
+    await expect(count("all")).toHaveText("(4)");
   });
 
   test("Export as Portable bakes reviewedSections and Plain strips it (CMH-REVIEW-06)", async ({ page }) => {
