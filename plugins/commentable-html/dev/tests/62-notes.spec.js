@@ -275,3 +275,53 @@ test("CMH-NOTE-16: fold state is presentation only - the export keeps data-cmh-n
   expect(tag[0]).toContain('data-cmh-note-foldable="true"');
   expect(tag[0]).not.toContain("cmh-note-collapsed");
 });
+
+test("CMH-NOTE-17: typing coalesces the sidebar re-render (one debounced render per burst, not one per keystroke)", async ({ page }) => {
+  await open(page, DOC, "cmh-note-17");
+  // Fire a burst of input events SYNCHRONOUSLY in one JS turn. renderComments() runs two
+  // full-document tree walks; the typing path must coalesce the burst into a single deferred
+  // render, so no render can run while the stack is still unwound (issue #505). On the pre-fix
+  // code each event re-rendered synchronously, so the render counter would be 30 here. docScans
+  // counts widgetStateChanges() (the document-wide widget scan the badge / Copy-all helpers run):
+  // the sync UI is gated on the dirty transition, so the whole burst triggers it only once (on the
+  // first, dirtying keystroke, via updateDocTypeUi + updateCopyAllState = 2), not per keystroke - a
+  // regression that dropped the transition gate would run ~60 scans here even though renders stays 1.
+  const burst = await page.evaluate(() => {
+    const ta = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    window.__cmhPerf = { renders: 0, docScans: 0 };
+    for (let i = 0; i < 30; i++) {
+      ta.value += "x";
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    return { renders: window.__cmhPerf.renders, docScans: window.__cmhPerf.docScans };
+  });
+  expect(burst.renders).toBe(0);
+  // The document-scan helpers ran only on the single dirty-state transition, not per keystroke.
+  expect(burst.docScans).toBeLessThanOrEqual(2);
+  // The edit is not lost: after the reviewer pauses, exactly the final text renders as one card,
+  // and the whole burst cost a single coalesced render (not two - the flush renders exactly once).
+  await expect(page.locator(".cm-card-note")).toHaveCount(1);
+  await expect(field(page)).toHaveValue("No blocking risks yet." + "x".repeat(30));
+  const total = await page.evaluate(() => window.__cmhPerf.renders);
+  expect(total).toBe(1);
+  // The delta is persisted synchronously per keystroke, so no edit is lost mid-burst.
+  expect(await storedNotes(page)).toEqual({ risk: "No blocking risks yet." + "x".repeat(30) });
+});
+
+test("CMH-NOTE-17: a Copy all during the debounce window reflects the latest text and the badge updates synchronously", async ({ page }) => {
+  await open(page, DOC, "cmh-note-17b");
+  // Dispatch the input, read the badge, AND trigger Copy all - all in ONE synchronous browser turn,
+  // so the 150ms debounce provably cannot have fired. copyAll() builds its bundle from live note
+  // state and calls the (synchronously-capturing) clipboard shim before its first await, so this
+  // pins both the synchronous badge update and that a mid-debounce Copy all carries the latest text.
+  const { badge, bundle } = await page.evaluate(() => {
+    const ta = document.querySelector('[data-cmh-note="risk"] .cmh-note-input');
+    ta.value = "typed but not yet rendered";
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    const badge = document.getElementById("cmTypeBadge").textContent;
+    document.getElementById("btnCopyAll").click();
+    return { badge, bundle: (window.__copied && window.__copied[window.__copied.length - 1]) || null };
+  });
+  expect(badge).toBe("Not portable");
+  expect(bundle).toContain('NOTES_STATE_JSON: {"risk":"typed but not yet rendered"}');
+});

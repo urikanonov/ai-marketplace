@@ -45,6 +45,10 @@ function updateSortUi() {
   if (d) d.setAttribute("aria-pressed", commentSort === "time-desc" ? "true" : "false");
 }
 function renderComments() {
+  // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the
+  // note-typing path COALESCES a keystroke burst into a single render rather than one per key
+  // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.renders = (window.__cmhPerf.renders || 0) + 1;
   toolbarCount.textContent = comments.length;
   sidebarCount.textContent = comments.length;
   // Keep the deck comment-options menu in step with the live comment count (the "Disable

@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.185.0";
+const CMH_VERSION = "1.187.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2887,6 +2887,11 @@ function _widgetStateSig() {
   return parts.join("\u0001");
 }
 function widgetStateChanges() {
+  // Test/perf hook: widgetStateChanges is the document-wide widget scan that updateDocTypeUi and
+  // updateCopyAllState invoke; a spec counts its invocations to prove the note-typing sync UI stays
+  // gated on the dirty-state transition rather than scanning per keystroke (issue #505). Only counted
+  // when a test pre-seeds the counter; production never creates it.
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.docScans = (window.__cmhPerf.docScans || 0) + 1;
   if (!_widgetBaseline || !_widgetBaseline.size) return [];
   const out = [];
   const seen = new Set();
@@ -3382,14 +3387,47 @@ function _noteApplyFold(note) {
 }
 function _noteAfterChange() {
   _noteSave();
-  if (typeof renderComments === "function") renderComments();
-  if (typeof updateDocTypeUi === "function") updateDocTypeUi();
-  const has = notesChanges().length > 0;
-  if (has && !_noteHadChanges && typeof openSidebar === "function") openSidebar();
-  _noteHadChanges = has;
+  _noteSyncUi();
+  _noteFlushRender();
 }
+// Lightweight UI that must track a note edit IMMEDIATELY so it never lags the already-persisted
+// text: the portability badge, the Copy-all affordance, and the one-time sidebar auto-open. These
+// are only touched on the dirty-state TRANSITION (note-clean <-> note-dirty), never on every
+// keystroke: updateDocTypeUi() and updateCopyAllState() each recompute widgetStateChanges(), a
+// document-wide querySelectorAll, so calling them per keystroke would reintroduce O(document) work
+// on a widget-bearing document (issue #505). Between transitions those states do not change, so a
+// keystroke burst pays that scan at most once. notesChanges() is O(notes), cheap to check each key.
+// Doing the auto-open here (not in the deferred flush) also means a user who closes the sidebar
+// within the debounce window is not overridden by a late reopen.
+function _noteSyncUi() {
+  const has = notesChanges().length > 0;
+  if (has === _noteHadChanges) return;
+  _noteHadChanges = has;
+  if (typeof updateDocTypeUi === "function") updateDocTypeUi();
+  if (typeof updateCopyAllState === "function") updateCopyAllState();
+  if (has && typeof openSidebar === "function") openSidebar();
+}
+// The expensive half of a note change: renderComments() runs two full-document tree walks (a
+// getTextNodes walk per changed note plus the section-review scan), so it is O(document) and must
+// not run on every keystroke. Programmatic changes (reset / clear-all) call it directly; the typing
+// path (_noteOnInput) defers it behind a debounce.
+function _noteFlushRender() {
+  if (_noteRenderTimer) { clearTimeout(_noteRenderTimer); _noteRenderTimer = 0; }
+  if (typeof renderComments === "function") renderComments();
+}
+// Coalesce a keystroke burst into ONE sidebar re-render (issue #505): typing in a note field re-ran
+// the full-document scans per keystroke, freezing a large document. A note's document POSITION does
+// not move while its text is edited, so the render is safely deferred until the reviewer pauses; the
+// delta is persisted and the lightweight UI updated synchronously on every keystroke so no edit is
+// lost and the badge/Copy-all affordance never lag.
+const _NOTE_RENDER_DEBOUNCE_MS = 150;
+let _noteRenderTimer = 0;
 function _noteOnInput(note) {
-  _noteAfterChange();
+  _noteSave();
+  _noteSyncUi();
+  if (_noteRenderTimer) clearTimeout(_noteRenderTimer);
+  if (typeof setTimeout === "function") _noteRenderTimer = setTimeout(_noteFlushRender, _NOTE_RENDER_DEBOUNCE_MS);
+  else _noteFlushRender();
 }
 function _notePreview(t) {
   const s = (t == null ? "" : String(t)).replace(/\s+/g, " ").trim();
@@ -4528,6 +4566,10 @@ function updateSortUi() {
   if (d) d.setAttribute("aria-pressed", commentSort === "time-desc" ? "true" : "false");
 }
 function renderComments() {
+  // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the
+  // note-typing path COALESCES a keystroke burst into a single render rather than one per key
+  // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.renders = (window.__cmhPerf.renders || 0) + 1;
   toolbarCount.textContent = comments.length;
   sidebarCount.textContent = comments.length;
   // Keep the deck comment-options menu in step with the live comment count (the "Disable

@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.187.0] - 2026-07-20
+
+### Fixed
+
+- Typing in an editable note (`data-cmh-note`) no longer freezes a large document. The note `input`
+  handler used to re-render the whole sidebar synchronously on every keystroke, and that render runs
+  two full-document tree walks (a `getTextNodes` walk plus the section-review scan), so each
+  keystroke cost O(document) work (hundreds of ms on a report with tens of thousands of text nodes).
+  The typing path now persists the edit synchronously but coalesces a keystroke burst into a single
+  debounced re-render (a note's document position does not move while its text is edited). The
+  lightweight UI (portability badge, Copy-all affordance, first-change sidebar auto-open) updates
+  synchronously but only on the note-dirty transition, so a burst does no per-keystroke document
+  scan; per-keystroke cost is bounded independent of document size. Programmatic reset / clear-all
+  still render immediately. (CMH-NOTE-17)
+
 ## [1.185.0] - 2026-07-20
 
 ### Changed
