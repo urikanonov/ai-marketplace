@@ -5,6 +5,12 @@ Swaps the three layer regions - CSS, COMMENT UI, and JS - in a deployed standalo
 (inline) commentable-html file with the versions from a template, while leaving the
 document's own state and content untouched: HANDLED IDS, EMBEDDED COMMENTS, the
 CONTENT block, and the `#commentRoot` wrapper except for basename-only source provenance.
+It also re-emits the shell-baked mermaid loader bootstrap (the `<head>` module `<script>`,
+outside the swappable regions) from the template, so a change made in template.shell.html
+- for example the CMH-MMD-08 deck `htmlLabels` gate - reaches already-generated documents.
+That lookup is scoped to `<head>` (authored body content is never mistaken for the loader),
+matches the loader by its mermaid `import(...)`, and preserves a hand-vendored (relative
+import) offline loader rather than re-pointing it at the CDN.
 
 This is the "Upgrade an existing instance to a new dist/PORTABLE.html" recipe from SKILL.md,
 made deterministic. Doing it by hand is error prone because of two documented footguns:
@@ -318,6 +324,82 @@ def _region_marker_matches(text, kind, name):
     return matches
 
 
+# The shell-baked mermaid loader bootstrap lives in <head>, OUTSIDE the swappable CSS/COMMENT UI/JS
+# regions, so a change made in template.shell.html (the CMH-MMD-08 deck `htmlLabels` gate, and any
+# future shell-bootstrap change) never reaches an already-generated document through a region swap.
+# upgrade re-emits it from the template. It is the single <script type="module"> whose body boots
+# mermaid (the diagram-gated CDN import); its immediately-preceding "<!-- Mermaid loader ... -->"
+# comment is swapped with it so a future comment change propagates too.
+_MODULE_SCRIPT_RE = re.compile(
+    r'<script\b[^>]*\btype=(["\'])module\1[^>]*>(.*?)</script>', re.IGNORECASE | re.DOTALL)
+_MERMAID_LOADER_COMMENT_RE = re.compile(
+    r'[ \t]*<!--\s*Mermaid loader\b.*?-->[ \t]*\r?\n?', re.IGNORECASE | re.DOTALL)
+# A dynamic mermaid `import("...mermaid...")`. Keyed on "mermaid" INSIDE the string literal (not just
+# anywhere in the body) so a script that only mentions mermaid in a comment, or imports an unrelated
+# module, is not mistaken for the loader, and so the vendored check inspects the mermaid import
+# specifically rather than a decoy `import(...)` earlier in the body.
+_MERMAID_IMPORT_RE = re.compile(
+    r'import\(\s*(["\'])([^"\']*mermaid[^"\']*)\1', re.IGNORECASE | re.DOTALL)
+# A remote specifier: scheme-bearing (`https://`) or protocol-relative (`//host/...`). Anything else
+# (`./x`, `../x`, `/x`, bare) is a locally vendored path.
+_URL_SCHEME_RE = re.compile(r'[a-z][a-z0-9+.-]*://', re.IGNORECASE)
+
+
+def _preceding_loader_comment(scope, start):
+    """The `<!-- Mermaid loader -->` comment immediately preceding offset `start` in `scope` (only
+    whitespace between the comment and `start`), or None."""
+    comment = None
+    for c in _MERMAID_LOADER_COMMENT_RE.finditer(scope[:start]):
+        comment = c  # keep the last (nearest-preceding) match
+    if comment is not None and scope[comment.end():start].strip() == "":
+        return comment
+    return None
+
+
+def _mermaid_bootstrap_span(html, where):
+    """Return (start, end) byte offsets of the shell-baked mermaid loader block - the module
+    <script> in <head> that boots mermaid (a dynamic mermaid `import("...mermaid...")`), plus an
+    immediately-preceding "Mermaid loader" comment - or None when the head has no such loader.
+    Scoped to <head> so an authored module <script> in the document body (or CONTENT) can never be
+    mistaken for the loader (which would crash the upgrade or replace authored content). When more
+    than one head module script imports mermaid, the one bound to the "Mermaid loader" comment wins;
+    if that is still ambiguous, raise."""
+    html = html or ""
+    head = _HEAD_RE.search(html)
+    if head is None:
+        return None
+    scope = head.group(0)
+    base = head.start()
+    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(scope) if _MERMAID_IMPORT_RE.search(m.group(2))]
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        commented = [m for m in candidates if _preceding_loader_comment(scope, m.start())]
+        if len(commented) != 1:
+            raise ValueError("%s: multiple mermaid bootstrap scripts found in <head>" % where)
+        candidates = commented
+    script = candidates[0]
+    start, end = script.start(), script.end()
+    comment = _preceding_loader_comment(scope, start)
+    if comment is not None:
+        start = comment.start()
+    return base + start, base + end
+
+
+def _mermaid_loader_is_vendored(bootstrap):
+    """True if the loader imports mermaid from a LOCAL/relative path rather than a remote URL - i.e.
+    the author hand-vendored mermaid for a self-contained offline artifact (the SKILL.md 'vendor a
+    local copy ... import it by relative path' recipe). We must NOT clobber that back to the CDN on
+    upgrade, which would silently reintroduce a network fetch the author removed. Any mermaid import
+    with a local specifier counts, so a commented-out CDN line above the active relative import does
+    not mask it; a scheme-bearing or protocol-relative (`//host`) specifier is remote."""
+    for m in _MERMAID_IMPORT_RE.finditer(bootstrap or ""):
+        spec = m.group(2).strip()
+        if not (_URL_SCHEME_RE.match(spec) or spec.startswith("//")):
+            return True
+    return False
+
+
 def _region_inner(text, name, where):
     """Return (start, end) byte offsets of a region's inner content (between the BEGIN
     and END marker texts). The line-anchored match ignores marker-like strings."""
@@ -360,6 +442,23 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         if out[db:de] != new_inner:
             out = out[:db] + new_inner + out[de:]
             changed.append(name)
+    # Re-emit the shell-baked mermaid loader bootstrap from the template. It lives in <head>,
+    # outside the swappable regions, so CMH-MMD-08 (the deck `htmlLabels` gate) and any future
+    # shell-bootstrap change would otherwise never reach an already-generated document. The lookup
+    # is scoped to <head> (so authored CONTENT can never be mistaken for the loader) and identifies
+    # the loader by its mermaid `import(...)` (not a specific selector string), so loaders from
+    # versions predating the `pre.mermaid, div.mermaid` guard match too. A hand-vendored offline
+    # loader (relative `import(...)`) is left alone so the swap never silently re-points mermaid back
+    # to the CDN. The Export Offline re-init is NOT shell-baked (it lives in the JS region) and is
+    # refreshed by the JS swap above.
+    tpl_boot = _mermaid_bootstrap_span(template_html, template_name)
+    tgt_boot = _mermaid_bootstrap_span(out, target_name)
+    if tpl_boot is not None and tgt_boot is not None:
+        new_boot = template_html[tpl_boot[0]:tpl_boot[1]]
+        cur_boot = out[tgt_boot[0]:tgt_boot[1]]
+        if cur_boot != new_boot and not _mermaid_loader_is_vendored(cur_boot):
+            out = out[:tgt_boot[0]] + new_boot + out[tgt_boot[1]:]
+            changed.append("mermaid bootstrap")
     out, source_normalized = _normalize_source_provenance(out)
     if source_normalized:
         changed.append("source provenance")

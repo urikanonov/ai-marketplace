@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.175.0] - 2026-07-19
+
+### Fixed
+
+- `tools/authoring/upgrade.py` now re-emits the shell-baked mermaid loader bootstrap from the template,
+  so the deck label fix (CMH-MMD-08) and any future change to the loader in
+  `assets/template.shell.html` reach already-generated documents on upgrade (CMH-MMD-09). The bootstrap
+  is baked into the document `<head>` at scaffold time, OUTSIDE the swappable CSS / COMMENT UI / JS
+  regions, so a region swap alone never touched it: a deck generated before CMH-MMD-08 kept its old
+  bootstrap after an upgrade and its mermaid labels still clipped. The swap replaces the `<head>`
+  `<script type="module">` mermaid loader (and its `<!-- Mermaid loader -->` comment); it is scoped to
+  `<head>` so authored body/CONTENT can never be mistaken for the loader, identifies the loader by a
+  mermaid `import("...mermaid...")` so loaders predating the `pre.mermaid, div.mermaid` guard match
+  too, preserves a hand-vendored offline loader (a local/relative mermaid import; a protocol-relative
+  `//host` import counts as remote) rather than re-pointing it at the CDN, is document-kind-agnostic
+  (the `.deck-stage` gate is a runtime check, so a non-deck report keeps HTML labels) and idempotent,
+  and `--check` now flags a stale bootstrap. The Export Offline re-init is not shell-baked (it lives in
+  the swapped JS region) and was already refreshed by the JS swap.
+
 ## [1.174.0] - 2026-07-19
 
 ### Changed
