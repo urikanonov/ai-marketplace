@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.179.0";
+const CMH_VERSION = "1.182.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -5310,6 +5310,11 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
     head.className = "cm-toolbar-menu-head";
     badge.parentNode.insertBefore(head, badge);
     head.appendChild(badge);
+    const ver = document.createElement("span");
+    ver.className = "cm-version cm-menu-version";
+    ver.title = "commentable-html version that generated this file";
+    ver.textContent = "v" + CMH_VERSION;
+    head.appendChild(ver);
     const brand = document.createElement("span");
     brand.className = "cm-toolbar-menu-brand";
     brand.setAttribute("aria-hidden", "true");
