@@ -4,6 +4,66 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.192.0] - 2026-07-20
+
+### Fixed
+
+- Report (non-deck) Mermaid diagrams in the shipped example reports and the deployed-site demos no
+  longer collapse to a tiny frozen bar when their section is hidden at load. The examples carried the
+  OLD naive in-place `mermaid.run()` loader (a diagram whose section was `display:none` at load
+  rendered a degenerate ~16px SVG that never re-measured), because `build.py`'s `regen_example` swaps
+  only the CSS / COMMENT UI / JS layer regions and never re-emitted the shell-baked `<head>` mermaid
+  loader. `regen_example` now re-emits the canonical loader from `PORTABLE.html` into every example
+  (the same `<head>`-scoped, ambiguity-guarded, vendored-safe re-emit `upgrade.py` does), so an
+  example single-sources the loader and honors CMH-MMD-07 (CMH-MMD-09).
+
+### Changed
+
+- Report (non-deck) Mermaid diagrams whose natural width is well under the content column now scale
+  up toward the column instead of being marooned by mermaid's intrinsic-width inline `max-width`. A
+  `cmh-diagram-narrow` class (set by `updateMermaidWidthClass` with hysteresis, so scaling a diagram
+  taller cannot flip it back and forth on the reveal/resize observer) grows the SVG to a capped
+  `min(100%, natural * 1.4)`, centered, for both `pre.mermaid` and `div.mermaid` hosts. Wide diagrams
+  (which scroll) and deck diagrams (own fit) are unaffected (CMH-MMD-10).
+
+## [1.191.0] - 2026-07-20
+
+### Fixed
+
+- The full-screen demo reports on the site (and the shipped `report-taxi.html` /
+  `report-community-garden.html` examples) now carry the commentable-html favicon, so a browser
+  tab shows the CMH mark instead of the generic globe. Those two example sources predated the
+  shell-baked favicon and were the only ones missing it.
+
+### Added
+
+- The validator now warns (an error under `--strict`, the mandatory finalize path) when a document
+  has no `<link rel="icon">` favicon in its head, so a missing favicon is caught before handoff
+  (CMH-KIND-05). `retrofit.py` injects the CMH favicon when the host head has none, and
+  `upgrade.py` adds it when migrating a pre-favicon document (neither duplicates an existing one).
+## [1.190.0] - 2026-07-20
+
+### Fixed
+
+- `Clear all comments` now also resets a note-only change. Its early-return guard checked comments,
+  widget-state, and checklist changes but omitted `notesChanges()`, so on a document whose only
+  pending change was an edited `data-cmh-note` field (no comments, no checklist/widget changes)
+  clicking Clear all was a silent no-op and left the note edit in place. The guard now includes note
+  changes, and the confirm dialog names the widget, checklist, and note resets it performs.
+  (CMH-NOTE-06)
+
+## [1.189.0] - 2026-07-20
+
+### Added
+
+- Each side-TOC review-filter button (All / Reviewed / Unreviewed / Commented / Changed) now shows a
+  live per-state count as an inline `(N)` beside its label - `All` shows the total section count and
+  the four states partition it, so at a glance you see how many sections are in each state. The count
+  refreshes as sections are marked reviewed, commented, or changed. The count span is `aria-hidden`
+  and its number is folded into each button's accessible name so it is announced once, and the label
+  and count stay on one line per button (the group wraps into rows without overflowing the sidebar,
+  even with two-digit counts) (CMH-REVIEW-14).
+
 ## [1.188.0] - 2026-07-20
 
 ### Fixed

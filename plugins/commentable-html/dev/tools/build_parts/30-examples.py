@@ -20,6 +20,81 @@ _LAYER_DESCRIPTOR_INSERT_RE = re.compile(
 _CONTENT_BEGIN_TEXT = "BEGIN: commentable-html - CONTENT"
 _CONTENT_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*(["\'])commentRoot\1[^>]*>', re.IGNORECASE)
 
+# The mermaid loader bootstrap lives in <head>, OUTSIDE the swappable CSS/COMMENT UI/JS regions, so
+# a bare region swap never reaches it (CMH-MMD-09). upgrade.py re-emits it into already-generated
+# documents; regen_example re-emits it into every example so an example single-sources the canonical
+# loader from PORTABLE and can never ship a stale pre-CMH-MMD-07 loader (the old naive in-place
+# `mermaid.run()`) that renders a collapsed-at-load diagram as a degenerate ~16px SVG.
+_MODULE_SCRIPT_RE = re.compile(
+    r'<script\b[^>]*\btype=(["\'])module\1[^>]*>[\s\S]*?</script>', re.IGNORECASE)
+# Keyed on "mermaid" INSIDE the import string literal (with a capture group for the specifier, used
+# by the vendored check), so a script that only mentions mermaid in a comment is not matched.
+_MERMAID_IMPORT_RE = re.compile(r'import\(\s*(["\'])([^"\']*mermaid[^"\']*)\1', re.IGNORECASE)
+_MERMAID_LOADER_COMMENT_RE = re.compile(
+    r'[ \t]*<!--\s*Mermaid loader\b[\s\S]*?-->[ \t]*\r?\n?', re.IGNORECASE)
+
+
+def _nearest_loader_comment_start(head, start):
+    """Start offset of the "Mermaid loader" comment IMMEDIATELY preceding `start` in `head` (only
+    whitespace between the comment and the script), or `start` if none. Nearest wins (mirrors
+    upgrade.py._preceding_loader_comment)."""
+    best = start
+    for c in _MERMAID_LOADER_COMMENT_RE.finditer(head[:start]):
+        if head[c.end():start].strip() == "":
+            best = c.start()   # a later (nearer) match overwrites an earlier one
+    return best
+
+
+def _mermaid_loader_span(html, where="<example>"):
+    """(start, end) offsets of the <head> mermaid loader block - the module <script> that boots
+    mermaid via a dynamic mermaid `import(...)`, plus its immediately-preceding "Mermaid loader"
+    comment - or None. Scoped to <head> so an authored body module script is never mistaken for the
+    loader. When more than one head module imports mermaid, the one bound to the "Mermaid loader"
+    comment wins; otherwise ambiguity is an error (mirrors upgrade.py._mermaid_bootstrap_span)."""
+    lo = html.lower()
+    hs, he = lo.find("<head"), lo.find("</head>")
+    if hs == -1 or he == -1 or he <= hs:
+        return None
+    head = html[hs:he]
+    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(head) if _MERMAID_IMPORT_RE.search(m.group(0))]
+    if not candidates:
+        return None
+    if len(candidates) > 1:
+        commented = [m for m in candidates if _nearest_loader_comment_start(head, m.start()) != m.start()]
+        if len(commented) != 1:
+            raise SystemExit("build: %s has ambiguous mermaid loader scripts in <head>" % where)
+        candidates = commented
+    m = candidates[0]
+    return hs + _nearest_loader_comment_start(head, m.start()), hs + m.end()
+
+
+def _mermaid_loader_is_vendored(bootstrap):
+    """True if the loader imports mermaid from a LOCAL/relative path (author hand-vendored an offline
+    copy) rather than a remote URL. VENDORED WINS: a single local specifier makes it vendored even if
+    a (commented-out) remote line is also present, so the re-emit never silently re-points a
+    hand-vendored loader back at the CDN (mirrors upgrade.py._mermaid_loader_is_vendored)."""
+    for m in _MERMAID_IMPORT_RE.finditer(bootstrap or ""):
+        spec = m.group(2).strip()
+        if "://" not in spec and not spec.startswith("//"):
+            return True   # a local/relative specifier: hand-vendored
+    return False
+
+
+def _stamp_mermaid_loader(text, portable_html):
+    """Re-emit the canonical shell-baked mermaid loader from PORTABLE into an example, so examples
+    single-source the loader (like the layer regions). No-op when either side has no loader, it
+    already matches, or the target is a hand-vendored offline loader (CMH-MMD-09)."""
+    tpl = _mermaid_loader_span(portable_html, "dist/PORTABLE.html")
+    tgt = _mermaid_loader_span(text)
+    if tpl is None or tgt is None:
+        return text
+    if _mermaid_loader_is_vendored(text[tgt[0]:tgt[1]]):
+        return text
+    canonical = portable_html[tpl[0]:tpl[1]]
+    if text[tgt[0]:tgt[1]] == canonical:
+        return text
+    return text[:tgt[0]] + canonical + text[tgt[1]:]
+
 
 def _layer_descriptor(version, mode):
     data = {
@@ -96,6 +171,7 @@ def regen_example(example_html, portable_html, version, mermaid_version, where="
     out = _stamp_vendored_rich_libs(out, portable_html)
     out = _stamp_layer_descriptor(out, version, "portable")
     out = _stamp_content_root_hook(out)
+    out = _stamp_mermaid_loader(out, portable_html)
     out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
     return out
 

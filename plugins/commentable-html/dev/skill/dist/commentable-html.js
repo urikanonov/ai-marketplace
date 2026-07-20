@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.188.0";
+const CMH_VERSION = "1.192.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -699,19 +699,38 @@ function mermaidIntrinsicWidth(host) {
   } catch (e) {}
   return svg.getBoundingClientRect().width || 0;
 }
+// Narrow-diagram scale-up thresholds (#516). Only a diagram whose intrinsic width is BELOW
+// NARROW_ENTER of the column is scaled up; once narrow it stays narrow until it exceeds NARROW_EXIT
+// (hysteresis) so that scaling a diagram taller - which can toggle a document scrollbar and shrink
+// the container by a scrollbar width on the reveal/resize ResizeObserver - cannot flip a diagram
+// sitting near the boundary back and forth. NARROW_CAP bounds the scale so a tiny diagram never balloons.
+const NARROW_ENTER = 0.82, NARROW_EXIT = 0.90, NARROW_CAP = 1.4;
 function updateMermaidWidthClass(host) {
   if (!host) return;
   // A diagram-fit slide sizes the SVG to contain-fit (see fitDeckDiagram); the wide/scroll-fade
   // affordance (and its narrow-viewport min-width rule) would fight that, so never apply it there.
   // Only relevant in a deck: outside deck mode the classes drive horizontal scroll for wide diagrams.
   if (IS_DECK && host.closest && host.closest(".slide.cmh-deck-diagram-slide, .slide.cmh-slide-diagram")) {
-    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade");
+    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade", "cmh-diagram-narrow");
+    host.style.removeProperty("--cmh-diagram-cap");
     return;
   }
   const container = host.clientWidth || host.getBoundingClientRect().width || window.innerWidth || 0;
   const natural = mermaidIntrinsicWidth(host);
   const wide = natural > Math.max(container + 80, 520);
   host.classList.toggle("cmh-diagram-wide", wide);
+  // A diagram whose natural width is well under the column would otherwise stay pinned to that
+  // intrinsic width by mermaid's inline max-width, marooned with dead space (#516). Mark it narrow
+  // and expose a capped target width so the CSS scales it up toward the column without ballooning a
+  // tiny one. Report-only - deck slides have their own contain-fit sizing. `natural` is the viewBox
+  // width (stable, not the CSS-grown rendered width), so scaling can never feed back into `natural`.
+  const ratio = (natural > 0 && container > 0) ? natural / container : 1;
+  const wasNarrow = host.classList.contains("cmh-diagram-narrow");
+  const narrow = !wide && !IS_DECK && natural > 0 && container > 0 &&
+    ratio < (wasNarrow ? NARROW_EXIT : NARROW_ENTER);
+  host.classList.toggle("cmh-diagram-narrow", narrow);
+  if (narrow) host.style.setProperty("--cmh-diagram-cap", Math.round(natural * NARROW_CAP) + "px");
+  else host.style.removeProperty("--cmh-diagram-cap");
   const syncFade = () => {
     host.classList.toggle("cmh-diagram-scroll-fade", wide && host.scrollWidth > host.clientWidth + 1);
   };
@@ -6534,11 +6553,14 @@ let _clearAllBusy = false;
 document.getElementById("btnClearAll").addEventListener("click", async () => {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length)) return;  // guard re-entrant double-clicks
+  const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
+  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length && !noteChanges.length)) return;  // guard re-entrant double-clicks
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
-      message: `Delete all ${comments.length} comment(s) and reset tracked widget changes? This cannot be undone.`,
+      message: comments.length
+        ? `Delete all ${comments.length} comment(s) and reset any tracked widget, checklist, and note changes? This cannot be undone.`
+        : `Reset any tracked widget, checklist, and note changes? This cannot be undone.`,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
@@ -8203,7 +8225,16 @@ function setupSideToc() {
       b.type = "button";
       b.className = "cm-side-toc-review-btn cmh-review-filter-" + pair[0];
       b.dataset.cmhReviewFilter = pair[0];
-      b.textContent = pair[1];
+      b.dataset.cmhBaseLabel = pair[1];
+      const labelEl = document.createElement("span");
+      labelEl.className = "cm-side-toc-review-btn-label";
+      labelEl.textContent = pair[1];
+      // A live per-state count (filled by updateReviewFilterCounts). Decorative: the accessible
+      // name lives on the button's aria-label so the count is not announced as a second reading.
+      const countEl = document.createElement("span");
+      countEl.className = "cm-side-toc-review-btn-count";
+      countEl.setAttribute("aria-hidden", "true");
+      b.append(labelEl, countEl);
       b.title = "Show " + pair[1].toLowerCase() + " sections";
       b.setAttribute("aria-pressed", pair[0] === "all" ? "true" : "false");
       b.addEventListener("click", function () { applyReviewFilter(pair[0]); });
@@ -8414,6 +8445,36 @@ function _resetReviewFilterUI() {
 // The letter is rendered as a CSS pseudo-element (data-cmh-mark) so it never enters the TOC link
 // text that search and deep-links read. Unreviewed is a hollow badge (no letter).
 const _CMH_TOC_MARK_CHAR = { reviewed: "R", commented: "C", changed: "!", unreviewed: "" };
+// Tally every reviewable heading's state into per-filter counts. The four states partition the
+// set, so `all` equals the total section count and reviewed+unreviewed+commented+changed == all.
+function _cmhReviewFilterCounts(states) {
+  const counts = { all: 0, reviewed: 0, unreviewed: 0, commented: 0, changed: 0 };
+  if (states && typeof states.forEach === "function") {
+    states.forEach(function (info) {
+      counts.all++;
+      const s = info && info.state;
+      if (s && Object.prototype.hasOwnProperty.call(counts, s)) counts[s]++;
+    });
+  }
+  return counts;
+}
+// Refresh the "(N)" count shown on each segmented filter button and keep its accessible name in
+// sync (the visible count span is aria-hidden, so the aria-label carries the number for AT). This
+// runs on every refreshReviewUI, which is the single funnel every state change flows through
+// (mark reviewed/cleared, comment add/delete, load-time prune), so the counts never go stale.
+function updateReviewFilterCounts(states) {
+  if (!_cmReviewFilterBtns) return;
+  const counts = _cmhReviewFilterCounts(states);
+  Object.keys(_cmReviewFilterBtns).forEach(function (k) {
+    const b = _cmReviewFilterBtns[k];
+    const n = counts[k] || 0;
+    const countEl = b.querySelector(":scope > .cm-side-toc-review-btn-count");
+    if (countEl) countEl.textContent = "(" + n + ")";
+    const base = b.dataset.cmhBaseLabel || k;
+    b.setAttribute("aria-label", base + ", " + n + " section" + (n === 1 ? "" : "s"));
+    b.title = "Show " + base.toLowerCase() + " sections (" + n + ")";
+  });
+}
 function updateTocReviewMarks(states, active) {
   // The segmented filter appears only when active; when dormant, hide it and reset any lingering
   // filter to All so no section is left collapsed behind a control the reader can no longer see.
@@ -8421,6 +8482,7 @@ function updateTocReviewMarks(states, active) {
     _cmReviewFilterEl.hidden = !active;
     if (!active && _cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter("all");
   }
+  updateReviewFilterCounts(states);
   if (!_cmTocLinks || !_cmTocLinks.length) return;
   for (let i = 0; i < _cmTocLinks.length; i++) {
     const a = _cmTocLinks[i];

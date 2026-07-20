@@ -64,6 +64,10 @@ def check_layer(html, parser, base_dir=None):
     #       render, and is not hidden behind a query-param gate).
     warnings.extend(check_mermaid_renders(parser))
 
+    # 11a3) Favicon: every document should declare the CMH favicon so a browser tab shows
+    #       the CMH mark rather than the generic globe (advisory; enforced under --strict).
+    warnings.extend(check_favicon(parser))
+
     e, w = _check_diff_blocks(html)
     errors += e
     warnings += w

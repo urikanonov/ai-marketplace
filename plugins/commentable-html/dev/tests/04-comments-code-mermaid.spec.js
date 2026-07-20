@@ -362,4 +362,83 @@ test.describe("mermaid diagram sizing (report / non-deck)", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("CMH-MMD-10: a narrow report diagram scales up toward the content column, capped (not marooned)", async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    // A short flowchart whose intrinsic width is well under the wide content column. With mermaid's
+    // inline max-width it would stay pinned at that intrinsic width, marooned mid-column (#516).
+    const content =
+      '<section><h2>Intro</h2><p>lead-in prose so the content column is wide.</p></section>'
+      + '<section id="sec-diagram"><h2>Flow</h2>'
+      + '<pre class="mermaid cm-skip">flowchart LR\n  A["Start"] --> B["Next"] --> C["End"]</pre></section>';
+    const { dir } = stageContent(content, { key: "cmh-mmd-narrow", source: "narrow.html" });
+    const server = await startStaticServer(dir);
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await expect
+        .poll(() => page.locator("#sec-diagram pre.mermaid svg g.node").count(), { timeout: 20000 })
+        .toBe(3);
+      const m = await page.evaluate(() => {
+        const host = document.querySelector("#sec-diagram pre.mermaid");
+        const svg = host.querySelector("svg");
+        const vb = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+        return {
+          narrow: host.classList.contains("cmh-diagram-narrow"),
+          wide: host.classList.contains("cmh-diagram-wide"),
+          intrinsic: vb.length === 4 ? vb[2] : 0,
+          renderedWidth: svg.getBoundingClientRect().width,
+          container: host.clientWidth,
+        };
+      });
+      console.log("DEBUG_M", JSON.stringify(m));
+      // Classified narrow (not wide) and scaled UP beyond its intrinsic width toward the column...
+      expect(m.wide).toBe(false);
+      expect(m.narrow).toBe(true);
+      expect(m.intrinsic).toBeGreaterThan(0);
+      expect(m.renderedWidth).toBeGreaterThan(m.intrinsic + 20);
+      // ...but capped at NARROW_CAP (1.4x), so a tiny diagram never balloons to fill the wide column,
+      // and never overflows it. (Bound tracks NARROW_CAP so a future cap change is caught.)
+      expect(m.renderedWidth).toBeLessThanOrEqual(m.intrinsic * 1.4 + 2);
+      expect(m.renderedWidth).toBeLessThanOrEqual(m.container + 1);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-10: a wide diagram is not classified narrow (no scale-up)", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 900 });
+    // A many-node horizontal flowchart whose intrinsic width exceeds the (narrow) content column is
+    // WIDE (it scrolls) - it must not also be classified narrow, and must carry no scale-up cap.
+    const content =
+      '<section id="sec-diagram"><h2>Wide</h2>'
+      + '<pre class="mermaid cm-skip">flowchart LR\n  A["Alpha step"] --> B["Bravo step"] --> C["Charlie step"]'
+      + ' --> D["Delta step"] --> E["Echo step"] --> F["Foxtrot step"] --> G["Golf step"]</pre></section>';
+    const { dir } = stageContent(content, { key: "cmh-mmd-wide", source: "wide.html" });
+    const server = await startStaticServer(dir);
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await expect
+        .poll(() => page.locator("#sec-diagram pre.mermaid svg g.node").count(), { timeout: 20000 })
+        .toBe(7);
+      const m = await page.evaluate(() => {
+        const host = document.querySelector("#sec-diagram pre.mermaid");
+        return {
+          wide: host.classList.contains("cmh-diagram-wide"),
+          narrow: host.classList.contains("cmh-diagram-narrow"),
+          cap: host.style.getPropertyValue("--cmh-diagram-cap"),
+        };
+      });
+      expect(m.wide).toBe(true);
+      expect(m.narrow).toBe(false);
+      expect(m.cap).toBe("");
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
