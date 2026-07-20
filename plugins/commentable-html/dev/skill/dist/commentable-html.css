@@ -2491,15 +2491,16 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
 #commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2:has(.cm-mermaid-host) {
   display: contents;
 }
-/* Propagate the flex context through a direct-child wrapper (a column of the flattened grid, or a
-   plain wrapper around the diagram) so the host still grows to the full remaining height. flex:1 1 0%
-   (equal share from a zero basis) keeps sizing stable when fitDeckDiagram momentarily collapses one
-   SVG to measure it, so two diagrams on a forced .cmh-slide-diagram slide never steal each other's
-   space. */
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2:has(.cm-mermaid-host) > *:has(.cm-mermaid-host),
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2:has(.cm-mermaid-host) > *:has(.cm-mermaid-host),
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram > *:has(.cm-mermaid-host):not(.cmh-cols-2),
-#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide > *:has(.cm-mermaid-host):not(.cmh-cols-2) {
+/* Propagate the flex context through EVERY ancestor wrapper of the diagram (a column of the flattened
+   grid, or one or more plain wrappers around the diagram - matched at any depth, not just a direct
+   child) so the host is always a flex-grown item and its measured height is space-driven. That keeps
+   the diagram correctly bounded BELOW a trailing block (for example a .cmh-refs row) instead of
+   painting over it, and lets fitDeckDiagram read a true available box. flex:1 1 0% (equal share from a
+   zero basis) also keeps sizing stable when fitDeckDiagram momentarily collapses one SVG to measure
+   it, so two diagrams on a forced .cmh-slide-diagram slide never steal each other's space. The
+   flattened .cmh-cols-2 itself is excluded so it keeps display:contents. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram *:has(.cm-mermaid-host):not(.cmh-cols-2),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide *:has(.cm-mermaid-host):not(.cmh-cols-2) {
   display: flex;
   flex-direction: column;
   flex: 1 1 0%;

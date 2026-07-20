@@ -111,7 +111,8 @@ function updateMermaidWidthClass(host) {
   if (!host) return;
   // A diagram-fit slide sizes the SVG to contain-fit (see fitDeckDiagram); the wide/scroll-fade
   // affordance (and its narrow-viewport min-width rule) would fight that, so never apply it there.
-  if (host.closest && host.closest(".slide.cmh-deck-diagram-slide, .slide.cmh-slide-diagram")) {
+  // Only relevant in a deck: outside deck mode the classes drive horizontal scroll for wide diagrams.
+  if (IS_DECK && host.closest && host.closest(".slide.cmh-deck-diagram-slide, .slide.cmh-slide-diagram")) {
     host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade");
     return;
   }
@@ -137,7 +138,7 @@ function mermaidViewBoxDims(svg) {
 // Rich (non-text) blocks other than a mermaid diagram. A deck slide carrying one of these beside a
 // diagram is a mixed layout and is left alone; a slide whose only non-text content is a single
 // diagram is a "diagram slide" that should hand the diagram the whole slide.
-var DECK_RICH_OTHER_SEL = "img, canvas, table, figure, pre:not(.mermaid), iframe, video, audio, object, embed, .cmh-diff-view, .cmh-chart";
+var DECK_RICH_OTHER_SEL = "img, canvas, table, figure, pre:not(.mermaid), iframe, video, audio, object, embed, svg, .cmh-diff-view, .cmh-chart";
 // Auto-detect a diagram-dominant deck slide: exactly one mermaid host, no other rich block, and no
 // author-authored .cmh-cols-2 (bullets, headings, prose, and a reference row are text, so they do
 // not disqualify it). A slide that HAS a .cmh-cols-2 keeps its explicit two-column layout unless the
@@ -466,8 +467,10 @@ function setupMermaidLayer() {
       comments.forEach(c => {
         if (c.anchorType === "mermaid" && c.diagramIndex === i) applyMermaidHighlight(c);
       });
-      updateMermaidWidthClass(host);
+      // Classify + fit BEFORE the width-class pass so, on an auto-classified slide, the fit-slide
+      // guard in updateMermaidWidthClass sees the class on the first paint (no transient wide flash).
       refreshDeckDiagram(host);
+      updateMermaidWidthClass(host);
       attachMermaidHostHandlers(host);
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(apply);
