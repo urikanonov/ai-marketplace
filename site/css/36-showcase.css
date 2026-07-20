@@ -7,6 +7,11 @@
    adding it here too would double the side margins and over-shrink the screenshot on mobile. */
 .showcase { padding: 8px 0 8px; }
 
+/* The showcase already keeps a small bottom padding; the following "Why" section otherwise adds its
+   full 48px section top padding on top of that, doubling the gap. Halve the gap by trimming the top
+   padding of the section that immediately follows the showcase. */
+.showcase + #why { padding-top: 20px; }
+
 /* One defined card so the showcase reads as a cohesive, contained unit rather than floating
    loose on the page background. The screenshot sits in a fixed, modest column so it downscales
    (stays crisp on HiDPI/retina screens, where a larger CSS size would upscale and blur) and reads
