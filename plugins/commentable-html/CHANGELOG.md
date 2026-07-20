@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.190.0] - 2026-07-20
+
+### Fixed
+
+- `Clear all comments` now also resets a note-only change. Its early-return guard checked comments,
+  widget-state, and checklist changes but omitted `notesChanges()`, so on a document whose only
+  pending change was an edited `data-cmh-note` field (no comments, no checklist/widget changes)
+  clicking Clear all was a silent no-op and left the note edit in place. The guard now includes note
+  changes, and the confirm dialog names the widget, checklist, and note resets it performs.
+  (CMH-NOTE-06)
+
 ## [1.189.0] - 2026-07-20
 
 ### Added
