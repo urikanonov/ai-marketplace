@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.177.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.179.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,12 +451,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.177.0] - 2026-07-20</h3></div>
+            <div class="rel-head"><h3>[1.179.0] - 2026-07-20</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li><code>SKILL.md</code> now opens with a single upfront <code>## Capabilities</code> list (above the detailed Steps) that names the tested tool or contract for every capability - create/retrofit/upgrade, the document kinds (including the flat <code>slides</code> kind vs a real deck), the review surface (including per-section &quot;Mark reviewed&quot; tracking), highlighted code, KQL, diffs, mermaid, charts, images, the layout tools, layered checklists and editable notes fields (scaffold and apply), commentable widgets, animated decks, output modes, and theming (including deck theme presets) - and directs the agent to use the named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed that CMH already supports editable notes fields and considered building its own. A companion <code>## Always validate before handoff (MUST)</code> section states the mandatory <code>finalize.py --strict</code> + <code>validate.py --strict</code> (plus <code>deck_validate.py --strict</code> for decks) pass upfront so it cannot be missed. (CMH-DOC-17)</li>
             </ul>
           </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.178.0] - 2026-07-20</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Deck mode now accepts <code>Backspace</code> as a &quot;previous slide&quot; key, alongside <code>ArrowLeft</code> and <code>PageUp</code>, so presenters can step one slide back with the key many slide tools use (CMH-DECK-05). It respects the same guards as the other navigation keys: it does not move slides while a comment field or other editable target is focused, or while the comment-options menu or other blocking deck chrome is open. Because <code>Backspace</code> uniquely carries a legacy browser &quot;history back&quot; default, the deck suppresses that default whenever it owns the key (including at the first-slide boundary, where the step back is a no-op) so a viewer is never navigated away from the deck.</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.175.0] - 2026-07-19</h3></div>
             <div class="group-label">Fixed</div>
@@ -464,8 +473,6 @@
               <li><code>tools/authoring/upgrade.py</code> now re-emits the shell-baked mermaid loader bootstrap from the template, so the deck label fix (CMH-MMD-08) and any future change to the loader in <code>assets/template.shell.html</code> reach already-generated documents on upgrade (CMH-MMD-09). The bootstrap is baked into the document <code>&lt;head&gt;</code> at scaffold time, OUTSIDE the swappable CSS / COMMENT UI / JS regions, so a region swap alone never touched it: a deck generated before CMH-MMD-08 kept its old bootstrap after an upgrade and its mermaid labels still clipped. The swap replaces the <code>&lt;head&gt;</code> <code>&lt;script type=&quot;module&quot;&gt;</code> mermaid loader (and its <code>&lt;!-- Mermaid loader --&gt;</code> comment); it is scoped to <code>&lt;head&gt;</code> so authored body/CONTENT can never be mistaken for the loader, identifies the loader by a mermaid <code>import(&quot;...mermaid...&quot;)</code> so loaders predating the <code>pre.mermaid, div.mermaid</code> guard match too, preserves a hand-vendored offline loader (a local/relative mermaid import; a protocol-relative <code>//host</code> import counts as remote) rather than re-pointing it at the CDN, is document-kind-agnostic (the <code>.deck-stage</code> gate is a runtime check, so a non-deck report keeps HTML labels) and idempotent, and <code>--check</code> now flags a stale bootstrap. The Export Offline re-init is not shell-baked (it lives in the swapped JS region) and was already refreshed by the JS swap.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.174.0] - 2026-07-19</h3></div>
             <div class="group-label">Changed</div>
@@ -505,14 +512,7 @@
               <li>The top-right site logo sits further into the corner and its tooltip reads just &quot;Commentable HTML&quot; (CMH-DECK-SHOWCASE-10).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.169.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Code blocks can carry an optional filename/description caption line: add <code>data-code-caption</code> to a <code>&lt;pre&gt;</code> (for example <code>data-code-caption=&quot;trigger.kql&quot;</code>) and the runtime renders a <code>cm-skip</code>, non-selectable caption bar above the code, laid out like the KQL caption bar (filename on the left, the language pill and Copy button inline on the right) so no language-label width overlaps the filename. It is styled consistently in report and deck modes, leaves the language pill, Copy button, syntax highlighting, and commenting on the code intact (a caption-crossing drag cannot leak the filename into a comment&#x27;s quote), never doubles a KQL figure&#x27;s own caption, and survives Export Offline (the caption re-renders from the surviving attribute on reopen). (CMH-CODE-05)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">146 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">147 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

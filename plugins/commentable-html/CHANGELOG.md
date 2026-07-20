@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.177.0] - 2026-07-20
+## [1.179.0] - 2026-07-20
 
 ### Changed
 
@@ -19,6 +19,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `## Always validate before handoff (MUST)` section states the mandatory
   `finalize.py --strict` + `validate.py --strict` (plus `deck_validate.py --strict` for decks) pass
   upfront so it cannot be missed. (CMH-DOC-17)
+
+## [1.178.0] - 2026-07-20
+
+### Added
+
+- Deck mode now accepts `Backspace` as a "previous slide" key, alongside `ArrowLeft` and `PageUp`, so
+  presenters can step one slide back with the key many slide tools use (CMH-DECK-05). It respects the
+  same guards as the other navigation keys: it does not move slides while a comment field or other
+  editable target is focused, or while the comment-options menu or other blocking deck chrome is open.
+  Because `Backspace` uniquely carries a legacy browser "history back" default, the deck suppresses that
+  default whenever it owns the key (including at the first-slide boundary, where the step back is a
+  no-op) so a viewer is never navigated away from the deck.
 
 ## [1.175.0] - 2026-07-19
 

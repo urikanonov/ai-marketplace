@@ -95,7 +95,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       window.__evts = [];
       document.addEventListener("cmh:slidechange", (e) => window.__evts.push(e.detail));
     });
-    // ArrowRight / Space / PageDown advance; ArrowLeft / PageUp go back; Home / End jump to ends.
+    // ArrowRight / Space / PageDown advance; ArrowLeft / PageUp / Backspace go back; Home / End jump to ends.
     await page.keyboard.press("ArrowRight");
     expect(await activeId(page)).toBe("slide-00000002");
     await expect(page.locator(".cmh-deck-count")).toHaveText("2 / 3");
@@ -105,7 +105,18 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("slide-00000002");
     await page.keyboard.press("PageDown");
     expect(await activeId(page)).toBe("slide-00000003");
+    await page.keyboard.press("Backspace");
+    expect(await activeId(page)).toBe("slide-00000002");
     await page.keyboard.press("Home");
+    expect(await activeId(page)).toBe("slide-00000001");
+    // Backspace on the first slide is a no-op, but the deck still suppresses the browser's
+    // legacy "history back" default so a viewer is never navigated away from the deck.
+    const backspacePrevented = await page.evaluate(() => {
+      const ev = new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true });
+      document.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    expect(backspacePrevented).toBe(true);
     expect(await activeId(page)).toBe("slide-00000001");
     await page.keyboard.press("End");
     expect(await activeId(page)).toBe("slide-00000003");
@@ -508,6 +519,11 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     });
     await page.locator("#probe").press("ArrowRight");
     expect(await activeId(page)).toBe("slide-00000001");
+    // Backspace inside a text field deletes text (isEditableTarget gate) instead of navigating.
+    await page.evaluate(() => { const ta = document.getElementById("probe"); ta.value = "ab"; ta.focus(); ta.setSelectionRange(2, 2); });
+    await page.locator("#probe").press("Backspace");
+    expect(await activeId(page)).toBe("slide-00000001");
+    expect(await page.locator("#probe").inputValue()).toBe("a");
     // contenteditable is gated the same way
     await page.evaluate(() => {
       const ce = document.createElement("div");
@@ -1040,6 +1056,12 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("slide-00000001");
     await page.keyboard.press("PageDown");
     expect(await activeId(page)).toBe("slide-00000001");
+    // Backspace is guarded the same way: it must not step back while blocking chrome is open.
+    await page.evaluate(() => window.__cmhDeck.showSlide(1));
+    expect(await activeId(page)).toBe("slide-00000002");
+    await page.keyboard.press("Backspace");
+    expect(await activeId(page)).toBe("slide-00000002");
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
     // Escape closes the menu and returns focus to the trigger.
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
