@@ -1906,6 +1906,10 @@ body.cmh-deck-comments-off #headingAddBtn {
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
   stroke: var(--cmh-deck-mermaid-edge, #334155) !important;
   stroke-width: 2.4px !important;
+  /* Edges are strokes, not shapes: force fill:none so a curved connector (a back-edge) is drawn
+     as a thin line and never fills the area under its curve with the inherited dark slide color
+     (which rendered as solid black blobs). Arrowheads keep their own fill in the marker rule below. */
+  fill: none !important;
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg marker path {
   stroke: var(--cmh-deck-mermaid-edge, #334155) !important;

@@ -183,6 +183,13 @@ function jumpToNote(id) {
   if (!note || !note.container) return;
   if (note.foldable && note.collapsed) { note.collapsed = false; _noteApplyFold(note); }
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(note.container);
+  // Deck-aware: a note can live on an inactive slide, which scrollIntoView cannot reveal, so
+  // navigate to its owning slide first (mirrors the comment-card deck jump in 95-startup.js). A
+  // no-op outside deck mode (window.__cmhDeck is undefined), so report jumps are unchanged.
+  if (window.__cmhDeck && typeof window.__cmhDeck.showSlideById === "function") {
+    const slide = note.container.closest(".slide[data-slide-id]");
+    if (slide) window.__cmhDeck.showSlideById(slide.getAttribute("data-slide-id"));
+  }
   note.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   note.container.classList.add("cmh-note-flash");
   setTimeout(() => note.container.classList.remove("cmh-note-flash"), 2200);

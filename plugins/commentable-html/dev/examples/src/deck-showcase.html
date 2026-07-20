@@ -1937,15 +1937,27 @@ svg {
   line-height: 1.38;
   white-space: pre-wrap;
 }
-#commentRoot[data-cmh-mode="deck"] .show-note-field { margin-top: 16px; padding: 16px 18px; border-radius: 18px; border: 1px solid var(--show-line); background: #fffdf8; }
-#commentRoot[data-cmh-mode="deck"] .show-note-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-#commentRoot[data-cmh-mode="deck"] .show-note-label,
-#commentRoot[data-cmh-mode="deck"] .show-note-toggle { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; font-size: 15px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
-#commentRoot[data-cmh-mode="deck"] .show-note-label { background: rgba(177, 31, 75, 0.12); color: var(--show-accent); }
-#commentRoot[data-cmh-mode="deck"] .show-note-toggle { background: #efe8db; color: var(--show-muted); }
-#commentRoot[data-cmh-mode="deck"] .show-note-body,
-#commentRoot[data-cmh-mode="deck"] .show-note-fold { min-height: 78px; padding: 16px 18px; border-radius: 14px; border: 1px solid #dcc9aa; background: #ffffff; color: var(--show-text); font-size: 21px; line-height: 1.35; }
-#commentRoot[data-cmh-mode="deck"] .show-note-fold { min-height: 58px; color: var(--show-muted); }
+#commentRoot[data-cmh-mode="deck"] .show-note-live { margin-top: 16px; border-radius: 18px; border: 1px solid var(--show-line); background: #fffdf8; padding: 16px 18px; }
+#commentRoot[data-cmh-mode="deck"] .show-note-live .cmh-note-head { margin-bottom: 12px; gap: 12px; }
+#commentRoot[data-cmh-mode="deck"] .show-note-live .cmh-note-label { font-size: 15px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 12px; color: var(--show-accent); background: rgba(177, 31, 75, 0.12); border-color: rgba(177, 31, 75, 0.2); }
+#commentRoot[data-cmh-mode="deck"] .show-note-live .cmh-note-toggle { font-size: 15px; padding: 6px 12px; color: var(--show-muted); background: #efe8db; border-color: var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-note-live .cmh-note-fold { width: 34px; height: 34px; font-size: 22px; color: var(--show-accent); background: rgba(177, 31, 75, 0.12); border-color: rgba(177, 31, 75, 0.2); }
+#commentRoot[data-cmh-mode="deck"] .show-note-live .cmh-note-input { font-size: 21px; line-height: 1.35; color: var(--show-text); background: #ffffff; border: 1px solid #dcc9aa; border-radius: 14px; padding: 14px 16px; }
+#commentRoot[data-cmh-mode="deck"] .show-note-live .cmh-note-input:focus { border-color: var(--show-accent); box-shadow: 0 0 0 3px rgba(177, 31, 75, 0.16); }
+/* Colorful source pills for the portability-modes slide - mirrors the site's "Three portability
+   modes" theme (each part is tagged with a colored pill: folder/CDN/inlined/storage/seed). */
+#commentRoot[data-cmh-mode="deck"] .show-src { display: inline-flex; align-items: center; gap: 8px; margin: 3px 4px 3px 0; font-family: ui-monospace, "Cascadia Code", "Consolas", monospace; font-size: 18px; padding: 6px 14px; border-radius: 999px; border: 1px solid transparent; color: var(--show-text); white-space: nowrap; }
+#commentRoot[data-cmh-mode="deck"] .show-src::before { content: ""; width: 9px; height: 9px; border-radius: 999px; background: #9a8f7a; flex: 0 0 auto; }
+#commentRoot[data-cmh-mode="deck"] .show-src-folder { background: #efe8db; color: var(--show-muted); border-color: var(--show-line); }
+#commentRoot[data-cmh-mode="deck"] .show-src-cdn { background: rgba(180, 83, 9, 0.16); border-color: #b45309; }
+#commentRoot[data-cmh-mode="deck"] .show-src-cdn::before { background: #b45309; }
+#commentRoot[data-cmh-mode="deck"] .show-src-inline { background: rgba(21, 128, 61, 0.16); border-color: #15803d; }
+#commentRoot[data-cmh-mode="deck"] .show-src-inline::before { background: #15803d; }
+#commentRoot[data-cmh-mode="deck"] .show-src-storage { background: rgba(177, 31, 75, 0.12); border-color: #b11f4b; }
+#commentRoot[data-cmh-mode="deck"] .show-src-storage::before { background: #b11f4b; }
+#commentRoot[data-cmh-mode="deck"] .show-src-seed { background: rgba(37, 99, 235, 0.14); border-color: #2563eb; }
+#commentRoot[data-cmh-mode="deck"] .show-src-seed::before { background: #2563eb; }
+#commentRoot[data-cmh-mode="deck"] .show-mode-table td { vertical-align: middle; }
 #commentRoot[data-cmh-mode="deck"] .show-loops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 20px; }
 #commentRoot[data-cmh-mode="deck"] .show-loop { padding: 24px; border-radius: 20px; background: #fffdf8; border: 1px solid var(--show-line); min-height: 360px; }
 #commentRoot[data-cmh-mode="deck"] .show-loop h3 { color: var(--show-text); font-size: 30px; margin-bottom: 10px; }
@@ -1982,7 +1994,11 @@ svg {
   color: #1b1f3b !important;
   fill: #1b1f3b !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link, marker path) {
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg :where(.edgePath path, .flowchart-link, path.flowchart-link) {
+  stroke: #1b1f3b !important;
+  fill: none !important;
+}
+#commentRoot[data-cmh-mode="deck"] .slide .cm-mermaid-host svg marker path {
   stroke: #1b1f3b !important;
   fill: #1b1f3b !important;
 }
@@ -2281,21 +2297,9 @@ StormEvents
     </div>
     <div class="show-panel show-note-demo">
       <h3>Notes demo</h3>
-      <p>Use notes for summaries, follow-ups, or presenter cues that stay attached to the file.</p>
-      <div class="show-note-field">
-        <div class="show-note-meta">
-          <span class="show-note-label">Reviewer summary</span>
-          <span class="show-note-toggle">multi-line</span>
-        </div>
-        <div class="show-note-body">Clarify the Bed 8 recommendation before sign-off.</div>
-      </div>
-      <div class="show-note-field">
-        <div class="show-note-meta">
-          <span class="show-note-label">Meeting follow-up</span>
-          <span class="show-note-toggle">expand</span>
-        </div>
-        <div class="show-note-fold">Capture the volunteer-day decision after Thursday's walk-through.</div>
-      </div>
+      <p>Live, editable notes for summaries, follow-ups, or presenter cues - type right here; edits are tracked and stay attached to the file.</p>
+      <div class="cmh-note show-note-live" data-cmh-note="showcase-reviewer-summary" data-cmh-note-label="Reviewer summary" data-cmh-note-multiline="true">Clarify the Bed 8 recommendation before sign-off.</div>
+      <div class="cmh-note show-note-live" data-cmh-note="showcase-meeting-followup" data-cmh-note-label="Meeting follow-up" data-cmh-note-multiline="true" data-cmh-note-foldable="true">Capture the volunteer-day decision after Thursday's walk-through.</div>
     </div>
   </div>
 </section>
@@ -2427,7 +2431,7 @@ HANDLED_IDS_JSON: ["cmh-bed4-liters"]</pre>
   <div class="show-kicker">Act 4 - Portability</div>
   <h2>Three portability modes explain every handoff.</h2>
   <div class="show-panel" style="padding:20px;">
-    <table>
+    <table class="show-table show-mode-table">
       <thead>
         <tr>
           <th>Mode</th>
@@ -2441,28 +2445,27 @@ HANDLED_IDS_JSON: ["cmh-bed4-liters"]</pre>
         <tr>
           <td><strong>Non-portable</strong></td>
           <td>Fast local iteration</td>
-          <td>skill folder</td>
-          <td>CDN</td>
-          <td>browser storage</td>
+          <td><span class="show-src show-src-folder">skill folder</span></td>
+          <td><span class="show-src show-src-cdn">CDN</span></td>
+          <td><span class="show-src show-src-storage">browser storage</span></td>
         </tr>
         <tr>
           <td><strong>Portable</strong></td>
           <td>Self-contained review or archival</td>
-          <td>inlined</td>
-          <td>CDN</td>
-          <td>seeded from HTML, then browser storage</td>
+          <td><span class="show-src show-src-inline">inlined</span></td>
+          <td><span class="show-src show-src-cdn">CDN</span></td>
+          <td><span class="show-src show-src-seed">seeded from HTML</span><span class="show-src show-src-storage">then browser storage</span></td>
         </tr>
         <tr>
           <td><strong>Offline</strong></td>
           <td>Zero-network handoff</td>
-          <td>inlined</td>
-          <td>vendored runtimes</td>
-          <td>seeded from HTML, then browser storage</td>
+          <td><span class="show-src show-src-inline">inlined</span></td>
+          <td><span class="show-src show-src-inline">vendored runtimes</span></td>
+          <td><span class="show-src show-src-seed">seeded from HTML</span><span class="show-src show-src-storage">then browser storage</span></td>
         </tr>
       </tbody>
     </table>
   </div>
-  <p class="show-lead" style="margin-top:24px;"><strong>CDN</strong> means library code only. Your document text and comments stay local.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-3d5c8a12">
