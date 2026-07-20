@@ -343,6 +343,15 @@ class SetSessionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             task.set_session(body, "has space")
 
+    def test_replaces_a_malformed_existing_session_line(self):
+        # A malformed session line (no code span) must be REPLACED, not left beside a new one.
+        body = (task.STATUS_MARKER + "\n- Branch: `issue-5-foo`\n"
+                "- Handling session: broken-no-backticks\n- Last active (UTC): 2026-07-18T13:55:00Z\n")
+        out = task.set_session(body, "good-sess")
+        self.assertEqual(out.count("Handling session"), 1)
+        self.assertEqual(task.parse_session(out), "good-sess")
+        self.assertNotIn("broken-no-backticks", out)
+
 
 class SessionArgTests(unittest.TestCase):
     class _Args:
@@ -735,6 +744,21 @@ class BeatOnceRoutingTests(unittest.TestCase):
             task._beat_once(7, "issue-7-foo", "sess-abc")
         self.assertEqual(task.parse_session(stub.posted[0][1]), "sess-abc")
 
+    def test_convergence_inherits_newest_duplicate_session(self):
+        # Survivor is older (session A); a duplicate carries the newest stamp AND a different session
+        # (B). A beat with no session of our own must attribute ownership to the newest heartbeat (B),
+        # not keep the survivor's stale A, before pruning the duplicate.
+        older = task.status_body("issue-7-foo", "2098-01-01T00:00:00Z", "sess-A")
+        newer = task.status_body("issue-7-foo", "2099-01-01T00:00:00Z", "sess-B")
+        comments = [{"id": 1, "body": older, "assoc": "OWNER"},
+                    {"id": 2, "body": newer, "assoc": "OWNER"}]
+        with _StubComments(comments) as stub:
+            task._beat_once(7, None, "")
+        edited = stub.edited[0][1]
+        self.assertIn("2099-01-01T00:00:00Z", edited)          # newest timestamp
+        self.assertEqual(task.parse_session(edited), "sess-B")  # newest heartbeat's session
+        self.assertEqual(stub.deleted, [2])                     # duplicate pruned after commit
+
     def test_untrusted_marker_comment_is_not_adopted(self):
         planted = [{"id": 1, "body": task.status_body("evil", "2026-07-18T10:00:00Z"), "assoc": "NONE"}]
         with _StubComments(planted) as stub:
@@ -874,6 +898,14 @@ class CmdStartTests(unittest.TestCase):
         with _StubStartBoundary(claim_rc=0) as stub:
             task.cmd_start(_start_args(7, "Heartbeat work", session_id="sess-xyz"))
         self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work", "sess-xyz")])
+
+    def test_invalid_session_fails_before_any_mutation(self):
+        with _StubStartBoundary(claim_rc=0) as stub:
+            with self.assertRaises(SystemExit):
+                task.cmd_start(_start_args(7, "Heartbeat work", session_id="bad session"))
+        # Fail-fast: no worktree/claim runs and no stamp happened.
+        self.assertEqual(stub.runs, [])
+        self.assertEqual(stub.upserts, [])
 
     def test_aborts_and_does_not_stamp_when_claim_fails(self):
         with _StubStartBoundary(claim_rc=1) as stub:

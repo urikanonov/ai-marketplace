@@ -298,8 +298,10 @@ def set_session(body, session):
     if not session:
         return body
     line = f"- Handling session: `{assert_valid_session(session)}`"
-    if re.search(r"^- Handling session: `[^`]+`", body, re.M):
-        return re.sub(r"^- Handling session: `[^`]+`.*$", lambda m: line, body, count=1, flags=re.M)
+    # Replace ANY existing handling-session line (even a malformed one) so we never leave a stale or
+    # duplicate line behind; only insert when none exists.
+    if re.search(r"^- Handling session:", body, re.M):
+        return re.sub(r"^- Handling session:.*$", lambda m: line, body, count=1, flags=re.M)
     if re.search(r"^- Branch: `[^`]+`.*$", body, re.M):
         return re.sub(r"^(- Branch: `[^`]+`.*)$", lambda m: m.group(1) + "\n" + line,
                       body, count=1, flags=re.M)
@@ -389,6 +391,18 @@ def parse_session(body):
     """Return the handling Copilot session id in a status-comment body, or None if absent."""
     m = re.search(r"^- Handling session: `([^`]+)`", body or "", re.M)
     return m.group(1) if m else None
+
+
+def _session_at_newest(matches, newest):
+    """Return the handling session from the trusted comment carrying the `newest` timestamp (the
+    most recent heartbeat), or '' - so converging duplicates attribute ownership to the newest
+    beat rather than the (possibly older) canonical survivor."""
+    for c in matches:
+        if parse_last_active(c.get("body", "")) == newest:
+            s = parse_session(c.get("body", ""))
+            if s:
+                return s
+    return ""
 
 
 def is_stale(stamp, now, minutes=HEARTBEAT_STALE_MINUTES):
@@ -652,22 +666,26 @@ def _beat_once(number, branch, session=""):
     # regresses the effective heartbeat; our own beat only advances it.
     newest = _max_stamp(parse_last_active(c["body"]) for c in matches)
     target = stamp if is_newer(stamp, newest) else newest
-    # Only claim the handling session when OUR beat advances the timestamp; if a concurrent
-    # duplicate is newer, keep its owner rather than ping-ponging the session line.
-    sid = session if is_newer(stamp, newest) else ""
+    # Attribute the handling session to the owner of the NEWEST heartbeat: if our beat advances the
+    # timestamp we own it (our session, else keep the survivor's); if a duplicate is newer we inherit
+    # that duplicate's session (else ours, else the survivor's). set_session with '' preserves the
+    # survivor's existing line, so a session is never wrongly dropped.
+    if is_newer(stamp, newest):
+        sid = session or parse_session(survivor["body"]) or ""
+    else:
+        sid = _session_at_newest(matches, newest) or session or parse_session(survivor["body"]) or ""
     try:
         base = bump_last_active(survivor["body"], target)
     except ValueError:
         # Malformed survivor (marker but no timestamp line): self-heal by rebuilding from a known
-        # or recoverable branch, preserving the existing session when we are not advancing, else
-        # stop rather than loop. Do NOT prune - the survivor is not yet committed, so deleting
-        # valid duplicates here would lose good state.
+        # or recoverable branch, carrying the resolved session, else stop rather than loop. Do NOT
+        # prune - the survivor is not yet committed, so deleting valid duplicates would lose state.
         recovered = branch or parse_branch(survivor["body"])
         if not recovered:
             raise HeartbeatStop(
                 f"status comment on #{number} is malformed and no branch is known to rebuild it")
         try:
-            new_body = status_body(recovered, target, sid or parse_session(survivor["body"]) or "")
+            new_body = status_body(recovered, target, sid)
         except ValueError as exc:
             raise HeartbeatStop(
                 f"status comment on #{number} has an invalid branch stamp: {exc}")
@@ -715,6 +733,7 @@ def _session_arg(a):
 
 
 def cmd_claim(a):
+    session = _session_arg(a)  # validate the session first: fail fast BEFORE the claim mutation
     branch = a.branch or current_branch()
     if branch:
         try:
@@ -725,7 +744,7 @@ def cmd_claim(a):
                  "--add-assignee", "@me", "--add-label", IN_PROGRESS_LABEL])
     if code == 0:
         if branch:
-            stamp = _upsert_status(a.number, branch, session=_session_arg(a))
+            stamp = _upsert_status(a.number, branch, session=session)
             print(f"stamped branch `{branch}` and heartbeat {stamp} on #{a.number}")
         else:
             sys.stderr.write(
@@ -738,6 +757,7 @@ def cmd_start(a):
     """Automate the start of work: create a worktree+branch off latest origin/main, claim
     the issue, and stamp the branch. Prints the worktree path and the heartbeat command."""
     _assert_safe_worktree_name(a.name)
+    session = _session_arg(a)  # validate the session first: fail fast BEFORE creating the worktree
     try:
         branch = assert_valid_branch(a.branch or derive_branch(a.number, a.slug or ""))
     except ValueError as exc:
@@ -752,7 +772,7 @@ def cmd_start(a):
         raise SystemExit(
             f"created worktree {path} (branch {branch}) but FAILED to claim #{a.number}; "
             f"claim it manually with `python scripts/task.py claim {a.number} --branch {branch}`")
-    stamp = _upsert_status(a.number, branch, session=_session_arg(a))
+    stamp = _upsert_status(a.number, branch, session=session)
     print(f"worktree ready: {path} (branch {branch}); stamped heartbeat {stamp} on #{a.number}")
     print(f"next: cd {path} ; then start the session-scoped heartbeat daemon:")
     print(f"  python scripts/task.py heartbeat {a.number} --watch")
