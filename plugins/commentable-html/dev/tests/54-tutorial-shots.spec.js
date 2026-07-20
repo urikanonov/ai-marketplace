@@ -192,15 +192,22 @@ test("capturing into an already-populated out dir overwrites without erroring (C
   test.setTimeout(120000);
   const scene = EXTRA_SCENES.find((s) => s.prefix === "checklist");
   const out = path.join(freshDir("overwrite"), "nested", "assets");
+  const target = path.join(out, `${scene.prefix}-${scene.shots[0]}.png`);
   const first = capture(scene.example, out, scene.prefix);
   expect(first.error, String(first.error)).toBeFalsy();
   expect(first.status, first.stderr).toBe(0);
-  expect(fs.existsSync(path.join(out, `${scene.prefix}-${scene.shots[0]}.png`)),
-    `missing ${scene.prefix}-${scene.shots[0]}.png`).toBe(true);
-  // Second run into the now-populated dir must overwrite gracefully (no EEXIST / no error).
+  expect(fs.existsSync(target), `missing ${scene.prefix}-${scene.shots[0]}.png`).toBe(true);
+  // Replace the committed shot with non-image bytes so the re-capture cannot take the
+  // compare-and-skip fast path (imagesMatch returns false on an undecodable target) and must run the
+  // real copyFileSync overwrite branch - proving overwrite-in-place, not just a no-op re-run.
+  fs.writeFileSync(target, Buffer.from("not a png"));
   const overwrite = capture(scene.example, out, scene.prefix);
   expect(overwrite.error, String(overwrite.error)).toBeFalsy();
   expect(overwrite.status, overwrite.stderr).toBe(0);
+  // The garbage must have been overwritten back to a real PNG (89 50 4E 47 magic bytes).
+  const after = fs.readFileSync(target);
+  expect(after.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
+    "re-capture did not overwrite the corrupted shot with a real PNG").toBe(true);
 });
 
 test("garden capture is deterministic across two independent runs (CMH-TUT-SHOTS-01)", async ({ browser }) => {
@@ -224,19 +231,6 @@ test("garden capture is deterministic across two independent runs (CMH-TUT-SHOTS
   } finally {
     await comparePage.close();
   }
-});
-
-test("--check flags a stale garden shot (CMH-TUT-SHOTS-01)", async () => {
-  test.setTimeout(180000);
-  const outA = path.join(freshDir("stale"), "nested", "assets");
-  const r1 = capture(EXAMPLE, outA);
-  expect(r1.error, String(r1.error)).toBeFalsy();
-  expect(r1.status, r1.stderr).toBe(0);
-  fs.writeFileSync(path.join(outA, "garden-01-top-light.png"), Buffer.from("stale screenshot"));
-  const stale = check(EXAMPLE, outA);
-  expect(stale.error, String(stale.error)).toBeFalsy();
-  expect(stale.status, stale.stdout + stale.stderr).toBe(1);
-  expect(stale.stderr).toContain("garden-01-top-light.png differs");
 });
 
 // The board, checklist, and note features render only in their own example reports, so the tool
@@ -300,4 +294,22 @@ test("the no-arg default run's shot registry matches the spec's scene lists (CMH
   expect(registry.garden).toEqual(SHOTS);
   for (const scene of EXTRA_SCENES) expect(registry[scene.prefix]).toEqual(scene.shots);
   expect(Object.keys(registry).sort()).toEqual(["checklist", "garden", "note", "triage"]);
+});
+
+// Heavy-shard balance: this stale-detection test does a full 13-shot garden capture (~one of the
+// three heaviest tests here), so it is placed LAST - away from the `garden capture is deterministic`
+// test (two full 13-shot captures, the single heaviest) - so Playwright's by-count sharding does not
+// pile the two heaviest tests onto one heavy shard. Keep any new full-garden-capture test off the
+// determinism shard for the same reason.
+test("--check flags a stale garden shot (CMH-TUT-SHOTS-01)", async () => {
+  test.setTimeout(180000);
+  const outA = path.join(freshDir("stale"), "nested", "assets");
+  const r1 = capture(EXAMPLE, outA);
+  expect(r1.error, String(r1.error)).toBeFalsy();
+  expect(r1.status, r1.stderr).toBe(0);
+  fs.writeFileSync(path.join(outA, "garden-01-top-light.png"), Buffer.from("stale screenshot"));
+  const stale = check(EXAMPLE, outA);
+  expect(stale.error, String(stale.error)).toBeFalsy();
+  expect(stale.status, stale.stdout + stale.stderr).toBe(1);
+  expect(stale.stderr).toContain("garden-01-top-light.png differs");
 });

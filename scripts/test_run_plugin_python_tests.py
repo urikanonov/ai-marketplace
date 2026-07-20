@@ -238,5 +238,32 @@ class GitChangedPathsTests(unittest.TestCase):
         )
 
 
+class ShardMatrixContiguityTests(unittest.TestCase):
+    """The CI shard fan-out lives as hand-written "i/N" strings in plugin-tests.yml. A dropped or
+    duplicated entry (e.g. deleting "5/5") would silently orphan a slice of tests while every other
+    check stays green, so assert each sharded job lists a complete, unique 1..N cover. The runner's
+    select_shard is count-agnostic, so this is the guard that keeps the workflow matrix honest."""
+
+    _SHARDED_JOBS = ("playwright", "playwright-heavy", "python")
+
+    def _shard_lists(self):
+        import yaml
+        wf = rp.REPO_ROOT / ".github" / "workflows" / "plugin-tests.yml"
+        jobs = yaml.safe_load(wf.read_text(encoding="utf-8"))["jobs"]
+        return {name: jobs[name]["strategy"]["matrix"]["shard"] for name in self._SHARDED_JOBS}
+
+    def test_each_sharded_job_covers_1_to_N_uniquely(self):
+        for job, shards in self._shard_lists().items():
+            self.assertTrue(shards, f"{job}: empty shard matrix")
+            totals = {s.split("/")[1] for s in shards}
+            self.assertEqual(len(totals), 1, f"{job}: mixed shard totals {shards}")
+            total = int(totals.pop())
+            self.assertEqual(len(shards), total,
+                             f"{job}: {len(shards)} shard entries but total is /{total}: {shards}")
+            indices = sorted(int(s.split("/")[0]) for s in shards)
+            self.assertEqual(indices, list(range(1, total + 1)),
+                             f"{job}: shard indices {indices} are not a unique, contiguous 1..{total}")
+
+
 if __name__ == "__main__":
     unittest.main()
