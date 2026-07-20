@@ -400,7 +400,24 @@ class RetrofitCliTests(unittest.TestCase):
                          "retrofit must not add a second favicon when the host already has one")
         self._strict_clean(out)
 
+    def test_apple_touch_icon_only_host_still_gets_a_real_favicon(self):
+        # A host whose only icon-ish link is rel="apple-touch-icon" has no browser-tab favicon, so
+        # retrofit must still inject the CMH favicon (detection is token-exact, matching the
+        # validator) - otherwise the output would trip the validator's favicon check.
+        host = HOST_HTML.replace("<title>Host Report</title>",
+                                 '<title>Host Report</title>\n<link rel="apple-touch-icon" href="/a.png">')
+        d = self._tmpdir()
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "fav.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Fav Host", "--portable", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('rel="apple-touch-icon"', html)
+        self.assertIn('rel="icon"', html)
+        self._strict_clean(out)
 
+    def test_nonportable_asset_options_match_new_document(self):
         d = self._tmpdir()
         src = self._write(d, "host.html", HOST_HTML)
 

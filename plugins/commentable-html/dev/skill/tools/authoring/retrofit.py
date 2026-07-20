@@ -18,6 +18,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 
 import _brand_profile  # noqa: E402
+import _favicon  # noqa: E402
 import doc_stamp  # noqa: E402
 import new_document  # noqa: E402
 import recommend_kind  # noqa: E402
@@ -516,14 +517,19 @@ def _insert_title_if_missing(text, head, label):
 
 
 def _insert_favicon_if_missing(text, head, template):
-    """Return the template's favicon <link rel="icon"> (with a trailing newline) when the host
+    """Return the template's favicon `<link rel="icon">` (with a trailing newline) when the host
     head declares none, else "". A retrofitted host often has no favicon, which would leave the
     browser tab showing the generic globe and trip the validator's favicon check; mirror
-    _insert_title_if_missing and add the CMH favicon when it is absent."""
+    _insert_title_if_missing and add the CMH favicon when it is absent. Detection matches the
+    validator's semantics (see tools/authoring/_favicon.py): a `rel` token exactly `icon` with a
+    non-empty href, so `apple-touch-icon` / `mask-icon` and an empty-href icon do NOT count."""
     head_text = text[head.start_end:head.end_start]
-    if re.search(r'<link\b[^>]*\brel\s*=\s*["\'][^"\']*\bicon\b', head_text, re.I):
+    if _favicon.head_has_favicon(head_text):
         return ""
-    return _one_line(template, r'<link\s+rel="icon"[^>]*>', "favicon")
+    tag = _favicon.template_favicon_tag(template)
+    if not tag:
+        raise RetrofitError("template is missing a favicon <link rel=\"icon\">")
+    return tag + "\n"
 
 
 def _collision_warnings(original):

@@ -317,7 +317,9 @@ class _DocParser(HTMLParser):
             nm = (ad.get("name") or "").strip().lower()
             if nm and nm not in self.metas:
                 self.metas[nm] = ad.get("content") or ""
-        if tag == "link":
+        if tag == "link" and self.body_attrs is None:
+            # Head-scoped: only a <link rel~="icon"> BEFORE the real <body> is a favicon a browser
+            # tab honors, so a body-level icon link does not satisfy the favicon check.
             rels = (ad.get("rel") or "").lower().split()
             if "icon" in rels:
                 self.icon_links.append({"rel": ad.get("rel") or "", "href": ad.get("href") or ""})

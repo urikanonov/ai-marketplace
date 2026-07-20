@@ -138,9 +138,22 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertTrue(upgrade._has_favicon(legacy))
         out, changed = upgrade.upgrade(legacy, tpl)
         self.assertNotIn("favicon", changed)
-        self.assertEqual(len(upgrade._FAVICON_LINK_RE.findall(out)), 1,
+        self.assertEqual(len(re.findall(r'<link\b[^>]*\brel=["\'][^"\']*icon', out, re.I)), 1,
                          "upgrade duplicated the favicon link")
         self.assertIn(reordered, out)
+
+    def test_apple_touch_icon_only_document_gets_a_real_favicon_on_upgrade(self):
+        # A document whose head declares only rel="apple-touch-icon" has no tab favicon (that rel
+        # token is not "icon"), so upgrade must still add the CMH favicon rather than treating the
+        # apple-touch-icon as one - detection is token-exact, matching the validator.
+        tpl = _tpl()
+        favicon = upgrade._template_favicon(tpl)
+        legacy = tpl.replace(favicon, '<link rel="apple-touch-icon" href="/a.png" />', 1)
+        self.assertFalse(upgrade._has_favicon(legacy))
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("favicon", changed)
+        self.assertTrue(upgrade._has_favicon(out))
+        self.assertIn('rel="apple-touch-icon"', out)
 
     def test_version_meta_is_bumped_to_template_version(self):
         # An older deployed document self-reports its old runtime version in the head

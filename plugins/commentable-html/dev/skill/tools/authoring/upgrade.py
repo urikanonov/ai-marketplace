@@ -36,6 +36,7 @@ from html.parser import HTMLParser
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _favicon  # noqa: E402
 import doc_stamp  # noqa: E402
 SKILL_ROOT = _toolpath.SKILL_ROOT
 DEFAULT_TEMPLATE = os.path.join(SKILL_ROOT, "dist", "PORTABLE.html")
@@ -209,35 +210,39 @@ def _insert_kind_meta(html, kind):
     return html, False
 
 
-_FAVICON_LINK_RE = re.compile(r'<link\b[^>]*\brel\s*=\s*["\'][^"\']*\bicon\b', re.IGNORECASE)
-
-
 def _has_favicon(html):
-    """True when <head> declares a favicon (<link rel~="icon">), order-independent."""
+    """True when the document's <head> declares a usable favicon (rel token `icon` + non-empty
+    href). Detection matches the validator (see tools/authoring/_favicon.py), so `apple-touch-icon`
+    / `mask-icon` and an empty-href icon do NOT count and a commented-out link is ignored."""
     head = _HEAD_RE.search(html or "")
     scope = head.group(0) if head else (html or "")
-    return bool(_FAVICON_LINK_RE.search(scope))
+    return _favicon.head_has_favicon(scope)
 
 
 def _template_favicon(template_html):
     """Return the template's favicon <link rel="icon"> tag, or None."""
     head = _HEAD_RE.search(template_html or "")
     scope = head.group(0) if head else (template_html or "")
-    m = re.search(r'<link\s+rel="icon"[^>]*>', scope, re.IGNORECASE)
-    return m.group(0) if m else None
+    return _favicon.template_favicon_tag(scope)
 
 
 def _insert_favicon(html, favicon_tag):
-    """Insert the favicon <link> into <head>, preferring the spot right after the version
-    meta, else right after <head>. Returns (new_html, inserted?)."""
+    """Insert the favicon <link> into <head>, right after the version meta, else right after the
+    <head> open tag. Scoped to <head> (like _set_version_meta) so a version-meta-like literal in
+    the body or a script string can never be the insertion anchor. Returns (new_html, inserted?)."""
+    head = _HEAD_RE.search(html)
+    if not head:
+        return html, False
+    hs, he = head.start(), head.end()
+    head_text = head.group(0)
     tag = favicon_tag + "\n"
-    m = re.search(r'<meta\s+name="commentable-html-version"[^>]*>[ \t]*\n?', html, re.IGNORECASE)
+    m = _VERSION_META_TAG_RE.search(head_text)
     if m:
-        return html[:m.end()] + tag + html[m.end():], True
-    m = re.search(r"<head[^>]*>", html, re.IGNORECASE)
-    if m:
-        return html[:m.end()] + "\n" + tag + html[m.end():], True
-    return html, False
+        new_head = head_text[:m.end()] + "\n" + tag + head_text[m.end():]
+        return html[:hs] + new_head + html[he:], True
+    hm = re.match(r"<head\b[^>]*>", head_text, re.IGNORECASE)
+    new_head = head_text[:hm.end()] + "\n" + tag + head_text[hm.end():]
+    return html[:hs] + new_head + html[he:], True
 
 
 # The head version meta. Region swaps leave <head> alone, so an upgraded document keeps
