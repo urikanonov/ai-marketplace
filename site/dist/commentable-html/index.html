@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.188.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.189.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,6 +451,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.189.0] - 2026-07-20</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Each side-TOC review-filter button (All / Reviewed / Unreviewed / Commented / Changed) now shows a live per-state count as an inline <code>(N)</code> beside its label - <code>All</code> shows the total section count and the four states partition it, so at a glance you see how many sections are in each state. The count refreshes as sections are marked reviewed, commented, or changed. The count span is <code>aria-hidden</code> and its number is folded into each button&#x27;s accessible name so it is announced once, and the label and count stay on one line per button (the group wraps into rows without overflowing the sidebar, even with two-digit counts) (CMH-REVIEW-14).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.188.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -462,6 +469,8 @@
               <li>Showcase deck slide 18 (&quot;Three portability modes&quot;) now tags each part with a colorful source pill (folder / CDN / inlined / storage / seed), matching the site&#x27;s &quot;Three portability modes&quot; theme, instead of plain table text; the Portable and Offline handoffs keep both the seed and storage pills (CMH-DECK-SHOWCASE-17).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.187.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -469,8 +478,6 @@
               <li>Typing in an editable note (<code>data-cmh-note</code>) no longer freezes a large document. The note <code>input</code> handler used to re-render the whole sidebar synchronously on every keystroke, and that render runs two full-document tree walks (a <code>getTextNodes</code> walk plus the section-review scan), so each keystroke cost O(document) work (hundreds of ms on a report with tens of thousands of text nodes). The typing path now persists the edit synchronously but coalesces a keystroke burst into a single debounced re-render (a note&#x27;s document position does not move while its text is edited). The lightweight UI (portability badge, Copy-all affordance, first-change sidebar auto-open) updates synchronously but only on the note-dirty transition, so a burst does no per-keystroke document scan; per-keystroke cost is bounded independent of document size. Programmatic reset / clear-all still render immediately. (CMH-NOTE-17)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.185.0] - 2026-07-20</h3></div>
             <div class="group-label">Changed</div>
@@ -504,14 +511,7 @@
               <li>The overflow (<code>...</code>) menu header now shows the running layer version (<code>v&lt;version&gt;</code>) between the portability badge and the brand icon; the version is decorative text and does not change the menu button tab order (CMH-MENU-ICON-03).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.178.0] - 2026-07-20</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Deck mode now accepts <code>Backspace</code> as a &quot;previous slide&quot; key, alongside <code>ArrowLeft</code> and <code>PageUp</code>, so presenters can step one slide back with the key many slide tools use (CMH-DECK-05). It respects the same guards as the other navigation keys: it does not move slides while a comment field or other editable target is focused, or while the comment-options menu or other blocking deck chrome is open. Because <code>Backspace</code> uniquely carries a legacy browser &quot;history back&quot; default, the deck suppresses that default whenever it owns the key (including at the first-slide boundary, where the step back is a no-op) so a viewer is never navigated away from the deck.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">152 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">153 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

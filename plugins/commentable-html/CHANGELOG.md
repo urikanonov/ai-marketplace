@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.189.0] - 2026-07-20
+
+### Added
+
+- Each side-TOC review-filter button (All / Reviewed / Unreviewed / Commented / Changed) now shows a
+  live per-state count as an inline `(N)` beside its label - `All` shows the total section count and
+  the four states partition it, so at a glance you see how many sections are in each state. The count
+  refreshes as sections are marked reviewed, commented, or changed. The count span is `aria-hidden`
+  and its number is folded into each button's accessible name so it is announced once, and the label
+  and count stay on one line per button (the group wraps into rows without overflowing the sidebar,
+  even with two-digit counts) (CMH-REVIEW-14).
+
 ## [1.188.0] - 2026-07-20
 
 ### Fixed

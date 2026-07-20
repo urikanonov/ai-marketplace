@@ -63,10 +63,18 @@ h5:focus-within > .cmh-review-unreviewed, h6:focus-within > .cmh-review-unreview
 .cm-side-toc-review[hidden] { display: none; }
 .cm-side-toc-review-btn {
   flex: 1 1 auto; min-width: fit-content;
+  display: inline-flex; align-items: baseline; justify-content: center; gap: 0.25rem;
+  white-space: nowrap;
   font-size: 0.68rem; font-weight: 600; padding: 0.15rem 0.4rem;
   border: 1px solid var(--cp-border, #d5d5d5); border-radius: 0.35rem;
   background: var(--cp-surface, #fff); color: var(--cp-text-soft, #666); cursor: pointer;
 }
+/* The live per-state count sits inline beside the label and never wraps, so a two-digit count
+   still keeps each button on one line; the group flex-wraps into rows within the sidebar so it
+   never overflows horizontally. The count keeps the button's own text color (no opacity dimming)
+   so its small digits stay above the WCAG AA contrast floor; tabular-nums keeps equal-length
+   counts from jittering as they change (the flex layout absorbs the one- to two-digit step). */
+.cm-side-toc-review-btn-count { font-variant-numeric: tabular-nums; }
 .cm-side-toc-review-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
 .cm-side-toc-review-btn[aria-pressed="true"] { background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg, #fff); }
 .cm-side-toc-review-btn:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 1px; }
