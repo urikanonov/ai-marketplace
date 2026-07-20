@@ -916,8 +916,26 @@ test("CMH-DECK-SHOWCASE-11: showcase amber title highlights do not paint a halo 
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".show-mark");
-    await expect(page.locator(".slide.active .show-mark").first()).toBeVisible();
-    await expect(page.locator(".slide.active .show-mark").first()).toHaveCSS("box-shadow", "none");
+    const mark = page.locator(".slide.active .show-mark").first();
+    await expect(mark).toBeVisible();
+    await expect(mark).toHaveCSS("box-shadow", "none");
+    // The highlight must paint via a height-capped linear-gradient, not a full em-box background
+    // fill: on the tight-line-height title/section headings a solid fill paints the whole (tall
+    // Segoe UI) font box and bleeds up into the previous row. background-size gives a bounded,
+    // font-metric-independent paint height that hugs the letters.
+    const paint = await mark.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const capToken = style.backgroundSize.split(" ")[1];
+      return {
+        image: style.backgroundImage,
+        capPx: parseFloat(capToken),
+        fontPx: parseFloat(style.fontSize),
+      };
+    });
+    expect(paint.image).toContain("linear-gradient");
+    expect(Number.isFinite(paint.capPx)).toBe(true);
+    expect(paint.capPx).toBeGreaterThan(paint.fontPx);
+    expect(paint.capPx).toBeLessThan(paint.fontPx * 1.3);
   } finally {
     await server.close();
   }
