@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.191.0] - 2026-07-20
+
+### Fixed
+
+- The full-screen demo reports on the site (and the shipped `report-taxi.html` /
+  `report-community-garden.html` examples) now carry the commentable-html favicon, so a browser
+  tab shows the CMH mark instead of the generic globe. Those two example sources predated the
+  shell-baked favicon and were the only ones missing it.
+
+### Added
+
+- The validator now warns (an error under `--strict`, the mandatory finalize path) when a document
+  has no `<link rel="icon">` favicon in its head, so a missing favicon is caught before handoff
+  (CMH-KIND-05). `retrofit.py` injects the CMH favicon when the host head has none, and
+  `upgrade.py` adds it when migrating a pre-favicon document (neither duplicates an existing one).
 ## [1.190.0] - 2026-07-20
 
 ### Fixed
