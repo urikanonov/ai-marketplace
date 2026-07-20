@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.182.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.185.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,12 +451,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.185.0] - 2026-07-20</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li><code>SKILL.md</code> now opens with a single upfront <code>## Capabilities</code> list (above the detailed Steps) that names the tested tool or contract for every capability - create/retrofit/upgrade, the document kinds (including the flat <code>slides</code> kind vs a real deck), the review surface (including per-section &quot;Mark reviewed&quot; tracking), highlighted code, KQL, diffs, mermaid, charts, images, the layout tools, layered checklists and editable notes fields (scaffold and apply), commentable widgets, animated decks, output modes, and theming (including deck theme presets) - and directs the agent to use the named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed that CMH already supports editable notes fields and considered building its own. A companion <code>## Always validate before handoff (MUST)</code> section states the mandatory <code>finalize.py --strict</code> + <code>validate.py --strict</code> (plus <code>deck_validate.py --strict</code> for decks) pass upfront so it cannot be missed. (CMH-DOC-17)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.182.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Saving a text comment on a selection that overlaps an existing text highlight is now rejected with the &quot;Comment was not saved&quot; toast instead of silently nesting a <code>mark.cm-hl</code> inside the existing one. A nested highlight made the OUTER comment effectively unclickable (click/hover/popover handlers resolve to the innermost mark), contradicting CMH-CORE-11. The composer&#x27;s text-save path now runs a <code>rangeOverlapsHighlight</code> pre-check (in <code>assets/js/15-context.js</code>) BEFORE wrapping - it derives each existing highlight&#x27;s LIVE character interval from a single text-node walk and rejects the save when the new selection overlaps one (a half-open test, so it stays correct even when a comment&#x27;s stored offsets are stale relative to the DOM - for example after a table sort leaves a multi-row highlight discontiguous - and a touching, non-overlapping adjacent selection is still allowed). <code>restoreHighlights</code> (<code>assets/js/95-startup.js</code>) applies persisted text comments sorted by start and skips wrapping any whose range overlaps one already highlighted (an O(n) sweep), so a legacy/crafted overlapping set keeps only the first-applied highlight - mirroring the diff sub-range guard - while the overlapping comment stays listed in the sidebar. Editing the existing comment on the same range (CMH-CORE-10) is unaffected (CMH-CORE-11).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.181.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -465,8 +474,6 @@
               <li>Pinned that code/KQL line-number gutters stay aligned when a collapsed section is revealed (CMH-CODE-06). Unlike the canvas chart above, the gutter needs no reveal recompute: the browser resolves a numeric <code>line-height</code> to a px value via <code>getComputedStyle</code> even for a <code>display:none</code> block, so the gutter offsets laid down while collapsed already match the visible line-height after reveal. A regression test locks that invariant in.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.180.0] - 2026-07-20</h3></div>
             <div class="group-label">Changed</div>
@@ -499,15 +506,7 @@
               <li>Deck mermaid diagrams now scale to fill the available slide AREA using both width and height (contain-to-fit), not just the width (CMH-DECK-35, building on CMH-DECK-26), and are bounded to the slide so they never overflow or clip (even when nested in wrappers). A slide whose only non-text content is a single diagram and that is not laid out as a <code>.cmh-cols-2</code> is auto-detected as a diagram slide (<code>cmh-deck-diagram-slide</code>) and laid out as a flex column, and the runtime sizes the rendered SVG to the largest aspect-preserving box that fits the slide&#x27;s fixed content area. A slide the author laid out as two columns keeps that layout - the automatic rule never flattens a <code>.cmh-cols-2</code>; the opt-in <code>.cmh-slide-diagram</code> recipe forces the fill and un-confines a lone diagram from its half column to the full slide width. The fit recomputes on resize and on slide activation, composes with CMH-MMD-08 (<code>htmlLabels: false</code>) so labels stay crisp, and survives Export Offline.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.172.0] - 2026-07-19</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Deck mermaid node/edge labels no longer clip mid-word (CMH-MMD-08). A deck renders its slides inside a CSS-scaled 1920x1080 stage, and mermaid&#x27;s default HTML (<code>&lt;foreignObject&gt;</code>) labels are re-laid-out by the browser against that scale, so a node box sized from the unscaled measurement is too small and wider labels (for example <code>You comment on the exact spot</code>) were cut off. On a deck the mermaid loader now initializes with <code>htmlLabels: false</code>, rendering labels as SVG <code>&lt;text&gt;</code> that scales with the diagram and never re-flows, so every label stays fully visible inside its node box. Reports keep the richer HTML labels. The same choice is applied by the live loader and the Export Offline re-init.</li>
-              <li>Deck mermaid comment labels keep the space at a wrapped-line boundary. mermaid splits an SVG <code>&lt;text&gt;</code> label into per-line <code>tspan</code> rows with no separator, so the anchor key, comment quote, and Copy all had dropped the wrap-point space (<code>exact spot</code> -&gt; <code>exactspot</code>); <code>mermaidNodeLabel()</code> now rejoins the rows with a space.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">149 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">150 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

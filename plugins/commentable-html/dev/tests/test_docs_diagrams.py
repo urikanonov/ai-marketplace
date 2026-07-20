@@ -575,5 +575,90 @@ class CmhKeywordDocsTests(unittest.TestCase):
             "the commentable-html marketplace entry keywords must include the 'cmh' shorthand")
 
 
+class CapabilitiesOverviewDocsTests(unittest.TestCase):
+    """CMH-DOC-17: SKILL.md opens with a single upfront capabilities list that names the tested
+    tool/contract for every capability (so no capability - notes fields especially - is missed and
+    the agent does not invent a novel mechanism), plus an upfront MUST-validate-before-handoff
+    directive. Both sit ABOVE the detailed Steps so a quick read cannot miss them."""
+
+    def _skill(self):
+        return _read(SKILL_MD)
+
+    def test_capabilities_section_is_upfront(self):
+        text = self._skill()
+        self.assertIn("## Capabilities", text, "SKILL.md must have an upfront Capabilities section")
+        self.assertIn("## Steps", text)
+        self.assertLess(
+            text.index("## Capabilities"), text.index("## Steps"),
+            "the Capabilities section must appear ABOVE the detailed Steps")
+
+    def test_capabilities_directive_says_use_the_tested_tool(self):
+        text = self._skill()
+        cap = text.split("## Capabilities", 1)[1].split("\n## ", 1)[0]
+        # The whole point: use the tested tool, never invent a bespoke mechanism.
+        self.assertIn("USE THE NAMED TOOL", cap)
+        self.assertIn("novel mechanism", cap)
+
+    def test_capabilities_list_names_every_tested_tool(self):
+        cap = self._skill().split("## Capabilities", 1)[1].split("\n## ", 1)[0]
+        # The gap that triggered this: editable notes fields, plus the other interactive/content
+        # and create/retrofit capabilities, must each name their tested tool/contract in the
+        # upfront list so no capability is missed and no ad-hoc mechanism is invented.
+        for tool in (
+            "tools/authoring/new_document.py",
+            "tools/authoring/retrofit.py",
+            "tools/authoring/upgrade.py",
+            "tools/authoring/mark_reviewed.py",
+            "tools/authoring/generate_toc.py",
+            "tools/authoring/wrap_sections.py",
+            "tools/authoring/doc_stats.py",
+            "tools/authoring/fix_skip.py",
+            "tools/authoring/inline_images.py",
+            "tools/notes/notes_scaffold.py",
+            "tools/notes/notes_apply.py",
+            "tools/checklist/checklist_scaffold.py",
+            "tools/checklist/checklist_apply.py",
+            "tools/blocks/highlight_code.py",
+            "tools/kusto/kql_highlight.py",
+            "tools/blocks/diff_block.py",
+            "tools/blocks/chart_block.py",
+            "tools/deck/deck_scaffold.py",
+            "tools/deck/deck_theme.py",
+        ):
+            self.assertIn(tool, cap, f"upfront Capabilities list must name {tool}")
+        # The `slides` flat kind must be named alongside the real-deck tool so they are not confused.
+        self.assertIn("slides", cap)
+        # And each capability's owning reference is linked from the same list.
+        for ref in (
+            "references/interaction-model.md",
+            "references/code-blocks.md",
+            "references/kusto-query-blocks.md",
+            "references/code-review-diffs.md",
+            "references/mermaid-diagrams.md",
+            "references/charts-embedding.md",
+            "references/charts-recipes.md",
+            "references/images-commentable.md",
+            "references/document-layout.md",
+            "references/content-conventions.md",
+            "references/checklist-contract.md",
+            "references/notes-contract.md",
+            "references/commentable-widgets.md",
+            "references/exports.md",
+        ):
+            self.assertIn(ref, cap, f"upfront Capabilities list must link {ref}")
+
+    def test_validate_before_handoff_is_stated_upfront(self):
+        text = self._skill()
+        self.assertIn("## Always validate before handoff (MUST)", text)
+        self.assertLess(
+            text.index("## Always validate before handoff (MUST)"), text.index("## Steps"),
+            "the validate-before-handoff directive must appear ABOVE the detailed Steps")
+        directive = text.split("## Always validate before handoff (MUST)", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("tools/authoring/finalize.py <file> --strict", directive)
+        self.assertIn("tools/validate/validate.py --strict <file.html>", directive)
+        # Decks need the deck-specific validator too, named in the same upfront directive.
+        self.assertIn("tools/deck/deck_validate.py --strict", directive)
+
+
 if __name__ == "__main__":
     unittest.main()
