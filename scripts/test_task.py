@@ -150,6 +150,13 @@ class TickAllCheckboxesTests(unittest.TestCase):
         with self.assertRaises(IndexError):
             task.tick_all_checkboxes("## Acceptance criteria\n\nno boxes here\n")
 
+    def test_no_acceptance_heading_does_not_tick_unrelated_boxes(self):
+        # Without a "## Acceptance criteria" heading, --all must NOT fall back to the whole body
+        # and tick unrelated checkboxes (e.g. an implementation plan or "before starting" list).
+        body = "## Implementation plan\n\n- [ ] step one\n- [ ] step two\n"
+        with self.assertRaises(IndexError):
+            task.tick_all_checkboxes(body)
+
     def test_preserves_blank_lines_and_headings(self):
         # The whole Markdown structure (blank lines, headings, prose) must survive verbatim -
         # this is exactly what a naive PowerShell array round-trip destroyed on issue #478.
@@ -176,6 +183,12 @@ class ApplyAcCheckTests(unittest.TestCase):
     def test_neither_index_nor_all_raises(self):
         with self.assertRaises(ValueError):
             task.apply_ac_check(self.BODY, None, False)
+
+    def test_index_and_all_together_raises(self):
+        # --all with an explicit index is contradictory; fail loudly instead of silently
+        # discarding the index and ticking everything.
+        with self.assertRaises(ValueError):
+            task.apply_ac_check(self.BODY, 1, True)
 
 
 class ParserTests(unittest.TestCase):

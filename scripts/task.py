@@ -142,10 +142,14 @@ def tick_checkbox(body, k):
 def tick_all_checkboxes(body):
     """Return body with EVERY acceptance-criterion checkbox in the '## Acceptance criteria'
     section checked, preserving all other text byte-for-byte. Idempotent (already-checked
-    boxes are left as-is). Raises IndexError if the section contains no checkbox at all, so an
-    --all run against a body with no criteria fails loudly rather than silently no-op'ing.
+    boxes are left as-is). Requires an explicit '## Acceptance criteria' heading and raises
+    IndexError if it is absent or the section has no checkbox - so an --all run never falls
+    back to the whole body and ticks unrelated checkboxes (an implementation plan, a
+    'before starting' list), and it fails loudly against a body with no criteria.
     """
     lines = body.splitlines()
+    if not any(re.match(r"^\s*#{2,}\s+acceptance criteria\b", ln, re.I) for ln in lines):
+        raise IndexError("no '## Acceptance criteria' section in the issue body")
     start, end = _acceptance_bounds(lines)
     seen = 0
     for i in range(start, end):
@@ -162,8 +166,11 @@ def tick_all_checkboxes(body):
 
 def apply_ac_check(body, index, check_all):
     """Dispatch for the check-ac command: tick every criterion when check_all is set, else the
-    single 1-based index. Raises ValueError when neither is given, so the CLI fails loudly."""
+    single 1-based index. Raises ValueError when neither is given, or when both an index and
+    --all are passed (contradictory), so the CLI fails loudly instead of silently ignoring one."""
     if check_all:
+        if index is not None:
+            raise ValueError("check-ac: pass an INDEX or --all, not both")
         return tick_all_checkboxes(body)
     if index is None:
         raise ValueError("check-ac needs an INDEX or --all")
