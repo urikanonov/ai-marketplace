@@ -511,6 +511,17 @@ function saveComposerElement(el) {
       showToast("Could not re-anchor that selection (the text may have changed). Try again.");
       return;
     }
+    // Reject a selection that overlaps an existing text highlight while the preview is still up (so
+    // the still-open composer keeps its anchor cue): wrapping it would nest a mark.cm-hl inside
+    // another and make the outer highlight unclickable (CMH-CORE-11). The check derives each
+    // highlight's LIVE interval from a text-node walk, so it is correct even when stored offsets are
+    // stale (e.g. a multi-row highlight left discontiguous by a table sort). Editing the same range
+    // reopens the existing comment (CMH-CORE-10, the _editingId branch above), so this only fires
+    // for a genuinely new overlapping selection.
+    if (rangeOverlapsHighlight(el._start, el._end)) {
+      showToast("Could not highlight that range (it may overlap an existing comment). Comment was not saved.");
+      return;
+    }
     clearComposerPreview(el);
     const r = rangeFromOffsets(el._start, el._end);
     if (!r) {
