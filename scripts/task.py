@@ -7,22 +7,28 @@ Task issue-form section shape. Agents and contributors should prefer this wrappe
 over raw `gh` so those conventions are not re-typed each time.
 
 The pure helpers (build_body, create_args, tick_checkbox, tick_all_checkboxes, apply_ac_check,
-assert_ascii, status_body, bump_last_active, find_status_comment, status_comments,
-extra_status_comment_ids, parse_last_active, parse_branch, is_stale, is_newer, utc_stamp,
-assert_valid_branch, branch_slug, derive_branch) are unit tested in scripts/test_task.py; the
-thin `_run` layer shells out to `gh` and `git`.
+assert_ascii, assert_valid_session, status_body, bump_last_active, set_session, parse_session,
+board_row, format_board, find_status_comment, status_comments, extra_status_comment_ids,
+parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch, branch_slug,
+derive_branch) are unit tested in scripts/test_task.py; the thin `_run` layer shells out to `gh`
+and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
   python scripts/task.py new "UI: title" -d "Why" --ac "Outcome A" --ac "Outcome B" [--plan "1. ..."]
   python scripts/task.py start 188 [--slug "short desc"]   # worktree + branch + claim + stamp
-  python scripts/task.py claim 188 [--branch issue-188-foo]
-  python scripts/task.py heartbeat 188 [--watch] [--interval 300]
+  python scripts/task.py claim 188 [--branch issue-188-foo] [--session-id <id>]
+  python scripts/task.py heartbeat 188 [--watch] [--interval 300] [--session-id <id>]
   python scripts/task.py stale [--minutes 15]
+  python scripts/task.py board [--all-labels] [--json] [--minutes 15]
   python scripts/task.py plan 188 "1. Rebase  2. Fix  3. Test"
   python scripts/task.py check-ac 188 1
   python scripts/task.py check-ac 188 --all
   python scripts/task.py finish 188 "Short PR-style summary"
+
+The handling Copilot session id defaults to the COPILOT_AGENT_SESSION_ID environment variable, so
+`start`/`claim`/`heartbeat` record which session is on an issue without an explicit flag; `board`
+surfaces it (with the branch and last activity) across all open issues.
 """
 import argparse
 import json
@@ -229,26 +235,46 @@ def assert_valid_branch(branch):
     return b
 
 
-def status_body(branch, stamp):
+def assert_valid_session(session):
+    """Validate a handling-session id for use inside the status comment's code span.
+
+    Rejects non-ASCII (house style), backticks (which would break the markdown code span),
+    and whitespace. Returns the stripped id. Raises ValueError on a bad value. A Copilot CLI
+    session id (a UUID) always passes.
+    """
+    assert_ascii(session, "session")
+    s = session.strip()
+    if not s or "`" in s or any(c.isspace() for c in s):
+        raise ValueError(f"invalid session id {session!r}: no backticks or whitespace")
+    return s
+
+
+def status_body(branch, stamp, session=""):
     """Build the pinned 'Work status' comment body for a branch and UTC timestamp.
 
     Carries STATUS_MARKER (so the comment can be found and edited in place), the
-    worktree branch (so dropped work can be resumed from it), and the last-active
-    timestamp (the heartbeat). Plain ASCII, per the house style.
+    worktree branch (so dropped work can be resumed from it), the handling Copilot
+    session id when known (so a board can show which session is on the issue), and the
+    last-active timestamp (the heartbeat). Plain ASCII, per the house style.
     """
     branch = assert_valid_branch(branch)
-    return "\n".join([
+    lines = [
         STATUS_MARKER,
         "### Work status (automated heartbeat)",
         "",
         f"- Branch: `{branch}` (local worktree; if this work is dropped, resume from this branch)",
+    ]
+    if session:
+        lines.append(f"- Handling session: `{assert_valid_session(session)}`")
+    lines += [
         f"- Last active (UTC): {stamp}",
         "",
         f"This comment is refreshed automatically at least every {HEARTBEAT_INTERVAL_SECONDS // 60} "
         "minutes while an agent is actively working this issue. If the timestamp above is more than "
         f"{HEARTBEAT_STALE_MINUTES} minutes old, no one is actively working it - it is safe to take "
         "over from the branch above.",
-    ])
+    ]
+    return "\n".join(lines)
 
 
 def bump_last_active(body, stamp):
@@ -261,6 +287,29 @@ def bump_last_active(body, stamp):
     if n == 0:
         raise ValueError("no 'Last active (UTC)' line found in the status comment body")
     return new_body
+
+
+def set_session(body, session):
+    """Return body with the 'Handling session' line set to `session`, inserting it after the
+    Branch line (or, failing that, before the Last active line) when absent. An empty session
+    returns the body unchanged (any existing session line is preserved), so a beater that does not
+    know its session id never erases a known one. Removes ALL existing handling-session lines first
+    (a crafted/legacy body could carry duplicates or a malformed one), then writes exactly one.
+    Used by the heartbeat so the board reflects the session currently beating.
+    """
+    if not session:
+        return body
+    line = f"- Handling session: `{assert_valid_session(session)}`"
+    body = re.sub(r"(?m)^- Handling session:.*\n?", "", body)  # drop any/all existing lines
+    if re.search(r"^- Branch: `[^`]+`.*$", body, re.M):
+        return re.sub(r"^(- Branch: `[^`]+`.*)$", lambda m: m.group(1) + "\n" + line,
+                      body, count=1, flags=re.M)
+    # Fallback for a comment missing the Branch line (hand-edited/malformed): anchor before the
+    # Last active line so the session is still recorded rather than silently dropped.
+    if re.search(r"^- Last active \(UTC\):", body, re.M):
+        return re.sub(r"^(- Last active \(UTC\):.*)$", lambda m: line + "\n" + m.group(1),
+                      body, count=1, flags=re.M)
+    return body
 
 
 def find_status_comment(comments, trusted_only=False, viewer=None):
@@ -337,6 +386,34 @@ def parse_branch(body):
     return m.group(1) if m else None
 
 
+def parse_session(body):
+    """Return the handling Copilot session id in a status-comment body, or None if absent."""
+    m = re.search(r"^- Handling session: `([^`]+)`", body or "", re.M)
+    return m.group(1) if m else None
+
+
+def _valid_session_or_empty(session):
+    """Return the session id if it passes assert_valid_session, else '' - so a parsed value from a
+    crafted/legacy status comment (e.g. spaces inside the code span) can never propagate into
+    set_session and raise mid-heartbeat."""
+    try:
+        return assert_valid_session(session) if session else ""
+    except ValueError:
+        return ""
+
+
+def _session_at_newest(matches, newest):
+    """Return the VALID handling session from the trusted comment carrying the `newest` timestamp
+    (the most recent heartbeat), or '' - so converging duplicates attribute ownership to the newest
+    beat rather than the (possibly older) canonical survivor. A malformed stored value is ignored."""
+    for c in matches:
+        if parse_last_active(c.get("body", "")) == newest:
+            s = _valid_session_or_empty(parse_session(c.get("body", "")))
+            if s:
+                return s
+    return ""
+
+
 def is_stale(stamp, now, minutes=HEARTBEAT_STALE_MINUTES):
     """True if stamp is missing, unparseable, or older than `minutes` before `now`.
 
@@ -363,6 +440,60 @@ def derive_branch(number, text=""):
     """Return a branch name for an issue: 'issue-<n>-<slug>' (or 'issue-<n>' with no text)."""
     slug = branch_slug(text)
     return f"issue-{number}-{slug}" if slug else f"issue-{number}"
+
+
+# --- board (open issues x handling session x last activity) ----------------------------
+
+# Upper bound on issues fetched for the board (a maintainer overview, not a paginated report);
+# cmd_board warns on stderr if the fetch hits this so issues are never omitted silently.
+BOARD_LIMIT = 300
+
+BOARD_COLUMNS = [
+    ("number", "Issue"),
+    ("state", "State"),
+    ("session", "Session"),
+    ("branch", "Branch"),
+    ("last_active", "Last active (UTC)"),
+    ("title", "Title"),
+]
+
+
+def board_row(issue, status_body_text, now, minutes=HEARTBEAT_STALE_MINUTES):
+    """Build one board row for an issue from its (possibly empty) Work status comment body.
+
+    Pure: pulls the handling session, branch, and last-active stamp from the body, and derives
+    a state: 'none' when the issue has no status comment, 'active' when its heartbeat is within
+    `minutes` of `now`, else 'stale'.
+    """
+    body = status_body_text or ""
+    stamp = parse_last_active(body)
+    if not body:
+        state = "none"
+    else:
+        state = "stale" if is_stale(stamp, now, minutes) else "active"
+    return {
+        "number": issue.get("number"),
+        "title": (issue.get("title") or "").strip(),
+        "session": parse_session(body) or "",
+        "branch": parse_branch(body) or "",
+        "last_active": stamp or "",
+        "state": state,
+    }
+
+
+def format_board(rows):
+    """Render board rows as an aligned plain-ASCII table. Returns a message when there are none."""
+    if not rows:
+        return "No open issues to show."
+    widths = {key: len(header) for key, header in BOARD_COLUMNS}
+    for r in rows:
+        for key, _ in BOARD_COLUMNS:
+            widths[key] = max(widths[key], len(str(r.get(key, ""))))
+    def line(values):
+        return "  ".join(str(values[key]).ljust(widths[key]) for key, _ in BOARD_COLUMNS).rstrip()
+    header = line({key: header for key, header in BOARD_COLUMNS})
+    sep = "  ".join("-" * widths[key] for key, _ in BOARD_COLUMNS).rstrip()
+    return "\n".join([header, sep] + [line(r) for r in rows])
 
 
 def _positive_int(value):
@@ -497,14 +628,14 @@ def _prune_extras(extra_ids):
         _delete_comment(cid)
 
 
-def _upsert_status(number, branch, stamp=None):
+def _upsert_status(number, branch, stamp=None, session=""):
     """Create or (in place) refresh the pinned Work status comment for a branch. Adopts only a
     trusted (maintainer/collaborator or self-authored) marker comment, edits the surviving
     canonical one, and prunes duplicates AFTER the edit so a concurrent first-write converges."""
     stamp = stamp or utc_stamp()
     viewer = _viewer_login()
     matches = status_comments(_list_comments(number), trusted_only=True, viewer=viewer)
-    body = status_body(branch, stamp)
+    body = status_body(branch, stamp, session)
     if matches:
         survivor = _pick_survivor(matches)
         _edit_comment(survivor["id"], body)
@@ -514,11 +645,12 @@ def _upsert_status(number, branch, stamp=None):
     return stamp
 
 
-def _beat_once(number, branch):
+def _beat_once(number, branch, session=""):
     """Post one heartbeat: refresh the surviving trusted status comment to the newest known stamp
-    (never regressing it), then prune duplicates; or create the comment from `branch` if none
-    exists. Returns the UTC stamp now in effect. Raises HeartbeatStop on a fatal condition (no
-    status comment and no branch, or a malformed survivor we cannot rebuild)."""
+    (never regressing it) and re-stamp the handling session, then prune duplicates; or create the
+    comment from `branch` if none exists. Returns the UTC stamp now in effect. Raises HeartbeatStop
+    on a fatal condition (no status comment and no branch, or a malformed survivor we cannot
+    rebuild)."""
     stamp = utc_stamp()
     viewer = _viewer_login()
     comments = _list_comments(number)
@@ -532,7 +664,7 @@ def _beat_once(number, branch):
                              "exists; skipping to avoid a duplicate (will retry)\n")
             return stamp
         if branch:
-            _post_comment(number, status_body(branch, stamp))
+            _post_comment(number, status_body(branch, stamp, session))
             return stamp
         raise HeartbeatStop(
             f"no Work status comment on #{number} and no branch detected; run "
@@ -543,21 +675,33 @@ def _beat_once(number, branch):
     # regresses the effective heartbeat; our own beat only advances it.
     newest = _max_stamp(parse_last_active(c["body"]) for c in matches)
     target = stamp if is_newer(stamp, newest) else newest
+    # Attribute the handling session to the owner of the NEWEST heartbeat: if our beat advances the
+    # timestamp we own it (our session, else keep the survivor's); if a duplicate is newer we inherit
+    # that duplicate's session (else ours, else the survivor's). set_session with '' preserves the
+    # survivor's existing line, so a session is never wrongly dropped.
+    if is_newer(stamp, newest):
+        sid = session or _valid_session_or_empty(parse_session(survivor["body"]))
+    else:
+        sid = _session_at_newest(matches, newest) or session or _valid_session_or_empty(parse_session(survivor["body"]))
     try:
-        new_body = bump_last_active(survivor["body"], target)
+        base = bump_last_active(survivor["body"], target)
     except ValueError:
         # Malformed survivor (marker but no timestamp line): self-heal by rebuilding from a known
-        # or recoverable branch, else stop rather than loop. Do NOT prune - the survivor is not
-        # yet committed, so deleting valid duplicates here would lose good state.
+        # or recoverable branch, carrying the resolved session, else stop rather than loop. Do NOT
+        # prune - the survivor is not yet committed, so deleting valid duplicates would lose state.
         recovered = branch or parse_branch(survivor["body"])
         if not recovered:
             raise HeartbeatStop(
                 f"status comment on #{number} is malformed and no branch is known to rebuild it")
         try:
-            new_body = status_body(recovered, target)
+            new_body = status_body(recovered, target, sid)
         except ValueError as exc:
             raise HeartbeatStop(
                 f"status comment on #{number} has an invalid branch stamp: {exc}")
+    else:
+        # Session is validated upstream (_session_arg), so set_session never raises here; keeping
+        # it OUT of the try above means a session problem can never be misread as a malformed body.
+        new_body = set_session(base, sid)
     if new_body != survivor["body"]:
         _edit_comment(survivor["id"], new_body)
     _prune_extras(extras)  # only after the survivor is successfully committed
@@ -582,7 +726,23 @@ def cmd_new(a):
     raise SystemExit(code)
 
 
+def _session_arg(a):
+    """Resolve and validate the handling Copilot session id for a command: the explicit
+    --session-id, else the COPILOT_AGENT_SESSION_ID environment variable, else '' (the session
+    line is then omitted). A non-empty but invalid id (backticks/whitespace/non-ASCII) fails fast
+    with a clean SystemExit BEFORE any gh/git mutation, so a bad value never crashes deep in a
+    write path or misfires the heartbeat daemon's malformed-comment recovery."""
+    session = (getattr(a, "session_id", None) or os.environ.get("COPILOT_AGENT_SESSION_ID", "")).strip()
+    if not session:
+        return ""
+    try:
+        return assert_valid_session(session)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+
+
 def cmd_claim(a):
+    session = _session_arg(a)  # validate the session first: fail fast BEFORE the claim mutation
     branch = a.branch or current_branch()
     if branch:
         try:
@@ -593,7 +753,7 @@ def cmd_claim(a):
                  "--add-assignee", "@me", "--add-label", IN_PROGRESS_LABEL])
     if code == 0:
         if branch:
-            stamp = _upsert_status(a.number, branch)
+            stamp = _upsert_status(a.number, branch, session=session)
             print(f"stamped branch `{branch}` and heartbeat {stamp} on #{a.number}")
         else:
             sys.stderr.write(
@@ -606,6 +766,7 @@ def cmd_start(a):
     """Automate the start of work: create a worktree+branch off latest origin/main, claim
     the issue, and stamp the branch. Prints the worktree path and the heartbeat command."""
     _assert_safe_worktree_name(a.name)
+    session = _session_arg(a)  # validate the session first: fail fast BEFORE creating the worktree
     try:
         branch = assert_valid_branch(a.branch or derive_branch(a.number, a.slug or ""))
     except ValueError as exc:
@@ -620,7 +781,7 @@ def cmd_start(a):
         raise SystemExit(
             f"created worktree {path} (branch {branch}) but FAILED to claim #{a.number}; "
             f"claim it manually with `python scripts/task.py claim {a.number} --branch {branch}`")
-    stamp = _upsert_status(a.number, branch)
+    stamp = _upsert_status(a.number, branch, session=session)
     print(f"worktree ready: {path} (branch {branch}); stamped heartbeat {stamp} on #{a.number}")
     print(f"next: cd {path} ; then start the session-scoped heartbeat daemon:")
     print(f"  python scripts/task.py heartbeat {a.number} --watch")
@@ -633,9 +794,10 @@ def cmd_heartbeat(a):
             branch = assert_valid_branch(branch)
         except ValueError as exc:
             raise SystemExit(str(exc))
+    session = _session_arg(a)
     if not a.watch:
         try:
-            stamp = _beat_once(a.number, branch)
+            stamp = _beat_once(a.number, branch, session)
         except HeartbeatStop as exc:
             raise SystemExit(str(exc))
         print(f"heartbeat {stamp} on #{a.number}")
@@ -645,7 +807,7 @@ def cmd_heartbeat(a):
     try:
         while True:
             try:
-                stamp = _beat_once(a.number, branch)
+                stamp = _beat_once(a.number, branch, session)
                 print(f"heartbeat {stamp} on #{a.number}", flush=True)
             except HeartbeatStop:
                 raise  # fatal setup error - stop the daemon (propagates to the outer handler)
@@ -660,6 +822,36 @@ def cmd_heartbeat(a):
         raise SystemExit(str(exc))
     except KeyboardInterrupt:
         print("heartbeat daemon stopped")
+
+
+def cmd_board(a):
+    """Print a board of open issues with their handling session id, branch, and last activity.
+
+    Defaults to `task`-labeled issues (the ones the heartbeat tracks); --all-labels widens it to
+    every open issue. --json emits machine-readable rows."""
+    now = datetime.now(timezone.utc)
+    viewer = _viewer_login()
+    args = ["gh", "issue", "list", "--repo", REPO, "--state", "open",
+            "--limit", str(BOARD_LIMIT), "--json", "number,title"]
+    if not a.all_labels:
+        args += ["--label", TASK_LABEL]
+    issues = json.loads(_capture(args))
+    if len(issues) >= BOARD_LIMIT:
+        # Never omit issues SILENTLY: say so on stderr if the fetch hit the cap.
+        sys.stderr.write(f"board: showing the first {BOARD_LIMIT} open issues; more may exist "
+                         "(the board is a maintainer overview, not a paginated report)\n")
+    issues.sort(key=lambda it: it.get("number", 0))
+    rows = []
+    for it in issues:
+        # Use the same canonical-survivor selection the heartbeat uses, so duplicate marker
+        # comments never make the board show a stale/non-canonical row.
+        matches = status_comments(_list_comments(it["number"]), trusted_only=True, viewer=viewer)
+        body = _pick_survivor(matches)["body"] if matches else ""
+        rows.append(board_row(it, body, now, a.minutes))
+    if a.json:
+        print(json.dumps(rows, indent=2))
+    else:
+        print(format_board(rows))
 
 
 def cmd_stale(a):
@@ -727,6 +919,7 @@ def build_parser():
     c = sub.add_parser("claim", help="assign @me, mark In Progress, and stamp the branch")
     c.add_argument("number", type=int)
     c.add_argument("--branch", help="worktree branch to stamp (default: current git branch)")
+    c.add_argument("--session-id", help="handling Copilot session id (default: COPILOT_AGENT_SESSION_ID)")
     c.set_defaults(func=cmd_claim)
 
     st = sub.add_parser("start", help="worktree + branch + claim + stamp, in one step")
@@ -734,11 +927,13 @@ def build_parser():
     st.add_argument("--slug", help="short text used to derive the branch name")
     st.add_argument("--branch", help="explicit branch name (overrides --slug)")
     st.add_argument("--name", help="worktree folder under .worktrees/ (default: branch name)")
+    st.add_argument("--session-id", help="handling Copilot session id (default: COPILOT_AGENT_SESSION_ID)")
     st.set_defaults(func=cmd_start)
 
     hb = sub.add_parser("heartbeat", help="refresh the Work status timestamp (--watch to daemon)")
     hb.add_argument("number", type=int)
     hb.add_argument("--branch", help="branch to stamp if no status comment exists yet")
+    hb.add_argument("--session-id", help="handling Copilot session id (default: COPILOT_AGENT_SESSION_ID)")
     hb.add_argument("--watch", action="store_true",
                     help="loop, beating every --interval seconds until stopped")
     hb.add_argument("--interval", type=_positive_int, default=HEARTBEAT_INTERVAL_SECONDS,
@@ -749,6 +944,14 @@ def build_parser():
     sl.add_argument("--minutes", type=_non_negative_int, default=HEARTBEAT_STALE_MINUTES,
                     help=f"staleness threshold in minutes (default {HEARTBEAT_STALE_MINUTES})")
     sl.set_defaults(func=cmd_stale)
+
+    bd = sub.add_parser("board", help="show open issues with handling session id and last activity")
+    bd.add_argument("--all-labels", action="store_true",
+                    help="include every open issue (default: task-labeled issues only)")
+    bd.add_argument("--json", action="store_true", help="emit machine-readable JSON rows")
+    bd.add_argument("--minutes", type=_non_negative_int, default=HEARTBEAT_STALE_MINUTES,
+                    help=f"staleness threshold in minutes for the active/stale state (default {HEARTBEAT_STALE_MINUTES})")
+    bd.set_defaults(func=cmd_board)
 
     pl = sub.add_parser("plan", help="post an implementation-plan comment")
     pl.add_argument("number", type=int)

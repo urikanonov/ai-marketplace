@@ -229,6 +229,24 @@ class ParserTests(unittest.TestCase):
         args = task.build_parser().parse_args(["stale"])
         self.assertEqual(args.minutes, task.HEARTBEAT_STALE_MINUTES)
 
+    def test_heartbeat_accepts_session_id(self):
+        args = task.build_parser().parse_args(["heartbeat", "5", "--session-id", "sess-9"])
+        self.assertEqual(args.session_id, "sess-9")
+
+    def test_claim_accepts_session_id(self):
+        args = task.build_parser().parse_args(["claim", "5", "--session-id", "sess-9"])
+        self.assertEqual(args.session_id, "sess-9")
+
+    def test_board_parses_defaults_and_flags(self):
+        args = task.build_parser().parse_args(["board"])
+        self.assertFalse(args.json)
+        self.assertFalse(args.all_labels)
+        self.assertEqual(args.minutes, task.HEARTBEAT_STALE_MINUTES)
+        args = task.build_parser().parse_args(["board", "--json", "--all-labels", "--minutes", "30"])
+        self.assertTrue(args.json)
+        self.assertTrue(args.all_labels)
+        self.assertEqual(args.minutes, 30)
+
     def test_start_parses_slug_and_name(self):
         args = task.build_parser().parse_args(["start", "5", "--slug", "Fix Thing", "--name", "wt"])
         self.assertEqual(args.slug, "Fix Thing")
@@ -263,6 +281,151 @@ class StatusBodyTests(unittest.TestCase):
         for bad in ["--force", "has`tick", "has space", " ", ""]:
             with self.assertRaises(ValueError):
                 task.status_body(bad, "2026-07-18T13:55:00Z")
+
+    def test_includes_handling_session_when_given(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", "sess-abc123")
+        self.assertIn("- Handling session: `sess-abc123`", body)
+        self.assertEqual(task.parse_session(body), "sess-abc123")
+        task.assert_ascii(body, "status body")  # still plain ASCII
+
+    def test_omits_handling_session_when_absent(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        self.assertNotIn("Handling session", body)
+        self.assertIsNone(task.parse_session(body))
+
+    def test_rejects_bad_session(self):
+        for bad in ["has`tick", "has space"]:
+            with self.assertRaises(ValueError):
+                task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", bad)
+
+
+class ParseSessionTests(unittest.TestCase):
+    def test_reads_session_back(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", "061a371f-d345")
+        self.assertEqual(task.parse_session(body), "061a371f-d345")
+
+    def test_returns_none_when_absent(self):
+        self.assertIsNone(task.parse_session("no session line"))
+
+
+class SetSessionTests(unittest.TestCase):
+    def test_inserts_after_branch_when_absent(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        out = task.set_session(body, "sess-1")
+        self.assertEqual(task.parse_session(out), "sess-1")
+        # inserted after Branch, before Last active
+        self.assertLess(out.index("Handling session"), out.index("Last active"))
+        self.assertGreater(out.index("Handling session"), out.index("Branch"))
+
+    def test_replaces_existing_session(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", "old-sess")
+        out = task.set_session(body, "new-sess")
+        self.assertEqual(task.parse_session(out), "new-sess")
+        self.assertNotIn("old-sess", out)
+        self.assertEqual(out.count("Handling session"), 1)
+
+    def test_empty_session_preserves_existing(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z", "keep-me")
+        self.assertEqual(task.set_session(body, ""), body)
+
+    def test_empty_session_on_body_without_one_is_unchanged(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        self.assertEqual(task.set_session(body, ""), body)
+
+    def test_falls_back_to_before_last_active_when_no_branch_line(self):
+        body = task.STATUS_MARKER + "\n- Last active (UTC): 2026-07-18T13:55:00Z\n"
+        out = task.set_session(body, "sess-1")
+        self.assertEqual(task.parse_session(out), "sess-1")
+        self.assertLess(out.index("Handling session"), out.index("Last active"))
+
+    def test_rejects_bad_session(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:55:00Z")
+        with self.assertRaises(ValueError):
+            task.set_session(body, "has space")
+
+    def test_replaces_a_malformed_existing_session_line(self):
+        # A malformed session line (no code span) must be REPLACED, not left beside a new one.
+        body = (task.STATUS_MARKER + "\n- Branch: `issue-5-foo`\n"
+                "- Handling session: broken-no-backticks\n- Last active (UTC): 2026-07-18T13:55:00Z\n")
+        out = task.set_session(body, "good-sess")
+        self.assertEqual(out.count("Handling session"), 1)
+        self.assertEqual(task.parse_session(out), "good-sess")
+        self.assertNotIn("broken-no-backticks", out)
+
+    def test_dedupes_multiple_existing_session_lines(self):
+        body = (task.STATUS_MARKER + "\n- Branch: `issue-5-foo`\n"
+                "- Handling session: `a`\n- Handling session: `b`\n"
+                "- Last active (UTC): 2026-07-18T13:55:00Z\n")
+        out = task.set_session(body, "c")
+        self.assertEqual(out.count("Handling session"), 1)
+        self.assertEqual(task.parse_session(out), "c")
+
+
+class SessionArgTests(unittest.TestCase):
+    class _Args:
+        def __init__(self, session_id=None):
+            self.session_id = session_id
+
+    def setUp(self):
+        self._env = os.environ.pop("COPILOT_AGENT_SESSION_ID", None)
+
+    def tearDown(self):
+        if self._env is not None:
+            os.environ["COPILOT_AGENT_SESSION_ID"] = self._env
+        else:
+            os.environ.pop("COPILOT_AGENT_SESSION_ID", None)
+
+    def test_explicit_valid_session_returned(self):
+        self.assertEqual(task._session_arg(self._Args("sess-9")), "sess-9")
+
+    def test_env_fallback(self):
+        os.environ["COPILOT_AGENT_SESSION_ID"] = "env-sess"
+        self.assertEqual(task._session_arg(self._Args(None)), "env-sess")
+
+    def test_empty_when_unset(self):
+        self.assertEqual(task._session_arg(self._Args(None)), "")
+
+    def test_invalid_session_fails_fast_with_systemexit(self):
+        with self.assertRaises(SystemExit):
+            task._session_arg(self._Args("bad session with space"))
+
+
+class BoardRowTests(unittest.TestCase):
+    NOW = datetime(2026, 7, 18, 14, 0, 0, tzinfo=timezone.utc)
+
+    def test_active_row_from_fresh_status(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:58:00Z", "sess-1")
+        row = task.board_row({"number": 5, "title": "Do a thing"}, body, self.NOW)
+        self.assertEqual(row["number"], 5)
+        self.assertEqual(row["session"], "sess-1")
+        self.assertEqual(row["branch"], "issue-5-foo")
+        self.assertEqual(row["last_active"], "2026-07-18T13:58:00Z")
+        self.assertEqual(row["state"], "active")
+
+    def test_stale_row_from_old_status(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T10:00:00Z", "sess-1")
+        row = task.board_row({"number": 5, "title": "Old"}, body, self.NOW)
+        self.assertEqual(row["state"], "stale")
+
+    def test_none_row_when_no_status_comment(self):
+        row = task.board_row({"number": 9, "title": "Untouched"}, "", self.NOW)
+        self.assertEqual(row["state"], "none")
+        self.assertEqual(row["session"], "")
+        self.assertEqual(row["branch"], "")
+        self.assertEqual(row["last_active"], "")
+
+
+class FormatBoardTests(unittest.TestCase):
+    def test_table_has_headers_and_row_data(self):
+        rows = [{"number": 5, "title": "Do a thing", "session": "sess-1",
+                 "branch": "issue-5-foo", "last_active": "2026-07-18T13:58:00Z", "state": "active"}]
+        out = task.format_board(rows)
+        for token in ("Issue", "State", "Session", "Branch", "Last active", "Title",
+                      "5", "sess-1", "issue-5-foo", "2026-07-18T13:58:00Z", "active", "Do a thing"):
+            self.assertIn(token, out)
+
+    def test_empty_rows_is_a_message_not_a_crash(self):
+        self.assertIn("No open", task.format_board([]))
 
 
 class AssertValidBranchTests(unittest.TestCase):
@@ -555,6 +718,65 @@ class BeatOnceRoutingTests(unittest.TestCase):
         self.assertEqual(len(stub.posted), 1)
         self.assertIn(task.STATUS_MARKER, stub.posted[0][1])
 
+    def test_session_is_stamped_on_a_body_without_one(self):
+        body = task.status_body("issue-7-foo", "2026-07-18T10:00:00Z")
+        with _StubComments(self._trusted(body)) as stub:
+            task._beat_once(7, None, "sess-abc")
+        self.assertEqual(len(stub.edited), 1)
+        self.assertEqual(task.parse_session(stub.edited[0][1]), "sess-abc")
+
+    def test_session_is_re_stamped_over_a_different_one(self):
+        body = task.status_body("issue-7-foo", "2026-07-18T10:00:00Z", "old-sess")
+        with _StubComments(self._trusted(body)) as stub:
+            task._beat_once(7, None, "new-sess")
+        self.assertEqual(task.parse_session(stub.edited[0][1]), "new-sess")
+
+    def test_empty_session_preserves_existing_session_on_beat(self):
+        body = task.status_body("issue-7-foo", "2026-07-18T10:00:00Z", "keep-me")
+        with _StubComments(self._trusted(body)) as stub:
+            task._beat_once(7, None, "")
+        # timestamp refreshed, session preserved (no session provided this beat)
+        self.assertEqual(task.parse_session(stub.edited[0][1]), "keep-me")
+
+    def test_malformed_recovery_carries_existing_session(self):
+        malformed = (task.STATUS_MARKER + "\n- Branch: `issue-7-foo` (note)\n"
+                     "- Handling session: `keep-me`\n(no timestamp line)")
+        with _StubComments(self._trusted(malformed)) as stub:
+            task._beat_once(7, None, "")
+        healed = stub.edited[0][1]
+        self.assertIn("- Last active (UTC):", healed)
+        self.assertEqual(task.parse_session(healed), "keep-me")
+
+    def test_new_post_carries_session(self):
+        with _StubComments([]) as stub:
+            task._beat_once(7, "issue-7-foo", "sess-abc")
+        self.assertEqual(task.parse_session(stub.posted[0][1]), "sess-abc")
+
+    def test_convergence_inherits_newest_duplicate_session(self):
+        # Survivor is older (session A); a duplicate carries the newest stamp AND a different session
+        # (B). A beat with no session of our own must attribute ownership to the newest heartbeat (B),
+        # not keep the survivor's stale A, before pruning the duplicate.
+        older = task.status_body("issue-7-foo", "2098-01-01T00:00:00Z", "sess-A")
+        newer = task.status_body("issue-7-foo", "2099-01-01T00:00:00Z", "sess-B")
+        comments = [{"id": 1, "body": older, "assoc": "OWNER"},
+                    {"id": 2, "body": newer, "assoc": "OWNER"}]
+        with _StubComments(comments) as stub:
+            task._beat_once(7, None, "")
+        edited = stub.edited[0][1]
+        self.assertIn("2099-01-01T00:00:00Z", edited)          # newest timestamp
+        self.assertEqual(task.parse_session(edited), "sess-B")  # newest heartbeat's session
+        self.assertEqual(stub.deleted, [2])                     # duplicate pruned after commit
+
+    def test_malformed_stored_session_does_not_crash_the_beat(self):
+        # A crafted/legacy comment whose session code span contains a space would raise if fed back
+        # into set_session; the beat must sanitize it to '' and simply refresh the timestamp.
+        body = (task.STATUS_MARKER + "\n- Branch: `issue-7-foo`\n"
+                "- Handling session: `bad session`\n- Last active (UTC): 2026-07-18T10:00:00Z\n")
+        with _StubComments(self._trusted(body)) as stub:
+            task._beat_once(7, None, "")  # must not raise
+        self.assertEqual(len(stub.edited), 1)
+        self.assertIn("- Last active (UTC):", stub.edited[0][1])
+
     def test_untrusted_marker_comment_is_not_adopted(self):
         planted = [{"id": 1, "body": task.status_body("evil", "2026-07-18T10:00:00Z"), "assoc": "NONE"}]
         with _StubComments(planted) as stub:
@@ -658,27 +880,50 @@ class _StubStartBoundary:
         self._orig = (task._run, task._capture, task._upsert_status)
         task._run = self._run
         task._capture = lambda args: ""
-        task._upsert_status = lambda number, branch, stamp=None: self.upserts.append((number, branch))
+        task._upsert_status = lambda number, branch, stamp=None, session="": self.upserts.append((number, branch, session))
         return self
 
     def __exit__(self, *exc):
         task._run, task._capture, task._upsert_status = self._orig
 
 
-def _start_args(number=7, slug="foo", branch=None, name=None):
+def _start_args(number=7, slug="foo", branch=None, name=None, session_id=None):
     return task.build_parser().parse_args(
         ["start", str(number)]
         + (["--slug", slug] if slug is not None else [])
         + (["--branch", branch] if branch else [])
-        + (["--name", name] if name else []))
+        + (["--name", name] if name else [])
+        + (["--session-id", session_id] if session_id else []))
 
 
 class CmdStartTests(unittest.TestCase):
+    def setUp(self):
+        # Hermetic: the local dev box sets COPILOT_AGENT_SESSION_ID, which would leak into the
+        # forwarded session. Pop it so the default is a known empty string.
+        self._env = os.environ.pop("COPILOT_AGENT_SESSION_ID", None)
+
+    def tearDown(self):
+        if self._env is not None:
+            os.environ["COPILOT_AGENT_SESSION_ID"] = self._env
+
     def test_success_creates_worktree_and_stamps(self):
         with _StubStartBoundary(claim_rc=0) as stub:
             task.cmd_start(_start_args(7, "Heartbeat work"))
         self.assertTrue(any("worktree" in r for r in stub.runs))
-        self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work")])
+        self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work", "")])
+
+    def test_forwards_the_session_id_to_the_stamp(self):
+        with _StubStartBoundary(claim_rc=0) as stub:
+            task.cmd_start(_start_args(7, "Heartbeat work", session_id="sess-xyz"))
+        self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work", "sess-xyz")])
+
+    def test_invalid_session_fails_before_any_mutation(self):
+        with _StubStartBoundary(claim_rc=0) as stub:
+            with self.assertRaises(SystemExit):
+                task.cmd_start(_start_args(7, "Heartbeat work", session_id="bad session"))
+        # Fail-fast: no worktree/claim runs and no stamp happened.
+        self.assertEqual(stub.runs, [])
+        self.assertEqual(stub.upserts, [])
 
     def test_aborts_and_does_not_stamp_when_claim_fails(self):
         with _StubStartBoundary(claim_rc=1) as stub:
