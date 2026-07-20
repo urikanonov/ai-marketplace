@@ -3270,7 +3270,9 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .slide p,
 #commentRoot[data-cmh-mode="deck"] .slide li { color: var(--show-muted); font-size: 26px; }
 #commentRoot[data-cmh-mode="deck"] .slide strong { color: var(--show-text); }
-#commentRoot[data-cmh-mode="deck"] .show-mark { background: rgba(245, 158, 11, 0.42); border-radius: 6px; padding: 0 0.12em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+/* Paint the highlight as a height-capped gradient (not a full em-box fill) so on tight headings
+   (.show-title h1 is line-height 1.03) the tall Segoe UI em box cannot bleed up into the row above. */
+#commentRoot[data-cmh-mode="deck"] .show-mark { background-image: linear-gradient(rgba(245, 158, 11, 0.42), rgba(245, 158, 11, 0.42)); background-repeat: no-repeat; background-position: 0 50%; background-size: 100% 1.15em; border-radius: 6px; padding: 0 0.12em; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 #commentRoot[data-cmh-mode="deck"] .show-kicker { color: var(--show-accent); font-size: 24px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 18px; }
 #commentRoot[data-cmh-mode="deck"] .show-lead { font-size: 30px; color: var(--show-muted); max-width: 1480px; }
 #commentRoot[data-cmh-mode="deck"] .show-header { display: grid; grid-template-columns: 1fr 640px; gap: 56px; align-items: center; padding: 148px 120px; }
