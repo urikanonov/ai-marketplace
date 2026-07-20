@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.190.0";
+const CMH_VERSION = "1.191.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6534,11 +6534,14 @@ let _clearAllBusy = false;
 document.getElementById("btnClearAll").addEventListener("click", async () => {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length)) return;  // guard re-entrant double-clicks
+  const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
+  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length && !noteChanges.length)) return;  // guard re-entrant double-clicks
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
-      message: `Delete all ${comments.length} comment(s) and reset tracked widget changes? This cannot be undone.`,
+      message: comments.length
+        ? `Delete all ${comments.length} comment(s) and reset any tracked widget, checklist, and note changes? This cannot be undone.`
+        : `Reset any tracked widget, checklist, and note changes? This cannot be undone.`,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,

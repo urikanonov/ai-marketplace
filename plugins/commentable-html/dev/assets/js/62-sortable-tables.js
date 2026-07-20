@@ -271,11 +271,14 @@ let _clearAllBusy = false;
 document.getElementById("btnClearAll").addEventListener("click", async () => {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
-  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length)) return;  // guard re-entrant double-clicks
+  const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
+  if (_clearAllBusy || (!comments.length && !stateChanges.length && !clChanges.length && !noteChanges.length)) return;  // guard re-entrant double-clicks
   _clearAllBusy = true;
   try {
     const ok = await showConfirm({
-      message: `Delete all ${comments.length} comment(s) and reset tracked widget changes? This cannot be undone.`,
+      message: comments.length
+        ? `Delete all ${comments.length} comment(s) and reset any tracked widget, checklist, and note changes? This cannot be undone.`
+        : `Reset any tracked widget, checklist, and note changes? This cannot be undone.`,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
