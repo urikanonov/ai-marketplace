@@ -944,6 +944,18 @@ h5:focus-within > .cmh-review-unreviewed, h6:focus-within > .cmh-review-unreview
 .cm-mermaid-host.cm-mermaid-hl { outline: 2px solid var(--cp-accent); outline-offset: 4px; border-radius: 6px; }
 /* Gantt/sequence labels are SVG <text> with no child shape; tint the text itself. */
 text.cm-mermaid-hl, .cm-mermaid-hl > text { fill: var(--cp-accent) !important; font-weight: 700; }
+/* CMH-MMD-10: a NARROW report diagram (natural width well under the content column) grows toward the
+   column instead of being marooned by mermaid's intrinsic-width inline max-width. The cap
+   (--cmh-diagram-cap, set by updateMermaidWidthClass) is a modest multiple of the intrinsic width so
+   a tiny diagram never balloons; the SVG is centered. Covers both pre.mermaid and div.mermaid hosts
+   (both carry .cm-mermaid-host). Report-only - a deck has its own contain-fit rules. */
+#commentRoot .cm-mermaid-host.cmh-diagram-narrow svg {
+  width: 100%;
+  max-width: min(100%, var(--cmh-diagram-cap, 100%)) !important;
+  height: auto;
+  display: block;
+  margin-inline: auto;
+}
 @keyframes cm-mermaid-pulse {
   0%, 100% { filter: drop-shadow(0 0 4px var(--cp-accent)); }
   50%      { filter: drop-shadow(0 0 14px var(--cp-accent)); }

@@ -15,11 +15,32 @@ SKILL_MD = os.path.join(_paths.PKG, "SKILL.md")
 TUTORIAL_MD = os.path.join(_paths.DOCS, "TUTORIAL.md")
 REFERENCES = os.path.join(_paths.PKG, "references")
 FILE_INVENTORY_MD = os.path.join(REFERENCES, "file-inventory.md")
+MERMAID_DIAGRAMS_MD = os.path.join(REFERENCES, "mermaid-diagrams.md")
 
 
 def _read(path):
     with open(path, encoding="utf-8") as fh:
         return fh.read()
+
+
+class MermaidLayoutGuidanceTests(unittest.TestCase):
+    """CMH-MMD-10 (Pattern B): the mermaid reference must document dense-layout authoring guidance,
+    since the runtime narrow-scale only fixes an intrinsically narrow diagram (Pattern A), not a
+    sparse layout whose emptiness is inside the viewBox."""
+
+    def test_mermaid_reference_documents_dense_layout_guidance(self):
+        text = _read(MERMAID_DIAGRAMS_MD)
+        lowered = text.lower()
+        # Names both patterns so the reader knows which is auto-handled and which is authored.
+        self.assertIn("pattern a", lowered)
+        self.assertIn("pattern b", lowered)
+        # The concrete Pattern B authoring advice from issue #516's acceptance criteria.
+        self.assertIn("flowchart lr", lowered, "must advise LR for linear pipelines")
+        self.assertIn("direction tb", lowered, "must advise dense LR subgraphs with direction TB")
+        self.assertIn("isolated", lowered, "must warn against isolated/orphan nodes")
+        self.assertRegex(
+            text, r"cross-?subgraph",
+            "must warn against long cross-subgraph edges that strand nodes")
 
 
 class PortabilityDiagramsTests(unittest.TestCase):

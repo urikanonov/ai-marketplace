@@ -321,5 +321,49 @@ class NotesExampleTests(unittest.TestCase):
         self.assertIn('const CMH_VERSION = "%s"' % _read_version(), html)
 
 
+# The mermaid loader lives in <head>, OUTSIDE the swappable CSS/COMMENT UI/JS regions, so a bare
+# region swap never reaches it. build.py re-emits it into every example from the canonical PORTABLE
+# loader (mirroring the upgrade.py re-emit, CMH-MMD-09), so an example can never ship a stale
+# pre-CMH-MMD-07 loader that renders a collapsed-section diagram as a degenerate ~16px SVG.
+_MODULE_SCRIPT_RE = re.compile(
+    r'<script\b[^>]*\btype=(["\'])module\1[^>]*>(.*?)</script>', re.IGNORECASE | re.DOTALL)
+_MERMAID_IMPORT_RE = re.compile(r'import\(\s*(["\'])([^"\']*mermaid[^"\']*)\1', re.IGNORECASE)
+
+
+def _mermaid_loader_body(html):
+    """The body of the <head> module script that boots mermaid (a dynamic mermaid import), or None."""
+    lo = html.lower()
+    hs, he = lo.find("<head"), lo.find("</head>")
+    head = html[hs:he] if (hs != -1 and he != -1 and he > hs) else html
+    for m in _MODULE_SCRIPT_RE.finditer(head):
+        if _MERMAID_IMPORT_RE.search(m.group(2)):
+            return m.group(2)
+    return None
+
+
+class ExampleMermaidLoaderTests(unittest.TestCase):
+    """CMH-MMD-09 (examples): build.py re-emits the canonical shell-baked mermaid loader into every
+    example, so each example single-sources the loader from PORTABLE and honors CMH-MMD-07 (a
+    collapsed-at-load diagram is rendered off-screen, never as a degenerate ~16px in-place SVG)."""
+
+    def test_examples_single_source_the_canonical_mermaid_loader(self):
+        portable = _read(os.path.join(_paths.DIST, "PORTABLE.html"))
+        canonical = _mermaid_loader_body(portable)
+        self.assertIsNotNone(canonical, "no mermaid loader in PORTABLE.html")
+        # The canonical loader is the CMH-MMD-07 off-screen partition, not the old naive m.run().
+        self.assertIn("renderHidden", canonical)
+        self.assertIn("isHidden", canonical)
+        for path in EXAMPLES + (os.path.join(_paths.EXAMPLES, "deck-showcase.html"),):
+            html = _read(path)
+            if "class=\"mermaid" not in html and "class='mermaid" not in html:
+                continue
+            body = _mermaid_loader_body(html)
+            self.assertIsNotNone(body, "no mermaid loader in " + os.path.basename(path))
+            self.assertEqual(
+                body, canonical,
+                "%s does not single-source the canonical mermaid loader (stale loader; run build.py)"
+                % os.path.basename(path))
+
+
 if __name__ == "__main__":
     unittest.main()

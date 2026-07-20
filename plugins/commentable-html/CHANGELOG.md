@@ -4,6 +4,28 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.192.0] - 2026-07-20
+
+### Fixed
+
+- Report (non-deck) Mermaid diagrams in the shipped example reports and the deployed-site demos no
+  longer collapse to a tiny frozen bar when their section is hidden at load. The examples carried the
+  OLD naive in-place `mermaid.run()` loader (a diagram whose section was `display:none` at load
+  rendered a degenerate ~16px SVG that never re-measured), because `build.py`'s `regen_example` swaps
+  only the CSS / COMMENT UI / JS layer regions and never re-emitted the shell-baked `<head>` mermaid
+  loader. `regen_example` now re-emits the canonical loader from `PORTABLE.html` into every example
+  (the same `<head>`-scoped, ambiguity-guarded, vendored-safe re-emit `upgrade.py` does), so an
+  example single-sources the loader and honors CMH-MMD-07 (CMH-MMD-09).
+
+### Changed
+
+- Report (non-deck) Mermaid diagrams whose natural width is well under the content column now scale
+  up toward the column instead of being marooned by mermaid's intrinsic-width inline `max-width`. A
+  `cmh-diagram-narrow` class (set by `updateMermaidWidthClass` with hysteresis, so scaling a diagram
+  taller cannot flip it back and forth on the reveal/resize observer) grows the SVG to a capped
+  `min(100%, natural * 1.4)`, centered, for both `pre.mermaid` and `div.mermaid` hosts. Wide diagrams
+  (which scroll) and deck diagrams (own fit) are unaffected (CMH-MMD-10).
+
 ## [1.191.0] - 2026-07-20
 
 ### Fixed
