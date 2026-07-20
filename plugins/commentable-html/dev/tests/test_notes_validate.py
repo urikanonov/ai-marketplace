@@ -50,6 +50,40 @@ class NotesValidateTests(unittest.TestCase):
         e, w = check_notes(_wrap(body))
         self.assertTrue(any("substrate" in m for m in w))
 
+    def test_note_inside_diff_flagged(self):
+        body = '<div class="cmh-diff"><div data-cmh-note="n">x</div></div>'
+        e, w = check_notes(_wrap(body))
+        self.assertTrue(any("substrate" in m for m in w))
+
+    def test_note_inside_widget_flagged(self):
+        body = '<div data-cm-widget="w"><div data-cmh-note="n">x</div></div>'
+        e, w = check_notes(_wrap(body))
+        self.assertTrue(any("substrate" in m for m in w))
+
+    def test_note_directly_on_deck_slide_is_allowed(self):
+        # A note placed directly on a deck slide is a supported pattern, not a substrate collision.
+        body = ('<div class="deck-stage"><section class="slide">'
+                '<div data-cmh-note="n">x</div></section></div>')
+        e, w = check_notes(_wrap(body))
+        self.assertEqual(e, [])
+        self.assertFalse(any("substrate" in m for m in w), w)
+
+    def test_note_in_plain_slide_wrapper_is_allowed(self):
+        # The showcase deck places notes inside slide layout wrappers (not directly on the slide);
+        # a plain wrapper on a slide does not cm-skip descendant text, so the note is allowed.
+        body = ('<section class="slide"><div class="show-panel"><div class="col">'
+                '<div data-cmh-note="n">x</div></div></div></section>')
+        e, w = check_notes(_wrap(body))
+        self.assertEqual(e, [])
+        self.assertFalse(any("substrate" in m for m in w), w)
+
+    def test_note_in_checklist_on_a_slide_is_still_flagged(self):
+        # The slide itself is fine, but a note nested inside a checklist ON a slide still collides.
+        body = ('<section class="slide"><div data-cmh-checklist="c"><ul><li data-cmh-item="i">'
+                '<div data-cmh-note="n">x</div></li></ul></div></section>')
+        e, w = check_notes(_wrap(body))
+        self.assertTrue(any("substrate" in m for m in w))
+
 
 if __name__ == "__main__":
     unittest.main()

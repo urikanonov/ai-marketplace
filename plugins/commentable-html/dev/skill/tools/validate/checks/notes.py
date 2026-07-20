@@ -5,10 +5,16 @@ from html.parser import HTMLParser
 _NOTE_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
-# Layer substrates a note must not be nested inside (its text is cm-skip and would collide
-# with these commentable mechanisms).
+# Layer substrates a note must not be nested inside: each OWNS its descendant text via its own
+# offset/injection machinery (a checklist injects `cm-skip` controls, a diff/widget manages its own
+# text), which collides with a note's own `cm-skip` text. A plain deck slide is NOT such a substrate
+# - it does not own or `cm-skip` its descendant text - so a note placed anywhere on a slide
+# (directly or inside slide layout wrappers, as the showcase deck does) is an intentional, supported
+# pattern and `slide`/`deck-stage` are omitted; a note nested inside a checklist/diff/widget that
+# happens to sit on a slide is still caught by those substrate markers. When adding a new substrate
+# here, judge whether a nested note's text would collide with that substrate's own text handling.
 _LAYER_ATTRS = ("data-cmh-checklist", "data-cm-widget")
-_LAYER_CLASSES = ("cmh-diff", "deck-stage", "slide")
+_LAYER_CLASSES = ("cmh-diff",)
 
 
 class _NotesParser(HTMLParser):
@@ -112,5 +118,5 @@ def check_notes(html):
         if n["has_child"]:
             warnings.append('note "%s" contains child elements; a note must hold plain text only' % nid)
         if n["in_layer"]:
-            warnings.append('note "%s" is nested inside a checklist/diff/widget/deck substrate; keep notes standalone' % nid)
+            warnings.append('note "%s" is nested inside a checklist/diff/widget substrate; keep notes standalone' % nid)
     return errors, warnings

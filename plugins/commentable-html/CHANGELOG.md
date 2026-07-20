@@ -16,6 +16,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   and count stay on one line per button (the group wraps into rows without overflowing the sidebar,
   even with two-digit counts) (CMH-REVIEW-14).
 
+## [1.188.0] - 2026-07-20
+
+### Fixed
+
+- Showcase deck: the Act 1 Mermaid loop diagram no longer paints solid black blobs. Deck flowchart
+  edge connectors are now stroked with `fill: none` (only the arrowhead markers keep a fill), so a
+  curved back-edge is drawn as a thin line instead of filling the area under its curve with the dark
+  slide color. The fix is both in the runtime deck default (`assets/css/90-deck.css`) and in the
+  showcase deck's own parchment mermaid theme (CMH-DECK-09).
+
+### Changed
+
+- Showcase deck slide 12 ("Code and notes") now demonstrates the notes feature with REAL live,
+  editable notes (`data-cmh-note` fields the runtime upgrades into editable, change-tracked
+  textareas) instead of a static mockup (CMH-DECK-SHOWCASE-08). A note change card's `jump` is now
+  deck-aware: `jumpToNote()` activates the note's owning slide before scrolling. To support live
+  notes on a slide, the notes authoring validator (`validate.py`) no longer flags a note on a deck
+  slide - a slide, unlike a checklist/diff/widget substrate, does not `cm-skip` its descendant text;
+  a note nested inside a checklist/diff/widget is still flagged (CMH-NOTE-15).
+- Showcase deck slide 18 ("Three portability modes") now tags each part with a colorful source pill
+  (folder / CDN / inlined / storage / seed), matching the site's "Three portability modes" theme,
+  instead of plain table text; the Portable and Offline handoffs keep both the seed and storage
+  pills (CMH-DECK-SHOWCASE-17).
+
 ## [1.187.0] - 2026-07-20
 
 ### Fixed
