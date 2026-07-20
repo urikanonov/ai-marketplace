@@ -6,6 +6,9 @@ import { heavyGlobs } from "./tests/_projects.mjs";
 // so the suite matches how users actually open these documents (double-click).
 export default defineConfig({
   testDir: "./tests",
+  // Prune the per-process capture scratch trees under repo-root tmp/ once, after every test
+  // completes (race-free, unlike a per-worker afterAll wiping a shared parent).
+  globalTeardown: "./tests/_teardown.mjs",
   fullyParallel: true,
   // Cap parallelism on CI (shared runners thrash the OS at full core count when several
   // specs spawn a static server plus a synchronous python subprocess and can time out).
