@@ -767,7 +767,12 @@ commands are:
    take over, resuming from the branch stamped in their "Work status" comment.
 5. PLAN it, then share the plan and get approval before coding: post the implementation plan as a comment
    with `gh issue comment <n> --body "1. ...  2. ..."`.
-6. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it.
+6. Implement, ticking each acceptance-criterion checkbox in the issue body as you finish it
+   with `python scripts/task.py check-ac <n> <k>` (or `--all` to tick them all). Always use that
+   wrapper: it round-trips the body as a single string and writes via `gh issue edit --body-file`,
+   so it never corrupts the Markdown. Never hand-edit the body with raw `gh` in a shell (e.g.
+   `$b = gh issue view -q .body` in PowerShell captures the multi-line body as an ARRAY, dropping
+   the newlines, and rejoining it collapses every blank line and heading).
 7. FINISH: open the PR with `Closes #<n>` in its body. The `issue-status-sync` workflow marks the issue
    In Progress when the PR opens; merging the PR closes the issue, and `issue-status-sync` then removes
    the `status: in progress` label on close (so a done issue is never left labelled In Progress) while

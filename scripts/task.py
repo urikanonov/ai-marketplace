@@ -6,11 +6,11 @@ with the repo conventions baked in: the `task` label, plain-ASCII bodies, and th
 Task issue-form section shape. Agents and contributors should prefer this wrapper
 over raw `gh` so those conventions are not re-typed each time.
 
-The pure helpers (build_body, create_args, tick_checkbox, assert_ascii, status_body,
-bump_last_active, find_status_comment, status_comments, extra_status_comment_ids,
-parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch,
-branch_slug, derive_branch) are unit tested in scripts/test_task.py; the thin `_run`
-layer shells out to `gh` and `git`.
+The pure helpers (build_body, create_args, tick_checkbox, tick_all_checkboxes, apply_ac_check,
+assert_ascii, status_body, bump_last_active, find_status_comment, status_comments,
+extra_status_comment_ids, parse_last_active, parse_branch, is_stale, is_newer, utc_stamp,
+assert_valid_branch, branch_slug, derive_branch) are unit tested in scripts/test_task.py; the
+thin `_run` layer shells out to `gh` and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
@@ -21,6 +21,7 @@ Usage:
   python scripts/task.py stale [--minutes 15]
   python scripts/task.py plan 188 "1. Rebase  2. Fix  3. Test"
   python scripts/task.py check-ac 188 1
+  python scripts/task.py check-ac 188 --all
   python scripts/task.py finish 188 "Short PR-style summary"
 """
 import argparse
@@ -136,6 +137,44 @@ def tick_checkbox(body, k):
                     lines[i] = indent + "- [x]" + stripped[5:]
                 return "\n".join(lines)
     raise IndexError(f"no acceptance criterion #{k} (found {seen}) in the issue body")
+
+
+def tick_all_checkboxes(body):
+    """Return body with EVERY acceptance-criterion checkbox in the '## Acceptance criteria'
+    section checked, preserving all other text byte-for-byte. Idempotent (already-checked
+    boxes are left as-is). Requires an explicit '## Acceptance criteria' heading and raises
+    IndexError if it is absent or the section has no checkbox - so an --all run never falls
+    back to the whole body and ticks unrelated checkboxes (an implementation plan, a
+    'before starting' list), and it fails loudly against a body with no criteria.
+    """
+    lines = body.splitlines()
+    if not any(re.match(r"^\s*#{2,}\s+acceptance criteria\b", ln, re.I) for ln in lines):
+        raise IndexError("no '## Acceptance criteria' section in the issue body")
+    start, end = _acceptance_bounds(lines)
+    seen = 0
+    for i in range(start, end):
+        stripped = lines[i].lstrip()
+        if stripped.startswith(("- [ ] ", "- [x] ", "- [X] ")) or stripped in ("- [ ]", "- [x]", "- [X]"):
+            seen += 1
+            if stripped.startswith("- [ ]"):
+                indent = lines[i][: len(lines[i]) - len(stripped)]
+                lines[i] = indent + "- [x]" + stripped[5:]
+    if seen == 0:
+        raise IndexError("no acceptance criteria found in the issue body")
+    return "\n".join(lines)
+
+
+def apply_ac_check(body, index, check_all):
+    """Dispatch for the check-ac command: tick every criterion when check_all is set, else the
+    single 1-based index. Raises ValueError when neither is given, or when both an index and
+    --all are passed (contradictory), so the CLI fails loudly instead of silently ignoring one."""
+    if check_all:
+        if index is not None:
+            raise ValueError("check-ac: pass an INDEX or --all, not both")
+        return tick_all_checkboxes(body)
+    if index is None:
+        raise ValueError("check-ac needs an INDEX or --all")
+    return tick_checkbox(body, index)
 
 
 # --- heartbeat + branch-stamp helpers (pure) -------------------------------------------
@@ -654,7 +693,7 @@ def cmd_plan(a):
 def cmd_check_ac(a):
     body = _capture(["gh", "issue", "view", str(a.number), "--repo", REPO,
                      "--json", "body", "--jq", ".body"])
-    path = _write_temp(tick_checkbox(body, a.index))
+    path = _write_temp(apply_ac_check(body, a.index, a.all))
     try:
         code = _run(["gh", "issue", "edit", str(a.number), "--repo", REPO, "--body-file", path])
     finally:
@@ -716,9 +755,11 @@ def build_parser():
     pl.add_argument("text")
     pl.set_defaults(func=cmd_plan)
 
-    ca = sub.add_parser("check-ac", help="tick the k-th acceptance criterion")
+    ca = sub.add_parser("check-ac", help="tick the k-th acceptance criterion (or --all)")
     ca.add_argument("number", type=int)
-    ca.add_argument("index", type=int)
+    ca.add_argument("index", type=int, nargs="?", default=None,
+                    help="1-based acceptance-criterion index (omit when using --all)")
+    ca.add_argument("--all", action="store_true", help="tick every acceptance criterion")
     ca.set_defaults(func=cmd_check_ac)
 
     f = sub.add_parser("finish", help="record a final-summary comment")
