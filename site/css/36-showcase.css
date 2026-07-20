@@ -5,17 +5,17 @@
    the section striping below it. */
 /* Vertical padding only - the nested .wrap already provides the 20px horizontal gutter, so
    adding it here too would double the side margins and over-shrink the screenshot on mobile. */
-.showcase { padding: 8px 0 40px; }
+.showcase { padding: 8px 0 8px; }
 
 /* One defined card so the showcase reads as a cohesive, contained unit rather than floating
-   loose on the page background. The screenshot sits in a fixed, deliberately SMALL column so it
-   downscales (stays crisp on HiDPI/retina screens, where a larger CSS size would upscale and
-   blur) and reads as a supporting visual next to the copy. */
+   loose on the page background. The screenshot sits in a fixed, modest column so it downscales
+   (stays crisp on HiDPI/retina screens, where a larger CSS size would upscale and blur) and reads
+   as a supporting visual next to the copy. */
 .showcase-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 34px;
-  align-items: start;
+  align-items: center;
   background: var(--cp-bg-elevated);
   border: 1px solid var(--cp-border-strong);
   border-radius: var(--cp-radius);
@@ -25,13 +25,16 @@
 
 /* Framed screenshot: a subtle browser-chrome mock (dots bar) plus border, rounded corners, and
    a drop shadow so it reads as a polished product shot rather than a raw screengrab. Capped at a
-   small width so its native 686px source always downscales - never upscales - and stays sharp. */
+   modest width so its native 1140px source always downscales - never upscales - and stays sharp.
+   The frame chrome is intentionally a FIXED light palette (not the --cp-* theme vars) because the
+   screenshot inside is always a light-mode capture: a dark-mode dots bar around a white shot reads
+   as a broken window, so the whole framed "browser window" stays light in both themes. */
 .showcase-shot { margin: 0; min-width: 0; }
 .showcase-frame {
-  width: 300px;
+  width: 400px;
   max-width: 100%;
-  background: var(--cp-surface);
-  border: 1px solid var(--cp-border);
+  background: #ffffff;
+  border: 1px solid #d7d7d7;
   border-radius: 12px;
   box-shadow: var(--cp-shadow);
   overflow: hidden;
@@ -41,15 +44,15 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: var(--cp-surface-soft);
-  border-bottom: 1px solid var(--cp-border);
+  background: #f2f2f2;
+  border-bottom: 1px solid #d7d7d7;
 }
-.showcase-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--cp-border-strong); }
+.showcase-dot { width: 9px; height: 9px; border-radius: 50%; background: #bdbdbd; }
 /* Scale down responsively - never a fixed width that could overflow a small screen. */
 .showcase-img { display: block; width: 100%; height: auto; }
 .showcase-caption {
   margin-top: 10px;
-  max-width: 300px;
+  max-width: 400px;
   font-size: 0.82rem;
   line-height: 1.4;
   color: var(--cp-text-muted);
@@ -92,13 +95,20 @@
    centered column early (well before phone width) - the screenshot stacks above the steps. The
    image already scales to 100% width so it never overflows or forces a horizontal scroll. */
 @media (max-width: 900px) {
-  .showcase { padding: 4px 0 28px; }
+  .showcase { padding: 4px 0 8px; }
   .showcase-card {
     grid-template-columns: 1fr;
     gap: 22px;
     padding: 22px 20px;
     justify-items: center;
   }
+  /* Single column: the framed screenshot fills the column but stays capped at its 400px width
+     (centered), so it shrinks to fit a narrow phone column without overflowing, yet never GROWS
+     past 400px on a wider tablet column (which would exceed the small-image cap and, at ~740px,
+     upscale the 1140px source and blur it). */
+  .showcase-shot { width: 100%; }
+  .showcase-frame { width: 100%; max-width: 400px; margin-inline: auto; }
+  .showcase-caption { max-width: 400px; margin-inline: auto; }
   .showcase-copy { width: 100%; }
   .showcase-lead { font-size: 1rem; }
 }
