@@ -16,6 +16,10 @@ METRICS = os.path.join(_paths.EXAMPLES, "report-metrics.html")
 EXAMPLES = (EXAMPLE, TAXI, TRIAGE, METRICS)
 BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 
+sys.path.insert(0, _paths.DEV_TOOLS)  # maintainer build tool (build.py lives in dev/tools)
+import build  # noqa: E402
+import upgrade  # noqa: E402  shipped authoring tool (on path via _paths -> _toolpath)
+
 
 def _read_version():
     with open(os.path.join(_paths.DEV, "VERSION"), encoding="utf-8") as fh:
@@ -363,6 +367,280 @@ class ExampleMermaidLoaderTests(unittest.TestCase):
                 body, canonical,
                 "%s does not single-source the canonical mermaid loader (stale loader; run build.py)"
                 % os.path.basename(path))
+
+
+# The SAME build-owned placeholder loader the dev/examples/src/*.html sources carry (CMH-MMD-09):
+# build.py's regen_example OVERWRITES it with the canonical shell loader on every build, so the src
+# block is inert - keeping it here pins that it stays matchable and non-vendored (so the re-emit is
+# never skipped as a hand-vendored loader).
+BUILD_OWNED_SRC_LOADER = (
+    "<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader\n"
+    "     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this\n"
+    "     block is a placeholder only - edit the loader in the shell template, not here; an edit\n"
+    "     here has no effect on the built example. -->\n"
+    "<script type=\"module\">\n"
+    "  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).\n"
+    "  if (document.querySelector(\"pre.mermaid, div.mermaid\")) {\n"
+    "    await import(\"https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs\");\n"
+    "  }\n"
+    "</script>"
+)
+
+
+def _doc(head_inner, body_inner=""):
+    """A minimal well-formed document with the given <head> inner content and body."""
+    return ("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n"
+            + head_inner
+            + "\n</head>\n<body>\n" + body_inner + "\n</body>\n</html>\n")
+
+
+def _module(body):
+    return "<script type=\"module\">\n" + body + "\n</script>"
+
+
+_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs"
+_LOADER = "<!-- Mermaid loader -->\n" + _module(
+    "  const m = (await import(\"%s\")).default;\n  await m.run();" % _CDN)
+_LOADER_NO_GUARD_NO_COMMENT = _module(
+    "  const m = (await import(\"https://cdn/mermaid@11/mermaid.mjs\")).default;\n  await m.run();")
+_VENDORED_LOADER = "<!-- Mermaid loader -->\n" + _module(
+    "  const m = (await import(\"./mermaid.esm.min.mjs\")).default;\n  await m.run();")
+_DECOY_MODULE = _module("  import(\"./theme.js\"); // mermaid theme wiring")
+_BODY_MERMAID_MODULE = _module("  await import(\"" + _CDN + "\");")
+# A head module whose OPENING TAG carries a mermaid-import-looking ATTRIBUTE but whose BODY imports a
+# non-mermaid module. The matcher keys on the mermaid import in the script BODY, so this is NOT a
+# loader (guards against matching an import string that only appears in an attribute).
+_ATTR_DECOY_MODULE = ('<script type="module" data-x=\'import("./decoy-mermaid.js")\'>\n'
+                      '  import("./theme.js");\n</script>')
+
+
+class ExampleMermaidLoaderMatcherTests(unittest.TestCase):
+    """CMH-MMD-09 (examples): direct edge-case coverage for build.py's mermaid-loader matcher
+    (`_mermaid_loader_span` / `_mermaid_loader_is_vendored` / `_stamp_mermaid_loader`), mirroring the
+    `tools/authoring/upgrade.py` CMH-MMD-09 suite in `tests/test_upgrade.py`."""
+
+    def _portable(self):
+        return _read(os.path.join(_paths.DIST, "PORTABLE.html"))
+
+    def test_span_ignores_head_module_without_mermaid_import_cmh_mmd_09(self):
+        # A second head module <script> that only mentions mermaid in a comment (its import is a
+        # non-mermaid module) is not a second loader (no false "multiple" crash) and is not selected.
+        html = _doc(_DECOY_MODULE + "\n" + _LOADER)
+        span = build._mermaid_loader_span(html, "decoy")  # must not raise
+        self.assertIsNotNone(span)
+        self.assertNotIn("./theme.js", html[span[0]:span[1]])  # matched the real loader
+        self.assertIn("import(\"" + _CDN + "\")", html[span[0]:span[1]])
+
+    def test_span_ignores_mermaid_import_in_attribute_cmh_mmd_09(self):
+        # A mermaid `import(...)` that appears only in a script's opening-tag ATTRIBUTE (not its body)
+        # is NOT the loader: the matcher keys on the script BODY. Alone it yields no loader; beside the
+        # real loader the real one is matched.
+        self.assertIsNone(build._mermaid_loader_span(_doc(_ATTR_DECOY_MODULE), "attr-only"))
+        span = build._mermaid_loader_span(_doc(_ATTR_DECOY_MODULE + "\n" + _LOADER), "attr+real")
+        self.assertIsNotNone(span)
+        block = _doc(_ATTR_DECOY_MODULE + "\n" + _LOADER)[span[0]:span[1]]
+        self.assertNotIn("decoy-mermaid", block)          # the attribute decoy was not matched
+        self.assertIn("import(\"" + _CDN + "\")", block)  # matched the real loader body
+
+    def test_span_ambiguous_multiple_head_loaders_raise_cmh_mmd_09(self):
+        # Two head module scripts that BOTH import mermaid and neither is bound to a "Mermaid loader"
+        # comment is ambiguous - the build must reject it rather than guess.
+        loader_a = _module("  const a = (await import(\"%s\")).default;" % _CDN)
+        loader_b = _module("  const b = (await import(\"%s\")).default;" % _CDN)
+        html = _doc(loader_a + "\n" + loader_b)
+        with self.assertRaises(SystemExit):
+            build._mermaid_loader_span(html, "ambiguous")
+
+    def test_span_disambiguates_by_loader_comment_cmh_mmd_09(self):
+        # When two head modules import mermaid, the one bound to the "Mermaid loader" comment wins.
+        bare = _module("  const a = (await import(\"%s\")).default;" % _CDN)
+        html = _doc(bare + "\n" + _LOADER)
+        span = build._mermaid_loader_span(html, "disambig")
+        self.assertIn("<!-- Mermaid loader -->", html[span[0]:span[1]])  # comment included in span
+        self.assertIn("await m.run();", html[span[0]:span[1]])           # the commented loader
+
+    def test_span_is_scoped_to_head_cmh_mmd_09(self):
+        # An authored module <script> in the document BODY that imports mermaid is never mistaken for
+        # the loader: with a head loader present the span stays in <head>; with only a body module the
+        # span is None.
+        html = _doc(_LOADER, body_inner=_BODY_MERMAID_MODULE)
+        span = build._mermaid_loader_span(html, "scoped")
+        head_end = html.lower().find("</head>")
+        self.assertTrue(span[1] <= head_end)  # matched span is entirely inside <head>
+        body_only = _doc("<meta name=\"x\" content=\"y\">", body_inner=_BODY_MERMAID_MODULE)
+        self.assertIsNone(build._mermaid_loader_span(body_only, "body-only"))
+
+    def test_span_head_match_ignores_pre_head_header_comment_cmh_mmd_09(self):
+        # A `<head`-prefixed string in a PRE-HEAD comment (e.g. a commented-out <header> carrying a
+        # module script) must not be mis-scoped as the document head: the matcher keys on `<head\b`,
+        # so it slices the REAL head. The commented script is therefore never treated as a loader.
+        none_doc = ('<!doctype html><!-- <header><script type="module">'
+                    'await import("https://cdn.example/mermaid.mjs")</script></header> -->\n'
+                    '<html><head>\n<title>ordinary</title>\n</head><body>x</body></html>\n')
+        self.assertIsNone(build._mermaid_loader_span(none_doc, "pre-head"))
+        real_doc = ('<!doctype html><!-- <header> decoy -->\n<html><head>\n'
+                    + _LOADER + '\n</head><body>x</body></html>\n')
+        span = build._mermaid_loader_span(real_doc, "pre-head+real")
+        self.assertIsNotNone(span)
+        self.assertIn("import(\"" + _CDN + "\")", real_doc[span[0]:span[1]])  # matched the real head loader
+
+    def test_span_matches_legacy_loader_without_diagram_guard_cmh_mmd_09(self):
+        # A historical loader identified only by its mermaid dynamic import (no `pre.mermaid,
+        # div.mermaid` guard string) is still recognized.
+        html = _doc(_LOADER_NO_GUARD_NO_COMMENT)
+        span = build._mermaid_loader_span(html, "legacy")
+        self.assertIsNotNone(span)
+        self.assertNotIn("pre.mermaid, div.mermaid", html[span[0]:span[1]])
+        self.assertIn("import(", html[span[0]:span[1]])
+
+    def test_vendored_classification_cmh_mmd_09(self):
+        # The vendored check keys on the MERMAID import and treats scheme-bearing and
+        # protocol-relative specifiers as remote, so a decoy import or a commented-out CDN line does
+        # not misclassify the loader.
+        v = build._mermaid_loader_is_vendored
+        self.assertFalse(v('const m = await import("%s");' % _CDN))
+        self.assertFalse(v('await import("//cdn.jsdelivr.net/npm/mermaid@1/mermaid.mjs");'))  # //host
+        self.assertTrue(v('await import("./mermaid.esm.min.mjs");'))
+        self.assertTrue(v('await import("../vendor/mermaid.mjs");'))
+        self.assertTrue(v('await import("/assets/mermaid.mjs");'))
+        # decoy non-mermaid relative import beside a remote mermaid import -> NOT vendored
+        self.assertFalse(v('import("./helper.mjs"); await import("https://cdn/mermaid@1/mermaid.mjs");'))
+        # commented-out CDN mermaid import above an ACTIVE relative mermaid import -> vendored
+        self.assertTrue(v('/* await import("https://cdn/mermaid@1/mermaid.mjs") */ await import("./mermaid.mjs");'))
+        self.assertFalse(v('await import("./helper.mjs");'))  # no mermaid import at all
+
+    def test_stamp_preserves_vendored_offline_loader_cmh_mmd_09(self):
+        # A hand-vendored offline loader (mermaid imported by a relative path) is NOT clobbered back
+        # to the CDN by the re-emit - that would silently reintroduce a network fetch.
+        html = _doc(_VENDORED_LOADER)
+        out = build._stamp_mermaid_loader(html, self._portable())
+        self.assertEqual(out, html)                                  # left unchanged
+        self.assertIn('import("./mermaid.esm.min.mjs")', out)        # relative import preserved
+        self.assertNotIn("cdn.jsdelivr.net/npm/mermaid", out)
+
+    def test_stamp_reemits_canonical_over_build_owned_placeholder_cmh_mmd_09(self):
+        # The build-owned src placeholder is matchable and non-vendored, and regen re-emits the
+        # canonical PORTABLE loader over it - so an example single-sources the loader and the src
+        # block is genuinely build-owned (an edit there has no effect on the built example).
+        portable = self._portable()
+        self.assertFalse(build._mermaid_loader_is_vendored(BUILD_OWNED_SRC_LOADER))
+        html = _doc(BUILD_OWNED_SRC_LOADER)
+        pb, pe = build._mermaid_loader_span(portable, "portable")
+        canonical = portable[pb:pe]
+        self.assertNotIn("renderHidden", html)  # the placeholder is NOT the canonical loader
+        out = build._stamp_mermaid_loader(html, portable)
+        ob, oe = build._mermaid_loader_span(out, "out")
+        self.assertEqual(out[ob:oe], canonical)  # re-emitted verbatim from PORTABLE
+        self.assertIn("renderHidden", out[ob:oe])
+
+    def test_stamp_reemits_over_loader_with_decoy_local_import_cmh_mmd_09(self):
+        # A CDN loader that also carries a decoy relative NON-mermaid import must still be recognized
+        # as a CDN loader and re-emitted (not wrongly preserved as vendored) - end-to-end through
+        # _stamp_mermaid_loader, mirroring test_upgrade's decoy-local-import case.
+        portable = self._portable()
+        loader = "<!-- Mermaid loader -->\n" + _module(
+            "  const _helper = await import(\"./helper.mjs\");\n"
+            "  const m = (await import(\"%s\")).default;\n  await m.run();" % _CDN)
+        html = _doc(loader)
+        sb, se = build._mermaid_loader_span(html, "decoy-local")
+        self.assertIn('import("./helper.mjs")', html[sb:se])
+        self.assertFalse(build._mermaid_loader_is_vendored(html[sb:se]))  # CDN loader, not vendored
+        out = build._stamp_mermaid_loader(html, portable)
+        ob, oe = build._mermaid_loader_span(out, "out")
+        pb, pe = build._mermaid_loader_span(portable, "portable")
+        self.assertEqual(out[ob:oe], portable[pb:pe])          # re-emitted to the canonical loader
+        self.assertNotIn('import("./helper.mjs")', out[ob:oe])  # decoy import gone
+
+    def test_src_example_loaders_are_build_owned_cmh_mmd_09(self):
+        # AC3: EVERY dev/examples/src report/deck source carries a build-owned placeholder loader
+        # (regen overwrites it from the shell template), NOT a stale hand-authored pre-CMH-MMD-07
+        # loader - so an editor is pointed at the shell template and does not "fix" an inert copy
+        # here. Every discovered source must have one (not just "some"), so none can silently drift
+        # back to a hand loader.
+        src_dir = os.path.join(_paths.DEV, "examples", "src")
+        names = [n for n in sorted(os.listdir(src_dir))
+                 if n.startswith(("report-", "deck-")) and n.endswith(".html")]
+        self.assertGreaterEqual(len(names), 4, "expected several src example sources")
+        for name in names:
+            text = _read(os.path.join(src_dir, name))
+            span = build._mermaid_loader_span(text, name)
+            self.assertIsNotNone(span, "%s src has no recognizable loader (should be build-owned)" % name)
+            block = text[span[0]:span[1]]
+            self.assertIn("BUILD-OWNED", block, "%s src loader is not build-owned (stale?)" % name)
+            self.assertFalse(build._mermaid_loader_is_vendored(block),
+                             "%s build-owned loader must be non-vendored so regen re-emits it" % name)
+
+
+class MermaidLoaderMirrorTests(unittest.TestCase):
+    """CMH-MMD-09: build.py's `_mermaid_loader_span`/`_mermaid_loader_is_vendored` (in
+    `tools/build_parts/30-examples.py`) are a hand-maintained MIRROR of upgrade.py's
+    `_mermaid_bootstrap_span`/`_mermaid_loader_is_vendored`. This cross-implementation differential
+    test asserts the two return IDENTICAL spans/behavior on an ambiguous/vendored/decoy corpus, so
+    the mirror can never silently diverge. (The one intentional difference is the exception TYPE on
+    an ambiguous head - `SystemExit` for the build CLI vs `ValueError` for the library - so the
+    ambiguous case asserts both REJECT it, each with its own type.)"""
+
+    def _corpus(self):
+        portable = _read(os.path.join(_paths.DIST, "PORTABLE.html"))
+        bare = _module("  const a = (await import(\"%s\")).default;" % _CDN)
+        # A pre-head comment containing a `<header>` (a `<head`-prefixed string) and a module script:
+        # a naive find("<head") head-slice would mis-scope to it, so this pins the `<head\b` head match.
+        pre_head_comment = ('<!doctype html><!-- <header><script type="module">'
+                            'await import("https://cdn.example/mermaid.mjs")</script></header> -->\n'
+                            '<html><head>\n<title>ordinary</title>\n</head><body>x</body></html>\n')
+        pre_head_comment_plus_real = ('<!doctype html><!-- <header> decoy -->\n<html><head>\n'
+                                      + _LOADER + '\n</head><body>x</body></html>\n')
+        return {
+            "portable": portable,                                   # the real canonical loader
+            "legacy": _doc(_LOADER_NO_GUARD_NO_COMMENT),            # loader with no diagram guard
+            "vendored": _doc(_VENDORED_LOADER),                     # hand-vendored offline loader
+            "decoy_plus_real": _doc(_DECOY_MODULE + "\n" + _LOADER),
+            "attr_decoy_plus_real": _doc(_ATTR_DECOY_MODULE + "\n" + _LOADER),
+            "attr_decoy_only": _doc(_ATTR_DECOY_MODULE),            # both -> None (import only in attr)
+            "comment_disambiguated": _doc(bare + "\n" + _LOADER),
+            "body_only": _doc("<meta name=\"x\" content=\"y\">", body_inner=_BODY_MERMAID_MODULE),
+            "pre_head_header_comment": pre_head_comment,            # both -> None (real head has no loader)
+            "pre_head_header_comment_plus_real": pre_head_comment_plus_real,
+            "none": _doc("<title>no loader</title>"),
+        }
+
+    def test_span_matchers_agree_on_corpus_cmh_mmd_09(self):
+        for name, html in self._corpus().items():
+            got = build._mermaid_loader_span(html, name)
+            want = upgrade._mermaid_bootstrap_span(html, name)
+            self.assertEqual(got, want, "span mismatch on corpus item %r" % name)
+
+    def test_vendored_classifiers_agree_on_corpus_cmh_mmd_09(self):
+        specs = [
+            'const m = await import("%s");' % _CDN,
+            'await import("//cdn.jsdelivr.net/npm/mermaid@1/mermaid.mjs");',
+            'await import("HTTPS://cdn/mermaid@1/mermaid.mjs");',        # uppercase scheme -> remote
+            'await import("./mermaid.esm.min.mjs");',
+            'await import("../vendor/mermaid.mjs");',
+            'await import("/assets/mermaid.mjs");',
+            # a LOCAL specifier whose query/fragment merely contains "://" must not be read as remote
+            # (this is exactly where an unanchored '"://" in spec' check diverges from upgrade.py).
+            'await import("./mermaid.mjs?src=https://cdn.example/mermaid.esm.mjs");',
+            'await import("../vendor/mermaid.min.js#https://x");',
+            'await import("blob:https://x/mermaid.js");',               # non-http scheme, no // -> local
+            'import("./helper.mjs"); await import("https://cdn/mermaid@1/mermaid.mjs");',
+            '/* await import("https://cdn/mermaid@1/mermaid.mjs") */ await import("./mermaid.mjs");',
+            'await import("./helper.mjs");',
+            '',
+        ]
+        for spec in specs:
+            self.assertEqual(build._mermaid_loader_is_vendored(spec),
+                             upgrade._mermaid_loader_is_vendored(spec),
+                             "vendored classification mismatch on %r" % spec)
+
+    def test_both_reject_ambiguous_head_loaders_cmh_mmd_09(self):
+        loader_a = _module("  const a = (await import(\"%s\")).default;" % _CDN)
+        loader_b = _module("  const b = (await import(\"%s\")).default;" % _CDN)
+        html = _doc(loader_a + "\n" + loader_b)
+        with self.assertRaises(SystemExit):        # build CLI
+            build._mermaid_loader_span(html, "ambiguous")
+        with self.assertRaises(ValueError):        # upgrade library
+            upgrade._mermaid_bootstrap_span(html, "ambiguous")
 
 
 if __name__ == "__main__":
