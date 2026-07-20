@@ -2026,27 +2026,22 @@ function _sizeChartCanvas(canvas, dpr) {
     canvas._cmhAttrW = Math.max(1, Math.round(Number(canvas.getAttribute("width")) || canvas.width || 760));
     canvas._cmhAttrH = Math.max(1, Math.round(Number(canvas.getAttribute("height")) || canvas.height || 340));
   }
-  // Clear only a pin WE set on a prior render, so the measurement reflects the current layout without
-  // clobbering an author's own inline width/height on a chart we never pin.
-  if (canvas._cmhSizePinned) {
-    canvas.style.removeProperty("width");
-    canvas.style.removeProperty("height");
-    canvas._cmhSizePinned = false;
-  }
+  // Clear only a pin WE set on a prior render (per axis), so the measurement reflects the current
+  // layout without clobbering an author's own inline width/height on an axis we never pinned.
+  if (canvas._cmhPinnedW) { canvas.style.removeProperty("width"); canvas._cmhPinnedW = false; }
+  if (canvas._cmhPinnedH) { canvas.style.removeProperty("height"); canvas._cmhPinnedH = false; }
   canvas.width = canvas._cmhAttrW;
   canvas.height = canvas._cmhAttrH;
   let width = canvas.clientWidth;
   let height = canvas.clientHeight;
-  if (!(width > 1)) width = canvas._cmhAttrW;
-  if (!(height > 1)) height = canvas._cmhAttrH;
+  if (!(width > 0)) width = canvas._cmhAttrW;
+  if (!(height > 0)) height = canvas._cmhAttrH;
   width = Math.max(1, Math.round(width));
   height = Math.max(1, Math.round(height));
   canvas.width = Math.max(1, Math.round(width * dpr));
   canvas.height = Math.max(1, Math.round(height * dpr));
-  let pinned = false;
-  if (canvas.clientWidth > width + 1) { canvas.style.setProperty("width", width + "px", "important"); pinned = true; }
-  if (canvas.clientHeight > height + 1) { canvas.style.setProperty("height", height + "px", "important"); pinned = true; }
-  canvas._cmhSizePinned = pinned;
+  if (canvas.clientWidth > width + 1) { canvas.style.setProperty("width", width + "px", "important"); canvas._cmhPinnedW = true; }
+  if (canvas.clientHeight > height + 1) { canvas.style.setProperty("height", height + "px", "important"); canvas._cmhPinnedH = true; }
   return { width: width, height: height };
 }
 function renderInteractiveChart(canvas, activeIndex, measure) {
@@ -2055,8 +2050,9 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
   const dpr = window.devicePixelRatio || 1;
   // Re-measure/re-size the bitmap only on layout renders (setup, reveal, window resize). A hover
   // redraw (measure === false) reuses the cached logical size and the existing bitmap, so it does not
-  // force the neutralize/measure reflows on every mousemove over a chart.
-  const size = (measure === false && canvas._cmhChart)
+  // force the neutralize/measure reflows on every mousemove over a chart - but only while the cached
+  // size is for the current devicePixelRatio (a dpr change re-measures so the bitmap is not stale).
+  const size = (measure === false && canvas._cmhChart && canvas._cmhChart.dpr === dpr)
     ? { width: canvas._cmhChart.width, height: canvas._cmhChart.height }
     : _sizeChartCanvas(canvas, dpr);
   const width = size.width;
@@ -2133,7 +2129,7 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
       height: barHeight,
     };
   });
-  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height };
+  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height, dpr: dpr };
   return true;
 }
 function setupInteractiveCharts() {

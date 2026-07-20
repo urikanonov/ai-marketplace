@@ -50,7 +50,7 @@ test.describe("chart HiDPI shrink-to-fit sizing", () => {
     ["max-content", "width: max-content"],
     ["inline-block", "display: inline-block"],
     ["float", "float: left"],
-    ["inline-flex item", "display: inline-flex"],
+    ["inline-flex", "display: inline-flex"],
   ]) {
     test(`CMH-CHART-10: a standalone chart in a ${label} container renders at its authored size on HiDPI (dpr 2)`, async ({ browser }) => {
       const { context, page, dir } = await openStandaloneChart(browser, style);
@@ -100,6 +100,90 @@ test.describe("chart HiDPI shrink-to-fit sizing", () => {
       expect(Math.abs(m.clientHeight - proportional)).toBeLessThanOrEqual(4);
       expect(Math.abs(m.bitmap / m.dpr - m.clientWidth)).toBeLessThanOrEqual(2);
       expect(Math.abs(m.bitmapHeight / m.dpr - m.clientHeight)).toBeLessThanOrEqual(2);
+    } finally {
+      await context.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Pin lifecycle through the reveal path: a standalone shrink-to-fit chart authored inside a section
+  // that is collapsed (display:none) at load measures 0 and must NOT be pinned while hidden; the reveal
+  // ResizeObserver then renders it, and it must settle pinned at its authored size (not dpr x, not
+  // stuck at the collapsed fallback) and stay stable across a resize.
+  test("CMH-CHART-10: a standalone shrink-to-fit chart revealed from a collapsed section pins to its authored size (dpr 2)", async ({ browser }) => {
+    const context = await browser.newContext({ deviceScaleFactor: 2, viewport: { width: 1200, height: 900 } });
+    const page = await context.newPage();
+    await denyExternalNetwork(page);
+    const content =
+      '<section><h2>Intro</h2><p>Lead-in prose so the column has width.</p></section>'
+      + '<section class="cmh-section-collapsed" id="sec-chart"><h2>Metrics</h2>'
+      + '<div id="shrink" style="width: max-content">'
+      + '<canvas id="chart" class="cmh-chart" width="' + ATTR_W + '" height="' + ATTR_H + '" role="img" aria-label="Chart"'
+      + " data-cmh-chart-points='" + points + "'></canvas>"
+      + "</div></section>";
+    const { dir, html } = stageContent(content, { key: "cmh-chart-hidpi-reveal", source: "chart-hidpi-reveal.html" });
+    try {
+      await page.goto(fileUrl(html));
+      await ready(page);
+      // While collapsed: measured 0 -> authored fallback, and NOT pinned (you must not pin while hidden).
+      const collapsed = await page.evaluate(() => {
+        const c = document.getElementById("chart");
+        return { clientWidth: c.clientWidth, pinnedW: !!c._cmhPinnedW, bitmap: c.width, dpr: window.devicePixelRatio || 1 };
+      });
+      expect(collapsed.clientWidth).toBe(0);
+      expect(collapsed.pinnedW).toBe(false);
+      expect(collapsed.bitmap).toBe(Math.round(ATTR_W * collapsed.dpr));
+
+      await page.locator("#sec-chart .cmh-sec-caret").click();
+      await expect(page.locator("#sec-chart")).not.toHaveClass(/cmh-section-collapsed/);
+
+      // On reveal it settles pinned at the authored size, bitmap == dpr x css, stable across a resize.
+      await expect
+        .poll(() => page.evaluate(() => {
+          const c = document.getElementById("chart");
+          const d = window.devicePixelRatio || 1;
+          return Math.abs(c.width / d - c.clientWidth);
+        }), { timeout: 5000 })
+        .toBeLessThanOrEqual(2);
+      const after = await readChart(page);
+      expect(Math.abs(after.clientWidth - ATTR_W)).toBeLessThanOrEqual(2);
+      await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+      const m2 = await readChart(page);
+      expect(Math.abs(m2.clientWidth - ATTR_W)).toBeLessThanOrEqual(2);
+      expect(Math.abs(m2.bitmap / m2.dpr - m2.clientWidth)).toBeLessThanOrEqual(2);
+    } finally {
+      await context.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // A hover redraw must NOT re-measure/re-size the bitmap (measure=false reuses the cached size), yet
+  // must still update the active point/tooltip. Guards both the hover cost optimization and that the
+  // interactive hit-test still works after it.
+  test("CMH-CHART-10: hovering a chart updates the active point without resizing the bitmap", async ({ browser }) => {
+    const { context, page, dir } = await openStandaloneChart(browser, "width: max-content");
+    try {
+      const before = await page.evaluate(() => {
+        const c = document.getElementById("chart");
+        return { bitmap: c.width, bitmapHeight: c.height, clientWidth: c.clientWidth };
+      });
+      // Hover across the plot area to land on a bar/point.
+      const box = await page.locator("#chart").boundingBox();
+      await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.6);
+      await expect
+        .poll(() => page.evaluate(() => {
+          const c = document.getElementById("chart");
+          return c._cmhChart ? c._cmhChart.activeIndex : -1;
+        }), { timeout: 3000 })
+        .toBeGreaterThanOrEqual(0);
+      // The bitmap and CSS box are unchanged by the hover redraw (no re-measure/resize on hover).
+      const after = await page.evaluate(() => {
+        const c = document.getElementById("chart");
+        return { bitmap: c.width, bitmapHeight: c.height, clientWidth: c.clientWidth };
+      });
+      expect(after.bitmap).toBe(before.bitmap);
+      expect(after.bitmapHeight).toBe(before.bitmapHeight);
+      expect(after.clientWidth).toBe(before.clientWidth);
     } finally {
       await context.close();
       fs.rmSync(dir, { recursive: true, force: true });
