@@ -4168,8 +4168,13 @@ function classifyDeckDiagramSlide(host) {
 // room for a trailing refs row) is used when smaller. Uses offset/client + a de-scaled rect so the
 // reading is independent of the stage's CSS transform.
 function deckDiagramAvailBox(host, slide) {
-  const availW = host.clientWidth;
-  if (!slide) return { w: availW, h: host.clientHeight };
+  const hcs = getComputedStyle(host);
+  const hPadX = (parseFloat(hcs.paddingLeft) || 0) + (parseFloat(hcs.paddingRight) || 0);
+  const hPadY = (parseFloat(hcs.paddingTop) || 0) + (parseFloat(hcs.paddingBottom) || 0);
+  // Size to the host's CONTENT box: client{Width,Height} include the host's own padding, so a padded
+  // mermaid host (the showcase gives pre.mermaid 26px) would otherwise clip the SVG by 2x the padding.
+  const availW = Math.max(0, host.clientWidth - hPadX);
+  if (!slide) return { w: availW, h: Math.max(0, host.clientHeight - hPadY) };
   const scs = getComputedStyle(slide);
   const padT = parseFloat(scs.paddingTop) || 0;
   const padB = parseFloat(scs.paddingBottom) || 0;
@@ -4179,8 +4184,8 @@ function deckDiagramAvailBox(host, slide) {
   const scale = slide.offsetHeight ? slideRect.height / slide.offsetHeight : 1;
   const hostTop = scale > 0 ? (hostRect.top - slideRect.top) / scale - padT : 0;
   const slideAvailH = contentH - Math.max(0, hostTop);
-  const h = host.clientHeight > 0 ? Math.min(host.clientHeight, slideAvailH) : slideAvailH;
-  return { w: availW, h: h };
+  const rawH = host.clientHeight > 0 ? Math.min(host.clientHeight, slideAvailH) : slideAvailH;
+  return { w: availW, h: Math.max(0, rawH - hPadY) };
 }
 // Scale a deck diagram to fill (contain-fit) the space its diagram-fit slide gives it, using BOTH
 // width and height so a wide-short or a lone diagram is as large as the slide allows without overflow

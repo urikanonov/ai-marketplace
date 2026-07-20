@@ -1306,6 +1306,77 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     }
   });
 
+  test("CMH-DECK-35: navigating to a previously inactive diagram slide fits it (slidechange path)", async ({ page }) => {
+    // The diagram lives on slide 2 (inactive at load). Navigating there fires cmh:slidechange; the
+    // diagram must be contain-fit on the now-active slide. Also proves a re-fit recomputes: the SVG is
+    // deliberately mis-sized first, and the slide change restores the correct fit.
+    const slides =
+      '<section class="slide active" data-slide-id="slide-a"><h2>Intro</h2><p>Opening slide.</p></section>'
+      + '<section class="slide cmh-slide-diagram" data-slide-id="slide-b"><h2>Flow</h2>'
+      + '<pre class="mermaid cm-skip">flowchart TB\n A[Alpha]-->B[Beta]\n B-->C[Gamma]\n C-->D[Delta]</pre></section>';
+    const { dir } = stageDeck(slides, { key: "cmh-deck-mermaid-nav" });
+    const server = await startStaticServer(dir);
+    try {
+      await installClipboardCapture(page);
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/deck.html");
+      await ready(page);
+      await expect.poll(() => page.locator("[data-slide-id='slide-b'] .cm-mermaid-host > svg").count(), { timeout: 20000 }).toBe(1);
+      // Mis-size the SVG and navigate: the cmh:slidechange handler must recompute the contain-fit.
+      await page.evaluate(() => {
+        const svg = document.querySelector("[data-slide-id='slide-b'] .cm-mermaid-host > svg");
+        svg.style.width = "10px";
+        svg.style.height = "10px";
+        window.__cmhDeck.showSlideById("slide-b");
+      });
+      await expect(page.locator(".slide.active[data-slide-id='slide-b']")).toHaveCount(1);
+      await expect.poll(async () => {
+        const m = await fitMetrics(page);
+        return m.svgH > m.contentH * 0.5 && m.svgH <= m.contentH + 2 && m.svgW <= m.contentW + 2;
+      }, { timeout: 10000 }).toBe(true);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-DECK-35: a padded diagram host is fit to its content box, not clipped", async ({ page }) => {
+    // client{Width,Height} include the host's padding; the fit must size the SVG to the host CONTENT
+    // box so a padded host (the showcase gives pre.mermaid 26px) does not clip the diagram.
+    const slides =
+      '<section class="slide active cmh-slide-diagram" data-slide-id="slide-pad"><h2>Padded</h2>'
+      + '<pre class="mermaid cm-skip" style="padding:26px">flowchart LR\n A[Alpha]-->B[Beta]\n B-->C[Gamma]\n C-->D[Delta]</pre>'
+      + '</section>';
+    const { dir } = stageDeck(slides, { key: "cmh-deck-mermaid-pad" });
+    const server = await startStaticServer(dir);
+    try {
+      await installClipboardCapture(page);
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/deck.html");
+      await ready(page);
+      await expect.poll(() => page.locator(".slide.active .cm-mermaid-host > svg").count(), { timeout: 20000 }).toBe(1);
+      // The SVG stays within the host's padded content box (no clip) on both axes.
+      await expect.poll(async () => {
+        return page.evaluate(() => {
+          const stage = document.querySelector(".deck-stage");
+          const prev = stage.style.transform;
+          stage.style.transform = "none";
+          const host = document.querySelector(".slide.active .cm-mermaid-host");
+          const hcs = getComputedStyle(host);
+          const padX = parseFloat(hcs.paddingLeft) + parseFloat(hcs.paddingRight);
+          const padY = parseFloat(hcs.paddingTop) + parseFloat(hcs.paddingBottom);
+          const svg = host.querySelector("svg").getBoundingClientRect();
+          const ok = svg.width <= host.clientWidth - padX + 2 && svg.height <= host.clientHeight - padY + 2;
+          stage.style.transform = prev;
+          return ok;
+        });
+      }, { timeout: 10000 }).toBe(true);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("CMH-DECK-27: sortable-table sort chevrons inherit the deck table header color", async ({ page }) => {
     const slides =
       '<section class="slide active" data-slide-id="slide-sort"><h2>Sortable</h2>'
