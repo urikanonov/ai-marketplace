@@ -773,3 +773,49 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      otherwise cap it far below the slide width; override it so the diagram fills the slide. */
   max-width: none !important;
 }
+/* CMH-DECK-35: a diagram-dominant slide - the author opt-in .cmh-slide-diagram, or the runtime
+   auto-detected .cmh-deck-diagram-slide (a slide whose only non-text content is one diagram) -
+   lays out as a flex column so the diagram fills the remaining slide HEIGHT as well as the width.
+   fitDeckDiagram() then sizes the SVG to contain-fit within the grown host (both dimensions); the
+   width:auto/height:auto + max-*:100% here is the pre-JS / no-JS fallback so the diagram is bounded
+   and never overflows the slide before sizing runs. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram,
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide {
+  display: flex;
+  flex-direction: column;
+}
+/* Un-confine a lone diagram from a half column: flatten ONLY the .cmh-cols-2 that actually holds the
+   diagram (:has) into the slide's flex column so its columns stack in DOM order, and let the column
+   holding the diagram grow, so the diagram uses the full slide width instead of a half-width column.
+   A sibling text-only .cmh-cols-2 on the same slide keeps its two-column layout. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cmh-cols-2:has(.cm-mermaid-host),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cmh-cols-2:has(.cm-mermaid-host) {
+  display: contents;
+}
+/* Propagate the flex context through EVERY ancestor wrapper of the diagram (a column of the flattened
+   grid, or one or more plain wrappers around the diagram - matched at any depth, not just a direct
+   child) so the host is always a flex-grown item and its measured height is space-driven. That keeps
+   the diagram correctly bounded BELOW a trailing block (for example a .cmh-refs row) instead of
+   painting over it, and lets fitDeckDiagram read a true available box. flex:1 1 0% (equal share from a
+   zero basis) also keeps sizing stable when fitDeckDiagram momentarily collapses one SVG to measure
+   it, so two diagrams on a forced .cmh-slide-diagram slide never steal each other's space. The
+   flattened .cmh-cols-2 itself is excluded so it keeps display:contents. */
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram *:has(.cm-mermaid-host):not(.cmh-cols-2),
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide *:has(.cm-mermaid-host):not(.cmh-cols-2) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cm-mermaid-host,
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cm-mermaid-host {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-diagram .cm-mermaid-host > svg,
+#commentRoot[data-cmh-mode="deck"] .slide.cmh-deck-diagram-slide .cm-mermaid-host > svg {
+  width: auto;
+  height: auto;
+  max-width: 100% !important;
+  max-height: 100%;
+}

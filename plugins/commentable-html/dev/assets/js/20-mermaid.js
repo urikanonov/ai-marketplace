@@ -97,7 +97,7 @@ function mermaidHostForIndex(i) { return mermaidDiagrams[i] || null; }
 function mermaidIntrinsicWidth(host) {
   const svg = host && host.querySelector && host.querySelector("svg");
   if (!svg) return 0;
-  const viewBox = (svg.getAttribute("viewBox") || "").trim().split(/\s+/).map(Number);
+  const viewBox = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
   if (viewBox.length === 4 && isFinite(viewBox[2]) && viewBox[2] > 0) return viewBox[2];
   const widthAttr = parseFloat(svg.getAttribute("width") || "");
   if (isFinite(widthAttr) && widthAttr > 0) return widthAttr;
@@ -109,6 +109,13 @@ function mermaidIntrinsicWidth(host) {
 }
 function updateMermaidWidthClass(host) {
   if (!host) return;
+  // A diagram-fit slide sizes the SVG to contain-fit (see fitDeckDiagram); the wide/scroll-fade
+  // affordance (and its narrow-viewport min-width rule) would fight that, so never apply it there.
+  // Only relevant in a deck: outside deck mode the classes drive horizontal scroll for wide diagrams.
+  if (IS_DECK && host.closest && host.closest(".slide.cmh-deck-diagram-slide, .slide.cmh-slide-diagram")) {
+    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade");
+    return;
+  }
   const container = host.clientWidth || host.getBoundingClientRect().width || window.innerWidth || 0;
   const natural = mermaidIntrinsicWidth(host);
   const wide = natural > Math.max(container + 80, 520);
@@ -118,6 +125,104 @@ function updateMermaidWidthClass(host) {
   };
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncFade);
   else setTimeout(syncFade, 0);
+}
+// The rendered SVG's design-space dimensions from its viewBox (the intrinsic aspect ratio used to
+// scale a deck diagram). Returns null when no positive viewBox is present.
+function mermaidViewBoxDims(svg) {
+  const vb = ((svg && svg.getAttribute("viewBox")) || "").trim().split(/[\s,]+/).map(Number);
+  if (vb.length === 4 && isFinite(vb[2]) && isFinite(vb[3]) && vb[2] > 0 && vb[3] > 0) {
+    return { w: vb[2], h: vb[3] };
+  }
+  return null;
+}
+// Rich (non-text) blocks other than a mermaid diagram. A deck slide carrying one of these beside a
+// diagram is a mixed layout and is left alone; a slide whose only non-text content is a single
+// diagram is a "diagram slide" that should hand the diagram the whole slide.
+var DECK_RICH_OTHER_SEL = "img, canvas, table, figure, pre:not(.mermaid), iframe, video, audio, object, embed, svg, .cmh-diff-view, .cmh-chart";
+// Auto-detect a diagram-dominant deck slide: exactly one mermaid host, no other rich block, and no
+// author-authored .cmh-cols-2 (bullets, headings, prose, and a reference row are text, so they do
+// not disqualify it). A slide that HAS a .cmh-cols-2 keeps its explicit two-column layout unless the
+// author opts in with .cmh-slide-diagram (which forces the fill and flattens the column) - so the
+// automatic path never silently destroys a deliberate side-by-side layout. The matched slide is
+// switched to the flex-column diagram-fit layout (see 90-deck.css) so fitDeckDiagram can grow the
+// diagram to fill the slide's height as well as its width, instead of leaving it at its small
+// intrinsic size beside empty space.
+function classifyDeckDiagramSlide(host) {
+  if (!IS_DECK || !host || !host.closest) return;
+  const slide = host.closest(".slide");
+  if (!slide) return;
+  if (slide.classList.contains("cmh-slide-diagram")) { slide.classList.add("cmh-deck-diagram-slide"); return; }
+  const diagrams = slide.querySelectorAll("pre.mermaid, div.mermaid");
+  const hasCols = !!slide.querySelector(".cmh-cols-2");
+  let hasOther = false;
+  slide.querySelectorAll(DECK_RICH_OTHER_SEL).forEach((el) => {
+    // Skip the diagram's own rendered content and any wrapper that CONTAINS the host (e.g. a
+    // <figure> around the diagram) - only a genuine SIBLING rich block is disqualifying.
+    if (host.contains(el) || el.contains(host) || el.closest("pre.mermaid, div.mermaid")) return;
+    hasOther = true;
+  });
+  slide.classList.toggle("cmh-deck-diagram-slide", diagrams.length === 1 && !hasOther && !hasCols);
+}
+// The available box (layout px) a diagram-fit slide gives its diagram. Width is the host's own
+// content width (its full-width column or the slide). Height is measured from the host's top down to
+// the bottom of the slide's fixed content box, so a diagram nested in non-flex wrappers (where the
+// host's own height is content-driven, not space-driven) is still bounded to the slide and can never
+// overflow / clip; where the host IS the flex-grown item its measured height (which also reserves
+// room for a trailing refs row) is used when smaller. Uses offset/client + a de-scaled rect so the
+// reading is independent of the stage's CSS transform.
+function deckDiagramAvailBox(host, slide) {
+  const hcs = getComputedStyle(host);
+  const hPadX = (parseFloat(hcs.paddingLeft) || 0) + (parseFloat(hcs.paddingRight) || 0);
+  const hPadY = (parseFloat(hcs.paddingTop) || 0) + (parseFloat(hcs.paddingBottom) || 0);
+  // Size to the host's CONTENT box: client{Width,Height} include the host's own padding, so a padded
+  // mermaid host (the showcase gives pre.mermaid 26px) would otherwise clip the SVG by 2x the padding.
+  const availW = Math.max(0, host.clientWidth - hPadX);
+  if (!slide) return { w: availW, h: Math.max(0, host.clientHeight - hPadY) };
+  const scs = getComputedStyle(slide);
+  const padT = parseFloat(scs.paddingTop) || 0;
+  const padB = parseFloat(scs.paddingBottom) || 0;
+  const contentH = slide.clientHeight - padT - padB;
+  const slideRect = slide.getBoundingClientRect();
+  const hostRect = host.getBoundingClientRect();
+  const scale = slide.offsetHeight ? slideRect.height / slide.offsetHeight : 1;
+  const hostTop = scale > 0 ? (hostRect.top - slideRect.top) / scale - padT : 0;
+  const slideAvailH = contentH - Math.max(0, hostTop);
+  const rawH = host.clientHeight > 0 ? Math.min(host.clientHeight, slideAvailH) : slideAvailH;
+  return { w: availW, h: Math.max(0, rawH - hPadY) };
+}
+// Scale a deck diagram to fill (contain-fit) the space its diagram-fit slide gives it, using BOTH
+// width and height so a wide-short or a lone diagram is as large as the slide allows without overflow
+// or clipping. Collapse the SVG first so the reading is the available box (not a size the current SVG
+// is inflating), then size the SVG to the largest aspect-preserving box that fits. On a non-fit slide
+// (or a diagram with no viewBox) any explicit sizing is cleared so the width-fill fallback applies.
+// Composes with CMH-MMD-08 (htmlLabels:false): the SVG scales as a whole, so labels stay crisp.
+function fitDeckDiagram(host) {
+  if (!IS_DECK || !host || !host.querySelector) return;
+  const svg = host.querySelector("svg");
+  if (!svg) return;
+  const slide = host.closest && host.closest(".slide");
+  const fit = !!slide && (slide.classList.contains("cmh-deck-diagram-slide") ||
+    slide.classList.contains("cmh-slide-diagram"));
+  const clear = () => { if (svg.style.width || svg.style.height) { svg.style.width = ""; svg.style.height = ""; } };
+  if (!fit) { clear(); return; }
+  const dims = mermaidViewBoxDims(svg);
+  if (!dims) { clear(); return; }
+  svg.style.width = "0px";
+  svg.style.height = "0px";
+  const box = deckDiagramAvailBox(host, slide);
+  if (box.w > 0 && box.h > 0) {
+    const scale = Math.min(box.w / dims.w, box.h / dims.h);
+    svg.style.width = (dims.w * scale) + "px";
+    svg.style.height = (dims.h * scale) + "px";
+  } else {
+    svg.style.width = "";
+    svg.style.height = "";
+  }
+}
+function refreshDeckDiagram(host) {
+  if (!IS_DECK) return;
+  classifyDeckDiagramSlide(host);
+  fitDeckDiagram(host);
 }
 function mermaidNodeKey(nodeEl) {
   const ds = nodeEl.dataset && nodeEl.dataset.id;
@@ -367,6 +472,9 @@ function setupMermaidLayer() {
       comments.forEach(c => {
         if (c.anchorType === "mermaid" && c.diagramIndex === i) applyMermaidHighlight(c);
       });
+      // Classify + fit BEFORE the width-class pass so, on an auto-classified slide, the fit-slide
+      // guard in updateMermaidWidthClass sees the class on the first paint (no transient wide flash).
+      refreshDeckDiagram(host);
       updateMermaidWidthClass(host);
       attachMermaidHostHandlers(host);
     };
@@ -389,15 +497,26 @@ function setupMermaidLayer() {
   if (!setupMermaidLayer._widthResizeBound) {
     setupMermaidLayer._widthResizeBound = true;
     window.addEventListener("resize", function () {
-      mermaidDiagrams.forEach(updateMermaidWidthClass);
+      mermaidDiagrams.forEach(function (host) { updateMermaidWidthClass(host); refreshDeckDiagram(host); });
     });
+    // A deck slide that was inactive (zero-influence layout) when its diagram first rendered is
+    // re-fit when it becomes active, so the diagram fills the slide the first time it is shown. Only
+    // the now-active slide's diagram(s) are refreshed, not every diagram on the deck.
+    if (IS_DECK) {
+      document.addEventListener("cmh:slidechange", function () {
+        const active = root.querySelector(".slide.active");
+        mermaidDiagrams.forEach(function (host) {
+          if (!active || (host.closest && host.closest(".slide") === active)) refreshDeckDiagram(host);
+        });
+      });
+    }
   }
   // A diagram rendered while its section was collapsed had its wide/scroll-fade class computed against
   // a zero-size (window-fallback) container; recompute it when the host gains its real size on reveal.
   if (typeof ResizeObserver === "function") {
     if (setupMermaidLayer._widthObs) setupMermaidLayer._widthObs.disconnect();
     const widthObs = new ResizeObserver(function (entries) {
-      entries.forEach(function (e) { updateMermaidWidthClass(e.target); });
+      entries.forEach(function (e) { updateMermaidWidthClass(e.target); refreshDeckDiagram(e.target); });
     });
     mermaidDiagrams.forEach(function (host) { widthObs.observe(host); });
     setupMermaidLayer._widthObs = widthObs;

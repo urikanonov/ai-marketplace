@@ -67,6 +67,15 @@ taller than the stage. Two failure modes, opposite directions:
   change; also run `tools/audit.mjs` and read `issues` (it flags horizontal overflow and vertical
   clip). A single glyph or badge whose fixed width is smaller than its text will overflow by a few px:
   size such chips with `min-width` + padding, not a hard `width`.
+- **Diagram slides fill automatically.** A slide whose only non-text content is a single Mermaid diagram
+  (and that is NOT laid out as a `.cmh-cols-2`) is auto-scaled to fill the slide AREA (both width and
+  height, contain-to-fit, bounded so it never overflows the stage) - you do not size the diagram by hand.
+  A slide you deliberately lay out as two columns keeps that layout. To FORCE the fill on any slide - for
+  example a diagram authored beside bullets in a `.cmh-cols-2`, which otherwise stays boxed in its
+  half-width column - add `cmh-slide-diagram` to the `<section class="slide ...">`: the slide becomes a
+  flex column, the `.cmh-cols-2` holding the diagram flattens so its columns stack in DOM order (put the
+  text column first for text-above-diagram), and the diagram grows to the full slide width and remaining
+  height without overflow or clipping.
 
 ## Motion must be capture-safe
 
