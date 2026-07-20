@@ -48,17 +48,14 @@ run "script unit tests" "$PY" -m unittest discover -s scripts -p "test_*.py"
 run "forbidden secret-bearing files" "$PY" scripts/check_forbidden_files.py
 run "Backlog.md artifacts absent" "$PY" scripts/check_no_backlog.py
 
-found_python_tests=0
-for _tests in plugins/*/dev/tests; do
-  [ -d "$_tests" ] || continue
-  set -- "$_tests"/test_*.py
-  [ -f "$1" ] || continue
-  found_python_tests=1
-  run "plugin Python tests ($_tests)" "$PY" -m unittest discover -s "$_tests" -p "test_*.py"
-done
-if [ "$found_python_tests" -ne 1 ]; then
-  echo "pre-push: FAILED - no plugin Python test suites were discovered" >&2
-  status=1
+# Plugin Python suites. By default only the suites of plugins changed versus origin/main
+# run, so a docs/scripts/site-only push does not rerun every plugin's suite (the slow part
+# of this hook). Set PREPUSH_FULL=1 to run them all. CI shards and always runs the full set.
+if [ "${PREPUSH_FULL:-0}" = "1" ] || ! git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+  run "plugin Python tests (all)" "$PY" scripts/run_plugin_python_tests.py --require-discovered
+else
+  run "plugin Python tests (changed plugins vs origin/main; PREPUSH_FULL=1 for all)" \
+    "$PY" scripts/run_plugin_python_tests.py --changed-only --base-ref origin/main
 fi
 
 # These two need origin/main to diff against, so guard them on it being fetched
