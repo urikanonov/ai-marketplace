@@ -4,10 +4,12 @@ import fs from "fs";
 import path from "path";
 import { DEV, SKILL } from "./helpers.js";
 
-// These tests each spawn the capture tool, which writes into shared tmp/ scratch dirs, and the
-// afterAll cleanup removes those dirs. Run them serially so one worker's cleanup never wipes a
-// scratch dir another parallel worker's capture subprocess is still writing into.
-test.describe.configure({ mode: "serial" });
+// These tests each spawn the capture tool (a browser-launching subprocess). They are data-safe to
+// run in parallel - the tool isolates its own scratch per process id, and each test below writes to
+// its own uniquely named out dir under a per-worker TEST_TMP root - so they run in the `heavy`
+// Playwright project (its own CI job with a small worker count) rather than serially. Do NOT wipe a
+// SHARED tmp parent here: a per-worker afterAll wiping a dir another worker's subprocess is still
+// writing into is the race the old `mode: serial` guarded; per-worker roots remove that need.
 
 // The thirteen screenshots the tutorial (docs/TUTORIAL.md) embeds as garden-*.png.
 const SHOTS = [
@@ -26,7 +28,9 @@ const EXTRA_SCENES = [
   { prefix: "note", example: path.join(EXAMPLES, "report-notes.html"), shots: ["01-note"] },
 ];
 const REPO = path.resolve(DEV, "..", "..", "..");
-const TEST_TMP = path.join(REPO, "tmp", "tutorial-shots-spec");
+// Per-worker scratch root (process id) so parallel workers never share a dir - and so this file's
+// afterAll only ever removes ITS OWN worker's tree, never a dir another worker is writing into.
+const TEST_TMP = path.join(REPO, "tmp", "tutorial-shots-spec", String(process.pid));
 const PIXEL_CHANNEL_TOLERANCE = 96;
 // Match the tool's --check budget exactly (capture_tutorial.mjs MAX_PIXEL_DIFF_RATIO / MAX_DIMENSION_DELTA)
 // so this cross-run determinism assertion is never STRICTER than the freshness gate it mirrors: a
@@ -141,17 +145,18 @@ async function imagesMatch(comparePage, expected, actual) {
 }
 
 test.afterAll(() => {
+  // Only this worker's own scratch tree. The capture tool cleans its own per-process check/generate
+  // scratch (tmp/tutorial-shots-check/<pid>, tmp/tutorial-shots-generate/<pid>) on success, so do
+  // NOT wipe those shared parents here - that would race a sibling worker's in-flight subprocess.
   fs.rmSync(TEST_TMP, { recursive: true, force: true });
-  fs.rmSync(path.join(REPO, "tmp", "tutorial-shots-check"), { recursive: true, force: true });
 });
 
 // dev/tools/capture_tutorial.mjs must regenerate every tutorial screenshot with one easy command
-// and do it reproducibly, so refreshing the tutorial images is deterministic and reviewable.
-test("one command regenerates and checks all tutorial screenshots, deterministically (CMH-TUT-SHOTS-01)", async ({ browser }) => {
-  test.setTimeout(240000);
-  const comparePage = await browser.newPage();
-  try {
-
+// and do it reproducibly. These behaviors were one monolithic (~5-capture, serial) test; they are
+// split into focused tests, each with its OWN out dir, so the `heavy` project can run them in
+// parallel across a few workers instead of one long serial block. They keep the same CMH-TUT-SHOTS-01
+// coverage: default resolution, regenerate + clean --check, cross-run determinism, and stale detection.
+test("--print-paths resolves the shipped tutorial defaults (CMH-TUT-SHOTS-01)", async () => {
   // The no-argument invocation (what `npm run shots` runs) resolves to the shipped tutorial defaults.
   const dry = spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--print-paths"],
     { encoding: "utf8" });
@@ -162,47 +167,66 @@ test("one command regenerates and checks all tutorial screenshots, deterministic
   expect(defaults.outDir.replace(/\\/g, "/")).toMatch(/plugins\/commentable-html\/docs\/assets$/);
   expect(defaults.prefix).toBe("garden");
   expect(defaults.check).toBe(false);
+});
 
+test("regenerates every garden shot into a nested out dir, and --check passes on fresh output (CMH-TUT-SHOTS-01)", async () => {
+  // Widest budget of the garden tests: this one runs three serial capture subprocesses (capture,
+  // overwrite-capture, and the --check re-capture), so give it extra headroom over the CI-slowed
+  // (2x settle deadline) captures.
+  test.setTimeout(240000);
   // A nonexistent NESTED output dir also exercises recursive out-dir creation.
-  const outA = path.join(freshDir("a"), "nested", "assets");
+  const outA = path.join(freshDir("regen"), "nested", "assets");
   const r1 = capture(EXAMPLE, outA);
   expect(r1.error, String(r1.error)).toBeFalsy();
   expect(r1.status, r1.stderr).toBe(0);
   for (const name of SHOTS) {
     expect(fs.existsSync(path.join(outA, `garden-${name}.png`)), `missing garden-${name}.png`).toBe(true);
   }
-  const r1b = capture(EXAMPLE, outA);
-  expect(r1b.error, String(r1b.error)).toBeFalsy();
-  expect(r1b.status, r1b.stderr).toBe(0);
-
+  // Re-run into the SAME populated dir: `npm run shots` regenerates over the committed images, so
+  // the tool must overwrite an existing populated out dir without erroring (idempotency/overwrite).
+  const r2 = capture(EXAMPLE, outA);
+  expect(r2.error, String(r2.error)).toBeFalsy();
+  expect(r2.status, r2.stderr).toBe(0);
   const clean = check(EXAMPLE, outA);
   expect(clean.error, String(clean.error)).toBeFalsy();
   expect(clean.status, clean.stderr).toBe(0);
   expect(clean.stdout).toContain("tutorial screenshots are in sync");
+});
 
-  const outB = path.join(freshDir("b"), "nested", "assets");
-  const r2 = capture(EXAMPLE, outB);
-  expect(r2.error, String(r2.error)).toBeFalsy();
-  expect(r2.status, r2.stderr).toBe(0);
-  for (const name of SHOTS) {
-    expect(await imagesMatch(
-      comparePage,
-      path.join(outA, `garden-${name}.png`),
-      path.join(outB, `garden-${name}.png`),
-    ), `${name} drifted beyond the normalized screenshot diff budget`).toBe(true);
+test("garden capture is deterministic across two independent runs (CMH-TUT-SHOTS-01)", async ({ browser }) => {
+  test.setTimeout(180000);
+  const comparePage = await browser.newPage();
+  try {
+    const outA = path.join(freshDir("det-a"), "nested", "assets");
+    const outB = path.join(freshDir("det-b"), "nested", "assets");
+    for (const [dir, label] of [[outA, "A"], [outB, "B"]]) {
+      const r = capture(EXAMPLE, dir);
+      expect(r.error, String(r.error)).toBeFalsy();
+      expect(r.status, `capture ${label}: ${r.stderr}`).toBe(0);
+    }
+    for (const name of SHOTS) {
+      expect(await imagesMatch(
+        comparePage,
+        path.join(outA, `garden-${name}.png`),
+        path.join(outB, `garden-${name}.png`),
+      ), `${name} drifted beyond the normalized screenshot diff budget`).toBe(true);
+    }
+  } finally {
+    await comparePage.close();
   }
-  const cleanB = check(EXAMPLE, outB);
-  expect(cleanB.error, String(cleanB.error)).toBeFalsy();
-  expect(cleanB.status, cleanB.stderr).toBe(0);
+});
 
+test("--check flags a stale garden shot (CMH-TUT-SHOTS-01)", async () => {
+  test.setTimeout(180000);
+  const outA = path.join(freshDir("stale"), "nested", "assets");
+  const r1 = capture(EXAMPLE, outA);
+  expect(r1.error, String(r1.error)).toBeFalsy();
+  expect(r1.status, r1.stderr).toBe(0);
   fs.writeFileSync(path.join(outA, "garden-01-top-light.png"), Buffer.from("stale screenshot"));
   const stale = check(EXAMPLE, outA);
   expect(stale.error, String(stale.error)).toBeFalsy();
   expect(stale.status, stale.stdout + stale.stderr).toBe(1);
   expect(stale.stderr).toContain("garden-01-top-light.png differs");
-  } finally {
-    await comparePage.close();
-  }
 });
 
 // The board, checklist, and note features render only in their own example reports, so the tool
@@ -251,12 +275,13 @@ for (const scene of EXTRA_SCENES) {
   });
 }
 
-// The no-positional default run (`npm run shots` / rebuild_all) drives ALL scenes at once. The
-// per-scene tests above only exercise the single-scene positional path, so this test guards the
-// multi-scene orchestration and the tool/spec shot contract: a SCENE_ORDER drift that dropped a
-// scene, or a shot added to the tool but not the spec (or vice versa), is caught here.
-test("the no-arg default run orchestrates every scene and matches the tool's shot registry (CMH-TUT-SHOTS-01)", async () => {
-  test.setTimeout(240000);
+// The no-positional default run (`npm run shots` / rebuild_all) drives ALL scenes at once. This test
+// guards the tool/spec shot contract: a SCENE_ORDER drift that dropped a scene, or a shot added to
+// the tool but not the spec (or vice versa), is caught here. The actual all-scenes `--check` freshness
+// run is NOT repeated here (it would re-capture every scene, the heaviest single step): the required
+// `plugin-tests` heavy-job shard 1/3 `shots:check` step already runs `capture_tutorial.mjs --check`,
+// so duplicating it in the suite only slowed the heavy job.
+test("the no-arg default run's shot registry matches the spec's scene lists (CMH-TUT-SHOTS-01)", async () => {
   const dry = spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--print-paths"], { encoding: "utf8" });
   expect(dry.error, String(dry.error)).toBeFalsy();
   expect(dry.status, dry.stderr).toBe(0);
@@ -265,11 +290,4 @@ test("the no-arg default run orchestrates every scene and matches the tool's sho
   expect(registry.garden).toEqual(SHOTS);
   for (const scene of EXTRA_SCENES) expect(registry[scene.prefix]).toEqual(scene.shots);
   expect(Object.keys(registry).sort()).toEqual(["checklist", "garden", "note", "triage"]);
-  // The no-positional --check run captures every scene fresh and compares to the committed
-  // docs/assets images; a dropped scene would capture fewer files or fall out of sync.
-  const all = spawnSync("node", [path.join(DEV, "tools", "capture_tutorial.mjs"), "--check"],
-    { encoding: "utf8", timeout: 220000, killSignal: "SIGKILL" });
-  expect(all.error, String(all.error)).toBeFalsy();
-  expect(all.status, all.stdout + all.stderr).toBe(0);
-  expect(all.stdout).toContain("tutorial screenshots are in sync");
 });
