@@ -915,27 +915,48 @@ test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark
 test("CMH-DECK-SHOWCASE-11: showcase amber title highlights do not paint a halo above the line", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    await showSlideWith(page, ".show-mark");
-    const mark = page.locator(".slide.active .show-mark").first();
-    await expect(mark).toBeVisible();
-    await expect(mark).toHaveCSS("box-shadow", "none");
-    // The highlight must paint via a height-capped linear-gradient, not a full em-box background
-    // fill: on the tight-line-height title/section headings a solid fill paints the whole (tall
-    // Segoe UI) font box and bleeds up into the previous row. background-size gives a bounded,
-    // font-metric-independent paint height that hugs the letters.
-    const paint = await mark.evaluate((el) => {
-      const style = getComputedStyle(el);
-      const capToken = style.backgroundSize.split(" ")[1];
-      return {
-        image: style.backgroundImage,
-        capPx: parseFloat(capToken),
-        fontPx: parseFloat(style.fontSize),
-      };
+    // Cover EVERY highlight (title h1, header h1, and h2 headings, single- and multi-line), not just
+    // the first slide: navigate to each slide that carries a .show-mark and assert the contract on
+    // its visible marks (computed styles only resolve reliably on the active, rendered slide).
+    const slideIds = await page.evaluate(() => {
+      const ids = new Set();
+      document.querySelectorAll(".slide .show-mark").forEach((m) => ids.add(m.closest(".slide").dataset.slideId));
+      return [...ids];
     });
-    expect(paint.image).toContain("linear-gradient");
-    expect(Number.isFinite(paint.capPx)).toBe(true);
-    expect(paint.capPx).toBeGreaterThan(paint.fontPx);
-    expect(paint.capPx).toBeLessThan(paint.fontPx * 1.3);
+    expect(slideIds.length).toBeGreaterThan(0);
+    let checked = 0;
+    for (const id of slideIds) {
+      await page.evaluate((x) => window.__cmhDeck.showSlideById(x), id);
+      const marks = await page.$$eval(".slide.active .show-mark", (nodes) =>
+        nodes.map((el) => {
+          const style = getComputedStyle(el);
+          return {
+            image: style.backgroundImage,
+            boxShadow: style.boxShadow,
+            posY: parseFloat(style.backgroundPositionY),
+            capPx: parseFloat(style.backgroundSize.split(" ")[1]),
+            fontPx: parseFloat(style.fontSize),
+            linePx: parseFloat(style.lineHeight),
+          };
+        }),
+      );
+      expect(marks.length).toBeGreaterThan(0);
+      for (const m of marks) {
+        // Height-capped linear-gradient, no halo.
+        expect(m.image).toContain("linear-gradient");
+        expect(m.boxShadow).toBe("none");
+        expect(Number.isFinite(m.capPx)).toBe(true);
+        // Covers the glyphs...
+        expect(m.capPx).toBeGreaterThanOrEqual(m.fontPx * 0.85);
+        // ...but never exceeds the heading's line box, so it cannot bleed into the row above.
+        expect(m.capPx).toBeLessThanOrEqual(m.linePx + 0.5);
+        // Biased downward (not centred), so it hugs the baseline-to-ascender ink and clears the
+        // descenders of the row above; a revert to a centred 50% position must fail here.
+        expect(m.posY).toBeGreaterThan(50);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   } finally {
     await server.close();
   }
