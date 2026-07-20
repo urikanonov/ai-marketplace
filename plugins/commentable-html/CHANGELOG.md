@@ -56,7 +56,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   has no `<link rel="icon">` favicon in its head, so a missing favicon is caught before handoff
   (CMH-KIND-05). `retrofit.py` injects the CMH favicon when the host head has none, and
   `upgrade.py` adds it when migrating a pre-favicon document (neither duplicates an existing one).
-
 ## [1.190.0] - 2026-07-20
 
 ### Fixed

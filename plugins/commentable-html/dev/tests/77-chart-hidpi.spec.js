@@ -51,6 +51,7 @@ test.describe("chart HiDPI shrink-to-fit sizing", () => {
     ["inline-block", "display: inline-block"],
     ["float", "float: left"],
     ["inline-flex", "display: inline-flex"],
+    ["inline-grid", "display: inline-grid"],
   ]) {
     test(`CMH-CHART-10: a standalone chart in a ${label} container renders at its authored size on HiDPI (dpr 2)`, async ({ browser }) => {
       const { context, page, dir } = await openStandaloneChart(browser, style);
@@ -100,6 +101,54 @@ test.describe("chart HiDPI shrink-to-fit sizing", () => {
       expect(Math.abs(m.clientHeight - proportional)).toBeLessThanOrEqual(4);
       expect(Math.abs(m.bitmap / m.dpr - m.clientWidth)).toBeLessThanOrEqual(2);
       expect(Math.abs(m.bitmapHeight / m.dpr - m.clientHeight)).toBeLessThanOrEqual(2);
+    } finally {
+      await context.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The runtime pins per axis and must never clobber an author's own inline sizing: a chart with an
+  // author inline height in a max-content container keeps that height across renders/resizes (the
+  // runtime never removes or overwrites an inline declaration on an axis it did not pin).
+  test("CMH-CHART-10: pinning one axis preserves the author's inline sizing on the other axis", async ({ browser }) => {
+    const context = await browser.newContext({ deviceScaleFactor: 2, viewport: { width: 1200, height: 900 } });
+    const page = await context.newPage();
+    await denyExternalNetwork(page);
+    const content =
+      '<section><h2>Metrics</h2><p>Lead-in.</p>'
+      + '<div style="width: max-content">'
+      + '<canvas id="chart" class="cmh-chart" style="height: 220px !important" width="' + ATTR_W + '" height="' + ATTR_H + '"'
+      + " role='img' aria-label='Chart' data-cmh-chart-points='" + points + "'></canvas>"
+      + "</div></section>";
+    const { dir, html } = stageContent(content, { key: "cmh-chart-inline", source: "chart-inline.html" });
+    try {
+      await page.goto(fileUrl(html));
+      await ready(page);
+      const read = () => page.evaluate(() => {
+        const c = document.getElementById("chart");
+        return {
+          clientWidth: c.clientWidth,
+          clientHeight: c.clientHeight,
+          bitmap: c.width,
+          dpr: window.devicePixelRatio || 1,
+          inlineHeight: c.style.getPropertyValue("height"),
+          inlineHeightPri: c.style.getPropertyPriority("height"),
+          pinnedH: !!c._cmhPinnedH,
+        };
+      });
+      const m = await read();
+      // The author's inline height is honored (~220) and untouched by the runtime; the chart is not
+      // dpr-oversized (the backing bitmap is exactly dpr x the displayed box).
+      expect(m.inlineHeight).toBe("220px");
+      expect(m.inlineHeightPri).toBe("important");
+      expect(m.pinnedH).toBe(false);
+      expect(Math.abs(m.clientHeight - 220)).toBeLessThanOrEqual(2);
+      expect(Math.abs(m.bitmap / m.dpr - m.clientWidth)).toBeLessThanOrEqual(2);
+      // A resize re-render must still leave the author's inline height in place.
+      await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+      const m2 = await read();
+      expect(m2.inlineHeight).toBe("220px");
+      expect(m2.inlineHeightPri).toBe("important");
     } finally {
       await context.close();
       fs.rmSync(dir, { recursive: true, force: true });

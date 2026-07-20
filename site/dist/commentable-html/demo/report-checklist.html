@@ -5286,15 +5286,33 @@ function _chartEventPoint(canvas, event) {
 // falls back to the authored width/height attributes (CMH-CHART-09). The authored attributes are
 // captured once, before any bitmap write, because setting canvas.width/height reflects onto those
 // content attributes and would otherwise drift each render.
+// Clear a size pin the runtime set on one axis, restoring whatever inline declaration was there
+// before. It only reclaims the pin when the current inline declaration is STILL exactly the one the
+// runtime set - if author code changed style.width/height after the pin, that value is left alone and
+// the runtime relinquishes ownership.
+function _clearChartAxisPin(canvas, prop, pinKey, savedValKey, savedPriKey, pinnedKey) {
+  if (!canvas[pinnedKey]) return;
+  if (canvas.style.getPropertyValue(prop) === canvas[pinKey] && canvas.style.getPropertyPriority(prop) === "important") {
+    if (canvas[savedValKey]) canvas.style.setProperty(prop, canvas[savedValKey], canvas[savedPriKey]);
+    else canvas.style.removeProperty(prop);
+  }
+  canvas[pinnedKey] = false;
+}
 function _sizeChartCanvas(canvas, dpr) {
   if (canvas._cmhAttrW == null) {
     canvas._cmhAttrW = Math.max(1, Math.round(Number(canvas.getAttribute("width")) || canvas.width || 760));
     canvas._cmhAttrH = Math.max(1, Math.round(Number(canvas.getAttribute("height")) || canvas.height || 340));
+    // Remember the author's own inline width/height (value + priority), captured before the runtime
+    // ever pins, so clearing a pin restores exactly what was there rather than deleting it.
+    canvas._cmhInlineW = canvas.style.getPropertyValue("width");
+    canvas._cmhInlineWPri = canvas.style.getPropertyPriority("width");
+    canvas._cmhInlineH = canvas.style.getPropertyValue("height");
+    canvas._cmhInlineHPri = canvas.style.getPropertyPriority("height");
   }
   // Clear only a pin WE set on a prior render (per axis), so the measurement reflects the current
   // layout without clobbering an author's own inline width/height on an axis we never pinned.
-  if (canvas._cmhPinnedW) { canvas.style.removeProperty("width"); canvas._cmhPinnedW = false; }
-  if (canvas._cmhPinnedH) { canvas.style.removeProperty("height"); canvas._cmhPinnedH = false; }
+  _clearChartAxisPin(canvas, "width", "_cmhPinW", "_cmhInlineW", "_cmhInlineWPri", "_cmhPinnedW");
+  _clearChartAxisPin(canvas, "height", "_cmhPinH", "_cmhInlineH", "_cmhInlineHPri", "_cmhPinnedH");
   canvas.width = canvas._cmhAttrW;
   canvas.height = canvas._cmhAttrH;
   let width = canvas.clientWidth;
@@ -5305,8 +5323,8 @@ function _sizeChartCanvas(canvas, dpr) {
   height = Math.max(1, Math.round(height));
   canvas.width = Math.max(1, Math.round(width * dpr));
   canvas.height = Math.max(1, Math.round(height * dpr));
-  if (canvas.clientWidth > width + 1) { canvas.style.setProperty("width", width + "px", "important"); canvas._cmhPinnedW = true; }
-  if (canvas.clientHeight > height + 1) { canvas.style.setProperty("height", height + "px", "important"); canvas._cmhPinnedH = true; }
+  if (canvas.clientWidth > width + 1) { canvas._cmhPinW = width + "px"; canvas.style.setProperty("width", canvas._cmhPinW, "important"); canvas._cmhPinnedW = true; }
+  if (canvas.clientHeight > height + 1) { canvas._cmhPinH = height + "px"; canvas.style.setProperty("height", canvas._cmhPinH, "important"); canvas._cmhPinnedH = true; }
   return { width: width, height: height };
 }
 function renderInteractiveChart(canvas, activeIndex, measure) {
