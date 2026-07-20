@@ -179,6 +179,11 @@ test("regenerates every garden shot into a nested out dir, and --check passes on
   for (const name of SHOTS) {
     expect(fs.existsSync(path.join(outA, `garden-${name}.png`)), `missing garden-${name}.png`).toBe(true);
   }
+  // Re-run into the SAME populated dir: `npm run shots` regenerates over the committed images, so
+  // the tool must overwrite an existing populated out dir without erroring (idempotency/overwrite).
+  const r2 = capture(EXAMPLE, outA);
+  expect(r2.error, String(r2.error)).toBeFalsy();
+  expect(r2.status, r2.stderr).toBe(0);
   const clean = check(EXAMPLE, outA);
   expect(clean.error, String(clean.error)).toBeFalsy();
   expect(clean.status, clean.stderr).toBe(0);

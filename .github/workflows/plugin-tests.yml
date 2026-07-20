@@ -137,10 +137,6 @@ jobs:
         run: test -f package-lock.json || { echo "::error::this plugin's dev/ needs a committed package-lock.json for npm ci"; exit 1; }
       - name: Install dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts
-      - name: Verify committed test fixtures
-        if: matrix.plugin == 'plugins/commentable-html' && startsWith(matrix.shard, '1/')
-        working-directory: .
-        run: node plugins/commentable-html/dev/tests/fixtures/generate.mjs --check
       - name: Resolve Playwright cache key inputs
         id: pw
         shell: bash
@@ -169,11 +165,6 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
-      # The tutorial-screenshot check is not shardable, so run it once (on shard 1 of the
-      # commentable-html suite that owns it) instead of in every shard.
-      - name: Verify tutorial screenshots (once)
-        if: matrix.plugin == 'plugins/commentable-html' && startsWith(matrix.shard, '1/')
-        run: npm run shots:check
       - name: Run Playwright tests (fast project shard)
         run: npx playwright test --project=fast "--shard=${SHARD}"
 
@@ -184,13 +175,13 @@ jobs:
   # project today; a future plugin suite that wants the split defines `fast`/`heavy` projects too.
   playwright-heavy:
     needs: [changes, discover]
-    if: ${{ needs.changes.outputs.run_plugin == 'true' && contains(needs.discover.outputs.plugins, 'plugins/commentable-html') }}
+    if: ${{ needs.changes.outputs.run_plugin == 'true' && contains(fromJSON(needs.discover.outputs.plugins), 'plugins/commentable-html') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/2", "2/2"]
+        shard: ["1/3", "2/3", "3/3"]
     env:
       SHARD: ${{ matrix.shard }}
     defaults:
@@ -228,11 +219,22 @@ jobs:
       - name: Install Playwright browser (cache hit)
         if: steps.pwcache.outputs.cache-hit == 'true'
         run: npx playwright install chromium
-      # workers=4 = the runner's vCPU count. The heavy specs isolate their scratch per process id
-      # and each writes to its own out dir (validated stable on a 4-CPU-capped Linux runner), so
-      # they run in parallel here without the OS thrash that would flake a mixed fast shard.
+      # The once-only commentable-html checks run here (on heavy shard 1) rather than on a fast shard,
+      # so they do not make a fast shard the critical path. The fixtures --check and the tutorial
+      # screenshot --check both belong with the commentable-html suite the heavy job owns.
+      - name: Verify committed test fixtures (once)
+        if: matrix.shard == '1/3'
+        run: node tests/fixtures/generate.mjs --check
+      - name: Verify tutorial screenshots (once)
+        if: matrix.shard == '1/3'
+        run: npm run shots:check
+      # workers=3 (below the runner's 4 vCPUs): each heavy test spawns its OWN capture chromium
+      # subprocess, so 3 workers keep the peak concurrent-browser count off the OS-thrash ceiling
+      # that could flake the wall-clock settle deadlines. The heavy specs isolate their scratch per
+      # process id and each writes to its own out dir (validated stable, no retries, on the 4-vCPU
+      # CI runner), so they run in parallel here without thrashing a shard.
       - name: Run Playwright tests (heavy project shard)
-        run: npx playwright test --project=heavy "--shard=${SHARD}" --workers=4
+        run: npx playwright test --project=heavy "--shard=${SHARD}" --workers=3
 
   python:
     needs: changes

@@ -176,7 +176,12 @@ To add browser tests to a plugin, drop these under its `dev/` folder (see `plugi
 working example):
 
 - `package.json` with `@playwright/test` and a `"test": "playwright test"` script,
-- `playwright.config.js` with `testDir: "./tests"`,
+- `playwright.config.js` with `testDir: "./tests"` and a `fast` project (the `playwright` CI job runs
+  `--project=fast`; if a plugin's config has no `fast` project the shard fails with "project not found").
+  Split off any browser-subprocess/screenshot specs into a `heavy` project (see commentable-html's
+  `tests/_projects.mjs` + `playwright.config.js`) so they run in the separate `playwright-heavy` job
+  instead of thrashing a fast shard; a plugin with no such specs can leave the `heavy` project empty,
+  and the `playwright-heavy` job (currently commentable-html-specific) is extended per plugin as needed,
 - specs under `dev/tests/`,
 - a committed `package-lock.json` (so CI can `npm ci`).
 
