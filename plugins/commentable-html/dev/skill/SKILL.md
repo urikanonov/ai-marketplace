@@ -5,11 +5,41 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.175.0`
+**Version:** `1.177.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
 This plugin installs into both Claude Code and the GitHub Copilot CLI (add the marketplace, then `claude plugin install commentable-html@urikan-ai-marketplace` or `copilot plugin install commentable-html@urikan-ai-marketplace`), and the skill is invokable from each agent's CLI and Desktop app. The output is a portable HTML file that works with any agent.
+
+## Capabilities (use the tested tool - never invent a mechanism)
+
+commentable-html already ships a tested tool or contract for every capability below. When a request calls for one of these, USE THE NAMED TOOL/CONTRACT and its reference - do NOT hand-author fragile markup or reach for a novel mechanism of your own; the runtime, validator, and tests only cover these tested paths, and inventing an alternative is exactly how a document ships broken. Each has richer guidance in the linked reference and in Step 3b below.
+
+- **Review surface (every document):** reviewers select prose, table cells, headings, code lines, KQL, diffs, mermaid, charts, images, or widgets and leave inline comments; `localStorage` persistence; **Copy all** and embedded-comment export; handled-id pruning. See [Interaction model](references/interaction-model.md).
+- **Highlighted code + copy button** - `tools/blocks/highlight_code.py` or `tools/blocks/highlight_document.py`. See [Code blocks](references/code-blocks.md).
+- **Runnable KQL block + Run-in-ADE link** - `tools/kusto/kql_highlight.py` (bare link: `tools/kusto/kusto_link.py`). See [Kusto query blocks](references/kusto-query-blocks.md).
+- **Unified code-review diff** - `tools/blocks/diff_block.py`. See [Code review diffs](references/code-review-diffs.md).
+- **Mermaid diagram** with structural comments. See [Mermaid diagrams](references/mermaid-diagrams.md).
+- **Chart.js chart** - `tools/blocks/chart_block.py`. See [Chart embedding](references/charts-embedding.md).
+- **Commentable image** - `tools/authoring/inline_images.py`. See [Images](references/images-commentable.md).
+- **Table of contents, section cards, doc-overview stats strip, sortable tables, callouts and asides.** See [Document layout](references/document-layout.md).
+- **Layered checklist** - `tools/checklist/checklist_scaffold.py`. See [Layered checklist contract](references/checklist-contract.md).
+- **Editable notes fields** - `tools/notes/notes_scaffold.py`. See [Editable notes-field contract](references/notes-contract.md).
+- **Commentable widgets, SVG parts, draggable slots (`data-cm-part`), and document-wide comments.** See [Commentable widgets](references/commentable-widgets.md).
+- **Document forms:** report, plan, board, or generic (`--kind`), and a real animated slide **deck** built with `tools/deck/deck_scaffold.py`. See the Deck capability section below.
+- **Output modes:** NonPortable (fast iteration), Portable (peer review), Offline (zero-network handoff), plus Plain HTML / Markdown export. See [Exports](references/exports.md).
+- **Theming and branding:** `--cp-*` theme tokens, deck theme presets, reusable brand profiles (`--brand`), and chrome density (`data-cm-density`). See [Document layout](references/document-layout.md).
+
+## Always validate before handoff (MUST)
+
+Before you return, save, or share ANY commentable-html document, you MUST finalize it and pass strict validation, and fix everything they report:
+
+```bash
+python tools/authoring/finalize.py <file> --strict
+python tools/validate/validate.py --strict <file.html>
+```
+
+A document that skipped this is NOT done - it can ship with monochrome code or a broken review layer. If Python is unavailable, say so EXPLICITLY (so the user knows the file is unverified) and run the manual checks in [Validation](references/validation.md). Full guidance is in Step 4 below.
 
 ## Review loops
 

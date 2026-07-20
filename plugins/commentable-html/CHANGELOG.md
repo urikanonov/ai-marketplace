@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.177.0] - 2026-07-20
+
+### Changed
+
+- `SKILL.md` now opens with a single upfront `## Capabilities` list (above the detailed Steps) that
+  names the tested tool or contract for every capability - the review surface, highlighted code, KQL,
+  diffs, mermaid, charts, images, layout, layered checklists, editable notes fields, commentable
+  widgets, document forms and decks, output modes, and theming - and directs the agent to use the
+  named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed
+  that CMH already supports editable notes fields and considered building its own. A companion
+  `## Always validate before handoff (MUST)` section states the mandatory
+  `finalize.py --strict` + `validate.py --strict` pass upfront so it cannot be missed. (CMH-DOC-17)
+
 ## [1.175.0] - 2026-07-19
 
 ### Fixed
