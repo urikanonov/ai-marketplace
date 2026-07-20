@@ -421,6 +421,10 @@ def derive_branch(number, text=""):
 
 # --- board (open issues x handling session x last activity) ----------------------------
 
+# Upper bound on issues fetched for the board (a maintainer overview, not a paginated report);
+# cmd_board warns on stderr if the fetch hits this so issues are never omitted silently.
+BOARD_LIMIT = 300
+
 BOARD_COLUMNS = [
     ("number", "Issue"),
     ("state", "State"),
@@ -799,10 +803,14 @@ def cmd_board(a):
     now = datetime.now(timezone.utc)
     viewer = _viewer_login()
     args = ["gh", "issue", "list", "--repo", REPO, "--state", "open",
-            "--limit", "300", "--json", "number,title"]
+            "--limit", str(BOARD_LIMIT), "--json", "number,title"]
     if not a.all_labels:
         args += ["--label", TASK_LABEL]
     issues = json.loads(_capture(args))
+    if len(issues) >= BOARD_LIMIT:
+        # Never omit issues SILENTLY: say so on stderr if the fetch hit the cap.
+        sys.stderr.write(f"board: showing the first {BOARD_LIMIT} open issues; more may exist "
+                         "(the board is a maintainer overview, not a paginated report)\n")
     issues.sort(key=lambda it: it.get("number", 0))
     rows = []
     for it in issues:

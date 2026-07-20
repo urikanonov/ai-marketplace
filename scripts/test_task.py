@@ -838,27 +838,42 @@ class _StubStartBoundary:
         self._orig = (task._run, task._capture, task._upsert_status)
         task._run = self._run
         task._capture = lambda args: ""
-        task._upsert_status = lambda number, branch, stamp=None, session="": self.upserts.append((number, branch))
+        task._upsert_status = lambda number, branch, stamp=None, session="": self.upserts.append((number, branch, session))
         return self
 
     def __exit__(self, *exc):
         task._run, task._capture, task._upsert_status = self._orig
 
 
-def _start_args(number=7, slug="foo", branch=None, name=None):
+def _start_args(number=7, slug="foo", branch=None, name=None, session_id=None):
     return task.build_parser().parse_args(
         ["start", str(number)]
         + (["--slug", slug] if slug is not None else [])
         + (["--branch", branch] if branch else [])
-        + (["--name", name] if name else []))
+        + (["--name", name] if name else [])
+        + (["--session-id", session_id] if session_id else []))
 
 
 class CmdStartTests(unittest.TestCase):
+    def setUp(self):
+        # Hermetic: the local dev box sets COPILOT_AGENT_SESSION_ID, which would leak into the
+        # forwarded session. Pop it so the default is a known empty string.
+        self._env = os.environ.pop("COPILOT_AGENT_SESSION_ID", None)
+
+    def tearDown(self):
+        if self._env is not None:
+            os.environ["COPILOT_AGENT_SESSION_ID"] = self._env
+
     def test_success_creates_worktree_and_stamps(self):
         with _StubStartBoundary(claim_rc=0) as stub:
             task.cmd_start(_start_args(7, "Heartbeat work"))
         self.assertTrue(any("worktree" in r for r in stub.runs))
-        self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work")])
+        self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work", "")])
+
+    def test_forwards_the_session_id_to_the_stamp(self):
+        with _StubStartBoundary(claim_rc=0) as stub:
+            task.cmd_start(_start_args(7, "Heartbeat work", session_id="sess-xyz"))
+        self.assertEqual(stub.upserts, [(7, "issue-7-heartbeat-work", "sess-xyz")])
 
     def test_aborts_and_does_not_stamp_when_claim_fails(self):
         with _StubStartBoundary(claim_rc=1) as stub:
