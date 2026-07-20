@@ -552,9 +552,17 @@ test("the plugin page leads with a review-workflow showcase and a real UI screen
   expect(cardStyle.shadow).not.toBe("none");
 
   // The gap below the showcase is tight (the card sits close to the next section) - the block's own
-  // bottom padding is small, not the old large gap.
+  // bottom padding is small AND the following "Why" section's top padding is trimmed, so the visible
+  // gap between the showcase card and the "Why" section card is about half the default section gap.
   const showcasePadBottom = await showcase.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
   expect(showcasePadBottom).toBeLessThanOrEqual(16);
+  const cardToWhyGap = await page.evaluate(() => {
+    const card = document.querySelector("#showcase .showcase-card").getBoundingClientRect();
+    const why = document.querySelector("#why .section-block").getBoundingClientRect();
+    return why.top - card.bottom;
+  });
+  expect(cardToWhyGap).toBeGreaterThan(0);
+  expect(cardToWhyGap).toBeLessThanOrEqual(36);
 
   // The showcase leads the page: it is the FIRST element after the hero header (not buried below
   // other blocks), so the value proposition is on the first screen.
