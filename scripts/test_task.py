@@ -120,6 +120,77 @@ class TickCheckboxTests(unittest.TestCase):
             task.tick_checkbox(body, 3)
 
 
+class TickAllCheckboxesTests(unittest.TestCase):
+    BODY = "Desc\n\n## Acceptance criteria\n\n- [ ] one\n- [ ] two\n- [ ] three\n"
+
+    def test_ticks_every_criterion(self):
+        out = task.tick_all_checkboxes(self.BODY)
+        self.assertIn("- [x] one", out)
+        self.assertIn("- [x] two", out)
+        self.assertIn("- [x] three", out)
+
+    def test_preserves_text_outside_ac_section(self):
+        body = ("Desc\n\n## Implementation plan\n\n- [ ] plan step\n\n"
+                "## Acceptance criteria\n\n- [ ] real one\n- [ ] real two\n\n## Notes\n\nkeep me\n")
+        out = task.tick_all_checkboxes(body)
+        self.assertIn("- [ ] plan step", out)  # a checkbox outside the AC section is untouched
+        self.assertIn("- [x] real one", out)
+        self.assertIn("- [x] real two", out)
+        self.assertIn("keep me", out)
+
+    def test_idempotent_when_all_checked(self):
+        body = "## Acceptance criteria\n\n- [x] a\n- [x] b\n"
+        self.assertEqual(task.tick_all_checkboxes(body), "## Acceptance criteria\n\n- [x] a\n- [x] b")
+
+    def test_preserves_indentation(self):
+        out = task.tick_all_checkboxes("## Acceptance criteria\n\n  - [ ] nested\n")
+        self.assertIn("  - [x] nested", out)
+
+    def test_no_criteria_raises(self):
+        with self.assertRaises(IndexError):
+            task.tick_all_checkboxes("## Acceptance criteria\n\nno boxes here\n")
+
+    def test_no_acceptance_heading_does_not_tick_unrelated_boxes(self):
+        # Without a "## Acceptance criteria" heading, --all must NOT fall back to the whole body
+        # and tick unrelated checkboxes (e.g. an implementation plan or "before starting" list).
+        body = "## Implementation plan\n\n- [ ] step one\n- [ ] step two\n"
+        with self.assertRaises(IndexError):
+            task.tick_all_checkboxes(body)
+
+    def test_preserves_blank_lines_and_headings(self):
+        # The whole Markdown structure (blank lines, headings, prose) must survive verbatim -
+        # this is exactly what a naive PowerShell array round-trip destroyed on issue #478.
+        body = ("## Description\n\nWhy.\n\n## Acceptance criteria\n\n- [ ] a\n- [ ] b\n\n"
+                "## Notes\n\nEnd.\n")
+        out = task.tick_all_checkboxes(body)
+        self.assertEqual(out, ("## Description\n\nWhy.\n\n## Acceptance criteria\n\n"
+                               "- [x] a\n- [x] b\n\n## Notes\n\nEnd."))
+
+
+class ApplyAcCheckTests(unittest.TestCase):
+    BODY = "## Acceptance criteria\n\n- [ ] one\n- [ ] two\n"
+
+    def test_all_flag_ticks_every_criterion(self):
+        out = task.apply_ac_check(self.BODY, None, True)
+        self.assertIn("- [x] one", out)
+        self.assertIn("- [x] two", out)
+
+    def test_index_ticks_only_that_criterion(self):
+        out = task.apply_ac_check(self.BODY, 2, False)
+        self.assertIn("- [ ] one", out)
+        self.assertIn("- [x] two", out)
+
+    def test_neither_index_nor_all_raises(self):
+        with self.assertRaises(ValueError):
+            task.apply_ac_check(self.BODY, None, False)
+
+    def test_index_and_all_together_raises(self):
+        # --all with an explicit index is contradictory; fail loudly instead of silently
+        # discarding the index and ticking everything.
+        with self.assertRaises(ValueError):
+            task.apply_ac_check(self.BODY, 1, True)
+
+
 class ParserTests(unittest.TestCase):
     def test_new_parses_repeatable_ac(self):
         args = task.build_parser().parse_args(
@@ -128,6 +199,16 @@ class ParserTests(unittest.TestCase):
 
     def test_search_all_flag(self):
         args = task.build_parser().parse_args(["search", "topic", "--all"])
+        self.assertTrue(args.all)
+
+    def test_check_ac_parses_index(self):
+        args = task.build_parser().parse_args(["check-ac", "188", "2"])
+        self.assertEqual(args.index, 2)
+        self.assertFalse(args.all)
+
+    def test_check_ac_parses_all_flag_without_index(self):
+        args = task.build_parser().parse_args(["check-ac", "188", "--all"])
+        self.assertIsNone(args.index)
         self.assertTrue(args.all)
 
     def test_claim_accepts_branch(self):
