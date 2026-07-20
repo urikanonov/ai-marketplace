@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.175.0";
+const CMH_VERSION = "1.178.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -9654,8 +9654,10 @@ function setupDeck() {
     if (commentMode || e.defaultPrevented || isEditableTarget(e.target) || hasBlockingDeckChrome()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown") {
       if (show(current + 1)) e.preventDefault();
-    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-      if (show(current - 1)) e.preventDefault();
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "Backspace") {
+      // Backspace carries a legacy browser "history back" default; the deck owns it, so
+      // suppress that default even at the first slide where show() is a no-op.
+      if (show(current - 1) || e.key === "Backspace") e.preventDefault();
     } else if (e.key === "Home") {
       if (show(0)) e.preventDefault();
     } else if (e.key === "End") {
