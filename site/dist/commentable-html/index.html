@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Tighten the planning loop. Inline comment on any HTML report and round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-commentable-html.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=5d26de95524f" />
+  <link rel="stylesheet" href="../assets/styles.css?v=b116401831bb" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -96,11 +96,11 @@
 
     <div id="showcase" class="showcase">
       <div class="wrap">
-        <div class="showcase-grid">
+        <div class="showcase-card">
           <figure class="showcase-shot">
             <div class="showcase-frame">
               <span class="showcase-dots" aria-hidden="true"><span class="showcase-dot"></span><span class="showcase-dot"></span><span class="showcase-dot"></span></span>
-              <img class="showcase-img" src="tutorial/assets/landing-composer.png" width="748" height="616" alt="A commentable HTML plan with a paragraph selected: an inline comment window shows the quoted selection above a 'Write your review comment' box with Cancel and Save comment buttons." />
+              <img class="showcase-img" src="tutorial/assets/landing-composer.png" width="686" height="532" alt="A commentable HTML plan with a paragraph selected: an inline comment window shows the quoted selection above a 'Write your review comment' box with Cancel and Save comment buttons." />
             </div>
             <figcaption class="showcase-caption">Select any text and a comment window opens right where you mean it - no alt-tabbing to the chat.</figcaption>
           </figure>
@@ -458,6 +458,16 @@
             </ul>
           </div>
           <div class="release">
+            <div class="rel-head"><h3>[1.181.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A built-in canvas chart (a <code>canvas.cmh-chart</code> / <code>figure.chart canvas</code> with inline <code>data-cmh-chart-points</code>/<code>-source</code>) authored inside a collapsible <code>&lt;section&gt;</code> that is collapsed (<code>display:none</code>) at load now re-renders at its real column width the moment its section is revealed, instead of staying blurry until the next window resize (CMH-CHART-09). While collapsed the canvas reads <code>clientWidth</code> 0 and draws its bitmap to the width fallback (the <code>width</code> attribute, else 760), so it was sized for the wrong width; a reveal <code>ResizeObserver</code> on each chart canvas re-draws it once on the transition from zero-size to visible (mirroring the Mermaid width-class observer from CMH-MMD-07). It is a one-shot reveal hook, not a perpetual size mirror, so a standalone <code>canvas.cmh-chart</code> in a shrink-to-fit container on a HiDPI screen cannot keep enlarging its own bitmap; genuine window resizes stay handled by the existing resize listener. This is the same render-while-hidden class as #430 (Mermaid).</li>
+              <li>Pinned that code/KQL line-number gutters stay aligned when a collapsed section is revealed (CMH-CODE-06). Unlike the canvas chart above, the gutter needs no reveal recompute: the browser resolves a numeric <code>line-height</code> to a px value via <code>getComputedStyle</code> even for a <code>display:none</code> block, so the gutter offsets laid down while collapsed already match the visible line-height after reveal. A regression test locks that invariant in.</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
             <div class="rel-head"><h3>[1.180.0] - 2026-07-20</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -468,8 +478,6 @@
               <li>The overflow (<code>...</code>) menu header now shows the running layer version (<code>v&lt;version&gt;</code>) between the portability badge and the brand icon; the version is decorative text and does not change the menu button tab order (CMH-MENU-ICON-03).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.178.0] - 2026-07-20</h3></div>
             <div class="group-label">Added</div>
@@ -499,14 +507,7 @@
               <li>Deck mermaid comment labels keep the space at a wrapped-line boundary. mermaid splits an SVG <code>&lt;text&gt;</code> label into per-line <code>tspan</code> rows with no separator, so the anchor key, comment quote, and Copy all had dropped the wrap-point space (<code>exact spot</code> -&gt; <code>exactspot</code>); <code>mermaidNodeLabel()</code> now rejoins the rows with a space.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.171.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Link handling for author-facing references (CMH-LINK-01..04): at render time every external <code>&lt;a href&gt;</code> in the document is stamped <code>target=&quot;_blank&quot;</code> + <code>rel=&quot;noopener noreferrer&quot;</code> so a reference opens in a new tab and the reader keeps their place (same-page <code>#</code> fragments, <code>.cm-skip</code> UI chrome, and <code>javascript:</code> links are left untouched, and an author-set <code>target</code> is respected). Each link is now commentable like an image or mermaid node: hovering or keyboard-focusing a link reveals a floating <code>Add Comment</code> affordance that anchors an <code>anchorType: &quot;link&quot;</code> comment to that link (by index + href/text) without navigating - a normal click (or Enter) still follows the link, while the floating button or the non-navigating <code>Alt+Enter</code> chord opens the composer. Links are classified by their normalized protocol (only <code>http</code>/<code>https</code>/<code>file</code>), so control-char-obfuscated <code>javascript:</code>, <code>mailto:</code>/<code>tel:</code>, and <code>data:</code> links are never stamped or made commentable, and the <code>_blank</code> rel-enforcement is case-insensitive (reverse-tabnabbing defense). Link comments ring the link, list a card, flash on jump, and survive reload, Copy all, Export Markdown, and Export Offline.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">148 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">149 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

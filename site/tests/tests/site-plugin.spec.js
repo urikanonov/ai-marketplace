@@ -531,6 +531,26 @@ test("the plugin page leads with a review-workflow showcase and a real UI screen
   const showcase = page.locator("#showcase");
   await expect(showcase).toHaveCount(1);
 
+  // The showcase is a contained CARD (a visible background, a real border, rounded corners, a
+  // drop shadow, and padding), so it reads as a cohesive unit instead of floating loose on the page.
+  const card = showcase.locator(".showcase-card");
+  await expect(card).toHaveCount(1);
+  const cardStyle = await card.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      bg: s.backgroundColor,
+      border: parseFloat(s.borderTopWidth),
+      pad: parseFloat(s.paddingTop),
+      radius: parseFloat(s.borderTopLeftRadius),
+      shadow: s.boxShadow,
+    };
+  });
+  expect(cardStyle.bg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(cardStyle.border).toBeGreaterThan(0);
+  expect(cardStyle.pad).toBeGreaterThan(0);
+  expect(cardStyle.radius).toBeGreaterThan(0);
+  expect(cardStyle.shadow).not.toBe("none");
+
   // The showcase leads the page: it is the FIRST element after the hero header (not buried below
   // other blocks), so the value proposition is on the first screen.
   const afterHero = await page.evaluate(() => {
@@ -596,8 +616,34 @@ test("the showcase screenshot scales within a mobile viewport with no horizontal
     .locator("#showcase")
     .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
   expect(noOverflow).toBe(true);
-  // The two-column grid collapses to a single column: the screenshot stacks above the steps.
+  // The card collapses to a single column: the screenshot stacks above the steps.
   const shot = await page.locator("#showcase .showcase-shot").boundingBox();
   const copy = await page.locator("#showcase .showcase-copy").boundingBox();
   expect(shot.y + shot.height).toBeLessThanOrEqual(copy.y + 1);
+
+  // It also collapses early - at a tablet width (820px, still below the ~900px breakpoint) - so the
+  // narrow-copy two-column squeeze in the tablet band is gone, not only at phone width.
+  await page.setViewportSize({ width: 820, height: 1100 });
+  const tShot = await page.locator("#showcase .showcase-shot").boundingBox();
+  const tCopy = await page.locator("#showcase .showcase-copy").boundingBox();
+  expect(tShot.y + tShot.height).toBeLessThanOrEqual(tCopy.y + 1);
+});
+
+
+test("the showcase screenshot renders small and stays crisp on HiDPI (SITE-PLUGIN-25)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+
+  const img = page.locator("#showcase img.showcase-img");
+  await expect(img).toBeVisible();
+  await img.scrollIntoViewIfNeeded();
+  await expect.poll(() => img.evaluate((el) => el.naturalWidth)).toBeGreaterThan(0);
+
+  const box = await img.boundingBox();
+  // Small: the screenshot is a supporting visual, capped well below a hero-sized image.
+  expect(box.width).toBeLessThanOrEqual(320);
+  // Crisp on HiDPI: the intrinsic pixel width is at least twice the rendered CSS width, so at 2x
+  // device-pixel-ratio the image still DOWNSCALES (never upscales, which is what blurred it before).
+  const naturalWidth = await img.evaluate((el) => el.naturalWidth);
+  expect(naturalWidth).toBeGreaterThanOrEqual(box.width * 2);
 });
