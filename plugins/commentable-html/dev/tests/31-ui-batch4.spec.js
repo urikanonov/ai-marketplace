@@ -127,4 +127,51 @@ test.describe("heading Add Comment placement and header layout", () => {
     expect(info.gap).toBeGreaterThanOrEqual(0);
     expect(info.gap).toBeLessThan(14);
   });
+
+  test("the sidebar Hide button is accent-tinted and distinct from the Help button (CMH-SIDE-09)", async ({ page }) => {
+    await page.goto(fileUrl(KITCHEN_SINK));
+    await ready(page);
+    // Open the panel AND clear its inert flag so the header button is interactive (opening via
+    // the class alone leaves #sidebar inert, so a real hover would be intercepted by .app).
+    await page.evaluate(() => {
+      document.body.classList.add("sidebar-open");
+      const sb = document.getElementById("sidebar");
+      if (sb) sb.inert = false;
+    });
+    const info = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      document.body.appendChild(probe);
+      probe.style.color = "var(--cp-accent)";
+      const accent = getComputedStyle(probe).color;
+      probe.style.color = "var(--cp-accent-soft)";
+      const accentSoft = getComputedStyle(probe).color;
+      probe.style.color = "var(--cp-accent-fg)";
+      const accentFg = getComputedStyle(probe).color;
+      probe.remove();
+      const hide = document.getElementById("btnCloseSidebar");
+      const help = document.getElementById("btnHelp");
+      const hs = getComputedStyle(hide), hp = getComputedStyle(help);
+      return {
+        accent, accentSoft, accentFg,
+        hideBg: hs.backgroundColor, hideColor: hs.color, hideBorder: hs.borderTopColor,
+        helpBg: hp.backgroundColor,
+      };
+    });
+    // Accent-tinted resting state: accent-soft fill, accent text and border.
+    expect(info.hideBg).toBe(info.accentSoft);
+    expect(info.hideColor).toBe(info.accent);
+    expect(info.hideBorder).toBe(info.accent);
+    // Distinct from the neutral Help & About button beside it.
+    expect(info.hideBg).not.toBe(info.helpBg);
+    // Solid-accent hover, asserted from the COMPUTED state (so a future higher-specificity
+    // override that broke the cascade would be caught, unlike a rule-text-only check).
+    await page.locator("#btnCloseSidebar").hover();
+    const hover = await page.evaluate(() => {
+      const hs = getComputedStyle(document.getElementById("btnCloseSidebar"));
+      return { bg: hs.backgroundColor, color: hs.color, border: hs.borderTopColor };
+    });
+    expect(hover.bg).toBe(info.accent);
+    expect(hover.border).toBe(info.accent);
+    expect(hover.color).toBe(info.accentFg);
+  });
 });
