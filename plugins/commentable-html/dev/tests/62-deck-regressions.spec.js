@@ -919,23 +919,30 @@ test("CMH-DECK-SHOWCASE-11: showcase amber title highlights do not paint a halo 
     const mark = page.locator(".slide.active .show-mark").first();
     await expect(mark).toBeVisible();
     await expect(mark).toHaveCSS("box-shadow", "none");
-    // The highlight must paint via a height-capped linear-gradient, not a full em-box background
-    // fill: on the tight-line-height title/section headings a solid fill paints the whole (tall
-    // Segoe UI) font box and bleeds up into the previous row. background-size gives a bounded,
-    // font-metric-independent paint height that hugs the letters.
-    const paint = await mark.evaluate((el) => {
-      const style = getComputedStyle(el);
-      const capToken = style.backgroundSize.split(" ")[1];
-      return {
-        image: style.backgroundImage,
-        capPx: parseFloat(capToken),
-        fontPx: parseFloat(style.fontSize),
-      };
-    });
-    expect(paint.image).toContain("linear-gradient");
-    expect(Number.isFinite(paint.capPx)).toBe(true);
-    expect(paint.capPx).toBeGreaterThan(paint.fontPx);
-    expect(paint.capPx).toBeLessThan(paint.fontPx * 1.3);
+    // Every showcase highlight must paint via a height-capped linear-gradient whose cap does NOT
+    // exceed its heading's own line box. A full em-box fill (or a cap taller than the line-height)
+    // paints the whole tall Segoe UI font box and spills up into the previous row on the tight
+    // title/section headings; capping at/below the line-height keeps it inside its own line.
+    const marks = await page.$$eval(".slide.active .show-mark", (nodes) =>
+      nodes.map((el) => {
+        const style = getComputedStyle(el);
+        return {
+          image: style.backgroundImage,
+          capPx: parseFloat(style.backgroundSize.split(" ")[1]),
+          fontPx: parseFloat(style.fontSize),
+          linePx: parseFloat(style.lineHeight),
+        };
+      }),
+    );
+    expect(marks.length).toBeGreaterThan(0);
+    for (const m of marks) {
+      expect(m.image).toContain("linear-gradient");
+      expect(Number.isFinite(m.capPx)).toBe(true);
+      // Covers the glyphs...
+      expect(m.capPx).toBeGreaterThanOrEqual(m.fontPx * 0.85);
+      // ...but never exceeds the heading's line box, so it cannot bleed into the row above.
+      expect(m.capPx).toBeLessThanOrEqual(m.linePx + 0.5);
+    }
   } finally {
     await server.close();
   }
