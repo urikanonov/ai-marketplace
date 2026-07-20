@@ -9,6 +9,11 @@
     head.className = "cm-toolbar-menu-head";
     badge.parentNode.insertBefore(head, badge);
     head.appendChild(badge);
+    const ver = document.createElement("span");
+    ver.className = "cm-version cm-menu-version";
+    ver.title = "commentable-html version that generated this file";
+    ver.textContent = "v" + CMH_VERSION;
+    head.appendChild(ver);
     const brand = document.createElement("span");
     brand.className = "cm-toolbar-menu-brand";
     brand.setAttribute("aria-hidden", "true");

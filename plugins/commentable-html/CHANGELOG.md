@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.180.0] - 2026-07-20
+
+### Changed
+
+- The comments sidebar `Hide` button is now accent-tinted (an accent-soft background with accent text
+  and border, and a solid-accent hover) so it stands out clearly and reads as distinct from the neutral
+  `Help & About` button beside it (CMH-SIDE-09).
+
+### Added
+
+- The overflow (`...`) menu header now shows the running layer version (`v<version>`) between the
+  portability badge and the brand icon; the version is decorative text and does not change the menu
+  button tab order (CMH-MENU-ICON-03).
+
 ## [1.178.0] - 2026-07-20
 
 ### Added

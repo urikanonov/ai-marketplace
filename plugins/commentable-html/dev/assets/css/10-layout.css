@@ -83,13 +83,6 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger);
 }
 .cm-sidebar .head-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); border-color: var(--cp-danger); color: var(--cp-danger); }
-/* Hide gets a distinct filled (secondary) look, separate from the outline export buttons. */
-.cm-sidebar .head-actions button#btnCloseSidebar {
-  background: var(--cp-accent-soft); border-color: transparent; color: var(--cp-text);
-}
-.cm-sidebar .head-actions button#btnCloseSidebar:hover {
-  background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg);
-}
 
 /* Confirm dialog (used for destructive actions such as Clear Comments). */
 .cm-modal-overlay {
@@ -139,6 +132,7 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: var(--cp-chrome-wide-gap); width: 100%; }
 .cm-toolbar-menu-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--cp-accent); }
 .cm-toolbar-menu-brand .cm-brand-icon { width: 20px; height: 20px; margin: 0; }
+.cm-toolbar-menu-head .cm-menu-version { align-self: center; white-space: nowrap; }
 .cm-toolbar #btnCopyAllTop[aria-disabled="true"],
 .cm-sidebar .head-top #btnCopyAll[aria-disabled="true"] {
   opacity: 0.58; cursor: not-allowed; box-shadow: none;
@@ -155,10 +149,11 @@ body.sidebar-open .app { padding-right: 1.5rem; }
   display: inline-flex; align-items: center; gap: var(--cp-chrome-button-gap);
 }
 .cm-help-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
-/* The Hide control sits next to Help; give it a slightly recessed neutral tone (and a
-   neutral hover) so it reads as distinct from the accent-hover Help button. */
-.cm-hide-btn { background: var(--cp-bg-elevated); color: var(--cp-text-soft); }
-.cm-hide-btn:hover { background: var(--cp-surface); border-color: var(--cp-text-soft); color: var(--cp-text); }
+/* The Hide control sits next to Help; give it an accent-tinted fill (accent-soft
+   background with accent text and border, solid accent on hover) so it stands out
+   clearly and reads as distinct from the neutral Help button. */
+.cm-hide-btn { background: var(--cp-accent-soft); border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-hide-btn:hover { background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg); }
 .cm-btn-chevron { flex: none; opacity: 0.65; margin-right: -0.1rem; }
 
 /* Help dialog (reuses .cm-modal-overlay). */

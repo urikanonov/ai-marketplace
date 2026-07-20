@@ -97,6 +97,34 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnHelpTop"]);
   });
 
+  test("the overflow menu header shows the layer version between the badge and brand icon (CMH-MENU-ICON-03)", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    const menu = page.locator("#toolbarMenu");
+    const version = menu.locator(".cm-menu-version");
+    await expect(version).toHaveCount(1);
+    await expect(version).toHaveText(/^v\d+\.\d+\.\d+$/);
+    // Same value as the sidebar version indicator (both sourced from CMH_VERSION).
+    await expect(version).toHaveText((await page.locator("#cmVersion").textContent()).trim());
+    // Positioned between the portability badge (left) and the brand icon (right).
+    const order = await menu.locator(".cm-toolbar-menu-head").evaluate((head) => {
+      const kids = Array.from(head.children);
+      return {
+        badge: kids.findIndex((k) => k.id === "cmhModeBadge"),
+        ver: kids.findIndex((k) => k.classList.contains("cm-menu-version")),
+        brand: kids.findIndex((k) => k.classList.contains("cm-toolbar-menu-brand")),
+      };
+    });
+    expect(order.badge).toBeGreaterThanOrEqual(0);
+    expect(order.ver).toBeGreaterThan(order.badge);
+    expect(order.brand).toBeGreaterThan(order.ver);
+    // Decorative text: not a focusable menu item, so the tab order is unchanged.
+    const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
+      .filter((node) => node.tabIndex >= 0)
+      .map((node) => node.id));
+    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnHelpTop"]);
+  });
+
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel
