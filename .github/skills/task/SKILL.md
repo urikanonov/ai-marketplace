@@ -54,6 +54,10 @@ python scripts/task.py heartbeat 188 --watch
 #    Find issues nobody is working on (missing or stale heartbeat); each row names the branch to resume.
 python scripts/task.py stale --minutes 15
 
+#    Board of ALL open task issues with handling Copilot session id, branch, last activity, and state.
+#    start/claim/heartbeat stamp the session id from COPILOT_AGENT_SESSION_ID (override: --session-id).
+python scripts/task.py board                 # add --all-labels for every open issue, --json for rows
+
 # 5. Share the implementation plan for approval before coding.
 python scripts/task.py plan 188 "1. Rebase onto main  2. Fix  3. Test"
 
