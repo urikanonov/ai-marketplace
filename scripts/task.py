@@ -303,6 +303,11 @@ def set_session(body, session):
     if re.search(r"^- Branch: `[^`]+`.*$", body, re.M):
         return re.sub(r"^(- Branch: `[^`]+`.*)$", lambda m: m.group(1) + "\n" + line,
                       body, count=1, flags=re.M)
+    # Fallback for a comment missing the Branch line (hand-edited/malformed): anchor before the
+    # Last active line so the session is still recorded rather than silently dropped.
+    if re.search(r"^- Last active \(UTC\):", body, re.M):
+        return re.sub(r"^(- Last active \(UTC\):.*)$", lambda m: line + "\n" + m.group(1),
+                      body, count=1, flags=re.M)
     return body
 
 
@@ -643,21 +648,29 @@ def _beat_once(number, branch, session=""):
     # regresses the effective heartbeat; our own beat only advances it.
     newest = _max_stamp(parse_last_active(c["body"]) for c in matches)
     target = stamp if is_newer(stamp, newest) else newest
+    # Only claim the handling session when OUR beat advances the timestamp; if a concurrent
+    # duplicate is newer, keep its owner rather than ping-ponging the session line.
+    sid = session if is_newer(stamp, newest) else ""
     try:
-        new_body = set_session(bump_last_active(survivor["body"], target), session)
+        base = bump_last_active(survivor["body"], target)
     except ValueError:
         # Malformed survivor (marker but no timestamp line): self-heal by rebuilding from a known
-        # or recoverable branch, else stop rather than loop. Do NOT prune - the survivor is not
-        # yet committed, so deleting valid duplicates here would lose good state.
+        # or recoverable branch, preserving the existing session when we are not advancing, else
+        # stop rather than loop. Do NOT prune - the survivor is not yet committed, so deleting
+        # valid duplicates here would lose good state.
         recovered = branch or parse_branch(survivor["body"])
         if not recovered:
             raise HeartbeatStop(
                 f"status comment on #{number} is malformed and no branch is known to rebuild it")
         try:
-            new_body = status_body(recovered, target, session or parse_session(survivor["body"]) or "")
+            new_body = status_body(recovered, target, sid or parse_session(survivor["body"]) or "")
         except ValueError as exc:
             raise HeartbeatStop(
                 f"status comment on #{number} has an invalid branch stamp: {exc}")
+    else:
+        # Session is validated upstream (_session_arg), so set_session never raises here; keeping
+        # it OUT of the try above means a session problem can never be misread as a malformed body.
+        new_body = set_session(base, sid)
     if new_body != survivor["body"]:
         _edit_comment(survivor["id"], new_body)
     _prune_extras(extras)  # only after the survivor is successfully committed
@@ -683,9 +696,18 @@ def cmd_new(a):
 
 
 def _session_arg(a):
-    """Resolve the handling Copilot session id for a command: the explicit --session-id, else the
-    COPILOT_AGENT_SESSION_ID environment variable, else '' (the session line is then omitted)."""
-    return (getattr(a, "session_id", None) or os.environ.get("COPILOT_AGENT_SESSION_ID", "")).strip()
+    """Resolve and validate the handling Copilot session id for a command: the explicit
+    --session-id, else the COPILOT_AGENT_SESSION_ID environment variable, else '' (the session
+    line is then omitted). A non-empty but invalid id (backticks/whitespace/non-ASCII) fails fast
+    with a clean SystemExit BEFORE any gh/git mutation, so a bad value never crashes deep in a
+    write path or misfires the heartbeat daemon's malformed-comment recovery."""
+    session = (getattr(a, "session_id", None) or os.environ.get("COPILOT_AGENT_SESSION_ID", "")).strip()
+    if not session:
+        return ""
+    try:
+        return assert_valid_session(session)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
 
 
 def cmd_claim(a):
@@ -784,8 +806,11 @@ def cmd_board(a):
     issues.sort(key=lambda it: it.get("number", 0))
     rows = []
     for it in issues:
-        st = find_status_comment(_list_comments(it["number"]), trusted_only=True, viewer=viewer)
-        rows.append(board_row(it, st["body"] if st else "", now, a.minutes))
+        # Use the same canonical-survivor selection the heartbeat uses, so duplicate marker
+        # comments never make the board show a stale/non-canonical row.
+        matches = status_comments(_list_comments(it["number"]), trusted_only=True, viewer=viewer)
+        body = _pick_survivor(matches)["body"] if matches else ""
+        rows.append(board_row(it, body, now, a.minutes))
     if a.json:
         print(json.dumps(rows, indent=2))
     else:
