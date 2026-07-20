@@ -13,11 +13,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   kinds (including the flat `slides` kind vs a real deck), the review surface (including per-section
   "Mark reviewed" tracking), highlighted code, KQL, diffs, mermaid, charts, images, the layout tools,
   layered checklists and editable notes fields (scaffold and apply), commentable widgets, animated
-  decks, output modes, and theming - and directs the agent to use the named tool rather than invent a
-  novel mechanism. This closes a discovery gap where an agent missed that CMH already supports
-  editable notes fields and considered building its own. A companion
+  decks, output modes, and theming (including deck theme presets) - and directs the agent to use the
+  named tool rather than invent a novel mechanism. This closes a discovery gap where an agent missed
+  that CMH already supports editable notes fields and considered building its own. A companion
   `## Always validate before handoff (MUST)` section states the mandatory
-  `finalize.py --strict` + `validate.py --strict` pass upfront so it cannot be missed. (CMH-DOC-17)
+  `finalize.py --strict` + `validate.py --strict` (plus `deck_validate.py --strict` for decks) pass
+  upfront so it cannot be missed. (CMH-DOC-17)
 
 ## [1.175.0] - 2026-07-19
 

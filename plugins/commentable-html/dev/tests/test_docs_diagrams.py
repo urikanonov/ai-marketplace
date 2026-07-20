@@ -623,6 +623,7 @@ class CapabilitiesOverviewDocsTests(unittest.TestCase):
             "tools/blocks/diff_block.py",
             "tools/blocks/chart_block.py",
             "tools/deck/deck_scaffold.py",
+            "tools/deck/deck_theme.py",
         ):
             self.assertIn(tool, cap, f"upfront Capabilities list must name {tool}")
         # The `slides` flat kind must be named alongside the real-deck tool so they are not confused.
@@ -655,6 +656,8 @@ class CapabilitiesOverviewDocsTests(unittest.TestCase):
         directive = text.split("## Always validate before handoff (MUST)", 1)[1].split("\n## ", 1)[0]
         self.assertIn("tools/authoring/finalize.py <file> --strict", directive)
         self.assertIn("tools/validate/validate.py --strict <file.html>", directive)
+        # Decks need the deck-specific validator too, named in the same upfront directive.
+        self.assertIn("tools/deck/deck_validate.py --strict", directive)
 
 
 if __name__ == "__main__":
