@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { heavyGlobs } from "./tests/_projects.mjs";
 
 // E2E regression suite for the commentable-html layer. Fixtures are the skill's
 // own generated artifacts (dist/PORTABLE.html, dist/NONPORTABLE.html), opened over file://
@@ -19,5 +20,12 @@ export default defineConfig({
     colorScheme: "light",
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // Two projects so CI can run them as independent parallel jobs. `fast` (sharded across runners)
+  // is everything except the heavy browser-subprocess specs; `heavy` is only those, run in its own
+  // job with a small worker count (CLI --workers) so its concurrent capture subprocesses do not
+  // thrash the runner. Splitting them stops one serial screenshot block from gating a whole shard.
+  projects: [
+    { name: "fast", testIgnore: heavyGlobs, use: { ...devices["Desktop Chrome"] } },
+    { name: "heavy", testMatch: heavyGlobs, use: { ...devices["Desktop Chrome"] } },
+  ],
 });

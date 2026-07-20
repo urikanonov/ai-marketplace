@@ -157,7 +157,13 @@ Prefer a plugin-dir source; it is the most forward-compatible.
 `npx playwright install --with-deps chromium` on a browser-cache miss, then the Playwright suite).
 The suite is SHARDED across runners (`playwright test --shard=i/N`), and the plugins' Python
 (`unittest`) suites run as a separate sharded matrix via `scripts/run_plugin_python_tests.py`, so the
-critical path is a fraction of a single serial run. A `changes` job first decides whether the event
+critical path is a fraction of a single serial run. The Playwright suite is further split into two
+projects (`playwright.config.js`): the `fast` project (everything except the browser-subprocess specs)
+runs as the sharded `playwright` job, and the `heavy` project (the tutorial-screenshot capture specs
+listed in `tests/_projects.mjs`, which each spawn their own chromium and would thrash a mixed shard)
+runs as its own sharded `playwright-heavy` job in parallel - so one serial screenshot block no longer
+gates a shard. A guard spec (`CMH-BUILD-12`) asserts every heavy-project name resolves to a real spec
+file so the split can never silently drop coverage. A `changes` job first decides whether the event
 touches a plugin (any `plugins/**` file, this workflow, or the shared Python runner); a PR that does
 not is allowed to SKIP both heavy suites, and the aggregate `plugin-tests` gate treats that
 intentional skip as success (failing SAFE - if the diff cannot be computed, the suites run). The gate
