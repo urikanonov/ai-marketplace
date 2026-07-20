@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.187.0";
+const CMH_VERSION = "1.188.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8196,7 +8196,16 @@ function setupSideToc() {
       b.type = "button";
       b.className = "cm-side-toc-review-btn cmh-review-filter-" + pair[0];
       b.dataset.cmhReviewFilter = pair[0];
-      b.textContent = pair[1];
+      b.dataset.cmhBaseLabel = pair[1];
+      const labelEl = document.createElement("span");
+      labelEl.className = "cm-side-toc-review-btn-label";
+      labelEl.textContent = pair[1];
+      // A live per-state count (filled by updateReviewFilterCounts). Decorative: the accessible
+      // name lives on the button's aria-label so the count is not announced as a second reading.
+      const countEl = document.createElement("span");
+      countEl.className = "cm-side-toc-review-btn-count";
+      countEl.setAttribute("aria-hidden", "true");
+      b.append(labelEl, countEl);
       b.title = "Show " + pair[1].toLowerCase() + " sections";
       b.setAttribute("aria-pressed", pair[0] === "all" ? "true" : "false");
       b.addEventListener("click", function () { applyReviewFilter(pair[0]); });
@@ -8407,6 +8416,36 @@ function _resetReviewFilterUI() {
 // The letter is rendered as a CSS pseudo-element (data-cmh-mark) so it never enters the TOC link
 // text that search and deep-links read. Unreviewed is a hollow badge (no letter).
 const _CMH_TOC_MARK_CHAR = { reviewed: "R", commented: "C", changed: "!", unreviewed: "" };
+// Tally every reviewable heading's state into per-filter counts. The four states partition the
+// set, so `all` equals the total section count and reviewed+unreviewed+commented+changed == all.
+function _cmhReviewFilterCounts(states) {
+  const counts = { all: 0, reviewed: 0, unreviewed: 0, commented: 0, changed: 0 };
+  if (states && typeof states.forEach === "function") {
+    states.forEach(function (info) {
+      counts.all++;
+      const s = info && info.state;
+      if (s && Object.prototype.hasOwnProperty.call(counts, s)) counts[s]++;
+    });
+  }
+  return counts;
+}
+// Refresh the "(N)" count shown on each segmented filter button and keep its accessible name in
+// sync (the visible count span is aria-hidden, so the aria-label carries the number for AT). This
+// runs on every refreshReviewUI, which is the single funnel every state change flows through
+// (mark reviewed/cleared, comment add/delete, load-time prune), so the counts never go stale.
+function updateReviewFilterCounts(states) {
+  if (!_cmReviewFilterBtns) return;
+  const counts = _cmhReviewFilterCounts(states);
+  Object.keys(_cmReviewFilterBtns).forEach(function (k) {
+    const b = _cmReviewFilterBtns[k];
+    const n = counts[k] || 0;
+    const countEl = b.querySelector(":scope > .cm-side-toc-review-btn-count");
+    if (countEl) countEl.textContent = "(" + n + ")";
+    const base = b.dataset.cmhBaseLabel || k;
+    b.setAttribute("aria-label", base + ", " + n + " section" + (n === 1 ? "" : "s"));
+    b.title = "Show " + base.toLowerCase() + " sections (" + n + ")";
+  });
+}
 function updateTocReviewMarks(states, active) {
   // The segmented filter appears only when active; when dormant, hide it and reset any lingering
   // filter to All so no section is left collapsed behind a control the reader can no longer see.
@@ -8414,6 +8453,7 @@ function updateTocReviewMarks(states, active) {
     _cmReviewFilterEl.hidden = !active;
     if (!active && _cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter("all");
   }
+  updateReviewFilterCounts(states);
   if (!_cmTocLinks || !_cmTocLinks.length) return;
   for (let i = 0; i < _cmTocLinks.length; i++) {
     const a = _cmTocLinks[i];

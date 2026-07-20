@@ -198,6 +198,69 @@ test.describe("section review tracking", () => {
     await expect(page.locator("nav.cm-side-toc li.cm-toc-li-hidden").first()).toBeAttached();
   });
 
+  test("each review-filter button shows a live per-state count that stays on one line (CMH-REVIEW-14)", async ({ page }) => {
+    await openReviewDoc(page);
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click(); // alpha reviewed -> review UI active (auto-refresh)
+    const count = (k) => page.locator(`.cm-side-toc-review-btn.cmh-review-filter-${k} .cm-side-toc-review-btn-count`);
+    // 4 headings: rv-title, rv-alpha (reviewed), rv-beta, rv-gamma. The four states partition All.
+    await expect(count("all")).toHaveText("(4)");
+    await expect(count("reviewed")).toHaveText("(1)");
+    await expect(count("unreviewed")).toHaveText("(3)");
+    await expect(count("commented")).toHaveText("(0)");
+    await expect(count("changed")).toHaveText("(0)");
+    // The count is decorative (aria-hidden); the number is folded into the button's accessible name
+    // (singular for 1, plural otherwise).
+    await expect(count("reviewed")).toHaveAttribute("aria-hidden", "true");
+    await expect(page.locator(".cm-side-toc-review-btn.cmh-review-filter-reviewed"))
+      .toHaveAttribute("aria-label", "Reviewed, 1 section");
+    await expect(page.locator(".cm-side-toc-review-btn.cmh-review-filter-unreviewed"))
+      .toHaveAttribute("aria-label", "Unreviewed, 3 sections");
+    // Geometry, not just the CSS declaration: the label and its count render on ONE line (their
+    // boxes share a row) and the whole filter group never overflows the sidebar horizontally.
+    const oneLine = (k) => page.evaluate((key) => {
+      const btn = document.querySelector(".cm-side-toc-review-btn.cmh-review-filter-" + key);
+      const lab = btn.querySelector(".cm-side-toc-review-btn-label").getBoundingClientRect();
+      const cnt = btn.querySelector(".cm-side-toc-review-btn-count").getBoundingClientRect();
+      return cnt.left >= lab.right - 1 && cnt.top < lab.bottom && lab.top < cnt.bottom;
+    }, k);
+    const noOverflow = () => page.evaluate(() => {
+      const g = document.querySelector(".cm-side-toc-review");
+      return g.scrollWidth <= g.clientWidth + 1;
+    });
+    const rowCount = () => page.evaluate(() => new Set(Array.from(
+      document.querySelectorAll(".cm-side-toc-review-btn")).map((b) => Math.round(b.getBoundingClientRect().top))).size);
+    expect(await oneLine("unreviewed")).toBe(true);
+    expect(await noOverflow()).toBe(true);
+    // Force the promised worst case - every count two digits - and confirm the group still fits and
+    // each button keeps label+count on one line. tabular-nums makes this the widest the row can get.
+    await page.evaluate(() => document.querySelectorAll(".cm-side-toc-review-btn-count")
+      .forEach((c) => { c.textContent = "(88)"; }));
+    expect(await noOverflow()).toBe(true);
+    expect(await oneLine("unreviewed")).toBe(true);
+    // Squeeze the sidebar: the buttons must actually wrap into more than one row (not a vacuous
+    // pass) and still not overflow horizontally, even with the two-digit counts injected above.
+    await page.evaluate(() => document.documentElement.style.setProperty("--cm-side-toc-w", "11rem"));
+    expect(await rowCount()).toBeGreaterThan(1);
+    expect(await noOverflow()).toBe(true);
+    expect(await oneLine("unreviewed")).toBe(true);
+    await page.evaluate(() => document.documentElement.style.removeProperty("--cm-side-toc-w"));
+    // Live update via the REAL path (no manual refresh): an open comment on beta moves beta
+    // commented; the h1 title's section span covers the whole doc, so it also flips commented (the
+    // documented ancestor overlay the filter shows). The four states still partition All:
+    // reviewed 1 + unreviewed 1 + commented 2 + changed 0 == 4.
+    await addTextComment(page, "#rv-beta-body", "a note on beta");
+    await expect(count("commented")).toHaveText("(2)");
+    await expect(count("unreviewed")).toHaveText("(1)");
+    await expect(count("reviewed")).toHaveText("(1)");
+    await expect(count("all")).toHaveText("(4)");
+    // Deleting the comment reverts the counts (the ancestor overlay clears with the last comment).
+    const bcid = await page.evaluate(() => document.querySelector("#rv-beta-body mark.cm-hl").dataset.cid);
+    await page.locator(`.cm-card[data-cid="${bcid}"] [data-act="del"]`).click();
+    await expect(count("commented")).toHaveText("(0)");
+    await expect(count("unreviewed")).toHaveText("(3)");
+  });
+
   test("Export as Portable bakes reviewedSections and Plain strips it (CMH-REVIEW-06)", async ({ page }) => {
     await openReviewDoc(page);
     await page.locator("#rv-alpha").hover();
