@@ -551,6 +551,11 @@ test("the plugin page leads with a review-workflow showcase and a real UI screen
   expect(cardStyle.radius).toBeGreaterThan(0);
   expect(cardStyle.shadow).not.toBe("none");
 
+  // The gap below the showcase is tight (the card sits close to the next section) - the block's own
+  // bottom padding is small, not the old large gap.
+  const showcasePadBottom = await showcase.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  expect(showcasePadBottom).toBeLessThanOrEqual(16);
+
   // The showcase leads the page: it is the FIRST element after the hero header (not buried below
   // other blocks), so the value proposition is on the first screen.
   const afterHero = await page.evaluate(() => {
@@ -559,15 +564,21 @@ test("the plugin page leads with a review-workflow showcase and a real UI screen
   });
   expect(afterHero).toBe(true);
 
-  // A real product screenshot (the specific landing crop), framed, with descriptive alt text naming
-  // the actual UI, that decodes (a synced asset served from tutorial/assets, not broken/placeholder).
+  // A real product screenshot (the specific landing crop) that shows a report with a HIGHLIGHTED
+  // selection and the comment window - not a composer-only image - framed, that decodes.
   const img = showcase.locator("img.showcase-img");
   await expect(img).toBeVisible();
   await expect(img).toHaveAttribute("src", /tutorial\/assets\/landing-composer\.png$/);
   await expect(img).toHaveAttribute("alt", /inline comment window/i);
   await expect(img).toHaveAttribute("alt", /Write your review comment/i);
+  await expect(img).toHaveAttribute("alt", /165 million/i);
+  await expect(img).toHaveAttribute("alt", /highlighted/i);
   await img.scrollIntoViewIfNeeded();
   await expect.poll(() => img.evaluate((el) => el.naturalWidth)).toBeGreaterThan(0);
+  // Pin the replacement asset's intrinsic dimensions so a swap back to a differently-sized
+  // (e.g. composer-only) image is caught.
+  const natural = await img.evaluate((el) => ({ w: el.naturalWidth, h: el.naturalHeight }));
+  expect(natural).toEqual({ w: 1140, h: 500 });
 
   // The concrete review workflow (Select -> Comment inline -> Copy all -> Reload) renders as four
   // numbered steps, so a first-time visitor sees how they would use it without scrolling.
@@ -627,23 +638,36 @@ test("the showcase screenshot scales within a mobile viewport with no horizontal
   const tShot = await page.locator("#showcase .showcase-shot").boundingBox();
   const tCopy = await page.locator("#showcase .showcase-copy").boundingBox();
   expect(tShot.y + tShot.height).toBeLessThanOrEqual(tCopy.y + 1);
+  // ...and it stays overflow-free with the image within the viewport in that tablet band too.
+  const tImg = await page.locator("#showcase img.showcase-img").boundingBox();
+  expect(tImg.x).toBeGreaterThanOrEqual(0);
+  expect(tImg.x + tImg.width).toBeLessThanOrEqual(820);
+  const tNoOverflow = await page
+    .locator("#showcase")
+    .evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(tNoOverflow).toBe(true);
 });
 
 
 test("the showcase screenshot renders small and stays crisp on HiDPI (SITE-PLUGIN-25)", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
 
   const img = page.locator("#showcase img.showcase-img");
   await expect(img).toBeVisible();
   await img.scrollIntoViewIfNeeded();
   await expect.poll(() => img.evaluate((el) => el.naturalWidth)).toBeGreaterThan(0);
-
-  const box = await img.boundingBox();
-  // Small: the screenshot is a supporting visual, capped well below a hero-sized image.
-  expect(box.width).toBeLessThanOrEqual(320);
-  // Crisp on HiDPI: the intrinsic pixel width is at least twice the rendered CSS width, so at 2x
-  // device-pixel-ratio the image still DOWNSCALES (never upscales, which is what blurred it before).
   const naturalWidth = await img.evaluate((el) => el.naturalWidth);
-  expect(naturalWidth).toBeGreaterThanOrEqual(box.width * 2);
+
+  // Check at BOTH the desktop two-column layout AND the single-column tablet layout (below the
+  // 900px breakpoint), because the mobile override changes the frame sizing - the small cap and
+  // the crispness must hold in both, not just on desktop.
+  for (const width of [1280, 820]) {
+    await page.setViewportSize({ width, height: 900 });
+    const box = await img.boundingBox();
+    // Small: the screenshot is a modest supporting visual, capped well below a hero-sized image.
+    expect(box.width, `rendered width at ${width}px`).toBeLessThanOrEqual(440);
+    // Crisp on HiDPI: the intrinsic pixel width is at least twice the rendered CSS width, so at 2x
+    // device-pixel-ratio the image still DOWNSCALES (never upscales, which is what blurred it before).
+    expect(naturalWidth, `crispness at ${width}px`).toBeGreaterThanOrEqual(box.width * 2);
+  }
 });
