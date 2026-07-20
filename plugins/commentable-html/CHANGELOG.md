@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.194.0] - 2026-07-20
+
+### Fixed
+
+- Code and KQL line-number gutters now stay aligned to the text even when a report, deck, or theme
+  gives the block an ambient `line-height` of the keyword `normal`. Every code/KQL `<pre>` now
+  carries a deterministic numeric `line-height`, so the gutter always reads a stable px line-height
+  instead of falling back to a hardcoded `20px` (which left the numbers sitting above the text and
+  drifting down a tall block). (CMH-CODE-07)
+
 ## [1.193.0] - 2026-07-20
 
 ### Fixed
