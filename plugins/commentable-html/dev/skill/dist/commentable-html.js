@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.187.0";
+const CMH_VERSION = "1.190.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2887,6 +2887,11 @@ function _widgetStateSig() {
   return parts.join("\u0001");
 }
 function widgetStateChanges() {
+  // Test/perf hook: widgetStateChanges is the document-wide widget scan that updateDocTypeUi and
+  // updateCopyAllState invoke; a spec counts its invocations to prove the note-typing sync UI stays
+  // gated on the dirty-state transition rather than scanning per keystroke (issue #505). Only counted
+  // when a test pre-seeds the counter; production never creates it.
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.docScans = (window.__cmhPerf.docScans || 0) + 1;
   if (!_widgetBaseline || !_widgetBaseline.size) return [];
   const out = [];
   const seen = new Set();
@@ -3382,14 +3387,47 @@ function _noteApplyFold(note) {
 }
 function _noteAfterChange() {
   _noteSave();
-  if (typeof renderComments === "function") renderComments();
-  if (typeof updateDocTypeUi === "function") updateDocTypeUi();
-  const has = notesChanges().length > 0;
-  if (has && !_noteHadChanges && typeof openSidebar === "function") openSidebar();
-  _noteHadChanges = has;
+  _noteSyncUi();
+  _noteFlushRender();
 }
+// Lightweight UI that must track a note edit IMMEDIATELY so it never lags the already-persisted
+// text: the portability badge, the Copy-all affordance, and the one-time sidebar auto-open. These
+// are only touched on the dirty-state TRANSITION (note-clean <-> note-dirty), never on every
+// keystroke: updateDocTypeUi() and updateCopyAllState() each recompute widgetStateChanges(), a
+// document-wide querySelectorAll, so calling them per keystroke would reintroduce O(document) work
+// on a widget-bearing document (issue #505). Between transitions those states do not change, so a
+// keystroke burst pays that scan at most once. notesChanges() is O(notes), cheap to check each key.
+// Doing the auto-open here (not in the deferred flush) also means a user who closes the sidebar
+// within the debounce window is not overridden by a late reopen.
+function _noteSyncUi() {
+  const has = notesChanges().length > 0;
+  if (has === _noteHadChanges) return;
+  _noteHadChanges = has;
+  if (typeof updateDocTypeUi === "function") updateDocTypeUi();
+  if (typeof updateCopyAllState === "function") updateCopyAllState();
+  if (has && typeof openSidebar === "function") openSidebar();
+}
+// The expensive half of a note change: renderComments() runs two full-document tree walks (a
+// getTextNodes walk per changed note plus the section-review scan), so it is O(document) and must
+// not run on every keystroke. Programmatic changes (reset / clear-all) call it directly; the typing
+// path (_noteOnInput) defers it behind a debounce.
+function _noteFlushRender() {
+  if (_noteRenderTimer) { clearTimeout(_noteRenderTimer); _noteRenderTimer = 0; }
+  if (typeof renderComments === "function") renderComments();
+}
+// Coalesce a keystroke burst into ONE sidebar re-render (issue #505): typing in a note field re-ran
+// the full-document scans per keystroke, freezing a large document. A note's document POSITION does
+// not move while its text is edited, so the render is safely deferred until the reviewer pauses; the
+// delta is persisted and the lightweight UI updated synchronously on every keystroke so no edit is
+// lost and the badge/Copy-all affordance never lag.
+const _NOTE_RENDER_DEBOUNCE_MS = 150;
+let _noteRenderTimer = 0;
 function _noteOnInput(note) {
-  _noteAfterChange();
+  _noteSave();
+  _noteSyncUi();
+  if (_noteRenderTimer) clearTimeout(_noteRenderTimer);
+  if (typeof setTimeout === "function") _noteRenderTimer = setTimeout(_noteFlushRender, _NOTE_RENDER_DEBOUNCE_MS);
+  else _noteFlushRender();
 }
 function _notePreview(t) {
   const s = (t == null ? "" : String(t)).replace(/\s+/g, " ").trim();
@@ -3449,6 +3487,13 @@ function jumpToNote(id) {
   if (!note || !note.container) return;
   if (note.foldable && note.collapsed) { note.collapsed = false; _noteApplyFold(note); }
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(note.container);
+  // Deck-aware: a note can live on an inactive slide, which scrollIntoView cannot reveal, so
+  // navigate to its owning slide first (mirrors the comment-card deck jump in 95-startup.js). A
+  // no-op outside deck mode (window.__cmhDeck is undefined), so report jumps are unchanged.
+  if (window.__cmhDeck && typeof window.__cmhDeck.showSlideById === "function") {
+    const slide = note.container.closest(".slide[data-slide-id]");
+    if (slide) window.__cmhDeck.showSlideById(slide.getAttribute("data-slide-id"));
+  }
   note.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   note.container.classList.add("cmh-note-flash");
   setTimeout(() => note.container.classList.remove("cmh-note-flash"), 2200);
@@ -4528,6 +4573,10 @@ function updateSortUi() {
   if (d) d.setAttribute("aria-pressed", commentSort === "time-desc" ? "true" : "false");
 }
 function renderComments() {
+  // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the
+  // note-typing path COALESCES a keystroke burst into a single render rather than one per key
+  // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.renders = (window.__cmhPerf.renders || 0) + 1;
   toolbarCount.textContent = comments.length;
   sidebarCount.textContent = comments.length;
   // Keep the deck comment-options menu in step with the live comment count (the "Disable
@@ -8154,7 +8203,16 @@ function setupSideToc() {
       b.type = "button";
       b.className = "cm-side-toc-review-btn cmh-review-filter-" + pair[0];
       b.dataset.cmhReviewFilter = pair[0];
-      b.textContent = pair[1];
+      b.dataset.cmhBaseLabel = pair[1];
+      const labelEl = document.createElement("span");
+      labelEl.className = "cm-side-toc-review-btn-label";
+      labelEl.textContent = pair[1];
+      // A live per-state count (filled by updateReviewFilterCounts). Decorative: the accessible
+      // name lives on the button's aria-label so the count is not announced as a second reading.
+      const countEl = document.createElement("span");
+      countEl.className = "cm-side-toc-review-btn-count";
+      countEl.setAttribute("aria-hidden", "true");
+      b.append(labelEl, countEl);
       b.title = "Show " + pair[1].toLowerCase() + " sections";
       b.setAttribute("aria-pressed", pair[0] === "all" ? "true" : "false");
       b.addEventListener("click", function () { applyReviewFilter(pair[0]); });
@@ -8365,6 +8423,36 @@ function _resetReviewFilterUI() {
 // The letter is rendered as a CSS pseudo-element (data-cmh-mark) so it never enters the TOC link
 // text that search and deep-links read. Unreviewed is a hollow badge (no letter).
 const _CMH_TOC_MARK_CHAR = { reviewed: "R", commented: "C", changed: "!", unreviewed: "" };
+// Tally every reviewable heading's state into per-filter counts. The four states partition the
+// set, so `all` equals the total section count and reviewed+unreviewed+commented+changed == all.
+function _cmhReviewFilterCounts(states) {
+  const counts = { all: 0, reviewed: 0, unreviewed: 0, commented: 0, changed: 0 };
+  if (states && typeof states.forEach === "function") {
+    states.forEach(function (info) {
+      counts.all++;
+      const s = info && info.state;
+      if (s && Object.prototype.hasOwnProperty.call(counts, s)) counts[s]++;
+    });
+  }
+  return counts;
+}
+// Refresh the "(N)" count shown on each segmented filter button and keep its accessible name in
+// sync (the visible count span is aria-hidden, so the aria-label carries the number for AT). This
+// runs on every refreshReviewUI, which is the single funnel every state change flows through
+// (mark reviewed/cleared, comment add/delete, load-time prune), so the counts never go stale.
+function updateReviewFilterCounts(states) {
+  if (!_cmReviewFilterBtns) return;
+  const counts = _cmhReviewFilterCounts(states);
+  Object.keys(_cmReviewFilterBtns).forEach(function (k) {
+    const b = _cmReviewFilterBtns[k];
+    const n = counts[k] || 0;
+    const countEl = b.querySelector(":scope > .cm-side-toc-review-btn-count");
+    if (countEl) countEl.textContent = "(" + n + ")";
+    const base = b.dataset.cmhBaseLabel || k;
+    b.setAttribute("aria-label", base + ", " + n + " section" + (n === 1 ? "" : "s"));
+    b.title = "Show " + base.toLowerCase() + " sections (" + n + ")";
+  });
+}
 function updateTocReviewMarks(states, active) {
   // The segmented filter appears only when active; when dormant, hide it and reset any lingering
   // filter to All so no section is left collapsed behind a control the reader can no longer see.
@@ -8372,6 +8460,7 @@ function updateTocReviewMarks(states, active) {
     _cmReviewFilterEl.hidden = !active;
     if (!active && _cmReviewFilter !== "all" && typeof applyReviewFilter === "function") applyReviewFilter("all");
   }
+  updateReviewFilterCounts(states);
   if (!_cmTocLinks || !_cmTocLinks.length) return;
   for (let i = 0; i < _cmTocLinks.length; i++) {
     const a = _cmTocLinks[i];

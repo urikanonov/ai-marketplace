@@ -168,6 +168,8 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
         labelColor: getComputedStyle(label).color || getComputedStyle(label).fill,
         edgeStroke: getComputedStyle(edge).stroke,
         edgeStrokeWidth: getComputedStyle(edge).strokeWidth,
+        edgeFill: getComputedStyle(edge).fill,
+        arrowFills: [...svg.querySelectorAll("marker path")].map((p) => getComputedStyle(p).fill),
       };
     });
     const slideBg = parseRgb(metrics.slideBg);
@@ -179,6 +181,12 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
     expect(contrast(labelColor, nodeFill)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(edgeStroke, slideBg)).toBeGreaterThanOrEqual(3);
     expect(Number.parseFloat(metrics.edgeStrokeWidth)).toBeGreaterThanOrEqual(2.4);
+    // Edge connectors are stroked, not filled: a curved back-edge must not paint a solid blob by
+    // filling the area under its curve with the dark slide color (the regression this guards).
+    expect(metrics.edgeFill).toBe("none");
+    // Arrowheads still keep a visible fill (so the direction markers do not vanish).
+    expect(metrics.arrowFills.length).toBeGreaterThan(0);
+    for (const fill of metrics.arrowFills) expect(fill).not.toBe("none");
   } finally {
     await server.close();
   }
@@ -805,20 +813,46 @@ test("CMH-DECK-SHOWCASE-07: the problem, point-at, and install slides use the ne
   }
 });
 
-test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and a notes demo slide", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported languages and live editable notes", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    await showSlideWith(page, ".show-note-field");
+    await showSlideWith(page, ".show-note-live");
     const slide = page.locator(".slide.active");
     await expect(slide.locator(".show-supported-pills .show-pill")).toHaveCount(11);
     await expect(slide.locator(".show-supported-panel")).toContainText("Python");
     await expect(slide.locator(".show-supported-panel")).toContainText("TypeScript");
     await expect(slide.locator(".show-supported-panel")).toContainText("PowerShell");
     await expect(slide.locator(".show-supported-panel")).toContainText("+37 more");
-    await expect(slide.locator(".show-note-field")).toHaveCount(2);
-    await expect(slide.locator(".show-note-field").first()).toContainText("Reviewer summary");
-    await expect(slide.locator(".show-note-field").nth(1)).toContainText("Meeting follow-up");
-    await expect(slide.locator(".show-note-toggle")).toHaveCount(2);
+    // The notes demo is the REAL notes feature, not a static mock: two [data-cmh-note] elements the
+    // runtime has upgraded into editable textareas.
+    await expect(slide.locator(".show-note-live[data-cmh-note]")).toHaveCount(2);
+    const inputs = slide.locator(".show-note-live textarea.cmh-note-input");
+    await expect(inputs).toHaveCount(2);
+    await expect(slide.locator(".cmh-note-label").first()).toContainText("Reviewer summary");
+    await expect(slide.locator(".cmh-note-label").nth(1)).toContainText("Meeting follow-up");
+    // The second note is foldable (has a fold disclosure button).
+    await expect(slide.locator(".show-note-live .cmh-note-fold")).toHaveCount(1);
+    // Both notes are multi-line, so each renders a single/multi-line toggle.
+    await expect(slide.locator(".show-note-live .cmh-note-toggle")).toHaveCount(2);
+    // Editing a note is live and change-tracked: typing surfaces a per-note change card in the sidebar.
+    const first = inputs.first();
+    await first.click();
+    await first.fill("Reviewed - ship it.");
+    const card = page.locator('.cm-card-note[data-cmh-note-name="showcase-reviewer-summary"]');
+    await expect(card).toHaveCount(1);
+    // The note change card's jump is deck-aware: after navigating to another slide, jump returns to
+    // the note's owning slide (a plain scrollIntoView cannot reveal an inactive slide).
+    const notesSlideId = await slide.evaluate((el) => el.dataset.slideId);
+    const otherSlideId = await page.evaluate((skip) => {
+      const ids = [...document.querySelectorAll(".slide[data-slide-id]")]
+        .map((s) => s.dataset.slideId).filter((id) => id && id !== skip);
+      return ids[0];
+    }, notesSlideId);
+    expect(otherSlideId, "deck needs another slide to navigate to").toBeTruthy();
+    await page.evaluate((id) => window.__cmhDeck.showSlideById(id), otherSlideId);
+    await expect.poll(() => page.evaluate(() => window.__cmhDeck.activeSlideId())).toBe(otherSlideId);
+    await card.locator('[data-act="note-jump"]').click();
+    await expect.poll(() => page.evaluate(() => window.__cmhDeck.activeSlideId())).toBe(notesSlideId);
   } finally {
     await server.close();
   }
@@ -915,27 +949,48 @@ test("CMH-DECK-SHOWCASE-10: every showcase slide has a top-right site brand mark
 test("CMH-DECK-SHOWCASE-11: showcase amber title highlights do not paint a halo above the line", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    await showSlideWith(page, ".show-mark");
-    const mark = page.locator(".slide.active .show-mark").first();
-    await expect(mark).toBeVisible();
-    await expect(mark).toHaveCSS("box-shadow", "none");
-    // The highlight must paint via a height-capped linear-gradient, not a full em-box background
-    // fill: on the tight-line-height title/section headings a solid fill paints the whole (tall
-    // Segoe UI) font box and bleeds up into the previous row. background-size gives a bounded,
-    // font-metric-independent paint height that hugs the letters.
-    const paint = await mark.evaluate((el) => {
-      const style = getComputedStyle(el);
-      const capToken = style.backgroundSize.split(" ")[1];
-      return {
-        image: style.backgroundImage,
-        capPx: parseFloat(capToken),
-        fontPx: parseFloat(style.fontSize),
-      };
+    // Cover EVERY highlight (title h1, header h1, and h2 headings, single- and multi-line), not just
+    // the first slide: navigate to each slide that carries a .show-mark and assert the contract on
+    // its visible marks (computed styles only resolve reliably on the active, rendered slide).
+    const slideIds = await page.evaluate(() => {
+      const ids = new Set();
+      document.querySelectorAll(".slide .show-mark").forEach((m) => ids.add(m.closest(".slide").dataset.slideId));
+      return [...ids];
     });
-    expect(paint.image).toContain("linear-gradient");
-    expect(Number.isFinite(paint.capPx)).toBe(true);
-    expect(paint.capPx).toBeGreaterThan(paint.fontPx);
-    expect(paint.capPx).toBeLessThan(paint.fontPx * 1.3);
+    expect(slideIds.length).toBeGreaterThan(0);
+    let checked = 0;
+    for (const id of slideIds) {
+      await page.evaluate((x) => window.__cmhDeck.showSlideById(x), id);
+      const marks = await page.$$eval(".slide.active .show-mark", (nodes) =>
+        nodes.map((el) => {
+          const style = getComputedStyle(el);
+          return {
+            image: style.backgroundImage,
+            boxShadow: style.boxShadow,
+            posY: parseFloat(style.backgroundPositionY),
+            capPx: parseFloat(style.backgroundSize.split(" ")[1]),
+            fontPx: parseFloat(style.fontSize),
+            linePx: parseFloat(style.lineHeight),
+          };
+        }),
+      );
+      expect(marks.length).toBeGreaterThan(0);
+      for (const m of marks) {
+        // Height-capped linear-gradient, no halo.
+        expect(m.image).toContain("linear-gradient");
+        expect(m.boxShadow).toBe("none");
+        expect(Number.isFinite(m.capPx)).toBe(true);
+        // Covers the glyphs...
+        expect(m.capPx).toBeGreaterThanOrEqual(m.fontPx * 0.85);
+        // ...but never exceeds the heading's line box, so it cannot bleed into the row above.
+        expect(m.capPx).toBeLessThanOrEqual(m.linePx + 0.5);
+        // Biased downward (not centred), so it hugs the baseline-to-ascender ink and clears the
+        // descenders of the row above; a revert to a centred 50% position must fail here.
+        expect(m.posY).toBeGreaterThan(50);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   } finally {
     await server.close();
   }
@@ -1023,6 +1078,46 @@ test("CMH-DECK-SHOWCASE-16: showcase byline pills lift on hover", async ({ page 
     expect(await pill.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
     await pill.hover();
     await expect(pill).not.toHaveCSS("transform", "none");
+  } finally {
+    await server.close();
+  }
+});
+
+test("CMH-DECK-SHOWCASE-17: the portability-modes slide tags parts with colorful source pills", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, ".show-mode-table");
+    const slide = page.locator(".slide.active");
+    const pills = slide.locator("td .show-src");
+    // Exactly 11 source pills: 3 modes x 3 part-columns = 9 cells, and the Portable + Offline
+    // "Comments" cells each carry a 2-pill "seed + storage" pair (+2). Asserting the exact total
+    // (not just >= 9) makes dropping a storage pill from those cells fail the test.
+    await expect(pills.first()).toBeVisible();
+    await expect(pills).toHaveCount(11);
+    // The Portable and Offline "Comments" cells each show BOTH the seed and the storage pill, so the
+    // "seeded from HTML, then browser storage" handoff is not misrepresented as seed-only.
+    const dualCells = slide.locator("tbody tr").filter({ hasText: /Portable|Offline/ }).locator("td:last-child");
+    await expect(dualCells.nth(0).locator(".show-src")).toHaveCount(2);
+    await expect(dualCells.nth(1).locator(".show-src")).toHaveCount(2);
+    await expect(dualCells.nth(0)).toContainText("seeded from HTML");
+    await expect(dualCells.nth(0)).toContainText("browser storage");
+    // All five source variants appear across the table.
+    for (const variant of ["folder", "cdn", "inline", "storage", "seed"]) {
+      await expect(slide.locator(".show-src.show-src-" + variant).first()).toBeVisible();
+    }
+    // A pill is a rounded chip with a distinct (non-transparent) fill and a colored leading dot.
+    const styled = await slide.locator(".show-src.show-src-cdn").first().evaluate((el) => ({
+      radius: getComputedStyle(el).borderTopLeftRadius,
+      bg: getComputedStyle(el).backgroundColor,
+      dot: getComputedStyle(el, "::before").backgroundColor,
+    }));
+    expect(Number.parseFloat(styled.radius)).toBeGreaterThanOrEqual(20);
+    expect(styled.bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(styled.dot).not.toBe("rgba(0, 0, 0, 0)");
+    // Distinct variants use distinct fills (not one flat color).
+    const cdnBg = await slide.locator(".show-src.show-src-cdn").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    const inlineBg = await slide.locator(".show-src.show-src-inline").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(cdnBg).not.toBe(inlineBg);
   } finally {
     await server.close();
   }

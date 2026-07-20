@@ -323,6 +323,13 @@ test("the plugin page footer links to contribute, feature request, issues, sourc
 
 
 
+test("the multi-duck page nav brand shows the friendly display name (SITE-MDUCK-05)", async ({ page }) => {
+  await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
+  // The top-left nav brand uses the friendly display name, not the raw slug.
+  await expect(page.locator(".navbar .brand span")).toHaveText("Multi Duck");
+});
+
+
 test("the auto-updater and multi-duck pages lead with the Why section and place Install below it (SITE-INSTALL-08)", async ({ page }) => {
   for (const path of ["/urikan-ai-marketplace-auto-updater/", "/multi-duck/"]) {
     await page.goto(path, { waitUntil: "domcontentloaded" });

@@ -362,6 +362,11 @@ function _widgetStateSig() {
   return parts.join("\u0001");
 }
 function widgetStateChanges() {
+  // Test/perf hook: widgetStateChanges is the document-wide widget scan that updateDocTypeUi and
+  // updateCopyAllState invoke; a spec counts its invocations to prove the note-typing sync UI stays
+  // gated on the dirty-state transition rather than scanning per keystroke (issue #505). Only counted
+  // when a test pre-seeds the counter; production never creates it.
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.docScans = (window.__cmhPerf.docScans || 0) + 1;
   if (!_widgetBaseline || !_widgetBaseline.size) return [];
   const out = [];
   const seen = new Set();

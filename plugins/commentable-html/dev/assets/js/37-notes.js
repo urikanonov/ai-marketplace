@@ -83,14 +83,47 @@ function _noteApplyFold(note) {
 }
 function _noteAfterChange() {
   _noteSave();
-  if (typeof renderComments === "function") renderComments();
-  if (typeof updateDocTypeUi === "function") updateDocTypeUi();
-  const has = notesChanges().length > 0;
-  if (has && !_noteHadChanges && typeof openSidebar === "function") openSidebar();
-  _noteHadChanges = has;
+  _noteSyncUi();
+  _noteFlushRender();
 }
+// Lightweight UI that must track a note edit IMMEDIATELY so it never lags the already-persisted
+// text: the portability badge, the Copy-all affordance, and the one-time sidebar auto-open. These
+// are only touched on the dirty-state TRANSITION (note-clean <-> note-dirty), never on every
+// keystroke: updateDocTypeUi() and updateCopyAllState() each recompute widgetStateChanges(), a
+// document-wide querySelectorAll, so calling them per keystroke would reintroduce O(document) work
+// on a widget-bearing document (issue #505). Between transitions those states do not change, so a
+// keystroke burst pays that scan at most once. notesChanges() is O(notes), cheap to check each key.
+// Doing the auto-open here (not in the deferred flush) also means a user who closes the sidebar
+// within the debounce window is not overridden by a late reopen.
+function _noteSyncUi() {
+  const has = notesChanges().length > 0;
+  if (has === _noteHadChanges) return;
+  _noteHadChanges = has;
+  if (typeof updateDocTypeUi === "function") updateDocTypeUi();
+  if (typeof updateCopyAllState === "function") updateCopyAllState();
+  if (has && typeof openSidebar === "function") openSidebar();
+}
+// The expensive half of a note change: renderComments() runs two full-document tree walks (a
+// getTextNodes walk per changed note plus the section-review scan), so it is O(document) and must
+// not run on every keystroke. Programmatic changes (reset / clear-all) call it directly; the typing
+// path (_noteOnInput) defers it behind a debounce.
+function _noteFlushRender() {
+  if (_noteRenderTimer) { clearTimeout(_noteRenderTimer); _noteRenderTimer = 0; }
+  if (typeof renderComments === "function") renderComments();
+}
+// Coalesce a keystroke burst into ONE sidebar re-render (issue #505): typing in a note field re-ran
+// the full-document scans per keystroke, freezing a large document. A note's document POSITION does
+// not move while its text is edited, so the render is safely deferred until the reviewer pauses; the
+// delta is persisted and the lightweight UI updated synchronously on every keystroke so no edit is
+// lost and the badge/Copy-all affordance never lag.
+const _NOTE_RENDER_DEBOUNCE_MS = 150;
+let _noteRenderTimer = 0;
 function _noteOnInput(note) {
-  _noteAfterChange();
+  _noteSave();
+  _noteSyncUi();
+  if (_noteRenderTimer) clearTimeout(_noteRenderTimer);
+  if (typeof setTimeout === "function") _noteRenderTimer = setTimeout(_noteFlushRender, _NOTE_RENDER_DEBOUNCE_MS);
+  else _noteFlushRender();
 }
 function _notePreview(t) {
   const s = (t == null ? "" : String(t)).replace(/\s+/g, " ").trim();
@@ -150,6 +183,13 @@ function jumpToNote(id) {
   if (!note || !note.container) return;
   if (note.foldable && note.collapsed) { note.collapsed = false; _noteApplyFold(note); }
   if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(note.container);
+  // Deck-aware: a note can live on an inactive slide, which scrollIntoView cannot reveal, so
+  // navigate to its owning slide first (mirrors the comment-card deck jump in 95-startup.js). A
+  // no-op outside deck mode (window.__cmhDeck is undefined), so report jumps are unchanged.
+  if (window.__cmhDeck && typeof window.__cmhDeck.showSlideById === "function") {
+    const slide = note.container.closest(".slide[data-slide-id]");
+    if (slide) window.__cmhDeck.showSlideById(slide.getAttribute("data-slide-id"));
+  }
   note.container.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" });
   note.container.classList.add("cmh-note-flash");
   setTimeout(() => note.container.classList.remove("cmh-note-flash"), 2200);

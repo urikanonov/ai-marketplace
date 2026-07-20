@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.187.0] - 2026-07-20
+## [1.190.0] - 2026-07-20
 
 ### Fixed
 
@@ -19,6 +19,56 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   has no `<link rel="icon">` favicon in its head, so a missing favicon is caught before handoff
   (CMH-KIND-05). `retrofit.py` injects the CMH favicon when the host head has none, and
   `upgrade.py` adds it when migrating a pre-favicon document (neither duplicates an existing one).
+## [1.189.0] - 2026-07-20
+
+### Added
+
+- Each side-TOC review-filter button (All / Reviewed / Unreviewed / Commented / Changed) now shows a
+  live per-state count as an inline `(N)` beside its label - `All` shows the total section count and
+  the four states partition it, so at a glance you see how many sections are in each state. The count
+  refreshes as sections are marked reviewed, commented, or changed. The count span is `aria-hidden`
+  and its number is folded into each button's accessible name so it is announced once, and the label
+  and count stay on one line per button (the group wraps into rows without overflowing the sidebar,
+  even with two-digit counts) (CMH-REVIEW-14).
+
+## [1.188.0] - 2026-07-20
+
+### Fixed
+
+- Showcase deck: the Act 1 Mermaid loop diagram no longer paints solid black blobs. Deck flowchart
+  edge connectors are now stroked with `fill: none` (only the arrowhead markers keep a fill), so a
+  curved back-edge is drawn as a thin line instead of filling the area under its curve with the dark
+  slide color. The fix is both in the runtime deck default (`assets/css/90-deck.css`) and in the
+  showcase deck's own parchment mermaid theme (CMH-DECK-09).
+
+### Changed
+
+- Showcase deck slide 12 ("Code and notes") now demonstrates the notes feature with REAL live,
+  editable notes (`data-cmh-note` fields the runtime upgrades into editable, change-tracked
+  textareas) instead of a static mockup (CMH-DECK-SHOWCASE-08). A note change card's `jump` is now
+  deck-aware: `jumpToNote()` activates the note's owning slide before scrolling. To support live
+  notes on a slide, the notes authoring validator (`validate.py`) no longer flags a note on a deck
+  slide - a slide, unlike a checklist/diff/widget substrate, does not `cm-skip` its descendant text;
+  a note nested inside a checklist/diff/widget is still flagged (CMH-NOTE-15).
+- Showcase deck slide 18 ("Three portability modes") now tags each part with a colorful source pill
+  (folder / CDN / inlined / storage / seed), matching the site's "Three portability modes" theme,
+  instead of plain table text; the Portable and Offline handoffs keep both the seed and storage
+  pills (CMH-DECK-SHOWCASE-17).
+
+## [1.187.0] - 2026-07-20
+
+### Fixed
+
+- Typing in an editable note (`data-cmh-note`) no longer freezes a large document. The note `input`
+  handler used to re-render the whole sidebar synchronously on every keystroke, and that render runs
+  two full-document tree walks (a `getTextNodes` walk plus the section-review scan), so each
+  keystroke cost O(document) work (hundreds of ms on a report with tens of thousands of text nodes).
+  The typing path now persists the edit synchronously but coalesces a keystroke burst into a single
+  debounced re-render (a note's document position does not move while its text is edited). The
+  lightweight UI (portability badge, Copy-all affordance, first-change sidebar auto-open) updates
+  synchronously but only on the note-dirty transition, so a burst does no per-keystroke document
+  scan; per-keystroke cost is bounded independent of document size. Programmatic reset / clear-all
+  still render immediately. (CMH-NOTE-17)
 
 ## [1.185.0] - 2026-07-20
 
