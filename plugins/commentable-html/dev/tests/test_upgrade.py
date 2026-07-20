@@ -414,6 +414,30 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertIn('const htmlLabels = !document.querySelector(".deck-stage");',
                       target[span[0]:span[1]])
 
+    def test_bootstrap_ignores_commented_head_before_real_head_cmh_mmd_09(self):
+        # A COMMENTED-OUT full <head> block carrying a module script that imports mermaid, placed
+        # BEFORE the real document head, must be ignored by the loader scan: _mermaid_bootstrap_span
+        # is comment-aware, so it slices the REAL head and returns the REAL loader (not the commented
+        # decoy); a commented head with no real loader after it yields None.
+        tpl = _tpl()
+        decoy = ('<!-- <head><script type="module">'
+                 'await import("https://cdn.example/decoy-mermaid.mjs")</script></head> -->\n')
+        target = decoy + tpl
+        span = upgrade._mermaid_bootstrap_span(target, "target")
+        self.assertIsNotNone(span)
+        self.assertNotIn("decoy-mermaid", target[span[0]:span[1]])   # commented decoy not matched
+        self.assertIn("import(", target[span[0]:span[1]])            # matched the real loader
+        self.assertIn('const htmlLabels = !document.querySelector(".deck-stage");',
+                      target[span[0]:span[1]])                       # the real shell loader
+        none_doc = ('<!-- <head><script type="module">'
+                    'await import("https://cdn.example/mermaid.mjs")</script></head> -->\n'
+                    '<html><head><title>x</title></head><body></body></html>')
+        self.assertIsNone(upgrade._mermaid_bootstrap_span(none_doc, "none"))
+        # An unterminated `<!--` (no closing `-->`) runs to EOF, so a loader inside it is inert.
+        unterminated = ('<html><head><!-- disabled <script type="module">'
+                        'await import("https://cdn.example/mermaid.mjs")</script></head>\n')
+        self.assertIsNone(upgrade._mermaid_bootstrap_span(unterminated, "unterminated"))
+
     def test_upgrade_reports_stale_bootstrap_in_check_mode(self):
         # --check must flag a stale shell bootstrap so a pre-fix deck is not silently reported
         # up to date.

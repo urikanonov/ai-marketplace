@@ -45,6 +45,29 @@ _URL_SCHEME_RE = re.compile(r'[a-z][a-z0-9+.-]*://', re.IGNORECASE)
 # The document <head>. `<head\b` (word boundary) so a `<header>` element - or a `<head`-prefixed
 # string in a pre-head comment - is not mistaken for the head, exactly like upgrade.py._HEAD_RE.
 _HEAD_RE = re.compile(r"<head\b[^>]*>.*?</head>", re.IGNORECASE | re.DOTALL)
+# HTML comments are masked (interiors blanked, delimiters and total length preserved) before the head
+# and module-script scan, so a `<head>` or `<script>` inside an HTML comment (before or around the
+# real head) is not mistaken for the document head or the loader. Offsets are preserved, and the real
+# loader's own immediately-preceding "Mermaid loader" comment is still detected on the ORIGINAL text
+# so it stays part of the swapped span. An unterminated `<!--` (no closing `-->`) is masked through
+# end-of-string, matching how an HTML parser treats it, so tags inside it stay inert too. (A
+# `<script>`/`<style>` body containing a literal `<!--`/`-->` string would be mis-masked - a known
+# regex limitation shared by both matchers; the canonical loader never contains one.) Mirrors
+# upgrade.py._mask_html_comments.
+_HTML_COMMENT_RE = re.compile(r'<!--.*?(?:-->|\Z)', re.DOTALL)
+
+
+def _mask_html_comments(s):
+    """Return `s` with every HTML comment's INTERIOR replaced by spaces (the `<!--`/`-->` delimiters
+    and the total length preserved, newlines kept) so offsets into the result map 1:1 onto `s`. An
+    unterminated `<!--` is masked through end-of-string. Used only to locate the <head> and the
+    module-script candidates; the loader-comment lookup runs on the original string."""
+    def repl(m):
+        text = m.group(0)
+        if text.endswith("-->"):
+            return "<!--" + re.sub(r"[^\n]", " ", text[4:-3]) + "-->"
+        return "<!--" + re.sub(r"[^\n]", " ", text[4:])   # unterminated: runs to EOF
+    return _HTML_COMMENT_RE.sub(repl, s)
 
 
 def _nearest_loader_comment_start(head, start):
@@ -63,24 +86,30 @@ def _mermaid_loader_span(html, where="<example>"):
     mermaid via a dynamic mermaid `import(...)`, plus its immediately-preceding "Mermaid loader"
     comment - or None. Scoped to <head> so an authored body module script is never mistaken for the
     loader. The mermaid `import(...)` is matched in the script BODY (not the opening tag), so a decoy
-    import string in an attribute is ignored. When more than one head module imports mermaid, the one
+    import string in an attribute is ignored. The head and the module-script candidates are located
+    on a comment-masked copy, so a `<head>` / `<script>` inside an HTML comment before or around the
+    real head is ignored; the loader-comment lookup runs on the original text so the real loader's
+    preceding comment stays part of the span. When more than one head module imports mermaid, the one
     bound to the "Mermaid loader" comment wins; otherwise ambiguity is an error (mirrors
     upgrade.py._mermaid_bootstrap_span)."""
-    head_m = _HEAD_RE.search(html or "")
+    html = html or ""
+    masked = _mask_html_comments(html)
+    head_m = _HEAD_RE.search(masked)
     if head_m is None:
         return None
-    head = head_m.group(0)
     base = head_m.start()
-    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(head) if _MERMAID_IMPORT_RE.search(m.group(2))]
+    masked_head = masked[base:head_m.end()]
+    orig_head = html[base:head_m.end()]
+    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(masked_head) if _MERMAID_IMPORT_RE.search(m.group(2))]
     if not candidates:
         return None
     if len(candidates) > 1:
-        commented = [m for m in candidates if _nearest_loader_comment_start(head, m.start()) != m.start()]
+        commented = [m for m in candidates if _nearest_loader_comment_start(orig_head, m.start()) != m.start()]
         if len(commented) != 1:
             raise SystemExit("build: %s has ambiguous mermaid loader scripts in <head>" % where)
         candidates = commented
     m = candidates[0]
-    return base + _nearest_loader_comment_start(head, m.start()), base + m.end()
+    return base + _nearest_loader_comment_start(orig_head, m.start()), base + m.end()
 
 
 def _mermaid_loader_is_vendored(bootstrap):

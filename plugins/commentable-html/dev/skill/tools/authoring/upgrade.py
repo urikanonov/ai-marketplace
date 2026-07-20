@@ -377,6 +377,28 @@ _MERMAID_IMPORT_RE = re.compile(
 # A remote specifier: scheme-bearing (`https://`) or protocol-relative (`//host/...`). Anything else
 # (`./x`, `../x`, `/x`, bare) is a locally vendored path.
 _URL_SCHEME_RE = re.compile(r'[a-z][a-z0-9+.-]*://', re.IGNORECASE)
+# HTML comments are masked (interiors blanked, delimiters and total length preserved) before the head
+# and module-script scan, so a `<head>` or `<script>` INSIDE an HTML comment (before or around the
+# real head) is not mistaken for the document head or the loader. Offsets are preserved, and the real
+# loader's own immediately-preceding `<!-- Mermaid loader -->` comment is still detected on the
+# ORIGINAL text so it stays part of the swapped span. An unterminated `<!--` (no closing `-->`) is
+# masked through end-of-string, matching how an HTML parser treats it, so tags inside it stay inert
+# too. (A `<script>`/`<style>` body that contains a literal `<!--`/`-->` string would be mis-masked -
+# a known regex limitation shared by both matchers; the canonical loader never contains one.)
+_HTML_COMMENT_RE = re.compile(r'<!--.*?(?:-->|\Z)', re.DOTALL)
+
+
+def _mask_html_comments(s):
+    """Return `s` with every HTML comment's INTERIOR replaced by spaces (the `<!--`/`-->` delimiters
+    and the total length preserved, newlines kept) so offsets into the result map 1:1 onto `s`. An
+    unterminated `<!--` is masked through end-of-string. Used only to locate the <head> and the
+    module-script candidates; the loader-comment lookup runs on the original string."""
+    def repl(m):
+        text = m.group(0)
+        if text.endswith("-->"):
+            return "<!--" + re.sub(r"[^\n]", " ", text[4:-3]) + "-->"
+        return "<!--" + re.sub(r"[^\n]", " ", text[4:])   # unterminated: runs to EOF
+    return _HTML_COMMENT_RE.sub(repl, s)
 
 
 def _preceding_loader_comment(scope, start):
@@ -395,26 +417,31 @@ def _mermaid_bootstrap_span(html, where):
     <script> in <head> that boots mermaid (a dynamic mermaid `import("...mermaid...")`), plus an
     immediately-preceding "Mermaid loader" comment - or None when the head has no such loader.
     Scoped to <head> so an authored module <script> in the document body (or CONTENT) can never be
-    mistaken for the loader (which would crash the upgrade or replace authored content). When more
-    than one head module script imports mermaid, the one bound to the "Mermaid loader" comment wins;
-    if that is still ambiguous, raise."""
+    mistaken for the loader (which would crash the upgrade or replace authored content). The head and
+    the module-script candidates are located on a comment-masked copy, so a `<head>` / `<script>`
+    inside an HTML comment before or around the real head is ignored; the loader-comment lookup runs
+    on the original text so the real loader's preceding comment stays part of the span. When more than
+    one head module script imports mermaid, the one bound to the "Mermaid loader" comment wins; if
+    that is still ambiguous, raise."""
     html = html or ""
-    head = _HEAD_RE.search(html)
+    masked = _mask_html_comments(html)
+    head = _HEAD_RE.search(masked)
     if head is None:
         return None
-    scope = head.group(0)
     base = head.start()
-    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(scope) if _MERMAID_IMPORT_RE.search(m.group(2))]
+    masked_scope = masked[base:head.end()]
+    orig_scope = html[base:head.end()]
+    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(masked_scope) if _MERMAID_IMPORT_RE.search(m.group(2))]
     if not candidates:
         return None
     if len(candidates) > 1:
-        commented = [m for m in candidates if _preceding_loader_comment(scope, m.start())]
+        commented = [m for m in candidates if _preceding_loader_comment(orig_scope, m.start())]
         if len(commented) != 1:
             raise ValueError("%s: multiple mermaid bootstrap scripts found in <head>" % where)
         candidates = commented
     script = candidates[0]
     start, end = script.start(), script.end()
-    comment = _preceding_loader_comment(scope, start)
+    comment = _preceding_loader_comment(orig_scope, start)
     if comment is not None:
         start = comment.start()
     return base + start, base + end
