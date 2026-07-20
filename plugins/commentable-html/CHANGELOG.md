@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.192.0] - 2026-07-20
+
+### Fixed
+
+- A standalone built-in canvas chart (`canvas.cmh-chart` with inline `data-cmh-chart-points`/`-source`)
+  placed directly in a shrink-to-fit container (`width: max-content`, an `inline-block`, a float, or an
+  auto-sized flex/grid item) - rather than inside the shipped definite-width `figure.chart >
+  .chart-wrap` - no longer renders `dpr x` oversized on a HiDPI screen (`devicePixelRatio > 1`). The
+  renderer now measures the chart's logical size against a neutralized bitmap so the canvas's own
+  dpr-scaled bitmap cannot drive its container's width (the feedback loop), falls back to the authored
+  `width`/`height` attributes when the container collapses without the canvas, and pins the box so the
+  chart displays at its intended size; the shipped definite-width chart pattern is unaffected
+  (CMH-CHART-10).
+
 ## [1.190.0] - 2026-07-20
 
 ### Fixed

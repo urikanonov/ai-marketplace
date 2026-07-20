@@ -139,14 +139,44 @@ function _chartEventPoint(canvas, event) {
     y: (event.clientY - rect.top) * ((canvas._cmhChart && canvas._cmhChart.height) || rect.height) / rect.height,
   };
 }
+// Size a chart canvas's backing bitmap for the current devicePixelRatio and return its logical CSS
+// size (the coordinate space all the drawing below uses). The bitmap is dpr x the CSS box so the
+// chart stays crisp on HiDPI. The measurement is taken against a NEUTRALIZED bitmap so a shrink-to-fit
+// container - whose width is otherwise driven by the canvas's own dpr-scaled bitmap - cannot inflate
+// the measured size (the #501 HiDPI feedback loop). If such a container then stretches the canvas past
+// its intended CSS size, the box is pinned so the chart displays at its intended size; a definite-width
+// ancestor (the shipped figure.chart > .chart-wrap) is unaffected and is never pinned. A collapsed
+// section (display:none) measures 0 and falls back to the authored width/height attributes
+// (CMH-CHART-09). The authored attributes are captured once, before any bitmap write, because setting
+// canvas.width/height reflects onto those content attributes and would otherwise drift each render.
+function _sizeChartCanvas(canvas, dpr) {
+  if (canvas._cmhAttrW == null) {
+    canvas._cmhAttrW = Math.max(1, Math.round(Number(canvas.getAttribute("width")) || canvas.width || 760));
+    canvas._cmhAttrH = Math.max(1, Math.round(Number(canvas.getAttribute("height")) || canvas.height || 340));
+  }
+  canvas.style.removeProperty("width");
+  canvas.style.removeProperty("height");
+  canvas.width = 1;
+  canvas.height = 1;
+  let width = canvas.clientWidth;
+  let height = canvas.clientHeight;
+  if (!(width > 1)) width = canvas._cmhAttrW;
+  if (!(height > 1)) height = canvas._cmhAttrH;
+  width = Math.max(1, Math.round(width));
+  height = Math.max(1, Math.round(height));
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  if (canvas.clientWidth > width + 1) canvas.style.setProperty("width", width + "px", "important");
+  if (canvas.clientHeight > height + 1) canvas.style.setProperty("height", height + "px", "important");
+  return { width: width, height: height };
+}
 function renderInteractiveChart(canvas, activeIndex) {
   const config = _chartConfig(canvas);
   if (!config) return false;
   const dpr = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.round(canvas.clientWidth || Number(canvas.getAttribute("width")) || canvas.width || 760));
-  const height = Math.max(1, Math.round(canvas.clientHeight || Number(canvas.getAttribute("height")) || canvas.height || 340));
-  canvas.width = Math.max(1, Math.round(width * dpr));
-  canvas.height = Math.max(1, Math.round(height * dpr));
+  const size = _sizeChartCanvas(canvas, dpr);
+  const width = size.width;
+  const height = size.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) return false;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

@@ -4,8 +4,8 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "d=\"skills/commentable-html\"; m=\"$d/.skill-resources-1.190.0.ok\"; [ -f \"$m\" ] && exit 0; py=\"\"; for c in python3 python py; do p=$(command -v \"$c\" 2>/dev/null) || continue; case \"$p\" in *WindowsApps*) continue;; esac; \"$p\" -I -c pass >/dev/null 2>&1 && { py=\"$p\"; break; }; done; [ -n \"$py\" ] && \"$py\" -I hooks/extract_resources.py --version 1.190.0 --agent copilot >/dev/null 2>&1; true",
-        "powershell": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File hooks\\session-extract.ps1 -Version 1.190.0",
+        "bash": "d=\"skills/commentable-html\"; m=\"$d/.skill-resources-1.192.0.ok\"; [ -f \"$m\" ] && exit 0; py=\"\"; for c in python3 python py; do p=$(command -v \"$c\" 2>/dev/null) || continue; case \"$p\" in *WindowsApps*) continue;; esac; \"$p\" -I -c pass >/dev/null 2>&1 && { py=\"$p\"; break; }; done; [ -n \"$py\" ] && \"$py\" -I hooks/extract_resources.py --version 1.192.0 --agent copilot >/dev/null 2>&1; true",
+        "powershell": "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File hooks\\session-extract.ps1 -Version 1.192.0",
         "timeoutSec": 120
       }
     ]
