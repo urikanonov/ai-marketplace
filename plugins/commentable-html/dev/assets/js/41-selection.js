@@ -235,9 +235,9 @@ document.getElementById("menuComment").addEventListener("click", () => {
     return;
   }
   if (!pendingRange) return;
-  // If this exact selection already has a text comment, re-open it for editing
-  // instead of stacking a duplicate. A different range (even overlapping) still
-  // makes a new comment.
+  // If this exact selection already has a text comment, re-open it for editing instead of
+  // stacking a duplicate. A disjoint range opens a new composer; an overlapping range also opens
+  // one but is rejected when saved (CMH-CORE-11), so no nested mark.cm-hl is ever created.
   const s = offsetWithin(pendingRange.startContainer, pendingRange.startOffset);
   const e = offsetWithin(pendingRange.endContainer, pendingRange.endOffset);
   if (s >= 0 && e > s) {

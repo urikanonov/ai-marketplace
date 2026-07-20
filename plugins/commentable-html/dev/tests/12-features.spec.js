@@ -260,9 +260,9 @@ test.describe("rejection paths", () => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     // Select a range that overlaps the existing mark and try to comment it. The layer
-    // may reject it (overlap toast) or accept it, but the CONTRACT is: the original
-    // comment is never lost or corrupted, and no mark is nested inside a mark of its
-    // own cid.
+    // now REJECTS it (overlap toast, composer stays open) rather than nesting a mark
+    // (CMH-CORE-11); the CONTRACT is: the original comment is never lost or corrupted,
+    // and no mark is nested inside another.
     const opened = await page.evaluate(() => {
       const mark = document.querySelector("#commentRoot mark.cm-hl");
       const p = mark.closest("p") || mark.parentElement;
@@ -276,29 +276,202 @@ test.describe("rejection paths", () => {
     });
     expect(opened).toBe(true);
     await page.evaluate(() => new Promise((r) => setTimeout(r, 0))); // drain the mouseup setTimeout(0)
+    // The whole-paragraph selection overlaps the existing mark, so the menu MUST appear; assert
+    // it unconditionally so a menu regression fails here instead of silently skipping the check.
     const menu = page.locator("#menuComment");
-    if (await menu.isVisible().catch(() => false)) {
-      await menu.click();
-      const composer = page.locator(".cm-composer").last();
-      await composer.scrollIntoViewIfNeeded();
-      await composer.locator("textarea").fill("overlapping");
-      await composer.locator('[data-act="save"]').click();
-      await expect(composer).toHaveCount(0);
-    }
+    await expect(menu).toBeVisible();
+    await menu.click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.scrollIntoViewIfNeeded();
+    await composer.locator("textarea").fill("overlapping");
+    await composer.locator('[data-act="save"]').click();
+    // Rejected: the not-saved toast shows and the composer stays open (no new comment).
+    expect(await currentToast(page)).toContain("Comment was not saved");
+    await composer.locator('[data-act="cancel"]').click();
+    await expect(composer).toHaveCount(0);
     // Contract: no page error; the ORIGINAL comment survives with its exact text;
-    // DOM cids == cards == storage; no mark is self-nested (same cid inside same cid).
+    // DOM cids == cards == storage; no mark is nested inside another mark.
     expect(errors).toEqual([]);
     expect(await storedComments(page).then((c) => c.some((x) => x.id === firstCid))).toBe(true);
     expect(await markTextForCid(page, firstCid)).toBe(firstText);
     const stored = (await storedComments(page)).length;
     expect(await distinctCids(page)).toBe(stored);
     expect(await page.locator(".cm-card").count()).toBe(stored);
-    const selfNested = await page.evaluate(() =>
-      [...document.querySelectorAll("mark.cm-hl mark.cm-hl")].some((inner) => {
-        const outer = inner.parentElement && inner.parentElement.closest("mark.cm-hl");
-        return outer && outer.dataset.cid === inner.dataset.cid;
-      }));
-    expect(selfNested, "no mark nested inside a mark of its own cid").toBe(false);
+    const nested = await page.evaluate(() =>
+      [...document.querySelectorAll("mark.cm-hl mark.cm-hl")].length);
+    expect(nested, "no mark nested inside another mark").toBe(0);
+  });
+
+  // CMH-CORE-11: two composers opened on the SAME (or overlapping) text before either
+  // saves must not both anchor - wrapping the second range inside the first produces a
+  // nested `<mark class="cm-hl" data-cid=A><mark class="cm-hl" data-cid=B>` whose outer
+  // highlight becomes unclickable. The second save is rejected with the not-saved toast
+  // and creates no comment; editing the existing comment on the same range (CMH-CORE-10)
+  // still works because that path never re-wraps.
+  test("two composers on the same range: the second is rejected, not nested (CMH-CORE-11)", async ({ page }) => {
+    await openKitchenSink(page);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    // Open two composers on the identical selection BEFORE either is saved, so the
+    // second is a genuine new-comment save (not a CMH-CORE-10 reopen of a saved one).
+    const openContentsComposer = async () => {
+      await page.evaluate(() => {
+        const p = document.querySelector("#commentRoot section p");
+        p.scrollIntoView({ block: "center" });
+        const r = document.createRange();
+        r.selectNodeContents(p);
+        const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        p.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 30, clientY: 30 }));
+      });
+      await expect(page.locator("#menuComment")).toBeVisible();
+      await page.locator("#menuComment").click();
+    };
+    await openContentsComposer();
+    await openContentsComposer();
+    const composers = page.locator(".cm-composer");
+    await expect(composers).toHaveCount(2);
+
+    // Save the first: it anchors and creates exactly one comment/highlight.
+    await composers.nth(0).locator("textarea").fill("first note");
+    await composers.nth(0).locator('[data-act="save"]').click();
+    await expect(composers).toHaveCount(1);
+    expect(await storedComments(page)).toHaveLength(1);
+    const firstCid = (await allCids(page))[0];
+
+    // Save the second on the identical range: rejected with the not-saved toast, no
+    // second comment, and NO nested mark of a different cid inside the first.
+    await composers.nth(0).locator("textarea").fill("second note");
+    await composers.nth(0).locator('[data-act="save"]').click();
+    expect(await currentToast(page)).toContain("Comment was not saved");
+    expect(await storedComments(page)).toHaveLength(1);
+    expect(await distinctCids(page)).toBe(1);
+    const nested = await page.evaluate(() =>
+      [...document.querySelectorAll("mark.cm-hl mark.cm-hl")].length);
+    expect(nested, "no cm-hl nested inside another cm-hl").toBe(0);
+    expect(errors).toEqual([]);
+
+    // The rejected composer stays open (the user can adjust the selection); close it.
+    await page.locator(".cm-composer").last().locator('[data-act="cancel"]').click();
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+
+    // CMH-CORE-10 still works: selecting the same range reopens the existing comment for
+    // editing (prefilled), and editing does not create a duplicate or a nested mark.
+    await page.evaluate(() => {
+      const p = document.querySelector("#commentRoot section p");
+      const r = document.createRange();
+      r.selectNodeContents(p);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      p.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 30, clientY: 30 }));
+    });
+    await expect(page.locator("#menuComment")).toBeVisible();
+    await page.locator("#menuComment").click();
+    const editComposer = page.locator(".cm-composer").last();
+    await expect(editComposer.locator("textarea")).toHaveValue("first note");
+    await editComposer.locator("textarea").fill("edited note");
+    await editComposer.locator('[data-act="save"]').click();
+    await expect(editComposer).toHaveCount(0);
+    expect(await storedComments(page)).toHaveLength(1);
+    expect((await allCids(page))[0]).toBe(firstCid);
+    expect(await page.locator(".cm-card").filter({ hasText: "edited note" }).count()).toBe(1);
+  });
+
+  // CMH-CORE-11: a crafted / legacy persisted set can contain overlapping text comments (the
+  // composer can no longer create them). restoreHighlights must apply them defensively - keep
+  // only the FIRST-by-start highlight, never nest a mark.cm-hl inside another - while both
+  // comments stay LISTED in the sidebar (mirroring the diff sub-range apply-time guard).
+  test("startup keeps only the first of two overlapping persisted comments, never nesting (CMH-CORE-11)", async ({ page }) => {
+    await openKitchenSink(page);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    await addTextComment(page, "#commentRoot section p", "first note");
+    const first = (await storedComments(page))[0];
+    expect(Number.isFinite(first.start) && first.end - first.start >= 2).toBe(true);
+
+    // Inject a second text comment whose range is CONTAINED in the first (a genuine overlap
+    // that would nest), as a hand-crafted / legacy localStorage array would, then reload so
+    // restoreHighlights runs its sweep.
+    await page.evaluate((f) => {
+      const root = document.getElementById("commentRoot") || document.body;
+      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
+      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      arr.push({ ...f, id: "coverlap01", start: f.start + 1, end: f.end, note: "second overlapping" });
+      localStorage.setItem(key, JSON.stringify(arr));
+    }, first);
+    await page.reload();
+    await ready(page);
+
+    // Both comments stay listed; only the first (by start) is highlighted; no nested marks.
+    expect(await storedComments(page)).toHaveLength(2);
+    expect(await page.locator(".cm-card").count()).toBe(2);
+    expect(await distinctCids(page)).toBe(1);
+    expect((await allCids(page))[0]).toBe(first.id);
+    expect(await markTextForCid(page, "coverlap01")).toBe("");
+    const nested = await page.evaluate(() =>
+      [...document.querySelectorAll("mark.cm-hl mark.cm-hl")].length);
+    expect(nested, "no mark nested inside another mark on restore").toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  // CMH-CORE-11: a selection that merely ABUTS an existing highlight (its start equals the
+  // highlight's end, sharing zero characters) is NOT an overlap and must save. The overlap guard
+  // derives each highlight's live character interval and uses a half-open test, so touching edges
+  // are allowed; a boundary-only DOM comparison would wrongly reject this.
+  test("a selection abutting an existing highlight is allowed, not rejected as overlap (CMH-CORE-11)", async ({ page }) => {
+    await openInline(page);
+    const phrase = "character offsets";
+    // Global character offset of the phrase within #commentRoot (skipping cm-skip), the same
+    // offset space the runtime anchors in.
+    const g = await page.evaluate((ph) => {
+      const root = document.getElementById("commentRoot");
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(n) {
+          return n.parentElement && n.parentElement.closest(".cm-skip")
+            ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      let acc = "", n;
+      while ((n = walker.nextNode())) acc += n.data;
+      return acc.indexOf(ph);
+    }, phrase);
+    expect(g).toBeGreaterThanOrEqual(0);
+
+    const commentOffsets = async (s, e, note) => {
+      await page.evaluate(({ s, e }) => {
+        const root = document.getElementById("commentRoot");
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode(n) {
+            return n.parentElement && n.parentElement.closest(".cm-skip")
+              ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+          },
+        });
+        let acc = 0, sn = null, so = 0, en = null, eo = 0, n;
+        while ((n = walker.nextNode())) {
+          const len = n.data.length;
+          if (sn === null && s >= acc && s <= acc + len) { sn = n; so = s - acc; }
+          if (en === null && e >= acc && e <= acc + len) { en = n; eo = e - acc; }
+          acc += len;
+        }
+        const r = document.createRange();
+        r.setStart(sn, so); r.setEnd(en, eo);
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 40, clientY: 40 }));
+      }, { s, e });
+      await expect(page.locator("#menuComment")).toBeVisible();
+      await page.locator("#menuComment").click();
+      const c = page.locator(".cm-composer").last();
+      await c.locator("textarea").fill(note);
+      await c.locator('[data-act="save"]').click();
+      await expect(c).toHaveCount(0);
+    };
+
+    const mid = g + Math.floor(phrase.length / 2);
+    await commentOffsets(g, mid, "first half");             // highlight A covers [g, mid)
+    await commentOffsets(mid, g + phrase.length, "abutting"); // [mid, ...) abuts A - must save
+    expect(await distinctCids(page)).toBe(2);                 // both saved
+    expect(await storedComments(page)).toHaveLength(2);
+    const nested = await page.evaluate(() =>
+      [...document.querySelectorAll("mark.cm-hl mark.cm-hl")].length);
+    expect(nested, "abutting highlights are siblings, never nested").toBe(0);
   });
 
   test("a cross-structural selection either anchors exactly or is cleanly rejected with a toast", async ({ page }) => {

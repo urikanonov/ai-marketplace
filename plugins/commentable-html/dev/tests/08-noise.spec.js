@@ -88,7 +88,17 @@ async function addRandomComment(page, note, mode = "single") {
   const composer = page.locator(".cm-composer").last();
   await composer.locator("textarea").fill(note);
   await composer.locator('[data-act="save"]').click();
-  await expect(composer).toHaveCount(0);
+  // The save may not create a comment: a spanning/boundary range crossing an existing highlight
+  // is rejected with the not-saved toast (CMH-CORE-11), and a re-anchor failure would also leave
+  // the composer open - both are valid non-creation outcomes for the fuzzer. Whatever the reason,
+  // NO new highlight must have been wrapped; cancel and report "no comment made".
+  if (await composer.count()) {
+    const cidsNow = await page.$$eval("mark.cm-hl", (els) => [...new Set(els.map((e) => e.dataset.cid))]);
+    expect(cidsNow.length, "a rejected save creates no new highlight").toBe(cidsBefore.length);
+    await composer.locator('[data-act="cancel"]').click();
+    await expect(composer).toHaveCount(0);
+    return false;
+  }
   // Creation correctness: saving must create exactly ONE new highlight, and it must
   // cover EXACTLY the DOM text that was selected (byte-for-byte, incl. astral
   // clusters and cross-block runs). A save that produced no distinct new cid would

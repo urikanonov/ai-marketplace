@@ -32,11 +32,21 @@ function restoreHighlights() {
     && c.anchorType !== "document" && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
+  // Apply-time overlap defense: a legitimately saved set can no longer contain overlapping
+  // text comments (the composer rejects them), but a crafted or legacy persisted array can.
+  // Wrapping an overlapping range would nest a mark.cm-hl inside another and make the outer
+  // highlight unclickable (CMH-CORE-11), so skip any comment whose range overlaps one
+  // already highlighted. Sorted by start, an O(n) sweep suffices: [start,end) overlaps an
+  // earlier applied range iff start < the max applied end so far (touching edges pass). The
+  // overlapping comment stays LISTED (in the sidebar) but only the first-applied one is
+  // highlighted, mirroring the diff sub-range guard.
+  let maxAppliedEnd = -Infinity;
   sorted.forEach(c => {
+    if (c.start < maxAppliedEnd) return; // overlaps an already-highlighted range; leave unhighlighted
     const r = rangeFromOffsets(c.start, c.end);
     if (r) {
-      try { wrapRangeWithMark(r, c.id); }
-      catch (e) { console.warn("Could not restore highlight for", c.id, e); }
+      try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); }
+      catch (e) { unwrapMarks(c.id); console.warn("Could not restore highlight for", c.id, e); }
     } else {
       console.warn("Lost anchor for comment", c.id, "- offsets", c.start, c.end);
     }

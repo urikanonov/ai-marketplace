@@ -150,6 +150,81 @@ test.describe("copy buttons + sortable tables", () => {
     expect(warnings).toEqual([]);
   });
 
+  // CMH-CORE-11 (sort-staleness): a multi-row highlight left DISCONTIGUOUS by a sort has stale
+  // stored offsets (recomputeTextOffsets skips it), but its marks are still live. A new selection
+  // overlapping one of those live marks must still be rejected (never nested) - the overlap guard
+  // derives intervals from the live DOM, not the stale offsets.
+  test("a sort that scatters a multi-row highlight still blocks an overlapping new comment (CMH-CORE-11)", async ({ page }) => {
+    await openInline(page);
+    // Select across the auth and catalog service rows (adjacent in authored order) so ONE comment's
+    // marks span both. Sorting Requests ascending reorders to auth, gateway, catalog - gateway slides
+    // between the two commented rows, making the highlight discontiguous.
+    const spanRows = await page.evaluate(() => {
+      const cells = {};
+      document.querySelectorAll("#commentRoot table.cmh-sortable tbody tr td:first-child")
+        .forEach((c) => { cells[c.textContent.trim()] = c; });
+      const a = document.createTreeWalker(cells["auth"], NodeFilter.SHOW_TEXT).nextNode();
+      const b = document.createTreeWalker(cells["catalog"], NodeFilter.SHOW_TEXT).nextNode();
+      if (!a || !b) return false;
+      cells["auth"].closest("table").scrollIntoView({ block: "center" });
+      const r = document.createRange();
+      r.setStart(a, 0); r.setEnd(b, b.data.length);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      cells["auth"].closest("table").dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 30, clientY: 30 }));
+      return true;
+    });
+    expect(spanRows).toBe(true);
+    await expect(page.locator("#menuComment")).toBeVisible();
+    await page.locator("#menuComment").click();
+    let composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("multi-row note");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+    const cid = await page.$eval("mark.cm-hl", (m) => m.dataset.cid);
+    // The highlight must actually span both rows for this test to exercise discontiguity.
+    const rowsSpanned = await page.$$eval(`mark.cm-hl[data-cid="${cid}"]`,
+      (marks) => new Set(marks.map((m) => m.closest("tr"))).size);
+    expect(rowsSpanned, "the multi-row selection anchored across both rows").toBeGreaterThanOrEqual(2);
+
+    // Sort so gateway slides between the two commented rows -> the highlight is now discontiguous
+    // and recomputeTextOffsets leaves its stored offsets stale.
+    const reqHeader = page.locator("#commentRoot table.cmh-sortable thead th", { hasText: "Requests" });
+    await reqHeader.locator(".cmh-sort-ctrl").click();
+    expect(await serviceOrder(page)).toEqual(["auth", "gateway", "catalog"]);
+
+    // Select the catalog cell's now-moved marked text (which overlaps the existing highlight) and
+    // try to comment it. With stale stored offsets a numeric guard would miss this and nest; the
+    // live-interval guard rejects it.
+    const opened = await page.evaluate(() => {
+      const cell = [...document.querySelectorAll("#commentRoot table.cmh-sortable tbody tr td:first-child")]
+        .find((c) => c.textContent.trim() === "catalog");
+      const tn = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT).nextNode();
+      if (!tn) return false;
+      cell.scrollIntoView({ block: "center" });
+      const r = document.createRange();
+      r.setStart(tn, 0); r.setEnd(tn, tn.data.length);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      cell.closest("table").dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 30, clientY: 30 }));
+      return true;
+    });
+    expect(opened).toBe(true);
+    await expect(page.locator("#menuComment")).toBeVisible();
+    await page.locator("#menuComment").click();
+    composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("overlapping the scattered highlight");
+    await composer.locator('[data-act="save"]').click();
+    // Rejected: not-saved toast, no second comment, no nested mark.
+    await expect(page.locator("#toast")).toContainText("Comment was not saved");
+    const stored = await page.evaluate(() => {
+      const root = document.getElementById("commentRoot") || document.body;
+      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
+      return JSON.parse(localStorage.getItem(key) || "[]");
+    });
+    expect(stored).toHaveLength(1);
+    const nested = await page.evaluate(() => document.querySelectorAll("mark.cm-hl mark.cm-hl").length);
+    expect(nested, "the scattered highlight is never nested into").toBe(0);
+  });
+
   test("a chart canvas is commentable like an image", async ({ page }) => {
     await openInline(page);
     const canvas = page.locator("#demoChart");
