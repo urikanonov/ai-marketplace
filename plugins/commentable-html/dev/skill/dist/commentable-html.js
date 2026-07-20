@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.182.0";
+const CMH_VERSION = "1.185.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -528,6 +528,29 @@ function backfillContext() {
     changed = true;
   }
   if (changed) saveComments();
+}
+// True if the text selection [start, end) overlaps an existing text highlight. Used to reject a
+// new text comment whose selection overlaps a live mark.cm-hl - wrapping it would nest a mark
+// inside another and make the OUTER highlight unclickable (click/hover/popover handlers resolve to
+// the innermost mark), contradicting CMH-CORE-11. Each highlight's character interval is derived
+// from a single LIVE getTextNodes() walk (the same offset space as `start`/`end` and
+// rangeFromOffsets), so it stays correct even when a comment's stored offsets are stale relative to
+// the DOM - e.g. after a table sort leaves a multi-row highlight discontiguous and
+// recomputeTextOffsets skips it. The overlap test is half-open (start < nodeEnd AND nodeStart <
+// end), so a selection that merely ABUTS a highlight (a touching edge) is correctly allowed. Called
+// once per composer save, so the single walk is cheap.
+function rangeOverlapsHighlight(start, end) {
+  const nodes = getTextNodes();
+  let offset = 0;
+  for (const tn of nodes) {
+    const len = tn.nodeValue.length;
+    if (start < offset + len && offset < end
+        && tn.parentElement && tn.parentElement.closest("mark.cm-hl")) {
+      return true;
+    }
+    offset += len;
+  }
+  return false;
 }
 function wrapRangeWithMark(range, id) {
   const nodes = getTextNodes();
@@ -3883,9 +3906,9 @@ document.getElementById("menuComment").addEventListener("click", () => {
     return;
   }
   if (!pendingRange) return;
-  // If this exact selection already has a text comment, re-open it for editing
-  // instead of stacking a duplicate. A different range (even overlapping) still
-  // makes a new comment.
+  // If this exact selection already has a text comment, re-open it for editing instead of
+  // stacking a duplicate. A disjoint range opens a new composer; an overlapping range also opens
+  // one but is rejected when saved (CMH-CORE-11), so no nested mark.cm-hl is ever created.
   const s = offsetWithin(pendingRange.startContainer, pendingRange.startOffset);
   const e = offsetWithin(pendingRange.endContainer, pendingRange.endOffset);
   if (s >= 0 && e > s) {
@@ -4409,6 +4432,17 @@ function saveComposerElement(el) {
     // comment's cid rather than nesting inside a preview mark.
     if (!rangeFromOffsets(el._start, el._end)) {
       showToast("Could not re-anchor that selection (the text may have changed). Try again.");
+      return;
+    }
+    // Reject a selection that overlaps an existing text highlight while the preview is still up (so
+    // the still-open composer keeps its anchor cue): wrapping it would nest a mark.cm-hl inside
+    // another and make the outer highlight unclickable (CMH-CORE-11). The check derives each
+    // highlight's LIVE interval from a text-node walk, so it is correct even when stored offsets are
+    // stale (e.g. a multi-row highlight left discontiguous by a table sort). Editing the same range
+    // reopens the existing comment (CMH-CORE-10, the _editingId branch above), so this only fires
+    // for a genuinely new overlapping selection.
+    if (rangeOverlapsHighlight(el._start, el._end)) {
+      showToast("Could not highlight that range (it may overlap an existing comment). Comment was not saved.");
       return;
     }
     clearComposerPreview(el);
@@ -8879,11 +8913,21 @@ function restoreHighlights() {
     && c.anchorType !== "document" && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
+  // Apply-time overlap defense: a legitimately saved set can no longer contain overlapping
+  // text comments (the composer rejects them), but a crafted or legacy persisted array can.
+  // Wrapping an overlapping range would nest a mark.cm-hl inside another and make the outer
+  // highlight unclickable (CMH-CORE-11), so skip any comment whose range overlaps one
+  // already highlighted. Sorted by start, an O(n) sweep suffices: [start,end) overlaps an
+  // earlier applied range iff start < the max applied end so far (touching edges pass). The
+  // overlapping comment stays LISTED (in the sidebar) but only the first-applied one is
+  // highlighted, mirroring the diff sub-range guard.
+  let maxAppliedEnd = -Infinity;
   sorted.forEach(c => {
+    if (c.start < maxAppliedEnd) return; // overlaps an already-highlighted range; leave unhighlighted
     const r = rangeFromOffsets(c.start, c.end);
     if (r) {
-      try { wrapRangeWithMark(r, c.id); }
-      catch (e) { console.warn("Could not restore highlight for", c.id, e); }
+      try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); }
+      catch (e) { unwrapMarks(c.id); console.warn("Could not restore highlight for", c.id, e); }
     } else {
       console.warn("Lost anchor for comment", c.id, "- offsets", c.start, c.end);
     }

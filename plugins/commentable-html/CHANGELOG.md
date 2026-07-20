@@ -4,7 +4,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.182.0] - 2026-07-20
+## [1.185.0] - 2026-07-20
 
 ### Changed
 
@@ -19,6 +19,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `## Always validate before handoff (MUST)` section states the mandatory
   `finalize.py --strict` + `validate.py --strict` (plus `deck_validate.py --strict` for decks) pass
   upfront so it cannot be missed. (CMH-DOC-17)
+
+## [1.182.0] - 2026-07-20
+
+### Fixed
+
+- Saving a text comment on a selection that overlaps an existing text highlight is now rejected with
+  the "Comment was not saved" toast instead of silently nesting a `mark.cm-hl` inside the existing one.
+  A nested highlight made the OUTER comment effectively unclickable (click/hover/popover handlers
+  resolve to the innermost mark), contradicting CMH-CORE-11. The composer's text-save path now runs a
+  `rangeOverlapsHighlight` pre-check (in `assets/js/15-context.js`) BEFORE wrapping - it derives each
+  existing highlight's LIVE character interval from a single text-node walk and rejects the save when
+  the new selection overlaps one (a half-open test, so it stays correct even when a comment's stored
+  offsets are stale relative to the DOM - for example after a table sort leaves a multi-row highlight
+  discontiguous - and a touching, non-overlapping adjacent selection is still allowed). `restoreHighlights` (`assets/js/95-startup.js`) applies persisted text comments sorted by
+  start and skips wrapping any whose range overlaps one already highlighted (an O(n) sweep), so a
+  legacy/crafted overlapping set keeps only the first-applied highlight - mirroring the diff sub-range
+  guard - while the overlapping comment stays listed in the sidebar. Editing the existing comment on
+  the same range (CMH-CORE-10) is unaffected (CMH-CORE-11).
 
 ## [1.181.0] - 2026-07-20
 

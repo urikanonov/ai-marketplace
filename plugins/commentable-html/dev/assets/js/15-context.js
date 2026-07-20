@@ -147,6 +147,29 @@ function backfillContext() {
   }
   if (changed) saveComments();
 }
+// True if the text selection [start, end) overlaps an existing text highlight. Used to reject a
+// new text comment whose selection overlaps a live mark.cm-hl - wrapping it would nest a mark
+// inside another and make the OUTER highlight unclickable (click/hover/popover handlers resolve to
+// the innermost mark), contradicting CMH-CORE-11. Each highlight's character interval is derived
+// from a single LIVE getTextNodes() walk (the same offset space as `start`/`end` and
+// rangeFromOffsets), so it stays correct even when a comment's stored offsets are stale relative to
+// the DOM - e.g. after a table sort leaves a multi-row highlight discontiguous and
+// recomputeTextOffsets skips it. The overlap test is half-open (start < nodeEnd AND nodeStart <
+// end), so a selection that merely ABUTS a highlight (a touching edge) is correctly allowed. Called
+// once per composer save, so the single walk is cheap.
+function rangeOverlapsHighlight(start, end) {
+  const nodes = getTextNodes();
+  let offset = 0;
+  for (const tn of nodes) {
+    const len = tn.nodeValue.length;
+    if (start < offset + len && offset < end
+        && tn.parentElement && tn.parentElement.closest("mark.cm-hl")) {
+      return true;
+    }
+    offset += len;
+  }
+  return false;
+}
 function wrapRangeWithMark(range, id) {
   const nodes = getTextNodes();
   const toWrap = nodes.filter(n => range.intersectsNode(n));
