@@ -153,9 +153,16 @@ Prefer a plugin-dir source; it is the most forward-compatible.
 ## Testing in CI
 
 `.github/workflows/plugin-tests.yml` discovers every plugin with a Node/Playwright suite at
-`plugins/<plugin>/dev/package.json` and runs it in a matrix (one job per plugin): Node 22, `npm ci --ignore-scripts`,
-`npx playwright install --with-deps chromium`, then `npm test`. The `plugin-tests` job fails if no plugin
-test suite is discovered, so an accidentally removed suite cannot pass the gate silently.
+`plugins/<plugin>/dev/package.json` and runs it in a matrix (Node 22, `npm ci --ignore-scripts`,
+`npx playwright install --with-deps chromium` on a browser-cache miss, then the Playwright suite).
+The suite is SHARDED across runners (`playwright test --shard=i/N`), and the plugins' Python
+(`unittest`) suites run as a separate sharded matrix via `scripts/run_plugin_python_tests.py`, so the
+critical path is a fraction of a single serial run. A `changes` job first decides whether the event
+touches a plugin (any `plugins/**` file, this workflow, or the shared Python runner); a PR that does
+not is allowed to SKIP both heavy suites, and the aggregate `plugin-tests` gate treats that
+intentional skip as success (failing SAFE - if the diff cannot be computed, the suites run). The
+`plugin-tests` gate still fails if no plugin test suite is discovered at all, so an accidentally
+removed suite cannot pass silently.
 
 To add browser tests to a plugin, drop these under its `dev/` folder (see `plugins/commentable-html/dev/` for a
 working example):
@@ -464,12 +471,15 @@ git config core.hooksPath .githooks
 
 This turns on two hooks: `pre-commit` runs the manifest and Markdown validators before each commit,
 and `pre-push` runs the deterministic gate that mirrors the required CI checks before each push -
-the validators, the script unit tests, `check_changelog_sync`, `check_version_bump`, and the
+the validators, the script unit tests, the changed plugins' Python suites (via
+`scripts/run_plugin_python_tests.py --changed-only`; set `PREPUSH_FULL=1` to run every plugin's
+suite), `check_changelog_sync`, `check_version_bump`, and the
 `build_site_data.py` / layer `build.py` / fixtures `--check` drift guards - so a push that would fail
 a required check is caught locally first. The slower, occasionally flaky browser (Playwright) suites
 are not run by default; set `RUN_E2E=1 git push` to include them (CI is their authoritative gate).
 
-The `pre-push` hook is SLOW - it runs the full script unit tests plus every plugin's Python suite, so
+The `pre-push` hook is SLOW - it runs the full script unit tests plus the changed plugins' Python
+suites (or every plugin's suite with `PREPUSH_FULL=1`), so
 `git push` legitimately takes several minutes with no early output. Do NOT mistake that for a hang: on
 PowerShell, piping the push through a buffering command (`git push ... | Select-Object -Last N` or
 `| Out-String`) hides the hook's live progress until it finishes, which makes a working hook look

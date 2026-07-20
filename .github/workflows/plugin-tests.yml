@@ -39,15 +39,69 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Discovered plugin test suites: $plugins"
 
+  # Decide whether this event needs the heavy plugin suites. On a push to main we always
+  # run them; on a PR we run them only when a file that can affect a plugin suite changed
+  # (any plugins/** file, this workflow, or the shared Python test runner). A docs-only,
+  # site-only, or scripts-only PR then skips the ~6-7 min Playwright + Python suites, while
+  # the required `plugin-tests` gate below still reports (it treats the intentional skip as
+  # success). Fails SAFE: if the diff cannot be computed, it runs the suites.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_plugin: ${{ steps.filter.outputs.run_plugin }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Decide whether to run the plugin suites
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "run_plugin=true" >> "$GITHUB_OUTPUT"
+            echo "Not a pull_request event; running the plugin suites."
+            exit 0
+          fi
+          if ! git cat-file -e "$BASE_SHA" 2>/dev/null || ! git cat-file -e "$HEAD_SHA" 2>/dev/null; then
+            echo "run_plugin=true" >> "$GITHUB_OUTPUT"
+            echo "Could not resolve the PR base/head; running the plugin suites (fail-safe)."
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"; echo "$changed"
+          if echo "$changed" | grep -Eq '^(plugins/|\.github/workflows/plugin-tests\.yml$|scripts/run_plugin_python_tests\.py$)'; then
+            echo "run_plugin=true" >> "$GITHUB_OUTPUT"
+            echo "A plugin-affecting file changed; running the plugin suites."
+          else
+            echo "run_plugin=false" >> "$GITHUB_OUTPUT"
+            echo "No plugin-affecting file changed; skipping the plugin suites."
+          fi
+
   playwright:
-    needs: discover
-    if: ${{ needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' }}
+    needs: [changes, discover]
+    if: ${{ needs.changes.outputs.run_plugin == 'true' && needs.discover.outputs.plugins != '[]' && needs.discover.outputs.plugins != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # Shard each plugin's Playwright suite across runners. A GitHub-hosted ubuntu runner
+      # has 4 vCPUs, so `workers` cannot go past 4 on one runner (and the specs spawn a
+      # python subprocess that thrashes beyond that); fanning the suite out across shards is
+      # the lever that cuts the critical path. Keep SHARD_TOTAL equal to the shard list length.
       matrix:
         plugin: ${{ fromJSON(needs.discover.outputs.plugins) }}
+        shard: [1, 2, 3, 4]
+    env:
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_TOTAL: "4"
     defaults:
       run:
         working-directory: ${{ matrix.plugin }}/dev
@@ -67,7 +121,7 @@ jobs:
       - name: Install dependencies (no lifecycle scripts)
         run: npm ci --ignore-scripts
       - name: Verify committed test fixtures
-        if: matrix.plugin == 'plugins/commentable-html'
+        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == 1
         working-directory: .
         run: node plugins/commentable-html/dev/tests/fixtures/generate.mjs --check
       - name: Resolve Playwright cache key inputs
@@ -83,20 +137,44 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
-      - name: Install Playwright browser and system deps
-        run: npx playwright install --with-deps chromium
-      - name: Save Playwright browser cache
+      # On a cache MISS install the browser plus its apt system deps; on a HIT the browser is
+      # already restored, so install it without `--with-deps` to skip the ~18s apt step (the
+      # ubuntu-latest image ships the shared libraries chromium needs).
+      - name: Install Playwright browser and system deps (cache miss)
         if: steps.pwcache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browser (cache hit)
+        if: steps.pwcache.outputs.cache-hit == 'true'
+        run: npx playwright install chromium
+      - name: Save Playwright browser cache
+        if: steps.pwcache.outputs.cache-hit != 'true' && matrix.shard == 1
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
-      - name: Run Playwright tests
-        run: npm test
+      # The tutorial-screenshot check is not shardable, so run it once (on shard 1 of the
+      # commentable-html suite that owns it) instead of in every shard.
+      - name: Verify tutorial screenshots (once)
+        if: matrix.plugin == 'plugins/commentable-html' && matrix.shard == 1
+        run: npm run shots:check
+      - name: Run Playwright tests (shard)
+        run: npx playwright test "--shard=${SHARD_INDEX}/${SHARD_TOTAL}"
 
   python:
+    needs: changes
+    if: ${{ needs.changes.outputs.run_plugin == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      # Shard the plugins' Python (unittest) suites across runners the same way. The runner
+      # keeps the per-file, in-process execution model of `unittest discover`, so no new
+      # shared-state parallelism is introduced; different files just run on different runners.
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      SHARD_INDEX: ${{ matrix.shard }}
+      SHARD_TOTAL: "3"
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -106,37 +184,26 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - name: Run plugin Python test suites
-        shell: bash
-        run: |
-          set -euo pipefail
-          found=0
-          for tests in plugins/*/dev/tests; do
-            [ -d "$tests" ] || continue
-            if find "$tests" -maxdepth 1 -type f -name 'test_*.py' -print -quit | grep -q .; then
-              found=1
-              python -m unittest discover -s "$tests" -p "test_*.py"
-            fi
-          done
-          if [ "$found" -ne 1 ]; then
-            echo "::error::no plugin Python test suites were discovered"
-            exit 1
-          fi
+      - name: Run plugin Python test suites (shard)
+        run: python scripts/run_plugin_python_tests.py "--shard=${SHARD_INDEX}/${SHARD_TOTAL}" --require-discovered
 
   plugin-tests:
-    needs: [discover, playwright, python]
+    needs: [changes, discover, playwright, python]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Gate on plugin test results
         env:
+          RUN_PLUGIN: ${{ needs.changes.outputs.run_plugin }}
           DISCOVER_RESULT: ${{ needs.discover.result }}
           PLAYWRIGHT_RESULT: ${{ needs.playwright.result }}
           PYTHON_RESULT: ${{ needs.python.result }}
           DISCOVERED: ${{ needs.discover.outputs.plugins }}
         run: |
-          echo "discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
+          echo "run_plugin=$RUN_PLUGIN discover=$DISCOVER_RESULT playwright=$PLAYWRIGHT_RESULT python=$PYTHON_RESULT plugins=$DISCOVERED"
+          # The discovery guard runs regardless, so an accidentally removed suite still fails
+          # the gate even on a PR that skips the heavy suites.
           if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::plugin discovery failed"
             exit 1
@@ -145,11 +212,15 @@ jobs:
             echo "::error::no plugin test suites were discovered; expected at least one plugins/*/dev/package.json"
             exit 1
           fi
-          if [ "$PLAYWRIGHT_RESULT" = "failure" ] || [ "$PLAYWRIGHT_RESULT" = "cancelled" ]; then
-            echo "::error::plugin Playwright tests did not pass"
+          if [ "$RUN_PLUGIN" != "true" ]; then
+            echo "No plugin-affecting change; the Playwright and Python suites were intentionally skipped."
+            exit 0
+          fi
+          if [ "$PLAYWRIGHT_RESULT" != "success" ]; then
+            echo "::error::plugin Playwright tests did not pass (result: $PLAYWRIGHT_RESULT)"
             exit 1
           fi
           if [ "$PYTHON_RESULT" != "success" ]; then
-            echo "::error::plugin Python tests did not pass"
+            echo "::error::plugin Python tests did not pass (result: $PYTHON_RESULT)"
             exit 1
           fi
