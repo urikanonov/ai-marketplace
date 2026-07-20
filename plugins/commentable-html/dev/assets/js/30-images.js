@@ -444,12 +444,12 @@ function showImageAddFor(img) {
   if (imageAddHideTimer) { clearTimeout(imageAddHideTimer); imageAddHideTimer = null; }
   imageAddBtn.hidden = false;
   if (!positionImageAdd(img)) { imageAddBtn.hidden = true; imageActiveEl = null; pendingImage = null; return; }
-  _activeAdd = { el: img, btn: imageAddBtn, position: () => positionImageAdd(img), clear: () => { pendingImage = null; } };
+  setActiveAdd({ el: img, btn: imageAddBtn, position: () => positionImageAdd(img), clear: () => { pendingImage = null; } });
 }
 function scheduleHideImageAdd() {
   if (imageAddHideTimer) clearTimeout(imageAddHideTimer);
   imageAddHideTimer = setTimeout(() => {
-    if (!imageAddBtn.matches(":hover")) { imageAddBtn.hidden = true; imageActiveEl = null; pendingImage = null; }
+    if (!imageAddBtn.matches(":hover")) { imageAddBtn.hidden = true; imageActiveEl = null; pendingImage = null; clearActiveAdd(imageAddBtn); }
   }, 220);
 }
 function openImageComposer(info) {

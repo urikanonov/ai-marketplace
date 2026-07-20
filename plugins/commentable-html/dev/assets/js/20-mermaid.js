@@ -10,11 +10,51 @@ const mermaidDiagrams = [];
 let pendingMermaid = null;
 let mermaidAddHideTimer = null;
 let mermaidActiveNode = null;
-// The floating add-comment buttons (image / mermaid / diff) are position:fixed and
-// positioned once at hover time. `_activeAdd` remembers the currently-shown one and
-// how to re-run its positioning, so a scroll/resize can keep it pinned to its target
-// (or hide it when the target scrolls out of view) instead of letting it drift.
+// The floating structural-anchor add-comment buttons (image / mermaid / diff / link /
+// widget / heading) are position:fixed and positioned once at hover time. `_activeAdd`
+// remembers the currently-shown one and how to re-run its positioning, so a
+// scroll/resize can keep it pinned to its target (or hide it when the target scrolls out
+// of view) instead of letting it drift.
 let _activeAdd = null;
+// Only ONE structural-anchor "Add Comment" affordance is shown at a time. Each layer owns
+// its own floating button but shares `_activeAdd`; every layer reveals its button through
+// setActiveAdd(), which hides and clears whichever OTHER layer's button was showing, so
+// overlapping targets never leave two buttons up at once. For NESTED targets - the common
+// clickable-thumbnail/logo <a><img></a>, where the image layer's <img> lives inside the
+// link layer's <a> and hovering fires both - the INNERMOST element owns the affordance (so
+// the image wins over the wrapping link), deterministically and regardless of hover-event
+// order, so the reader ever sees exactly one button.
+function setActiveAdd(entry) {
+  const prev = _activeAdd;
+  if (prev && prev.btn && prev.btn !== (entry && entry.btn)) {
+    // The incoming target is an ANCESTOR of the active one AND that inner affordance is still
+    // showing -> keep the inner (already-active) one and drop this outer one; _activeAdd is
+    // unchanged. The `!prev.btn.hidden` gate is load-bearing: a layer's own hide timer hides
+    // its button WITHOUT reassigning _activeAdd, so a stale (hidden) inner entry must not keep
+    // winning the contains() check and suppress the enclosing layer forever (for example a link
+    // inside a heading, once the link has been hovered and left).
+    if (!prev.btn.hidden && prev.el && entry && entry.el && prev.el !== entry.el && entry.el.contains(prev.el)) {
+      if (entry.btn) entry.btn.hidden = true;
+      if (entry.clear) entry.clear();
+      return;
+    }
+    // Otherwise the new affordance wins (a sibling target, the new one is the inner element, or
+    // the previously-active button is already hidden): hide and clear that button first.
+    prev.btn.hidden = true;
+    if (prev.clear) prev.clear();
+  }
+  _activeAdd = entry;
+}
+// Clear the shared sentinel when a layer hides ITS OWN button on its hover/focus hide timer, so
+// _activeAdd never points at a stale hidden button (the `btn === _activeAdd.btn` check makes this a
+// no-op once the sentinel has moved on to another layer). This keeps the setActiveAdd() ancestor
+// tie-break above, and the scroll repositioner in 52-hover-bubble.js, from consulting a
+// no-longer-visible entry. The composer-open (click/keydown) paths also hide their button but do not
+// call this; the `!prev.btn.hidden` guard in setActiveAdd() and the hidden-check in the repositioner
+// already make any such briefly-stale entry harmless.
+function clearActiveAdd(btn) {
+  if (_activeAdd && _activeAdd.btn === btn) _activeAdd = null;
+}
 // True when the button's natural (unclamped) anchor sits comfortably on-screen. A
 // scroll reposition hides a button whose target scrolled (partly) out of view rather
 // than clamping it to a viewport edge, where it would look detached from its target.
@@ -381,7 +421,7 @@ function showMermaidAddFor(node, host) {
   mermaidAddBtn.hidden = false;
   mermaidAddBtn.textContent = "Add Comment";
   if (!positionMermaidAdd(node)) { mermaidAddBtn.hidden = true; pendingMermaid = null; return; }
-  _activeAdd = { el: node, btn: mermaidAddBtn, position: () => positionMermaidAdd(node), clear: () => { pendingMermaid = null; } };
+  setActiveAdd({ el: node, btn: mermaidAddBtn, position: () => positionMermaidAdd(node), clear: () => { pendingMermaid = null; } });
 }
 function mermaidDiagramLabel(host) {
   const t = host.querySelector(".titleText, text.title, .title, .cmh-diagram-title");
@@ -406,13 +446,13 @@ function showMermaidWholeFor(host) {
   const left = rect.right - bw - 6, top = rect.top + 6;
   mermaidAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
   mermaidAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
-  _activeAdd = { el: host, btn: mermaidAddBtn, position: () => showMermaidWholeFor(host), clear: () => { pendingMermaid = null; } };
+  setActiveAdd({ el: host, btn: mermaidAddBtn, position: () => showMermaidWholeFor(host), clear: () => { pendingMermaid = null; } });
   return _rectInViewport(rect);
 }
 function scheduleHideMermaidAdd() {
   if (mermaidAddHideTimer) clearTimeout(mermaidAddHideTimer);
   mermaidAddHideTimer = setTimeout(() => {
-    if (!mermaidAddBtn.matches(":hover")) { mermaidAddBtn.hidden = true; mermaidActiveNode = null; pendingMermaid = null; }
+    if (!mermaidAddBtn.matches(":hover")) { mermaidAddBtn.hidden = true; mermaidActiveNode = null; pendingMermaid = null; clearActiveAdd(mermaidAddBtn); }
   }, 220);
 }
 function attachMermaidHostHandlers(host) {

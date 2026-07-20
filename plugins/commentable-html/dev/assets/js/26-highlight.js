@@ -517,12 +517,12 @@ function showDiffAddFor(el, info) {
   if (diffAddHideTimer) { clearTimeout(diffAddHideTimer); diffAddHideTimer = null; }
   diffAddBtn.hidden = false;
   if (!positionDiffAdd(el)) { diffAddBtn.hidden = true; pendingDiff = null; return; }
-  _activeAdd = { el, btn: diffAddBtn, position: () => positionDiffAdd(el), clear: () => { pendingDiff = null; } };
+  setActiveAdd({ el, btn: diffAddBtn, position: () => positionDiffAdd(el), clear: () => { pendingDiff = null; diffActiveLineEl = null; } });
 }
 function scheduleHideDiffAdd() {
   if (diffAddHideTimer) clearTimeout(diffAddHideTimer);
   diffAddHideTimer = setTimeout(() => {
-    if (!diffAddBtn.matches(":hover")) { diffAddBtn.hidden = true; diffActiveLineEl = null; pendingDiff = null; }
+    if (!diffAddBtn.matches(":hover")) { diffAddBtn.hidden = true; diffActiveLineEl = null; pendingDiff = null; clearActiveAdd(diffAddBtn); }
   }, 220);
 }
 function attachDiffHostHandlers(block) {
@@ -532,6 +532,12 @@ function attachDiffHostHandlers(block) {
   host.addEventListener("mousemove", (e) => {
     const el = e.target.closest && e.target.closest(".cmh-dl");
     if (!el || !host.contains(el) || el.classList.contains("cmh-dl-full") || el.classList.contains("cmh-dl-spacer")) return;
+    // A cross-layer setActiveAdd() (an adjacent anchor winning) hides diffAddBtn and, via this
+    // entry's clear() callback, resets diffActiveLineEl, so a pointer returning to the same line
+    // falls through here and re-reveals the button. The guard stays UNCONDITIONAL (no
+    // `!diffAddBtn.hidden` companion) on purpose: the sub-line text-selection path hides diffAddBtn
+    // WITHOUT going through setActiveAdd (so diffActiveLineEl is retained), and a `!hidden` guard
+    // would then re-show the whole-line button beside the open selection menu on the next mousemove.
     if (el === diffActiveLineEl) return;
     const info = diffLineInfo(block, el);
     if (!info || !diffLineCommentable({ type: info.lineType })) return;
