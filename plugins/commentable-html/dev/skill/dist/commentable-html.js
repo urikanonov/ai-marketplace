@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.175.0";
+const CMH_VERSION = "1.181.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2100,6 +2100,39 @@ function setupInteractiveCharts() {
       }
     });
     window.addEventListener("scroll", hideChartTooltip, true);
+  }
+  // A chart drawn while its section was collapsed (display:none) read clientWidth 0 and fell back to
+  // the width attribute (760), so its bitmap is wrong for the real column width and looks blurry once
+  // revealed - and a window resize was the only thing that re-drew it. Re-render each chart ONCE when
+  // its section is revealed, i.e. when its box goes from zero-size to a real size (mirrors the Mermaid
+  // width-class ResizeObserver in 20-mermaid.js). This is a one-shot reveal hook, not a perpetual
+  // size mirror: re-rendering on every size change would, for a standalone canvas.cmh-chart in a
+  // shrink-to-fit container on a HiDPI screen, keep enlarging the bitmap (each render sets the bitmap
+  // from clientWidth, which in a shrink-to-fit box tracks the bitmap) and never settle. Genuine window
+  // resizes of an already-visible chart are handled by the resize listener above.
+  if (typeof ResizeObserver === "function") {
+    if (setupInteractiveCharts._revealObs) setupInteractiveCharts._revealObs.disconnect();
+    const obs = new ResizeObserver(function (entries) {
+      entries.forEach(function (entry) {
+        const canvas = entry.target;
+        if (Math.round(canvas.clientWidth) === 0) { canvas._cmhWasHidden = true; return; }
+        if (!canvas._cmhWasHidden) return; // already visible; the reveal has been handled
+        canvas._cmhWasHidden = false;
+        renderInteractiveChart(canvas, canvas._cmhChart ? canvas._cmhChart.activeIndex : -1);
+        if (chartTooltipCanvas === canvas && canvas._cmhChart && canvas._cmhChart.activeIndex >= 0) {
+          const point = canvas._cmhChart.points[canvas._cmhChart.activeIndex];
+          if (point) _showChartTooltip(canvas, point);
+        }
+      });
+    });
+    charts.forEach(function (canvas) {
+      // Arm synchronously from the current visibility so a reveal that lands before the observer's
+      // first (async) delivery is still handled: if that initial callback arrives already non-zero,
+      // _cmhWasHidden is set and the reveal re-render still fires.
+      if (Math.round(canvas.clientWidth) === 0) canvas._cmhWasHidden = true;
+      obs.observe(canvas);
+    });
+    setupInteractiveCharts._revealObs = obs;
   }
 }
 
@@ -5310,6 +5343,11 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
     head.className = "cm-toolbar-menu-head";
     badge.parentNode.insertBefore(head, badge);
     head.appendChild(badge);
+    const ver = document.createElement("span");
+    ver.className = "cm-version cm-menu-version";
+    ver.title = "commentable-html version that generated this file";
+    ver.textContent = "v" + CMH_VERSION;
+    head.appendChild(ver);
     const brand = document.createElement("span");
     brand.className = "cm-toolbar-menu-brand";
     brand.setAttribute("aria-hidden", "true");
@@ -9654,8 +9692,10 @@ function setupDeck() {
     if (commentMode || e.defaultPrevented || isEditableTarget(e.target) || hasBlockingDeckChrome()) return;
     if (e.key === "ArrowRight" || e.key === "PageDown") {
       if (show(current + 1)) e.preventDefault();
-    } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-      if (show(current - 1)) e.preventDefault();
+    } else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === "Backspace") {
+      // Backspace carries a legacy browser "history back" default; the deck owns it, so
+      // suppress that default even at the first slide where show() is a no-op.
+      if (show(current - 1) || e.key === "Backspace") e.preventDefault();
     } else if (e.key === "Home") {
       if (show(0)) e.preventDefault();
     } else if (e.key === "End") {

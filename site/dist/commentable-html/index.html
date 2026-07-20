@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Tighten the planning loop. Inline comment on any HTML report and round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-commentable-html.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=5d26de95524f" />
+  <link rel="stylesheet" href="../assets/styles.css?v=b116401831bb" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -90,17 +90,17 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.175.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.181.0<!-- END:version --></span></a>
       </div>
     </header>
 
     <div id="showcase" class="showcase">
       <div class="wrap">
-        <div class="showcase-grid">
+        <div class="showcase-card">
           <figure class="showcase-shot">
             <div class="showcase-frame">
               <span class="showcase-dots" aria-hidden="true"><span class="showcase-dot"></span><span class="showcase-dot"></span><span class="showcase-dot"></span></span>
-              <img class="showcase-img" src="tutorial/assets/landing-composer.png" width="748" height="616" alt="A commentable HTML plan with a paragraph selected: an inline comment window shows the quoted selection above a 'Write your review comment' box with Cancel and Save comment buttons." />
+              <img class="showcase-img" src="tutorial/assets/landing-composer.png" width="686" height="532" alt="A commentable HTML plan with a paragraph selected: an inline comment window shows the quoted selection above a 'Write your review comment' box with Cancel and Save comment buttons." />
             </div>
             <figcaption class="showcase-caption">Select any text and a comment window opens right where you mean it - no alt-tabbing to the chat.</figcaption>
           </figure>
@@ -451,6 +451,34 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.181.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A built-in canvas chart (a <code>canvas.cmh-chart</code> / <code>figure.chart canvas</code> with inline <code>data-cmh-chart-points</code>/<code>-source</code>) authored inside a collapsible <code>&lt;section&gt;</code> that is collapsed (<code>display:none</code>) at load now re-renders at its real column width the moment its section is revealed, instead of staying blurry until the next window resize (CMH-CHART-09). While collapsed the canvas reads <code>clientWidth</code> 0 and draws its bitmap to the width fallback (the <code>width</code> attribute, else 760), so it was sized for the wrong width; a reveal <code>ResizeObserver</code> on each chart canvas re-draws it once on the transition from zero-size to visible (mirroring the Mermaid width-class observer from CMH-MMD-07). It is a one-shot reveal hook, not a perpetual size mirror, so a standalone <code>canvas.cmh-chart</code> in a shrink-to-fit container on a HiDPI screen cannot keep enlarging its own bitmap; genuine window resizes stay handled by the existing resize listener. This is the same render-while-hidden class as #430 (Mermaid).</li>
+              <li>Pinned that code/KQL line-number gutters stay aligned when a collapsed section is revealed (CMH-CODE-06). Unlike the canvas chart above, the gutter needs no reveal recompute: the browser resolves a numeric <code>line-height</code> to a px value via <code>getComputedStyle</code> even for a <code>display:none</code> block, so the gutter offsets laid down while collapsed already match the visible line-height after reveal. A regression test locks that invariant in.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.180.0] - 2026-07-20</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The comments sidebar <code>Hide</code> button is now accent-tinted (an accent-soft background with accent text and border, and a solid-accent hover) so it stands out clearly and reads as distinct from the neutral <code>Help &amp; About</code> button beside it (CMH-SIDE-09).</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The overflow (<code>...</code>) menu header now shows the running layer version (<code>v&lt;version&gt;</code>) between the portability badge and the brand icon; the version is decorative text and does not change the menu button tab order (CMH-MENU-ICON-03).</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
+            <div class="rel-head"><h3>[1.178.0] - 2026-07-20</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Deck mode now accepts <code>Backspace</code> as a &quot;previous slide&quot; key, alongside <code>ArrowLeft</code> and <code>PageUp</code>, so presenters can step one slide back with the key many slide tools use (CMH-DECK-05). It respects the same guards as the other navigation keys: it does not move slides while a comment field or other editable target is focused, or while the comment-options menu or other blocking deck chrome is open. Because <code>Backspace</code> uniquely carries a legacy browser &quot;history back&quot; default, the deck suppresses that default whenever it owns the key (including at the first-slide boundary, where the step back is a no-op) so a viewer is never navigated away from the deck.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.175.0] - 2026-07-19</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -464,8 +492,6 @@
               <li>Deck mermaid diagrams now scale to fill the available slide AREA using both width and height (contain-to-fit), not just the width (CMH-DECK-35, building on CMH-DECK-26), and are bounded to the slide so they never overflow or clip (even when nested in wrappers). A slide whose only non-text content is a single diagram and that is not laid out as a <code>.cmh-cols-2</code> is auto-detected as a diagram slide (<code>cmh-deck-diagram-slide</code>) and laid out as a flex column, and the runtime sizes the rendered SVG to the largest aspect-preserving box that fits the slide&#x27;s fixed content area. A slide the author laid out as two columns keeps that layout - the automatic rule never flattens a <code>.cmh-cols-2</code>; the opt-in <code>.cmh-slide-diagram</code> recipe forces the fill and un-confines a lone diagram from its half column to the full slide width. The fit recomputes on resize and on slide activation, composes with CMH-MMD-08 (<code>htmlLabels: false</code>) so labels stay crisp, and survives Export Offline.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.172.0] - 2026-07-19</h3></div>
             <div class="group-label">Fixed</div>
@@ -481,38 +507,7 @@
               <li>Link handling for author-facing references (CMH-LINK-01..04): at render time every external <code>&lt;a href&gt;</code> in the document is stamped <code>target=&quot;_blank&quot;</code> + <code>rel=&quot;noopener noreferrer&quot;</code> so a reference opens in a new tab and the reader keeps their place (same-page <code>#</code> fragments, <code>.cm-skip</code> UI chrome, and <code>javascript:</code> links are left untouched, and an author-set <code>target</code> is respected). Each link is now commentable like an image or mermaid node: hovering or keyboard-focusing a link reveals a floating <code>Add Comment</code> affordance that anchors an <code>anchorType: &quot;link&quot;</code> comment to that link (by index + href/text) without navigating - a normal click (or Enter) still follows the link, while the floating button or the non-navigating <code>Alt+Enter</code> chord opens the composer. Links are classified by their normalized protocol (only <code>http</code>/<code>https</code>/<code>file</code>), so control-char-obfuscated <code>javascript:</code>, <code>mailto:</code>/<code>tel:</code>, and <code>data:</code> links are never stamped or made commentable, and the <code>_blank</code> rel-enforcement is case-insensitive (reverse-tabnabbing defense). Link comments ring the link, list a card, flash on jump, and survive reload, Copy all, Export Markdown, and Export Offline.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.170.0] - 2026-07-19</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Deck comment-scope menu now stacks its options vertically with &quot;Comment on deck&quot; above &quot;Comment on slide&quot; (CMH-DECK-34).</li>
-              <li>In deck mode a plain click on EMPTY slide space advances to the next slide in BOTH present and review-panel-open modes; a click on text (or any interactive target) never advances, so text stays selectable for commenting. &quot;Empty&quot; is decided by hit-testing the click POINT against the slide&#x27;s text rects, so a wrapper/slide carrying loose text no longer blocks advancing, and a keyboard activation of a focused control never advances (CMH-DECK-31).</li>
-              <li>Saved text highlights and the composing preview both paint a band slightly shorter than the line box (zero horizontal padding, no reflow), so a highlight that wraps across two lines now shows visible vertical spacing between the lines (CMH-SEL-02).</li>
-              <li>Deck pills lift on hover: the reusable <code>.cmh-pill</code> recipe gains a hover-lift for all decks (CMH-DECK-RECIPE-05), and the showcase byline pills lift on hover (CMH-DECK-SHOWCASE-16).</li>
-            </ul>
-            <div class="group-label">Showcase deck</div>
-            <ul>
-              <li>Refreshed the title and Act 1 promise copy: the title reads &quot;Plan with AI, visually rich review inline, repeat.&quot;, the Act 1 paragraph is rephrased, the redundant &quot;reviewed end to end&quot; pill is removed, and the &quot;Copy all&quot; control is emphasized in its pill (CMH-DECK-SHOWCASE-13).</li>
-              <li>The Chat / Markdown / HTML comparison table now marks the Commentable HTML row&#x27;s winning cells with a distinct green fill and check glyph so the differentiators stand out (CMH-DECK-SHOWCASE-14).</li>
-              <li>The title slide embeds a real screenshot of a document with selected text and the Add-comment popup, so the review workflow is visible up front (CMH-DECK-SHOWCASE-15).</li>
-              <li>The top-right site logo sits further into the corner and its tooltip reads just &quot;Commentable HTML&quot; (CMH-DECK-SHOWCASE-10).</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.169.0] - 2026-07-19</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Code blocks can carry an optional filename/description caption line: add <code>data-code-caption</code> to a <code>&lt;pre&gt;</code> (for example <code>data-code-caption=&quot;trigger.kql&quot;</code>) and the runtime renders a <code>cm-skip</code>, non-selectable caption bar above the code, laid out like the KQL caption bar (filename on the left, the language pill and Copy button inline on the right) so no language-label width overlaps the filename. It is styled consistently in report and deck modes, leaves the language pill, Copy button, syntax highlighting, and commenting on the code intact (a caption-crossing drag cannot leak the filename into a comment&#x27;s quote), never doubles a KQL figure&#x27;s own caption, and survives Export Offline (the caption re-renders from the surviving attribute on reopen). (CMH-CODE-05)</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.168.0] - 2026-07-19</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The validator now ERRORS in NonPortable mode when a baked absolute or <code>file://</code> companion reference resolves inside an OS temporary directory that is not the document&#x27;s own folder (CMH-VAL-16). Such a document validates clean at creation but silently loses its whole comment layer once the OS reaps the temp directory - the exact failure behind a shared document whose CSS/JS 404&#x27;d after handoff. Temp detection is cross-platform and root-anchored (<code>TMPDIR</code>/<code>TEMP</code>/ <code>TMP</code> and <code>tempfile.gettempdir()</code>, symlink-resolved via <code>realpath</code>, plus <code>/tmp</code>, <code>/var/tmp</code>, <code>/var/folders</code>, <code>/windows/temp</code>, and per-user <code>AppData/Local/Temp</code>), so a durable project folder named <code>tmp</code> is never mis-flagged; relative refs and a companion sitting beside the document are never flagged. The message points at a Portable single-file export or copying <code>dist/</code> to a durable folder.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">145 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">148 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

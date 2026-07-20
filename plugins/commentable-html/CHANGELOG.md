@@ -4,6 +4,53 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.181.0] - 2026-07-20
+
+### Fixed
+
+- A built-in canvas chart (a `canvas.cmh-chart` / `figure.chart canvas` with inline
+  `data-cmh-chart-points`/`-source`) authored inside a collapsible `<section>` that is collapsed
+  (`display:none`) at load now re-renders at its real column width the moment its section is revealed,
+  instead of staying blurry until the next window resize (CMH-CHART-09). While collapsed the canvas
+  reads `clientWidth` 0 and draws its bitmap to the width fallback (the `width` attribute, else 760),
+  so it was sized for the wrong width; a reveal `ResizeObserver` on each chart canvas re-draws it once
+  on the transition from zero-size to visible (mirroring the Mermaid width-class observer from
+  CMH-MMD-07). It is a one-shot reveal hook, not a perpetual size mirror, so a standalone
+  `canvas.cmh-chart` in a shrink-to-fit container on a HiDPI screen cannot keep enlarging its own
+  bitmap; genuine window resizes stay handled by the existing resize listener. This is the same
+  render-while-hidden class as #430 (Mermaid).
+- Pinned that code/KQL line-number gutters stay aligned when a collapsed section is revealed
+  (CMH-CODE-06). Unlike the canvas chart above, the gutter needs no reveal recompute: the browser
+  resolves a numeric `line-height` to a px value via `getComputedStyle` even for a `display:none`
+  block, so the gutter offsets laid down while collapsed already match the visible line-height after
+  reveal. A regression test locks that invariant in.
+
+## [1.180.0] - 2026-07-20
+
+### Changed
+
+- The comments sidebar `Hide` button is now accent-tinted (an accent-soft background with accent text
+  and border, and a solid-accent hover) so it stands out clearly and reads as distinct from the neutral
+  `Help & About` button beside it (CMH-SIDE-09).
+
+### Added
+
+- The overflow (`...`) menu header now shows the running layer version (`v<version>`) between the
+  portability badge and the brand icon; the version is decorative text and does not change the menu
+  button tab order (CMH-MENU-ICON-03).
+
+## [1.178.0] - 2026-07-20
+
+### Added
+
+- Deck mode now accepts `Backspace` as a "previous slide" key, alongside `ArrowLeft` and `PageUp`, so
+  presenters can step one slide back with the key many slide tools use (CMH-DECK-05). It respects the
+  same guards as the other navigation keys: it does not move slides while a comment field or other
+  editable target is focused, or while the comment-options menu or other blocking deck chrome is open.
+  Because `Backspace` uniquely carries a legacy browser "history back" default, the deck suppresses that
+  default whenever it owns the key (including at the first-slide boundary, where the step back is a
+  no-op) so a viewer is never navigated away from the deck.
+
 ## [1.175.0] - 2026-07-19
 
 ### Fixed
