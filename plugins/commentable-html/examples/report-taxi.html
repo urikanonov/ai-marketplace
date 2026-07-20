@@ -5377,7 +5377,7 @@ function _chartSetHover(canvas, point) {
     if (point) _showChartTooltip(canvas, point);
     return;
   }
-  renderInteractiveChart(canvas, nextIndex);
+  renderInteractiveChart(canvas, nextIndex, false);
   if (point) _showChartTooltip(canvas, canvas._cmhChart.points[nextIndex]);
   else hideChartTooltip();
 }
@@ -5391,23 +5391,30 @@ function _chartEventPoint(canvas, event) {
 }
 // Size a chart canvas's backing bitmap for the current devicePixelRatio and return its logical CSS
 // size (the coordinate space all the drawing below uses). The bitmap is dpr x the CSS box so the
-// chart stays crisp on HiDPI. The measurement is taken against a NEUTRALIZED bitmap so a shrink-to-fit
-// container - whose width is otherwise driven by the canvas's own dpr-scaled bitmap - cannot inflate
-// the measured size (the #501 HiDPI feedback loop). If such a container then stretches the canvas past
-// its intended CSS size, the box is pinned so the chart displays at its intended size; a definite-width
-// ancestor (the shipped figure.chart > .chart-wrap) is unaffected and is never pinned. A collapsed
-// section (display:none) measures 0 and falls back to the authored width/height attributes
-// (CMH-CHART-09). The authored attributes are captured once, before any bitmap write, because setting
-// canvas.width/height reflects onto those content attributes and would otherwise drift each render.
+// chart stays crisp on HiDPI. The measurement is taken against a bitmap reset to the AUTHORED size -
+// which is devicePixelRatio-independent, so a shrink-to-fit container (whose width is otherwise driven
+// by the canvas's own dpr-scaled bitmap) is not inflated by the previous render's bitmap (the #501
+// HiDPI feedback loop) - while preserving the intrinsic aspect ratio so an auto-height canvas is not
+// squared. If such a container then stretches the canvas past its logical CSS size, the box is pinned
+// so the chart displays at its intended size; a definite-width ancestor (the shipped figure.chart >
+// .chart-wrap) is unaffected and is never pinned. A collapsed section (display:none) measures 0 and
+// falls back to the authored width/height attributes (CMH-CHART-09). The authored attributes are
+// captured once, before any bitmap write, because setting canvas.width/height reflects onto those
+// content attributes and would otherwise drift each render.
 function _sizeChartCanvas(canvas, dpr) {
   if (canvas._cmhAttrW == null) {
     canvas._cmhAttrW = Math.max(1, Math.round(Number(canvas.getAttribute("width")) || canvas.width || 760));
     canvas._cmhAttrH = Math.max(1, Math.round(Number(canvas.getAttribute("height")) || canvas.height || 340));
   }
-  canvas.style.removeProperty("width");
-  canvas.style.removeProperty("height");
-  canvas.width = 1;
-  canvas.height = 1;
+  // Clear only a pin WE set on a prior render, so the measurement reflects the current layout without
+  // clobbering an author's own inline width/height on a chart we never pin.
+  if (canvas._cmhSizePinned) {
+    canvas.style.removeProperty("width");
+    canvas.style.removeProperty("height");
+    canvas._cmhSizePinned = false;
+  }
+  canvas.width = canvas._cmhAttrW;
+  canvas.height = canvas._cmhAttrH;
   let width = canvas.clientWidth;
   let height = canvas.clientHeight;
   if (!(width > 1)) width = canvas._cmhAttrW;
@@ -5416,15 +5423,22 @@ function _sizeChartCanvas(canvas, dpr) {
   height = Math.max(1, Math.round(height));
   canvas.width = Math.max(1, Math.round(width * dpr));
   canvas.height = Math.max(1, Math.round(height * dpr));
-  if (canvas.clientWidth > width + 1) canvas.style.setProperty("width", width + "px", "important");
-  if (canvas.clientHeight > height + 1) canvas.style.setProperty("height", height + "px", "important");
+  let pinned = false;
+  if (canvas.clientWidth > width + 1) { canvas.style.setProperty("width", width + "px", "important"); pinned = true; }
+  if (canvas.clientHeight > height + 1) { canvas.style.setProperty("height", height + "px", "important"); pinned = true; }
+  canvas._cmhSizePinned = pinned;
   return { width: width, height: height };
 }
-function renderInteractiveChart(canvas, activeIndex) {
+function renderInteractiveChart(canvas, activeIndex, measure) {
   const config = _chartConfig(canvas);
   if (!config) return false;
   const dpr = window.devicePixelRatio || 1;
-  const size = _sizeChartCanvas(canvas, dpr);
+  // Re-measure/re-size the bitmap only on layout renders (setup, reveal, window resize). A hover
+  // redraw (measure === false) reuses the cached logical size and the existing bitmap, so it does not
+  // force the neutralize/measure reflows on every mousemove over a chart.
+  const size = (measure === false && canvas._cmhChart)
+    ? { width: canvas._cmhChart.width, height: canvas._cmhChart.height }
+    : _sizeChartCanvas(canvas, dpr);
   const width = size.width;
   const height = size.height;
   const ctx = canvas.getContext("2d");
