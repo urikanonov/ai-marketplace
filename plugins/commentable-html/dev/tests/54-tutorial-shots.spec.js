@@ -257,8 +257,10 @@ test("--check flags a stale garden shot (CMH-TUT-SHOTS-01)", async () => {
 // The board, checklist, and note features render only in their own example reports, so the tool
 // captures each as a prefixed scene. Each scene gets the SAME three focused tests the garden scene
 // has - regenerate + clean --check, cross-run determinism, and stale detection - as SEPARATE test()s
-// (not one monolith), so the `heavy` project parallelizes their capture subprocesses across
-// workers/shards instead of running ~4 captures of one (mermaid-heavy, e.g. triage) report serially.
+// (not one monolith). They are emitted in THREE type-grouped loops (all regens, then all determinism,
+// then all stale) rather than three-per-scene, so Playwright's by-count sharding spreads each
+// mermaid-heavy scene's three tests across DIFFERENT heavy shards instead of piling one scene's
+// captures onto a single shard - the point of splitting the slow (mermaid) triage monolith.
 for (const scene of EXTRA_SCENES) {
   test(`regenerates the ${scene.prefix} scene and --check passes on fresh output (CMH-TUT-SHOTS-01)`, () => {
     test.setTimeout(180000);
@@ -275,7 +277,9 @@ for (const scene of EXTRA_SCENES) {
     expect(clean.status, clean.stderr).toBe(0);
     expect(clean.stdout).toContain("tutorial screenshots are in sync");
   });
+}
 
+for (const scene of EXTRA_SCENES) {
   test(`${scene.prefix} capture is deterministic across two independent runs (CMH-TUT-SHOTS-01)`, async ({ browser }) => {
     test.setTimeout(180000);
     const comparePage = await browser.newPage();
@@ -298,7 +302,9 @@ for (const scene of EXTRA_SCENES) {
       await comparePage.close();
     }
   });
+}
 
+for (const scene of EXTRA_SCENES) {
   test(`--check flags a stale ${scene.prefix} shot (CMH-TUT-SHOTS-01)`, () => {
     test.setTimeout(180000);
     const outA = path.join(freshDir(`${scene.prefix}-stale`), "nested", "assets");
