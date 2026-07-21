@@ -4,6 +4,28 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.196.0] - 2026-07-20
+
+### Fixed
+
+- The floating "Add Comment" affordance is now unified across the structural-anchor layers (image,
+  mermaid, diff, link, widget, heading): only one button is ever visible at a time. A nested
+  `<a><img></a>` (a common clickable thumbnail or logo) previously left both the image and link
+  buttons showing at once; now the innermost element owns the affordance deterministically,
+  independent of hover-event order, and a dismissed inner button no longer suppresses the enclosing
+  layer. (CMH-ANCHOR-01)
+
+## [1.195.0] - 2026-07-20
+
+### Fixed
+
+- The `<head>` mermaid-loader scan used by `tools/authoring/upgrade.py` (when re-emitting the loader
+  into an existing document) and by the example build is now comment-aware: a commented-out
+  `<head>` or `<script>` block placed before or around the real document head is no longer mistaken
+  for the head or the loader, so upgrade/regeneration always targets the real loader and never
+  rewrites a decoy inside an HTML comment. The real loader's own preceding `<!-- Mermaid loader -->`
+  comment is still detected and stays part of the swapped block. (CMH-MMD-09)
+
 ## [1.194.0] - 2026-07-20
 
 ### Fixed

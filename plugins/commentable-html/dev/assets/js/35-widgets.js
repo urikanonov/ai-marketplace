@@ -242,12 +242,12 @@ function showWidgetAddFor(el) {
   if (widgetAddHideTimer) { clearTimeout(widgetAddHideTimer); widgetAddHideTimer = null; }
   widgetAddBtn.hidden = false;
   if (!positionWidgetAdd(el)) { widgetAddBtn.hidden = true; pendingWidget = null; return; }
-  _activeAdd = { el, btn: widgetAddBtn, position: () => positionWidgetAdd(el), clear: () => { pendingWidget = null; } };
+  setActiveAdd({ el, btn: widgetAddBtn, position: () => positionWidgetAdd(el), clear: () => { pendingWidget = null; } });
 }
 function scheduleHideWidgetAdd() {
   if (widgetAddHideTimer) clearTimeout(widgetAddHideTimer);
   widgetAddHideTimer = setTimeout(() => {
-    if (widgetAddBtn && !widgetAddBtn.matches(":hover")) { widgetAddBtn.hidden = true; pendingWidget = null; }
+    if (widgetAddBtn && !widgetAddBtn.matches(":hover")) { widgetAddBtn.hidden = true; pendingWidget = null; clearActiveAdd(widgetAddBtn); }
   }, 220);
 }
 function openWidgetComposer(info) { return createComposerElement({ mode: "new-widget", widget: info }); }

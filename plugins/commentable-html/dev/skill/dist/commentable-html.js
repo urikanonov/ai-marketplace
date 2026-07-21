@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.194.0";
+const CMH_VERSION = "1.196.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -602,11 +602,51 @@ const mermaidDiagrams = [];
 let pendingMermaid = null;
 let mermaidAddHideTimer = null;
 let mermaidActiveNode = null;
-// The floating add-comment buttons (image / mermaid / diff) are position:fixed and
-// positioned once at hover time. `_activeAdd` remembers the currently-shown one and
-// how to re-run its positioning, so a scroll/resize can keep it pinned to its target
-// (or hide it when the target scrolls out of view) instead of letting it drift.
+// The floating structural-anchor add-comment buttons (image / mermaid / diff / link /
+// widget / heading) are position:fixed and positioned once at hover time. `_activeAdd`
+// remembers the currently-shown one and how to re-run its positioning, so a
+// scroll/resize can keep it pinned to its target (or hide it when the target scrolls out
+// of view) instead of letting it drift.
 let _activeAdd = null;
+// Only ONE structural-anchor "Add Comment" affordance is shown at a time. Each layer owns
+// its own floating button but shares `_activeAdd`; every layer reveals its button through
+// setActiveAdd(), which hides and clears whichever OTHER layer's button was showing, so
+// overlapping targets never leave two buttons up at once. For NESTED targets - the common
+// clickable-thumbnail/logo <a><img></a>, where the image layer's <img> lives inside the
+// link layer's <a> and hovering fires both - the INNERMOST element owns the affordance (so
+// the image wins over the wrapping link), deterministically and regardless of hover-event
+// order, so the reader ever sees exactly one button.
+function setActiveAdd(entry) {
+  const prev = _activeAdd;
+  if (prev && prev.btn && prev.btn !== (entry && entry.btn)) {
+    // The incoming target is an ANCESTOR of the active one AND that inner affordance is still
+    // showing -> keep the inner (already-active) one and drop this outer one; _activeAdd is
+    // unchanged. The `!prev.btn.hidden` gate is load-bearing: a layer's own hide timer hides
+    // its button WITHOUT reassigning _activeAdd, so a stale (hidden) inner entry must not keep
+    // winning the contains() check and suppress the enclosing layer forever (for example a link
+    // inside a heading, once the link has been hovered and left).
+    if (!prev.btn.hidden && prev.el && entry && entry.el && prev.el !== entry.el && entry.el.contains(prev.el)) {
+      if (entry.btn) entry.btn.hidden = true;
+      if (entry.clear) entry.clear();
+      return;
+    }
+    // Otherwise the new affordance wins (a sibling target, the new one is the inner element, or
+    // the previously-active button is already hidden): hide and clear that button first.
+    prev.btn.hidden = true;
+    if (prev.clear) prev.clear();
+  }
+  _activeAdd = entry;
+}
+// Clear the shared sentinel when a layer hides ITS OWN button on its hover/focus hide timer, so
+// _activeAdd never points at a stale hidden button (the `btn === _activeAdd.btn` check makes this a
+// no-op once the sentinel has moved on to another layer). This keeps the setActiveAdd() ancestor
+// tie-break above, and the scroll repositioner in 52-hover-bubble.js, from consulting a
+// no-longer-visible entry. The composer-open (click/keydown) paths also hide their button but do not
+// call this; the `!prev.btn.hidden` guard in setActiveAdd() and the hidden-check in the repositioner
+// already make any such briefly-stale entry harmless.
+function clearActiveAdd(btn) {
+  if (_activeAdd && _activeAdd.btn === btn) _activeAdd = null;
+}
 // True when the button's natural (unclamped) anchor sits comfortably on-screen. A
 // scroll reposition hides a button whose target scrolled (partly) out of view rather
 // than clamping it to a viewport edge, where it would look detached from its target.
@@ -973,7 +1013,7 @@ function showMermaidAddFor(node, host) {
   mermaidAddBtn.hidden = false;
   mermaidAddBtn.textContent = "Add Comment";
   if (!positionMermaidAdd(node)) { mermaidAddBtn.hidden = true; pendingMermaid = null; return; }
-  _activeAdd = { el: node, btn: mermaidAddBtn, position: () => positionMermaidAdd(node), clear: () => { pendingMermaid = null; } };
+  setActiveAdd({ el: node, btn: mermaidAddBtn, position: () => positionMermaidAdd(node), clear: () => { pendingMermaid = null; } });
 }
 function mermaidDiagramLabel(host) {
   const t = host.querySelector(".titleText, text.title, .title, .cmh-diagram-title");
@@ -998,13 +1038,13 @@ function showMermaidWholeFor(host) {
   const left = rect.right - bw - 6, top = rect.top + 6;
   mermaidAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
   mermaidAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
-  _activeAdd = { el: host, btn: mermaidAddBtn, position: () => showMermaidWholeFor(host), clear: () => { pendingMermaid = null; } };
+  setActiveAdd({ el: host, btn: mermaidAddBtn, position: () => showMermaidWholeFor(host), clear: () => { pendingMermaid = null; } });
   return _rectInViewport(rect);
 }
 function scheduleHideMermaidAdd() {
   if (mermaidAddHideTimer) clearTimeout(mermaidAddHideTimer);
   mermaidAddHideTimer = setTimeout(() => {
-    if (!mermaidAddBtn.matches(":hover")) { mermaidAddBtn.hidden = true; mermaidActiveNode = null; pendingMermaid = null; }
+    if (!mermaidAddBtn.matches(":hover")) { mermaidAddBtn.hidden = true; mermaidActiveNode = null; pendingMermaid = null; clearActiveAdd(mermaidAddBtn); }
   }, 220);
 }
 function attachMermaidHostHandlers(host) {
@@ -1702,12 +1742,12 @@ function showDiffAddFor(el, info) {
   if (diffAddHideTimer) { clearTimeout(diffAddHideTimer); diffAddHideTimer = null; }
   diffAddBtn.hidden = false;
   if (!positionDiffAdd(el)) { diffAddBtn.hidden = true; pendingDiff = null; return; }
-  _activeAdd = { el, btn: diffAddBtn, position: () => positionDiffAdd(el), clear: () => { pendingDiff = null; } };
+  setActiveAdd({ el, btn: diffAddBtn, position: () => positionDiffAdd(el), clear: () => { pendingDiff = null; diffActiveLineEl = null; } });
 }
 function scheduleHideDiffAdd() {
   if (diffAddHideTimer) clearTimeout(diffAddHideTimer);
   diffAddHideTimer = setTimeout(() => {
-    if (!diffAddBtn.matches(":hover")) { diffAddBtn.hidden = true; diffActiveLineEl = null; pendingDiff = null; }
+    if (!diffAddBtn.matches(":hover")) { diffAddBtn.hidden = true; diffActiveLineEl = null; pendingDiff = null; clearActiveAdd(diffAddBtn); }
   }, 220);
 }
 function attachDiffHostHandlers(block) {
@@ -1717,6 +1757,12 @@ function attachDiffHostHandlers(block) {
   host.addEventListener("mousemove", (e) => {
     const el = e.target.closest && e.target.closest(".cmh-dl");
     if (!el || !host.contains(el) || el.classList.contains("cmh-dl-full") || el.classList.contains("cmh-dl-spacer")) return;
+    // A cross-layer setActiveAdd() (an adjacent anchor winning) hides diffAddBtn and, via this
+    // entry's clear() callback, resets diffActiveLineEl, so a pointer returning to the same line
+    // falls through here and re-reveals the button. The guard stays UNCONDITIONAL (no
+    // `!diffAddBtn.hidden` companion) on purpose: the sub-line text-selection path hides diffAddBtn
+    // WITHOUT going through setActiveAdd (so diffActiveLineEl is retained), and a `!hidden` guard
+    // would then re-show the whole-line button beside the open selection menu on the next mousemove.
     if (el === diffActiveLineEl) return;
     const info = diffLineInfo(block, el);
     if (!info || !diffLineCommentable({ type: info.lineType })) return;
@@ -2333,12 +2379,12 @@ function showImageAddFor(img) {
   if (imageAddHideTimer) { clearTimeout(imageAddHideTimer); imageAddHideTimer = null; }
   imageAddBtn.hidden = false;
   if (!positionImageAdd(img)) { imageAddBtn.hidden = true; imageActiveEl = null; pendingImage = null; return; }
-  _activeAdd = { el: img, btn: imageAddBtn, position: () => positionImageAdd(img), clear: () => { pendingImage = null; } };
+  setActiveAdd({ el: img, btn: imageAddBtn, position: () => positionImageAdd(img), clear: () => { pendingImage = null; } });
 }
 function scheduleHideImageAdd() {
   if (imageAddHideTimer) clearTimeout(imageAddHideTimer);
   imageAddHideTimer = setTimeout(() => {
-    if (!imageAddBtn.matches(":hover")) { imageAddBtn.hidden = true; imageActiveEl = null; pendingImage = null; }
+    if (!imageAddBtn.matches(":hover")) { imageAddBtn.hidden = true; imageActiveEl = null; pendingImage = null; clearActiveAdd(imageAddBtn); }
   }, 220);
 }
 function openImageComposer(info) {
@@ -2540,7 +2586,7 @@ function showLinkAddFor(a) {
   if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
   linkAddBtn.hidden = false;
   if (!positionLinkAdd(a)) { linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null; return; }
-  _activeAdd = { el: a, btn: linkAddBtn, position: () => positionLinkAdd(a), clear: () => { pendingLink = null; } };
+  setActiveAdd({ el: a, btn: linkAddBtn, position: () => positionLinkAdd(a), clear: () => { pendingLink = null; } });
 }
 function scheduleHideLinkAdd() {
   if (linkAddHideTimer) clearTimeout(linkAddHideTimer);
@@ -2548,7 +2594,7 @@ function scheduleHideLinkAdd() {
     // Keep it visible while the pointer is over the button OR the button itself holds
     // focus, so a keyboard user moving to the button does not have it hidden from under them.
     if (!linkAddBtn.matches(":hover") && document.activeElement !== linkAddBtn) {
-      linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null;
+      linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null; clearActiveAdd(linkAddBtn);
     }
   }, 220);
 }
@@ -2844,12 +2890,12 @@ function showWidgetAddFor(el) {
   if (widgetAddHideTimer) { clearTimeout(widgetAddHideTimer); widgetAddHideTimer = null; }
   widgetAddBtn.hidden = false;
   if (!positionWidgetAdd(el)) { widgetAddBtn.hidden = true; pendingWidget = null; return; }
-  _activeAdd = { el, btn: widgetAddBtn, position: () => positionWidgetAdd(el), clear: () => { pendingWidget = null; } };
+  setActiveAdd({ el, btn: widgetAddBtn, position: () => positionWidgetAdd(el), clear: () => { pendingWidget = null; } });
 }
 function scheduleHideWidgetAdd() {
   if (widgetAddHideTimer) clearTimeout(widgetAddHideTimer);
   widgetAddHideTimer = setTimeout(() => {
-    if (widgetAddBtn && !widgetAddBtn.matches(":hover")) { widgetAddBtn.hidden = true; pendingWidget = null; }
+    if (widgetAddBtn && !widgetAddBtn.matches(":hover")) { widgetAddBtn.hidden = true; pendingWidget = null; clearActiveAdd(widgetAddBtn); }
   }, 220);
 }
 function openWidgetComposer(info) { return createComposerElement({ mode: "new-widget", widget: info }); }
@@ -8061,12 +8107,12 @@ function setupHeadingAnchors() {
     if (headingHideTimer) { clearTimeout(headingHideTimer); headingHideTimer = null; }
     headingAddBtn.hidden = false;
     positionHeadingAdd(h);
-    _activeAdd = { el: h, btn: headingAddBtn, position: () => positionHeadingAdd(h), clear: () => {} };
+    setActiveAdd({ el: h, btn: headingAddBtn, position: () => positionHeadingAdd(h), clear: () => {} });
   }
   function scheduleHideHeadingAdd() {
     if (headingHideTimer) clearTimeout(headingHideTimer);
     headingHideTimer = setTimeout(function () {
-      if (headingAddBtn && !headingAddBtn.matches(":hover")) { headingAddBtn.hidden = true; headingHoverEl = null; }
+      if (headingAddBtn && !headingAddBtn.matches(":hover")) { headingAddBtn.hidden = true; headingHoverEl = null; clearActiveAdd(headingAddBtn); }
     }, 220);
   }
   // Comment on a whole heading by selecting its text and opening the text composer, so

@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="Tighten the planning loop. Inline comment on any HTML report and round-trip back to your agent." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-commentable-html.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/commentable-html.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=a539e462fe9b" />
+  <link rel="stylesheet" href="../assets/styles.css?v=5197e29b7532" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.194.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.196.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,6 +451,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.196.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The floating &quot;Add Comment&quot; affordance is now unified across the structural-anchor layers (image, mermaid, diff, link, widget, heading): only one button is ever visible at a time. A nested <code>&lt;a&gt;&lt;img&gt;&lt;/a&gt;</code> (a common clickable thumbnail or logo) previously left both the image and link buttons showing at once; now the innermost element owns the affordance deterministically, independent of hover-event order, and a dismissed inner button no longer suppresses the enclosing layer. (CMH-ANCHOR-01)</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.195.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The <code>&lt;head&gt;</code> mermaid-loader scan used by <code>tools/authoring/upgrade.py</code> (when re-emitting the loader into an existing document) and by the example build is now comment-aware: a commented-out <code>&lt;head&gt;</code> or <code>&lt;script&gt;</code> block placed before or around the real document head is no longer mistaken for the head or the loader, so upgrade/regeneration always targets the real loader and never rewrites a decoy inside an HTML comment. The real loader&#x27;s own preceding <code>&lt;!-- Mermaid loader --&gt;</code> comment is still detected and stays part of the swapped block. (CMH-MMD-09)</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
             <div class="rel-head"><h3>[1.194.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -464,8 +480,6 @@
               <li>A standalone built-in canvas chart (<code>canvas.cmh-chart</code> with inline <code>data-cmh-chart-points</code>/<code>-source</code>) placed directly in a shrink-to-fit container (<code>width: max-content</code>, an <code>inline-block</code>, a float, or an auto-sized <code>inline-flex</code>/grid item) - rather than inside the shipped definite-width <code>figure.chart &gt; .chart-wrap</code> - no longer renders <code>dpr x</code> oversized on a HiDPI screen (<code>devicePixelRatio &gt; 1</code>). The renderer now measures the chart&#x27;s logical size against a bitmap reset to the authored size (which is devicePixelRatio-independent, so the canvas&#x27;s own dpr-scaled bitmap cannot drive its container&#x27;s width - the feedback loop - and which preserves the aspect ratio so an auto-height chart is not squared), falls back to the authored <code>width</code>/<code>height</code> attributes when the container collapses without the canvas, and pins the box so the chart displays at its intended size; the shipped definite-width chart pattern is unaffected (CMH-CHART-10).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.192.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -495,26 +509,7 @@
               <li><code>Clear all comments</code> now also resets a note-only change. Its early-return guard checked comments, widget-state, and checklist changes but omitted <code>notesChanges()</code>, so on a document whose only pending change was an edited <code>data-cmh-note</code> field (no comments, no checklist/widget changes) clicking Clear all was a silent no-op and left the note edit in place. The guard now includes note changes, and the confirm dialog names the widget, checklist, and note resets it performs. (CMH-NOTE-06)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.189.0] - 2026-07-20</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Each side-TOC review-filter button (All / Reviewed / Unreviewed / Commented / Changed) now shows a live per-state count as an inline <code>(N)</code> beside its label - <code>All</code> shows the total section count and the four states partition it, so at a glance you see how many sections are in each state. The count refreshes as sections are marked reviewed, commented, or changed. The count span is <code>aria-hidden</code> and its number is folded into each button&#x27;s accessible name so it is announced once, and the label and count stay on one line per button (the group wraps into rows without overflowing the sidebar, even with two-digit counts) (CMH-REVIEW-14).</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.188.0] - 2026-07-20</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Showcase deck: the Act 1 Mermaid loop diagram no longer paints solid black blobs. Deck flowchart edge connectors are now stroked with <code>fill: none</code> (only the arrowhead markers keep a fill), so a curved back-edge is drawn as a thin line instead of filling the area under its curve with the dark slide color. The fix is both in the runtime deck default (<code>assets/css/90-deck.css</code>) and in the showcase deck&#x27;s own parchment mermaid theme (CMH-DECK-09).</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Showcase deck slide 12 (&quot;Code and notes&quot;) now demonstrates the notes feature with REAL live, editable notes (<code>data-cmh-note</code> fields the runtime upgrades into editable, change-tracked textareas) instead of a static mockup (CMH-DECK-SHOWCASE-08). A note change card&#x27;s <code>jump</code> is now deck-aware: <code>jumpToNote()</code> activates the note&#x27;s owning slide before scrolling. To support live notes on a slide, the notes authoring validator (<code>validate.py</code>) no longer flags a note on a deck slide - a slide, unlike a checklist/diff/widget substrate, does not <code>cm-skip</code> its descendant text; a note nested inside a checklist/diff/widget is still flagged (CMH-NOTE-15).</li>
-              <li>Showcase deck slide 18 (&quot;Three portability modes&quot;) now tags each part with a colorful source pill (folder / CDN / inlined / storage / seed), matching the site&#x27;s &quot;Three portability modes&quot; theme, instead of plain table text; the Portable and Offline handoffs keep both the seed and storage pills (CMH-DECK-SHOWCASE-17).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">158 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">160 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
