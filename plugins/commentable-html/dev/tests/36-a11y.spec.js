@@ -23,6 +23,34 @@ test("the toast is a live region before the first toast so the first one is anno
   await expect(toast).toHaveAttribute("role", /status|alert/);
 });
 
+test("showToast sets the live-region role/politeness before mutating the text (CMH-A11Y-03)", async ({ page }) => {
+  await openInline(page);
+  await addTextComment(page, "#commentRoot p", "order me");
+  // Record the order of mutations on #toast: a live-region announcement fires only if the
+  // role/aria-live are in place BEFORE the text changes, so pin the ordering (not just the final
+  // attribute values, which a text-first regression would still satisfy).
+  await page.evaluate(() => {
+    window.__toastMut = [];
+    const t = document.getElementById("toast");
+    new MutationObserver((records) => {
+      for (const r of records) {
+        window.__toastMut.push(r.type === "attributes" ? "attr:" + r.attributeName : "text");
+      }
+    }).observe(t, { attributes: true, childList: true, characterData: true, subtree: true });
+  });
+  await page.click("#btnCopyAll").catch(() => {});
+  await expect(page.locator("#toast")).not.toHaveText("");
+  const mut = await page.evaluate(() => window.__toastMut);
+  const firstText = mut.indexOf("text");
+  const firstRole = mut.indexOf("attr:role");
+  const firstLive = mut.indexOf("attr:aria-live");
+  expect(firstText, JSON.stringify(mut)).toBeGreaterThan(-1);
+  expect(firstRole, JSON.stringify(mut)).toBeGreaterThanOrEqual(0);
+  expect(firstLive, JSON.stringify(mut)).toBeGreaterThanOrEqual(0);
+  expect(firstRole, "role must be set before text").toBeLessThan(firstText);
+  expect(firstLive, "aria-live must be set before text").toBeLessThan(firstText);
+});
+
 test("Copy all does NOT claim success when it falls back to a manual prompt", async ({ page }) => {
   await page.addInitScript(() => {
     try {
