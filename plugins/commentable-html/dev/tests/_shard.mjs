@@ -17,7 +17,10 @@ import { HEAVY_SPEC_FILES } from "./_projects.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const TIMINGS_PATH = path.join(HERE, "spec-timings.json");
 
-// Every fast spec: every *.spec.js under tests/ except the heavy-project specs.
+// Every fast spec: every *.spec.js DIRECTLY under tests/ except the heavy-project specs. Duration
+// sharding keys specs by basename, so a spec nested in a subdirectory would be omitted from every
+// shard while Playwright's recursive discovery still ran it unsharded - the CMH-BUILD-13 guard
+// enforces the flat convention so that can never happen silently.
 export function discoverFastSpecs(testsDir = HERE) {
   return fs.readdirSync(testsDir)
     .filter((f) => f.endsWith(".spec.js") && !HEAVY_SPEC_FILES.includes(f))
@@ -36,7 +39,7 @@ export function lptAssign(specs, timings, total) {
   if (!Number.isInteger(total) || total < 1) throw new Error(`shard total must be a positive integer, got ${total}`);
   const shards = Array.from({ length: total }, () => []);
   const load = new Array(total).fill(0);
-  const ordered = [...specs].sort((a, b) => (timings[b] ?? 0) - (timings[a] ?? 0) || a.localeCompare(b));
+  const ordered = [...specs].sort((a, b) => (timings[b] ?? 0) - (timings[a] ?? 0) || (a < b ? -1 : a > b ? 1 : 0));
   for (const spec of ordered) {
     let lightest = 0;
     for (let i = 1; i < total; i++) if (load[i] < load[lightest]) lightest = i;

@@ -23,13 +23,21 @@ test("every heavy-project spec name resolves to a real, unique spec file (CMH-BU
 });
 
 // The `fast` project is sharded by duration (tests/_shard.mjs LPT bin-packing over
-// tests/spec-timings.json), not by Playwright's count-based --shard. Two failure modes would silently
-// unbalance or drop coverage, so guard both: (1) the committed timings must list exactly the fast
-// specs (a spec with no timing gets weight 0 and packs blind; an orphan timing means a deleted spec)
-// - refresh with `npm run shots:timings`; (2) for every plausible shard count the LPT partition must
-// cover every fast spec exactly once AND stay near-balanced (a single spec too slow to fit a shard's
-// fair share would trip this, signalling it should be split like the triage screenshot test was).
+// tests/spec-timings.json), not by Playwright's count-based --shard. Three failure modes would
+// silently unbalance or drop coverage, so guard all three: (1) every fast spec must live DIRECTLY
+// under tests/ (the flat convention) - a spec nested in a subdirectory would be run unsharded by
+// Playwright's recursive discovery but omitted from every shard, since sharding keys by basename;
+// (2) the committed timings must list exactly the fast specs (a spec with no timing gets weight 0
+// and packs blind; an orphan timing means a deleted spec) - refresh with `npm run shard:timings`;
+// (3) for every plausible shard count the LPT partition must cover every fast spec exactly once AND
+// stay near-balanced (a single spec too slow to fit a shard's fair share trips this, signalling it
+// should be split like the triage screenshot test was).
 test("fast-project spec timings are complete and shard-balanced (CMH-BUILD-13)", () => {
+  const nested = fs.readdirSync(TESTS_DIR, { recursive: true })
+    .map((f) => String(f).split(path.sep).join("/"))
+    .filter((f) => f.endsWith(".spec.js") && f.includes("/"));
+  expect(nested, "duration sharding requires flat tests/*.spec.js - move these up, or extend tests/_shard.mjs to key specs by their path relative to tests/").toEqual([]);
+
   const specs = discoverFastSpecs(TESTS_DIR);
   const timings = loadTimings();
   const missing = specs.filter((s) => !(s in timings));

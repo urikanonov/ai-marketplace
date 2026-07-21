@@ -109,7 +109,11 @@ conventions keep it that way, and you must follow them when you add or materiall
   changing an existing one's run time, run `npm run shard:timings`** (from `plugins/commentable-html/dev`)
   to regenerate the timings and commit them; the assignment then rebalances itself. The `CMH-BUILD-13`
   guard (`tests/00-projects.spec.js`) FAILS if a spec has no timing (or a timing is orphaned), so a
-  forgotten refresh is caught in CI, not silently unbalanced.
+  forgotten refresh is caught in CI, not silently unbalanced. (The fast job is currently
+  commentable-html-specific: another plugin's `fast` project must honor `PLAYWRIGHT_FAST_SHARD` the
+  same way - copy `playwright.config.js` + `tests/_shard.mjs` + a `spec-timings.json` - or its suite
+  runs UNSHARDED on every runner. Keep all fast specs directly under `tests/`; a nested spec is keyed
+  by basename and the `CMH-BUILD-13` guard fails to force the flat convention.)
 - **When one test is itself too slow to balance, SPLIT it - do not try to shard around it.** Sharding
   can only distribute WHOLE tests; a single test that runs far longer than a shard's fair share becomes
   an irreducible floor. The `CMH-BUILD-13` guard's 1.5x-of-even tripwire flags a `fast` spec that grew

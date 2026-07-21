@@ -18,8 +18,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV = path.resolve(HERE, "..");
 const jsonOut = path.join(os.tmpdir(), `cmh-fast-timings-${process.pid}.json`);
 
-// Run the full fast project (PLAYWRIGHT_FAST_SHARD unset => all specs) with the JSON reporter.
-const run = spawnSync("npx", ["playwright", "test", "--project=fast", "--reporter=json"], {
+// Run the full fast project (PLAYWRIGHT_FAST_SHARD unset => all specs) SERIALLY (--workers=1) with
+// the JSON reporter, so each spec's recorded time is its true single-worker cost, not a
+// contention-inflated parallel time. LPT balances the sum of these per shard.
+const run = spawnSync("npx", ["playwright", "test", "--project=fast", "--workers=1", "--reporter=json"], {
   cwd: DEV,
   encoding: "utf8",
   stdio: ["ignore", "ignore", "inherit"],
@@ -38,8 +40,12 @@ const walk = (suite) => {
   for (const child of suite.suites || []) walk(child);
   for (const spec of suite.specs || []) {
     const file = path.basename(suite.file || spec.file || "?");
-    for (const t of spec.tests || []) for (const res of t.results || []) {
-      agg[file] = (agg[file] || 0) + (res.duration || 0);
+    for (const t of spec.tests || []) {
+      // A test may have several results (retries); count only the last attempt, not the sum, so a
+      // retried test does not double-count into its spec's weight.
+      const attempts = t.results || [];
+      const last = attempts.length ? attempts[attempts.length - 1] : null;
+      agg[file] = (agg[file] || 0) + ((last && last.duration) || 0);
     }
   }
 };
@@ -53,8 +59,10 @@ if (!names.length) {
 const body = names.map((n, i) => `  ${JSON.stringify(n)}: ${Math.round(agg[n])}${i < names.length - 1 ? "," : ""}`);
 fs.writeFileSync(TIMINGS_PATH, `{\n${body.join("\n")}\n}\n`);
 console.log(`refresh-spec-timings: wrote ${names.length} spec timings to ${path.relative(DEV, TIMINGS_PATH)}`);
-// A non-zero playwright exit (a spec failed - e.g. the guard tripping on a brand-new untimed spec)
-// still yields usable timings; surface it but do not fail, since writing the timings is the fix.
+// Surface a failing/partial run: the timings are still written (writing them is the fix for a
+// brand-new untimed spec that trips the CMH-BUILD-13 guard), but a genuine spec failure must not
+// look like success, so propagate the suite's exit status.
 if (run.status !== 0) {
-  console.error(`refresh-spec-timings: note - the fast suite exited ${run.status} (some specs failed); timings were still written.`);
+  console.error(`refresh-spec-timings: the fast suite exited ${run.status} (some specs failed); timings were written, but re-check the failures.`);
 }
+process.exit(run.status ?? 1);
