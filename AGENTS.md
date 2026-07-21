@@ -857,7 +857,7 @@ payload, the set/clear decision, project-number resolution, field/item lookup) a
 `scripts/test_task.py`.
 
 The board is kept current AUTOMATICALLY (no agent required) by the scheduled `project-sync` workflow
-(`.github/workflows/project-sync.yml`): it runs the sweep on a cron and on issue close/reopen, in the
+(`.github/workflows/project-sync.yml`): it runs the sweep on a cron and on issue open/close/reopen, in the
 trusted default-branch context (it triggers only on `schedule`/`issues`, never a PR trigger and not
 `workflow_dispatch`, so it never runs unreviewed branch code, and it holds no attacker-controllable
 input). It needs a `project`-scoped token as a repo secret, which is its own ONE-TIME MAINTAINER SETUP

@@ -25,7 +25,7 @@ on:
     # within one window. Adjust the cadence here if it is too frequent.
     - cron: "*/15 * * * *"
   issues:
-    types: [closed, reopened, deleted]
+    types: [opened, closed, reopened, deleted]
   # No workflow_dispatch: a dispatch can select any ref, which would run that ref's
   # workflow + scripts/task.py with the PROJECT_SYNC_TOKEN. schedule/issues always run
   # the trusted default-branch code, so the PAT is never exposed to unreviewed branch code.
