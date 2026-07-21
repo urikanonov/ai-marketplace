@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.199.0] - 2026-07-21
+
+### Added
+
+- Collaborative threaded comments with author attribution. A reviewer sets a display name once
+  (stored per-browser in `localStorage`, seedable by the author via `data-cm-author`); the sidebar
+  "Commenting as" control lets them change it at any time, applying to new comments only. Every
+  attributed comment and reply shows a hashed-color author pill at the start of its note. A new
+  Reply action threads comments: a thread is an initial comment plus a flat, chronological list of
+  replies (single-level), each individually editable and deletable. Deleting a thread root removes
+  the whole thread; deleting a reply removes only that reply. Copy all emits each thread as an
+  initial comment followed by clearly-labelled refinements (author names neutralized so they cannot
+  forge the untrusted-note fence or the machine trailer) and includes every reply id in
+  HANDLED_IDS_JSON so a thread is handled and pruned together. Threads round-trip through Export as
+  Portable / embedded comments, and orphan replies (missing root) are pruned at load. Markdown
+  export and the print appendix are thread-aware. (CMH-AUTHOR-01, CMH-AUTHOR-02, CMH-AUTHOR-03,
+  CMH-THREAD-01, CMH-THREAD-02, CMH-THREAD-03, CMH-THREAD-04, CMH-THREAD-05, CMH-THREAD-06)
+
 ## [1.198.0] - 2026-07-21
 
 ### Added

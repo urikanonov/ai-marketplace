@@ -294,11 +294,22 @@ function htmlToMarkdown(rootEl) {
 }
 function _mdCommentsAppendix() {
   const live = withoutHandled(comments);
-  if (!live.length) return "";
+  const roots = (typeof threadRoots === "function") ? threadRoots(live) : live;
+  if (!roots.length) return "";
   const oneLine = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
   const esc = (s) => _mdLinkLabel(oneLine(s));   // bracket/backslash-escape so a crafted label cannot inject a link into the heading
-  const out = ["## Review comments (" + live.length + ")"];
-  live.forEach((c, i) => {
+  const _mdNoteLines = (note) => {
+    // Normalize the Unicode line/paragraph separators to a real newline BEFORE splitting so each
+    // becomes its own escaped + blockquoted line - otherwise a note like "safe\u2028# forged" could
+    // render its second half as a heading OUTSIDE the blockquote for a consumer that honors U+2028.
+    String(note == null ? "" : note).replace(/[\u0085\u2028\u2029]/g, "\n").split(/\r?\n/).forEach((ln) => {
+      const e = _mdEscapePipes(_mdEscapeLeading(_mdText(ln)));
+      out.push(e.trim() ? "> " + e : ">");
+    });
+  };
+  const _mdBy = (c) => (c && c.author) ? (" - by " + esc(c.author)) : "";
+  const out = ["## Review comments (" + roots.length + ")"];
+  roots.forEach((c, i) => {
     let where = "";
     if (c.anchorType === "document") where = "document-wide";
     else if (c.anchorType === "slide") where = 'slide "' + esc(c.slideTitle || c.slideId || "") + '"';
@@ -309,14 +320,17 @@ function _mdCommentsAppendix() {
     else if (c.anchorType === "link") where = "link " + ((Number(c.linkIndex) || 0) + 1);
     else if (c.quote) where = '"' + esc(oneLine(c.quote).slice(0, 80)) + '"';
     out.push("");
-    out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment"));
+    out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment") + _mdBy(c));
     out.push("");
     // Escape each preserved note line like prose (raw HTML, inline markup, leading structural
     // markers including setext underlines) and neutralize pipes so a multi-line note cannot
     // forge a GFM table either.
-    String(c.note == null ? "" : c.note).split(/\r?\n/).forEach((ln) => {
-      const e = _mdEscapePipes(_mdEscapeLeading(_mdText(ln)));
-      out.push(e.trim() ? "> " + e : ">");
+    _mdNoteLines(c.note);
+    const replies = (typeof repliesOf === "function") ? repliesOf(c.id, live) : [];
+    replies.forEach((r, k) => {
+      out.push("");
+      out.push("_Reply " + (k + 1) + _mdBy(r) + ":_");
+      _mdNoteLines(r.note);
     });
   });
   return out.join("\n") + "\n";

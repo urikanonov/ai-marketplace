@@ -285,6 +285,16 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
       <span id="cmGenerated"></span>
       <span id="cmLastComment"></span>
     </div>
+    <div class="cm-identity" id="cmIdentity" title="The name attached to comments you add. Editing it applies to new comments only; it does not change past comments.">
+      <span class="cm-identity-label">Commenting as</span>
+      <span class="cm-identity-name" id="cmIdentityName" aria-live="polite"></span>
+      <button type="button" id="btnEditIdentity" class="cm-identity-btn" title="Set or change the name attached to your new comments">set name</button>
+      <span class="cm-identity-edit" id="cmIdentityEdit" hidden>
+        <input type="text" id="cmIdentityInput" class="cm-identity-input" maxlength="60" placeholder="Your name" aria-label="Your reviewer name" autocomplete="off" autocapitalize="words" spellcheck="false">
+        <button type="button" id="btnSaveIdentity" class="cm-identity-save" title="Save this name for your new comments">Save</button>
+        <button type="button" id="btnCancelIdentity" class="cm-identity-cancel" title="Cancel">Cancel</button>
+      </span>
+    </div>
     <div class="head-actions">
       <div class="cm-sidebar-export">
         <button type="button" id="btnSidebarExportMenu" class="cm-sidebar-export-toggle" title="Open export actions" aria-controls="sidebarExportMenu" aria-expanded="false"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11 M8 10l4 4 4-4 M5 20h14"/></svg><span>Export</span></button>

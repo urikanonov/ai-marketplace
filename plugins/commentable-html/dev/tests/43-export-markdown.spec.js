@@ -36,6 +36,35 @@ test("the Markdown export leaks no raw HTML block tags", async ({ page }) => {
   expect(md).not.toMatch(/<\/?(div|section|table|thead|tbody|tr|td|th|figure|span|strong|em)\b/i);
 });
 
+test("the Review comments appendix is thread-aware: root author, ordered reply refinements, and a per-thread count (CMH-MD-01)", async ({ page }) => {
+  await openKitchenSink(page);
+  await page.evaluate(() => {
+    const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
+      || ("commentable-html:" + location.pathname);
+    const t = Date.now();
+    localStorage.setItem(k, JSON.stringify([
+      { id: "cmdroot0001", anchorType: "document", note: "the initial point", author: "Alice", createdAt: new Date(t).toISOString() },
+      { id: "cmdreply001", parentId: "cmdroot0001", note: "refine one", author: "Bob", createdAt: new Date(t + 1000).toISOString() },
+      { id: "cmdreply002", parentId: "cmdroot0001", note: "refine two", author: "Bob", createdAt: new Date(t + 2000).toISOString() },
+    ]));
+  });
+  await page.reload();
+  await ready(page);
+  const md = await page.evaluate(() => window.__cmhToMarkdown());
+  // The count is THREADS (1), not total notes (3), and the root heading carries its author.
+  expect(md).toContain("## Review comments (1)");
+  expect(md).toMatch(/### 1\. .*- by Alice/);
+  // Replies are labelled refinements, authored, and emitted oldest-first after the root note.
+  const iRoot = md.indexOf("the initial point");
+  const iR1 = md.indexOf("_Reply 1 - by Bob:_");
+  const iR2 = md.indexOf("_Reply 2 - by Bob:_");
+  expect(iRoot).toBeGreaterThan(-1);
+  expect(iR1).toBeGreaterThan(iRoot);
+  expect(iR2).toBeGreaterThan(iR1);
+  expect(md).toContain("refine one");
+  expect(md).toContain("refine two");
+});
+
 test("the converter is deterministic (byte-identical across runs)", async ({ page }) => {
   await openKitchenSink(page);
   const [a, b] = await page.evaluate(() => [window.__cmhToMarkdown(), window.__cmhToMarkdown()]);

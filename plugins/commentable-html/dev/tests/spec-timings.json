@@ -89,5 +89,6 @@
   "76-render-while-hidden.spec.js": 2371,
   "77-chart-hidpi.spec.js": 9302,
   "90-section-review.spec.js": 31273,
-  "91-upgrade-review.spec.js": 4379
+  "91-upgrade-review.spec.js": 4379,
+  "92-threads.spec.js": 30817
 }

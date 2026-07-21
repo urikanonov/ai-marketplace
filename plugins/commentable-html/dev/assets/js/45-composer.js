@@ -72,7 +72,8 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   ta.addEventListener("input", () => { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
 
   el._mode = mode;
-  el._editingId = comment ? comment.id : null;
+  el._editingId = (comment && mode === "edit") ? comment.id : null;
+  el._parentId = null;
   let isCodeQuote = false;
   if (mode === "new") {
     const start = offsetWithin(range.startContainer, range.startOffset);
@@ -108,8 +109,15 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-slide") {
     el._slide = slide;
     el._quote = slide && slide.slideTitle ? ("slide: " + slide.slideTitle) : "(comment on slide)";
+  } else if (mode === "new-reply") {
+    // A reply refines its thread root; it has no independent anchor. `comment` here is the
+    // root, used only for context display and to inherit the anchor position.
+    el._parentId = comment.id;
+    el._replyRoot = comment;
+    const rq = comment.quote || comment.note || "";
+    el._quote = "reply to: " + String(rq).replace(/\s+/g, " ").trim().slice(0, 80);
   } else {
-    el._quote = comment.quote;
+    el._quote = (comment.quote != null) ? comment.quote : (comment.parentId ? "(reply)" : "");
     isCodeQuote = !!comment.isCode;
   }
 
@@ -145,19 +153,24 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     const cx = Math.max(20, Math.round(window.innerWidth / 2) - 190);
     anchorRect = { left: cx, top: 90, bottom: 120, right: cx + 380 };
   } else {
+    // A reply inherits its thread root's anchor (it has no anchorType of its own), so resolve
+    // the root and dispatch on ITS anchor type; a text root still resolves by the mark cid.
+    const anchorSrc = comment.parentId
+      ? (comments.find((x) => x.id === comment.parentId) || comment)
+      : comment;
     let anchorEl = null;
-    if (comment.anchorType === "mermaid") {
-      anchorEl = findMermaidNode(comment.diagramIndex, comment.nodeKey);
-    } else if (comment.anchorType === "diff") {
-      anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
-    } else if (comment.anchorType === "image") {
-      anchorEl = findImageEl(comment.imageIndex);
-    } else if (comment.anchorType === "link") {
-      anchorEl = resolveLinkEl(comment);
-    } else if (comment.anchorType === "widget") {
-      anchorEl = findWidgetPart(comment.widget, comment.part);
+    if (anchorSrc.anchorType === "mermaid") {
+      anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
+    } else if (anchorSrc.anchorType === "diff") {
+      anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
+    } else if (anchorSrc.anchorType === "image") {
+      anchorEl = findImageEl(anchorSrc.imageIndex);
+    } else if (anchorSrc.anchorType === "link") {
+      anchorEl = resolveLinkEl(anchorSrc);
+    } else if (anchorSrc.anchorType === "widget") {
+      anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
     } else {
-      anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
+      anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
     }
     anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   }
@@ -183,6 +196,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   if (el._editingId) openEditComposers.set(el._editingId, el);
   lastFocusedComposer = el;
   setTimeout(() => ta.focus(), 0);
+  if (String(mode || "").indexOf("new") === 0 && typeof maybeNudgeIdentity === "function") maybeNudgeIdentity();
   return el;
 }
 
@@ -308,6 +322,11 @@ function openComposer(range, quote) {
   return createComposerElement({ mode: "new", range, quote });
 }
 
+function openComposerForReply(rootComment) {
+  if (!rootComment || isReply(rootComment)) return null;
+  return createComposerElement({ mode: "new-reply", comment: rootComment });
+}
+
 function openComposerForEdit(comment) {
   const existing = openEditComposers.get(comment.id);
   if (existing) {
@@ -316,13 +335,16 @@ function openComposerForEdit(comment) {
     const r = existing.getBoundingClientRect();
     const outOfView = r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth;
     if (outOfView) {
+      const anchorSrc = comment.parentId
+        ? (comments.find((x) => x.id === comment.parentId) || comment)
+        : comment;
       let anchorEl = null;
-      if (comment.anchorType === "mermaid") anchorEl = findMermaidNode(comment.diagramIndex, comment.nodeKey);
-      else if (comment.anchorType === "diff") anchorEl = findDiffLineEls(comment.diffIndex, comment.lineKey)[0];
-      else if (comment.anchorType === "image") anchorEl = findImageEl(comment.imageIndex);
-      else if (comment.anchorType === "link") anchorEl = resolveLinkEl(comment);
-      else if (comment.anchorType === "widget") anchorEl = findWidgetPart(comment.widget, comment.part);
-      else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${comment.id}"]`);
+      if (anchorSrc.anchorType === "mermaid") anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
+      else if (anchorSrc.anchorType === "diff") anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
+      else if (anchorSrc.anchorType === "image") anchorEl = findImageEl(anchorSrc.imageIndex);
+      else if (anchorSrc.anchorType === "link") anchorEl = resolveLinkEl(anchorSrc);
+      else if (anchorSrc.anchorType === "widget") anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
+      else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
     }
     existing.querySelector("textarea").focus();
@@ -363,6 +385,23 @@ function saveComposerElement(el) {
   if (el._editingId) {
     const c = comments.find(c => c.id === el._editingId);
     if (c) { c.note = note; c.updatedAt = new Date().toISOString(); }
+  } else if (el._parentId) {
+    // The thread root may have been deleted while this reply composer was open. Do not append
+    // an orphan (it would be hidden now and pruned on reload, silently losing the text): warn
+    // and keep the composer open so the reviewer can recover their draft.
+    if (!comments.some((x) => x.id === el._parentId && !isReply(x))) {
+      showToast("The comment you were replying to was deleted - your reply was not saved. "
+        + "Copy your text before closing.", { alert: true, duration: 8000 });
+      return;
+    }
+    const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const comment = {
+      id,
+      parentId: el._parentId,
+      note,
+      createdAt: new Date().toISOString(),
+    };
+    comments.push(stampAuthor(comment));
   } else if (el._mode === "new-mermaid") {
     const info = el._mermaid;
     const host = mermaidHostForIndex(info.diagramIndex);
@@ -379,7 +418,7 @@ function saveComposerElement(el) {
       createdAt: new Date().toISOString(),
       ...ctx,
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
     if (!applyMermaidHighlight(comment)) {
       showToast("Comment saved, but the mermaid node could not be highlighted (the diagram may have re-rendered).");
     }
@@ -407,7 +446,7 @@ function saveComposerElement(el) {
       createdAt: new Date().toISOString(),
       ...ctx,
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
     if (!applyDiffHighlight(comment)) {
       showToast("Comment saved, but the diff line could not be highlighted (the diff may have re-rendered).");
     }
@@ -428,7 +467,7 @@ function saveComposerElement(el) {
       createdAt: new Date().toISOString(),
       ...ctx,
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
     if (!applyImageHighlight(comment)) {
       showToast("Comment saved, but the image could not be highlighted.");
     }
@@ -448,7 +487,7 @@ function saveComposerElement(el) {
       createdAt: new Date().toISOString(),
       ...ctx,
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
     if (!applyLinkHighlight(comment)) {
       showToast("Comment saved, but the link could not be highlighted.");
     }
@@ -469,7 +508,7 @@ function saveComposerElement(el) {
       createdAt: new Date().toISOString(),
       ...ctx,
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
     if (!applyWidgetHighlight(comment)) {
       showToast("Comment saved, but the widget part could not be highlighted.");
     }
@@ -484,7 +523,7 @@ function saveComposerElement(el) {
       section: null,
       headingPath: [],
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
   } else if (el._mode === "new-slide") {
     const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const s = el._slide || {};
@@ -500,7 +539,7 @@ function saveComposerElement(el) {
       section: null,
       headingPath: [],
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
   } else {
     // Convert the composing preview into the real highlight. First confirm the stored
     // offsets still anchor while the preview is up, so a failed re-anchor leaves the preview
@@ -538,7 +577,7 @@ function saveComposerElement(el) {
       createdAt: new Date().toISOString(),
       ...ctx,
     };
-    comments.push(comment);
+    comments.push(stampAuthor(comment));
     try {
       wrapRangeWithMark(r, id);
     } catch (e) {

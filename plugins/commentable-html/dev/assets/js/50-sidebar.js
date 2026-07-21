@@ -49,8 +49,9 @@ function renderComments() {
   // note-typing path COALESCES a keystroke burst into a single render rather than one per key
   // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
   if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.renders = (window.__cmhPerf.renders || 0) + 1;
-  toolbarCount.textContent = comments.length;
-  sidebarCount.textContent = comments.length;
+  const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
+  toolbarCount.textContent = roots.length;
+  sidebarCount.textContent = roots.length;
   // Keep the deck comment-options menu in step with the live comment count (the "Disable
   // commenting" item is only available when the deck has zero comments).
   if (window.__cmhDeck && typeof window.__cmhDeck.refreshMode === "function") window.__cmhDeck.refreshMode();
@@ -61,7 +62,7 @@ function renderComments() {
   const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
   const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
   const notePieces = (typeof notesCardPieces === "function") ? notesCardPieces() : [];
-  if (!comments.length && !stateChanges.length && !clPieces.length && !notePieces.length) {
+  if (!roots.length && !stateChanges.length && !clPieces.length && !notePieces.length) {
     const deckHint = IS_DECK
       ? "<p><strong>On this deck:</strong> in comment mode, select text on the current slide and choose <em>Add Comment</em>, or right-click empty slide space for a whole-slide comment. Move between slides with Prev / Next or the arrow keys.</p>"
       : "";
@@ -77,10 +78,10 @@ function renderComments() {
   }
   const sortKey = _anchorSortKey;
   const sorted = (commentSort === "time-asc")
-    ? [...comments].sort((a, b) => (commentTimeValue(a) - commentTimeValue(b)) || (sortKey(a) - sortKey(b)))
+    ? [...roots].sort((a, b) => (commentTimeValue(a) - commentTimeValue(b)) || (sortKey(a) - sortKey(b)))
     : (commentSort === "time-desc")
-    ? [...comments].sort((a, b) => (commentTimeValue(b) - commentTimeValue(a)) || (sortKey(a) - sortKey(b)))
-    : [...comments].sort((a, b) => sortKey(a) - sortKey(b));
+    ? [...roots].sort((a, b) => (commentTimeValue(b) - commentTimeValue(a)) || (sortKey(a) - sortKey(b)))
+    : [...roots].sort((a, b) => sortKey(a) - sortKey(b));
   const commentHtml = sorted.map((c, i) => {
     const isMermaid = c.anchorType === "mermaid";
     const isDiff = c.anchorType === "diff";
@@ -155,20 +156,41 @@ function renderComments() {
     const jumpBtn = isDocument ? "" : isSlide
       ? `<button type="button" data-act="jump" title="Go to this slide">jump</button>`
       : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
+    const rootPill = (typeof authorPillHtml === "function") ? authorPillHtml(c.author) : "";
+    const replies = (typeof repliesOf === "function") ? repliesOf(c.id, comments) : [];
+    const delTitle = replies.length ? "Delete this comment and its replies" : "Delete this comment";
+    const repliesHtml = replies.map((r) => {
+      const rp = (typeof authorPillHtml === "function") ? authorPillHtml(r.author) : "";
+      return `
+      <div class="cm-entry cm-reply" data-reply-cid="${r.id}">
+        <div class="note">${rp}${escapeHtml(r.note)}</div>
+        <div class="meta">
+          <span>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}${r.updatedAt ? " (edited)" : ""}</span>
+          <span class="acts">
+            <button type="button" data-act="reply-edit" title="Edit reply">edit</button>
+            <button type="button" class="del" data-act="reply-del" title="Delete reply">delete</button>
+          </span>
+        </div>
+      </div>`;
+    }).join("");
     return `
     <article class="${cardClass}" data-cid="${c.id}">
       ${sectionHtml}
       ${quoteHtml}
       ${pinHtml}
-      <div class="note">${escapeHtml(c.note)}</div>
-      <div class="meta">
-        <span>#${i + 1} - ${escapeHtml(formatTime(c.updatedAt || c.createdAt))}${c.updatedAt ? " (edited)" : ""}</span>
-        <span class="acts">
-          ${jumpBtn}
-          <button type="button" data-act="edit" title="Edit comment">edit</button>
-          <button type="button" class="del" data-act="del" title="Delete comment">delete</button>
-        </span>
+      <div class="cm-entry cm-entry-root">
+        <div class="note">${rootPill}${escapeHtml(c.note)}</div>
+        <div class="meta">
+          <span>#${i + 1} - ${escapeHtml(formatTime(c.updatedAt || c.createdAt))}${c.updatedAt ? " (edited)" : ""}</span>
+          <span class="acts">
+            ${jumpBtn}
+            <button type="button" data-act="edit" title="Edit comment">edit</button>
+            <button type="button" class="del" data-act="del" title="${delTitle}">delete</button>
+          </span>
+        </div>
       </div>
+      ${repliesHtml ? `<div class="cm-replies">${repliesHtml}</div>` : ""}
+      <div class="cm-reply-row"><button type="button" class="cm-reply-btn" data-act="reply" title="Reply to this comment">Reply</button></div>
     </article>`;
   });
   const commentPieces = commentHtml.map((html, i) => ({ pos: sortKey(sorted[i]), html }));
@@ -351,12 +373,47 @@ listEl.addEventListener("click", (e) => {
   if (!card) return;
   const id = card.dataset.cid;
   const act = e.target.dataset.act;
+  if (act === "reply") {
+    const rc = comments.find(x => x.id === id);
+    if (rc && typeof openComposerForReply === "function") { scrollToAnchor(rc); openComposerForReply(rc); }
+    return;
+  }
+  if (act === "reply-del") {
+    const entry = e.target.closest("[data-reply-cid]");
+    const rid = entry && entry.getAttribute("data-reply-cid");
+    const rc = comments.find(x => x.id === rid);
+    if (rc && confirm("Delete this reply?")) {
+      const oc = openEditComposers.get(rid);
+      if (oc) closeComposerElement(oc);          // an open edit of this reply would silently lose its text
+      _tombstoneEmbedded([rid]);
+      comments = comments.filter(x => x.id !== rid);
+      saveComments();
+      renderComments();
+    }
+    return;
+  }
+  if (act === "reply-edit") {
+    const entry = e.target.closest("[data-reply-cid]");
+    const rid = entry && entry.getAttribute("data-reply-cid");
+    const rc = comments.find(x => x.id === rid);
+    if (rc) openComposerForEdit(rc);
+    return;
+  }
   if (act === "del") {
     const c = comments.find(x => x.id === id);
     scrollToAnchor(c);                       // jump to the anchor first, then confirm
-    if (confirm("Delete this comment?")) {
-      _tombstoneEmbedded([id]);
-      comments = comments.filter(x => x.id !== id);
+    // Deleting a thread root removes the whole thread (root + replies); a reply is deleted
+    // through its own reply-del button above.
+    const ids = (typeof threadIds === "function") ? threadIds(id) : [id];
+    const nReplies = ids.length - 1;
+    const msg = nReplies > 0
+      ? ("Delete this comment and its " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies") + "?")
+      : "Delete this comment?";
+    if (confirm(msg)) {
+      _tombstoneEmbedded(ids);
+      const drop = new Set(ids);
+      ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+      comments = comments.filter(x => !drop.has(x.id));
       removeHighlight(c);
       saveComments();
       renderComments();

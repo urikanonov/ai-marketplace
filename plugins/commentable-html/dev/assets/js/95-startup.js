@@ -11,6 +11,8 @@ function pruneHandled() {
   const handled = getHandledIds();
   const before = comments.length;
   comments = comments.filter(c => !handled.has(c.id));
+  // A handled root can strand its replies; drop those too so a thread is pruned whole.
+  if (typeof pruneOrphanReplies === "function") pruneOrphanReplies();
   const removed = before - comments.length;
   saveComments();
   return removed;
@@ -18,7 +20,9 @@ function pruneHandled() {
 function withoutHandled(arr) {
   const handled = getHandledIds();
   if (!handled.size) return arr;
-  return arr.filter(c => !handled.has(c.id));
+  // Also hide replies whose root was handled, so a stranded reply never leaks into Copy all.
+  const present = new Set((arr || []).filter(c => c && !handled.has(c.id) && !(c && c.parentId)).map(c => c.id));
+  return (arr || []).filter(c => !handled.has(c.id) && !(c && c.parentId && !present.has(c.parentId)));
 }
 function restoreHighlights() {
   // Require finite start/end in addition to excluding the known non-text anchor types: a
@@ -242,6 +246,7 @@ setupCodeCopy();
 setupSortableTables();
 setupModeUi();
 setupSidebarResize();
+if (typeof setupIdentityControl === "function") setupIdentityControl();
 setupCommentSearch();
 setupPrintAppendix();
 function setupDeck() {

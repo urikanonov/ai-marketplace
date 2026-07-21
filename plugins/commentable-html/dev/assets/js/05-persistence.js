@@ -11,6 +11,9 @@ function loadComments() {
   const tomb = _deletedEmbeddedIds();
   const embedded = getEmbeddedComments().filter(function (c) { return !(c && tomb.has(c.id)); });
   comments = mergeCommentSets(local, embedded);
+  // Drop (and tombstone) any reply whose thread root is not present, so a dangling reply
+  // can never render or resurrect from the embedded block.
+  if (typeof pruneOrphanReplies === "function") pruneOrphanReplies();
   // If the merge changed localStorage, persist so reloads converge.
   try {
     if (JSON.stringify(comments) !== JSON.stringify(local)) saveComments();
@@ -63,6 +66,15 @@ function _offsetAnchorIsSane(c) {
   return Number.isFinite(c.start) && Number.isFinite(c.end)
     && c.start >= 0 && c.end >= c.start && c.end <= CMH_MAX_OFFSET;
 }
+// A reply's parentId must be a SAFE_ID that differs from its own id (a reply cannot parent
+// itself). Absent parentId (a top-level comment) is always fine. Rejecting an unsafe
+// parentId at the single load/merge choke point keeps a poisoned value from ever reaching a
+// selector or the thread-grouping logic; a reply pointing at a missing/non-root id survives
+// this gate and is dropped later by pruneOrphanReplies().
+function _parentRefIsSane(c) {
+  if (c.parentId === undefined || c.parentId === null) return true;
+  return typeof c.parentId === "string" && SAFE_ID_RE.test(c.parentId) && c.parentId !== c.id;
+}
 // Merge two comment arrays by id. For each id present in both, keep the
 // entry with the later updatedAt (fallback createdAt). Ids only in one
 // side pass through. Order is preserved best-effort (a first, then new
@@ -77,7 +89,8 @@ function mergeCommentSets(a, b) {
   const map = new Map();
   const order = [];
   for (const c of (a || [])) {
-    if (!c || !c.id || !SAFE_ID_RE.test(c.id) || !_offsetAnchorIsSane(c)) continue;
+    if (!c || !c.id || !SAFE_ID_RE.test(c.id) || !_offsetAnchorIsSane(c) || !_parentRefIsSane(c)) continue;
+    if (typeof c.author === "string") c.author = _sanitizeAuthor(c.author);
     const existing = map.get(c.id);
     if (!existing) {
       if (map.size >= CMH_MAX_COMMENTS) continue;
@@ -88,7 +101,8 @@ function mergeCommentSets(a, b) {
     }
   }
   for (const c of (b || [])) {
-    if (!c || !c.id || !SAFE_ID_RE.test(c.id) || !_offsetAnchorIsSane(c)) continue;
+    if (!c || !c.id || !SAFE_ID_RE.test(c.id) || !_offsetAnchorIsSane(c) || !_parentRefIsSane(c)) continue;
+    if (typeof c.author === "string") c.author = _sanitizeAuthor(c.author);
     const existing = map.get(c.id);
     if (!existing) {
       if (map.size >= CMH_MAX_COMMENTS) continue;

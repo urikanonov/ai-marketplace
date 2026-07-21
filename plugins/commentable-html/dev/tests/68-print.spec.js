@@ -101,6 +101,38 @@ test("CMH-PRINT-01: flat print hides runtime chrome, expands content, and materi
   expect(printStyle.boxShadow).toBe("none");
 });
 
+test("CMH-PRINT-01: the print appendix shows the comment author pill and ordered reply refinements", async ({ page }) => {
+  const content = `<section><h2>Doc</h2><p id="pt">Printable body text.</p></section>`;
+  const staged = stagePrintContent(content, { key: "cmh-print-threads", source: "print-threads.html" });
+  await installClipboardCapture(page);
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await page.evaluate(() => {
+    const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
+      || ("commentable-html:" + location.pathname);
+    const t = Date.now();
+    localStorage.setItem(k, JSON.stringify([
+      { id: "cprintroot1", anchorType: "document", note: "print root note", author: "Alice", createdAt: new Date(t).toISOString() },
+      { id: "cprintrep01", parentId: "cprintroot1", note: "print reply one", author: "Bob", createdAt: new Date(t + 1000).toISOString() },
+      { id: "cprintrep02", parentId: "cprintroot1", note: "print reply two", author: "Bob", createdAt: new Date(t + 2000).toISOString() },
+    ]));
+  });
+  await page.reload();
+  await ready(page);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+
+  const appendix = page.locator("#cmhPrintComments");
+  await expect(appendix).toBeVisible();
+  // One thread article (the count is per-thread), the root author pill, and both replies in order.
+  await expect(appendix.locator(".cmh-print-comment")).toHaveCount(1);
+  await expect(appendix.locator(".cmh-print-comment .cm-author-pill").first()).toHaveText("Alice");
+  const replies = appendix.locator(".cmh-print-reply");
+  await expect(replies).toHaveCount(2);
+  await expect(replies.nth(0)).toContainText("print reply one");
+  await expect(replies.nth(1)).toContainText("print reply two");
+});
+
 test("CMH-PRINT-01: deck print keeps one slide per page", async ({ page }) => {
   const slides =
     '<section class="slide active" data-slide-id="slide-print-1"><h2>One</h2><p>First slide.</p></section>'

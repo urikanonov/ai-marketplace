@@ -93,7 +93,7 @@
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.198.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.199.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -454,12 +454,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.199.0] - 2026-07-21</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Collaborative threaded comments with author attribution. A reviewer sets a display name once (stored per-browser in <code>localStorage</code>, seedable by the author via <code>data-cm-author</code>); the sidebar &quot;Commenting as&quot; control lets them change it at any time, applying to new comments only. Every attributed comment and reply shows a hashed-color author pill at the start of its note. A new Reply action threads comments: a thread is an initial comment plus a flat, chronological list of replies (single-level), each individually editable and deletable. Deleting a thread root removes the whole thread; deleting a reply removes only that reply. Copy all emits each thread as an initial comment followed by clearly-labelled refinements (author names neutralized so they cannot forge the untrusted-note fence or the machine trailer) and includes every reply id in HANDLED_IDS_JSON so a thread is handled and pruned together. Threads round-trip through Export as Portable / embedded comments, and orphan replies (missing root) are pruned at load. Markdown export and the print appendix are thread-aware. (CMH-AUTHOR-01, CMH-AUTHOR-02, CMH-AUTHOR-03, CMH-THREAD-01, CMH-THREAD-02, CMH-THREAD-03, CMH-THREAD-04, CMH-THREAD-05, CMH-THREAD-06)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.198.0] - 2026-07-21</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>A discoverable <strong>Save as PDF</strong> action makes the existing browser-native print/PDF layout reachable without knowing a keyboard shortcut. It appears in the toolbar overflow (&quot;More actions&quot;) menu and in the sidebar Export menu, and triggers the browser&#x27;s own <code>window.print()</code> - zero PDF dependencies (no jsPDF or html2canvas). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends the current comments. It deliberately does not intercept <code>Ctrl/Cmd+P</code>, so the browser&#x27;s own print/PDF shortcut still works unchanged.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.197.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
@@ -468,8 +477,6 @@
               <li>Marking a section reviewed now warns when the marker cannot be persisted (localStorage full or blocked) with an assertive toast, instead of silently painting <code>Reviewed</code> and letting it revert on reload - symmetric with the existing un-review warning. (CMH-REVIEW-15)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.196.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -498,18 +505,7 @@
               <li>A standalone built-in canvas chart (<code>canvas.cmh-chart</code> with inline <code>data-cmh-chart-points</code>/<code>-source</code>) placed directly in a shrink-to-fit container (<code>width: max-content</code>, an <code>inline-block</code>, a float, or an auto-sized <code>inline-flex</code>/grid item) - rather than inside the shipped definite-width <code>figure.chart &gt; .chart-wrap</code> - no longer renders <code>dpr x</code> oversized on a HiDPI screen (<code>devicePixelRatio &gt; 1</code>). The renderer now measures the chart&#x27;s logical size against a bitmap reset to the authored size (which is devicePixelRatio-independent, so the canvas&#x27;s own dpr-scaled bitmap cannot drive its container&#x27;s width - the feedback loop - and which preserves the aspect ratio so an auto-height chart is not squared), falls back to the authored <code>width</code>/<code>height</code> attributes when the container collapses without the canvas, and pins the box so the chart displays at its intended size; the shipped definite-width chart pattern is unaffected (CMH-CHART-10).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.192.0] - 2026-07-20</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Report (non-deck) Mermaid diagrams in the shipped example reports and the deployed-site demos no longer collapse to a tiny frozen bar when their section is hidden at load. The examples carried the OLD naive in-place <code>mermaid.run()</code> loader (a diagram whose section was <code>display:none</code> at load rendered a degenerate ~16px SVG that never re-measured), because <code>build.py</code>&#x27;s <code>regen_example</code> swaps only the CSS / COMMENT UI / JS layer regions and never re-emitted the shell-baked <code>&lt;head&gt;</code> mermaid loader. <code>regen_example</code> now re-emits the canonical loader from <code>PORTABLE.html</code> into every example (the same <code>&lt;head&gt;</code>-scoped, ambiguity-guarded, vendored-safe re-emit <code>upgrade.py</code> does), so an example single-sources the loader and honors CMH-MMD-07 (CMH-MMD-09).</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Report (non-deck) Mermaid diagrams whose natural width is well under the content column now scale up toward the column instead of being marooned by mermaid&#x27;s intrinsic-width inline <code>max-width</code>. A <code>cmh-diagram-narrow</code> class (set by <code>updateMermaidWidthClass</code> with hysteresis, so scaling a diagram taller cannot flip it back and forth on the reveal/resize observer) grows the SVG to a capped <code>min(100%, natural * 1.4)</code>, centered, for both <code>pre.mermaid</code> and <code>div.mermaid</code> hosts. Wide diagrams (which scroll) and deck diagrams (own fit) are unaffected (CMH-MMD-10).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">162 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">163 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
