@@ -139,7 +139,19 @@ Once you have several comments, the sidebar helps you find and order them.
 
 ![The comments panel filtered by a search query, with the sort controls and a shown-of-total count](assets/garden-13-comment-search.png)
 
-## 15. Hand your comments back
+## 15. Set your name and reply in threads
+
+When you pass a document back and forth with someone else, attribute each comment and hold a conversation in threads.
+
+1. In the comments panel, the **Commenting as** line shows the name attached to your comments. Click **set name** (or **change**) to enter a display name. It is remembered in this browser and applies to your future comments only - it never rewrites comments you already made. (An author who generated the file for you can pre-fill it with `data-cm-author`.)
+2. Each attributed comment and reply shows a colored **author pill** at the start of its note, so it is clear who wrote what.
+3. To continue a conversation on a comment, click **Reply** on its card, type your response, and save. Replies stack under the original comment, oldest first, forming a thread.
+4. Deleting the original comment removes the whole thread; deleting a single reply removes only that reply.
+5. **Copy all**, Markdown export, and the print appendix keep threads together: each is emitted as an initial comment followed by its labelled replies, so the agent reads the refinements in context.
+
+![The comments panel showing the Commenting as control and a comment thread with two author pills and a reply](assets/garden-14-thread.png)
+
+## 16. Hand your comments back
 
 1. Click **Copy all** in the toolbar or the sidebar.
 2. This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.
@@ -147,7 +159,7 @@ Once you have several comments, the sidebar helps you find and order them.
 
 ![The Copy all action with the comments panel populated](assets/garden-09-copyall.png)
 
-## 16. Use the export menu
+## 17. Use the export menu
 
 The sidebar's export menu gathers the ways to save or share the file in one place.
 
@@ -157,7 +169,7 @@ The sidebar's export menu gathers the ways to save or share the file in one plac
 
 ![The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML](assets/garden-12-export-menu.png)
 
-## 17. Refresh and repeat
+## 18. Refresh and repeat
 
 Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.
 
@@ -165,7 +177,7 @@ To share the review with another person instead, use the export menu's **Portabl
 
 Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips.
 
-## 18. Review a board document
+## 19. Review a board document
 
 Not every commentable file is a prose report. A board document (`kind: board`) renders as columns of cards - handy for triaging incidents, tickets, or tasks. The [`examples/report-triage.html`](../examples/report-triage.html) report is one.
 

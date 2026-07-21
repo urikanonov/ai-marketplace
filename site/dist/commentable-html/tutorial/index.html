@@ -173,14 +173,24 @@
           <li>Use the sort buttons to order comments by their position in the document, ascending or descending, instead of the order you added them.</li>
           </ol>
           <p><img src="assets/garden-13-comment-search.png" alt="The comments panel filtered by a search query, with the sort controls and a shown-of-total count" loading="lazy" /></p>
-          <h3>15. Hand your comments back</h3>
+          <h3>15. Set your name and reply in threads</h3>
+          <p>When you pass a document back and forth with someone else, attribute each comment and hold a conversation in threads.</p>
+          <ol>
+          <li>In the comments panel, the <strong>Commenting as</strong> line shows the name attached to your comments. Click <strong>set name</strong> (or <strong>change</strong>) to enter a display name. It is remembered in this browser and applies to your future comments only - it never rewrites comments you already made. (An author who generated the file for you can pre-fill it with <code>data-cm-author</code>.)</li>
+          <li>Each attributed comment and reply shows a colored <strong>author pill</strong> at the start of its note, so it is clear who wrote what.</li>
+          <li>To continue a conversation on a comment, click <strong>Reply</strong> on its card, type your response, and save. Replies stack under the original comment, oldest first, forming a thread.</li>
+          <li>Deleting the original comment removes the whole thread; deleting a single reply removes only that reply.</li>
+          <li><strong>Copy all</strong>, Markdown export, and the print appendix keep threads together: each is emitted as an initial comment followed by its labelled replies, so the agent reads the refinements in context.</li>
+          </ol>
+          <p><img src="assets/garden-14-thread.png" alt="The comments panel showing the Commenting as control and a comment thread with two author pills and a reply" loading="lazy" /></p>
+          <h3>16. Hand your comments back</h3>
           <ol>
           <li>Click <strong>Copy all</strong> in the toolbar or the sidebar.</li>
           <li>This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.</li>
           <li>Paste the bundle back to the agent. It addresses each comment and marks it handled in the same file.</li>
           </ol>
           <p><img src="assets/garden-09-copyall.png" alt="The Copy all action with the comments panel populated" loading="lazy" /></p>
-          <h3>16. Use the export menu</h3>
+          <h3>17. Use the export menu</h3>
           <p>The sidebar&#x27;s export menu gathers the ways to save or share the file in one place.</p>
           <ol>
           <li>Click <strong>Export</strong> in the comments panel header to open the menu.</li>
@@ -188,11 +198,11 @@
           <li>The <strong>Clear</strong> button next to Export removes every comment so you can start the review over.</li>
           </ol>
           <p><img src="assets/garden-12-export-menu.png" alt="The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML" loading="lazy" /></p>
-          <h3>17. Refresh and repeat</h3>
+          <h3>18. Refresh and repeat</h3>
           <p>Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.</p>
           <p>To share the review with another person instead, use the export menu&#x27;s <strong>Portable</strong> action to bake the comments into a single self-contained copy, or <strong>Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
           <p>Use <strong>Export Offline</strong> for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the <strong>Offline</strong> badge while keeping live diagrams and chart tooltips.</p>
-          <h3>18. Review a board document</h3>
+          <h3>19. Review a board document</h3>
           <p>Not every commentable file is a prose report. A board document (<code>kind: board</code>) renders as columns of cards - handy for triaging incidents, tickets, or tasks. The <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a> report is one.</p>
           <ol>
           <li>Open <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a>.</li>
