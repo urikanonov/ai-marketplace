@@ -1,5 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 import { heavyGlobs } from "./tests/_projects.mjs";
+import { specsForShard, parseShardEnv } from "./tests/_shard.mjs";
+
+// The CI `playwright` job passes PLAYWRIGHT_FAST_SHARD=i/N (instead of Playwright's count-based
+// --shard) so the `fast` project runs only the duration-balanced spec set for shard i (see
+// tests/_shard.mjs). Unset (local runs, the heavy job) means "all fast specs".
+const fastShard = parseShardEnv(process.env.PLAYWRIGHT_FAST_SHARD);
+const fastTestMatch = fastShard
+  ? specsForShard(fastShard.index, fastShard.total).map((f) => `**/${f}`)
+  : undefined;
+
 
 // E2E regression suite for the commentable-html layer. Fixtures are the skill's
 // own generated artifacts (dist/PORTABLE.html, dist/NONPORTABLE.html), opened over file://
@@ -28,7 +38,7 @@ export default defineConfig({
   // job with a small worker count (CLI --workers) so its concurrent capture subprocesses do not
   // thrash the runner. Splitting them stops one serial screenshot block from gating a whole shard.
   projects: [
-    { name: "fast", testIgnore: heavyGlobs, use: { ...devices["Desktop Chrome"] } },
+    { name: "fast", testIgnore: heavyGlobs, testMatch: fastTestMatch, use: { ...devices["Desktop Chrome"] } },
     { name: "heavy", testMatch: heavyGlobs, use: { ...devices["Desktop Chrome"] } },
   ],
 });

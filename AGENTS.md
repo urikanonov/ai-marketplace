@@ -163,7 +163,14 @@ runs as the sharded `playwright` job, and the `heavy` project (the tutorial-scre
 listed in `tests/_projects.mjs`, which each spawn their own chromium and would thrash a mixed shard)
 runs as its own sharded `playwright-heavy` job in parallel - so one serial screenshot block no longer
 gates a shard. A guard spec (`CMH-BUILD-12`) asserts every heavy-project name resolves to a real spec
-file so the split can never silently drop coverage. A `changes` job first decides whether the event
+file so the split can never silently drop coverage. The `fast` job is sharded by DURATION, not test
+count: CI passes `PLAYWRIGHT_FAST_SHARD=i/N` and `playwright.config.js` (via `tests/_shard.mjs`) runs
+only the specs that LPT bin-packing assigns to shard i from committed per-spec timings
+(`tests/spec-timings.json`), so no one shard is the run-time bottleneck. Balance is self-maintaining -
+run `npm run shard:timings` after adding or materially changing a fast spec, and split a single test
+that is too slow to shard (rather than hand-tuning shards); the `CMH-BUILD-13` guard enforces it. See
+"Keeping the CI Playwright shards balanced" in [docs/testing-guidelines.md](docs/testing-guidelines.md).
+A `changes` job first decides whether the event
 touches a plugin (any `plugins/**` file, this workflow, or the shared Python runner); a PR that does
 not is allowed to SKIP both heavy suites, and the aggregate `plugin-tests` gate treats that
 intentional skip as success (failing SAFE - if the diff cannot be computed, the suites run). The gate
