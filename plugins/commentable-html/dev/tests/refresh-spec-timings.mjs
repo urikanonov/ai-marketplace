@@ -17,17 +17,24 @@ import { TIMINGS_PATH } from "./_shard.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEV = path.resolve(HERE, "..");
 const jsonOut = path.join(os.tmpdir(), `cmh-fast-timings-${process.pid}.json`);
+// Clear any stale report at this path (e.g. left by a prior crashed run whose PID was reused) so a
+// missing fresh report is never mistaken for a successful one.
+fs.rmSync(jsonOut, { force: true });
 
 // Run the full fast project (PLAYWRIGHT_FAST_SHARD unset => all specs) SERIALLY (--workers=1) with
 // the JSON reporter, so each spec's recorded time is its true single-worker cost, not a
 // contention-inflated parallel time. LPT balances the sum of these per shard.
-const run = spawnSync("npx", ["playwright", "test", "--project=fast", "--workers=1", "--reporter=json"], {
+const run = spawnSync("npx", ["playwright", "test", "--project=fast", "--workers=1", "--reporter=list,json"], {
   cwd: DEV,
   encoding: "utf8",
-  stdio: ["ignore", "ignore", "inherit"],
+  stdio: ["ignore", "inherit", "inherit"],
   env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: jsonOut, PLAYWRIGHT_FAST_SHARD: "" },
   shell: process.platform === "win32",
 });
+if (run.error) {
+  console.error(`refresh-spec-timings: could not launch Playwright: ${run.error.message}`);
+  process.exit(1);
+}
 if (!fs.existsSync(jsonOut)) {
   console.error("refresh-spec-timings: no JSON report was produced; did the suite run?");
   process.exit(1);

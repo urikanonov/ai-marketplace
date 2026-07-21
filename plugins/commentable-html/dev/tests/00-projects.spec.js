@@ -44,6 +44,12 @@ test("fast-project spec timings are complete and shard-balanced (CMH-BUILD-13)",
   const orphan = Object.keys(timings).filter((k) => !specs.includes(k));
   expect(missing, `specs missing a timing (run 'npm run shard:timings'): ${missing.join(", ")}`).toEqual([]);
   expect(orphan, `orphan timings for deleted specs (run 'npm run shard:timings'): ${orphan.join(", ")}`).toEqual([]);
+  // Every timing must be a finite, non-negative number; a quoted/negative/NaN value would silently
+  // skew LPT (it coerces yet passes the key-completeness checks above).
+  const badValues = Object.entries(timings)
+    .filter(([, v]) => typeof v !== "number" || !Number.isFinite(v) || v < 0)
+    .map(([k]) => k);
+  expect(badValues, `timings must be finite, non-negative numbers (run 'npm run shard:timings'): ${badValues.join(", ")}`).toEqual([]);
 
   const total = specs.reduce((a, s) => a + (timings[s] || 0), 0);
   for (let n = 4; n <= 8; n++) {
@@ -81,4 +87,11 @@ test("LPT shard assignment is deterministic and lossless (CMH-BUILD-13)", () => 
   // A single shard gets everything; a bad total is rejected.
   expect(lptAssign(specs, timings, 1)).toEqual([[...specs].sort()]);
   expect(() => lptAssign(specs, timings, 0)).toThrow();
+  // Equal-weight ties break by filename in locale-independent code-unit order, so the partition is
+  // identical regardless of input order (guards the a<b?-1:... tie-break against a localeCompare regress).
+  const ties = { p: 50, q: 50, r: 50, s: 50 };
+  const tieSpecs = ["p", "q", "r", "s"];
+  const tie = lptAssign(tieSpecs, ties, 2);
+  expect(lptAssign([...tieSpecs].reverse(), ties, 2)).toEqual(tie);
+  expect(tie.flat().sort()).toEqual(["p", "q", "r", "s"]);
 });

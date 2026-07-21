@@ -8,7 +8,7 @@
 // total run time within ~1% of the others, so the fast job is no longer bottlenecked by one shard, and
 // balance is maintained automatically: refresh the timings (npm run shard:timings) after adding or
 // materially changing a spec and the assignment rebalances itself. A guard spec
-// (00-shard-balance.spec.js) fails if a spec is missing a timing or the packing goes grossly uneven.
+// (00-projects.spec.js) fails if a spec is missing a timing or the packing goes grossly uneven.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
