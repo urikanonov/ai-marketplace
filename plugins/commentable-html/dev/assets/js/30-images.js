@@ -372,23 +372,64 @@ function findImageEl(index) {
   if (!/^\d+$/.test(String(index))) return null;
   return imageEls[index] || root.querySelector(`[data-cm-image-index="${index}"]`) || null;
 }
+function _imageOneLine(value) {
+  return String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function _imageElMeta(img) {
+  const isCanvas = img && img.tagName === "CANVAS";
+  const alt = _imageOneLine(img && (img.getAttribute("alt") || img.getAttribute("aria-label") || ""));
+  const src = _imageOneLine(img && img.getAttribute("src"));
+  const kind = (isCanvas || (img && img.closest("figure.chart")) || (img && img.classList.contains("cmh-chart"))) ? "chart" : "image";
+  return { alt, src, kind };
+}
+function _imageMismatch(img, comment) {
+  if (!img) return true;
+  const meta = _imageElMeta(img);
+  const src = _imageOneLine(comment && comment.imageSrc);
+  const alt = _imageOneLine(comment && comment.imageAlt);
+  const kind = comment && comment.imageKind;
+  const hasAlt = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageAlt"));
+  return !!((kind && meta.kind !== kind) || (src && meta.src !== src) || (hasAlt && meta.alt !== alt));
+}
+function _imageMatchesMeta(img, comment) {
+  const meta = _imageElMeta(img);
+  const src = _imageOneLine(comment && comment.imageSrc);
+  const alt = _imageOneLine(comment && comment.imageAlt);
+  const kind = comment && comment.imageKind;
+  const hasAlt = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageAlt"));
+  if (kind && meta.kind !== kind) return false;
+  if (src && meta.src !== src) return false;
+  if (hasAlt && meta.alt !== alt) return false;
+  return !!(kind || src || hasAlt);
+}
+function resolveImageEl(comment) {
+  let img = findImageEl(comment && comment.imageIndex);
+  const src = _imageOneLine(comment && comment.imageSrc);
+  const kind = comment && comment.imageKind;
+  if (_imageMismatch(img, comment)) {
+    const byMeta = imageEls.find(im => _imageMatchesMeta(im, comment));
+    if (byMeta) return byMeta;
+    const bySrc = src ? imageEls.filter(im => {
+      const meta = _imageElMeta(im);
+      return meta.src === src && (!kind || meta.kind === kind);
+    }) : [];
+    img = bySrc.length === 1 ? bySrc[0] : null;
+  }
+  return img;
+}
 function imageInfo(img) {
   const i = parseInt(img.dataset.cmImageIndex, 10) || 0;
-  const isCanvas = img.tagName === "CANVAS";
-  const alt = (img.getAttribute("alt") || img.getAttribute("aria-label") || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
-  const src = (img.getAttribute("src") || "").replace(/[\r\n\t]+/g, " ").trim();
+  const meta = _imageElMeta(img);
+  const isCanvas = meta.kind === "chart" && img.tagName === "CANVAS";
+  const alt = meta.alt;
+  const src = meta.src;
   const shortSrc = src.length > 120 ? src.slice(0, 117) + "..." : src;
-  const kind = (isCanvas || img.closest("figure.chart") || img.classList.contains("cmh-chart")) ? "chart" : "image";
+  const kind = meta.kind;
   const quote = alt || (isCanvas ? ("chart " + (i + 1)) : ("image: " + (shortSrc || "(no src)")));
   return { imageIndex: i, src, alt, quote, kind };
 }
 function applyImageHighlight(comment) {
-  let img = findImageEl(comment.imageIndex);
-  // If the document was re-ordered, relocate the image by its stored src.
-  if ((!img || (comment.imageSrc && img.getAttribute("src") !== comment.imageSrc)) && comment.imageSrc) {
-    const bySrc = imageEls.find(im => im.getAttribute("src") === comment.imageSrc);
-    if (bySrc) img = bySrc;
-  }
+  const img = resolveImageEl(comment);
   if (!img) return false;
   // An image can carry several comments; track them all in data-cids and keep the
   // first in data-cid for backward-compatible selectors.
