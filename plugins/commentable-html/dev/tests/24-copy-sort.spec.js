@@ -295,6 +295,69 @@ test.describe("copy buttons + sortable tables", () => {
     expect(nested, "the scattered highlight is never nested into").toBe(0);
   });
 
+  test("a scattered multi-row table highlight does not restore onto unrelated rows after reload (CMH-CONTENT-08)", async ({ page }) => {
+    await openInline(page);
+    const spanRows = await page.evaluate(() => {
+      const cells = {};
+      document.querySelectorAll("#commentRoot table.cmh-sortable tbody tr td:first-child")
+        .forEach((c) => { cells[c.textContent.trim()] = c; });
+      const a = document.createTreeWalker(cells["auth"], NodeFilter.SHOW_TEXT).nextNode();
+      const b = document.createTreeWalker(cells["catalog"], NodeFilter.SHOW_TEXT).nextNode();
+      if (!a || !b) return false;
+      cells["auth"].closest("table").scrollIntoView({ block: "center" });
+      const r = document.createRange();
+      r.setStart(a, 0); r.setEnd(b, b.data.length);
+      const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      cells["auth"].closest("table").dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: 30, clientY: 30 }));
+      return true;
+    });
+    expect(spanRows).toBe(true);
+    await expect(page.locator("#menuComment")).toBeVisible();
+    await page.locator("#menuComment").click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("multi-row reload note");
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+    const cid = await page.$eval("mark.cm-hl", (m) => m.dataset.cid);
+
+    const reqHeader = page.locator("#commentRoot table.cmh-sortable thead th", { hasText: "Requests" });
+    await reqHeader.locator(".cmh-sort-ctrl").click();
+    expect(await serviceOrder(page)).toEqual(["auth", "gateway", "catalog"]);
+    const afterSort = await page.evaluate((id) => {
+      const root = document.getElementById("commentRoot") || document.body;
+      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
+      return JSON.parse(localStorage.getItem(key) || "[]").find((c) => c.id === id);
+    }, cid);
+    expect(afterSort).toBeTruthy();
+    expect(afterSort.start).toBeUndefined();
+    expect(afterSort.end).toBeUndefined();
+
+    await reqHeader.locator(".cmh-sort-ctrl").click();
+    await reqHeader.locator(".cmh-sort-ctrl").click();
+    expect(await serviceOrder(page)).toEqual(["gateway", "auth", "catalog"]);
+    const afterUnsort = await page.evaluate((id) => {
+      const root = document.getElementById("commentRoot") || document.body;
+      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
+      return JSON.parse(localStorage.getItem(key) || "[]").find((c) => c.id === id);
+    }, cid);
+    expect(afterUnsort.start).toEqual(expect.any(Number));
+    expect(afterUnsort.end).toEqual(expect.any(Number));
+
+    await reqHeader.locator(".cmh-sort-ctrl").click();
+    expect(await serviceOrder(page)).toEqual(["auth", "gateway", "catalog"]);
+
+    await page.reload();
+    await ready(page);
+    expect(await serviceOrder(page)).toEqual(["auth", "gateway", "catalog"]);
+    await expect(page.locator(".cm-card").filter({ hasText: "multi-row reload note" })).toHaveCount(1);
+    await expect(page.locator(`mark.cm-hl[data-cid="${cid}"]`)).toHaveCount(0);
+    await expect(page.locator("#commentRoot table.cmh-sortable tbody tr", { hasText: "gateway" }).locator("mark.cm-hl")).toHaveCount(0);
+    await page.locator("#btnCopyAll").click();
+    const copied = await lastCopied(page);
+    expect(copied).toContain("Offsets: unavailable");
+    expect(copied).not.toContain("Offsets: [0, 0]");
+  });
+
   test("a chart canvas is commentable like an image", async ({ page }) => {
     await openInline(page);
     const canvas = page.locator("#demoChart");
