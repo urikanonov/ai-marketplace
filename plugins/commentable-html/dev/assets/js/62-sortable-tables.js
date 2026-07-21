@@ -103,26 +103,51 @@ function _indexTableRows() {
 function recomputeTextOffsets(persist) {
   if (persist === undefined) persist = true;
   let changed = false;
+  function dropOffsets(c) {
+    if (c.start !== undefined || c.end !== undefined) {
+      delete c.start; delete c.end; changed = true;
+    }
+  }
+  function markedTextNode(markList, reverse) {
+    const list = reverse ? [...markList].reverse() : markList;
+    for (const mark of list) {
+      const nodes = [];
+      const w = document.createTreeWalker(mark, NodeFilter.SHOW_TEXT, {
+        acceptNode(n) { return (n.nodeValue || "").trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; },
+      });
+      let n;
+      while ((n = w.nextNode())) {
+        if (!reverse) return n;
+        nodes.push(n);
+      }
+      if (nodes.length) return nodes[nodes.length - 1];
+    }
+    return null;
+  }
   const allNodes = getTextNodes();
   comments.forEach(function (c) {
     if (c.anchorType === "mermaid" || c.anchorType === "diff" || c.anchorType === "image" || c.anchorType === "link") return;
-    const marks = [...root.querySelectorAll('mark.cm-hl[data-cid="' + c.id + '"]')];
+    const sel = 'mark.cm-hl[data-cid="' + c.id + '"]';
+    const marks = [...root.querySelectorAll(sel)];
     if (!marks.length) return;
-    const fT = firstTextNodeIn(marks[0]);
-    const lT = lastTextNodeIn(marks[marks.length - 1]);
-    if (!fT || !lT) return;
+    const fT = markedTextNode(marks, false);
+    const lT = markedTextNode(marks, true);
+    if (!fT || !lT) { dropOffsets(c); return; }
     // Contiguity guard: a text comment's marks must form ONE contiguous run. After a sort
     // scatters a multi-row selection, marks[0]..marks[last] can straddle unrelated rows;
     // collapsing that to a single [start,end] span would over-wrap them on reload. If the
-    // run is discontiguous, skip recompute (accept graceful anchor loss, not corruption).
+    // run is discontiguous, drop the offset anchor so reload keeps the comment listed but
+    // cannot restore it onto unrelated intervening rows. A later sort that makes the live
+    // marks contiguous again recomputes and persists fresh offsets.
     const si = allNodes.indexOf(fT), ei = allNodes.indexOf(lT);
-    if (si < 0 || ei < 0 || ei < si) return;
+    if (si < 0 || ei < 0 || ei < si) { dropOffsets(c); return; }
     let contiguous = true;
     for (let i = si; i <= ei; i++) {
+      if (!(allNodes[i].nodeValue || "").trim()) continue;
       const p = allNodes[i].parentElement;
-      if (!p || !p.closest('mark.cm-hl[data-cid="' + c.id + '"]')) { contiguous = false; break; }
+      if (!p || !p.closest(sel)) { contiguous = false; break; }
     }
-    if (!contiguous) return;
+    if (!contiguous) { dropOffsets(c); return; }
     const s = offsetWithin(fT, 0);
     const e = offsetWithin(lT, lT.nodeValue.length);
     if (s >= 0 && e > s && (s !== c.start || e !== c.end)) { c.start = s; c.end = e; changed = true; }

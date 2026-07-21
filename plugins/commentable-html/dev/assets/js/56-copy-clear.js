@@ -172,7 +172,11 @@ function buildCopyText() {
       if (Number(c.occurrenceTotal) > 1) pin.push(`match ${Number(c.occurrence) || 0} of ${Number(c.occurrenceTotal) || 0} in section`);
       else if (Number(c.occurrenceTotal) === 1) pin.push("unique match in section");
       if (pin.length) lines.push(`Pinpoint: ${pin.join(" - ")}`);
-      lines.push(`Offsets: [${Number(c.start) || 0}, ${Number(c.end) || 0}]`);
+      if (Number.isFinite(c.start) && Number.isFinite(c.end)) {
+        lines.push(`Offsets: [${c.start}, ${c.end}]`);
+      } else {
+        lines.push("Offsets: unavailable");
+      }
       lines.push("");
       lines.push("Quoted text:");
       if (c.isCode) {

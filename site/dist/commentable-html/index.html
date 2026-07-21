@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.199.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.199.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,12 +456,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.199.1] - 2026-07-21</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Prevented sortable-table reloads from restoring discontiguous multi-row text highlights over unrelated rows while keeping the comment listed and recoverable.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.199.0] - 2026-07-21</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Collaborative threaded comments with author attribution. A reviewer sets a display name once (stored per-browser in <code>localStorage</code>, seedable by the author via <code>data-cm-author</code>); the sidebar &quot;Commenting as&quot; control lets them change it at any time, applying to new comments only. Every attributed comment and reply shows a hashed-color author pill at the start of its note. A new Reply action threads comments: a thread is an initial comment plus a flat, chronological list of replies (single-level), each individually editable and deletable. Deleting a thread root removes the whole thread; deleting a reply removes only that reply. Copy all emits each thread as an initial comment followed by clearly-labelled refinements (author names neutralized so they cannot forge the untrusted-note fence or the machine trailer) and includes every reply id in HANDLED_IDS_JSON so a thread is handled and pruned together. Threads round-trip through Export as Portable / embedded comments, and orphan replies (missing root) are pruned at load. Markdown export and the print appendix are thread-aware. (CMH-AUTHOR-01, CMH-AUTHOR-02, CMH-AUTHOR-03, CMH-THREAD-01, CMH-THREAD-02, CMH-THREAD-03, CMH-THREAD-04, CMH-THREAD-05, CMH-THREAD-06)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.198.0] - 2026-07-21</h3></div>
             <div class="group-label">Added</div>
@@ -469,8 +478,6 @@
               <li>A discoverable <strong>Save as PDF</strong> action makes the existing browser-native print/PDF layout reachable without knowing a keyboard shortcut. It appears in the toolbar overflow (&quot;More actions&quot;) menu and in the sidebar Export menu, and triggers the browser&#x27;s own <code>window.print()</code> - zero PDF dependencies (no jsPDF or html2canvas). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends the current comments. It deliberately does not intercept <code>Ctrl/Cmd+P</code>, so the browser&#x27;s own print/PDF shortcut still works unchanged.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.197.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
@@ -500,14 +507,7 @@
               <li>Code and KQL line-number gutters now stay aligned to the text even when a report, deck, or theme gives the block an ambient <code>line-height</code> of the keyword <code>normal</code>. Every code/KQL <code>&lt;pre&gt;</code> now carries a deterministic numeric <code>line-height</code>, so the gutter always reads a stable px line-height instead of falling back to a hardcoded <code>20px</code> (which left the numbers sitting above the text and drifting down a tall block). (CMH-CODE-07)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.193.0] - 2026-07-20</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A standalone built-in canvas chart (<code>canvas.cmh-chart</code> with inline <code>data-cmh-chart-points</code>/<code>-source</code>) placed directly in a shrink-to-fit container (<code>width: max-content</code>, an <code>inline-block</code>, a float, or an auto-sized <code>inline-flex</code>/grid item) - rather than inside the shipped definite-width <code>figure.chart &gt; .chart-wrap</code> - no longer renders <code>dpr x</code> oversized on a HiDPI screen (<code>devicePixelRatio &gt; 1</code>). The renderer now measures the chart&#x27;s logical size against a bitmap reset to the authored size (which is devicePixelRatio-independent, so the canvas&#x27;s own dpr-scaled bitmap cannot drive its container&#x27;s width - the feedback loop - and which preserves the aspect ratio so an auto-height chart is not squared), falls back to the authored <code>width</code>/<code>height</code> attributes when the container collapses without the canvas, and pins the box so the chart displays at its intended size; the shipped definite-width chart pattern is unaffected (CMH-CHART-10).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">163 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">164 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
