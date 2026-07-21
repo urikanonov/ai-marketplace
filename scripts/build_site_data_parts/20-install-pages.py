@@ -387,6 +387,11 @@ def _tutorial_source_exists(root):
     return os.path.isfile(os.path.join(root, TUTORIAL_PAGE_SRC))
 
 
+def _tutorial_page_url():
+    rel = os.path.relpath(TUTORIAL_PAGE, SITE_OUT).replace(os.sep, "/")
+    return SITE_BASE_URL + rel[: -len("index.html")]
+
+
 def site_page_urls(root):
     """Absolute URLs of the indexable HTML pages: the hub, each plugin page, and the tutorial when
     its source page exists. Used for the sitemap."""
@@ -394,8 +399,7 @@ def site_page_urls(root):
     for page in PLUGIN_PAGES.values():
         urls.append(SITE_BASE_URL + page.lstrip("./"))
     if _tutorial_source_exists(root):
-        rel = os.path.relpath(TUTORIAL_PAGE, SITE_OUT).replace(os.sep, "/")
-        urls.append(SITE_BASE_URL + rel[: -len("index.html")])
+        urls.append(_tutorial_page_url())
     return urls
 
 
@@ -430,5 +434,5 @@ def render_llms(root, manifest, claude_names=None):
             plugin.get("name", ""), _plugin_app_url(plugin), agents, plugin.get("description", "")))
     if _tutorial_source_exists(root):
         lines.extend(["", "## Documentation",
-                      "- [Commentable HTML tutorial](%scommentable-html/tutorial/)" % SITE_BASE_URL, ""])
+                      "- [Commentable HTML tutorial](%s)" % _tutorial_page_url(), ""])
     return "\n".join(lines)
