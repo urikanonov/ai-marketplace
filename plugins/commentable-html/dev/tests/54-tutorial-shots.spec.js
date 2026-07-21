@@ -197,13 +197,21 @@ test("capturing into an already-populated out dir overwrites without erroring (C
   expect(first.error, String(first.error)).toBeFalsy();
   expect(first.status, first.stderr).toBe(0);
   expect(fs.existsSync(target), `missing ${scene.prefix}-${scene.shots[0]}.png`).toBe(true);
-  // Replace the committed shot with non-image bytes so the re-capture cannot take the
-  // compare-and-skip fast path (imagesMatch returns false on an undecodable target) and must run the
-  // real copyFileSync overwrite branch - proving overwrite-in-place, not just a no-op re-run.
+  // Skip branch: re-capturing into a populated dir whose shot already MATCHES the fresh capture must
+  // NOT rewrite it (imagesMatch true -> copy skipped, "(0 updated)"). This is the branch the old
+  // garden 3rd capture ran but never asserted; assert it explicitly here.
+  const noop = capture(scene.example, out, scene.prefix);
+  expect(noop.error, String(noop.error)).toBeFalsy();
+  expect(noop.status, noop.stderr).toBe(0);
+  expect(noop.stdout, noop.stderr).toContain("(0 updated)");
+  // Overwrite branch: replace the committed shot with non-image bytes so the re-capture cannot take
+  // the compare-and-skip fast path (imagesMatch returns false on an undecodable target) and must run
+  // the real copyFileSync overwrite branch - proving overwrite-in-place, not just a no-op re-run.
   fs.writeFileSync(target, Buffer.from("not a png"));
   const overwrite = capture(scene.example, out, scene.prefix);
   expect(overwrite.error, String(overwrite.error)).toBeFalsy();
   expect(overwrite.status, overwrite.stderr).toBe(0);
+  expect(overwrite.stdout, overwrite.stderr).toContain("(1 updated)");
   // The garbage must have been overwritten back to a real PNG (89 50 4E 47 magic bytes).
   const after = fs.readFileSync(target);
   expect(after.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
