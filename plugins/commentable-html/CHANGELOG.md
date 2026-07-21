@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.202.0] - 2026-07-21
+
+### Fixed
+
+- Deleting an embedded comment now retries the tombstone write after saving the smaller comments
+  array, so a near-quota browser can free space and persist the delete marker. If the retry still
+  fails, the reviewer gets an assertive warning that the embedded comment may reappear after reload
+  instead of a silent resurrection. (CMH-PERSIST-05)
+
 ## [1.201.0] - 2026-07-21
 
 ### Fixed

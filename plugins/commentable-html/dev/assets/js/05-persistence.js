@@ -44,7 +44,14 @@ function _tombstoneEmbedded(ids) {
   const t = _deletedEmbeddedIds();
   let changed = false;
   (ids || []).forEach(function (id) { if (id && emb.has(id) && !t.has(id)) { t.add(id); changed = true; } });
-  if (changed) { try { localStorage.setItem(CMH_DELETED_KEY, JSON.stringify([...t])); } catch (e) { /* ignore */ } }
+  if (!changed) return true;
+  try { localStorage.setItem(CMH_DELETED_KEY, JSON.stringify([...t])); return true; }
+  catch (e) { return false; }
+}
+function _ensureTombstoneEmbedded(ids, firstWriteOk, commentsWriteOk) {
+  if (commentsWriteOk && (firstWriteOk || _tombstoneEmbedded(ids))) return true;
+  showToast("Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Portable after freeing storage.", { alert: true, duration: 10000 });
+  return false;
 }
 function commentTimestamp(c) {
   return (c && (c.updatedAt || c.createdAt)) || "";
@@ -125,7 +132,4 @@ function getEmbeddedComments() {
     return [];
   }
 }
-
-
-
 

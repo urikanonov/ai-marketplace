@@ -385,9 +385,10 @@ listEl.addEventListener("click", (e) => {
     if (rc && confirm("Delete this reply?")) {
       const oc = openEditComposers.get(rid);
       if (oc) closeComposerElement(oc);          // an open edit of this reply would silently lose its text
-      _tombstoneEmbedded([rid]);
+      const tombstoneOk = _tombstoneEmbedded([rid]);
       comments = comments.filter(x => x.id !== rid);
-      saveComments();
+      const commentsOk = saveComments();
+      _ensureTombstoneEmbedded([rid], tombstoneOk, commentsOk);
       renderComments();
     }
     return;
@@ -410,12 +411,13 @@ listEl.addEventListener("click", (e) => {
       ? ("Delete this comment and its " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies") + "?")
       : "Delete this comment?";
     if (confirm(msg)) {
-      _tombstoneEmbedded(ids);
+      const tombstoneOk = _tombstoneEmbedded(ids);
       const drop = new Set(ids);
       ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
       comments = comments.filter(x => !drop.has(x.id));
       removeHighlight(c);
-      saveComments();
+      const commentsOk = saveComments();
+      _ensureTombstoneEmbedded(ids, tombstoneOk, commentsOk);
       renderComments();
     }
     return;
