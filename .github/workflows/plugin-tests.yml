@@ -116,7 +116,7 @@ jobs:
       # the count lives in ONE place - dropping an entry cannot silently orphan tests.
       matrix:
         plugin: ${{ fromJSON(needs.discover.outputs.plugins) }}
-        shard: ["1/4", "2/4", "3/4", "4/4"]
+        shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
     env:
       SHARD: ${{ matrix.shard }}
     defaults:
@@ -248,7 +248,7 @@ jobs:
       # shared-state parallelism is introduced; different files just run on different runners.
       # The shard is a single "index/total" string (one source of truth for the count).
       matrix:
-        shard: ["1/4", "2/4", "3/4", "4/4"]
+        shard: ["1/5", "2/5", "3/5", "4/5", "5/5"]
     env:
       SHARD: ${{ matrix.shard }}
     steps:

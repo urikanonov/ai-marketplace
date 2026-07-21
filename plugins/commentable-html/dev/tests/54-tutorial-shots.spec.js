@@ -170,10 +170,7 @@ test("--print-paths resolves the shipped tutorial defaults (CMH-TUT-SHOTS-01)", 
 });
 
 test("regenerates every garden shot into a nested out dir, and --check passes on fresh output (CMH-TUT-SHOTS-01)", async () => {
-  // Widest budget of the garden tests: this one runs three serial capture subprocesses (capture,
-  // overwrite-capture, and the --check re-capture), so give it extra headroom over the CI-slowed
-  // (2x settle deadline) captures.
-  test.setTimeout(240000);
+  test.setTimeout(180000);
   // A nonexistent NESTED output dir also exercises recursive out-dir creation.
   const outA = path.join(freshDir("regen"), "nested", "assets");
   const r1 = capture(EXAMPLE, outA);
@@ -182,15 +179,43 @@ test("regenerates every garden shot into a nested out dir, and --check passes on
   for (const name of SHOTS) {
     expect(fs.existsSync(path.join(outA, `garden-${name}.png`)), `missing garden-${name}.png`).toBe(true);
   }
-  // Re-run into the SAME populated dir: `npm run shots` regenerates over the committed images, so
-  // the tool must overwrite an existing populated out dir without erroring (idempotency/overwrite).
-  const r2 = capture(EXAMPLE, outA);
-  expect(r2.error, String(r2.error)).toBeFalsy();
-  expect(r2.status, r2.stderr).toBe(0);
   const clean = check(EXAMPLE, outA);
   expect(clean.error, String(clean.error)).toBeFalsy();
   expect(clean.status, clean.stderr).toBe(0);
   expect(clean.stdout).toContain("tutorial screenshots are in sync");
+});
+
+// Overwrite / idempotency is a filesystem behavior independent of shot count or scene (`npm run
+// shots` regenerates over the committed images), so verify it with a cheap 1-shot scene rather than
+// a full 13-shot garden re-capture - keeping the coverage while shrinking the heavy job's floor.
+test("capturing into an already-populated out dir overwrites without erroring (CMH-TUT-SHOTS-01)", () => {
+  test.setTimeout(120000);
+  const scene = EXTRA_SCENES.find((s) => s.prefix === "checklist");
+  const out = path.join(freshDir("overwrite"), "nested", "assets");
+  const target = path.join(out, `${scene.prefix}-${scene.shots[0]}.png`);
+  const first = capture(scene.example, out, scene.prefix);
+  expect(first.error, String(first.error)).toBeFalsy();
+  expect(first.status, first.stderr).toBe(0);
+  expect(fs.existsSync(target), `missing ${scene.prefix}-${scene.shots[0]}.png`).toBe(true);
+  // Skip branch: re-capturing into a populated dir whose shot already MATCHES the fresh capture must
+  // NOT rewrite it (imagesMatch true -> copy skipped, "(0 updated)"). This is the branch the old
+  // garden 3rd capture ran but never asserted; assert it explicitly here.
+  const noop = capture(scene.example, out, scene.prefix);
+  expect(noop.error, String(noop.error)).toBeFalsy();
+  expect(noop.status, noop.stderr).toBe(0);
+  expect(noop.stdout, noop.stderr).toContain("(0 updated)");
+  // Overwrite branch: replace the committed shot with non-image bytes so the re-capture cannot take
+  // the compare-and-skip fast path (imagesMatch returns false on an undecodable target) and must run
+  // the real copyFileSync overwrite branch - proving overwrite-in-place, not just a no-op re-run.
+  fs.writeFileSync(target, Buffer.from("not a png"));
+  const overwrite = capture(scene.example, out, scene.prefix);
+  expect(overwrite.error, String(overwrite.error)).toBeFalsy();
+  expect(overwrite.status, overwrite.stderr).toBe(0);
+  expect(overwrite.stdout, overwrite.stderr).toContain("(1 updated)");
+  // The garbage must have been overwritten back to a real PNG (89 50 4E 47 magic bytes).
+  const after = fs.readFileSync(target);
+  expect(after.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])),
+    "re-capture did not overwrite the corrupted shot with a real PNG").toBe(true);
 });
 
 test("garden capture is deterministic across two independent runs (CMH-TUT-SHOTS-01)", async ({ browser }) => {
