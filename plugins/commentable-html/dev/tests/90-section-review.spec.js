@@ -488,4 +488,23 @@ test.describe("section review tracking", () => {
     }
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  test("marking a section reviewed warns when the mark cannot be persisted (CMH-REVIEW-15)", async ({ page }) => {
+    // Block only the reviews key so the mark write fails like a full/blocked localStorage.
+    await page.addInitScript(() => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (String(key).indexOf("::reviews") !== -1) throw new Error("blocked storage");
+        return original.call(this, key, value);
+      };
+    });
+    await openReviewDoc(page);
+    await page.locator("#rv-alpha").hover();
+    await page.locator("#rv-alpha .cmh-review-badge").click();
+    // The reader must be told the mark did not persist (matching the un-review warning path),
+    // not left with a green badge that silently reverts on reload. The warning is assertive.
+    await expect(page.locator("#toast")).toContainText(/could not persist/i);
+    await expect(page.locator("#toast")).toHaveAttribute("role", "alert");
+    await expect(page.locator("#toast")).toHaveAttribute("aria-live", "assertive");
+  });
 });
