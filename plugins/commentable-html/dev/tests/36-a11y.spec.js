@@ -13,6 +13,16 @@ test("toasts carry a live-region role so screen readers announce them", async ({
   await expect(toast).toHaveAttribute("aria-live", /polite|assertive/);
 });
 
+test("the toast is a live region before the first toast so the first one is announced (CMH-A11Y-03)", async ({ page }) => {
+  await openInline(page);
+  // A live region must carry aria-live BEFORE its content changes, or the FIRST toast of the
+  // session is not announced. Assert the region is live at load, before any toast has fired.
+  const toast = page.locator("#toast");
+  await expect(toast).toHaveText("");
+  await expect(toast).toHaveAttribute("aria-live", /polite|assertive/);
+  await expect(toast).toHaveAttribute("role", /status|alert/);
+});
+
 test("Copy all does NOT claim success when it falls back to a manual prompt", async ({ page }) => {
   await page.addInitScript(() => {
     try {

@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.196.0";
+const CMH_VERSION = "1.197.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8922,7 +8922,13 @@ function markSectionReviewed(heading) {
   // Re-reviewing lifts any prior tombstone for this id.
   const tomb = _deletedReviewIds();
   if (tomb.delete(heading.id)) _saveDeletedReviewIds(tomb);
-  saveReviewMarkers();
+  const savedOk = saveReviewMarkers();
+  // A mark that could not be persisted would silently revert on reload; warn the reader (storage
+  // full/blocked), matching clearSectionReviewed()'s un-review warning and saveComments()'s alert.
+  if (!savedOk && typeof showToast === "function") {
+    showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
+      + "may not stick on reload. Use Export as Portable to keep the change.", { alert: true, duration: 8000 });
+  }
   refreshReviewUI();
 }
 function clearSectionReviewed(heading) {
@@ -9085,10 +9091,13 @@ function _applyReviewStateToHtml(html) {
 let toastTimer = null;
 function showToast(msg, opts) {
   opts = opts || {};
-  toast.textContent = msg;
-  // Screen readers: errors are announced assertively as an alert, normal status politely.
+  // Set the live-region role/politeness BEFORE mutating the text so the announcement fires. The
+  // #toast element also ships as a polite live region (see template.shell.html) so the FIRST toast
+  // of the session is announced - a live region added in the same tick as its first text change is
+  // not announced by most screen readers. Errors upgrade to an assertive alert.
   if (opts.alert) { toast.setAttribute("role", "alert"); toast.setAttribute("aria-live", "assertive"); }
   else { toast.setAttribute("role", "status"); toast.setAttribute("aria-live", "polite"); }
+  toast.textContent = msg;
   toast.classList.add("show");
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove("show"), opts.duration || 3000);
