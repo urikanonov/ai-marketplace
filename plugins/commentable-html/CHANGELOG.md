@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.198.0] - 2026-07-21
+
+### Added
+
+- A discoverable **Save as PDF** action makes the existing browser-native print/PDF layout reachable
+  without knowing a keyboard shortcut. It appears in the toolbar overflow ("More actions") menu and
+  in the sidebar Export menu, and triggers the browser's own `window.print()` - zero PDF
+  dependencies (no jsPDF or html2canvas). The printout hides the review UI, prints on a clean light
+  theme, expands collapsed sections, and appends the current comments. It deliberately does not
+  intercept `Ctrl/Cmd+P`, so the browser's own print/PDF shortcut still works unchanged.
+
 ## [1.197.0] - 2026-07-21
 
 ### Fixed

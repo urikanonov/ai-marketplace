@@ -93,7 +93,7 @@
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.197.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.198.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -454,6 +454,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.198.0] - 2026-07-21</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>A discoverable <strong>Save as PDF</strong> action makes the existing browser-native print/PDF layout reachable without knowing a keyboard shortcut. It appears in the toolbar overflow (&quot;More actions&quot;) menu and in the sidebar Export menu, and triggers the browser&#x27;s own <code>window.print()</code> - zero PDF dependencies (no jsPDF or html2canvas). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends the current comments. It deliberately does not intercept <code>Ctrl/Cmd+P</code>, so the browser&#x27;s own print/PDF shortcut still works unchanged.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.197.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -461,6 +468,8 @@
               <li>Marking a section reviewed now warns when the marker cannot be persisted (localStorage full or blocked) with an assertive toast, instead of silently painting <code>Reviewed</code> and letting it revert on reload - symmetric with the existing un-review warning. (CMH-REVIEW-15)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.196.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -468,8 +477,6 @@
               <li>The floating &quot;Add Comment&quot; affordance is now unified across the structural-anchor layers (image, mermaid, diff, link, widget, heading): only one button is ever visible at a time. A nested <code>&lt;a&gt;&lt;img&gt;&lt;/a&gt;</code> (a common clickable thumbnail or logo) previously left both the image and link buttons showing at once; now the innermost element owns the affordance deterministically, independent of hover-event order, and a dismissed inner button no longer suppresses the enclosing layer. (CMH-ANCHOR-01)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.195.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -502,18 +509,7 @@
               <li>Report (non-deck) Mermaid diagrams whose natural width is well under the content column now scale up toward the column instead of being marooned by mermaid&#x27;s intrinsic-width inline <code>max-width</code>. A <code>cmh-diagram-narrow</code> class (set by <code>updateMermaidWidthClass</code> with hysteresis, so scaling a diagram taller cannot flip it back and forth on the reveal/resize observer) grows the SVG to a capped <code>min(100%, natural * 1.4)</code>, centered, for both <code>pre.mermaid</code> and <code>div.mermaid</code> hosts. Wide diagrams (which scroll) and deck diagrams (own fit) are unaffected (CMH-MMD-10).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.191.0] - 2026-07-20</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The full-screen demo reports on the site (and the shipped <code>report-taxi.html</code> / <code>report-community-garden.html</code> examples) now carry the commentable-html favicon, so a browser tab shows the CMH mark instead of the generic globe. Those two example sources predated the shell-baked favicon and were the only ones missing it.</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The validator now warns (an error under <code>--strict</code>, the mandatory finalize path) when a document has no <code>&lt;link rel=&quot;icon&quot;&gt;</code> favicon in its head, so a missing favicon is caught before handoff (CMH-KIND-05). <code>retrofit.py</code> injects the CMH favicon when the host head has none, and <code>upgrade.py</code> adds it when migrating a pre-favicon document (neither duplicates an existing one).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">161 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">162 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

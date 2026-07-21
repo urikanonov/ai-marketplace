@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.197.0";
+const CMH_VERSION = "1.198.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7920,6 +7920,7 @@ function showHelp(restoreEl) {
           '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the portable file, then inlines the vendored mermaid and Chart.js bundles only when the document uses them, with remote loaders removed.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
           '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
+          '<li><strong>Save as PDF</strong> opens the browser&#x27;s own print dialog (choose "Save as PDF", or print to paper). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends your current comments at the end. <kbd>Ctrl/Cmd+P</kbd> does the same thing.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
           '</ul>') +
       T('Sending comments to an agent',
@@ -8703,6 +8704,17 @@ function setupPrintAppendix() {
     if (query.matches) materializePrintAppendix();
   }
 }
+// Discoverable "Save as PDF" affordance: both the toolbar overflow menu (btnPrintTop) and the
+// sidebar export menu (btnPrint) trigger the browser's native print, which renders the print/PDF
+// layout. This deliberately does NOT intercept Ctrl/Cmd+P, so the native shortcut still works.
+// Wired for flat documents and decks alike (deck print page-breaks one slide per page).
+function triggerNativePrint() {
+  if (typeof window.print === "function") window.print();
+}
+["btnPrint", "btnPrintTop"].forEach(function (id) {
+  const button = document.getElementById(id);
+  if (button) button.addEventListener("click", triggerNativePrint);
+});
 /* ---------- Section review tracking ---------- */
 // Mark a document section (any h1-h6 inside #commentRoot) reviewed. A cm-skip badge to the
 // right of the heading text shows one of four states, recomputed on every render from the

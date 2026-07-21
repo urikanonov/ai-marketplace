@@ -133,7 +133,7 @@ test.describe("Save comments / Export plain", () => {
     await addTextComment(page, "#commentRoot section p", "menu export note");
     await expect(page.locator("#btnSidebarExportMenu")).toBeVisible();
     await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "false");
-    for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd"]) {
+    for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd", "btnPrint"]) {
       await expect(page.locator("#" + id)).toBeHidden();
     }
     const roles = await page.locator("#sidebarExportMenu, #sidebarExportMenu button").evaluateAll((els) =>
@@ -142,7 +142,7 @@ test.describe("Save comments / Export plain", () => {
     await openSidebarExportMenu(page);
     await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "true");
     await expect(page.locator("#sidebarExportMenu")).toBeVisible();
-    for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd"]) {
+    for (const id of ["btnSaveHtml", "btnExportOffline", "btnSavePlain", "btnExportMd", "btnPrint"]) {
       await expect(page.locator("#" + id)).toBeVisible();
     }
     const [download] = await Promise.all([

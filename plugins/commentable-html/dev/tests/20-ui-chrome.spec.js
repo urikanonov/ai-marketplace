@@ -74,7 +74,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await openInline(page);
     await openToolbarMenu(page);
     const menu = page.locator("#toolbarMenu");
-    for (const id of ["btnShowTop", "btnSaveHtmlTop", "btnSavePlainTop", "btnExportMdTop", "btnHelpTop"]) {
+    for (const id of ["btnShowTop", "btnSaveHtmlTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnHelpTop"]) {
       const item = menu.locator("#" + id);
       await expect(item.locator("svg"), id).toHaveCount(1);
       // The icon is decorative; the accessible name still comes from the label text.
@@ -94,7 +94,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
       .filter((node) => node.tabIndex >= 0)
       .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnHelpTop"]);
+    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnHelpTop"]);
   });
 
   test("the overflow menu header shows the layer version between the badge and brand icon (CMH-MENU-ICON-03)", async ({ page }) => {
@@ -122,7 +122,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
       .filter((node) => node.tabIndex >= 0)
       .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnHelpTop"]);
+    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnHelpTop"]);
   });
 
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {
