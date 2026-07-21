@@ -585,7 +585,8 @@ def field_updates(values, current_last_active):
     NOTHING is written - so a repeat sync of unchanged data is a no-op and a sweep does not regress
     a heartbeat that was ALREADY on the board when it read. (This is snapshot-bounded: a heartbeat
     that writes AFTER a sweep reads but before it writes can still be briefly overwritten; the next
-    beat re-stamps it, so it self-heals within one heartbeat interval.) Pure."""
+    beat re-stamps it, so it self-heals within one heartbeat interval - via a heartbeat run with
+    --project-sync, or otherwise the next scheduled sweep.) Pure."""
     new_last = values.get(PROJECT_LAST_ACTIVE_FIELD, "")
     if new_last and current_last_active and not is_newer(new_last, current_last_active):
         return {}
@@ -1143,8 +1144,11 @@ def _apply_field_values(project_id, item_id, field_ids, values, dry_run, number,
                         current_last_active=""):
     """Set the two text fields on one item, writing only field_updates(values, current_last_active):
     empty values are skipped (never clobber blank) and a desired 'Last active' that is not strictly
-    newer than what the board already shows writes NOTHING, so a slow/concurrent sweep can never
-    regress a newer heartbeat and an unchanged repeat is a no-op. Returns True if anything was set."""
+    newer than what the board ALREADY SHOWED when this sweep read it writes NOTHING, so an unchanged
+    repeat is a no-op and a sweep does not regress a heartbeat already on the board. (Snapshot-
+    bounded: a heartbeat that writes after the read but before this write can be briefly overwritten;
+    it self-heals on the next heartbeat with --project-sync, or the next scheduled sweep.) Returns
+    True if anything was set."""
     updates = field_updates(values, current_last_active)
     if not updates:
         return False
@@ -1234,7 +1238,7 @@ def _run_project_sync(a):
             print(f"project-sync: {'would update' if a.dry_run else 'updated'} 0, "
                   f"{'would clear' if a.dry_run else 'cleared'} 0 issue(s) on project #{number}")
             return
-        node = next((n for n in nodes if n.get("id") == item_id), {})
+        node = next((n for n in nodes if n and n.get("id") == item_id), {})
         targets = [(a.issue, state, item_id, node)]
     else:
         nodes = _fetch_project_items(owner, number)

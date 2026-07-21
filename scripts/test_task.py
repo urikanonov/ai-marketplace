@@ -851,6 +851,15 @@ class ProjectSyncRoutingTests(unittest.TestCase):
         self.assertEqual(stub.mutations, [])
         self.assertEqual(stub.clears, [])
 
+    def test_fast_path_tolerates_null_projectitems_node(self):
+        # A null node in the issue's projectItems must not crash the fast-path node lookup.
+        nodes = [None, {"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": self._fv()}]
+        with _StubProjectSync(issue_state="OPEN", issue_nodes=nodes,
+                              comments_by_issue={5: self._status()}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(len(stub.mutations), 2)
+        self.assertTrue(all(m["itemId"] == "IT_5" for m in stub.mutations))
+
     def test_fast_path_dry_run_writes_nothing(self):
         nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": self._fv()}]
         with _StubProjectSync(issue_state="OPEN", issue_nodes=nodes,
@@ -923,6 +932,19 @@ class ProjectSyncRoutingTests(unittest.TestCase):
             task.cmd_project_sync(_PSArgs(issue=None))
         self.assertEqual(stub.clears, [])
         self.assertEqual({m["value"] for m in stub.mutations}, {"new-sess", self.FRESH})
+
+    def test_sweep_clears_when_newest_duplicate_is_stale(self):
+        # Duplicates present but the NEWEST is still stale -> clear (duplicates must not flip a
+        # stale-newest into a set).
+        older = {"id": 1, "body": task.status_body("issue-5-foo", "2026-07-21T09:00:00Z", "s1"),
+                 "assoc": "OWNER"}
+        newer = {"id": 2, "body": task.status_body("issue-5-foo", self.STALE, "s2"),
+                 "assoc": "OWNER"}
+        node = self._sweep_node(5, "OPEN", fv=self._fv(session="s2", last=self.STALE))
+        with _StubProjectSync(sweep_nodes=[node], comments_by_issue={5: [older, newer]}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=None))
+        self.assertEqual(stub.mutations, [])
+        self.assertEqual(len(stub.clears), 2)
 
 
 class HeartbeatProjectSyncRoutingTests(unittest.TestCase):

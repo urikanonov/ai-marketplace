@@ -4,12 +4,13 @@
 # fresh heartbeat and CLEARS them for closed or stale issues (see issue #575 / #533).
 #
 # Trust boundary (see scripts/check_workflow_policy.py): this workflow holds a project-
-# scoped PAT secret, so it must run only trusted, default-branch code. It triggers on
-# `schedule`, `issues`, and `workflow_dispatch` - NEVER on `pull_request` /
-# `pull_request_target` - so GitHub always runs the default-branch workflow and the
-# default-branch `scripts/task.py`, never PR-authored code. It also never interpolates
-# any attacker-controllable context (issue title/body/comment) into the shell (RULE D):
-# the sync sweeps the whole board via the API and needs no per-issue text.
+# scoped PAT secret, so it must run only trusted, default-branch code. It triggers ONLY on
+# `schedule` and `issues` - never on `pull_request` / `pull_request_target` (which would run
+# PR code) and never on `workflow_dispatch` (which would run the SELECTED ref's code with the
+# PAT). schedule/issues always run the default-branch workflow and the default-branch
+# `scripts/task.py`, so the secret is never exposed to unreviewed branch or PR code. It also
+# never interpolates any attacker-controllable context (issue title/body/comment) into the
+# shell (RULE D): the sync sweeps the whole board via the API and needs no per-issue text.
 #
 # One-time setup (until then this is a clean no-op): a user-owned Projects v2 board can
 # only be written with a `project`-scoped token, which the default GITHUB_TOKEN is not
