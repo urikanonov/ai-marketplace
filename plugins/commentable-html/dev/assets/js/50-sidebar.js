@@ -294,7 +294,7 @@ function scrollToAnchor(c) {
   let el = null;
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
-  else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
+  else if (c.anchorType === "image") el = resolveImageEl(c);
   else if (c.anchorType === "link") { el = resolveLinkEl(c); if (el) flashLink(c.id); }
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
   else if (c.anchorType === "document") {
@@ -450,4 +450,3 @@ root.addEventListener("click", (e) => {
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
   if (card) { card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(id); }
 });
-

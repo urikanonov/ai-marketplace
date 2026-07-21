@@ -164,7 +164,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     } else if (anchorSrc.anchorType === "diff") {
       anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
     } else if (anchorSrc.anchorType === "image") {
-      anchorEl = findImageEl(anchorSrc.imageIndex);
+      anchorEl = resolveImageEl(anchorSrc);
     } else if (anchorSrc.anchorType === "link") {
       anchorEl = resolveLinkEl(anchorSrc);
     } else if (anchorSrc.anchorType === "widget") {
@@ -341,7 +341,7 @@ function openComposerForEdit(comment) {
       let anchorEl = null;
       if (anchorSrc.anchorType === "mermaid") anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
       else if (anchorSrc.anchorType === "diff") anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
-      else if (anchorSrc.anchorType === "image") anchorEl = findImageEl(anchorSrc.imageIndex);
+      else if (anchorSrc.anchorType === "image") anchorEl = resolveImageEl(anchorSrc);
       else if (anchorSrc.anchorType === "link") anchorEl = resolveLinkEl(anchorSrc);
       else if (anchorSrc.anchorType === "widget") anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
@@ -596,4 +596,5 @@ function saveComposerElement(el) {
   closeComposerElement(el);
   openSidebar();
 }
+
 
