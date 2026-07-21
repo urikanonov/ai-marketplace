@@ -36,6 +36,8 @@ jobs:
         run: python plugins/commentable-html/dev/tools/check_theme_sources.py
       - name: Run script tests
         run: python -m unittest discover -s scripts -p "test_*.py"
+      - name: Verify spec test references
+        run: python scripts/check_spec_test_refs.py
       - name: Validate Markdown files
         run: python scripts/validate_markdown.py
       - name: Block secret-bearing files (.env, private keys, keystores)
@@ -74,6 +76,8 @@ jobs:
         run: python scripts/check_no_backlog.py
       - name: Run script tests
         run: python -m unittest discover -s scripts -p "test_*.py"
+      - name: Verify spec test references
+        run: python scripts/check_spec_test_refs.py
 
   secret-scan:
     runs-on: ubuntu-latest

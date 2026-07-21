@@ -45,6 +45,7 @@ else
 fi
 
 run "script unit tests" "$PY" -m unittest discover -s scripts -p "test_*.py"
+run "spec test references" "$PY" scripts/check_spec_test_refs.py
 run "forbidden secret-bearing files" "$PY" scripts/check_forbidden_files.py
 run "Backlog.md artifacts absent" "$PY" scripts/check_no_backlog.py
 
