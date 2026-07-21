@@ -49,25 +49,59 @@ _HEAD_RE = re.compile(r"<head\b[^>]*>.*?</head>", re.IGNORECASE | re.DOTALL)
 # and module-script scan, so a `<head>` or `<script>` inside an HTML comment (before or around the
 # real head) is not mistaken for the document head or the loader. Offsets are preserved, and the real
 # loader's own immediately-preceding "Mermaid loader" comment is still detected on the ORIGINAL text
-# so it stays part of the swapped span. An unterminated `<!--` (no closing `-->`) is masked through
-# end-of-string, matching how an HTML parser treats it, so tags inside it stay inert too. (A
-# `<script>`/`<style>` body containing a literal `<!--`/`-->` string would be mis-masked - a known
-# regex limitation shared by both matchers; the canonical loader never contains one.) Mirrors
-# upgrade.py._mask_html_comments.
-_HTML_COMMENT_RE = re.compile(r'<!--.*?(?:-->|\Z)', re.DOTALL)
+# so it stays part of the swapped span. The scan is HTML-state-aware: `<!--` opens a comment only in
+# DATA state, so a `<!--` inside a tag (e.g. a quoted attribute value) or inside a raw-text element
+# body (`<script>`/`<style>`/`<textarea>`/`<title>`) is left intact. An unterminated `<!--` (no
+# closing `-->`) is masked through end-of-string. Mirrors upgrade.py._mask_html_comments.
+_TAG_OPEN_RE = re.compile(r"<([a-zA-Z][^\s/>]*)")
+_RAWTEXT_ELEMENTS = ("script", "style", "textarea", "title")
 
 
 def _mask_html_comments(s):
-    """Return `s` with every HTML comment's INTERIOR replaced by spaces (the `<!--`/`-->` delimiters
-    and the total length preserved, newlines kept) so offsets into the result map 1:1 onto `s`. An
-    unterminated `<!--` is masked through end-of-string. Used only to locate the <head> and the
+    """Return `s` with every HTML COMMENT's interior replaced by spaces (the `<!--`/`-->` delimiters
+    and the total length preserved, newlines kept) so offsets into the result map 1:1 onto `s`. The
+    scan is HTML-state-aware - a `<!--` inside a tag or a raw-text element body is not a comment - and
+    an unterminated `<!--` is masked through end-of-string. Used only to locate the <head> and the
     module-script candidates; the loader-comment lookup runs on the original string."""
-    def repl(m):
-        text = m.group(0)
-        if text.endswith("-->"):
-            return "<!--" + re.sub(r"[^\n]", " ", text[4:-3]) + "-->"
-        return "<!--" + re.sub(r"[^\n]", " ", text[4:])   # unterminated: runs to EOF
-    return _HTML_COMMENT_RE.sub(repl, s)
+    out = []
+    i, n = 0, len(s)
+    while i < n:
+        if s.startswith("<!--", i):
+            j = s.find("-->", i + 4)
+            if j == -1:
+                out.append("<!--" + re.sub(r"[^\n]", " ", s[i + 4:]))
+                i = n
+            else:
+                out.append("<!--" + re.sub(r"[^\n]", " ", s[i + 4:j]) + "-->")
+                i = j + 3
+            continue
+        m = _TAG_OPEN_RE.match(s, i)
+        if m:
+            # Copy the tag verbatim to its closing '>', honoring quoted attribute values so a '>' (or
+            # a '<!--') inside a quote neither ends the tag nor opens a comment.
+            k, quote = m.end(), None
+            while k < n:
+                ch = s[k]
+                if quote:
+                    if ch == quote:
+                        quote = None
+                elif ch in ('"', "'"):
+                    quote = ch
+                elif ch == ">":
+                    k += 1
+                    break
+                k += 1
+            out.append(s[i:k])
+            i = k
+            if m.group(1).lower() in _RAWTEXT_ELEMENTS:
+                close = re.compile(r"</" + re.escape(m.group(1)) + r"\b", re.IGNORECASE).search(s, i)
+                end = close.start() if close else n
+                out.append(s[i:end])   # raw-text body: no comment recognition inside
+                i = end
+            continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)
 
 
 def _nearest_loader_comment_start(head, start):

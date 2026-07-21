@@ -520,6 +520,30 @@ class ExampleMermaidLoaderMatcherTests(unittest.TestCase):
                'await import("https://cdn.example/mermaid.mjs")</script></head>\n')
         self.assertIsNone(build._mermaid_loader_span(doc, "unterminated"))
 
+    def test_span_ignores_comment_marker_in_tag_attribute_cmh_mmd_09(self):
+        # A `<!--` inside a QUOTED TAG ATTRIBUTE is NOT an HTML comment, so the state-aware scan does
+        # not treat it as one and does not mask past it: a real loader followed by `<meta
+        # content="<!--">` is still matched (a naive comment mask would blank the real </head> and
+        # return None).
+        doc = ('<html><head>\n' + _LOADER + '\n<meta content="<!--">\n</head><body>x</body></html>\n')
+        span = build._mermaid_loader_span(doc, "attr-marker")
+        self.assertIsNotNone(span)
+        self.assertIn("import(\"" + _CDN + "\")", doc[span[0]:span[1]])
+
+    def test_span_ignores_commented_module_inside_real_head_cmh_mmd_09(self):
+        # A commented-out mermaid module <script> INSIDE the real head (beside the real loader) is
+        # ignored - the candidate scan runs on the comment-masked head, so only the real loader
+        # matches; a commented module with no real loader beside it yields None.
+        commented_module = ('<!-- <script type="module">'
+                            'await import("https://cdn.example/decoy-mermaid.mjs")</script> -->')
+        doc = ('<html><head>\n' + commented_module + '\n' + _LOADER + '\n</head><body>x</body></html>\n')
+        span = build._mermaid_loader_span(doc, "commented-module")
+        self.assertIsNotNone(span)
+        self.assertNotIn("decoy-mermaid", doc[span[0]:span[1]])
+        self.assertIn("import(\"" + _CDN + "\")", doc[span[0]:span[1]])
+        only = ('<html><head>\n' + commented_module + '\n<title>x</title>\n</head><body></body></html>\n')
+        self.assertIsNone(build._mermaid_loader_span(only, "commented-module-only"))
+
     def test_vendored_classification_cmh_mmd_09(self):
         # The vendored check keys on the MERMAID import and treats scheme-bearing and
         # protocol-relative specifiers as remote, so a decoy import or a commented-out CDN line does
@@ -640,6 +664,12 @@ class MermaidLoaderMirrorTests(unittest.TestCase):
             "commented_head_plus_real": commented_head_plus_real,   # both -> the real loader
             "unterminated_comment": ('<html><head><!-- disabled <script type="module">'
                                      'await import("https://cdn.example/mermaid.mjs")</script></head>\n'),
+            "attr_marker_after_loader": ('<html><head>\n' + _LOADER
+                                         + '\n<meta content="<!--">\n</head><body></body></html>\n'),
+            "commented_module_in_head_plus_real": ('<html><head>\n<!-- <script type="module">'
+                                                   'await import("https://cdn.example/decoy-mermaid.mjs")'
+                                                   '</script> -->\n' + _LOADER
+                                                   + '\n</head><body></body></html>\n'),
             "none": _doc("<title>no loader</title>"),
         }
 

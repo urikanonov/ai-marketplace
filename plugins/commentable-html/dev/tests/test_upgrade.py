@@ -438,6 +438,27 @@ class UpgradeUnitTests(unittest.TestCase):
                         'await import("https://cdn.example/mermaid.mjs")</script></head>\n')
         self.assertIsNone(upgrade._mermaid_bootstrap_span(unterminated, "unterminated"))
 
+    def test_bootstrap_comment_scan_is_html_state_aware_cmh_mmd_09(self):
+        # `<!--` is a comment opener only in DATA state: a `<!--` inside a QUOTED TAG ATTRIBUTE (or a
+        # raw-text body) is NOT a comment, so the state-aware mask does not blank past it. A real
+        # loader followed by `<meta content="<!--">` is still re-emitted (a naive mask would blank the
+        # real </head> and skip the loader). A commented-out module <script> inside the real head,
+        # beside the real loader, is still ignored.
+        tpl = _tpl()
+        hi = re.search(r"<head\b[^>]*>", tpl, re.IGNORECASE).end()
+        with_attr = tpl[:hi] + '\n<meta content="<!--">\n' + tpl[hi:]
+        span = upgrade._mermaid_bootstrap_span(with_attr, "attr")
+        self.assertIsNotNone(span)
+        self.assertIn("import(", with_attr[span[0]:span[1]])
+        commented_module = ('<!-- <script type="module">'
+                            'await import("https://cdn.example/decoy-mermaid.mjs")</script> -->')
+        with_decoy = tpl[:hi] + "\n" + commented_module + "\n" + tpl[hi:]
+        span2 = upgrade._mermaid_bootstrap_span(with_decoy, "decoy")
+        self.assertIsNotNone(span2)
+        self.assertNotIn("decoy-mermaid", with_decoy[span2[0]:span2[1]])
+        self.assertIn('const htmlLabels = !document.querySelector(".deck-stage");',
+                      with_decoy[span2[0]:span2[1]])
+
     def test_upgrade_reports_stale_bootstrap_in_check_mode(self):
         # --check must flag a stale shell bootstrap so a pre-fix deck is not silently reported
         # up to date.
