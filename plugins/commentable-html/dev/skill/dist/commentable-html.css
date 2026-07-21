@@ -1729,6 +1729,99 @@ html[data-theme="dark"] .cmh-unvalidated-banner {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 html[data-theme="dark"] .cmh-unvalidated-banner .cmh-unvalidated-dismiss { color: #fde68a; }
+/* Author attribution + comment threads (replies).
+   Covers CMH-AUTHOR (the author pill + sidebar identity control) and CMH-THREAD (the
+   root-entry / reply layout and the Reply button). */
+
+/* ---- Author pill ---- */
+.cm-author-pill {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 0.05em 0.5em;
+  margin-right: 0.4em;
+  border-radius: 999px;
+  vertical-align: baseline;
+  white-space: nowrap;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: hsl(var(--cm-author-hue, 210) 55% 28%);
+  background: hsl(var(--cm-author-hue, 210) 70% 92%);
+  border: 1px solid hsl(var(--cm-author-hue, 210) 45% 78%);
+}
+html[data-theme="dark"] .cm-author-pill {
+  color: hsl(var(--cm-author-hue, 210) 85% 82%);
+  background: hsl(var(--cm-author-hue, 210) 40% 24%);
+  border-color: hsl(var(--cm-author-hue, 210) 35% 42%);
+}
+
+/* ---- Sidebar identity control ---- */
+.cm-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--cp-chrome-small-font, 0.78rem);
+  color: var(--cp-muted, #64748b);
+  margin-top: 0.15rem;
+}
+.cm-identity .cm-identity-label { flex: 0 0 auto; }
+.cm-identity .cm-identity-name { font-weight: 600; }
+.cm-identity .cm-identity-name.cm-identity-unset { font-style: italic; opacity: 0.85; }
+.cm-identity .cm-identity-btn {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 0 0.15rem;
+  color: var(--cp-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: inherit;
+}
+.cm-identity .cm-identity-btn:hover { color: var(--cp-accent); opacity: 0.85; }
+.cm-identity-edit { display: inline-flex; align-items: center; gap: 0.3rem; flex: 1 1 auto; min-width: 0; }
+.cm-identity-edit[hidden] { display: none; }
+.cm-identity-input {
+  flex: 1 1 6rem;
+  min-width: 0;
+  padding: 0.15rem 0.4rem;
+  font-size: inherit;
+  border: 1px solid var(--cp-border, #cbd5e1);
+  border-radius: 6px;
+  background: var(--cp-surface, #fff);
+  color: inherit;
+}
+
+/* ---- Thread entries + replies ---- */
+.cm-card .cm-entry-root .note { margin: 0; }
+.cm-card .cm-replies {
+  margin-top: 0.5rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--cp-border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.cm-card .cm-reply .note { margin: 0; }
+.cm-card .cm-reply .meta { opacity: 0.9; }
+.cm-card .cm-reply-row { margin-top: 0.45rem; }
+.cm-card .cm-reply-btn {
+  background: none;
+  border: 1px solid var(--cp-border, #cbd5e1);
+  border-radius: 6px;
+  padding: 0.1rem 0.6rem;
+  font-size: var(--cp-chrome-small-font, 0.78rem);
+  color: var(--cp-accent);
+  cursor: pointer;
+}
+.cm-card .cm-reply-btn:hover { background: var(--cp-accent-soft); }
+
+/* Print: show the author pill and replies as plain indented text. */
+@media print {
+  .cmh-print-reply { margin: 0.2rem 0 0 0.8rem; }
+}
 /* Deck profile (data-cmh-mode="deck"): comment-mode force-reveal and slide chrome. */
 body.cmh-deck-present .cm-toolbar,
 body.cmh-deck-present #sidebar {

@@ -49,6 +49,8 @@ EXPECTED_REQUIRED_IDS = frozenset({
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
     "headingAddBtn", "widgetAddBtn", "menuDocComment", "menuSlideComment",
+    "cmIdentity", "cmIdentityName", "btnEditIdentity", "cmIdentityEdit",
+    "cmIdentityInput", "btnSaveIdentity", "btnCancelIdentity",
 })
 EXPECTED_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 CONTENT_BEGIN = "<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->"

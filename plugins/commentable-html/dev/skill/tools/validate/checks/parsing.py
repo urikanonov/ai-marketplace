@@ -27,6 +27,8 @@ REQUIRED_IDS = [
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
     "headingAddBtn", "widgetAddBtn", "menuDocComment", "menuSlideComment",
+    "cmIdentity", "cmIdentityName", "btnEditIdentity", "cmIdentityEdit",
+    "cmIdentityInput", "btnSaveIdentity", "btnCancelIdentity",
 ]
 
 # Export/Import was removed before the 1.0.0 release (redundant with Export with embedded comments). Its presence

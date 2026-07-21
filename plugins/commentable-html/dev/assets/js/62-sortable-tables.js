@@ -277,13 +277,18 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
   try {
     const ok = await showConfirm({
       message: comments.length
-        ? `Delete all ${comments.length} comment(s) and reset any tracked widget, checklist, and note changes? This cannot be undone.`
+        ? `Delete all ${(typeof threadRoots === "function" ? threadRoots(comments).length : comments.length)} comment(s) and reset any tracked widget, checklist, and note changes? This cannot be undone.`
         : `Reset any tracked widget, checklist, and note changes? This cannot be undone.`,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
     });
     if (!ok) return;
+    // Close any open edit composer first: after the array is cleared its Save would find nothing
+    // and the common tail would close it silently, losing the reviewer's in-progress edit.
+    if (typeof openEditComposers !== "undefined") {
+      Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
+    }
     _tombstoneEmbedded(comments.map(c => c.id));
     comments.forEach(c => removeHighlight(c));
     comments = [];

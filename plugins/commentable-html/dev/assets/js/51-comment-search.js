@@ -39,7 +39,9 @@ function applyCommentSearch() {
   const row = document.querySelector(".head-search");
   const countEl = document.getElementById("cmSearchCount");
   const clearBtn = document.getElementById("cmSearchClear");
-  const total = Array.isArray(comments) ? comments.length : 0;
+  const total = (typeof threadRoots === "function")
+    ? threadRoots(comments).length
+    : (Array.isArray(comments) ? comments.length : 0);
   const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
   if (row) row.hidden = total === 0 && noteCards.length === 0;
   if (total === 0 && noteCards.length === 0) {

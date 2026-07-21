@@ -35,19 +35,29 @@ function _renderPrintComment(c, index) {
   const path = _printHeadingPath(c);
   const quote = _printQuote(c);
   const time = formatTime((c && (c.updatedAt || c.createdAt)) || "");
+  const pill = (typeof authorPillHtml === "function") ? authorPillHtml(c.author) : "";
+  const replies = (typeof repliesOf === "function") ? repliesOf(c.id, comments) : [];
+  const repliesHtml = replies.map(function (r) {
+    const rp = (typeof authorPillHtml === "function") ? authorPillHtml(r.author) : "";
+    const rt = formatTime((r && (r.updatedAt || r.createdAt)) || "");
+    return '<div class="cmh-print-reply"><p class="cmh-print-note">' + rp + escapeHtml(r.note || "") + '</p>'
+      + '<p class="cmh-print-meta">reply #' + escapeHtml(r.id || "") + (rt ? " - " + escapeHtml(rt) : "") + '</p></div>';
+  }).join("");
   return '<article class="cmh-print-comment" data-cid="' + escapeHtml(c.id || "") + '">'
     + '<h3>Comment ' + (index + 1) + '</h3>'
     + (path ? '<p class="cmh-print-path"><strong>In:</strong> ' + escapeHtml(path) + '</p>' : "")
     + '<p class="cmh-print-anchor"><strong>Anchor:</strong> ' + escapeHtml(_printAnchorLabel(c)) + '</p>'
     + (quote ? '<blockquote>' + escapeHtml(quote) + '</blockquote>' : "")
-    + '<p class="cmh-print-note">' + escapeHtml(c.note || "") + '</p>'
+    + '<p class="cmh-print-note">' + pill + escapeHtml(c.note || "") + '</p>'
     + '<p class="cmh-print-meta">#' + escapeHtml(c.id || "") + (time ? " - " + escapeHtml(time) : "") + '</p>'
+    + repliesHtml
     + '</article>';
 }
 function materializePrintAppendix() {
   if (IS_DECK) return;
   let appendix = document.getElementById("cmhPrintComments");
-  if (!comments.length) {
+  const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
+  if (!roots.length) {
     if (appendix) appendix.remove();
     return;
   }
@@ -61,7 +71,7 @@ function materializePrintAppendix() {
   }
   appendix.innerHTML = '<h2>Review comments</h2>'
     + '<p class="cmh-print-intro">Current in-browser comments at print time.</p>'
-    + comments.map(_renderPrintComment).join("");
+    + roots.map(_renderPrintComment).join("");
 }
 function clearPrintAppendix() {
   const appendix = document.getElementById("cmhPrintComments");
