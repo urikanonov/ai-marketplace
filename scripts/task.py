@@ -10,10 +10,10 @@ The pure helpers (build_body, create_args, tick_checkbox, tick_all_checkboxes, a
 assert_ascii, assert_valid_session, status_body, bump_last_active, set_session, parse_session,
 board_row, format_board, find_status_comment, status_comments, extra_status_comment_ids,
 parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch, branch_slug,
-derive_branch, resolve_project_number, project_field_values, select_text_field_id,
-map_items_by_issue_number, select_item_id_for_project, build_field_update_variables,
-item_field_text, field_updates, map_item_last_active, parse_active_scopes) are unit tested in
-scripts/test_task.py; the thin `_run` layer shells out to `gh` and `git`.
+derive_branch, resolve_project_number, select_text_field_id,
+select_item_id_for_project, build_field_update_variables, item_field_text, field_updates,
+field_action, parse_active_scopes) are unit tested in scripts/test_task.py; the thin `_run` layer
+shells out to `gh` and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
@@ -23,7 +23,7 @@ Usage:
   python scripts/task.py heartbeat 188 [--watch] [--interval 300] [--session-id <id>]
   python scripts/task.py stale [--minutes 15]
   python scripts/task.py board [--all-labels] [--json] [--minutes 15]
-  python scripts/task.py project-sync [--issue 188] [--all-labels] [--dry-run]  # Projects v2 fields
+  python scripts/task.py project-sync [--issue 188] [--dry-run]  # Projects v2 fields
   python scripts/task.py plan 188 "1. Rebase  2. Fix  3. Test"
   python scripts/task.py check-ac 188 1
   python scripts/task.py check-ac 188 --all
@@ -539,16 +539,6 @@ def resolve_project_number(explicit=None, env=None):
     return val if isinstance(val, int) and val > 0 else None
 
 
-def project_field_values(status_body_text):
-    """Map a Work status comment body to the two project field values to sync: the handling
-    session id and the last-active UTC stamp (empty strings when absent). Pure."""
-    body = status_body_text or ""
-    return {
-        PROJECT_SESSION_FIELD: parse_session(body) or "",
-        PROJECT_LAST_ACTIVE_FIELD: parse_last_active(body) or "",
-    }
-
-
 def select_text_field_id(fields, name):
     """Return the node id of the TEXT project field named `name`, or None if there is no such
     field (or it is not a TEXT field). `fields` is a list of {id,name,dataType} dicts. Pure."""
@@ -556,26 +546,6 @@ def select_text_field_id(fields, name):
         if f.get("name") == name and (f.get("dataType") or "").upper() == "TEXT":
             return f.get("id")
     return None
-
-
-def map_items_by_issue_number(nodes, repo=None):
-    """Map issue number -> project item id from a list of item nodes {id, content:{number,
-    repository}}. Draft items and non-issue content (no number) are skipped. When `repo`
-    (an owner/name) is given, only issues in THAT repository are mapped - a user-owned board can
-    hold items from several repositories, so keying by number alone could collide across repos and
-    write onto the wrong item. Pure."""
-    out = {}
-    for n in nodes or []:
-        if not n:
-            continue
-        content = n.get("content") or {}
-        number = content.get("number")
-        if not isinstance(number, int) or not n.get("id"):
-            continue
-        if repo is not None and (content.get("repository") or {}).get("nameWithOwner") != repo:
-            continue
-        out[number] = n["id"]
-    return out
 
 
 def select_item_id_for_project(nodes, project_id):
@@ -612,8 +582,11 @@ def field_updates(values, current_last_active):
     """Given the desired field values and the board item's CURRENT 'Last active' text, return the
     {field_name: text} to actually write. Empty values are dropped (never clobber a field blank),
     and when the desired 'Last active' is NOT strictly newer than what the board already shows,
-    NOTHING is written - so a slow or concurrent sweep can never regress a newer heartbeat, and a
-    repeat sync of unchanged data is a no-op (monotonic + idempotent). Pure."""
+    NOTHING is written - so a repeat sync of unchanged data is a no-op and a sweep does not regress
+    a heartbeat that was ALREADY on the board when it read. (This is snapshot-bounded: a heartbeat
+    that writes AFTER a sweep reads but before it writes can still be briefly overwritten; the next
+    beat re-stamps it, so it self-heals within one heartbeat interval - via a heartbeat run with
+    --project-sync, or otherwise the next scheduled sweep.) Pure."""
     new_last = values.get(PROJECT_LAST_ACTIVE_FIELD, "")
     if new_last and current_last_active and not is_newer(new_last, current_last_active):
         return {}
@@ -625,17 +598,20 @@ def field_updates(values, current_last_active):
     return out
 
 
-def map_item_last_active(nodes):
-    """Map project item id -> its current 'Last active' field text, from item nodes that carry a
-    fieldValues connection. Lets a write be skipped when the board already shows a newer stamp
-    (see field_updates). Pure."""
-    out = {}
-    for n in nodes or []:
-        if not n or not n.get("id"):
-            continue
-        out[n["id"]] = item_field_text((n.get("fieldValues") or {}).get("nodes"),
-                                        PROJECT_LAST_ACTIVE_FIELD)
-    return out
+def field_action(issue_state, status_last_active, now, minutes=HEARTBEAT_STALE_MINUTES):
+    """Decide whether a board item's Session/Last active fields should be SET or CLEARED so the
+    board reflects only currently-live work. Returns 'set' when the issue is OPEN and its heartbeat
+    (`status_last_active`) is fresh (within `minutes` of `now`); 'clear' when the issue is CLOSED,
+    or OPEN with a missing/stale heartbeat (no live agent). Pure - `now` is passed in for testing."""
+    if (issue_state or "").upper() != "OPEN":
+        return "clear"
+    return "clear" if is_stale(status_last_active, now, minutes) else "set"
+
+
+def _utc_now():
+    """Return the current UTC time. A thin seam so tests can pin 'now' for the sweep's set/clear
+    (field_action) decision without monkeypatching datetime globally."""
+    return datetime.now(timezone.utc)
 
 
 # The host whose active-account scopes gate project-sync (a dual github.com + enterprise login
@@ -1049,20 +1025,24 @@ _PROJECT_ITEMS_QUERY = (
     "query($owner:String!,$number:Int!,$cursor:String){"
     " user(login:$owner){ projectV2(number:$number){"
     " items(first:100, after:$cursor){ pageInfo{ hasNextPage endCursor }"
-    " nodes{ id content{ ... on Issue { number repository { nameWithOwner } } }"
-    " fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
+    " nodes{ id content{ ... on Issue { number state repository { nameWithOwner } } }"
+    " fieldValues(first:50){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
     " field{ ... on ProjectV2FieldCommon { name } } } } } } } } } }")
 # Resolve ONE issue's board item id directly (the heartbeat fast path), avoiding a full-board scan.
 _ISSUE_ITEMS_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!){"
-    " repository(owner:$owner,name:$name){ issue(number:$number){"
+    " repository(owner:$owner,name:$name){ issue(number:$number){ state"
     " projectItems(first:100){ nodes{ id project{ id }"
-    " fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
+    " fieldValues(first:50){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
     " field{ ... on ProjectV2FieldCommon { name } } } } } } } } } }")
 _FIELD_UPDATE_MUTATION = (
     "mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$value:String!){"
     " updateProjectV2ItemFieldValue(input:{projectId:$projectId,itemId:$itemId,"
     "fieldId:$fieldId,value:{text:$value}}){ projectV2Item{ id } } }")
+_FIELD_CLEAR_MUTATION = (
+    "mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!){"
+    " clearProjectV2ItemFieldValue(input:{projectId:$projectId,itemId:$itemId,"
+    "fieldId:$fieldId}){ projectV2Item{ id } } }")
 
 
 def _graphql(query, str_vars=None, int_vars=None):
@@ -1149,22 +1129,26 @@ def _fetch_project_items(owner, number):
             return nodes
 
 
-def _issue_project_item_nodes(issue_number):
-    """Return ONE issue's projectItems nodes ({id, project:{id}, fieldValues}) - the heartbeat fast
-    path, avoiding a full-board scan. Each _graphql call is already timeout-bounded internally."""
+def _issue_project_item(issue_number):
+    """Return (issue_state, projectItems nodes) for ONE issue - the heartbeat fast path, avoiding a
+    full-board scan. `issue_state` is 'OPEN'/'CLOSED' (or '' if the issue is missing). Each _graphql
+    call is timeout-bounded internally."""
     owner, name = REPO.split("/", 1)
     data = _graphql(_ISSUE_ITEMS_QUERY, str_vars={"owner": owner, "name": name},
                     int_vars={"number": issue_number})
     issue = ((data.get("data") or {}).get("repository") or {}).get("issue") or {}
-    return (issue.get("projectItems") or {}).get("nodes") or []
+    return issue.get("state") or "", (issue.get("projectItems") or {}).get("nodes") or []
 
 
 def _apply_field_values(project_id, item_id, field_ids, values, dry_run, number,
                         current_last_active=""):
     """Set the two text fields on one item, writing only field_updates(values, current_last_active):
     empty values are skipped (never clobber blank) and a desired 'Last active' that is not strictly
-    newer than what the board already shows writes NOTHING, so a slow/concurrent sweep can never
-    regress a newer heartbeat and an unchanged repeat is a no-op. Returns True if anything was set."""
+    newer than what the board ALREADY SHOWED when this sweep read it writes NOTHING, so an unchanged
+    repeat is a no-op and a sweep does not regress a heartbeat already on the board. (Snapshot-
+    bounded: a heartbeat that writes after the read but before this write can be briefly overwritten;
+    it self-heals on the next heartbeat with --project-sync, or the next scheduled sweep.) Returns
+    True if anything was set."""
     updates = field_updates(values, current_last_active)
     if not updates:
         return False
@@ -1177,9 +1161,59 @@ def _apply_field_values(project_id, item_id, field_ids, values, dry_run, number,
     return True
 
 
+def _clear_field_values(project_id, item_id, field_ids, cur_session, cur_last, dry_run, number):
+    """Clear the Session/Last active fields that currently hold a value on one item (a closed or
+    stale issue). Only fields that are actually set are cleared, so an already-blank item is a
+    no-op. Returns True if anything was cleared."""
+    to_clear = []
+    if cur_session:
+        to_clear.append(PROJECT_SESSION_FIELD)
+    if cur_last:
+        to_clear.append(PROJECT_LAST_ACTIVE_FIELD)
+    if not to_clear:
+        return False
+    for name in to_clear:
+        if dry_run:
+            print(f"project-sync: #{number} would clear {name!r}")
+            continue
+        _graphql(_FIELD_CLEAR_MUTATION,
+                 str_vars={"projectId": project_id, "itemId": item_id, "fieldId": field_ids[name]})
+    return True
+
+
+def _sync_one_item(project_id, field_ids, item_id, number, state, node, viewer, now, dry_run):
+    """Set or clear ONE board item's Session/Last active per field_action, so the board reflects
+    only currently-live work: an OPEN issue with a fresh heartbeat is SET from its Work status
+    comment (monotonically); a CLOSED or OPEN-but-stale issue is CLEARED. Returns 'set'/'clear'/''
+    (empty = nothing to do)."""
+    fv = (node.get("fieldValues") or {}).get("nodes")
+    cur_session = item_field_text(fv, PROJECT_SESSION_FIELD)
+    cur_last = item_field_text(fv, PROJECT_LAST_ACTIVE_FIELD)
+    if (state or "").upper() == "OPEN":
+        # Read the live heartbeat from the NEWEST trusted "Work status" comment (duplicates can
+        # exist before convergence, and the oldest survivor may carry a stale stamp - using the
+        # newest, as the heartbeat itself does, avoids clearing genuinely-live work).
+        matches = status_comments(_list_comments(number, timeout=GRAPHQL_TIMEOUT_SECONDS),
+                                  trusted_only=True, viewer=viewer)
+        newest = _max_stamp(parse_last_active(c.get("body", "")) for c in matches)
+        values = {PROJECT_LAST_ACTIVE_FIELD: newest or "",
+                  PROJECT_SESSION_FIELD: _session_at_newest(matches, newest) if newest else ""}
+        action = field_action("OPEN", values[PROJECT_LAST_ACTIVE_FIELD], now)
+    else:
+        values, action = {}, "clear"
+    if action == "set":
+        return "set" if _apply_field_values(project_id, item_id, field_ids, values, dry_run,
+                                            number, cur_last) else ""
+    if _clear_field_values(project_id, item_id, field_ids, cur_session, cur_last, dry_run, number):
+        return "clear"
+    return ""
+
+
 def _run_project_sync(a):
     """Do the project-sync work; raises ProjectSyncSkip for expected 'not configured / not set up'
-    conditions (the caller turns those into a clean no-op)."""
+    conditions (the caller turns those into a clean no-op). Board-driven: for each repo issue item
+    on the board it SETS live work (open + fresh heartbeat) and CLEARS closed/stale work, so the
+    Session/Last active columns show only currently-live sessions."""
     number = resolve_project_number(a.project_number, os.environ.get("TASK_PROJECT_NUMBER"))
     if number is None:
         raise ProjectSyncSkip(
@@ -1192,46 +1226,46 @@ def _run_project_sync(a):
             f"the gh token lacks the '{PROJECT_SCOPE}' scope; grant it once with "
             f"`gh auth refresh -s {PROJECT_SCOPE}` (a one-time interactive step), then re-run")
     project_id, field_ids = _resolve_project(owner, number)
+    now = _utc_now()
     if a.issue is not None:
         # Fast path: resolve just this issue's board item, no full-board scan (heartbeat-safe).
-        targets = [{"number": a.issue}]
-        nodes = _issue_project_item_nodes(a.issue)
-        items = {a.issue: select_item_id_for_project(nodes, project_id)}
-    else:
-        args = ["gh", "issue", "list", "--repo", REPO, "--state", "open",
-                "--limit", str(BOARD_LIMIT), "--json", "number,title"]
-        if not a.all_labels:
-            args += ["--label", TASK_LABEL]
-        targets = json.loads(_capture(args, timeout=GRAPHQL_TIMEOUT_SECONDS))
-        if len(targets) >= BOARD_LIMIT:
-            # Never omit issues SILENTLY (parity with cmd_board): warn if the fetch hit the cap.
-            sys.stderr.write(f"project-sync: syncing the first {BOARD_LIMIT} open issues; more may "
-                             "exist (raise --limit / TASK_PROJECT_NUMBER scope if you have that many)\n")
-        targets.sort(key=lambda it: it.get("number", 0))
-        # Restrict to THIS repo's items - a user-owned board can hold other repos' issues.
-        nodes = _fetch_project_items(owner, number)
-        items = map_items_by_issue_number(nodes, repo=REPO)
-    last_active_by_item = map_item_last_active(nodes)
-    viewer = _viewer_login(timeout=GRAPHQL_TIMEOUT_SECONDS)
-    synced = off_board = 0
-    for it in targets:
-        num = it["number"]
-        item_id = items.get(num)
+        state, nodes = _issue_project_item(a.issue)
+        item_id = select_item_id_for_project(nodes, project_id)
         if not item_id:
             sys.stderr.write(
-                f"project-sync: #{num} is not on the board; skipping (a `{TASK_LABEL}` issue is "
-                "auto-added when created)\n")
-            off_board += 1
-            continue
-        matches = status_comments(_list_comments(num, timeout=GRAPHQL_TIMEOUT_SECONDS),
-                                  trusted_only=True, viewer=viewer)
-        body = _pick_survivor(matches)["body"] if matches else ""
-        if _apply_field_values(project_id, item_id, field_ids, project_field_values(body),
-                               a.dry_run, num, last_active_by_item.get(item_id, "")):
-            synced += 1
+                f"project-sync: #{a.issue} is not on the board; skipping (a `{TASK_LABEL}` issue "
+                "is auto-added when created)\n")
+            print(f"project-sync: {'would update' if a.dry_run else 'updated'} 0, "
+                  f"{'would clear' if a.dry_run else 'cleared'} 0 issue(s) on project #{number}")
+            return
+        node = next((n for n in nodes if n and n.get("id") == item_id), {})
+        targets = [(a.issue, state, item_id, node)]
+    else:
+        nodes = _fetch_project_items(owner, number)
+        targets = []
+        for n in nodes:
+            if not n:
+                continue
+            c = n.get("content") or {}
+            num = c.get("number")
+            # Restrict to THIS repo's issues - a user-owned board can hold other repos' items.
+            if (not isinstance(num, int) or not n.get("id")
+                    or (c.get("repository") or {}).get("nameWithOwner") != REPO):
+                continue
+            targets.append((num, c.get("state"), n["id"], n))
+        targets.sort(key=lambda t: t[0])
+    viewer = _viewer_login(timeout=GRAPHQL_TIMEOUT_SECONDS)
+    set_count = clear_count = 0
+    for num, state, item_id, node in targets:
+        outcome = _sync_one_item(project_id, field_ids, item_id, num, state, node, viewer, now,
+                                 a.dry_run)
+        if outcome == "set":
+            set_count += 1
+        elif outcome == "clear":
+            clear_count += 1
     verb = "would update" if a.dry_run else "updated"
-    tail = f" ({off_board} not on the board)" if off_board else ""
-    print(f"project-sync: {verb} {synced} issue(s) on project #{number}{tail}")
+    verb2 = "would clear" if a.dry_run else "cleared"
+    print(f"project-sync: {verb} {set_count}, {verb2} {clear_count} issue(s) on project #{number}")
 
 
 def cmd_project_sync(a):
@@ -1249,7 +1283,6 @@ def _project_sync_best_effort(number):
     network problem can never break a beat. Returns True only on a clean run."""
     class _A:
         issue = number
-        all_labels = False
         project_number = None
         dry_run = False
     try:
@@ -1364,14 +1397,13 @@ def build_parser():
 
     ps = sub.add_parser("project-sync",
                         help="sync Session and Last active fields onto the Projects v2 board")
-    ps.add_argument("--issue", type=int, help="sync only this issue (default: all open task issues)")
-    ps.add_argument("--all-labels", action="store_true",
-                    help="include every open issue (default: task-labeled issues only)")
+    ps.add_argument("--issue", type=int,
+                    help="sync only this issue (default: sweep every repo issue on the board)")
     ps.add_argument("--project-number", type=int,
                     help="Projects v2 number (default: env TASK_PROJECT_NUMBER or "
                          f"{DEFAULT_PROJECT_NUMBER})")
     ps.add_argument("--dry-run", action="store_true",
-                    help="print the field values that would be set without writing them")
+                    help="print the set/clear the sweep would do without writing them")
     ps.set_defaults(func=cmd_project_sync)
 
     pl = sub.add_parser("plan", help="post an implementation-plan comment")

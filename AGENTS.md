@@ -833,11 +833,13 @@ required `validate` check runs them).
 
 The same handling session id and last activity can also live ON the Projects v2 board (the "AI
 Marketplace Tasks" board) as sortable custom fields, so the maintainer sees them next to each card
-without running `board`. `python scripts/task.py project-sync` writes each open `task` issue's handling
-session id and last-active stamp from its "Work status" comment onto two board text fields, "Session"
-and "Last active" (`--issue N` syncs one issue, `--all-labels` widens the sweep, `--dry-run` prints
-without writing). Because writing a Projects v2 field needs the `project` token scope - an interactive
-one-time grant the automation cannot self-perform - this is opt-in and ONE-TIME SETUP is required:
+without running `board`. `python scripts/task.py project-sync` keeps two board text fields, "Session"
+and "Last active", CURRENT: for every repo issue on the board it SETS those fields (from the issue's
+"Work status" comment) when the issue is open with a fresh heartbeat, and CLEARS them when the issue
+is closed or its heartbeat has gone stale - so the columns show only currently-live sessions, never a
+finished issue's leftovers (`--issue N` syncs one issue, `--dry-run` prints without writing). Because
+writing a Projects v2 field needs the `project` token scope - an interactive one-time grant the
+automation cannot self-perform - this is opt-in and ONE-TIME SETUP is required:
 
 1. Grant the scope once: `gh auth refresh -s project` (interactive; the `urikanonov` token ships with
    `read:org`/`repo`/`workflow` but not `project`).
@@ -851,7 +853,18 @@ never breaks a run. Once set up, it is safe to run best-effort from the heartbea
 swallows any project/scope/network error so a beat is never lost. The board owner and number default to
 `urikanonov` / project `1` and can be overridden with `TASK_PROJECT_OWNER` / `TASK_PROJECT_NUMBER` (a
 number `<= 0` disables the sync). The pure parts (status-comment -> field values, the field-update
-payload, project-number resolution, field/item lookup) are unit-tested in `scripts/test_task.py`.
+payload, the set/clear decision, project-number resolution, field/item lookup) are unit-tested in
+`scripts/test_task.py`.
+
+The board is kept current AUTOMATICALLY (no agent required) by the scheduled `project-sync` workflow
+(`.github/workflows/project-sync.yml`): it runs the sweep on a cron and on issue open/close/reopen, in the
+trusted default-branch context (it triggers only on `schedule`/`issues`, never a PR trigger and not
+`workflow_dispatch`, so it never runs unreviewed branch code, and it holds no attacker-controllable
+input). It needs a `project`-scoped token as a repo secret, which is its own ONE-TIME MAINTAINER SETUP
+(the default Actions `GITHUB_TOKEN` cannot write a user-owned Projects v2 board, and a fine-grained PAT
+does not reliably grant it for a user-owned project): create a CLASSIC PAT with the `project` and
+`repo` scopes and add it as the repo secret `PROJECT_SYNC_TOKEN`. Until that secret exists the workflow
+is a clean no-op that prints how to finish setup, so nothing breaks and it can be enabled at any time.
 
 ## Driving a PR or issue to completion (drive-to-merge)
 

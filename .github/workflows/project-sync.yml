@@ -1,0 +1,68 @@
+# Keep the "AI Marketplace Tasks" Projects v2 board's Session and Last active fields
+# current automatically, so the maintainer never has to run project-sync by hand.
+# It runs `scripts/task.py project-sync`, which SETS those fields for open issues with a
+# fresh heartbeat and CLEARS them for closed or stale issues (see issue #575 / #533).
+#
+# Trust boundary (see scripts/check_workflow_policy.py): this workflow holds a project-
+# scoped PAT secret, so it must run only trusted, default-branch code. It triggers ONLY on
+# `schedule` and `issues` - never on `pull_request` / `pull_request_target` (which would run
+# PR code) and never on `workflow_dispatch` (which would run the SELECTED ref's code with the
+# PAT). schedule/issues always run the default-branch workflow and the default-branch
+# `scripts/task.py`, so the secret is never exposed to unreviewed branch or PR code. It also
+# never interpolates any attacker-controllable context (issue title/body/comment) into the
+# shell (RULE D): the sync sweeps the whole board via the API and needs no per-issue text.
+#
+# One-time setup (until then this is a clean no-op): a user-owned Projects v2 board can
+# only be written with a `project`-scoped token, which the default GITHUB_TOKEN is not
+# (and which fine-grained PATs do not reliably grant for a USER-owned project). Create a
+# CLASSIC PAT with the `project` and `repo` scopes and add it as the repo secret
+# PROJECT_SYNC_TOKEN. Without it the job prints how to finish setup and exits 0.
+name: project-sync
+
+on:
+  schedule:
+    # Every 15 minutes - matches the heartbeat stale window, so a card goes stale/live
+    # within one window. Adjust the cadence here if it is too frequent.
+    - cron: "*/15 * * * *"
+  issues:
+    types: [opened, closed, reopened, deleted]
+  # No workflow_dispatch: a dispatch can select any ref, which would run that ref's
+  # workflow + scripts/task.py with the PROJECT_SYNC_TOKEN. schedule/issues always run
+  # the trusted default-branch code, so the PAT is never exposed to unreviewed branch code.
+
+permissions: {}
+
+concurrency:
+  # Coalesce a burst of issue events into one sweep (each run reflects the final board state).
+  group: project-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (default branch, trusted)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.x"
+      - name: Sync the board (Session + Last active)
+        env:
+          # The project-scoped PAT gh uses for the Projects v2 API. Absent = clean no-op.
+          GH_TOKEN: ${{ secrets.PROJECT_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "PROJECT_SYNC_TOKEN is not set; skipping (one-time setup: add a CLASSIC PAT with"
+            echo "the 'project' and 'repo' scopes as the PROJECT_SYNC_TOKEN secret)."
+            exit 0
+          fi
+          # project-sync is itself a clean no-op if the token lacks the `project` scope or the
+          # board/fields are missing, so this never fails the scheduled run.
+          python scripts/task.py project-sync
