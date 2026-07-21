@@ -8,6 +8,8 @@ import {
   fileUrl,
   installClipboardCapture,
   openComposerFor,
+  openSidebarExportMenu,
+  openToolbarMenu,
   ready,
 } from "./helpers.js";
 
@@ -135,4 +137,43 @@ test("CMH-PRINT-01: deck print keeps one slide per page", async ({ page }) => {
   for (const info of slidesInfo.slice(0, -1)) {
     expect(info.breakAfter === "page" || info.pageBreakAfter === "always").toBe(true);
   }
+});
+
+test("CMH-PRINT-02: the Save as PDF action fires native window.print() from both menus without intercepting Ctrl/Cmd+P", async ({ page }) => {
+  // Stub window.print so the action is deterministic and never opens a real print dialog.
+  await page.addInitScript(() => {
+    window.__printCalls = 0;
+    window.print = () => { window.__printCalls += 1; };
+  });
+  await page.goto(fileUrl(INLINE));
+  await ready(page);
+
+  // Toolbar overflow ("More actions") menu carries a discoverable "Save as PDF" item.
+  await openToolbarMenu(page);
+  const topBtn = page.locator("#btnPrintTop");
+  await expect(topBtn).toBeVisible();
+  await expect(topBtn).toContainText("Save as PDF");
+  await topBtn.click();
+  expect(await page.evaluate(() => window.__printCalls)).toBe(1);
+
+  // The sidebar Export menu carries the same action (compact "PDF" label). A comment is added first
+  // so the populated sidebar lays its header (and the Export disclosure) out on-screen, matching the
+  // established sidebar-export tests.
+  await addTextComment(page, "#commentRoot section p", "print action note");
+  await openSidebarExportMenu(page);
+  const sideBtn = page.locator("#btnPrint");
+  await expect(sideBtn).toBeVisible();
+  await sideBtn.click();
+  expect(await page.evaluate(() => window.__printCalls)).toBe(2);
+
+  // The native Ctrl/Cmd+P shortcut is not intercepted: a ctrl+p and a meta+p keydown are not
+  // preventDefault-ed, so the browser's own print/PDF still fires unmodified on both platforms.
+  const prevented = await page.evaluate(() => {
+    return ["ctrlKey", "metaKey"].map((modifier) => {
+      const event = new KeyboardEvent("keydown", { key: "p", [modifier]: true, cancelable: true, bubbles: true });
+      document.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+  });
+  expect(prevented).toEqual([false, false]);
 });

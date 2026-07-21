@@ -83,3 +83,14 @@ function setupPrintAppendix() {
     if (query.matches) materializePrintAppendix();
   }
 }
+// Discoverable "Save as PDF" affordance: both the toolbar overflow menu (btnPrintTop) and the
+// sidebar export menu (btnPrint) trigger the browser's native print, which renders the print/PDF
+// layout. This deliberately does NOT intercept Ctrl/Cmd+P, so the native shortcut still works.
+// Wired for flat documents and decks alike (deck print page-breaks one slide per page).
+function triggerNativePrint() {
+  if (typeof window.print === "function") window.print();
+}
+["btnPrint", "btnPrintTop"].forEach(function (id) {
+  const button = document.getElementById(id);
+  if (button) button.addEventListener("click", triggerNativePrint);
+});

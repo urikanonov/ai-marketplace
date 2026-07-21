@@ -97,6 +97,7 @@ function showHelp(restoreEl) {
           '<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the portable file, then inlines the vendored mermaid and Chart.js bundles only when the document uses them, with remote loaders removed.</li>' +
           '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>' +
           '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>' +
+          '<li><strong>Save as PDF</strong> opens the browser&#x27;s own print dialog (choose "Save as PDF", or print to paper). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends your current comments at the end. <kbd>Ctrl/Cmd+P</kbd> does the same thing.</li>' +
           '<li>In <strong>NonPortable mode</strong> the layer loads from companion files; <em>Export as Portable</em> rebuilds a single combined file.</li>' +
           '</ul>') +
       T('Sending comments to an agent',
