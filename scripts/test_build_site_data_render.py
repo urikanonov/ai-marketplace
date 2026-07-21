@@ -413,6 +413,23 @@ class LlmsTests(unittest.TestCase):
                       % bsd.SITE_BASE_URL, text)
         self.assertIn("commentable-html/tutorial/)", text)
 
+    def test_tutorial_link_uses_tutorial_page_path(self):
+        import os as _os
+        from unittest import mock
+        manifest = {
+            "name": "urikan-ai-marketplace",
+            "metadata": {"description": "Marketplace summary."},
+            "plugins": [],
+        }
+        moved_tutorial = _os.path.join(bsd.SITE_OUT, "docs", "guide", "index.html")
+        expected = bsd.SITE_BASE_URL + "docs/guide/"
+        with mock.patch.object(bsd, "TUTORIAL_PAGE", moved_tutorial):
+            sitemap = bsd.render_sitemap(bsd.REPO_ROOT)
+            text = bsd.render_llms(bsd.REPO_ROOT, manifest, {"commentable-html"})
+        self.assertIn("<loc>%s</loc>" % expected, sitemap)
+        self.assertIn("- [Commentable HTML tutorial](%s)" % expected, text)
+        self.assertNotIn("commentable-html/tutorial/", text)
+
     def test_states_both_agents_and_their_install_commands(self):
         manifest = {"name": "urikan-ai-marketplace", "metadata": {"description": "d"},
                     "plugins": [{"name": "commentable-html", "description": "d1"},

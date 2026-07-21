@@ -70,6 +70,14 @@ test("hub head exposes canonical, Open Graph, and Twitter Card tags", async ({ p
 });
 
 
+test("hub head declares the sitemap link (SITE-SEO-12)", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const sitemap = page.locator('link[rel="sitemap"]');
+  await expect(sitemap).toHaveAttribute("type", "application/xml");
+  await expect(sitemap).toHaveAttribute("href", "sitemap.xml");
+});
+
+
 test("plugin and tutorial pages carry a self-referencing canonical and Open Graph metadata", async ({ page }) => {
   const cases = [
     ["/commentable-html/", PROD + "commentable-html/"],
