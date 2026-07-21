@@ -563,23 +563,23 @@ class MapItemsByIssueNumberTests(unittest.TestCase):
 
 class SelectItemIdForProjectTests(unittest.TestCase):
     NODES = [
-        {"id": "PVTI_other", "project": {"number": 2}},
-        {"id": "PVTI_mine", "project": {"number": 1}},
+        {"id": "PVTI_other", "project": {"id": "PVT_other"}},
+        {"id": "PVTI_mine", "project": {"id": "PVT_mine"}},
     ]
 
     def test_picks_item_on_matching_project(self):
-        self.assertEqual(task.select_item_id_for_project(self.NODES, 1), "PVTI_mine")
-        self.assertEqual(task.select_item_id_for_project(self.NODES, 2), "PVTI_other")
+        self.assertEqual(task.select_item_id_for_project(self.NODES, "PVT_mine"), "PVTI_mine")
+        self.assertEqual(task.select_item_id_for_project(self.NODES, "PVT_other"), "PVTI_other")
 
     def test_none_when_no_project_matches(self):
-        self.assertIsNone(task.select_item_id_for_project(self.NODES, 9))
+        self.assertIsNone(task.select_item_id_for_project(self.NODES, "PVT_absent"))
 
     def test_skips_null_node_and_missing_id(self):
-        nodes = [None, {"project": {"number": 1}}, {"id": "PVTI_ok", "project": {"number": 1}}]
-        self.assertEqual(task.select_item_id_for_project(nodes, 1), "PVTI_ok")
+        nodes = [None, {"project": {"id": "PVT_mine"}}, {"id": "PVTI_ok", "project": {"id": "PVT_mine"}}]
+        self.assertEqual(task.select_item_id_for_project(nodes, "PVT_mine"), "PVTI_ok")
 
     def test_empty_nodes(self):
-        self.assertIsNone(task.select_item_id_for_project([], 1))
+        self.assertIsNone(task.select_item_id_for_project([], "PVT_mine"))
 
 
 class BuildFieldUpdateVariablesTests(unittest.TestCase):
@@ -591,6 +591,67 @@ class BuildFieldUpdateVariablesTests(unittest.TestCase):
             "fieldId": "PVTF_f",
             "value": "sess-1",
         })
+
+
+class ParseActiveScopesTests(unittest.TestCase):
+    def test_single_github_account(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'\n")
+        self.assertEqual(task.parse_active_scopes(text),
+                         {"gist", "project", "read:org", "repo", "workflow"})
+
+    def test_active_account_not_first_on_same_host(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account bot (keyring)\n"
+            "  - Active account: false\n"
+            "  - Token scopes: 'repo'\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'gist', 'project'\n")
+        self.assertEqual(task.parse_active_scopes(text), {"gist", "project"})
+
+    def test_ignores_other_host_active_account(self):
+        text = (
+            "ghe.example.com\n"
+            "  x Logged in to ghe.example.com account alice (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'repo'\n"
+            "\n"
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'gist', 'project', 'repo'\n")
+        self.assertEqual(task.parse_active_scopes(text), {"gist", "project", "repo"})
+
+    def test_none_when_only_other_host(self):
+        text = (
+            "ghe.example.com\n"
+            "  x Logged in to ghe.example.com account alice (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'repo', 'project'\n")
+        self.assertIsNone(task.parse_active_scopes(text))
+
+    def test_none_when_scopes_line_unparseable(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: none listed\n")
+        self.assertIsNone(task.parse_active_scopes(text))
+
+    def test_none_when_no_scopes_line(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n")
+        self.assertIsNone(task.parse_active_scopes(text))
+
+    def test_none_on_empty_text(self):
+        self.assertIsNone(task.parse_active_scopes(""))
 
 
 class ProjectSyncBestEffortTests(unittest.TestCase):

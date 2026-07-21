@@ -11,8 +11,9 @@ assert_ascii, assert_valid_session, status_body, bump_last_active, set_session, 
 board_row, format_board, find_status_comment, status_comments, extra_status_comment_ids,
 parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch, branch_slug,
 derive_branch, resolve_project_number, project_field_values, select_text_field_id,
-map_items_by_issue_number, select_item_id_for_project, build_field_update_variables) are unit
-tested in scripts/test_task.py; the thin `_run` layer shells out to `gh` and `git`.
+map_items_by_issue_number, select_item_id_for_project, build_field_update_variables,
+parse_active_scopes) are unit tested in scripts/test_task.py; the thin `_run` layer shells out to
+`gh` and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
@@ -577,14 +578,16 @@ def map_items_by_issue_number(nodes, repo=None):
     return out
 
 
-def select_item_id_for_project(nodes, project_number):
-    """Return the project item id from an issue's projectItems nodes ({id, project:{number}}) whose
-    project number matches `project_number`, or None. Pure - lets project-sync resolve one issue's
-    board item id directly (the heartbeat fast path) without paginating the whole board."""
+def select_item_id_for_project(nodes, project_id):
+    """Return the project item id from an issue's projectItems nodes ({id, project:{id}}) whose
+    project id matches `project_id`, or None. Matching on the globally-unique project id (not its
+    per-owner number) avoids picking the wrong board when an issue sits on two projects sharing a
+    number. Pure - lets project-sync resolve one issue's board item id directly (the heartbeat fast
+    path) without paginating the whole board."""
     for n in nodes or []:
         if not n:
             continue
-        if (n.get("project") or {}).get("number") == project_number and n.get("id"):
+        if (n.get("project") or {}).get("id") == project_id and n.get("id"):
             return n["id"]
     return None
 
@@ -592,6 +595,35 @@ def select_item_id_for_project(nodes, project_number):
 def build_field_update_variables(project_id, item_id, field_id, text):
     """Build the string variable map for the updateProjectV2ItemFieldValue mutation. Pure."""
     return {"projectId": project_id, "itemId": item_id, "fieldId": field_id, "value": text}
+
+
+# The host whose active-account scopes gate project-sync (a dual github.com + enterprise login
+# lists several hosts; only the github.com token can write this board).
+GITHUB_HOST = "github.com"
+
+
+def parse_active_scopes(text, host=GITHUB_HOST):
+    """Parse `gh auth status` output and return the ACTIVE account's token scopes for `host` as a
+    set, or None when they cannot be confidently determined (no matching active block on that host,
+    or an unparseable/empty scopes line). Pure. Gating on the host AND the active-account block
+    prevents attributing another host's or account's scopes; returning None (never an empty set)
+    makes a `gh` format shift defer to the reactive _graphql check instead of falsely asserting the
+    scope is absent (which would turn a working sync into a permanent silent no-op)."""
+    host_ok = False
+    active = False
+    for line in (text or "").splitlines():
+        low = line.lower()
+        m_host = re.search(r"logged in to (\S+) account", low)
+        if m_host:
+            host_ok = (m_host.group(1) == host.lower())
+            active = False  # a new account block; not the active one until proven below
+        if re.search(r"active account:\s*true", low):
+            active = True
+        m = re.search(r"Token scopes:\s*(.*)", line)
+        if m and active and host_ok:
+            found = re.findall(r"'([^']+)'", m.group(1))
+            return set(found) if found else None
+    return None
 
 
 def _positive_int(value):
@@ -971,7 +1003,7 @@ _PROJECT_ITEMS_QUERY = (
 _ISSUE_ITEMS_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!){"
     " repository(owner:$owner,name:$name){ issue(number:$number){"
-    " projectItems(first:20){ nodes{ id project{ number } } } } } }")
+    " projectItems(first:100){ nodes{ id project{ id } } } } } }")
 _FIELD_UPDATE_MUTATION = (
     "mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$value:String!){"
     " updateProjectV2ItemFieldValue(input:{projectId:$projectId,itemId:$itemId,"
@@ -1007,26 +1039,15 @@ def _graphql(query, str_vars=None, int_vars=None):
 
 
 def _token_scopes():
-    """Return the ACTIVE gh account's token scopes as a set, or None if they cannot be confidently
-    read. Used to skip project-sync PROACTIVELY (a precise up-front message) when `project` is not
-    granted, before any GraphQL call. Returns None - deferring to the reactive check in _graphql -
-    whenever it cannot be sure (no scopes line, an unparseable line, or the active account's line
-    is not identifiable), so a `gh` output-format shift can never falsely assert the scope is
-    absent and turn a working sync into a permanent silent no-op."""
-    res = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
-    text = (res.stdout or "") + (res.stderr or "")
-    active = False
-    for line in text.splitlines():
-        low = line.lower()
-        if re.search(r"logged in to .*account", low):
-            active = False  # a new account block; not the active one until proven below
-        if re.search(r"active account:\s*true", low):
-            active = True
-        m = re.search(r"Token scopes:\s*(.*)", line)
-        if m and active:
-            found = re.findall(r"'([^']+)'", m.group(1))
-            return set(found) if found else None
-    return None
+    """Return the active github.com account's token scopes (or None). Bounded so a hung `gh auth
+    status` cannot block a heartbeat beat; a timeout defers to the reactive _graphql check. The
+    parsing is the pure parse_active_scopes helper."""
+    try:
+        res = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True,
+                             timeout=GRAPHQL_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return None  # a hung `gh auth status` must not block a heartbeat beat; defer to _graphql
+    return parse_active_scopes((res.stdout or "") + (res.stderr or ""))
 
 
 def _resolve_project(owner, number):
@@ -1044,12 +1065,14 @@ def _resolve_project(owner, number):
            for name in (PROJECT_SESSION_FIELD, PROJECT_LAST_ACTIVE_FIELD)}
     missing = [name for name, fid in ids.items() if not fid]
     if missing:
+        # Build the createProjectV2Field example without f-string brace-escaping gymnastics (a
+        # missing `f` prefix on a brace-heavy literal is an easy future trap).
+        example = ("gh api graphql -f query='mutation{ createProjectV2Field(input:{projectId:"
+                   '"%s", dataType:TEXT, name:"%s" }){ projectV2Field{ ... on ProjectV2Field '
+                   "{ id name } } } }'" % (project["id"], missing[0]))
         raise ProjectSyncSkip(
             f"the board is missing the text field(s) {missing}; create them once (board UI, or via "
-            f"the Projects v2 API on project id {project['id']}), then re-run. Example: gh api "
-            f"graphql -f query='mutation{{ createProjectV2Field(input:{{projectId:\"{project['id']}\","
-            f" dataType:TEXT, name:\"{missing[0]}\" }}){{ projectV2Field{{ ... on ProjectV2Field "
-            "{ id name } } } }}'")
+            f"the Projects v2 API on project id {project['id']}), then re-run. Example: {example}")
     return project["id"], ids
 
 
@@ -1071,16 +1094,16 @@ def _fetch_project_items(owner, number):
             return nodes
 
 
-def _issue_project_item_id(project_number, issue_number):
+def _issue_project_item_id(project_id, issue_number):
     """Return the board item id for ONE issue in REPO (or None) without scanning the whole board -
     the heartbeat fast path. Queries the issue's projectItems and picks the one on project
-    `project_number`."""
+    `project_id` (the globally-unique id resolved up front)."""
     owner, name = REPO.split("/", 1)
     data = _graphql(_ISSUE_ITEMS_QUERY, str_vars={"owner": owner, "name": name},
                     int_vars={"number": issue_number})
     issue = ((data.get("data") or {}).get("repository") or {}).get("issue") or {}
     nodes = (issue.get("projectItems") or {}).get("nodes") or []
-    return select_item_id_for_project(nodes, project_number)
+    return select_item_id_for_project(nodes, project_id)
 
 
 def _apply_field_values(project_id, item_id, field_ids, values, dry_run, number):
@@ -1121,7 +1144,7 @@ def _run_project_sync(a):
     if a.issue is not None:
         # Fast path: resolve just this issue's board item id, no full-board scan (heartbeat-safe).
         targets = [{"number": a.issue}]
-        items = {a.issue: _issue_project_item_id(number, a.issue)}
+        items = {a.issue: _issue_project_item_id(project_id, a.issue)}
     else:
         args = ["gh", "issue", "list", "--repo", REPO, "--state", "open",
                 "--limit", str(BOARD_LIMIT), "--json", "number,title"]
