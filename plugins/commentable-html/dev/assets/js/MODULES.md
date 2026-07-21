@@ -55,7 +55,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `70-mode-badge.js` | CMH-MODE | Mode badge + asset-version handshake. |
 | `75-help.js` | CMH-HELP, CMH-A11Y | Help dialog. |
 | `80-sort-comments.js` | CMH-SIDE | Sort comments by time. |
-| `82-toc.js` | CMH-TOC, CMH-REVIEW | Table-of-contents side menu; also hosts the section-review TOC filter + per-entry state dots. |
+| `82-toc.js` | CMH-TOC, CMH-REVIEW, CMH-A11Y | Table-of-contents side menu; also hosts the section-review TOC filter + per-entry state dots. |
 | `83-print.js` | CMH-PRINT | Print/PDF comment appendix materializer for flat documents, and the "Save as PDF" buttons that call native `window.print()`. |
 | `84-section-review.js` | CMH-REVIEW | Section review tracking: content hashing, marker store, four-state badges, and TOC-filter helpers. |
 | `90-toast.js` | CMH-A11Y | Toast notifications. |

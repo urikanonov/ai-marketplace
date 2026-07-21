@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.200.0";
+const CMH_VERSION = "1.201.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -8567,10 +8567,25 @@ function setupHeadingAnchors() {
     positionHeadingAdd(h);
     setActiveAdd({ el: h, btn: headingAddBtn, position: () => positionHeadingAdd(h), clear: () => {} });
   }
+  function focusNextAfterHeading(h) {
+    const sel = 'a[href], area[href], button, input, textarea, select, summary, iframe, object, embed, video[controls], audio[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]';
+    const all = [...document.querySelectorAll(sel)].filter(function (el) {
+      return el !== headingAddBtn && !el.hidden && !el.closest("[hidden], [inert]") && !el.matches(":disabled") && el.tabIndex >= 0 && el.getClientRects().length;
+    });
+    const idx = all.indexOf(h);
+    const after = idx >= 0 ? all.slice(idx + 1) : [];
+    const next = after.find(function (el) {
+      if (el.closest(".cm-skip") && !h.contains(el)) return false;
+      el.focus();
+      return document.activeElement === el || el.contains(document.activeElement);
+    });
+    if (!next) return false;
+    return true;
+  }
   function scheduleHideHeadingAdd() {
     if (headingHideTimer) clearTimeout(headingHideTimer);
     headingHideTimer = setTimeout(function () {
-      if (headingAddBtn && !headingAddBtn.matches(":hover")) { headingAddBtn.hidden = true; headingHoverEl = null; clearActiveAdd(headingAddBtn); }
+      if (headingAddBtn && !headingAddBtn.matches(":hover") && document.activeElement !== headingAddBtn) { headingAddBtn.hidden = true; headingHoverEl = null; clearActiveAdd(headingAddBtn); }
     }, 220);
   }
   // Comment on a whole heading by selecting its text and opening the text composer, so
@@ -8595,6 +8610,22 @@ function setupHeadingAnchors() {
     headingAddBtn._cmWired = true;
     headingAddBtn.addEventListener("mouseenter", function () { if (headingHideTimer) { clearTimeout(headingHideTimer); headingHideTimer = null; } });
     headingAddBtn.addEventListener("mouseleave", scheduleHideHeadingAdd);
+    headingAddBtn.addEventListener("focus", function () { if (headingHideTimer) { clearTimeout(headingHideTimer); headingHideTimer = null; } });
+    headingAddBtn.addEventListener("blur", scheduleHideHeadingAdd);
+    headingAddBtn.addEventListener("keydown", function (e) {
+      if (e.key !== "Tab" || !headingHoverEl) return;
+      if (e.shiftKey) {
+        e.preventDefault();
+        headingHoverEl.focus();
+      } else {
+        e.preventDefault();
+        if (!focusNextAfterHeading(headingHoverEl)) {
+          headingAddBtn.hidden = true;
+          clearActiveAdd(headingAddBtn);
+          headingAddBtn.blur();
+        }
+      }
+    });
     headingAddBtn.addEventListener("click", function () {
       const h = headingHoverEl;
       headingAddBtn.hidden = true;
@@ -8629,6 +8660,12 @@ function setupHeadingAnchors() {
       deepLink();
     });
     h.addEventListener("keydown", function (e) {
+      if (e.key === "Tab" && !e.shiftKey && headingAddBtn && !headingAddBtn.hidden && headingAddBtn.getClientRects().length && document.activeElement === h) {
+        e.preventDefault();
+        showHeadingAdd(h);
+        headingAddBtn.focus();
+        return;
+      }
       if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
       if (e.target !== h) return;                       // let a focused child (link) act
       const sel = window.getSelection();
@@ -9075,7 +9112,6 @@ function updateTocReviewMarks(states, active) {
     }
   }
 }
-
 function _printHeadingPath(c) {
   if (c && c.headingPath && c.headingPath.length) {
     return c.headingPath.map(function (h) { return h && h.text; }).filter(Boolean).join(" > ");

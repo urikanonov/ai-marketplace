@@ -63,6 +63,51 @@ test.describe("heading keyboard affordance, lede width, document title", () => {
     }
   });
 
+  test("Tab from a focused heading reaches and activates the Add Comment button (CMH-A11Y-08)", async ({ page }) => {
+    const staged = stageContent(
+      '<section><h2 id="tab-heading">Tab <a id="heading-link" href="#inside">Heading link</a></h2><p><a id="next-link" href="#next">next link</a></p></section>'
+      + '<h2 id="plain-heading">Plain Heading</h2>'
+      + '<a id="negative-link" href="#negative" tabindex="-2">negative link</a>'
+      + '<fieldset disabled><button id="fieldset-disabled">disabled fieldset button</button></fieldset>'
+      + '<span inert><a id="inert-link" href="#inert">inert link</a></span>'
+      + '<a id="plain-next" href="#plain-next">plain next</a>',
+      { key: "cmh-a11y-08-doc" });
+    try {
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await page.locator("#tab-heading").focus();
+      const btn = page.locator("#headingAddBtn");
+      await expect(btn).toBeVisible();
+      await page.keyboard.press("Tab");
+      await expect(btn).toBeFocused();
+      await page.waitForTimeout(300);
+      await expect(btn).toBeFocused();
+      await expect(btn).toBeVisible();
+      await page.keyboard.press("Shift+Tab");
+      await expect(page.locator("#tab-heading")).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(btn).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.locator("#tab-heading .cmh-sec-caret")).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.locator("#heading-link")).toBeFocused();
+      await page.locator("#tab-heading").focus();
+      await page.keyboard.press("Tab");
+      await expect(btn).toBeFocused();
+      await page.keyboard.press("Enter");
+      const composer = page.locator(".cm-composer").last();
+      await expect(composer.locator("textarea")).toBeFocused();
+      await page.locator("#plain-heading .cmh-review-badge").evaluate((el) => el.remove());
+      await page.locator("#plain-heading").focus();
+      await page.keyboard.press("Tab");
+      await expect(btn).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.locator("#plain-next")).toBeFocused();
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
   // CMH-CONTENT-14 (P1): top-level prose is not width-capped - both the lede and ordinary
   // section paragraphs fill the content column (no readable-measure cap).
   test("top-level prose paragraphs are not width-capped (lede and sections both full width)", async ({ page }) => {
