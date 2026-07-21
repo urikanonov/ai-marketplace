@@ -217,7 +217,13 @@ function markSectionReviewed(heading) {
   // Re-reviewing lifts any prior tombstone for this id.
   const tomb = _deletedReviewIds();
   if (tomb.delete(heading.id)) _saveDeletedReviewIds(tomb);
-  saveReviewMarkers();
+  const savedOk = saveReviewMarkers();
+  // A mark that could not be persisted would silently revert on reload; warn the reader (storage
+  // full/blocked), matching clearSectionReviewed()'s un-review warning and saveComments()'s alert.
+  if (!savedOk && typeof showToast === "function") {
+    showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
+      + "may not stick on reload. Use Export as Portable to keep the change.", { alert: true, duration: 8000 });
+  }
   refreshReviewUI();
 }
 function clearSectionReviewed(heading) {

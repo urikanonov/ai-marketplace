@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.197.0] - 2026-07-21
+
+### Fixed
+
+- Screen readers now announce the FIRST toast of a session. The `#toast` element ships as a live
+  region (`role="status"`/`aria-live="polite"`) so it is already live before any toast fires, and
+  `showToast` sets the role/politeness before mutating the toast text (a live region added in the
+  same tick as its first text change is not announced by most screen readers). (CMH-A11Y-03)
+- Marking a section reviewed now warns when the marker cannot be persisted (localStorage full or
+  blocked) with an assertive toast, instead of silently painting `Reviewed` and letting it revert on
+  reload - symmetric with the existing un-review warning. (CMH-REVIEW-15)
+
 ## [1.196.0] - 2026-07-20
 
 ### Fixed

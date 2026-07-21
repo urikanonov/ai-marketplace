@@ -93,7 +93,7 @@
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.196.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.197.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -454,12 +454,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.197.0] - 2026-07-21</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Screen readers now announce the FIRST toast of a session. The <code>#toast</code> element ships as a live region (<code>role=&quot;status&quot;</code>/<code>aria-live=&quot;polite&quot;</code>) so it is already live before any toast fires, and <code>showToast</code> sets the role/politeness before mutating the toast text (a live region added in the same tick as its first text change is not announced by most screen readers). (CMH-A11Y-03)</li>
+              <li>Marking a section reviewed now warns when the marker cannot be persisted (localStorage full or blocked) with an assertive toast, instead of silently painting <code>Reviewed</code> and letting it revert on reload - symmetric with the existing un-review warning. (CMH-REVIEW-15)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.196.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The floating &quot;Add Comment&quot; affordance is now unified across the structural-anchor layers (image, mermaid, diff, link, widget, heading): only one button is ever visible at a time. A nested <code>&lt;a&gt;&lt;img&gt;&lt;/a&gt;</code> (a common clickable thumbnail or logo) previously left both the image and link buttons showing at once; now the innermost element owns the affordance deterministically, independent of hover-event order, and a dismissed inner button no longer suppresses the enclosing layer. (CMH-ANCHOR-01)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.195.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -467,8 +477,6 @@
               <li>The <code>&lt;head&gt;</code> mermaid-loader scan used by <code>tools/authoring/upgrade.py</code> (when re-emitting the loader into an existing document) and by the example build is now comment-aware: a commented-out <code>&lt;head&gt;</code> or <code>&lt;script&gt;</code> block placed before or around the real document head is no longer mistaken for the head or the loader, so upgrade/regeneration always targets the real loader and never rewrites a decoy inside an HTML comment. The real loader&#x27;s own preceding <code>&lt;!-- Mermaid loader --&gt;</code> comment is still detected and stays part of the swapped block. (CMH-MMD-09)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.194.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -505,14 +513,7 @@
               <li>The validator now warns (an error under <code>--strict</code>, the mandatory finalize path) when a document has no <code>&lt;link rel=&quot;icon&quot;&gt;</code> favicon in its head, so a missing favicon is caught before handoff (CMH-KIND-05). <code>retrofit.py</code> injects the CMH favicon when the host head has none, and <code>upgrade.py</code> adds it when migrating a pre-favicon document (neither duplicates an existing one).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.190.0] - 2026-07-20</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>Clear all comments</code> now also resets a note-only change. Its early-return guard checked comments, widget-state, and checklist changes but omitted <code>notesChanges()</code>, so on a document whose only pending change was an edited <code>data-cmh-note</code> field (no comments, no checklist/widget changes) clicking Clear all was a silent no-op and left the note edit in place. The guard now includes note changes, and the confirm dialog names the widget, checklist, and note resets it performs. (CMH-NOTE-06)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">160 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">161 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
