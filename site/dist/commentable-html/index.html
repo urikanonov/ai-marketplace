@@ -90,7 +90,7 @@
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
         </div>
-        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.195.0<!-- END:version --></span></a>
+        <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.196.0<!-- END:version --></span></a>
       </div>
     </header>
 
@@ -451,12 +451,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.196.0] - 2026-07-20</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The floating &quot;Add Comment&quot; affordance is now unified across the structural-anchor layers (image, mermaid, diff, link, widget, heading): only one button is ever visible at a time. A nested <code>&lt;a&gt;&lt;img&gt;&lt;/a&gt;</code> (a common clickable thumbnail or logo) previously left both the image and link buttons showing at once; now the innermost element owns the affordance deterministically, independent of hover-event order, and a dismissed inner button no longer suppresses the enclosing layer. (CMH-ANCHOR-01)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.195.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The <code>&lt;head&gt;</code> mermaid-loader scan used by <code>tools/authoring/upgrade.py</code> (when re-emitting the loader into an existing document) and by the example build is now comment-aware: a commented-out <code>&lt;head&gt;</code> or <code>&lt;script&gt;</code> block placed before or around the real document head is no longer mistaken for the head or the loader, so upgrade/regeneration always targets the real loader and never rewrites a decoy inside an HTML comment. The real loader&#x27;s own preceding <code>&lt;!-- Mermaid loader --&gt;</code> comment is still detected and stays part of the swapped block. (CMH-MMD-09)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.194.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -464,8 +473,6 @@
               <li>Code and KQL line-number gutters now stay aligned to the text even when a report, deck, or theme gives the block an ambient <code>line-height</code> of the keyword <code>normal</code>. Every code/KQL <code>&lt;pre&gt;</code> now carries a deterministic numeric <code>line-height</code>, so the gutter always reads a stable px line-height instead of falling back to a hardcoded <code>20px</code> (which left the numbers sitting above the text and drifting down a tall block). (CMH-CODE-07)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.193.0] - 2026-07-20</h3></div>
             <div class="group-label">Fixed</div>
@@ -502,14 +509,7 @@
               <li><code>Clear all comments</code> now also resets a note-only change. Its early-return guard checked comments, widget-state, and checklist changes but omitted <code>notesChanges()</code>, so on a document whose only pending change was an edited <code>data-cmh-note</code> field (no comments, no checklist/widget changes) clicking Clear all was a silent no-op and left the note edit in place. The guard now includes note changes, and the confirm dialog names the widget, checklist, and note resets it performs. (CMH-NOTE-06)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.189.0] - 2026-07-20</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Each side-TOC review-filter button (All / Reviewed / Unreviewed / Commented / Changed) now shows a live per-state count as an inline <code>(N)</code> beside its label - <code>All</code> shows the total section count and the four states partition it, so at a glance you see how many sections are in each state. The count refreshes as sections are marked reviewed, commented, or changed. The count span is <code>aria-hidden</code> and its number is folded into each button&#x27;s accessible name so it is announced once, and the label and count stay on one line per button (the group wraps into rows without overflowing the sidebar, even with two-digit counts) (CMH-REVIEW-14).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">159 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">160 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.196.0] - 2026-07-20
+
+### Fixed
+
+- The floating "Add Comment" affordance is now unified across the structural-anchor layers (image,
+  mermaid, diff, link, widget, heading): only one button is ever visible at a time. A nested
+  `<a><img></a>` (a common clickable thumbnail or logo) previously left both the image and link
+  buttons showing at once; now the innermost element owns the affordance deterministically,
+  independent of hover-event order, and a dismissed inner button no longer suppresses the enclosing
+  layer. (CMH-ANCHOR-01)
+
 ## [1.195.0] - 2026-07-20
 
 ### Fixed

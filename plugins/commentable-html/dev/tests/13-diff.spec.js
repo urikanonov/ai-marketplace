@@ -107,6 +107,34 @@ test.describe("diff region (sub-line) comments", () => {
     await expect(page.locator(".cm-card").filter({ hasText: "on the value" })).toHaveCount(1);
   });
 
+  test("selecting sub-line text does not re-show the whole-line add button on a later mousemove (CMH-ANCHOR-01)", async ({ page }) => {
+    const doc = docWithDiff(DOC, "sel.txt");
+    await page.goto(fileUrl(doc));
+    await ready(page);
+    // Hover the line first so it becomes the active diff line (diffActiveLineEl) and its
+    // whole-line button shows - the real precondition before a reader selects sub-line text.
+    await page.evaluate(() => {
+      const el = document.querySelector(".cmh-dl-add");
+      el.scrollIntoView({ block: "center" });
+      el.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 50, clientY: 50 }));
+    });
+    await expect(page.locator("#diffAddBtn")).toBeVisible();
+    // Selecting a region opens the text-selection menu and hides the whole-line diffAddBtn,
+    // while diffActiveLineEl still points at this line (the selection path does not reset it).
+    await selectDiffRegion(page, ".cmh-dl-add", 4, 9); // "value"
+    await expect(page.locator("#menuComment")).toBeVisible();
+    await expect(page.locator("#diffAddBtn")).toBeHidden();
+    // A subsequent mousemove over the SAME line must NOT re-reveal the whole-line button beside
+    // the open selection menu: the unconditional diffActiveLineEl guard early-returns. (Under the
+    // rejected `!diffAddBtn.hidden` variant this fell through and re-showed the button.)
+    await page.evaluate(() => {
+      const el = document.querySelector(".cmh-dl-add");
+      el.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 20 }));
+    });
+    await expect(page.locator("#diffAddBtn")).toBeHidden();
+    await expect(page.locator("#menuComment")).toBeVisible();
+  });
+
   test("a diff line can carry multiple region comments", async ({ page }) => {
     const doc = docWithDiff(DOC, "multi.txt");
     await page.goto(fileUrl(doc));

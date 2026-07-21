@@ -148,7 +148,7 @@ function showLinkAddFor(a) {
   if (linkAddHideTimer) { clearTimeout(linkAddHideTimer); linkAddHideTimer = null; }
   linkAddBtn.hidden = false;
   if (!positionLinkAdd(a)) { linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null; return; }
-  _activeAdd = { el: a, btn: linkAddBtn, position: () => positionLinkAdd(a), clear: () => { pendingLink = null; } };
+  setActiveAdd({ el: a, btn: linkAddBtn, position: () => positionLinkAdd(a), clear: () => { pendingLink = null; } });
 }
 function scheduleHideLinkAdd() {
   if (linkAddHideTimer) clearTimeout(linkAddHideTimer);
@@ -156,7 +156,7 @@ function scheduleHideLinkAdd() {
     // Keep it visible while the pointer is over the button OR the button itself holds
     // focus, so a keyboard user moving to the button does not have it hidden from under them.
     if (!linkAddBtn.matches(":hover") && document.activeElement !== linkAddBtn) {
-      linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null;
+      linkAddBtn.hidden = true; linkActiveEl = null; pendingLink = null; clearActiveAdd(linkAddBtn);
     }
   }, 220);
 }

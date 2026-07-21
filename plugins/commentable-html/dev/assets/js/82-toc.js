@@ -49,12 +49,12 @@ function setupHeadingAnchors() {
     if (headingHideTimer) { clearTimeout(headingHideTimer); headingHideTimer = null; }
     headingAddBtn.hidden = false;
     positionHeadingAdd(h);
-    _activeAdd = { el: h, btn: headingAddBtn, position: () => positionHeadingAdd(h), clear: () => {} };
+    setActiveAdd({ el: h, btn: headingAddBtn, position: () => positionHeadingAdd(h), clear: () => {} });
   }
   function scheduleHideHeadingAdd() {
     if (headingHideTimer) clearTimeout(headingHideTimer);
     headingHideTimer = setTimeout(function () {
-      if (headingAddBtn && !headingAddBtn.matches(":hover")) { headingAddBtn.hidden = true; headingHoverEl = null; }
+      if (headingAddBtn && !headingAddBtn.matches(":hover")) { headingAddBtn.hidden = true; headingHoverEl = null; clearActiveAdd(headingAddBtn); }
     }, 220);
   }
   // Comment on a whole heading by selecting its text and opening the text composer, so
