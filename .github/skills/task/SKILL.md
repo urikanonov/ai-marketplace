@@ -58,6 +58,16 @@ python scripts/task.py stale --minutes 15
 #    start/claim/heartbeat stamp the session id from COPILOT_AGENT_SESSION_ID (override: --session-id).
 python scripts/task.py board                 # add --all-labels for every open issue, --json for rows
 
+#    OPTIONAL: mirror the handling session id + last activity ONTO the Projects v2 board as the
+#    "Session" and "Last active" text fields. Needs the `project` token scope (one-time interactive
+#    grant) and the two fields created once; without them it is a clean no-op that prints how to set up.
+#      gh auth refresh -s project                 # one-time: grant the write scope
+#      # then create TEXT fields named exactly "Session" and "Last active" (board UI or the API;
+#      # project-sync prints the createProjectV2Field mutation with the board id if a field is missing)
+python scripts/task.py project-sync           # --issue N for one, --all-labels to widen, --dry-run
+#    Once set up, run it best-effort from the heartbeat (swallows any project/scope/network error):
+python scripts/task.py heartbeat 188 --watch --project-sync
+
 # 5. Share the implementation plan for approval before coding.
 python scripts/task.py plan 188 "1. Rebase onto main  2. Fix  3. Test"
 
