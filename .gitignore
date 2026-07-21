@@ -51,3 +51,21 @@ plugins/commentable-html/dev/dist/
 
 # Scratch patch/diff dumps (never commit; use tmp/)
 *.diff.txt
+
+# Stray scratch dumped at the repo ROOT. Tooling and (sub-)agents sometimes write a `git diff`, an
+# extracted copy of a source file, a probe script, or captured output at the repo root instead of
+# tmp/ (see AGENTS.md rule 1 and House style). The repo root holds no code files, so ignore code /
+# patch / diff / captured-output dumps HERE. Every pattern is root-anchored (leading /) so nothing
+# under plugins/, scripts/, site/, or .github/ is ever hidden; add a `!/name` line if the root ever
+# legitimately needs one of these.
+/*.patch
+/*.diff
+/*.js
+/*.mjs
+/*.cjs
+/*.ts
+/*.py
+/tmp_*
+/out.txt
+/out.json
+/err.txt

@@ -42,8 +42,13 @@ reading or investigating and will never make a change.
      (`cd .worktrees/<name>` or an absolute worktree path) and tell them so explicitly.
    - **Put ALL scratch and test artifacts under the worktree's gitignored `tmp/` or the OS temp dir -
      NEVER at the repo root** (of either the primary tree or the worktree). Sandbox copies, generated
-     HTML you are not committing, one-off probes, and junction/symlink test fixtures must be created in a
-     temp directory and cleaned up, so neither checkout is ever polluted.
+     HTML you are not committing, one-off probes, `git diff` dumps, extracted copies of a source file,
+     and junction/symlink test fixtures must be created in a temp directory and cleaned up, so neither
+     checkout is ever polluted. Always give the shell command an ABSOLUTE or `tmp/`-prefixed path (or
+     `$env:TEMP` / `os.tmpdir()`), never a bare relative name like `git diff > tmp_diff.patch` - a
+     sub-agent's cwd defaults to the repo root, so a bare name lands in the PRIMARY checkout. A
+     root-anchored `.gitignore` block backstops the common root scratch, but write to `tmp/` in the
+     first place.
 2. **Track the work as a GitHub Issue before any code (issue-first).** Before touching code, use the `gh`
    CLI to search existing issues and create or claim one, label it `task`, set it `In Progress`, and
    assign it to yourself. An issue exists on GitHub the moment you file it - decoupled from any branch,
@@ -696,7 +701,7 @@ exposure is compute/runner abuse.
 - Comment only what the code cannot say; keep comments minimal.
 - Pin third-party GitHub Actions by full commit SHA (Dependabot keeps them current).
 - Never commit secrets.
-- Put temporary artifacts (scratch files, downloaded data, one-off test outputs, generated HTML you are not committing) in the gitignored `tmp/` directory at the repo root, never in the repo root itself or another tracked folder. `tmp/` is tracked only by its `.gitkeep`, so everything else inside it is ignored and the working tree stays clean.
+- Put temporary artifacts (scratch files, downloaded data, one-off test outputs, `git diff` dumps, extracted copies of a source file, probe scripts, generated HTML you are not committing) in the gitignored `tmp/` directory (at the repo root or inside a worktree), never in the repo root itself or another tracked folder. Write them with an ABSOLUTE or `tmp/`-prefixed path (or `$env:TEMP` / `os.tmpdir()`), NOT a bare relative filename: a shell command or (sub-)agent whose working directory defaults to the repo root will otherwise drop a stray `tmp_diff.patch` / `old_54.js` / `out.json` straight into the primary checkout - which is how `diff_local.patch` (an unreferenced SKILL.md diff) once got committed. A root-anchored `.gitignore` block now swallows the common root scratch (`/*.patch`, `/*.diff`, `/*.js`, `/*.mjs`, `/*.py`, `/tmp_*`, `/out.*`, ...) as a backstop, but that is a safety net, not a license to skip `tmp/`. `tmp/` is tracked only by its `.gitkeep`, so everything else inside it is ignored and the working tree stays clean.
 
 ## Feature plans (local, not committed)
 
