@@ -95,6 +95,44 @@ fail in CI unless the fixture is regenerated in the same change:
   `python scripts/build_site_data.py`) rather than hand-editing; the `dist-in-sync` and `site` checks
   enforce it.
 
+## Keeping the CI Playwright shards balanced
+
+The `plugin-tests` critical path is the SLOWEST shard of the sharded jobs, so a lopsided shard wastes
+the whole fan-out. Balance is kept automatically - do not hand-tune shard assignments - but three
+conventions keep it that way, and you must follow them when you add or materially change a test:
+
+- **The `fast` Playwright job is sharded by DURATION, not test count.** CI passes
+  `PLAYWRIGHT_FAST_SHARD=i/N` and `playwright.config.js` (via `tests/_shard.mjs`) runs only the specs
+  that longest-processing-time (LPT) bin-packing assigns to shard i from the committed per-spec
+  timings in `tests/spec-timings.json`. This keeps every shard within ~1% on time even though the few
+  slow specs would otherwise cluster on one shard. **After adding a new `fast` spec, or materially
+  changing an existing one's run time, run `npm run shard:timings`** (from `plugins/commentable-html/dev`)
+  to regenerate the timings and commit them; the assignment then rebalances itself. The `CMH-BUILD-13`
+  guard (`tests/00-projects.spec.js`) FAILS if a spec has no timing (or a timing is orphaned), so a
+  forgotten refresh is caught in CI, not silently unbalanced.
+- **When one test is itself too slow to balance, SPLIT it - do not try to shard around it.** Sharding
+  can only distribute WHOLE tests; a single test that runs far longer than a shard's fair share becomes
+  an irreducible floor. The `CMH-BUILD-13` guard's 1.5x-of-even tripwire flags a `fast` spec that grew
+  too big. The `heavy` job hit the same thing: one mermaid-heavy tutorial-screenshot scene test ran ~90s
+  as a monolith, so it was split into three focused tests (regenerate / determinism / stale) that the
+  shards parallelize (issue #543). Prefer splitting a slow monolith into independent focused tests over
+  any clever sharding.
+- **Write multi-case test generators TYPE-grouped so their cases spread across shards.** The `heavy`
+  job still uses Playwright's count-based `--shard`, which chunks tests by declaration order, so a
+  `for (const scene of SCENES) { test(a); test(b); test(c); }` loop piles one scene's three tests
+  adjacent and onto one shard. Emit them in separate loops (all `a`, then all `b`, then all `c`) so each
+  scene's cases land on different shards (issue #543). The same applies to any new parameterized heavy
+  suite.
+- **Measure CI-representatively.** Windows and an unloaded laptop are not the CI runner. To reason about
+  real shard times, run in the pinned Linux container with the CI settle scale, e.g.
+  `docker run --rm --cpus=4 -e CI=1 -v <plugin>:/work mcr.microsoft.com/playwright:v<ver>-noble ...`;
+  trust RELATIVE per-shard results (a bind-mount inflates absolute times). CI itself is the
+  authoritative number.
+
+The `python` plugin suite is already balanced by round-robin file distribution
+(`scripts/run_plugin_python_tests.py select_shard`); a `ShardMatrixContiguityTests` guard keeps each
+sharded job's matrix a complete `1..N` cover so an entry can never be silently dropped.
+
 ## Running tests locally
 
 - Site suite: from `site/tests`, `npm ci --ignore-scripts`, `npx playwright install chromium`, then

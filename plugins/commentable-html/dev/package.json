@@ -12,6 +12,7 @@
     "shots": "node tools/capture_tutorial.mjs",
     "shots:check": "node tools/capture_tutorial.mjs --check || node tools/capture_tutorial.mjs --check",
     "shots:quality": "node tools/check_shot_quality.mjs",
+    "shard:timings": "node tests/refresh-spec-timings.mjs",
     "test": "npm run shots:check && playwright test",
     "test:py": "python -m unittest discover -s tests -p \"test_*.py\"",
     "test:e2e": "playwright test",

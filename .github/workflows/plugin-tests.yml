@@ -109,11 +109,13 @@ jobs:
     strategy:
       fail-fast: false
       # The FAST Playwright project (everything except the heavy browser-subprocess specs),
-      # sharded across runners. A GitHub-hosted ubuntu runner has 4 vCPUs, so `workers` cannot go
-      # past 4 on one runner; fanning the suite out across shards is the lever that cuts the
-      # critical path. The heavy specs run in the separate `playwright-heavy` job below so their
-      # capture subprocesses do not thrash a shard. The shard is a single "index/total" string so
-      # the count lives in ONE place - dropping an entry cannot silently orphan tests.
+      # sharded across runners by DURATION (playwright.config.js + tests/_shard.mjs read the
+      # matrix shard from PLAYWRIGHT_FAST_SHARD and run only that shard's LPT-balanced spec set).
+      # A GitHub-hosted ubuntu runner has 4 vCPUs, so `workers` cannot go past 4 on one runner;
+      # fanning the suite out across shards is the lever that cuts the critical path. The heavy
+      # specs run in the separate `playwright-heavy` job below so their capture subprocesses do not
+      # thrash a shard. The shard is a single "index/total" string so the count lives in ONE place -
+      # dropping an entry cannot silently orphan tests.
       matrix:
         plugin: ${{ fromJSON(needs.discover.outputs.plugins) }}
         shard: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6"]
@@ -166,7 +168,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ steps.pw.outputs.imageos }}-${{ runner.arch }}-chromium-${{ steps.pw.outputs.version }}
       - name: Run Playwright tests (fast project shard)
-        run: npx playwright test --project=fast "--shard=${SHARD}"
+        # Duration-balanced sharding: PLAYWRIGHT_FAST_SHARD makes playwright.config.js restrict the
+        # fast project to this shard's LPT-balanced spec set (tests/_shard.mjs) instead of
+        # Playwright's count-based --shard, so no one shard is the run-time bottleneck.
+        run: PLAYWRIGHT_FAST_SHARD="${SHARD}" npx playwright test --project=fast
 
   # The HEAVY Playwright project: the browser-subprocess specs (tutorial-screenshot capture) that
   # spawn their own chromium and cannot parallelize past a few concurrent browsers without OS
