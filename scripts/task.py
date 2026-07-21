@@ -10,8 +10,9 @@ The pure helpers (build_body, create_args, tick_checkbox, tick_all_checkboxes, a
 assert_ascii, assert_valid_session, status_body, bump_last_active, set_session, parse_session,
 board_row, format_board, find_status_comment, status_comments, extra_status_comment_ids,
 parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch, branch_slug,
-derive_branch) are unit tested in scripts/test_task.py; the thin `_run` layer shells out to `gh`
-and `git`.
+derive_branch, resolve_project_number, project_field_values, select_text_field_id,
+map_items_by_issue_number, select_item_id_for_project, build_field_update_variables) are unit
+tested in scripts/test_task.py; the thin `_run` layer shells out to `gh` and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
@@ -21,6 +22,7 @@ Usage:
   python scripts/task.py heartbeat 188 [--watch] [--interval 300] [--session-id <id>]
   python scripts/task.py stale [--minutes 15]
   python scripts/task.py board [--all-labels] [--json] [--minutes 15]
+  python scripts/task.py project-sync [--issue 188] [--all-labels] [--dry-run]  # Projects v2 fields
   python scripts/task.py plan 188 "1. Rebase  2. Fix  3. Test"
   python scripts/task.py check-ac 188 1
   python scripts/task.py check-ac 188 --all
@@ -63,6 +65,13 @@ class HeartbeatStop(Exception):
     """Raised when the heartbeat cannot continue (a fatal setup error, e.g. no branch and no
     status comment). The --watch daemon stops on this but keeps beating through transient
     command failures, so a stopped heartbeat still means work genuinely stopped."""
+
+
+class ProjectSyncSkip(Exception):
+    """Raised when project-sync cannot proceed for an EXPECTED, non-fatal reason (the `project`
+    gh scope is not granted, no project is configured, or the board lacks the target fields). It
+    carries an actionable message; the command turns it into a clean no-op (exit 0) so it never
+    breaks a run and is safe to call best-effort from the heartbeat."""
 
 # Smart characters the house style forbids, mapped to their ASCII equivalents.
 SMART = {
@@ -496,6 +505,95 @@ def format_board(rows):
     return "\n".join([header, sep] + [line(r) for r in rows])
 
 
+# --- project-sync (mirror session + last-active onto the Projects v2 board) -------------
+#
+# The board is the maintainer's user-owned GitHub Project (v2). Writing custom fields onto it
+# needs the `project` gh token scope, an interactive one-time grant the automation cannot self-
+# perform (`gh auth refresh -s project`), so this is opt-in and degrades to a clean no-op when the
+# scope, the project, or the two fields are missing. See AGENTS.md "GitHub Issues workflow".
+PROJECT_OWNER = "urikanonov"          # the Projects v2 owner (a user login); env-overridable
+DEFAULT_PROJECT_NUMBER = 1            # "AI Marketplace Tasks" (projects/1); env-overridable
+PROJECT_SESSION_FIELD = "Session"     # text field: the handling Copilot session id
+PROJECT_LAST_ACTIVE_FIELD = "Last active"  # text field: the last-active UTC heartbeat stamp
+# The scope needed to WRITE project fields (read:project alone cannot set a field value).
+PROJECT_SCOPE = "project"
+# Bound each `gh api graphql` call so a hung gh can never block a heartbeat beat indefinitely.
+GRAPHQL_TIMEOUT_SECONDS = 30
+
+
+def resolve_project_number(explicit=None, env=None):
+    """Resolve the Projects v2 number to sync: an explicit --project-number, else the
+    TASK_PROJECT_NUMBER env value, else DEFAULT_PROJECT_NUMBER. Returns the int, or None when the
+    board is intentionally not configured (a value <= 0) or the env value is unparseable - the
+    'no project configured' no-op path. Pure: the env value is passed in for testability."""
+    if explicit is not None:
+        val = explicit
+    elif env:
+        try:
+            val = int(env)
+        except (TypeError, ValueError):
+            return None
+    else:
+        val = DEFAULT_PROJECT_NUMBER
+    return val if isinstance(val, int) and val > 0 else None
+
+
+def project_field_values(status_body_text):
+    """Map a Work status comment body to the two project field values to sync: the handling
+    session id and the last-active UTC stamp (empty strings when absent). Pure."""
+    body = status_body_text or ""
+    return {
+        PROJECT_SESSION_FIELD: parse_session(body) or "",
+        PROJECT_LAST_ACTIVE_FIELD: parse_last_active(body) or "",
+    }
+
+
+def select_text_field_id(fields, name):
+    """Return the node id of the TEXT project field named `name`, or None if there is no such
+    field (or it is not a TEXT field). `fields` is a list of {id,name,dataType} dicts. Pure."""
+    for f in fields or []:
+        if f.get("name") == name and (f.get("dataType") or "").upper() == "TEXT":
+            return f.get("id")
+    return None
+
+
+def map_items_by_issue_number(nodes, repo=None):
+    """Map issue number -> project item id from a list of item nodes {id, content:{number,
+    repository}}. Draft items and non-issue content (no number) are skipped. When `repo`
+    (an owner/name) is given, only issues in THAT repository are mapped - a user-owned board can
+    hold items from several repositories, so keying by number alone could collide across repos and
+    write onto the wrong item. Pure."""
+    out = {}
+    for n in nodes or []:
+        if not n:
+            continue
+        content = n.get("content") or {}
+        number = content.get("number")
+        if not isinstance(number, int) or not n.get("id"):
+            continue
+        if repo is not None and (content.get("repository") or {}).get("nameWithOwner") != repo:
+            continue
+        out[number] = n["id"]
+    return out
+
+
+def select_item_id_for_project(nodes, project_number):
+    """Return the project item id from an issue's projectItems nodes ({id, project:{number}}) whose
+    project number matches `project_number`, or None. Pure - lets project-sync resolve one issue's
+    board item id directly (the heartbeat fast path) without paginating the whole board."""
+    for n in nodes or []:
+        if not n:
+            continue
+        if (n.get("project") or {}).get("number") == project_number and n.get("id"):
+            return n["id"]
+    return None
+
+
+def build_field_update_variables(project_id, item_id, field_id, text):
+    """Build the string variable map for the updateProjectV2ItemFieldValue mutation. Pure."""
+    return {"projectId": project_id, "itemId": item_id, "fieldId": field_id, "value": text}
+
+
 def _positive_int(value):
     """argparse type: an int >= 1 (used for --interval so it never hot-loops or goes negative)."""
     n = int(value)
@@ -801,6 +899,8 @@ def cmd_heartbeat(a):
         except HeartbeatStop as exc:
             raise SystemExit(str(exc))
         print(f"heartbeat {stamp} on #{a.number}")
+        if getattr(a, "project_sync", False):
+            _project_sync_best_effort(a.number)
         return
     print(f"heartbeat daemon: #{a.number} every {a.interval}s (stop it to signal work ended)",
           flush=True)
@@ -809,6 +909,8 @@ def cmd_heartbeat(a):
             try:
                 stamp = _beat_once(a.number, branch, session)
                 print(f"heartbeat {stamp} on #{a.number}", flush=True)
+                if getattr(a, "project_sync", False):
+                    _project_sync_best_effort(a.number)
             except HeartbeatStop:
                 raise  # fatal setup error - stop the daemon (propagates to the outer handler)
             except SystemExit as exc:
@@ -852,6 +954,228 @@ def cmd_board(a):
         print(json.dumps(rows, indent=2))
     else:
         print(format_board(rows))
+
+
+# GraphQL for the Projects v2 board. gh sends string variables with -f and ints with -F; a nonzero
+# gh exit is classified in _graphql (a missing-scope error becomes a clean ProjectSyncSkip no-op).
+_PROJECT_FIELDS_QUERY = (
+    "query($owner:String!,$number:Int!){"
+    " user(login:$owner){ projectV2(number:$number){ id title"
+    " fields(first:50){ nodes{ ... on ProjectV2FieldCommon { id name dataType } } } } } }")
+_PROJECT_ITEMS_QUERY = (
+    "query($owner:String!,$number:Int!,$cursor:String){"
+    " user(login:$owner){ projectV2(number:$number){"
+    " items(first:100, after:$cursor){ pageInfo{ hasNextPage endCursor }"
+    " nodes{ id content{ ... on Issue { number repository { nameWithOwner } } } } } } } }")
+# Resolve ONE issue's board item id directly (the heartbeat fast path), avoiding a full-board scan.
+_ISSUE_ITEMS_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!){"
+    " repository(owner:$owner,name:$name){ issue(number:$number){"
+    " projectItems(first:20){ nodes{ id project{ number } } } } } }")
+_FIELD_UPDATE_MUTATION = (
+    "mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$value:String!){"
+    " updateProjectV2ItemFieldValue(input:{projectId:$projectId,itemId:$itemId,"
+    "fieldId:$fieldId,value:{text:$value}}){ projectV2Item{ id } } }")
+
+
+def _graphql(query, str_vars=None, int_vars=None):
+    """Run a GraphQL query/mutation via `gh api graphql` and return the parsed response. String
+    variables go with -f and integers with -F. A nonzero exit whose message names a required scope
+    is mapped to ProjectSyncSkip (the graceful no-op, with `gh auth refresh` guidance); any other
+    failure (including a timeout - so a hung `gh` can never block a heartbeat beat indefinitely)
+    surfaces stderr and raises SystemExit, which the best-effort heartbeat wrapper swallows."""
+    args = ["gh", "api", "graphql", "-f", f"query={query}"]
+    for k, v in (str_vars or {}).items():
+        args += ["-f", f"{k}={v}"]
+    for k, v in (int_vars or {}).items():
+        args += ["-F", f"{k}={int(v)}"]
+    try:
+        res = subprocess.run(args, capture_output=True, text=True, timeout=GRAPHQL_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write(f"gh api graphql timed out after {GRAPHQL_TIMEOUT_SECONDS}s\n")
+        raise SystemExit(1)
+    if res.returncode != 0:
+        msg = (res.stderr or res.stdout or "gh api graphql failed").strip()
+        low = msg.lower()
+        if "required scopes" in low or "read:project" in low:
+            raise ProjectSyncSkip(
+                f"the gh token lacks the '{PROJECT_SCOPE}' scope; grant it once with "
+                f"`gh auth refresh -s {PROJECT_SCOPE}` (a one-time interactive step), then re-run")
+        sys.stderr.write(msg + "\n")
+        raise SystemExit(1)
+    return json.loads(res.stdout)
+
+
+def _token_scopes():
+    """Return the ACTIVE gh account's token scopes as a set, or None if they cannot be confidently
+    read. Used to skip project-sync PROACTIVELY (a precise up-front message) when `project` is not
+    granted, before any GraphQL call. Returns None - deferring to the reactive check in _graphql -
+    whenever it cannot be sure (no scopes line, an unparseable line, or the active account's line
+    is not identifiable), so a `gh` output-format shift can never falsely assert the scope is
+    absent and turn a working sync into a permanent silent no-op."""
+    res = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
+    text = (res.stdout or "") + (res.stderr or "")
+    active = False
+    for line in text.splitlines():
+        low = line.lower()
+        if re.search(r"logged in to .*account", low):
+            active = False  # a new account block; not the active one until proven below
+        if re.search(r"active account:\s*true", low):
+            active = True
+        m = re.search(r"Token scopes:\s*(.*)", line)
+        if m and active:
+            found = re.findall(r"'([^']+)'", m.group(1))
+            return set(found) if found else None
+    return None
+
+
+def _resolve_project(owner, number):
+    """Return (project_id, {field_name: field_id}) for the two synced text fields. Raises
+    ProjectSyncSkip when the project is not found or either field is missing (with the one-time
+    field-creation guidance) - both expected, non-fatal 'not set up yet' conditions."""
+    data = _graphql(_PROJECT_FIELDS_QUERY, str_vars={"owner": owner}, int_vars={"number": number})
+    project = ((data.get("data") or {}).get("user") or {}).get("projectV2")
+    if not project:
+        raise ProjectSyncSkip(
+            f"Projects v2 #{number} was not found for owner '{owner}' (check TASK_PROJECT_OWNER/"
+            "TASK_PROJECT_NUMBER); nothing to sync")
+    fields = (project.get("fields") or {}).get("nodes") or []
+    ids = {name: select_text_field_id(fields, name)
+           for name in (PROJECT_SESSION_FIELD, PROJECT_LAST_ACTIVE_FIELD)}
+    missing = [name for name, fid in ids.items() if not fid]
+    if missing:
+        raise ProjectSyncSkip(
+            f"the board is missing the text field(s) {missing}; create them once (board UI, or via "
+            f"the Projects v2 API on project id {project['id']}), then re-run. Example: gh api "
+            f"graphql -f query='mutation{{ createProjectV2Field(input:{{projectId:\"{project['id']}\","
+            f" dataType:TEXT, name:\"{missing[0]}\" }}){{ projectV2Field{{ ... on ProjectV2Field "
+            "{ id name } } } }}'")
+    return project["id"], ids
+
+
+def _fetch_project_items(owner, number):
+    """Return all project item nodes ({id, content:{number, repository}}), following pagination."""
+    nodes, cursor = [], None
+    while True:
+        str_vars = {"owner": owner}
+        if cursor:
+            str_vars["cursor"] = cursor
+        data = _graphql(_PROJECT_ITEMS_QUERY, str_vars=str_vars, int_vars={"number": number})
+        items = (((data.get("data") or {}).get("user") or {}).get("projectV2") or {}).get("items") or {}
+        nodes.extend(items.get("nodes") or [])
+        page = items.get("pageInfo") or {}
+        if not page.get("hasNextPage"):
+            return nodes
+        cursor = page.get("endCursor")
+        if not cursor:
+            return nodes
+
+
+def _issue_project_item_id(project_number, issue_number):
+    """Return the board item id for ONE issue in REPO (or None) without scanning the whole board -
+    the heartbeat fast path. Queries the issue's projectItems and picks the one on project
+    `project_number`."""
+    owner, name = REPO.split("/", 1)
+    data = _graphql(_ISSUE_ITEMS_QUERY, str_vars={"owner": owner, "name": name},
+                    int_vars={"number": issue_number})
+    issue = ((data.get("data") or {}).get("repository") or {}).get("issue") or {}
+    nodes = (issue.get("projectItems") or {}).get("nodes") or []
+    return select_item_id_for_project(nodes, project_number)
+
+
+def _apply_field_values(project_id, item_id, field_ids, values, dry_run, number):
+    """Set the two text fields on one item from `values`. An EMPTY value is skipped INTENTIONALLY:
+    the board is never clobbered blank (an issue's fields are only ever advanced, and the sweep
+    only touches OPEN issues whose heartbeat keeps both values fresh). Returns True if anything was
+    set."""
+    wrote = False
+    for name in (PROJECT_SESSION_FIELD, PROJECT_LAST_ACTIVE_FIELD):
+        text = values.get(name, "")
+        if not text:
+            continue
+        if dry_run:
+            print(f"project-sync: #{number} would set {name!r} = {text}")
+            wrote = True
+            continue
+        _graphql(_FIELD_UPDATE_MUTATION,
+                 str_vars=build_field_update_variables(project_id, item_id, field_ids[name], text))
+        wrote = True
+    return wrote
+
+
+def _run_project_sync(a):
+    """Do the project-sync work; raises ProjectSyncSkip for expected 'not configured / not set up'
+    conditions (the caller turns those into a clean no-op)."""
+    number = resolve_project_number(a.project_number, os.environ.get("TASK_PROJECT_NUMBER"))
+    if number is None:
+        raise ProjectSyncSkip(
+            "no project configured (a value <= 0 or an unparseable TASK_PROJECT_NUMBER); "
+            "set TASK_PROJECT_NUMBER or pass --project-number to enable the sync")
+    owner = os.environ.get("TASK_PROJECT_OWNER") or PROJECT_OWNER
+    scopes = _token_scopes()
+    if scopes is not None and PROJECT_SCOPE not in scopes:
+        raise ProjectSyncSkip(
+            f"the gh token lacks the '{PROJECT_SCOPE}' scope; grant it once with "
+            f"`gh auth refresh -s {PROJECT_SCOPE}` (a one-time interactive step), then re-run")
+    project_id, field_ids = _resolve_project(owner, number)
+    if a.issue is not None:
+        # Fast path: resolve just this issue's board item id, no full-board scan (heartbeat-safe).
+        targets = [{"number": a.issue}]
+        items = {a.issue: _issue_project_item_id(number, a.issue)}
+    else:
+        args = ["gh", "issue", "list", "--repo", REPO, "--state", "open",
+                "--limit", str(BOARD_LIMIT), "--json", "number,title"]
+        if not a.all_labels:
+            args += ["--label", TASK_LABEL]
+        targets = json.loads(_capture(args))
+        targets.sort(key=lambda it: it.get("number", 0))
+        # Restrict to THIS repo's items - a user-owned board can hold other repos' issues.
+        items = map_items_by_issue_number(_fetch_project_items(owner, number), repo=REPO)
+    viewer = _viewer_login()
+    synced = off_board = 0
+    for it in targets:
+        num = it["number"]
+        item_id = items.get(num)
+        if not item_id:
+            sys.stderr.write(
+                f"project-sync: #{num} is not on the board; skipping (a `{TASK_LABEL}` issue is "
+                "auto-added when created)\n")
+            off_board += 1
+            continue
+        matches = status_comments(_list_comments(num), trusted_only=True, viewer=viewer)
+        body = _pick_survivor(matches)["body"] if matches else ""
+        if _apply_field_values(project_id, item_id, field_ids,
+                               project_field_values(body), a.dry_run, num):
+            synced += 1
+    verb = "would update" if a.dry_run else "updated"
+    tail = f" ({off_board} not on the board)" if off_board else ""
+    print(f"project-sync: {verb} {synced} issue(s) on project #{number}{tail}")
+
+
+def cmd_project_sync(a):
+    """Mirror the handling session id and last-active stamp onto the Projects v2 board's Session
+    and Last active text fields. A missing `project` scope, unconfigured project, or missing field
+    is a clean no-op (exit 0) with actionable guidance, so it never breaks a run."""
+    try:
+        _run_project_sync(a)
+    except ProjectSyncSkip as skip:
+        sys.stderr.write(f"project-sync: {skip}\n")
+
+
+def _project_sync_best_effort(number):
+    """Best-effort single-issue project-sync for the heartbeat: never raises, so a project/scope/
+    network problem can never break a beat. Returns True only on a clean run."""
+    class _A:
+        issue = number
+        all_labels = False
+        project_number = None
+        dry_run = False
+    try:
+        cmd_project_sync(_A())
+        return True
+    except (Exception, SystemExit) as exc:  # SystemExit from a non-scope gh failure must not kill a beat
+        sys.stderr.write(f"project-sync (heartbeat, ignored): {exc}\n")
+        return False
 
 
 def cmd_stale(a):
@@ -938,6 +1262,9 @@ def build_parser():
                     help="loop, beating every --interval seconds until stopped")
     hb.add_argument("--interval", type=_positive_int, default=HEARTBEAT_INTERVAL_SECONDS,
                     help=f"seconds between beats in --watch mode (default {HEARTBEAT_INTERVAL_SECONDS})")
+    hb.add_argument("--project-sync", action="store_true",
+                    help="after each beat, best-effort sync this issue's Session/Last active fields "
+                         "onto the Projects v2 board (no-op without the `project` scope)")
     hb.set_defaults(func=cmd_heartbeat)
 
     sl = sub.add_parser("stale", help="list in-progress issues with a missing or old heartbeat")
@@ -952,6 +1279,18 @@ def build_parser():
     bd.add_argument("--minutes", type=_non_negative_int, default=HEARTBEAT_STALE_MINUTES,
                     help=f"staleness threshold in minutes for the active/stale state (default {HEARTBEAT_STALE_MINUTES})")
     bd.set_defaults(func=cmd_board)
+
+    ps = sub.add_parser("project-sync",
+                        help="sync Session and Last active fields onto the Projects v2 board")
+    ps.add_argument("--issue", type=int, help="sync only this issue (default: all open task issues)")
+    ps.add_argument("--all-labels", action="store_true",
+                    help="include every open issue (default: task-labeled issues only)")
+    ps.add_argument("--project-number", type=int,
+                    help="Projects v2 number (default: env TASK_PROJECT_NUMBER or "
+                         f"{DEFAULT_PROJECT_NUMBER})")
+    ps.add_argument("--dry-run", action="store_true",
+                    help="print the field values that would be set without writing them")
+    ps.set_defaults(func=cmd_project_sync)
 
     pl = sub.add_parser("plan", help="post an implementation-plan comment")
     pl.add_argument("number", type=int)

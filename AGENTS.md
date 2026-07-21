@@ -824,6 +824,28 @@ issue: `start`/`claim`/`heartbeat` stamp it into the "Work status" comment autom
 session owns each issue. The heartbeat helpers are pure and unit-tested in `scripts/test_task.py` (the
 required `validate` check runs them).
 
+The same handling session id and last activity can also live ON the Projects v2 board (the "AI
+Marketplace Tasks" board) as sortable custom fields, so the maintainer sees them next to each card
+without running `board`. `python scripts/task.py project-sync` writes each open `task` issue's handling
+session id and last-active stamp from its "Work status" comment onto two board text fields, "Session"
+and "Last active" (`--issue N` syncs one issue, `--all-labels` widens the sweep, `--dry-run` prints
+without writing). Because writing a Projects v2 field needs the `project` token scope - an interactive
+one-time grant the automation cannot self-perform - this is opt-in and ONE-TIME SETUP is required:
+
+1. Grant the scope once: `gh auth refresh -s project` (interactive; the `urikanonov` token ships with
+   `read:org`/`repo`/`workflow` but not `project`).
+2. Create the two TEXT fields on the board once - by hand in the board UI ("+ Field" -> Text, named
+   exactly `Session` and `Last active`), or via the Projects v2 API. `project-sync` prints the exact
+   `createProjectV2Field` mutation (with the board's project id filled in) if a field is missing.
+
+Until BOTH are done, `project-sync` is a clean NO-OP (exit 0) that prints how to finish setup, so it
+never breaks a run. Once set up, it is safe to run best-effort from the heartbeat itself:
+`python scripts/task.py heartbeat <n> --watch --project-sync` mirrors the fields after every beat and
+swallows any project/scope/network error so a beat is never lost. The board owner and number default to
+`urikanonov` / project `1` and can be overridden with `TASK_PROJECT_OWNER` / `TASK_PROJECT_NUMBER` (a
+number `<= 0` disables the sync). The pure parts (status-comment -> field values, the field-update
+payload, project-number resolution, field/item lookup) are unit-tested in `scripts/test_task.py`.
+
 ## Driving a PR or issue to completion (drive-to-merge)
 
 When the user asks to drive a PR or an issue to completion - "drive this PR to merge", "drive this
