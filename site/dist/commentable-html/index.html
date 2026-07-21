@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.200.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.201.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,12 +456,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.201.0] - 2026-07-21</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Keyboard users can now tab from a focused heading to the floating heading Add Comment button, keep it visible while focused, and continue through the next valid heading controls or links without getting trapped on disabled, inert, or programmatic-only candidates. (CMH-A11Y-08)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.200.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Image comments now share one index-plus-src anchor resolver across reload restoration, jump-to-comment, edit-composer positioning, and section-review lookup, with image metadata disambiguation for duplicate-source images and labelled chart canvases, so a stale image index after a document reorders images no longer sends the scroll target or editor to the wrong image. (CMH-IMG-07)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.199.1] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
@@ -469,8 +478,6 @@
               <li>Prevented sortable-table reloads from restoring discontiguous multi-row text highlights over unrelated rows while keeping the comment listed and recoverable.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.199.0] - 2026-07-21</h3></div>
             <div class="group-label">Added</div>
@@ -500,14 +507,7 @@
               <li>The floating &quot;Add Comment&quot; affordance is now unified across the structural-anchor layers (image, mermaid, diff, link, widget, heading): only one button is ever visible at a time. A nested <code>&lt;a&gt;&lt;img&gt;&lt;/a&gt;</code> (a common clickable thumbnail or logo) previously left both the image and link buttons showing at once; now the innermost element owns the affordance deterministically, independent of hover-event order, and a dismissed inner button no longer suppresses the enclosing layer. (CMH-ANCHOR-01)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.195.0] - 2026-07-20</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The <code>&lt;head&gt;</code> mermaid-loader scan used by <code>tools/authoring/upgrade.py</code> (when re-emitting the loader into an existing document) and by the example build is now comment-aware: a commented-out <code>&lt;head&gt;</code> or <code>&lt;script&gt;</code> block placed before or around the real document head is no longer mistaken for the head or the loader, so upgrade/regeneration always targets the real loader and never rewrites a decoy inside an HTML comment. The real loader&#x27;s own preceding <code>&lt;!-- Mermaid loader --&gt;</code> comment is still detected and stays part of the swapped block. (CMH-MMD-09)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">165 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">166 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

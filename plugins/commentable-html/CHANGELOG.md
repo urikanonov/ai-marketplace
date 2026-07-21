@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.201.0] - 2026-07-21
+
+### Fixed
+
+- Keyboard users can now tab from a focused heading to the floating heading Add Comment button, keep it visible while focused, and continue through the next valid heading controls or links without getting trapped on disabled, inert, or programmatic-only candidates. (CMH-A11Y-08)
+
 ## [1.200.0] - 2026-07-21
 
 ### Fixed
