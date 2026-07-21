@@ -256,13 +256,11 @@ class ParserTests(unittest.TestCase):
     def test_project_sync_parses_defaults_and_flags(self):
         args = task.build_parser().parse_args(["project-sync"])
         self.assertIsNone(args.issue)
-        self.assertFalse(args.all_labels)
         self.assertIsNone(args.project_number)
         self.assertFalse(args.dry_run)
         args = task.build_parser().parse_args(
-            ["project-sync", "--issue", "5", "--all-labels", "--project-number", "3", "--dry-run"])
+            ["project-sync", "--issue", "5", "--project-number", "3", "--dry-run"])
         self.assertEqual(args.issue, 5)
-        self.assertTrue(args.all_labels)
         self.assertEqual(args.project_number, 3)
         self.assertTrue(args.dry_run)
 
@@ -523,45 +521,6 @@ class SelectTextFieldIdTests(unittest.TestCase):
         self.assertIsNone(task.select_text_field_id(fields, "Session"))
 
 
-class MapItemsByIssueNumberTests(unittest.TestCase):
-    def test_maps_issue_number_to_item_id(self):
-        nodes = [
-            {"id": "PVTI_1", "content": {"number": 5}},
-            {"id": "PVTI_2", "content": {"number": 9}},
-        ]
-        self.assertEqual(task.map_items_by_issue_number(nodes), {5: "PVTI_1", 9: "PVTI_2"})
-
-    def test_skips_draft_and_non_issue_items(self):
-        nodes = [
-            {"id": "PVTI_draft", "content": None},
-            {"id": "PVTI_nonum", "content": {}},
-            {"id": "PVTI_ok", "content": {"number": 3}},
-        ]
-        self.assertEqual(task.map_items_by_issue_number(nodes), {3: "PVTI_ok"})
-
-    def test_empty_nodes(self):
-        self.assertEqual(task.map_items_by_issue_number([]), {})
-
-    def test_skips_null_node_and_node_without_id(self):
-        nodes = [None, {"content": {"number": 7}}, {"id": "PVTI_ok", "content": {"number": 8}}]
-        self.assertEqual(task.map_items_by_issue_number(nodes), {8: "PVTI_ok"})
-
-    def test_repo_filter_keeps_only_matching_repo(self):
-        nodes = [
-            {"id": "PVTI_mine", "content": {"number": 5,
-                                            "repository": {"nameWithOwner": "urikanonov/ai-marketplace"}}},
-            {"id": "PVTI_other", "content": {"number": 5,
-                                             "repository": {"nameWithOwner": "someone/else"}}},
-        ]
-        self.assertEqual(
-            task.map_items_by_issue_number(nodes, repo="urikanonov/ai-marketplace"),
-            {5: "PVTI_mine"})
-
-    def test_repo_filter_drops_item_missing_repository(self):
-        nodes = [{"id": "PVTI_x", "content": {"number": 5}}]
-        self.assertEqual(task.map_items_by_issue_number(nodes, repo="urikanonov/ai-marketplace"), {})
-
-
 class SelectItemIdForProjectTests(unittest.TestCase):
     NODES = [
         {"id": "PVTI_other", "project": {"id": "PVT_other"}},
@@ -733,37 +692,49 @@ class FieldUpdatesTests(unittest.TestCase):
         self.assertEqual(got, {task.PROJECT_SESSION_FIELD: "sess-1"})
 
 
-class MapItemLastActiveTests(unittest.TestCase):
-    def test_maps_item_id_to_current_last_active(self):
-        nodes = [
-            {"id": "IT_1", "fieldValues": {"nodes": [
-                {"text": "2026-07-18T13:58:00Z", "field": {"name": "Last active"}}]}},
-            {"id": "IT_2", "fieldValues": {"nodes": []}},
-        ]
-        got = task.map_item_last_active(nodes)
-        self.assertEqual(got["IT_1"], "2026-07-18T13:58:00Z")
-        self.assertEqual(got["IT_2"], "")
+class FieldActionTests(unittest.TestCase):
+    NOW = datetime(2026, 7, 21, 14, 0, 0, tzinfo=timezone.utc)
 
-    def test_skips_null_and_id_less_nodes(self):
-        nodes = [None, {"fieldValues": {"nodes": []}}, {"id": "IT_9", "fieldValues": {"nodes": []}}]
-        self.assertEqual(set(task.map_item_last_active(nodes)), {"IT_9"})
+    def test_open_and_fresh_is_set(self):
+        self.assertEqual(task.field_action("OPEN", "2026-07-21T13:58:00Z", self.NOW), "set")
+
+    def test_open_but_stale_is_clear(self):
+        self.assertEqual(task.field_action("OPEN", "2026-07-21T10:00:00Z", self.NOW), "clear")
+
+    def test_open_with_missing_last_active_is_clear(self):
+        self.assertEqual(task.field_action("OPEN", "", self.NOW), "clear")
+
+    def test_closed_is_clear_even_if_fresh(self):
+        self.assertEqual(task.field_action("CLOSED", "2026-07-21T13:59:00Z", self.NOW), "clear")
+
+    def test_state_is_case_insensitive(self):
+        self.assertEqual(task.field_action("open", "2026-07-21T13:58:00Z", self.NOW), "set")
+        self.assertEqual(task.field_action("closed", "2026-07-21T13:58:00Z", self.NOW), "clear")
+
+    def test_unknown_state_is_clear(self):
+        self.assertEqual(task.field_action(None, "2026-07-21T13:58:00Z", self.NOW), "clear")
 
 
 class _StubProjectSync:
     """Monkeypatch the gh/GraphQL boundary so project-sync ORCHESTRATION is testable end to end:
-    _graphql dispatches on the (identity-compared) query constant and records mutations;
-    _token_scopes / _viewer_login / _list_comments / _capture return canned data."""
-    def __init__(self, scopes=frozenset({"project"}), fields=None, issue_nodes=None,
-                 sweep_nodes=None, issue_list=None, comments_by_issue=None):
+    _graphql dispatches on the (identity-compared) query constant and records update/clear
+    mutations; _token_scopes / _viewer_login / _list_comments return canned data; _utc_now is
+    pinned so the field_action (set/clear) decision is deterministic."""
+    NOW = datetime(2026, 7, 21, 14, 0, 0, tzinfo=timezone.utc)
+
+    def __init__(self, scopes=frozenset({"project"}), fields=None, issue_state="OPEN",
+                 issue_nodes=None, sweep_nodes=None, comments_by_issue=None, now=None):
         self.scopes = None if scopes is None else set(scopes)
         self.fields = fields if fields is not None else [
             {"id": "F_sess", "name": "Session", "dataType": "TEXT"},
             {"id": "F_last", "name": "Last active", "dataType": "TEXT"}]
+        self.issue_state = issue_state
         self.issue_nodes = issue_nodes or []
         self.sweep_nodes = sweep_nodes or []
-        self.issue_list = issue_list or []
         self.comments_by_issue = comments_by_issue or {}
-        self.mutations = []
+        self.now = now or self.NOW
+        self.mutations = []   # update (set) mutations
+        self.clears = []      # clear mutations
         self.graphql_calls = 0
 
     def _graphql(self, query, str_vars=None, int_vars=None):
@@ -772,41 +743,48 @@ class _StubProjectSync:
             return {"data": {"user": {"projectV2": {"id": "PVT_1",
                     "fields": {"nodes": self.fields}}}}}
         if query == task._ISSUE_ITEMS_QUERY:
-            return {"data": {"repository": {"issue": {"projectItems": {"nodes": self.issue_nodes}}}}}
+            return {"data": {"repository": {"issue": {"state": self.issue_state,
+                    "projectItems": {"nodes": self.issue_nodes}}}}}
         if query == task._PROJECT_ITEMS_QUERY:
             return {"data": {"user": {"projectV2": {"items": {
                     "pageInfo": {"hasNextPage": False}, "nodes": self.sweep_nodes}}}}}
         if query == task._FIELD_UPDATE_MUTATION:
             self.mutations.append(str_vars)
             return {"data": {"updateProjectV2ItemFieldValue": {"projectV2Item": {"id": str_vars["itemId"]}}}}
+        if query == task._FIELD_CLEAR_MUTATION:
+            self.clears.append(str_vars)
+            return {"data": {"clearProjectV2ItemFieldValue": {"projectV2Item": {"id": str_vars["itemId"]}}}}
         raise AssertionError(f"unexpected query: {query[:40]}")
 
     def __enter__(self):
         self._orig = (task._graphql, task._token_scopes, task._viewer_login,
-                      task._list_comments, task._capture)
+                      task._list_comments, task._utc_now)
         task._graphql = self._graphql
         task._token_scopes = lambda: self.scopes
         task._viewer_login = lambda timeout=None: "me"
         task._list_comments = lambda number, timeout=None: self.comments_by_issue.get(number, [])
-        task._capture = lambda args, timeout=None: json.dumps(self.issue_list)
+        task._utc_now = lambda: self.now
         return self
 
     def __exit__(self, *exc):
         (task._graphql, task._token_scopes, task._viewer_login,
-         task._list_comments, task._capture) = self._orig
+         task._list_comments, task._utc_now) = self._orig
 
 
 class _PSArgs:
-    def __init__(self, issue=None, all_labels=False, project_number=1, dry_run=False):
+    def __init__(self, issue=None, project_number=1, dry_run=False):
         self.issue = issue
-        self.all_labels = all_labels
         self.project_number = project_number
         self.dry_run = dry_run
 
 
 class ProjectSyncRoutingTests(unittest.TestCase):
-    """Orchestration tests for cmd_project_sync with the gh/GraphQL boundary stubbed (the added
-    pure-helper tests do not exercise target selection, item resolution, or the mutations)."""
+    """Orchestration tests for cmd_project_sync with the gh/GraphQL boundary stubbed (the pure-helper
+    tests do not exercise target selection, item resolution, or the set/clear mutations). Timestamps
+    are relative to _StubProjectSync.NOW (2026-07-21T14:00Z)."""
+
+    FRESH = "2026-07-21T13:58:00Z"   # within the 15-min stale window of NOW
+    STALE = "2026-07-21T10:00:00Z"   # older than the stale window
 
     def setUp(self):
         self._env = {k: os.environ.pop(k, None) for k in ("TASK_PROJECT_NUMBER", "TASK_PROJECT_OWNER")}
@@ -816,8 +794,17 @@ class ProjectSyncRoutingTests(unittest.TestCase):
             if v is not None:
                 os.environ[k] = v
 
-    def _status(self, session="sess-abc", last="2026-07-18T13:58:00Z"):
-        return [{"id": 1, "body": task.status_body("issue-5-foo", last, session), "assoc": "OWNER"}]
+    def _status(self, session="sess-abc", last=None):
+        return [{"id": 1, "body": task.status_body("issue-5-foo", last or self.FRESH, session),
+                 "assoc": "OWNER"}]
+
+    def _fv(self, session="", last=""):
+        nodes = []
+        if session:
+            nodes.append({"text": session, "field": {"name": "Session"}})
+        if last:
+            nodes.append({"text": last, "field": {"name": "Last active"}})
+        return {"nodes": nodes}
 
     def test_no_op_when_scope_missing(self):
         with _StubProjectSync(scopes={"repo"}) as stub:
@@ -830,49 +817,104 @@ class ProjectSyncRoutingTests(unittest.TestCase):
             task.cmd_project_sync(_PSArgs(issue=5, project_number=0))
         self.assertEqual(stub.graphql_calls, 0)
 
-    def test_fast_path_writes_both_fields_for_fresh_issue(self):
-        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": {"nodes": []}}]
-        with _StubProjectSync(issue_nodes=nodes, comments_by_issue={5: self._status()}) as stub:
+    def test_fast_path_writes_both_fields_for_fresh_open_issue(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": self._fv()}]
+        with _StubProjectSync(issue_state="OPEN", issue_nodes=nodes,
+                              comments_by_issue={5: self._status()}) as stub:
             task.cmd_project_sync(_PSArgs(issue=5))
         self.assertEqual(len(stub.mutations), 2)
+        self.assertEqual(stub.clears, [])
         self.assertTrue(all(m["itemId"] == "IT_5" for m in stub.mutations))
-        self.assertEqual({m["value"] for m in stub.mutations},
-                         {"sess-abc", "2026-07-18T13:58:00Z"})
+        self.assertEqual({m["value"] for m in stub.mutations}, {"sess-abc", self.FRESH})
 
     def test_fast_path_stale_writer_skips_when_board_newer(self):
-        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": {"nodes": [
-            {"text": "2026-07-20T09:00:00Z", "field": {"name": "Last active"}}]}}]
-        with _StubProjectSync(issue_nodes=nodes,
-                              comments_by_issue={5: self._status(last="2026-07-18T13:58:00Z")}) as stub:
-            task.cmd_project_sync(_PSArgs(issue=5))
-        self.assertEqual(stub.mutations, [])  # board already newer; no regression
-
-    def test_fast_path_off_board_issue_writes_nothing(self):
-        nodes = [{"id": "IT_X", "project": {"id": "PVT_OTHER"}, "fieldValues": {"nodes": []}}]
-        with _StubProjectSync(issue_nodes=nodes, comments_by_issue={5: self._status()}) as stub:
+        # Fresh heartbeat, but the board already shows an even newer stamp: monotonic guard -> no-op.
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"},
+                  "fieldValues": self._fv(session="sess-abc", last="2026-07-21T13:59:30Z")}]
+        with _StubProjectSync(issue_state="OPEN", issue_nodes=nodes,
+                              comments_by_issue={5: self._status(last="2026-07-21T13:58:00Z")}) as stub:
             task.cmd_project_sync(_PSArgs(issue=5))
         self.assertEqual(stub.mutations, [])
+        self.assertEqual(stub.clears, [])
+
+    def test_fast_path_clears_a_closed_issue(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"},
+                  "fieldValues": self._fv(session="old-sess", last=self.STALE)}]
+        with _StubProjectSync(issue_state="CLOSED", issue_nodes=nodes) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.mutations, [])
+        self.assertEqual(len(stub.clears), 2)  # both set fields cleared
+        self.assertTrue(all(c["itemId"] == "IT_5" for c in stub.clears))
+
+    def test_fast_path_closed_but_already_blank_is_a_no_op(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": self._fv()}]
+        with _StubProjectSync(issue_state="CLOSED", issue_nodes=nodes) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.clears, [])
+        self.assertEqual(stub.mutations, [])
+
+    def test_fast_path_clears_a_stale_open_issue(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"},
+                  "fieldValues": self._fv(session="old-sess", last=self.STALE)}]
+        with _StubProjectSync(issue_state="OPEN", issue_nodes=nodes,
+                              comments_by_issue={5: self._status(last=self.STALE)}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.mutations, [])
+        self.assertEqual(len(stub.clears), 2)  # abandoned in-progress issue: clear the dead session
+
+    def test_fast_path_off_board_issue_writes_nothing(self):
+        nodes = [{"id": "IT_X", "project": {"id": "PVT_OTHER"}, "fieldValues": self._fv()}]
+        with _StubProjectSync(issue_state="OPEN", issue_nodes=nodes,
+                              comments_by_issue={5: self._status()}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.mutations, [])
+        self.assertEqual(stub.clears, [])
 
     def test_fast_path_dry_run_writes_nothing(self):
-        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": {"nodes": []}}]
-        with _StubProjectSync(issue_nodes=nodes, comments_by_issue={5: self._status()}) as stub:
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": self._fv()}]
+        with _StubProjectSync(issue_state="OPEN", issue_nodes=nodes,
+                              comments_by_issue={5: self._status()}) as stub:
             task.cmd_project_sync(_PSArgs(issue=5, dry_run=True))
+        self.assertEqual(stub.mutations, [])
+        self.assertEqual(stub.clears, [])
+
+    def test_dry_run_clear_issues_no_mutation(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"},
+                  "fieldValues": self._fv(session="old", last=self.STALE)}]
+        with _StubProjectSync(issue_state="CLOSED", issue_nodes=nodes) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5, dry_run=True))
+        self.assertEqual(stub.clears, [])
         self.assertEqual(stub.mutations, [])
 
     def test_missing_fields_is_a_no_op(self):
         with _StubProjectSync(fields=[{"id": "F_s", "name": "Status", "dataType": "SINGLE_SELECT"}]) as stub:
             task.cmd_project_sync(_PSArgs(issue=5))
         self.assertEqual(stub.mutations, [])
+        self.assertEqual(stub.clears, [])
 
-    def test_sweep_path_syncs_repo_issues(self):
-        sweep = [{"id": "IT_5", "content": {"number": 5,
-                  "repository": {"nameWithOwner": "urikanonov/ai-marketplace"}},
-                  "fieldValues": {"nodes": []}}]
-        with _StubProjectSync(sweep_nodes=sweep, issue_list=[{"number": 5, "title": "x"}],
-                              comments_by_issue={5: self._status()}) as stub:
+    def _sweep_node(self, number, state, repo="urikanonov/ai-marketplace", fv=None):
+        return {"id": f"IT_{number}", "content": {"number": number, "state": state,
+                "repository": {"nameWithOwner": repo}}, "fieldValues": fv or self._fv()}
+
+    def test_sweep_sets_open_and_clears_closed(self):
+        sweep = [
+            self._sweep_node(5, "OPEN"),
+            self._sweep_node(6, "CLOSED", fv=self._fv(session="old", last=self.STALE)),
+        ]
+        with _StubProjectSync(sweep_nodes=sweep, comments_by_issue={5: self._status()}) as stub:
             task.cmd_project_sync(_PSArgs(issue=None))
-        self.assertEqual(len(stub.mutations), 2)
         self.assertTrue(all(m["itemId"] == "IT_5" for m in stub.mutations))
+        self.assertEqual(len(stub.mutations), 2)   # #5 set
+        self.assertTrue(all(c["itemId"] == "IT_6" for c in stub.clears))
+        self.assertEqual(len(stub.clears), 2)      # #6 cleared
+
+    def test_sweep_ignores_other_repo_items(self):
+        sweep = [self._sweep_node(5, "CLOSED", repo="someone/else",
+                                  fv=self._fv(session="x", last=self.STALE))]
+        with _StubProjectSync(sweep_nodes=sweep) as stub:
+            task.cmd_project_sync(_PSArgs(issue=None))
+        self.assertEqual(stub.clears, [])   # not our repo; never touched
+        self.assertEqual(stub.mutations, [])
 
 
 class HeartbeatProjectSyncRoutingTests(unittest.TestCase):

@@ -59,14 +59,19 @@ python scripts/task.py stale --minutes 15
 python scripts/task.py board                 # add --all-labels for every open issue, --json for rows
 
 #    OPTIONAL: mirror the handling session id + last activity ONTO the Projects v2 board as the
-#    "Session" and "Last active" text fields. Needs the `project` token scope (one-time interactive
-#    grant) and the two fields created once; without them it is a clean no-op that prints how to set up.
+#    "Session" and "Last active" text fields, keeping them CURRENT - it SETS them for open issues with
+#    a fresh heartbeat and CLEARS them for closed/stale issues. Needs the `project` token scope
+#    (one-time interactive grant) and the two fields created once; else it is a clean no-op.
 #      gh auth refresh -s project                 # one-time: grant the write scope
 #      # then create TEXT fields named exactly "Session" and "Last active" (board UI or the API;
 #      # project-sync prints the createProjectV2Field mutation with the board id if a field is missing)
-python scripts/task.py project-sync           # --issue N for one, --all-labels to widen, --dry-run
+python scripts/task.py project-sync           # --issue N for one, --dry-run to preview
 #    Once set up, run it best-effort from the heartbeat (swallows any project/scope/network error):
 python scripts/task.py heartbeat 188 --watch --project-sync
+#    The board is also kept current automatically by the scheduled .github/workflows/project-sync.yml
+#    (cron + issue close/reopen). That workflow needs the same project-scoped token as the repo secret
+#    PROJECT_SYNC_TOKEN (a fine-grained PAT: Projects read/write + Issues read); until it exists the
+#    workflow is a clean no-op.
 
 # 5. Share the implementation plan for approval before coding.
 python scripts/task.py plan 188 "1. Rebase onto main  2. Fix  3. Test"
