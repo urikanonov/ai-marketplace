@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://buttons.github.io; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; frame-src 'self' https://buttons.github.io; base-uri 'self'; form-action 'self'" />
   <title>multi-duck - a panel of AI reviewers for your code, on many models at once</title>
   <meta name="description" content="A skill for Claude Code and the GitHub Copilot CLI that convenes a panel of independent rubber-duck reviewers over your in-flight work - each on a different model so their blind spots do not overlap - then consolidates the findings and applies the safe fixes." />
   <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/multi-duck/" />
@@ -77,6 +77,9 @@
           <a class="btn btn-primary" href="#install">Install</a>
           <a class="btn" href="#how">How it works</a>
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">View source</a>
+          <span class="gh-star">
+            <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
+          </span>
         </div>
         <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version --><!-- END:version --></span></a>
       </div>
@@ -185,6 +188,7 @@
     </div>
   </footer>
 
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
   <script src="../assets/site.js"></script>
 </body>
 </html>

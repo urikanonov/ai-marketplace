@@ -18,8 +18,40 @@ test("hub embeds the GitHub star widget and its CSP permits it", async ({ page }
 });
 
 
-test("plugin and tutorial pages keep a tight CSP (no widget relaxations)", async ({ page }) => {
-  for (const p of ["/commentable-html/", "/commentable-html/tutorial/", "/urikan-ai-marketplace-auto-updater/"]) {
+test("plugin pages embed the GitHub star widget and its CSP permits it (SITE-PLUGIN-02)", async ({ page }) => {
+  // The plugin pages carry exactly the hub's widget-scoped policy - no more. Asserting the whole
+  // string (not just that the required sources are present) makes any future broadening of a
+  // directive (an extra origin, 'unsafe-eval', etc.) fail this test, per SITE-PLUGIN-02's
+  // "exactly what the widget needs" constraint.
+  const EXPECTED_CSP =
+    "default-src 'self'; script-src 'self' https://buttons.github.io; " +
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+    "connect-src 'self' https://api.github.com; frame-src 'self' https://buttons.github.io; " +
+    "base-uri 'self'; form-action 'self'";
+  for (const p of ["/commentable-html/", "/multi-duck/", "/urikan-ai-marketplace-auto-updater/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    // The widget lives in the hero and degrades to a visible plain repo link when its script is blocked.
+    const link = page.locator(".hero a.github-button");
+    await expect(link, p + " hero star widget present").toHaveCount(1);
+    await expect(link, p + " star widget visible").toBeVisible();
+    await expect(link, p + " star widget links to the repo").toHaveAttribute(
+      "href",
+      "https://github.com/urikanonov/ai-marketplace"
+    );
+    await expect(
+      page.locator('script[src="https://buttons.github.io/buttons.js"]'),
+      p + " loads the widget script"
+    ).toHaveCount(1);
+    const csp = await page
+      .locator('meta[http-equiv="Content-Security-Policy"]')
+      .getAttribute("content");
+    expect(csp, p + " CSP is exactly the widget-scoped policy, nothing broader").toBe(EXPECTED_CSP);
+  }
+});
+
+
+test("the tutorial page keeps a tight CSP (no widget relaxations) (SITE-TUT-02)", async ({ page }) => {
+  for (const p of ["/commentable-html/tutorial/"]) {
     await page.goto(p, { waitUntil: "domcontentloaded" });
     const csp = await page
       .locator('meta[http-equiv="Content-Security-Policy"]')
@@ -28,6 +60,7 @@ test("plugin and tutorial pages keep a tight CSP (no widget relaxations)", async
     expect(csp, p + " script-src 'self'").toContain("script-src 'self'");
     expect(csp, p + " must not allow the star-widget script host").not.toContain("buttons.github.io");
     expect(csp, p + " must not allow inline styles/scripts").not.toContain("'unsafe-inline'");
+    await expect(page.locator("a.github-button"), p + " has no star widget").toHaveCount(0);
   }
 });
 

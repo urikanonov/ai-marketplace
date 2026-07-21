@@ -6,6 +6,7 @@ checkbox ticking, and the heartbeat / branch-stamp helpers are covered by a requ
 status check. The `gh` boundary is not exercised here; only the pure helpers and the
 _beat_once routing (with the gh/git calls stubbed) are.
 """
+import json
 import os
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -252,6 +253,25 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(args.slug, "Fix Thing")
         self.assertEqual(args.name, "wt")
 
+    def test_project_sync_parses_defaults_and_flags(self):
+        args = task.build_parser().parse_args(["project-sync"])
+        self.assertIsNone(args.issue)
+        self.assertFalse(args.all_labels)
+        self.assertIsNone(args.project_number)
+        self.assertFalse(args.dry_run)
+        args = task.build_parser().parse_args(
+            ["project-sync", "--issue", "5", "--all-labels", "--project-number", "3", "--dry-run"])
+        self.assertEqual(args.issue, 5)
+        self.assertTrue(args.all_labels)
+        self.assertEqual(args.project_number, 3)
+        self.assertTrue(args.dry_run)
+
+    def test_heartbeat_accepts_project_sync_flag(self):
+        args = task.build_parser().parse_args(["heartbeat", "5", "--project-sync"])
+        self.assertTrue(args.project_sync)
+        args = task.build_parser().parse_args(["heartbeat", "5"])
+        self.assertFalse(args.project_sync)
+
 
 class UtcStampTests(unittest.TestCase):
     def test_formats_fixed_datetime_as_zulu(self):
@@ -426,6 +446,460 @@ class FormatBoardTests(unittest.TestCase):
 
     def test_empty_rows_is_a_message_not_a_crash(self):
         self.assertIn("No open", task.format_board([]))
+
+
+class ResolveProjectNumberTests(unittest.TestCase):
+    def test_explicit_wins(self):
+        self.assertEqual(task.resolve_project_number(explicit=5, env="9"), 5)
+
+    def test_env_fallback_when_no_explicit(self):
+        self.assertEqual(task.resolve_project_number(explicit=None, env="7"), 7)
+
+    def test_default_when_neither(self):
+        self.assertEqual(task.resolve_project_number(explicit=None, env=None),
+                         task.DEFAULT_PROJECT_NUMBER)
+
+    def test_empty_env_falls_back_to_default(self):
+        self.assertEqual(task.resolve_project_number(explicit=None, env=""),
+                         task.DEFAULT_PROJECT_NUMBER)
+
+    def test_zero_disables(self):
+        self.assertIsNone(task.resolve_project_number(explicit=0))
+        self.assertIsNone(task.resolve_project_number(env="0"))
+
+    def test_negative_disables(self):
+        self.assertIsNone(task.resolve_project_number(explicit=-1))
+
+    def test_unparseable_env_disables(self):
+        self.assertIsNone(task.resolve_project_number(env="abc"))
+
+
+class ProjectFieldValuesTests(unittest.TestCase):
+    def test_maps_session_and_last_active_from_status_body(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:58:00Z", "sess-1")
+        vals = task.project_field_values(body)
+        self.assertEqual(vals[task.PROJECT_SESSION_FIELD], "sess-1")
+        self.assertEqual(vals[task.PROJECT_LAST_ACTIVE_FIELD], "2026-07-18T13:58:00Z")
+
+    def test_empty_body_yields_empty_values(self):
+        vals = task.project_field_values("")
+        self.assertEqual(vals[task.PROJECT_SESSION_FIELD], "")
+        self.assertEqual(vals[task.PROJECT_LAST_ACTIVE_FIELD], "")
+
+    def test_missing_session_line_is_empty_string(self):
+        body = task.status_body("issue-5-foo", "2026-07-18T13:58:00Z")
+        vals = task.project_field_values(body)
+        self.assertEqual(vals[task.PROJECT_SESSION_FIELD], "")
+        self.assertEqual(vals[task.PROJECT_LAST_ACTIVE_FIELD], "2026-07-18T13:58:00Z")
+
+
+class SelectTextFieldIdTests(unittest.TestCase):
+    FIELDS = [
+        {"id": "PVTF_status", "name": "Status", "dataType": "SINGLE_SELECT"},
+        {"id": "PVTF_session", "name": "Session", "dataType": "TEXT"},
+        {"id": "PVTF_active", "name": "Last active", "dataType": "TEXT"},
+    ]
+
+    def test_finds_text_field_by_name(self):
+        self.assertEqual(task.select_text_field_id(self.FIELDS, "Session"), "PVTF_session")
+        self.assertEqual(task.select_text_field_id(self.FIELDS, "Last active"), "PVTF_active")
+
+    def test_none_when_absent(self):
+        self.assertIsNone(task.select_text_field_id(self.FIELDS, "Nope"))
+
+    def test_ignores_non_text_field_with_matching_name(self):
+        fields = [{"id": "PVTF_x", "name": "Session", "dataType": "SINGLE_SELECT"}]
+        self.assertIsNone(task.select_text_field_id(fields, "Session"))
+
+    def test_empty_fields_is_none(self):
+        self.assertIsNone(task.select_text_field_id([], "Session"))
+
+    def test_accepts_lowercase_text_datatype(self):
+        fields = [{"id": "PVTF_s", "name": "Session", "dataType": "text"}]
+        self.assertEqual(task.select_text_field_id(fields, "Session"), "PVTF_s")
+
+    def test_missing_datatype_key_is_none(self):
+        fields = [{"id": "PVTF_s", "name": "Session"}]
+        self.assertIsNone(task.select_text_field_id(fields, "Session"))
+
+
+class MapItemsByIssueNumberTests(unittest.TestCase):
+    def test_maps_issue_number_to_item_id(self):
+        nodes = [
+            {"id": "PVTI_1", "content": {"number": 5}},
+            {"id": "PVTI_2", "content": {"number": 9}},
+        ]
+        self.assertEqual(task.map_items_by_issue_number(nodes), {5: "PVTI_1", 9: "PVTI_2"})
+
+    def test_skips_draft_and_non_issue_items(self):
+        nodes = [
+            {"id": "PVTI_draft", "content": None},
+            {"id": "PVTI_nonum", "content": {}},
+            {"id": "PVTI_ok", "content": {"number": 3}},
+        ]
+        self.assertEqual(task.map_items_by_issue_number(nodes), {3: "PVTI_ok"})
+
+    def test_empty_nodes(self):
+        self.assertEqual(task.map_items_by_issue_number([]), {})
+
+    def test_skips_null_node_and_node_without_id(self):
+        nodes = [None, {"content": {"number": 7}}, {"id": "PVTI_ok", "content": {"number": 8}}]
+        self.assertEqual(task.map_items_by_issue_number(nodes), {8: "PVTI_ok"})
+
+    def test_repo_filter_keeps_only_matching_repo(self):
+        nodes = [
+            {"id": "PVTI_mine", "content": {"number": 5,
+                                            "repository": {"nameWithOwner": "urikanonov/ai-marketplace"}}},
+            {"id": "PVTI_other", "content": {"number": 5,
+                                             "repository": {"nameWithOwner": "someone/else"}}},
+        ]
+        self.assertEqual(
+            task.map_items_by_issue_number(nodes, repo="urikanonov/ai-marketplace"),
+            {5: "PVTI_mine"})
+
+    def test_repo_filter_drops_item_missing_repository(self):
+        nodes = [{"id": "PVTI_x", "content": {"number": 5}}]
+        self.assertEqual(task.map_items_by_issue_number(nodes, repo="urikanonov/ai-marketplace"), {})
+
+
+class SelectItemIdForProjectTests(unittest.TestCase):
+    NODES = [
+        {"id": "PVTI_other", "project": {"id": "PVT_other"}},
+        {"id": "PVTI_mine", "project": {"id": "PVT_mine"}},
+    ]
+
+    def test_picks_item_on_matching_project(self):
+        self.assertEqual(task.select_item_id_for_project(self.NODES, "PVT_mine"), "PVTI_mine")
+        self.assertEqual(task.select_item_id_for_project(self.NODES, "PVT_other"), "PVTI_other")
+
+    def test_none_when_no_project_matches(self):
+        self.assertIsNone(task.select_item_id_for_project(self.NODES, "PVT_absent"))
+
+    def test_skips_null_node_and_missing_id(self):
+        nodes = [None, {"project": {"id": "PVT_mine"}}, {"id": "PVTI_ok", "project": {"id": "PVT_mine"}}]
+        self.assertEqual(task.select_item_id_for_project(nodes, "PVT_mine"), "PVTI_ok")
+
+    def test_empty_nodes(self):
+        self.assertIsNone(task.select_item_id_for_project([], "PVT_mine"))
+
+
+class BuildFieldUpdateVariablesTests(unittest.TestCase):
+    def test_builds_string_variable_map(self):
+        got = task.build_field_update_variables("PVT_p", "PVTI_i", "PVTF_f", "sess-1")
+        self.assertEqual(got, {
+            "projectId": "PVT_p",
+            "itemId": "PVTI_i",
+            "fieldId": "PVTF_f",
+            "value": "sess-1",
+        })
+
+
+class ParseActiveScopesTests(unittest.TestCase):
+    def test_single_github_account(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'\n")
+        self.assertEqual(task.parse_active_scopes(text),
+                         {"gist", "project", "read:org", "repo", "workflow"})
+
+    def test_active_account_not_first_on_same_host(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account bot (keyring)\n"
+            "  - Active account: false\n"
+            "  - Token scopes: 'repo'\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'gist', 'project'\n")
+        self.assertEqual(task.parse_active_scopes(text), {"gist", "project"})
+
+    def test_ignores_other_host_active_account(self):
+        text = (
+            "ghe.example.com\n"
+            "  x Logged in to ghe.example.com account alice (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'repo'\n"
+            "\n"
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'gist', 'project', 'repo'\n")
+        self.assertEqual(task.parse_active_scopes(text), {"gist", "project", "repo"})
+
+    def test_none_when_only_other_host(self):
+        text = (
+            "ghe.example.com\n"
+            "  x Logged in to ghe.example.com account alice (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: 'repo', 'project'\n")
+        self.assertIsNone(task.parse_active_scopes(text))
+
+    def test_none_when_scopes_line_unparseable(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n"
+            "  - Token scopes: none listed\n")
+        self.assertIsNone(task.parse_active_scopes(text))
+
+    def test_none_when_no_scopes_line(self):
+        text = (
+            "github.com\n"
+            "  x Logged in to github.com account urikanonov (keyring)\n"
+            "  - Active account: true\n")
+        self.assertIsNone(task.parse_active_scopes(text))
+
+    def test_none_on_empty_text(self):
+        self.assertIsNone(task.parse_active_scopes(""))
+
+
+class ProjectSyncBestEffortTests(unittest.TestCase):
+    """The heartbeat MUST never be broken by a project-sync problem: _project_sync_best_effort must
+    swallow both Exception AND SystemExit (the latter is a BaseException, not an Exception, and is
+    what _capture/_graphql raise on a nonzero gh exit)."""
+
+    def setUp(self):
+        self._orig = task.cmd_project_sync
+
+    def tearDown(self):
+        task.cmd_project_sync = self._orig
+
+    def test_swallows_systemexit_and_returns_false(self):
+        def boom(_a):
+            raise SystemExit(1)
+        task.cmd_project_sync = boom
+        self.assertFalse(task._project_sync_best_effort(5))
+
+    def test_swallows_exception_and_returns_false(self):
+        def boom(_a):
+            raise RuntimeError("network down")
+        task.cmd_project_sync = boom
+        self.assertFalse(task._project_sync_best_effort(5))
+
+    def test_returns_true_on_clean_run(self):
+        task.cmd_project_sync = lambda _a: None
+        self.assertTrue(task._project_sync_best_effort(5))
+
+
+class ItemFieldTextTests(unittest.TestCase):
+    NODES = [
+        {"text": "sess-1", "field": {"name": "Session"}},
+        {"text": "2026-07-18T13:58:00Z", "field": {"name": "Last active"}},
+    ]
+
+    def test_returns_matching_field_text(self):
+        self.assertEqual(task.item_field_text(self.NODES, "Session"), "sess-1")
+        self.assertEqual(task.item_field_text(self.NODES, "Last active"), "2026-07-18T13:58:00Z")
+
+    def test_empty_when_field_absent(self):
+        self.assertEqual(task.item_field_text(self.NODES, "Nope"), "")
+
+    def test_empty_on_none_or_empty_nodes(self):
+        self.assertEqual(task.item_field_text(None, "Session"), "")
+        self.assertEqual(task.item_field_text([], "Session"), "")
+        self.assertEqual(task.item_field_text([None], "Session"), "")
+
+
+class FieldUpdatesTests(unittest.TestCase):
+    def _values(self, session="sess-1", last="2026-07-18T13:58:00Z"):
+        return {task.PROJECT_SESSION_FIELD: session, task.PROJECT_LAST_ACTIVE_FIELD: last}
+
+    def test_writes_both_when_board_empty(self):
+        got = task.field_updates(self._values(), "")
+        self.assertEqual(got, {task.PROJECT_SESSION_FIELD: "sess-1",
+                               task.PROJECT_LAST_ACTIVE_FIELD: "2026-07-18T13:58:00Z"})
+
+    def test_writes_both_when_desired_is_newer(self):
+        got = task.field_updates(self._values(last="2026-07-18T14:00:00Z"), "2026-07-18T13:58:00Z")
+        self.assertEqual(got[task.PROJECT_LAST_ACTIVE_FIELD], "2026-07-18T14:00:00Z")
+
+    def test_skips_all_when_board_is_newer(self):
+        # Stale writer: a slow sweep must not regress a newer heartbeat already on the board.
+        got = task.field_updates(self._values(last="2026-07-18T13:58:00Z"), "2026-07-18T14:05:00Z")
+        self.assertEqual(got, {})
+
+    def test_skips_all_when_equal_idempotent(self):
+        got = task.field_updates(self._values(last="2026-07-18T13:58:00Z"), "2026-07-18T13:58:00Z")
+        self.assertEqual(got, {})
+
+    def test_drops_empty_values(self):
+        got = task.field_updates(self._values(session="", last="2026-07-18T14:00:00Z"), "")
+        self.assertEqual(got, {task.PROJECT_LAST_ACTIVE_FIELD: "2026-07-18T14:00:00Z"})
+
+    def test_empty_last_active_still_writes_session(self):
+        got = task.field_updates(self._values(session="sess-1", last=""), "2026-07-18T14:05:00Z")
+        self.assertEqual(got, {task.PROJECT_SESSION_FIELD: "sess-1"})
+
+
+class MapItemLastActiveTests(unittest.TestCase):
+    def test_maps_item_id_to_current_last_active(self):
+        nodes = [
+            {"id": "IT_1", "fieldValues": {"nodes": [
+                {"text": "2026-07-18T13:58:00Z", "field": {"name": "Last active"}}]}},
+            {"id": "IT_2", "fieldValues": {"nodes": []}},
+        ]
+        got = task.map_item_last_active(nodes)
+        self.assertEqual(got["IT_1"], "2026-07-18T13:58:00Z")
+        self.assertEqual(got["IT_2"], "")
+
+    def test_skips_null_and_id_less_nodes(self):
+        nodes = [None, {"fieldValues": {"nodes": []}}, {"id": "IT_9", "fieldValues": {"nodes": []}}]
+        self.assertEqual(set(task.map_item_last_active(nodes)), {"IT_9"})
+
+
+class _StubProjectSync:
+    """Monkeypatch the gh/GraphQL boundary so project-sync ORCHESTRATION is testable end to end:
+    _graphql dispatches on the (identity-compared) query constant and records mutations;
+    _token_scopes / _viewer_login / _list_comments / _capture return canned data."""
+    def __init__(self, scopes=frozenset({"project"}), fields=None, issue_nodes=None,
+                 sweep_nodes=None, issue_list=None, comments_by_issue=None):
+        self.scopes = None if scopes is None else set(scopes)
+        self.fields = fields if fields is not None else [
+            {"id": "F_sess", "name": "Session", "dataType": "TEXT"},
+            {"id": "F_last", "name": "Last active", "dataType": "TEXT"}]
+        self.issue_nodes = issue_nodes or []
+        self.sweep_nodes = sweep_nodes or []
+        self.issue_list = issue_list or []
+        self.comments_by_issue = comments_by_issue or {}
+        self.mutations = []
+        self.graphql_calls = 0
+
+    def _graphql(self, query, str_vars=None, int_vars=None):
+        self.graphql_calls += 1
+        if query == task._PROJECT_FIELDS_QUERY:
+            return {"data": {"user": {"projectV2": {"id": "PVT_1",
+                    "fields": {"nodes": self.fields}}}}}
+        if query == task._ISSUE_ITEMS_QUERY:
+            return {"data": {"repository": {"issue": {"projectItems": {"nodes": self.issue_nodes}}}}}
+        if query == task._PROJECT_ITEMS_QUERY:
+            return {"data": {"user": {"projectV2": {"items": {
+                    "pageInfo": {"hasNextPage": False}, "nodes": self.sweep_nodes}}}}}
+        if query == task._FIELD_UPDATE_MUTATION:
+            self.mutations.append(str_vars)
+            return {"data": {"updateProjectV2ItemFieldValue": {"projectV2Item": {"id": str_vars["itemId"]}}}}
+        raise AssertionError(f"unexpected query: {query[:40]}")
+
+    def __enter__(self):
+        self._orig = (task._graphql, task._token_scopes, task._viewer_login,
+                      task._list_comments, task._capture)
+        task._graphql = self._graphql
+        task._token_scopes = lambda: self.scopes
+        task._viewer_login = lambda timeout=None: "me"
+        task._list_comments = lambda number, timeout=None: self.comments_by_issue.get(number, [])
+        task._capture = lambda args, timeout=None: json.dumps(self.issue_list)
+        return self
+
+    def __exit__(self, *exc):
+        (task._graphql, task._token_scopes, task._viewer_login,
+         task._list_comments, task._capture) = self._orig
+
+
+class _PSArgs:
+    def __init__(self, issue=None, all_labels=False, project_number=1, dry_run=False):
+        self.issue = issue
+        self.all_labels = all_labels
+        self.project_number = project_number
+        self.dry_run = dry_run
+
+
+class ProjectSyncRoutingTests(unittest.TestCase):
+    """Orchestration tests for cmd_project_sync with the gh/GraphQL boundary stubbed (the added
+    pure-helper tests do not exercise target selection, item resolution, or the mutations)."""
+
+    def setUp(self):
+        self._env = {k: os.environ.pop(k, None) for k in ("TASK_PROJECT_NUMBER", "TASK_PROJECT_OWNER")}
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            if v is not None:
+                os.environ[k] = v
+
+    def _status(self, session="sess-abc", last="2026-07-18T13:58:00Z"):
+        return [{"id": 1, "body": task.status_body("issue-5-foo", last, session), "assoc": "OWNER"}]
+
+    def test_no_op_when_scope_missing(self):
+        with _StubProjectSync(scopes={"repo"}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.mutations, [])
+        self.assertEqual(stub.graphql_calls, 0)  # skipped before any GraphQL
+
+    def test_no_op_when_project_unconfigured(self):
+        with _StubProjectSync() as stub:
+            task.cmd_project_sync(_PSArgs(issue=5, project_number=0))
+        self.assertEqual(stub.graphql_calls, 0)
+
+    def test_fast_path_writes_both_fields_for_fresh_issue(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": {"nodes": []}}]
+        with _StubProjectSync(issue_nodes=nodes, comments_by_issue={5: self._status()}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(len(stub.mutations), 2)
+        self.assertTrue(all(m["itemId"] == "IT_5" for m in stub.mutations))
+        self.assertEqual({m["value"] for m in stub.mutations},
+                         {"sess-abc", "2026-07-18T13:58:00Z"})
+
+    def test_fast_path_stale_writer_skips_when_board_newer(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": {"nodes": [
+            {"text": "2026-07-20T09:00:00Z", "field": {"name": "Last active"}}]}}]
+        with _StubProjectSync(issue_nodes=nodes,
+                              comments_by_issue={5: self._status(last="2026-07-18T13:58:00Z")}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.mutations, [])  # board already newer; no regression
+
+    def test_fast_path_off_board_issue_writes_nothing(self):
+        nodes = [{"id": "IT_X", "project": {"id": "PVT_OTHER"}, "fieldValues": {"nodes": []}}]
+        with _StubProjectSync(issue_nodes=nodes, comments_by_issue={5: self._status()}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.mutations, [])
+
+    def test_fast_path_dry_run_writes_nothing(self):
+        nodes = [{"id": "IT_5", "project": {"id": "PVT_1"}, "fieldValues": {"nodes": []}}]
+        with _StubProjectSync(issue_nodes=nodes, comments_by_issue={5: self._status()}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5, dry_run=True))
+        self.assertEqual(stub.mutations, [])
+
+    def test_missing_fields_is_a_no_op(self):
+        with _StubProjectSync(fields=[{"id": "F_s", "name": "Status", "dataType": "SINGLE_SELECT"}]) as stub:
+            task.cmd_project_sync(_PSArgs(issue=5))
+        self.assertEqual(stub.mutations, [])
+
+    def test_sweep_path_syncs_repo_issues(self):
+        sweep = [{"id": "IT_5", "content": {"number": 5,
+                  "repository": {"nameWithOwner": "urikanonov/ai-marketplace"}},
+                  "fieldValues": {"nodes": []}}]
+        with _StubProjectSync(sweep_nodes=sweep, issue_list=[{"number": 5, "title": "x"}],
+                              comments_by_issue={5: self._status()}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=None))
+        self.assertEqual(len(stub.mutations), 2)
+        self.assertTrue(all(m["itemId"] == "IT_5" for m in stub.mutations))
+
+
+class HeartbeatProjectSyncRoutingTests(unittest.TestCase):
+    """cmd_heartbeat --project-sync must invoke the best-effort sync after a one-shot beat."""
+
+    def setUp(self):
+        self._orig = (task._beat_once, task._project_sync_best_effort)
+
+    def tearDown(self):
+        task._beat_once, task._project_sync_best_effort = self._orig
+
+    def test_one_shot_beat_calls_project_sync_when_flag_set(self):
+        calls = []
+        task._beat_once = lambda number, branch, session="": "2026-07-18T13:58:00Z"
+        task._project_sync_best_effort = lambda number: calls.append(number)
+        args = task.build_parser().parse_args(["heartbeat", "5", "--branch", "issue-5-foo",
+                                               "--project-sync"])
+        task.cmd_heartbeat(args)
+        self.assertEqual(calls, [5])
+
+    def test_one_shot_beat_skips_project_sync_without_flag(self):
+        calls = []
+        task._beat_once = lambda number, branch, session="": "2026-07-18T13:58:00Z"
+        task._project_sync_best_effort = lambda number: calls.append(number)
+        args = task.build_parser().parse_args(["heartbeat", "5", "--branch", "issue-5-foo"])
+        task.cmd_heartbeat(args)
+        self.assertEqual(calls, [])
 
 
 class AssertValidBranchTests(unittest.TestCase):
