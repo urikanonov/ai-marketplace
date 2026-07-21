@@ -426,7 +426,8 @@ def _mask_html_comments(s):
             out.append(s[i:k])
             i = k
             if m.group(1).lower() in _RAWTEXT_ELEMENTS:
-                close = re.compile(r"</" + re.escape(m.group(1)) + r"\b", re.IGNORECASE).search(s, i)
+                close = re.compile(r"</" + re.escape(m.group(1)) + r"(?=[\t\n\f\r />])",
+                                   re.IGNORECASE).search(s, i)
                 end = close.start() if close else n
                 out.append(s[i:end])   # raw-text body: no comment recognition inside
                 i = end

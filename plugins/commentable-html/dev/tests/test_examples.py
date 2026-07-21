@@ -544,6 +544,17 @@ class ExampleMermaidLoaderMatcherTests(unittest.TestCase):
         only = ('<html><head>\n' + commented_module + '\n<title>x</title>\n</head><body></body></html>\n')
         self.assertIsNone(build._mermaid_loader_span(only, "commented-module-only"))
 
+    def test_span_raw_text_close_requires_appropriate_end_tag_cmh_mmd_09(self):
+        # A `</script-foo>` inside a script body is NOT the script's end tag - HTML requires the
+        # end-tag name followed by whitespace, `/`, or `>` - so it must not prematurely end the
+        # raw-text body and expose a following `<!--` as a DATA comment that masks the real loader.
+        doc = ('<html><head>\n'
+               '<script>const s = "</script-foo><!--";</script>\n'
+               + _LOADER + '\n</head><body>x</body></html>\n')
+        span = build._mermaid_loader_span(doc, "rawtext-close")
+        self.assertIsNotNone(span)
+        self.assertIn("import(\"" + _CDN + "\")", doc[span[0]:span[1]])
+
     def test_vendored_classification_cmh_mmd_09(self):
         # The vendored check keys on the MERMAID import and treats scheme-bearing and
         # protocol-relative specifiers as remote, so a decoy import or a commented-out CDN line does
@@ -670,6 +681,8 @@ class MermaidLoaderMirrorTests(unittest.TestCase):
                                                    'await import("https://cdn.example/decoy-mermaid.mjs")'
                                                    '</script> -->\n' + _LOADER
                                                    + '\n</head><body></body></html>\n'),
+            "rawtext_close_decoy": ('<html><head>\n<script>const s = "</script-foo><!--";</script>\n'
+                                    + _LOADER + '\n</head><body></body></html>\n'),
             "none": _doc("<title>no loader</title>"),
         }
 
