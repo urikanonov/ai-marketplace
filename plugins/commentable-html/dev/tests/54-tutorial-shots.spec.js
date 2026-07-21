@@ -255,31 +255,42 @@ test("--check flags a stale garden shot (CMH-TUT-SHOTS-01)", async () => {
 });
 
 // The board, checklist, and note features render only in their own example reports, so the tool
-// captures each as a prefixed scene. The same regenerate/check/deterministic/stale guarantees the
-// garden scene has must hold for these scenes too.
+// captures each as a prefixed scene. Each scene gets the SAME three focused tests the garden scene
+// has - regenerate + clean --check, cross-run determinism, and stale detection - as SEPARATE test()s
+// (not one monolith). They are emitted in THREE type-grouped loops (all regens, then all determinism,
+// then all stale) rather than three-per-scene, so Playwright's by-count sharding spreads each
+// mermaid-heavy scene's three tests across DIFFERENT heavy shards instead of piling one scene's
+// captures onto a single shard - the point of splitting the slow (mermaid) triage monolith.
 for (const scene of EXTRA_SCENES) {
-  test(`regenerates and checks the ${scene.prefix} scene deterministically (CMH-TUT-SHOTS-01)`, async ({ browser }) => {
+  test(`regenerates the ${scene.prefix} scene and --check passes on fresh output (CMH-TUT-SHOTS-01)`, () => {
+    test.setTimeout(180000);
+    const outA = path.join(freshDir(`${scene.prefix}-regen`), "nested", "assets");
+    const r1 = capture(scene.example, outA, scene.prefix);
+    expect(r1.error, String(r1.error)).toBeFalsy();
+    expect(r1.status, r1.stderr).toBe(0);
+    for (const name of scene.shots) {
+      expect(fs.existsSync(path.join(outA, `${scene.prefix}-${name}.png`)),
+        `missing ${scene.prefix}-${name}.png`).toBe(true);
+    }
+    const clean = check(scene.example, outA, scene.prefix);
+    expect(clean.error, String(clean.error)).toBeFalsy();
+    expect(clean.status, clean.stderr).toBe(0);
+    expect(clean.stdout).toContain("tutorial screenshots are in sync");
+  });
+}
+
+for (const scene of EXTRA_SCENES) {
+  test(`${scene.prefix} capture is deterministic across two independent runs (CMH-TUT-SHOTS-01)`, async ({ browser }) => {
     test.setTimeout(180000);
     const comparePage = await browser.newPage();
     try {
-      const outA = path.join(freshDir(`${scene.prefix}-a`), "nested", "assets");
-      const r1 = capture(scene.example, outA, scene.prefix);
-      expect(r1.error, String(r1.error)).toBeFalsy();
-      expect(r1.status, r1.stderr).toBe(0);
-      for (const name of scene.shots) {
-        expect(fs.existsSync(path.join(outA, `${scene.prefix}-${name}.png`)),
-          `missing ${scene.prefix}-${name}.png`).toBe(true);
+      const outA = path.join(freshDir(`${scene.prefix}-det-a`), "nested", "assets");
+      const outB = path.join(freshDir(`${scene.prefix}-det-b`), "nested", "assets");
+      for (const [dir, label] of [[outA, "A"], [outB, "B"]]) {
+        const r = capture(scene.example, dir, scene.prefix);
+        expect(r.error, String(r.error)).toBeFalsy();
+        expect(r.status, `capture ${label}: ${r.stderr}`).toBe(0);
       }
-
-      const clean = check(scene.example, outA, scene.prefix);
-      expect(clean.error, String(clean.error)).toBeFalsy();
-      expect(clean.status, clean.stderr).toBe(0);
-      expect(clean.stdout).toContain("tutorial screenshots are in sync");
-
-      const outB = path.join(freshDir(`${scene.prefix}-b`), "nested", "assets");
-      const r2 = capture(scene.example, outB, scene.prefix);
-      expect(r2.error, String(r2.error)).toBeFalsy();
-      expect(r2.status, r2.stderr).toBe(0);
       for (const name of scene.shots) {
         expect(await imagesMatch(
           comparePage,
@@ -287,16 +298,25 @@ for (const scene of EXTRA_SCENES) {
           path.join(outB, `${scene.prefix}-${name}.png`),
         ), `${scene.prefix}-${name} drifted beyond the normalized screenshot diff budget`).toBe(true);
       }
-
-      const firstShot = `${scene.prefix}-${scene.shots[0]}.png`;
-      fs.writeFileSync(path.join(outA, firstShot), Buffer.from("stale screenshot"));
-      const stale = check(scene.example, outA, scene.prefix);
-      expect(stale.error, String(stale.error)).toBeFalsy();
-      expect(stale.status, stale.stdout + stale.stderr).toBe(1);
-      expect(stale.stderr).toContain(`${firstShot} differs`);
     } finally {
       await comparePage.close();
     }
+  });
+}
+
+for (const scene of EXTRA_SCENES) {
+  test(`--check flags a stale ${scene.prefix} shot (CMH-TUT-SHOTS-01)`, () => {
+    test.setTimeout(180000);
+    const outA = path.join(freshDir(`${scene.prefix}-stale`), "nested", "assets");
+    const r1 = capture(scene.example, outA, scene.prefix);
+    expect(r1.error, String(r1.error)).toBeFalsy();
+    expect(r1.status, r1.stderr).toBe(0);
+    const firstShot = `${scene.prefix}-${scene.shots[0]}.png`;
+    fs.writeFileSync(path.join(outA, firstShot), Buffer.from("stale screenshot"));
+    const stale = check(scene.example, outA, scene.prefix);
+    expect(stale.error, String(stale.error)).toBeFalsy();
+    expect(stale.status, stale.stdout + stale.stderr).toBe(1);
+    expect(stale.stderr).toContain(`${firstShot} differs`);
   });
 }
 
