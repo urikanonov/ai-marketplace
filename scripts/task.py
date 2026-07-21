@@ -10,7 +10,7 @@ The pure helpers (build_body, create_args, tick_checkbox, tick_all_checkboxes, a
 assert_ascii, assert_valid_session, status_body, bump_last_active, set_session, parse_session,
 board_row, format_board, find_status_comment, status_comments, extra_status_comment_ids,
 parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch, branch_slug,
-derive_branch, resolve_project_number, project_field_values, select_text_field_id,
+derive_branch, resolve_project_number, select_text_field_id,
 select_item_id_for_project, build_field_update_variables, item_field_text, field_updates,
 field_action, parse_active_scopes) are unit tested in scripts/test_task.py; the thin `_run` layer
 shells out to `gh` and `git`.
@@ -539,16 +539,6 @@ def resolve_project_number(explicit=None, env=None):
     return val if isinstance(val, int) and val > 0 else None
 
 
-def project_field_values(status_body_text):
-    """Map a Work status comment body to the two project field values to sync: the handling
-    session id and the last-active UTC stamp (empty strings when absent). Pure."""
-    body = status_body_text or ""
-    return {
-        PROJECT_SESSION_FIELD: parse_session(body) or "",
-        PROJECT_LAST_ACTIVE_FIELD: parse_last_active(body) or "",
-    }
-
-
 def select_text_field_id(fields, name):
     """Return the node id of the TEXT project field named `name`, or None if there is no such
     field (or it is not a TEXT field). `fields` is a list of {id,name,dataType} dicts. Pure."""
@@ -592,8 +582,10 @@ def field_updates(values, current_last_active):
     """Given the desired field values and the board item's CURRENT 'Last active' text, return the
     {field_name: text} to actually write. Empty values are dropped (never clobber a field blank),
     and when the desired 'Last active' is NOT strictly newer than what the board already shows,
-    NOTHING is written - so a slow or concurrent sweep can never regress a newer heartbeat, and a
-    repeat sync of unchanged data is a no-op (monotonic + idempotent). Pure."""
+    NOTHING is written - so a repeat sync of unchanged data is a no-op and a sweep does not regress
+    a heartbeat that was ALREADY on the board when it read. (This is snapshot-bounded: a heartbeat
+    that writes AFTER a sweep reads but before it writes can still be briefly overwritten; the next
+    beat re-stamps it, so it self-heals within one heartbeat interval.) Pure."""
     new_last = values.get(PROJECT_LAST_ACTIVE_FIELD, "")
     if new_last and current_last_active and not is_newer(new_last, current_last_active):
         return {}
@@ -1033,14 +1025,14 @@ _PROJECT_ITEMS_QUERY = (
     " user(login:$owner){ projectV2(number:$number){"
     " items(first:100, after:$cursor){ pageInfo{ hasNextPage endCursor }"
     " nodes{ id content{ ... on Issue { number state repository { nameWithOwner } } }"
-    " fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
+    " fieldValues(first:50){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
     " field{ ... on ProjectV2FieldCommon { name } } } } } } } } } }")
 # Resolve ONE issue's board item id directly (the heartbeat fast path), avoiding a full-board scan.
 _ISSUE_ITEMS_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!){"
     " repository(owner:$owner,name:$name){ issue(number:$number){ state"
     " projectItems(first:100){ nodes{ id project{ id }"
-    " fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
+    " fieldValues(first:50){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
     " field{ ... on ProjectV2FieldCommon { name } } } } } } } } } }")
 _FIELD_UPDATE_MUTATION = (
     "mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$value:String!){"
@@ -1194,11 +1186,15 @@ def _sync_one_item(project_id, field_ids, item_id, number, state, node, viewer, 
     cur_session = item_field_text(fv, PROJECT_SESSION_FIELD)
     cur_last = item_field_text(fv, PROJECT_LAST_ACTIVE_FIELD)
     if (state or "").upper() == "OPEN":
+        # Read the live heartbeat from the NEWEST trusted "Work status" comment (duplicates can
+        # exist before convergence, and the oldest survivor may carry a stale stamp - using the
+        # newest, as the heartbeat itself does, avoids clearing genuinely-live work).
         matches = status_comments(_list_comments(number, timeout=GRAPHQL_TIMEOUT_SECONDS),
                                   trusted_only=True, viewer=viewer)
-        body = _pick_survivor(matches)["body"] if matches else ""
-        values = project_field_values(body)
-        action = field_action("OPEN", values.get(PROJECT_LAST_ACTIVE_FIELD, ""), now)
+        newest = _max_stamp(parse_last_active(c.get("body", "")) for c in matches)
+        values = {PROJECT_LAST_ACTIVE_FIELD: newest or "",
+                  PROJECT_SESSION_FIELD: _session_at_newest(matches, newest) if newest else ""}
+        action = field_action("OPEN", values[PROJECT_LAST_ACTIVE_FIELD], now)
     else:
         values, action = {}, "clear"
     if action == "set":

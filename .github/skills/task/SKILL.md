@@ -69,9 +69,9 @@ python scripts/task.py project-sync           # --issue N for one, --dry-run to 
 #    Once set up, run it best-effort from the heartbeat (swallows any project/scope/network error):
 python scripts/task.py heartbeat 188 --watch --project-sync
 #    The board is also kept current automatically by the scheduled .github/workflows/project-sync.yml
-#    (cron + issue close/reopen). That workflow needs the same project-scoped token as the repo secret
-#    PROJECT_SYNC_TOKEN (a fine-grained PAT: Projects read/write + Issues read); until it exists the
-#    workflow is a clean no-op.
+#    (cron + issue close/reopen). That workflow needs a project-scoped token as the repo secret
+#    PROJECT_SYNC_TOKEN (a CLASSIC PAT with the 'project' and 'repo' scopes; a fine-grained PAT does
+#    not reliably work for a user-owned project); until it exists the workflow is a clean no-op.
 
 # 5. Share the implementation plan for approval before coding.
 python scripts/task.py plan 188 "1. Rebase onto main  2. Fix  3. Test"

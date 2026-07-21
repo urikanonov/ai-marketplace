@@ -472,25 +472,6 @@ class ResolveProjectNumberTests(unittest.TestCase):
         self.assertIsNone(task.resolve_project_number(env="abc"))
 
 
-class ProjectFieldValuesTests(unittest.TestCase):
-    def test_maps_session_and_last_active_from_status_body(self):
-        body = task.status_body("issue-5-foo", "2026-07-18T13:58:00Z", "sess-1")
-        vals = task.project_field_values(body)
-        self.assertEqual(vals[task.PROJECT_SESSION_FIELD], "sess-1")
-        self.assertEqual(vals[task.PROJECT_LAST_ACTIVE_FIELD], "2026-07-18T13:58:00Z")
-
-    def test_empty_body_yields_empty_values(self):
-        vals = task.project_field_values("")
-        self.assertEqual(vals[task.PROJECT_SESSION_FIELD], "")
-        self.assertEqual(vals[task.PROJECT_LAST_ACTIVE_FIELD], "")
-
-    def test_missing_session_line_is_empty_string(self):
-        body = task.status_body("issue-5-foo", "2026-07-18T13:58:00Z")
-        vals = task.project_field_values(body)
-        self.assertEqual(vals[task.PROJECT_SESSION_FIELD], "")
-        self.assertEqual(vals[task.PROJECT_LAST_ACTIVE_FIELD], "2026-07-18T13:58:00Z")
-
-
 class SelectTextFieldIdTests(unittest.TestCase):
     FIELDS = [
         {"id": "PVTF_status", "name": "Status", "dataType": "SINGLE_SELECT"},
@@ -915,6 +896,33 @@ class ProjectSyncRoutingTests(unittest.TestCase):
             task.cmd_project_sync(_PSArgs(issue=None))
         self.assertEqual(stub.clears, [])   # not our repo; never touched
         self.assertEqual(stub.mutations, [])
+
+    def test_sweep_skips_draft_and_non_issue_nodes(self):
+        sweep = [
+            {"id": "IT_draft", "content": None, "fieldValues": self._fv()},   # a draft card
+            {"id": "IT_pr", "content": {}, "fieldValues": self._fv()},        # non-issue (no number)
+            None,                                                             # a null node
+            self._sweep_node(5, "OPEN"),
+        ]
+        with _StubProjectSync(sweep_nodes=sweep, comments_by_issue={5: self._status()}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=None))
+        # Only the real issue #5 is touched; drafts/PRs/nulls neither crash nor mutate.
+        self.assertTrue(all(m["itemId"] == "IT_5" for m in stub.mutations))
+        self.assertEqual(len(stub.mutations), 2)
+        self.assertEqual(stub.clears, [])
+
+    def test_sweep_uses_newest_duplicate_status_comment(self):
+        # An older survivor (stale) plus a newer duplicate (fresh): the sweep must SET from the
+        # newest, not clear based on the stale survivor.
+        old = {"id": 1, "body": task.status_body("issue-5-foo", self.STALE, "old-sess"),
+               "assoc": "OWNER"}
+        new = {"id": 2, "body": task.status_body("issue-5-foo", self.FRESH, "new-sess"),
+               "assoc": "OWNER"}
+        with _StubProjectSync(sweep_nodes=[self._sweep_node(5, "OPEN")],
+                              comments_by_issue={5: [old, new]}) as stub:
+            task.cmd_project_sync(_PSArgs(issue=None))
+        self.assertEqual(stub.clears, [])
+        self.assertEqual({m["value"] for m in stub.mutations}, {"new-sess", self.FRESH})
 
 
 class HeartbeatProjectSyncRoutingTests(unittest.TestCase):

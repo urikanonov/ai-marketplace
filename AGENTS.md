@@ -858,12 +858,13 @@ payload, the set/clear decision, project-number resolution, field/item lookup) a
 
 The board is kept current AUTOMATICALLY (no agent required) by the scheduled `project-sync` workflow
 (`.github/workflows/project-sync.yml`): it runs the sweep on a cron and on issue close/reopen, in the
-trusted default-branch context (it never checks out or runs PR code, and holds no attacker-controllable
-input). It needs the same `project`-scoped token as a repo secret, which is its own ONE-TIME MAINTAINER
-SETUP (the default Actions `GITHUB_TOKEN` cannot write a user-owned Projects v2 board): create a
-fine-grained PAT with Projects (read/write) + Issues (read) and add it as the repo secret
-`PROJECT_SYNC_TOKEN`. Until that secret exists the workflow is a clean no-op that prints how to finish
-setup, so nothing breaks and it can be enabled at any time.
+trusted default-branch context (it triggers only on `schedule`/`issues`, never a PR trigger and not
+`workflow_dispatch`, so it never runs unreviewed branch code, and it holds no attacker-controllable
+input). It needs a `project`-scoped token as a repo secret, which is its own ONE-TIME MAINTAINER SETUP
+(the default Actions `GITHUB_TOKEN` cannot write a user-owned Projects v2 board, and a fine-grained PAT
+does not reliably grant it for a user-owned project): create a CLASSIC PAT with the `project` and
+`repo` scopes and add it as the repo secret `PROJECT_SYNC_TOKEN`. Until that secret exists the workflow
+is a clean no-op that prints how to finish setup, so nothing breaks and it can be enabled at any time.
 
 ## Driving a PR or issue to completion (drive-to-merge)
 

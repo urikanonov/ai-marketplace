@@ -12,9 +12,10 @@
 # the sync sweeps the whole board via the API and needs no per-issue text.
 #
 # One-time setup (until then this is a clean no-op): a user-owned Projects v2 board can
-# only be written with a `project`-scoped token, which the default GITHUB_TOKEN is not.
-# Create a fine-grained PAT with Projects (read/write) + Issues (read) and add it as the
-# repo secret PROJECT_SYNC_TOKEN. Without it the job prints how to finish setup and exits 0.
+# only be written with a `project`-scoped token, which the default GITHUB_TOKEN is not
+# (and which fine-grained PATs do not reliably grant for a USER-owned project). Create a
+# CLASSIC PAT with the `project` and `repo` scopes and add it as the repo secret
+# PROJECT_SYNC_TOKEN. Without it the job prints how to finish setup and exits 0.
 name: project-sync
 
 on:
@@ -24,17 +25,21 @@ on:
     - cron: "*/15 * * * *"
   issues:
     types: [closed, reopened, deleted]
-  workflow_dispatch: {}
+  # No workflow_dispatch: a dispatch can select any ref, which would run that ref's
+  # workflow + scripts/task.py with the PROJECT_SYNC_TOKEN. schedule/issues always run
+  # the trusted default-branch code, so the PAT is never exposed to unreviewed branch code.
 
 permissions: {}
 
 concurrency:
+  # Coalesce a burst of issue events into one sweep (each run reflects the final board state).
   group: project-sync
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -51,8 +56,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN}" ]; then
-            echo "PROJECT_SYNC_TOKEN is not set; skipping (one-time setup: add a fine-grained"
-            echo "PAT with Projects read/write + Issues read as the PROJECT_SYNC_TOKEN secret)."
+            echo "PROJECT_SYNC_TOKEN is not set; skipping (one-time setup: add a CLASSIC PAT with"
+            echo "the 'project' and 'repo' scopes as the PROJECT_SYNC_TOKEN secret)."
             exit 0
           fi
           # project-sync is itself a clean no-op if the token lacks the `project` scope or the
