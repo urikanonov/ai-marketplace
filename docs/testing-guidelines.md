@@ -58,10 +58,14 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
 - **Prefer role and text locators over brittle DOM paths.** Match ARIA roles, accessible names, and
   visible text. When a widget implements an ARIA contract (tabs, dialog), test the contract
   (`aria-selected`, `aria-controls`, roving `tabindex`, keyboard keys), not just the happy-path click.
-- **Guard the security invariants.** Keep the tests that assert the content-security-policy stays tight
-  (`script-src 'self'`, no widget host or `'unsafe-inline'` on the plugin/tutorial pages), that no
-  internal link or asset uses a root-relative path (it would break the project sub-path), and that no
-  link or asset 404s. These catch real breakage, not style.
+- **Guard the security invariants.** Keep the tests that assert the content-security-policy stays as
+  tight as each page needs. The tutorial page stays fully tight (`script-src 'self'`, no widget host or
+  `'unsafe-inline'`); the hub and the three plugin pages embed the GitHub star widget, so they carry the
+  widget-scoped relaxation instead (the `buttons.github.io` script/frame host, the `api.github.com`
+  connect host, and `'unsafe-inline'` in `style-src`) - assert that policy EXACTLY so a future broadening
+  of a directive still fails. Also keep the tests that assert no internal link or asset uses a
+  root-relative path (it would break the project sub-path), and that no link or asset 404s. These catch
+  real breakage, not style.
 
 ## Generator and Python tests
 

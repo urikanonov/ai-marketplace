@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-src 'self'; base-uri 'self'; form-action 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://buttons.github.io; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; frame-src 'self' https://buttons.github.io; base-uri 'self'; form-action 'self'" />
   <title>Commentable HTML - inline-comment review surface for any HTML</title>
   <meta name="description" content="Turn any standalone HTML into a commentable review surface: select any paragraph, table cell, code block, KQL, chart, image, or diagram and leave inline comments, then export a bundle back to an agent." />
   <link rel="canonical" href="https://urikanonov.github.io/ai-marketplace/commentable-html/" />
@@ -78,6 +78,9 @@
           <a class="btn btn-primary" href="#demo">Try the live demo</a>
           <a class="btn" href="tutorial/">Guided tutorial</a>
           <a class="btn" href="#install">Install</a>
+          <span class="gh-star">
+            <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
+          </span>
         </div>
         <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version --><!-- END:version --></span></a>
       </div>
@@ -462,6 +465,7 @@
     </div>
   </footer>
 
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
   <script src="../assets/site.js?v=36daf28ac632"></script>
 </body>
 </html>
