@@ -107,6 +107,17 @@ test("the plugin-page GitHub star button sits beside the identity line, not amon
       idBox.x + idBox.width - 1
     );
   }
+  // On a narrow (phone-width) viewport the row wraps gracefully instead of overflowing: the
+  // identity line and the star may stack, but the .hero-identity row never forces horizontal
+  // overflow (flex-wrap keeps it inside the viewport no matter how wide the star widget renders).
+  await page.setViewportSize({ width: 375, height: 800 });
+  for (const p of ["/commentable-html/", "/multi-duck/", "/urikan-ai-marketplace-auto-updater/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const fits = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+    );
+    expect(fits, p + " identity/star row must not overflow the mobile viewport").toBe(true);
+  }
 });
 
 
