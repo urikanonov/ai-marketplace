@@ -12,8 +12,8 @@ board_row, format_board, find_status_comment, status_comments, extra_status_comm
 parse_last_active, parse_branch, is_stale, is_newer, utc_stamp, assert_valid_branch, branch_slug,
 derive_branch, resolve_project_number, project_field_values, select_text_field_id,
 map_items_by_issue_number, select_item_id_for_project, build_field_update_variables,
-parse_active_scopes) are unit tested in scripts/test_task.py; the thin `_run` layer shells out to
-`gh` and `git`.
+item_field_text, field_updates, map_item_last_active, parse_active_scopes) are unit tested in
+scripts/test_task.py; the thin `_run` layer shells out to `gh` and `git`.
 
 Usage:
   python scripts/task.py search "panel width" [--all]
@@ -597,6 +597,47 @@ def build_field_update_variables(project_id, item_id, field_id, text):
     return {"projectId": project_id, "itemId": item_id, "fieldId": field_id, "value": text}
 
 
+def item_field_text(field_value_nodes, field_name):
+    """Return the current text of the board item's field named `field_name` from a fieldValues node
+    list (ProjectV2ItemFieldTextValue nodes: {text, field:{name}}), or '' if absent. Pure."""
+    for n in field_value_nodes or []:
+        if not n:
+            continue
+        if (n.get("field") or {}).get("name") == field_name:
+            return n.get("text") or ""
+    return ""
+
+
+def field_updates(values, current_last_active):
+    """Given the desired field values and the board item's CURRENT 'Last active' text, return the
+    {field_name: text} to actually write. Empty values are dropped (never clobber a field blank),
+    and when the desired 'Last active' is NOT strictly newer than what the board already shows,
+    NOTHING is written - so a slow or concurrent sweep can never regress a newer heartbeat, and a
+    repeat sync of unchanged data is a no-op (monotonic + idempotent). Pure."""
+    new_last = values.get(PROJECT_LAST_ACTIVE_FIELD, "")
+    if new_last and current_last_active and not is_newer(new_last, current_last_active):
+        return {}
+    out = {}
+    for name in (PROJECT_SESSION_FIELD, PROJECT_LAST_ACTIVE_FIELD):
+        text = values.get(name, "")
+        if text:
+            out[name] = text
+    return out
+
+
+def map_item_last_active(nodes):
+    """Map project item id -> its current 'Last active' field text, from item nodes that carry a
+    fieldValues connection. Lets a write be skipped when the board already shows a newer stamp
+    (see field_updates). Pure."""
+    out = {}
+    for n in nodes or []:
+        if not n or not n.get("id"):
+            continue
+        out[n["id"]] = item_field_text((n.get("fieldValues") or {}).get("nodes"),
+                                        PROJECT_LAST_ACTIVE_FIELD)
+    return out
+
+
 # The host whose active-account scopes gate project-sync (a dual github.com + enterprise login
 # lists several hosts; only the github.com token can write this board).
 GITHUB_HOST = "github.com"
@@ -657,9 +698,16 @@ def _run(args):
     return subprocess.run(args).returncode
 
 
-def _capture(args):
-    """Run a command and return its stdout; exit non-zero (surfacing stderr) on failure."""
-    res = subprocess.run(args, capture_output=True, text=True)
+def _capture(args, timeout=None):
+    """Run a command and return its stdout; exit non-zero (surfacing stderr) on failure. An
+    optional `timeout` bounds the call (a TimeoutExpired becomes SystemExit) so a project-sync
+    caller can guarantee a hung gh cannot block a heartbeat beat; the default (None) preserves the
+    existing unbounded behavior for every other caller."""
+    try:
+        res = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write("command timed out: " + " ".join(str(a) for a in args[:3]) + "\n")
+        raise SystemExit(1)
     if res.returncode != 0:
         sys.stderr.write(res.stderr)
         raise SystemExit(res.returncode)
@@ -681,16 +729,18 @@ def current_branch():
     return name if name and name != "HEAD" else None
 
 
-def _list_comments(number):
+def _list_comments(number, timeout=None):
     """Return the issue's comments as a list of {'id','body','assoc','author'} dicts (paginated).
 
     'assoc' is the GitHub author_association and 'author' the login, used to trust only a
     maintainer/collaborator or the invoking account's own status comment. Malformed NDJSON
-    lines are skipped rather than aborting the run.
+    lines are skipped rather than aborting the run. `timeout` bounds the gh call (project-sync
+    passes it so the heartbeat fast path cannot hang; default None is the existing behavior).
     """
     out = _capture(["gh", "api", "--paginate",
                     f"repos/{REPO}/issues/{number}/comments",
-                    "--jq", ".[] | {id: .id, body: .body, assoc: .author_association, author: .user.login}"])
+                    "--jq", ".[] | {id: .id, body: .body, assoc: .author_association, author: .user.login}"],
+                   timeout=timeout)
     comments = []
     for line in out.splitlines():
         line = line.strip()
@@ -706,12 +756,13 @@ def _list_comments(number):
 _VIEWER_LOGIN = None
 
 
-def _viewer_login():
+def _viewer_login(timeout=None):
     """Return the authenticated gh account login (cached), or '' if it cannot be determined.
 
     Used so the automation trusts its OWN status comment even when its author_association is
     NONE (e.g. a bot). The TASK_VIEWER_LOGIN env var overrides the lookup (useful under a CI/app
     token where `gh api user` is forbidden). A failure is not cached, so a transient error retries.
+    `timeout` bounds the gh lookup (project-sync passes it); default None is the existing behavior.
     """
     global _VIEWER_LOGIN
     override = os.environ.get("TASK_VIEWER_LOGIN")
@@ -719,7 +770,7 @@ def _viewer_login():
         return override.strip()
     if not _VIEWER_LOGIN:
         try:
-            _VIEWER_LOGIN = _capture(["gh", "api", "user", "--jq", ".login"]).strip()
+            _VIEWER_LOGIN = _capture(["gh", "api", "user", "--jq", ".login"], timeout=timeout).strip()
         except SystemExit:
             return ""
     return _VIEWER_LOGIN
@@ -998,12 +1049,16 @@ _PROJECT_ITEMS_QUERY = (
     "query($owner:String!,$number:Int!,$cursor:String){"
     " user(login:$owner){ projectV2(number:$number){"
     " items(first:100, after:$cursor){ pageInfo{ hasNextPage endCursor }"
-    " nodes{ id content{ ... on Issue { number repository { nameWithOwner } } } } } } } }")
+    " nodes{ id content{ ... on Issue { number repository { nameWithOwner } } }"
+    " fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
+    " field{ ... on ProjectV2FieldCommon { name } } } } } } } } } }")
 # Resolve ONE issue's board item id directly (the heartbeat fast path), avoiding a full-board scan.
 _ISSUE_ITEMS_QUERY = (
     "query($owner:String!,$name:String!,$number:Int!){"
     " repository(owner:$owner,name:$name){ issue(number:$number){"
-    " projectItems(first:100){ nodes{ id project{ id } } } } } }")
+    " projectItems(first:100){ nodes{ id project{ id }"
+    " fieldValues(first:20){ nodes{ ... on ProjectV2ItemFieldTextValue { text"
+    " field{ ... on ProjectV2FieldCommon { name } } } } } } } } } }")
 _FIELD_UPDATE_MUTATION = (
     "mutation($projectId:ID!,$itemId:ID!,$fieldId:ID!,$value:String!){"
     " updateProjectV2ItemFieldValue(input:{projectId:$projectId,itemId:$itemId,"
@@ -1094,36 +1149,32 @@ def _fetch_project_items(owner, number):
             return nodes
 
 
-def _issue_project_item_id(project_id, issue_number):
-    """Return the board item id for ONE issue in REPO (or None) without scanning the whole board -
-    the heartbeat fast path. Queries the issue's projectItems and picks the one on project
-    `project_id` (the globally-unique id resolved up front)."""
+def _issue_project_item_nodes(issue_number):
+    """Return ONE issue's projectItems nodes ({id, project:{id}, fieldValues}) - the heartbeat fast
+    path, avoiding a full-board scan. Each _graphql call is already timeout-bounded internally."""
     owner, name = REPO.split("/", 1)
     data = _graphql(_ISSUE_ITEMS_QUERY, str_vars={"owner": owner, "name": name},
                     int_vars={"number": issue_number})
     issue = ((data.get("data") or {}).get("repository") or {}).get("issue") or {}
-    nodes = (issue.get("projectItems") or {}).get("nodes") or []
-    return select_item_id_for_project(nodes, project_id)
+    return (issue.get("projectItems") or {}).get("nodes") or []
 
 
-def _apply_field_values(project_id, item_id, field_ids, values, dry_run, number):
-    """Set the two text fields on one item from `values`. An EMPTY value is skipped INTENTIONALLY:
-    the board is never clobbered blank (an issue's fields are only ever advanced, and the sweep
-    only touches OPEN issues whose heartbeat keeps both values fresh). Returns True if anything was
-    set."""
-    wrote = False
-    for name in (PROJECT_SESSION_FIELD, PROJECT_LAST_ACTIVE_FIELD):
-        text = values.get(name, "")
-        if not text:
-            continue
+def _apply_field_values(project_id, item_id, field_ids, values, dry_run, number,
+                        current_last_active=""):
+    """Set the two text fields on one item, writing only field_updates(values, current_last_active):
+    empty values are skipped (never clobber blank) and a desired 'Last active' that is not strictly
+    newer than what the board already shows writes NOTHING, so a slow/concurrent sweep can never
+    regress a newer heartbeat and an unchanged repeat is a no-op. Returns True if anything was set."""
+    updates = field_updates(values, current_last_active)
+    if not updates:
+        return False
+    for name, text in updates.items():
         if dry_run:
             print(f"project-sync: #{number} would set {name!r} = {text}")
-            wrote = True
             continue
         _graphql(_FIELD_UPDATE_MUTATION,
                  str_vars=build_field_update_variables(project_id, item_id, field_ids[name], text))
-        wrote = True
-    return wrote
+    return True
 
 
 def _run_project_sync(a):
@@ -1142,19 +1193,26 @@ def _run_project_sync(a):
             f"`gh auth refresh -s {PROJECT_SCOPE}` (a one-time interactive step), then re-run")
     project_id, field_ids = _resolve_project(owner, number)
     if a.issue is not None:
-        # Fast path: resolve just this issue's board item id, no full-board scan (heartbeat-safe).
+        # Fast path: resolve just this issue's board item, no full-board scan (heartbeat-safe).
         targets = [{"number": a.issue}]
-        items = {a.issue: _issue_project_item_id(project_id, a.issue)}
+        nodes = _issue_project_item_nodes(a.issue)
+        items = {a.issue: select_item_id_for_project(nodes, project_id)}
     else:
         args = ["gh", "issue", "list", "--repo", REPO, "--state", "open",
                 "--limit", str(BOARD_LIMIT), "--json", "number,title"]
         if not a.all_labels:
             args += ["--label", TASK_LABEL]
-        targets = json.loads(_capture(args))
+        targets = json.loads(_capture(args, timeout=GRAPHQL_TIMEOUT_SECONDS))
+        if len(targets) >= BOARD_LIMIT:
+            # Never omit issues SILENTLY (parity with cmd_board): warn if the fetch hit the cap.
+            sys.stderr.write(f"project-sync: syncing the first {BOARD_LIMIT} open issues; more may "
+                             "exist (raise --limit / TASK_PROJECT_NUMBER scope if you have that many)\n")
         targets.sort(key=lambda it: it.get("number", 0))
         # Restrict to THIS repo's items - a user-owned board can hold other repos' issues.
-        items = map_items_by_issue_number(_fetch_project_items(owner, number), repo=REPO)
-    viewer = _viewer_login()
+        nodes = _fetch_project_items(owner, number)
+        items = map_items_by_issue_number(nodes, repo=REPO)
+    last_active_by_item = map_item_last_active(nodes)
+    viewer = _viewer_login(timeout=GRAPHQL_TIMEOUT_SECONDS)
     synced = off_board = 0
     for it in targets:
         num = it["number"]
@@ -1165,10 +1223,11 @@ def _run_project_sync(a):
                 "auto-added when created)\n")
             off_board += 1
             continue
-        matches = status_comments(_list_comments(num), trusted_only=True, viewer=viewer)
+        matches = status_comments(_list_comments(num, timeout=GRAPHQL_TIMEOUT_SECONDS),
+                                  trusted_only=True, viewer=viewer)
         body = _pick_survivor(matches)["body"] if matches else ""
-        if _apply_field_values(project_id, item_id, field_ids,
-                               project_field_values(body), a.dry_run, num):
+        if _apply_field_values(project_id, item_id, field_ids, project_field_values(body),
+                               a.dry_run, num, last_active_by_item.get(item_id, "")):
             synced += 1
     verb = "would update" if a.dry_run else "updated"
     tail = f" ({off_board} not on the board)" if off_board else ""
