@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.199.1";
+const CMH_VERSION = "1.200.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -2321,23 +2321,64 @@ function findImageEl(index) {
   if (!/^\d+$/.test(String(index))) return null;
   return imageEls[index] || root.querySelector(`[data-cm-image-index="${index}"]`) || null;
 }
+function _imageOneLine(value) {
+  return String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function _imageElMeta(img) {
+  const isCanvas = img && img.tagName === "CANVAS";
+  const alt = _imageOneLine(img && (img.getAttribute("alt") || img.getAttribute("aria-label") || ""));
+  const src = _imageOneLine(img && img.getAttribute("src"));
+  const kind = (isCanvas || (img && img.closest("figure.chart")) || (img && img.classList.contains("cmh-chart"))) ? "chart" : "image";
+  return { alt, src, kind };
+}
+function _imageMismatch(img, comment) {
+  if (!img) return true;
+  const meta = _imageElMeta(img);
+  const src = _imageOneLine(comment && comment.imageSrc);
+  const alt = _imageOneLine(comment && comment.imageAlt);
+  const kind = comment && comment.imageKind;
+  const hasAlt = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageAlt"));
+  return !!((kind && meta.kind !== kind) || (src && meta.src !== src) || (hasAlt && meta.alt !== alt));
+}
+function _imageMatchesMeta(img, comment) {
+  const meta = _imageElMeta(img);
+  const src = _imageOneLine(comment && comment.imageSrc);
+  const alt = _imageOneLine(comment && comment.imageAlt);
+  const kind = comment && comment.imageKind;
+  const hasAlt = !!(comment && Object.prototype.hasOwnProperty.call(comment, "imageAlt"));
+  if (kind && meta.kind !== kind) return false;
+  if (src && meta.src !== src) return false;
+  if (hasAlt && meta.alt !== alt) return false;
+  return !!(kind || src || hasAlt);
+}
+function resolveImageEl(comment) {
+  let img = findImageEl(comment && comment.imageIndex);
+  const src = _imageOneLine(comment && comment.imageSrc);
+  const kind = comment && comment.imageKind;
+  if (_imageMismatch(img, comment)) {
+    const byMeta = imageEls.find(im => _imageMatchesMeta(im, comment));
+    if (byMeta) return byMeta;
+    const bySrc = src ? imageEls.filter(im => {
+      const meta = _imageElMeta(im);
+      return meta.src === src && (!kind || meta.kind === kind);
+    }) : [];
+    img = bySrc.length === 1 ? bySrc[0] : null;
+  }
+  return img;
+}
 function imageInfo(img) {
   const i = parseInt(img.dataset.cmImageIndex, 10) || 0;
-  const isCanvas = img.tagName === "CANVAS";
-  const alt = (img.getAttribute("alt") || img.getAttribute("aria-label") || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
-  const src = (img.getAttribute("src") || "").replace(/[\r\n\t]+/g, " ").trim();
+  const meta = _imageElMeta(img);
+  const isCanvas = meta.kind === "chart" && img.tagName === "CANVAS";
+  const alt = meta.alt;
+  const src = meta.src;
   const shortSrc = src.length > 120 ? src.slice(0, 117) + "..." : src;
-  const kind = (isCanvas || img.closest("figure.chart") || img.classList.contains("cmh-chart")) ? "chart" : "image";
+  const kind = meta.kind;
   const quote = alt || (isCanvas ? ("chart " + (i + 1)) : ("image: " + (shortSrc || "(no src)")));
   return { imageIndex: i, src, alt, quote, kind };
 }
 function applyImageHighlight(comment) {
-  let img = findImageEl(comment.imageIndex);
-  // If the document was re-ordered, relocate the image by its stored src.
-  if ((!img || (comment.imageSrc && img.getAttribute("src") !== comment.imageSrc)) && comment.imageSrc) {
-    const bySrc = imageEls.find(im => im.getAttribute("src") === comment.imageSrc);
-    if (bySrc) img = bySrc;
-  }
+  const img = resolveImageEl(comment);
   if (!img) return false;
   // An image can carry several comments; track them all in data-cids and keep the
   // first in data-cid for backward-compatible selectors.
@@ -4483,7 +4524,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     } else if (anchorSrc.anchorType === "diff") {
       anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
     } else if (anchorSrc.anchorType === "image") {
-      anchorEl = findImageEl(anchorSrc.imageIndex);
+      anchorEl = resolveImageEl(anchorSrc);
     } else if (anchorSrc.anchorType === "link") {
       anchorEl = resolveLinkEl(anchorSrc);
     } else if (anchorSrc.anchorType === "widget") {
@@ -4660,7 +4701,7 @@ function openComposerForEdit(comment) {
       let anchorEl = null;
       if (anchorSrc.anchorType === "mermaid") anchorEl = findMermaidNode(anchorSrc.diagramIndex, anchorSrc.nodeKey);
       else if (anchorSrc.anchorType === "diff") anchorEl = findDiffLineEls(anchorSrc.diffIndex, anchorSrc.lineKey)[0];
-      else if (anchorSrc.anchorType === "image") anchorEl = findImageEl(anchorSrc.imageIndex);
+      else if (anchorSrc.anchorType === "image") anchorEl = resolveImageEl(anchorSrc);
       else if (anchorSrc.anchorType === "link") anchorEl = resolveLinkEl(anchorSrc);
       else if (anchorSrc.anchorType === "widget") anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
@@ -4915,6 +4956,7 @@ function saveComposerElement(el) {
   closeComposerElement(el);
   openSidebar();
 }
+
 
 /* ---------- Sidebar rendering ---------- */
 function escapeHtml(s) {
@@ -5212,7 +5254,7 @@ function scrollToAnchor(c) {
   let el = null;
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
-  else if (c.anchorType === "image") el = findImageEl(c.imageIndex);
+  else if (c.anchorType === "image") el = resolveImageEl(c);
   else if (c.anchorType === "link") { el = resolveLinkEl(c); if (el) flashLink(c.id); }
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
   else if (c.anchorType === "document") {
@@ -5368,7 +5410,6 @@ root.addEventListener("click", (e) => {
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
   if (card) { card.scrollIntoView({ behavior: cmScrollBehavior(), block: "center" }); flashActive(id); }
 });
-
 /* ---------- Comment search / filter ---------- */
 // A single search field in the sidebar header filters the rendered comment cards to only
 // those whose text matches the query case-insensitively, and shows a "shown / total" count.
@@ -9227,7 +9268,7 @@ function _cmhAnchorElFor(c) {
   if (!c.anchorType) return root.querySelector('mark.cm-hl[data-cid="' + c.id + '"]');
   if (c.anchorType === "mermaid" && typeof findMermaidNode === "function") return findMermaidNode(c.diagramIndex, c.nodeKey);
   if (c.anchorType === "diff" && typeof findDiffLineEls === "function") return (findDiffLineEls(c.diffIndex, c.lineKey) || [])[0] || null;
-  if (c.anchorType === "image" && typeof findImageEl === "function") return findImageEl(c.imageIndex);
+  if (c.anchorType === "image" && typeof resolveImageEl === "function") return resolveImageEl(c);
   if (c.anchorType === "link" && typeof resolveLinkEl === "function") return resolveLinkEl(c);
   if (c.anchorType === "widget" && typeof findWidgetPart === "function") return findWidgetPart(c.widget, c.part);
   return null; // document-wide comments belong to no section

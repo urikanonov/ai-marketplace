@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.200.0] - 2026-07-21
+
+### Fixed
+
+- Image comments now share one index-plus-src anchor resolver across reload restoration,
+  jump-to-comment, edit-composer positioning, and section-review lookup, with image metadata
+  disambiguation for duplicate-source images and labelled chart canvases, so a stale image index after
+  a document reorders images no longer sends the scroll target or editor to the wrong image.
+  (CMH-IMG-07)
+
 ## [1.199.1] - 2026-07-21
 
 ### Fixed
