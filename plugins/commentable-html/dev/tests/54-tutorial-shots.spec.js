@@ -233,6 +233,19 @@ test("garden capture is deterministic across two independent runs (CMH-TUT-SHOTS
   }
 });
 
+test("--check flags a stale garden shot (CMH-TUT-SHOTS-01)", async () => {
+  test.setTimeout(180000);
+  const outA = path.join(freshDir("stale"), "nested", "assets");
+  const r1 = capture(EXAMPLE, outA);
+  expect(r1.error, String(r1.error)).toBeFalsy();
+  expect(r1.status, r1.stderr).toBe(0);
+  fs.writeFileSync(path.join(outA, "garden-01-top-light.png"), Buffer.from("stale screenshot"));
+  const stale = check(EXAMPLE, outA);
+  expect(stale.error, String(stale.error)).toBeFalsy();
+  expect(stale.status, stale.stdout + stale.stderr).toBe(1);
+  expect(stale.stderr).toContain("garden-01-top-light.png differs");
+});
+
 // The board, checklist, and note features render only in their own example reports, so the tool
 // captures each as a prefixed scene. The same regenerate/check/deterministic/stale guarantees the
 // garden scene has must hold for these scenes too.
@@ -294,22 +307,4 @@ test("the no-arg default run's shot registry matches the spec's scene lists (CMH
   expect(registry.garden).toEqual(SHOTS);
   for (const scene of EXTRA_SCENES) expect(registry[scene.prefix]).toEqual(scene.shots);
   expect(Object.keys(registry).sort()).toEqual(["checklist", "garden", "note", "triage"]);
-});
-
-// Heavy-shard balance: this stale-detection test does a full 13-shot garden capture (~one of the
-// three heaviest tests here), so it is placed LAST - away from the `garden capture is deterministic`
-// test (two full 13-shot captures, the single heaviest) - so Playwright's by-count sharding does not
-// pile the two heaviest tests onto one heavy shard. Keep any new full-garden-capture test off the
-// determinism shard for the same reason.
-test("--check flags a stale garden shot (CMH-TUT-SHOTS-01)", async () => {
-  test.setTimeout(180000);
-  const outA = path.join(freshDir("stale"), "nested", "assets");
-  const r1 = capture(EXAMPLE, outA);
-  expect(r1.error, String(r1.error)).toBeFalsy();
-  expect(r1.status, r1.stderr).toBe(0);
-  fs.writeFileSync(path.join(outA, "garden-01-top-light.png"), Buffer.from("stale screenshot"));
-  const stale = check(EXAMPLE, outA);
-  expect(stale.error, String(stale.error)).toBeFalsy();
-  expect(stale.status, stale.stdout + stale.stderr).toBe(1);
-  expect(stale.stderr).toContain("garden-01-top-light.png differs");
 });
