@@ -45,6 +45,7 @@ const GARDEN_SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
   "10-review-badge", "11-side-toc", "12-export-menu", "13-comment-search",
+  "14-thread",
 ];
 // Checklists, notes, and the incident triage board render in their own example reports, so each
 // gets a small scene of its own (checklist-*.png, note-*.png, triage-*.png).
@@ -385,6 +386,39 @@ async function addComment(page, locator, text) {
   return true;
 }
 
+// Remove any existing comments through the Clear-all confirm dialog so a later shot starts clean.
+async function clearAllComments(page) {
+  if (!await page.locator(".cm-card[data-cid]").count()) return;
+  await page.evaluate(() => { const b = document.getElementById("btnClearAll"); if (b) b.click(); });
+  const ok = page.locator(".cm-modal").getByRole("button", { name: "OK", exact: true }).first();
+  await ok.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  if (await ok.count()) await ok.click().catch(() => {});
+  await waitForStableLayout(page);
+}
+
+// Set the sidebar "Commenting as" name so new comments are attributed.
+async function setReviewerName(page, name) {
+  await page.evaluate(() => { const b = document.getElementById("btnEditIdentity"); if (b) b.click(); });
+  const input = page.locator("#cmIdentityInput");
+  await input.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  if (await input.count()) await input.fill(name);
+  await page.evaluate(() => { const b = document.getElementById("btnSaveIdentity"); if (b) b.click(); });
+  await waitForStableLayout(page);
+}
+
+// Reply to the first comment card, forming a thread.
+async function replyToFirstComment(page, text) {
+  const btn = page.locator(".cm-card .cm-reply-btn").first();
+  await btn.waitFor({ state: "visible", timeout: 5000 });
+  await btn.click();
+  const composer = page.locator(".cm-composer").first();
+  await composer.waitFor({ state: "visible", timeout: 5000 });
+  await composer.locator("textarea").first().fill(text);
+  await composer.locator("button:has-text('Comment'), button:has-text('Save'), button.cm-save").first().click();
+  await expectNoComposer(page);
+  await waitForStableLayout(page);
+}
+
 async function captureGarden(ctx) {
   const { page, targetDir, scene } = ctx;
   const P = scene.prefix;
@@ -617,6 +651,21 @@ async function captureGarden(ctx) {
   await waitForStableLayout(page);
   await screenshotFixedRegion(page, page.locator("#sidebarExportMenu"),
     shotPath(targetDir, P, "12-export-menu"), 0);
+
+  // Collaboration shot: the "Commenting as" identity control plus a comment thread with author
+  // pills and a reply. Clear the earlier comments so the panel shows one clean, attributed thread.
+  await page.evaluate(() => { const m = document.getElementById("sidebarExportMenu"); if (m) m.hidden = true; });
+  await clearAllComments(page);
+  await setReviewerName(page, "Ravi");
+  await addComment(page, page.locator("#commentRoot p").nth(1),
+    "Should we add a rain barrel to cut summer watering costs?");
+  await setReviewerName(page, "Dana");
+  await replyToFirstComment(page, "Good call - I'll price two 200L barrels for the shed.");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.mouse.move(1, 1);
+  await waitForStableLayout(page);
+  await screenshotFixedRegion(page, page.locator("#sidebar"),
+    shotPath(targetDir, P, "14-thread"), 0);
 }
 
 async function captureChecklist(ctx) {
