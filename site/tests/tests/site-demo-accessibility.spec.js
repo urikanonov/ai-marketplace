@@ -78,6 +78,49 @@ test("the plugin page identity line (logo, name, version) sits below the call-to
 });
 
 
+test("the plugin-page GitHub star button sits beside the identity line, not among the CTAs (SITE-PLUGIN-26)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  for (const p of ["/commentable-html/", "/multi-duck/", "/urikan-ai-marketplace-auto-updater/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    // The star is no longer one of the call-to-action buttons.
+    await expect(
+      page.locator(".hero-actions a.github-button"),
+      p + " star is not in the CTA row"
+    ).toHaveCount(0);
+    // The star shares one row with the identity line (logo, name, version badge).
+    const row = page.locator(".hero .hero-identity");
+    await expect(row, p + " identity row present").toHaveCount(1);
+    const identity = row.locator(".identity");
+    const star = row.locator("a.github-button");
+    await expect(identity, p + " identity in the row").toHaveCount(1);
+    await expect(star, p + " star in the row").toHaveCount(1);
+    await expect(star, p + " star visible").toBeVisible();
+    // The two render on the same row, with the star to the right of the identity pill.
+    const idBox = await identity.boundingBox();
+    const starBox = await star.boundingBox();
+    const idMid = idBox.y + idBox.height / 2;
+    expect(idMid, p + " star shares the identity row (top)").toBeGreaterThan(starBox.y - 1);
+    expect(idMid, p + " star shares the identity row (bottom)").toBeLessThan(
+      starBox.y + starBox.height + 1
+    );
+    expect(starBox.x, p + " star sits to the right of the identity").toBeGreaterThan(
+      idBox.x + idBox.width - 1
+    );
+  }
+  // On a narrow (phone-width) viewport the row wraps gracefully instead of overflowing: the
+  // identity line and the star may stack, but the .hero-identity row never forces horizontal
+  // overflow (flex-wrap keeps it inside the viewport no matter how wide the star widget renders).
+  await page.setViewportSize({ width: 375, height: 800 });
+  for (const p of ["/commentable-html/", "/multi-duck/", "/urikan-ai-marketplace-auto-updater/"]) {
+    await page.goto(p, { waitUntil: "domcontentloaded" });
+    const fits = await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+    );
+    expect(fits, p + " identity/star row must not overflow the mobile viewport").toBe(true);
+  }
+});
+
+
 test("the medium comparison table stacks without horizontal overflow on a narrow viewport", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
