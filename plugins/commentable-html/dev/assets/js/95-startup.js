@@ -260,6 +260,7 @@ if (typeof setupIdentityControl === "function") setupIdentityControl();
 setupCommentSearch();
 setupPrintAppendix();
 pinDeckSlideDisplayForPrint();
+setupSinglePagePrint();
 function setupDeck() {
   if (window.__cmhDeck) return;  // idempotent: never install the deck chrome twice
   const stage = root.querySelector(".deck-stage");
