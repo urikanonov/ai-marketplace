@@ -343,6 +343,7 @@ def _self_validate(html_out, base_dir=None):
     try:
         import validate as _validate
     except ImportError:
+        _toolpath.warn_missing_tool("validate", "self-validation of the new document")
         return None, None
     # The temp file location does not affect validation: base_dir is passed explicitly,
     # so companion refs never resolve against the temp file's directory. Use the system
@@ -610,7 +611,7 @@ def main(argv):
             import wrap_sections
             content, _wrapped = wrap_sections.wrap_fragment(content)
         except ImportError:
-            pass  # degrade gracefully if the wrapper is unavailable
+            _toolpath.warn_missing_tool("wrap_sections", "section wrapping")
 
     prefix = ""
     copy_here = False
@@ -657,7 +658,7 @@ def main(argv):
             import highlight_document
             out_html, _highlighted = highlight_document.highlight_document(out_html)
         except ImportError:
-            pass  # degrade gracefully if the highlighter is unavailable
+            _toolpath.warn_missing_tool("highlight_document", "syntax highlighting")
 
     # Bake the section/word/reading-time overview strip for report/plan documents so a created
     # plan/report always opens with its size at a glance. Opt out with --no-stats.
@@ -666,7 +667,7 @@ def main(argv):
             import doc_stats
             out_html = doc_stats.rewrite_html(out_html)
         except ImportError:
-            pass  # degrade gracefully if the stats tool is unavailable
+            _toolpath.warn_missing_tool("doc_stats", "the document stats strip")
 
     # Stamp the creation time so the runtime can tell a produced-but-never-validated document apart
     # from one that was strict-validated (validate.py stamps commentable-html-validated on a clean
@@ -682,7 +683,7 @@ def main(argv):
                     agent = detected_agent
             out_html = doc_stamp.stamp_session(out_html, sid, agent=agent)
     except ImportError:
-        pass
+        _toolpath.warn_missing_tool("doc_stamp", "the creation and session-id stamps")
 
     brand_warnings = []
     try:

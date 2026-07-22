@@ -28,6 +28,7 @@ try:
     import validate as _base
 except ImportError:  # pragma: no cover
     _base = None
+    _toolpath.warn_missing_tool("validate", "deck theme validation")
 
 
 def _is_repo_example(path):

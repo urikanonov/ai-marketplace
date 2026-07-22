@@ -32,3 +32,17 @@ def ensure():
     for d in tool_dirs():
         if d not in sys.path:
             sys.path.insert(0, d)
+
+
+def warn_missing_tool(name, feature=""):
+    """Emit a one-line stderr WARNING that an optional sibling tool could not be imported, so a
+    degraded run is never SILENT. In a correct install every sibling ships in the skill and resolves,
+    so this only ever fires on a broken/partial install - and it must be VISIBLE, not swallowed (the
+    silent-import class of bug that hid the #584 root cause). Best-effort: it never raises."""
+    try:
+        suffix = " (%s is degraded)" % feature if feature else ""
+        sys.stderr.write(
+            "commentable-html: WARNING - optional tool '%s' could not be imported%s; this indicates "
+            "a broken or partial install (re-install or re-extract the skill).\n" % (name, suffix))
+    except Exception:  # pragma: no cover - a broken stderr must not crash a degraded run
+        pass

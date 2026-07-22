@@ -27,14 +27,17 @@ try:
     import highlight_document as _highlight_document  # noqa: E402
 except ImportError:  # pragma: no cover
     _highlight_document = None
+    _toolpath.warn_missing_tool("highlight_document", "syntax highlighting")
 try:
     import generate_toc as _generate_toc  # noqa: E402
 except ImportError:  # pragma: no cover
     _generate_toc = None
+    _toolpath.warn_missing_tool("generate_toc", "the table of contents")
 try:
     import doc_stats as _doc_stats  # noqa: E402
 except ImportError:  # pragma: no cover
     _doc_stats = None
+    _toolpath.warn_missing_tool("doc_stats", "the document stats strip")
 
 
 VOID = frozenset((
@@ -628,6 +631,7 @@ def _partition_val_warnings(warnings):
         import validate
         prefix = validate.ADVISORY_PREFIX
     except Exception:
+        _toolpath.warn_missing_tool("validate", "advisory-warning classification")
         prefix = "theme contrast advisory: "
     fatal, advisory = [], []
     for w in warnings:

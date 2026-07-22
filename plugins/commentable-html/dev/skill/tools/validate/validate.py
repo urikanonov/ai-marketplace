@@ -52,22 +52,24 @@ if _HERE not in sys.path:
 # section_hash) when validate.py runs as a STANDALONE CLI subprocess - not only in-process under a
 # test's path setup. Without this, _stamp_validated_file's import silently ImportError'd and a
 # `python tools/validate/validate.py <file>` run never stamped, so a clean validate still left the
-# runtime "not validated" banner up (the exact defect in issue #584). Best-effort: a missing
-# bootstrap must not break validation itself.
+# runtime "not validated" banner up (the exact defect in issue #584). The bootstrap below is a HARD
+# dependency (see the import), not best-effort.
 _TOOLS_ROOT = os.path.dirname(_HERE)
 if _TOOLS_ROOT not in sys.path:
     sys.path.insert(0, _TOOLS_ROOT)
-try:
-    import _toolpath  # noqa: E402
-    _toolpath.ensure()
-except Exception:  # pragma: no cover - a broken/absent bootstrap surfaces via the import tests
-    pass
+# A HARD import (not best-effort): every tool depends on _toolpath, and the failure handlers below
+# reference it, so it must be bound. _HERE and _TOOLS_ROOT are on sys.path above, so this resolves
+# in any real install; a genuinely missing _toolpath crashes loudly here (like every other tool),
+# never silently - which is the whole point.
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 
 try:
     from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
     from cmhval.jsonblocks import check_json_blocks  # noqa: E402
     _CMHVAL_AVAILABLE = True
 except ImportError:
+    _toolpath.warn_missing_tool("cmhval", "content-syntax validation (mermaid diagrams / JSON blocks)")
     # The content-syntax checks live in the sibling cmhval/ package, which ships in
     # this same tools/ directory. If it cannot be imported (a broken/partial
     # install), fail CLOSED for any content it WOULD have inspected: a validator
@@ -342,6 +344,10 @@ def _stamp_validated_file(path):
     broadly. The subprocess-stamp tests guard against a silent regression of the import path."""
     try:
         import doc_stamp
+    except ImportError:
+        _toolpath.warn_missing_tool("doc_stamp", "the validated stamp")
+        return
+    try:
         with open(path, "r", encoding="utf-8", newline="") as fh:
             html = fh.read()
         stamped = doc_stamp.stamp_validated_html(html)

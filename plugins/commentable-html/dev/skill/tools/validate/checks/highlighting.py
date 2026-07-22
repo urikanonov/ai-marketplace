@@ -1,8 +1,7 @@
 """Author-time code-block syntax-highlighting checks (a language-labelled block
 that shipped without highlight spans)."""
 
-import os
-import sys
+import _toolpath
 from .parsing import _CLASS_ATTR_RE, _CODE_TAG_RE, _PRE_TAG_RE
 
 
@@ -13,13 +12,11 @@ def _highlight_language_table():
     try:
         import highlight_code
     except ImportError:
-        here = os.path.dirname(os.path.abspath(__file__))
-        if here not in sys.path:
-            sys.path.insert(0, here)
-        try:
-            import highlight_code
-        except Exception:
-            return {}, {}
+        # _toolpath.ensure() (called at the CLI entrypoint) already puts every tools/ topic
+        # directory - including blocks/, where highlight_code lives - on sys.path, so a failure
+        # here means a broken/partial install, not a path gap. Make it VISIBLE and no-op.
+        _toolpath.warn_missing_tool("highlight_code", "the highlightable-language table")
+        return {}, {}
     return getattr(highlight_code, "LANGUAGE_CONFIGS", {}), getattr(highlight_code, "ALIASES", {})
 
 
