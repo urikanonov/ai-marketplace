@@ -11,8 +11,13 @@ gap two ways:
      RESOLVES, so a missing/renamed sibling fails loudly here instead of silently degrading at
      runtime.
   2) NO-SILENT: no ImportError handler in the shipped tools is silent - each must warn (via
-     `_toolpath.warn_missing_tool`), re-raise, re-import, or define fallback stubs, never merely
-     `pass`/assign a sentinel. This enforces the invariant for FUTURE code too.
+     `_toolpath.warn_missing_tool`), unconditionally re-raise, or re-import the guarded sibling,
+     never merely `pass`/assign a sentinel/return. This enforces the invariant for FUTURE code too.
+
+Accepted static-analysis limitations (documented, not gaps we rely on): the detector only sees
+STATIC `import`/`from` statements (a guarded `importlib.import_module(...)`/`__import__(...)` is
+invisible) and a dotted relative re-import (`from .sub import x`); no shipped guard uses either, and
+`test_cli_help.py` still exercises every tool's module-load imports as a subprocess backstop.
 """
 import ast
 import builtins
@@ -75,8 +80,11 @@ def _collect_imports(nodes):
         if isinstance(node, ast.Import):
             names += [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom):
-            if node.module and node.level == 0:
+            if node.level == 0 and node.module:
                 names.append(node.module)
+            elif node.level > 0 and node.module is None:
+                # `from . import doc_stamp` imports sibling submodule(s) by name.
+                names += [a.name for a in node.names]
         elif isinstance(node, (ast.Try, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             continue
         else:
@@ -129,26 +137,50 @@ def _is_warn_call(node):
             or (isinstance(f, ast.Name) and f.id == "warn_missing_tool"))
 
 
+def _statements_that_run(handler):
+    """The statements that ACTUALLY execute when this handler fires: its direct top-level
+    statements, plus one level into a top-level recovery `try` (the sys.path-fix-then-reimport
+    pattern - both its body and its own handlers run on the failure path). We deliberately do NOT
+    descend into a nested def/class body or a conditional block, so a warn/re-import that is dead
+    (`if False: warn(...)`) or merely DEFINED inside a nested function does not count as making the
+    failure visible."""
+    stmts = []
+    for stmt in handler.body:
+        stmts.append(stmt)
+        if isinstance(stmt, ast.Try):
+            stmts.extend(stmt.body)
+            for h in stmt.handlers:
+                stmts.extend(h.body)
+    return stmts
+
+
+def _reimports_guarded(stmt, guarded_tops):
+    if isinstance(stmt, ast.Import):
+        return any(a.name.split(".")[0] in guarded_tops for a in stmt.names)
+    if isinstance(stmt, ast.ImportFrom):
+        if stmt.level == 0 and stmt.module:
+            return stmt.module.split(".")[0] in guarded_tops
+        if stmt.level > 0 and stmt.module is None:
+            return any(a.name.split(".")[0] in guarded_tops for a in stmt.names)
+    return False
+
+
 def _handler_is_silent(handler, guarded_names):
-    # A handler guarding a sibling import is NON-silent only if it makes the failure visible: it
-    # calls warn_missing_tool, UNCONDITIONALLY re-raises (a top-level `raise`), or RECOVERS by
-    # re-importing the SAME guarded sibling. Anything else - pass / assign a sentinel / return, an
-    # unrelated `import os`, or a nested conditional raise - is SILENT and would hide a broken
-    # install (the #584 class).
+    # A handler guarding a sibling import is NON-silent only if it makes the failure visible on the
+    # path that actually runs: it UNCONDITIONALLY re-raises (a top-level `raise`), calls
+    # warn_missing_tool as a statement that runs, or RECOVERS by re-importing the SAME guarded
+    # sibling. Anything else - pass / assign a sentinel / return, an unrelated `import os`, or a
+    # warn/re-import that is dead-conditional or buried in a nested function - is SILENT and would
+    # hide a broken install (the #584 class).
     guarded_tops = {n.split(".")[0] for n in guarded_names}
     for stmt in handler.body:
         if isinstance(stmt, ast.Raise):
             return False
-    for stmt in handler.body:
-        for node in ast.walk(stmt):
-            if _is_warn_call(node):
-                return False
-            if isinstance(node, ast.Import):
-                if any(a.name.split(".")[0] in guarded_tops for a in node.names):
-                    return False
-            elif isinstance(node, ast.ImportFrom):
-                if node.module and node.module.split(".")[0] in guarded_tops:
-                    return False
+    for stmt in _statements_that_run(handler):
+        if isinstance(stmt, ast.Expr) and _is_warn_call(stmt.value):
+            return False
+        if _reimports_guarded(stmt, guarded_tops):
+            return False
     return True
 
 
@@ -257,6 +289,45 @@ class DetectorSelfTests(unittest.TestCase):
         self.assertFalse(self._lone_guarding_handler_is_silent(
             "try:\n import highlight_code\nexcept ImportError:\n import highlight_code\n"))
 
+    def test_a_dead_conditional_warn_is_still_silent(self):
+        # A warn buried under `if False:` never runs, so the failure is still hidden.
+        self.assertTrue(self._lone_guarding_handler_is_silent(
+            "try:\n import doc_stamp\n"
+            "except ImportError:\n if False:\n  _toolpath.warn_missing_tool('doc_stamp')\n"))
+
+    def test_a_warn_defined_in_a_nested_function_is_still_silent(self):
+        # Merely DEFINING a function that would warn does not warn when the handler fires.
+        self.assertTrue(self._lone_guarding_handler_is_silent(
+            "try:\n import doc_stamp\n"
+            "except ImportError:\n def _later():\n  _toolpath.warn_missing_tool('doc_stamp')\n"))
+
+    def test_a_conditional_reimport_is_still_silent(self):
+        # A re-import under a conditional is not a guaranteed recovery, so it is still silent.
+        self.assertTrue(self._lone_guarding_handler_is_silent(
+            "try:\n import highlight_code\n"
+            "except ImportError:\n if cond:\n  import highlight_code\n"))
+
+    def test_a_recovery_try_reimport_is_not_silent(self):
+        # The sys.path-fix-then-reimport pattern: the re-import in a top-level recovery `try` runs
+        # on the failure path, so it makes the failure visible.
+        self.assertFalse(self._lone_guarding_handler_is_silent(
+            "try:\n import highlight_code\n"
+            "except ImportError:\n try:\n  import highlight_code\n except Exception:\n  raise\n"))
+
+    def test_a_recovery_try_warn_is_not_silent(self):
+        # A warn inside the recovery try's own handler still runs on the failure path.
+        self.assertFalse(self._lone_guarding_handler_is_silent(
+            "try:\n import doc_stamp\n"
+            "except ImportError:\n try:\n  fix_path()\n"
+            " except Exception:\n  _toolpath.warn_missing_tool('doc_stamp')\n"))
+
+    def test_a_guarded_relative_from_import_is_a_sibling(self):
+        # `from . import doc_stamp` must be tracked, or a guarded relative import bypasses the guard.
+        t = self._try(
+            "try:\n from . import doc_stamp\nexcept ImportError:\n pass\n")
+        self.assertIn("doc_stamp", _guarded_sibling_imports(t))
+        self.assertTrue(all(_handler_is_silent(h, ["doc_stamp"]) for h in t.handlers))
+
     def test_import_nested_in_control_flow_is_still_guarded(self):
         # `try: if cond: import sib` must still be attributed to the outer handler.
         t = self._try("try:\n if cond:\n  import doc_stamp\nexcept ImportError:\n pass\n")
@@ -308,10 +379,18 @@ class WarnMissingToolTests(unittest.TestCase):
         self.assertIn("the validated stamp", out)
 
     def test_warn_missing_tool_never_raises(self):
-        # Best-effort: even a broken stderr must not turn a degraded run into a crash.
-        buf = io.StringIO()
-        with redirect_stderr(buf):
-            _toolpath.warn_missing_tool("x")  # no feature suffix
+        # Best-effort: even a BROKEN stderr (whose write() raises) must not turn a degraded run into
+        # a crash - warn_missing_tool must swallow it and return normally.
+        class _Boom:
+            def write(self, *a, **k):
+                raise OSError("stderr is broken")
+
+            def flush(self, *a, **k):
+                raise OSError("stderr is broken")
+
+        with mock.patch.object(sys, "stderr", _Boom()):
+            _toolpath.warn_missing_tool("x")  # must not raise
+            _toolpath.warn_missing_tool("x", "some feature")  # must not raise
 
     def test_a_module_level_fallback_warns_when_a_sibling_is_missing(self):
         # Force a fresh import of deck_theme with the sibling 'validate' unimportable and assert its
