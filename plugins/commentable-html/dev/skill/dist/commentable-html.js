@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.201.0";
+const CMH_VERSION = "1.202.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -197,7 +197,14 @@ function _tombstoneEmbedded(ids) {
   const t = _deletedEmbeddedIds();
   let changed = false;
   (ids || []).forEach(function (id) { if (id && emb.has(id) && !t.has(id)) { t.add(id); changed = true; } });
-  if (changed) { try { localStorage.setItem(CMH_DELETED_KEY, JSON.stringify([...t])); } catch (e) { /* ignore */ } }
+  if (!changed) return true;
+  try { localStorage.setItem(CMH_DELETED_KEY, JSON.stringify([...t])); return true; }
+  catch (e) { return false; }
+}
+function _ensureTombstoneEmbedded(ids, firstWriteOk, commentsWriteOk) {
+  if (commentsWriteOk && (firstWriteOk || _tombstoneEmbedded(ids))) return true;
+  showToast("Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Portable after freeing storage.", { alert: true, duration: 10000 });
+  return false;
 }
 function commentTimestamp(c) {
   return (c && (c.updatedAt || c.createdAt)) || "";
@@ -278,9 +285,6 @@ function getEmbeddedComments() {
     return [];
   }
 }
-
-
-
 
 /* ---------- Text-offset helpers ---------- */
 function getTextNodes() {
@@ -5345,9 +5349,10 @@ listEl.addEventListener("click", (e) => {
     if (rc && confirm("Delete this reply?")) {
       const oc = openEditComposers.get(rid);
       if (oc) closeComposerElement(oc);          // an open edit of this reply would silently lose its text
-      _tombstoneEmbedded([rid]);
+      const tombstoneOk = _tombstoneEmbedded([rid]);
       comments = comments.filter(x => x.id !== rid);
-      saveComments();
+      const commentsOk = saveComments();
+      _ensureTombstoneEmbedded([rid], tombstoneOk, commentsOk);
       renderComments();
     }
     return;
@@ -5370,12 +5375,13 @@ listEl.addEventListener("click", (e) => {
       ? ("Delete this comment and its " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies") + "?")
       : "Delete this comment?";
     if (confirm(msg)) {
-      _tombstoneEmbedded(ids);
+      const tombstoneOk = _tombstoneEmbedded(ids);
       const drop = new Set(ids);
       ids.forEach((tid) => { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
       comments = comments.filter(x => !drop.has(x.id));
       removeHighlight(c);
-      saveComments();
+      const commentsOk = saveComments();
+      _ensureTombstoneEmbedded(ids, tombstoneOk, commentsOk);
       renderComments();
     }
     return;
@@ -7127,10 +7133,12 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
     if (typeof openEditComposers !== "undefined") {
       Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
     }
-    _tombstoneEmbedded(comments.map(c => c.id));
+    const tombstoneIds = comments.map(c => c.id);
+    const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
     comments.forEach(c => removeHighlight(c));
     comments = [];
-    saveComments();
+    const commentsOk = saveComments();
+    _ensureTombstoneEmbedded(tombstoneIds, tombstoneOk, commentsOk);
     if (typeof resetAllChecklists === "function") resetAllChecklists();
     if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
     if (typeof resetAllNotes === "function") resetAllNotes();

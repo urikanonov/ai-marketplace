@@ -314,10 +314,12 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
     if (typeof openEditComposers !== "undefined") {
       Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
     }
-    _tombstoneEmbedded(comments.map(c => c.id));
+    const tombstoneIds = comments.map(c => c.id);
+    const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
     comments.forEach(c => removeHighlight(c));
     comments = [];
-    saveComments();
+    const commentsOk = saveComments();
+    _ensureTombstoneEmbedded(tombstoneIds, tombstoneOk, commentsOk);
     if (typeof resetAllChecklists === "function") resetAllChecklists();
     if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
     if (typeof resetAllNotes === "function") resetAllNotes();

@@ -5,7 +5,7 @@ import path from "path";
 import {
   openInline, ready, fileUrl, INLINE, stageInline, addTextComment, readDownload,
   installClipboardCapture, allCids,
-  clickSidebarExport,
+  clickSidebarExport, currentToast,
 } from "./helpers.js";
 
 const CONTENT_END = "<!-- END: commentable-html - CONTENT -->";
@@ -108,6 +108,175 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
     await ready(p2);
     await expect(p2.locator(".cm-card")).toHaveCount(0); // did NOT resurrect
     await expect(p2.locator("#cmTypeBadge")).toHaveText("Not portable"); // file still has it embedded
+    await p2.close();
+  });
+
+  test("deleting an embedded comment retries a quota-failed tombstone after the smaller save (CMH-PERSIST-05)", async ({ page, context }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "embedded delete under quota");
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_tomb_quota_")), "doc.html");
+    fs.writeFileSync(p, await readDownload(dl));
+    const p2 = await context.newPage();
+    p2.on("dialog", (d) => d.accept());
+    await installClipboardCapture(p2);
+    await p2.addInitScript(() => {
+      const original = Storage.prototype.setItem;
+      let reducedCommentsSaved = false;
+      window.__cmhQuotaOrder = [];
+      Storage.prototype.setItem = function (key, value) {
+        if (String(key).endsWith("::deleted") && !reducedCommentsSaved) {
+          window.__cmhQuotaOrder.push("tombstone-before-save");
+          throw new Error("simulated quota");
+        }
+        try {
+          const parsed = JSON.parse(String(value));
+          if (!String(key).endsWith("::deleted") && Array.isArray(parsed) && parsed.length === 0) {
+            const result = original.call(this, key, value);
+            reducedCommentsSaved = true;
+            window.__cmhQuotaOrder.push("comments-saved");
+            return result;
+          }
+        } catch (e) { /* ignore */ }
+        const result = original.call(this, key, value);
+        if (String(key).endsWith("::deleted")) window.__cmhQuotaOrder.push("tombstone-after-save");
+        return result;
+      };
+    });
+    await p2.goto(fileUrl(p));
+    await ready(p2);
+    const cid = await p2.locator(".cm-card").first().getAttribute("data-cid");
+    await p2.locator(".cm-card [data-act='del']").first().click();
+    await expect(p2.locator(".cm-card")).toHaveCount(0);
+    expect(await p2.evaluate((id) => {
+      const key = document.getElementById("commentRoot").dataset.commentKey + "::deleted";
+      return JSON.parse(localStorage.getItem(key) || "[]").includes(id);
+    }, cid)).toBe(true);
+    expect(await p2.evaluate(() => window.__cmhQuotaOrder)).toEqual([
+      "tombstone-before-save",
+      "comments-saved",
+      "tombstone-after-save",
+    ]);
+    await p2.reload();
+    await ready(p2);
+    await expect(p2.locator(".cm-card")).toHaveCount(0);
+    await p2.close();
+  });
+
+  test("Clear retries embedded-comment tombstones after saving the empty comments array (CMH-PERSIST-05)", async ({ page, context }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "clear embedded one", 0);
+    await addTextComment(page, "#commentRoot section p", "clear embedded two", 1);
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_tomb_clear_")), "doc.html");
+    fs.writeFileSync(p, await readDownload(dl));
+    const p2 = await context.newPage();
+    await installClipboardCapture(p2);
+    await p2.addInitScript(() => {
+      const original = Storage.prototype.setItem;
+      let emptyCommentsSaved = false;
+      window.__cmhQuotaOrder = [];
+      Storage.prototype.setItem = function (key, value) {
+        if (String(key).endsWith("::deleted") && !emptyCommentsSaved) {
+          window.__cmhQuotaOrder.push("tombstone-before-save");
+          throw new Error("simulated quota");
+        }
+        try {
+          const parsed = JSON.parse(String(value));
+          if (!String(key).endsWith("::deleted") && Array.isArray(parsed) && parsed.length === 0) {
+            const result = original.call(this, key, value);
+            emptyCommentsSaved = true;
+            window.__cmhQuotaOrder.push("comments-saved");
+            return result;
+          }
+        } catch (e) { /* ignore */ }
+        const result = original.call(this, key, value);
+        if (String(key).endsWith("::deleted")) window.__cmhQuotaOrder.push("tombstone-after-save");
+        return result;
+      };
+    });
+    await p2.goto(fileUrl(p));
+    await ready(p2);
+    const ids = await p2.locator(".cm-card").evaluateAll((cards) => cards.map((c) => c.dataset.cid));
+    await p2.locator("#btnClearAll").click();
+    await p2.locator(".cm-modal").getByRole("button", { name: "OK" }).click();
+    await expect(p2.locator(".cm-card")).toHaveCount(0);
+    expect(await p2.evaluate((expected) => {
+      const key = document.getElementById("commentRoot").dataset.commentKey + "::deleted";
+      const actual = JSON.parse(localStorage.getItem(key) || "[]");
+      return expected.every((id) => actual.includes(id));
+    }, ids)).toBe(true);
+    expect(await p2.evaluate(() => window.__cmhQuotaOrder)).toEqual([
+      "tombstone-before-save",
+      "comments-saved",
+      "tombstone-after-save",
+    ]);
+    await p2.reload();
+    await ready(p2);
+    await expect(p2.locator(".cm-card")).toHaveCount(0);
+    await p2.close();
+  });
+
+  test("deleting an embedded comment warns if the tombstone cannot be persisted (CMH-PERSIST-05)", async ({ page, context }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "embedded delete still over quota");
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_tomb_warn_")), "doc.html");
+    fs.writeFileSync(p, await readDownload(dl));
+    const p2 = await context.newPage();
+    p2.on("dialog", (d) => d.accept());
+    await installClipboardCapture(p2);
+    await p2.addInitScript(() => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (String(key).endsWith("::deleted")) throw new Error("simulated quota");
+        return original.call(this, key, value);
+      };
+    });
+    await p2.goto(fileUrl(p));
+    await ready(p2);
+    await p2.locator(".cm-card [data-act='del']").first().click();
+    await expect(p2.locator(".cm-card")).toHaveCount(0);
+    await expect.poll(() => currentToast(p2)).toContain("could not persist its delete marker");
+    await p2.close();
+  });
+
+  test("deleting an embedded comment warns if the smaller comments save fails after its tombstone persists (CMH-PERSIST-05)", async ({ page, context }) => {
+    await openInline(page);
+    await addTextComment(page, "#commentRoot section p", "embedded delete stale local save");
+    const [dl] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+    const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "cmh_tomb_save_fail_")), "doc.html");
+    fs.writeFileSync(p, await readDownload(dl));
+    const p2 = await context.newPage();
+    p2.on("dialog", (d) => d.accept());
+    await installClipboardCapture(p2);
+    await p2.addInitScript(() => {
+      const original = Storage.prototype.setItem;
+      window.__cmhSaveFailOrder = [];
+      Storage.prototype.setItem = function (key, value) {
+        try {
+          const parsed = JSON.parse(String(value));
+          if (!String(key).endsWith("::deleted") && Array.isArray(parsed) && parsed.length === 0) {
+            window.__cmhSaveFailOrder.push("comments-save-failed");
+            throw new Error("simulated comments quota");
+          }
+        } catch (e) {
+          if (e && e.message === "simulated comments quota") throw e;
+        }
+        const result = original.call(this, key, value);
+        if (String(key).endsWith("::deleted")) window.__cmhSaveFailOrder.push("tombstone-saved");
+        return result;
+      };
+    });
+    await p2.goto(fileUrl(p));
+    await ready(p2);
+    await p2.locator(".cm-card [data-act='del']").first().click();
+    await expect(p2.locator(".cm-card")).toHaveCount(0);
+    expect(await p2.evaluate(() => window.__cmhSaveFailOrder)).toEqual(["tombstone-saved", "comments-save-failed"]);
+    await expect.poll(() => currentToast(p2)).toContain("could not persist its delete marker");
+    await p2.reload();
+    await ready(p2);
+    await expect(p2.locator(".cm-card")).toHaveCount(1);
     await p2.close();
   });
 

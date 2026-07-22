@@ -39,7 +39,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `44-threads.js` | CMH-THREAD | Single-level comment threads: reply grouping (`threadRoots`/`repliesOf`), `threadIds`, and orphan-reply pruning. |
 | `41-selection.js` | CMH-SEL, CMH-CORE | Selection handling and the add-comment popup. |
 | `45-composer.js` | CMH-A11Y, CMH-CORE | Per-instance comment composer (parallel-safe). |
-| `50-sidebar.js` | CMH-SIDE | Sidebar rendering. |
+| `50-sidebar.js` | CMH-SIDE, CMH-PERSIST | Sidebar rendering and durable embedded-delete persistence from per-card deletes. |
 | `51-comment-search.js` | CMH-SEARCH | Comment search / filter row: case-insensitive filter of the rendered cards, shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
 | `53-comment-popover.js` | CMH-CORE | Inline on-screen comment dialog opened from the hover bubble (note + Edit button; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
@@ -47,7 +47,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
 | `60-export-markdown.js` | CMH-MD, CMH-CODE | Export to Markdown; per-code-block Copy button, language pill, and optional caption. |
-| `62-sortable-tables.js` | CMH-CONTENT | Sortable tables. |
+| `62-sortable-tables.js` | CMH-CONTENT, CMH-PERSIST | Sortable tables and durable embedded-delete persistence from Clear. |
 | `65-export-portable.js` | CMH-EXP, CMH-SEC | Export as Portable + shared export snapshot primitives. |
 | `66-export-plain.js` | CMH-EXP | Save as plain HTML (strip the comment layer). |
 | `67-export-standalone.js` | CMH-MODE | Export standalone (nonportable -> single file). |
