@@ -355,6 +355,11 @@ test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)"
         expect(c.svgW, `diagram "${c.src}" fits its column`).toBeLessThanOrEqual(c.hostW + 2);
         expect(c.overRight, `diagram "${c.src}" not clipped on the right`).toBeLessThanOrEqual(1);
         expect(c.overLeft, `diagram "${c.src}" not clipped on the left`).toBeLessThanOrEqual(1);
+        // No sliver: every diagram is at least a readable width. The documented regression squashed
+        // the narrow state diagram to ~81px; the layer keeps it at its ~173px cap, and every other
+        // gallery diagram is wider. A 120px floor is comfortably below the narrowest legitimate
+        // diagram and well above the 81px sliver.
+        expect(c.svgW, `diagram "${c.src}" is at least a readable width (not a sliver)`).toBeGreaterThanOrEqual(120);
       }
 
       // No diagram towers absurdly tall. This is the guard for the un-capped-narrow regression: if the
