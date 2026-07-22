@@ -162,6 +162,7 @@ def _self_validate(figure, scripts, template_path=DEFAULT_TEMPLATE):
     except ModuleNotFoundError as exc:
         if exc.name != "validate":
             raise
+        _toolpath.warn_missing_tool("validate", "chart self-validation")
         return None
     template_html = _read_text(template_path)
     candidate = _inject_for_validation(template_html, figure, scripts)

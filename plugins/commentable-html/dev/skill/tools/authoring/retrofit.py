@@ -631,6 +631,7 @@ def _partition_val_warnings(warnings):
         import validate
         prefix = validate.ADVISORY_PREFIX
     except Exception:
+        _toolpath.warn_missing_tool("validate", "advisory-warning classification")
         prefix = "theme contrast advisory: "
     fatal, advisory = [], []
     for w in warnings:

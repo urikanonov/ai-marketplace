@@ -43,31 +43,83 @@ def _tool_py_files():
     return sorted(out)
 
 
-def _catches_import_error(handler):
+# Exception types that catch an import failure: ImportError, its subclass ModuleNotFoundError, and
+# the broad catches that also swallow one. A handler of any of these that guards a sibling-tool
+# import must not be silent.
+_IMPORT_FAILURE_TYPES = frozenset({"ImportError", "ModuleNotFoundError", "Exception", "BaseException"})
+# Standard-library top-level module names, so a guarded `import os`/`import json` is not mistaken for
+# a sibling tool. `_toolpath` is the sys.path bootstrap, not a sibling tool, and its own guard cannot
+# call warn_missing_tool (which lives IN _toolpath) - a bootstrap failure surfaces loudly via the
+# hard sibling imports that immediately follow it - so it is excluded too.
+_STDLIB = frozenset(getattr(sys, "stdlib_module_names", ())) | frozenset((
+    "os", "sys", "re", "io", "json", "ast", "importlib", "subprocess", "tempfile", "shutil"))
+
+
+def _handler_catches_import_failure(handler):
     t = handler.type
+    if t is None:
+        return True  # a bare except swallows an import failure too
     if isinstance(t, ast.Tuple):
-        return any(isinstance(e, ast.Name) and e.id == "ImportError" for e in t.elts)
-    return isinstance(t, ast.Name) and t.id == "ImportError"
+        return any(isinstance(e, ast.Name) and e.id in _IMPORT_FAILURE_TYPES for e in t.elts)
+    return isinstance(t, ast.Name) and t.id in _IMPORT_FAILURE_TYPES
 
 
-def _guarded_import_names(try_node):
+def _catches_specific_import_error(handler):
+    # True when the handler catches ImportError/ModuleNotFoundError SPECIFICALLY - such a handler
+    # consumes the import failure, so a later broad `except Exception` on the same try no longer sees
+    # it (and need not be import-visible).
+    t = handler.type
+    specific = {"ImportError", "ModuleNotFoundError"}
+    if isinstance(t, ast.Tuple):
+        return any(isinstance(e, ast.Name) and e.id in specific for e in t.elts)
+    return isinstance(t, ast.Name) and t.id in specific
+
+
+def _import_guarding_handlers(try_node):
+    """The handlers, in order, that would actually catch an import failure for this try - stopping
+    once ImportError/ModuleNotFoundError is caught (a later broad `except Exception` for a non-import
+    error then never sees the import failure and is not required to be import-visible)."""
+    out = []
+    for h in try_node.handlers:
+        if _handler_catches_import_failure(h):
+            out.append(h)
+        if _catches_specific_import_error(h):
+            break
+    return out
+
+
+def _guarded_sibling_imports(try_node):
+    """Top-level module names imported in the try body that look like SIBLING TOOLS - a bare import
+    that is neither stdlib nor the `_toolpath` bootstrap. A Try that imports one of these is an
+    import-guard whose handlers must be non-silent, and every such name must resolve."""
     names = []
     for node in try_node.body:
         if isinstance(node, ast.Import):
             names += [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
             names.append(node.module)
-    return names
+    return [n for n in names if n.split(".")[0] != "_toolpath" and n.split(".")[0] not in _STDLIB]
+
+
+def _is_warn_call(node):
+    if not isinstance(node, ast.Call):
+        return False
+    f = node.func
+    return ((isinstance(f, ast.Attribute) and f.attr == "warn_missing_tool")
+            or (isinstance(f, ast.Name) and f.id == "warn_missing_tool"))
 
 
 def _handler_is_silent(handler):
-    # Silent = the handler does nothing visible - only pass / assignments / constant exprs. A handler
-    # that raises, CALLS anything (e.g. warn_missing_tool), re-imports, or defines fallback stubs is
-    # NOT silent.
+    # A handler guarding a sibling import is NON-silent only if it makes the failure visible: it
+    # calls warn_missing_tool, UNCONDITIONALLY re-raises (a top-level `raise`), or recovers by
+    # re-importing. Anything else - pass / assign a sentinel / return, even with a nested CONDITIONAL
+    # raise - is SILENT and would hide a broken install (the #584 class).
+    for stmt in handler.body:
+        if isinstance(stmt, ast.Raise):
+            return False  # a top-level, unconditional re-raise is loud
     for stmt in handler.body:
         for node in ast.walk(stmt):
-            if isinstance(node, (ast.Raise, ast.Call, ast.Import, ast.ImportFrom,
-                                 ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if isinstance(node, (ast.Import, ast.ImportFrom)) or _is_warn_call(node):
                 return False
     return True
 
@@ -75,11 +127,8 @@ def _handler_is_silent(handler):
 def _resolves(name):
     try:
         return importlib.util.find_spec(name) is not None
-    except (ImportError, ValueError, AttributeError):
-        try:
-            return importlib.util.find_spec(name.split(".")[0]) is not None
-        except Exception:
-            return False
+    except Exception:
+        return False
 
 
 class ImportGuardTests(unittest.TestCase):
@@ -92,14 +141,14 @@ class ImportGuardTests(unittest.TestCase):
             with open(path, encoding="utf-8") as fh:
                 tree = ast.parse(fh.read(), filename=path)
             for node in ast.walk(tree):
-                if isinstance(node, ast.Try):
-                    for h in node.handlers:
-                        if _catches_import_error(h) and _handler_is_silent(h):
+                if isinstance(node, ast.Try) and _guarded_sibling_imports(node):
+                    for h in _import_guarding_handlers(node):
+                        if _handler_is_silent(h):
                             offenders.append("%s:%d" % (os.path.relpath(path, TOOLS), h.lineno))
         self.assertEqual(
             offenders, [],
-            "silent ImportError handler(s) found - a missing sibling would degrade silently. "
-            "Call _toolpath.warn_missing_tool (or re-raise/re-import) instead: %r" % offenders)
+            "silent import fallback(s) found - a missing sibling tool would degrade silently. Call "
+            "_toolpath.warn_missing_tool (or re-raise / re-import) in the handler: %r" % offenders)
 
     def test_every_guarded_sibling_import_resolves_in_the_shipped_layout(self):
         checked = 0
@@ -108,8 +157,9 @@ class ImportGuardTests(unittest.TestCase):
             with open(path, encoding="utf-8") as fh:
                 tree = ast.parse(fh.read(), filename=path)
             for node in ast.walk(tree):
-                if isinstance(node, ast.Try) and any(_catches_import_error(h) for h in node.handlers):
-                    for name in _guarded_import_names(node):
+                if isinstance(node, ast.Try) and any(
+                        _handler_catches_import_failure(h) for h in node.handlers):
+                    for name in _guarded_sibling_imports(node):
                         checked += 1
                         if not _resolves(name):
                             missing.append("%s: %s" % (os.path.relpath(path, TOOLS), name))
@@ -137,28 +187,29 @@ class WarnMissingToolTests(unittest.TestCase):
             _toolpath.warn_missing_tool("x")  # no feature suffix
 
     def test_a_module_level_fallback_warns_when_a_sibling_is_missing(self):
-        # Force a fresh import of deck_theme with the sibling 'validate' unimportable and assert the
-        # fallback both degrades (_base is None) and WARNS (never silent) - the #584 class, made loud.
+        # Force a fresh import of deck_theme with the sibling 'validate' unimportable and assert its
+        # fallback both degrades (_base is None) and WARNS via warn_missing_tool - never silent (the
+        # #584 class, made loud). mock.patch.dict snapshots and fully restores sys.modules, so this is
+        # hermetic and cannot leave a degraded module cached for other tests; spying on
+        # warn_missing_tool pins deck_theme's OWN warning regardless of any transitive tool imports.
         real_import = builtins.__import__
 
         def fake(name, *a, **k):
             if name == "validate":
-                raise ImportError("blocked for test")
+                raise ModuleNotFoundError("blocked for test", name="validate")
             return real_import(name, *a, **k)
 
-        buf = io.StringIO()
-        for mod in ("deck_theme", "validate"):
-            sys.modules.pop(mod, None)
-        try:
-            with redirect_stderr(buf), mock.patch.object(builtins, "__import__", fake):
-                mod = importlib.import_module("deck_theme")
-            self.assertIsNone(mod._base, "the guarded import should have degraded to None")
-            self.assertIn("validate", buf.getvalue())
-            self.assertIn("WARNING", buf.getvalue())
-        finally:
-            # Restore a clean, real import so later tests see a working module.
+        with mock.patch.dict(sys.modules), \
+                mock.patch.object(_toolpath, "warn_missing_tool") as spy, \
+                mock.patch.object(builtins, "__import__", fake):
             sys.modules.pop("deck_theme", None)
-            importlib.import_module("deck_theme")
+            sys.modules.pop("validate", None)
+            mod = importlib.import_module("deck_theme")
+            self.assertIsNone(mod._base, "the guarded import should have degraded to None")
+            calls = [tuple(c.args) for c in spy.call_args_list]
+            self.assertIn(
+                ("validate", "deck theme validation"), calls,
+                "deck_theme must warn about the missing 'validate' sibling; calls=%r" % calls)
 
 
 if __name__ == "__main__":

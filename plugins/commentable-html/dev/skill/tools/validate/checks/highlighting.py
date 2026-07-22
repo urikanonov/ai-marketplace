@@ -19,6 +19,8 @@ def _highlight_language_table():
         try:
             import highlight_code
         except Exception:
+            import _toolpath
+            _toolpath.warn_missing_tool("highlight_code", "the highlightable-language table")
             return {}, {}
     return getattr(highlight_code, "LANGUAGE_CONFIGS", {}), getattr(highlight_code, "ALIASES", {})
 

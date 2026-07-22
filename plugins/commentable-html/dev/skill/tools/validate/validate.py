@@ -68,6 +68,7 @@ try:
     from cmhval.jsonblocks import check_json_blocks  # noqa: E402
     _CMHVAL_AVAILABLE = True
 except ImportError:
+    _toolpath.warn_missing_tool("cmhval", "content-syntax validation (mermaid diagrams / JSON blocks)")
     # The content-syntax checks live in the sibling cmhval/ package, which ships in
     # this same tools/ directory. If it cannot be imported (a broken/partial
     # install), fail CLOSED for any content it WOULD have inspected: a validator
@@ -348,6 +349,8 @@ def _stamp_validated_file(path):
         if stamped != html:
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(stamped)
+    except ImportError:
+        _toolpath.warn_missing_tool("doc_stamp", "the validated stamp")
     except Exception as exc:
         sys.stderr.write(
             "  NOTE: could not write the validated stamp (%s); the document PASSED validation but "

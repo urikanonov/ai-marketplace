@@ -10,13 +10,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - Guarded sibling-tool imports in the shipped tools are never SILENT anymore. The #584 root cause was
   a deferred `import doc_stamp` swallowed by `except (OSError, ImportError): pass`, so a broken
-  sibling import degraded a whole feature with no signal. Now every `except ImportError` fallback
-  across the tools (`new_document.py`, `deck_scaffold.py`, `retrofit.py`, `upgrade.py`,
-  `deck_theme.py`, `deck_validate.py`) emits a one-line stderr warning via a new
-  `_toolpath.warn_missing_tool`, so a degraded run is visible. A guard test
+  sibling import degraded a whole feature with no signal. Now every guarded import fallback across the
+  tools (`new_document.py`, `deck_scaffold.py`, `retrofit.py`, `upgrade.py`, `deck_theme.py`,
+  `deck_validate.py`, `chart_block.py`, `highlighting.py`, and `validate.py`'s `cmhval` and
+  validated-stamp guards) emits a one-line stderr warning via a new `_toolpath.warn_missing_tool` (or
+  unconditionally re-raises / recovers by re-importing), so a degraded run is visible. A guard test
   (`test_tool_imports.py`) additionally proves every guarded sibling import RESOLVES in the shipped
   layout (a missing/renamed sibling fails CI loudly) and structurally forbids any future silent
-  ImportError handler. (CMH-TOOL-IMPORTS-01)
+  import fallback - covering `except ImportError`, `ModuleNotFoundError`, and import-guarding broad /
+  bare `except` handlers across the whole shipped tools tree. (CMH-TOOL-IMPORTS-01)
 
 ## [1.211.0] - 2026-07-22
 
