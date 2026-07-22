@@ -290,3 +290,53 @@ for (const rpt of REPORTS) {
     });
   });
 }
+
+// CMH-DEMO-06: the visuals-matrix Mermaid gallery must not maroon short diagrams in tall empty
+// cells on a wide screen. Before the fix, the gallery `.visual-grid` used `align-items: stretch`,
+// so one naturally tall, portrait diagram (the state diagram, which the narrow scale-up grows even
+// taller) forced its whole grid row tall and stranded the short diagrams (flowchart, sequence,
+// gantt) in big empty boxes. The gallery now boxes each diagram to a uniform, bounded height and
+// fits the SVG inside, so no cell balloons off a tall sibling.
+test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)", () => {
+  test("gallery diagrams stay bounded and uniform, not marooned in tall empty cells on wide screens", async ({ page }) => {
+    test.setTimeout(60000);
+    // A wide viewport gives the auto-fit grid several columns, so the tall portrait diagram shares
+    // a row with short diagrams - the exact condition that produced the marooning.
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    const server = await startStaticServer(PLUGIN);
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(`${server.url}/examples/report-metrics.html`);
+      await ready(page);
+      // Every gallery diagram renders its SVG (served over http so mermaid runs).
+      await expect(page.locator("#commentRoot .visual-grid > pre.mermaid svg")).toHaveCount(7);
+
+      const cells = await page.evaluate(() => {
+        const hosts = [...document.querySelectorAll("#commentRoot .visual-grid > pre.mermaid")];
+        return hosts.map((el) => {
+          const svg = el.querySelector("svg");
+          return {
+            src: (el.getAttribute("data-cmh-md-src") || "").split("\n")[0].trim(),
+            hostH: Math.round(el.getBoundingClientRect().height),
+            svgH: svg ? Math.round(svg.getBoundingClientRect().height) : 0,
+          };
+        });
+      });
+
+      // Each gallery cell is height-bounded (the pre-fix stretch produced ~637px cells).
+      const MAX_CELL = 400;
+      for (const c of cells) {
+        expect(c.svgH, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
+        expect(c.hostH, `gallery cell for "${c.src}" is height-bounded`).toBeLessThanOrEqual(MAX_CELL);
+        // The rendered diagram fits inside its cell (fit, not clipped away or overflowing).
+        expect(c.svgH, `diagram "${c.src}" fits its cell`).toBeLessThanOrEqual(c.hostH + 2);
+      }
+
+      // The cells are uniform: one tall sibling cannot balloon a whole row (pre-fix range ~158px).
+      const heights = cells.map((c) => c.hostH);
+      expect(Math.max(...heights) - Math.min(...heights), "gallery cells are uniform height").toBeLessThanOrEqual(8);
+    } finally {
+      await server.close();
+    }
+  });
+});
