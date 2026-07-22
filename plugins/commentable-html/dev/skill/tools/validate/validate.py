@@ -57,11 +57,12 @@ if _HERE not in sys.path:
 _TOOLS_ROOT = os.path.dirname(_HERE)
 if _TOOLS_ROOT not in sys.path:
     sys.path.insert(0, _TOOLS_ROOT)
-try:
-    import _toolpath  # noqa: E402
-    _toolpath.ensure()
-except Exception:  # pragma: no cover - a broken/absent bootstrap surfaces via the import tests
-    pass
+# A HARD import (not best-effort): every tool depends on _toolpath, and the failure handlers below
+# reference it, so it must be bound. _HERE and _TOOLS_ROOT are on sys.path above, so this resolves
+# in any real install; a genuinely missing _toolpath crashes loudly here (like every other tool),
+# never silently - which is the whole point.
+import _toolpath  # noqa: E402
+_toolpath.ensure()
 
 try:
     from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
@@ -343,14 +344,16 @@ def _stamp_validated_file(path):
     broadly. The subprocess-stamp tests guard against a silent regression of the import path."""
     try:
         import doc_stamp
+    except ImportError:
+        _toolpath.warn_missing_tool("doc_stamp", "the validated stamp")
+        return
+    try:
         with open(path, "r", encoding="utf-8", newline="") as fh:
             html = fh.read()
         stamped = doc_stamp.stamp_validated_html(html)
         if stamped != html:
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(stamped)
-    except ImportError:
-        _toolpath.warn_missing_tool("doc_stamp", "the validated stamp")
     except Exception as exc:
         sys.stderr.write(
             "  NOTE: could not write the validated stamp (%s); the document PASSED validation but "

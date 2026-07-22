@@ -3,6 +3,7 @@ that shipped without highlight spans)."""
 
 import os
 import sys
+import _toolpath
 from .parsing import _CLASS_ATTR_RE, _CODE_TAG_RE, _PRE_TAG_RE
 
 
@@ -19,7 +20,6 @@ def _highlight_language_table():
         try:
             import highlight_code
         except Exception:
-            import _toolpath
             _toolpath.warn_missing_tool("highlight_code", "the highlightable-language table")
             return {}, {}
     return getattr(highlight_code, "LANGUAGE_CONFIGS", {}), getattr(highlight_code, "ALIASES", {})
