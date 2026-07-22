@@ -658,6 +658,7 @@ def main(argv):
             import validate  # noqa: E402
         except ImportError:
             validate = None
+            _toolpath.warn_missing_tool("validate", "post-upgrade validation")
         if validate is not None:
             try:
                 errors, warnings = validate.validate(tmp_path)

@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.212.0] - 2026-07-22
+
+### Changed
+
+- Guarded sibling-tool imports in the shipped tools are never SILENT anymore. The #584 root cause was
+  a deferred `import doc_stamp` swallowed by `except (OSError, ImportError): pass`, so a broken
+  sibling import degraded a whole feature with no signal. Now every `except ImportError` fallback
+  across the tools (`new_document.py`, `deck_scaffold.py`, `retrofit.py`, `upgrade.py`,
+  `deck_theme.py`, `deck_validate.py`) emits a one-line stderr warning via a new
+  `_toolpath.warn_missing_tool`, so a degraded run is visible. A guard test
+  (`test_tool_imports.py`) additionally proves every guarded sibling import RESOLVES in the shipped
+  layout (a missing/renamed sibling fails CI loudly) and structurally forbids any future silent
+  ImportError handler. (CMH-TOOL-IMPORTS-01)
+
 ## [1.211.0] - 2026-07-22
 
 ### Added

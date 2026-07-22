@@ -45,10 +45,12 @@ try:
     import validate as _validate  # noqa: E402
 except ImportError:  # pragma: no cover
     _validate = None
+    _toolpath.warn_missing_tool("validate", "deck validation")
 try:
     import highlight_document as _highlight_document  # noqa: E402
 except ImportError:  # pragma: no cover
     _highlight_document = None
+    _toolpath.warn_missing_tool("highlight_document", "syntax highlighting")
 
 SECTION_RE = re.compile(r'<section\b([^>]*)>(.*?)</section>', re.S | re.I)
 CLASS_RE = re.compile(r'class\s*=\s*"([^"]*)"', re.I)
@@ -267,7 +269,7 @@ def main(argv=None):
                     agent = detected_agent
             html = doc_stamp.stamp_session(html, sid, agent=agent)
     except ImportError:
-        pass
+        _toolpath.warn_missing_tool("doc_stamp", "the session-id stamp")
 
     brand_warnings = []
     try:

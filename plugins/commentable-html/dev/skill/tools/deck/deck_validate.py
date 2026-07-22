@@ -37,6 +37,7 @@ try:
     import validate as _base
 except ImportError:  # pragma: no cover
     _base = None
+    _toolpath.warn_missing_tool("validate", "the base layer checks")
 
 # The content region is delimited by full HTML comments; anchoring on the comment form (not the
 # bare text) and taking the LAST end marker means slide text that merely contains the literal
