@@ -54,13 +54,52 @@ _VALIDATED_META_RE = re.compile(
 # A commentable document embeds a content root keyed with data-comment-key; used as the positive
 # half of the portable check (absence of companion refs alone would pass a bare HTML file).
 _LAYER_RE = re.compile(r'data-comment-key\s*=', re.I)
-# Resource-loading elements whose src/href, when it points at a LOCAL relative path, means the file is
-# NOT self-contained (a portable file must embed or remote-load its assets, never need a companion
-# file). <a> is excluded on purpose - a hyperlink is navigation, not a required companion asset.
-_RESOURCE_REF_RE = re.compile(
-    r'<(?:script|link|img|iframe|source|audio|video)\b[^>]*?\b(?:src|href)\s*=\s*["\']([^"\']+)["\']', re.I)
+# Resource-loading ELEMENTS (matched as a whole tag so we only scan real markup, never the runtime's
+# inline JS where `foo.src = "..."` would false-positive). <a> is excluded on purpose - a hyperlink is
+# navigation, not a required companion asset.
+_RESOURCE_TAG_RE = re.compile(
+    r'<(?:script|link|img|iframe|source|audio|video|object|embed|track|image|use|input)\b([^>]*)>', re.I)
+# Every attribute inside such a tag that can pull in an asset (src/href/xlink:href/poster/data), plus
+# srcset which holds a comma-separated candidate list. All of these on the tags above load an asset -
+# none of them is navigation (that would be <a href>, which is not in the tag list). The attr NAME is
+# captured so only srcset is comma-split (a data: URI legitimately contains a comma).
+_ASSET_ATTR_RE = re.compile(
+    r'\b(srcset|src|xlink:href|href|poster|data)\s*=\s*["\']([^"\']*)["\']', re.I)
+# CSS url(...) references, scanned only inside <style> blocks and delimiter-aware style="" attributes
+# (again to avoid matching inline JS). A local url(sidecar.png) means the file is not self-contained.
+_STYLE_TAG_RE = re.compile(r'<style\b[^>]*>(.*?)</style>', re.I | re.S)
+_STYLE_ATTR_RE = re.compile(r'\bstyle\s*=\s*(["\'])(.*?)\1', re.I | re.S)
+_CSS_URL_RE = re.compile(r'url\(\s*["\']?\s*([^"\')]+?)\s*["\']?\s*\)', re.I)
+# Pull each candidate URL out of a srcset value. A data: URI contains a comma (its own separator), so
+# a naive comma split would break it - match a data: URI as one token up to whitespace, else a normal
+# token up to the next comma/space.
+_SRCSET_URL_RE = re.compile(r'(?:^|,)\s*(data:[^\s]+|[^\s,]+)', re.I)
 # A ref that needs no companion FILE: inline data, a remote URL, an in-page fragment, or a protocol.
 _SELF_CONTAINED_REF_RE = re.compile(r'^(?:data:|https?:|//|#|mailto:|javascript:|blob:|about:)', re.I)
+
+
+def _is_companion_ref(url):
+    """True when a resource URL would require a LOCAL companion file (not self-contained)."""
+    url = (url or "").strip()
+    return bool(url) and _SELF_CONTAINED_REF_RE.match(url) is None
+
+
+def _portable_companion_refs(html):
+    """Every local companion-file reference in HTML (element assets + CSS url()), or [] if none."""
+    refs = []
+    for tag_m in _RESOURCE_TAG_RE.finditer(html):
+        for attr_m in _ASSET_ATTR_RE.finditer(tag_m.group(1)):
+            name, value = attr_m.group(1).lower(), attr_m.group(2)
+            if name == "srcset":
+                urls = [m.group(1) for m in _SRCSET_URL_RE.finditer(value)]
+            else:
+                parts = value.strip().split()
+                urls = [parts[0]] if parts else []
+            refs.extend(u for u in urls if _is_companion_ref(u))
+    css_chunks = _STYLE_TAG_RE.findall(html) + [m.group(2) for m in _STYLE_ATTR_RE.finditer(html)]
+    for css in css_chunks:
+        refs.extend(m.group(1) for m in _CSS_URL_RE.finditer(css) if _is_companion_ref(m.group(1)))
+    return refs
 
 # CI environment variables that must make the harness refuse to run. This is belt-and-suspenders on
 # top of the real guarantee (the harness is wired into no workflow); it covers the common CI systems.
@@ -141,10 +180,9 @@ def validator_command(kind, artifact, python_exe=None):
 
 def _content_check(kind, html):
     if kind == "portable":
-        for m in _RESOURCE_REF_RE.finditer(html):
-            ref = m.group(1).strip()
-            if not _SELF_CONTAINED_REF_RE.match(ref):
-                return (False, "references companion file %r (not self-contained)" % ref)
+        refs = _portable_companion_refs(html)
+        if refs:
+            return (False, "references companion file %r (not self-contained)" % refs[0])
         if _LAYER_RE.search(html) is None:
             return (False, "no embedded review layer (missing data-comment-key)")
         return (True, "self-contained with embedded layer")

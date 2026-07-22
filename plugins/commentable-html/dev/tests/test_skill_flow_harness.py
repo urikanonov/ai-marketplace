@@ -170,6 +170,32 @@ class ContentCheckTests(unittest.TestCase):
         data_uri = self._LAYER + '<img src="data:image/png;base64,AAAA">'
         self.assertTrue(harness._content_check("portable", data_uri)[0])
 
+    def test_portable_rejects_non_src_href_companion_vectors(self):
+        # Copilot review: companion files can also sneak in via srcset/poster/object data/svg image/
+        # use href and CSS url(). Each local form must FAIL; the self-contained forms must PASS.
+        for markup in (
+            '<img srcset="small.jpg 1x, big.jpg 2x">',
+            '<video poster="thumb.jpg"></video>',
+            '<object data="report.pdf"></object>',
+            '<image href="diagram.svg"></image>',
+            '<use xlink:href="sprite.svg#icon"></use>',
+            '<style>.hero{background:url(bg.png)}</style>',
+            '<div style="background:url(\'panel.png\')"></div>',
+        ):
+            self.assertFalse(harness._content_check("portable", self._LAYER + markup)[0], markup)
+        for markup in (
+            '<img srcset="data:image/png;base64,AAAA 1x">',
+            '<video poster="https://cdn.example.com/t.jpg"></video>',
+            '<use xlink:href="#icon"></use>',
+            '<style>.hero{background:url(data:image/png;base64,AAAA)}</style>',
+        ):
+            self.assertTrue(harness._content_check("portable", self._LAYER + markup)[0], markup)
+
+    def test_portable_ignores_src_assignment_in_inline_script(self):
+        # The runtime's inline JS assigns element.src; that must NOT be read as a companion ref.
+        js = self._LAYER + '<script>var img=new Image(); img.src="whatever.png";</script>'
+        self.assertTrue(harness._content_check("portable", js)[0])
+
     def test_stamp_requires_real_meta_tag(self):
         ok, _ = harness._content_check(
             "stamp", '<meta name="%s" content="2026-01-01T00:00:00Z">' % harness.STAMP_TOKEN)
