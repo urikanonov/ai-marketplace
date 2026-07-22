@@ -52,13 +52,13 @@ function openCommentPopover(id, mark) {
   const noteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
   el.setAttribute("aria-describedby", noteId);
   el.innerHTML =
-    '<div class="cm-comment-popover-note" id="' + noteId + '"></div>'
+    '<div class="cm-comment-popover-note cmh-rich" id="' + noteId + '"></div>'
     + '<div class="cm-comment-popover-meta"></div>'
     + '<div class="cm-comment-popover-acts">'
     + '<button type="button" data-act="close">Close</button>'
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
     + "</div>";
-  el.querySelector(".cm-comment-popover-note").textContent = c.note;
+  el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
   el.querySelector(".cm-comment-popover-meta").textContent =
     formatTime(c.updatedAt || c.createdAt) + (c.updatedAt ? " (edited)" : "");
   document.body.appendChild(el);

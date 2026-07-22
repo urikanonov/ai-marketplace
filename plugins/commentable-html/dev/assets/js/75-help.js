@@ -107,6 +107,17 @@ function showHelp(restoreEl) {
           '<li>On a triage board, click <strong>Reset moves</strong> on the board to undo every drag move at once, or click <strong>Reset changes</strong> on the board-moves comment card to revert to the layout as of that comment.</li>' +
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
+      T('Formatting your comment',
+        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the composer toolbar or a shortcut:</p>' +
+        '<ul>' +
+          '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>' +
+          '<li><code>*italic*</code> or <kbd>Ctrl</kbd>+<kbd>I</kbd> for <em>italic</em>.</li>' +
+          '<li><code>__underline__</code> or <kbd>Ctrl</kbd>+<kbd>U</kbd> for <u>underline</u>.</li>' +
+          '<li><code>~~strike~~</code> for <s>strikethrough</s>, and <code>`code`</code> for inline code.</li>' +
+          '<li>Start a line with <code>- </code> for a bullet list.</li>' +
+          '<li><code>[text](https://example.com)</code> or <kbd>Ctrl</kbd>+<kbd>K</kbd> makes a link; bare <code>http(s)://</code> links become clickable on their own.</li>' +
+        '</ul>' +
+        '<p>Only <code>http</code>, <code>https</code>, and <code>mailto</code> links are clickable; everything else is shown as plain text. Characters like <code>*</code>, <code>_</code>, <code>~</code>, and <code>`</code> may be read as formatting - the note is stored as the exact text you typed, so <strong>Copy all</strong> always hands the agent the raw markers.</p>') +
       T('Navigation',
         '<ul>' +
           '<li>On wide screens a <strong>section menu</strong> appears on the left, highlights the section you are reading, and collapses to <em>Navigation &raquo;</em>.</li>' +

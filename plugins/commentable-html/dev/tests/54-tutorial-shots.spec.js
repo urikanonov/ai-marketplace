@@ -11,12 +11,12 @@ import { DEV, SKILL } from "./helpers.js";
 // SHARED tmp parent here: a per-worker afterAll wiping a dir another worker's subprocess is still
 // writing into is the race the old `mode: serial` guarded; per-worker roots remove that need.
 
-// The fourteen screenshots the tutorial (docs/TUTORIAL.md) embeds as garden-*.png.
+// The sixteen screenshots the tutorial (docs/TUTORIAL.md) embeds as garden-*.png.
 const SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
   "10-review-badge", "11-side-toc", "12-export-menu", "13-comment-search",
-  "14-thread",
+  "14-thread", "15-format-toolbar", "16-rich-card",
 ];
 
 const EXAMPLES = path.join(SKILL, "..", "..", "examples");

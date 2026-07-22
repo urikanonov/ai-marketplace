@@ -23,6 +23,7 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
 | `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
+| `88-rich-text.css` | CMH-RICH | Rich-text note inline elements (bold/italic/underline/strike/code/list/link) and the composer formatting toolbar. |
 | `88-threads.css` | CMH-AUTHOR, CMH-THREAD | Author pill, sidebar identity control, and the thread root-entry / reply layout + Reply button. |
 | `90-deck.css` | CMH-DECK, CMH-CODE | Deck profile (`data-cmh-mode="deck"`) overrides; deck theming of the code caption. |
 | `92-print.css` | CMH-PRINT | Print/PDF stylesheet for flat documents plus one-slide-per-page deck print flow. |

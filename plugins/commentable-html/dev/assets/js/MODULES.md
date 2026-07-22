@@ -35,14 +35,16 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `38-validation-banner.js` | CMH-STAMP | Unvalidated-document fallback banner: shown when a document carries a created stamp but no current validated stamp. |
 | `39-callout.js` | CMH-CALLOUT | Callout accessibility: role="note" + variant aria-label (suppressed when an authored leading strong label exists); pairs with the per-variant ::before glyph in 50-content.css. |
 | `40-doc-comments.js` | CMH-DOCCMT | Document-wide comments. |
+| `41-selection.js` | CMH-SEL, CMH-CORE, CMH-RICH | Selection handling and the add-comment popup; keeps the add-comment menu above open composers. |
 | `43-identity.js` | CMH-AUTHOR | Reviewer identity: per-browser author name (localStorage, seedable via `data-cm-author`), the author pill, and the sidebar identity control (editable, future-comments only). |
+| `43-rich-text.js` | CMH-RICH | Rich-text note renderer (`renderRichNote` tokenizer) and composer formatting helpers (`applyNoteFormat`). |
 | `44-threads.js` | CMH-THREAD | Single-level comment threads: reply grouping (`threadRoots`/`repliesOf`), `threadIds`, and orphan-reply pruning. |
 | `41-selection.js` | CMH-SEL, CMH-CORE | Selection handling and the add-comment popup. |
-| `45-composer.js` | CMH-A11Y, CMH-CORE | Per-instance comment composer (parallel-safe). |
-| `50-sidebar.js` | CMH-SIDE, CMH-PERSIST | Sidebar rendering and durable embedded-delete persistence from per-card deletes. |
-| `51-comment-search.js` | CMH-SEARCH | Comment search / filter row: case-insensitive filter of the rendered cards, shown/total count, clear button. |
+| `45-composer.js` | CMH-A11Y, CMH-CORE, CMH-RICH | Per-instance comment composer (parallel-safe); hosts the formatting toolbar + shortcuts. |
+| `50-sidebar.js` | CMH-SIDE, CMH-PERSIST, CMH-RICH | Sidebar rendering and durable embedded-delete persistence from per-card deletes; renders the reviewer note rich and carries the hidden raw-source element. |
+| `51-comment-search.js` | CMH-SEARCH, CMH-RICH | Comment search / filter row: case-insensitive filter of the rendered cards (matching the hidden raw note source so markers/URLs stay searchable), shown/total count, clear button. |
 | `52-hover-bubble.js` | CMH-CORE | Hover bubble to open a comment. |
-| `53-comment-popover.js` | CMH-CORE | Inline on-screen comment dialog opened from the hover bubble (note + Edit button; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
+| `53-comment-popover.js` | CMH-CORE, CMH-RICH | Inline on-screen comment dialog opened from the hover bubble (renders the note rich; note + Edit button; an outside pointer click closes it and is swallowed, a keyboard-activated one is not). |
 | `54-sidebar-toggle.js` | CMH-SIDE, CMH-A11Y | Sidebar open/close. |
 | `55-toolbar-menu.js` | CMH-MENU, CMH-UI | Toolbar overflow menu. |
 | `56-copy-clear.js` | CMH-COPY | Copy all + Clear all. |
@@ -56,7 +58,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `75-help.js` | CMH-HELP, CMH-A11Y | Help dialog. |
 | `80-sort-comments.js` | CMH-SIDE | Sort comments by time. |
 | `82-toc.js` | CMH-TOC, CMH-REVIEW, CMH-A11Y | Table-of-contents side menu; also hosts the section-review TOC filter + per-entry state dots. |
-| `83-print.js` | CMH-PRINT | Print/PDF comment appendix materializer for flat documents, and the "Save as PDF" buttons that call native `window.print()`. |
+| `83-print.js` | CMH-PRINT, CMH-RICH | Print/PDF comment appendix materializer for flat documents (and the "Save as PDF" buttons that call native `window.print()`); renders each note rich. |
 | `84-section-review.js` | CMH-REVIEW | Section review tracking: content hashing, marker store, four-state badges, and TOC-filter helpers. |
 | `90-toast.js` | CMH-A11Y | Toast notifications. |
 | `95-startup.js` | CMH-HANDLED, CMH-EXP, CMH-FOOT | Handled-id pruning; startup; runtime footer (incl. session-id copy); closes the IIFE. |

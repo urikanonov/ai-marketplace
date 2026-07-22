@@ -33,6 +33,7 @@
   "31-ui-batch4.spec.js": 4212,
   "32-ui-batch5.spec.js": 26438,
   "33-coverage-gaps.spec.js": 7809,
+  "33-rich-text.spec.js": 16000,
   "34-modes.spec.js": 5617,
   "35-taxi-example.spec.js": 21121,
   "36-a11y.spec.js": 3436,

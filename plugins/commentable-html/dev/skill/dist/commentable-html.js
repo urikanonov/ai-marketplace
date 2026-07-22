@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.206.0";
+const CMH_VERSION = "1.208.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4094,6 +4094,9 @@ document.addEventListener("keydown", (e) => {
 });
 function showMenu(x, y) {
   menu.hidden = false;
+  // Keep the selection menu above any open composer (composers raise their z-index as they are
+  // focused), so a reviewer can always start another comment on a fresh selection.
+  menu.style.zIndex = composerZ + 1;
   // Measure the menu's real footprint (the single "Add Comment" pill) rather than
   // a hardcoded size, so the clamp keeps it snug to the selection near viewport edges.
   const w = menu.offsetWidth || 120;
@@ -4292,6 +4295,252 @@ function maybeNudgeIdentity() {
   // in-progress composer draft. The comment can still be saved unattributed.
   beginEditIdentity(false);
 }
+/* ---------- Rich-text rendering for comment notes ----------
+   Reviewer notes are stored as a plain-text markdown-ish SOURCE string; this module renders that
+   source to SAFE html at display time (sidebar card, inline popover, print appendix). Supported:
+   **bold**, *italic*, __underline__, ~~strike~~, `code`, "- " bullet lists, [label](url) links, and
+   bare http(s) auto-links. A single-pass recursive-descent tokenizer builds output only from escaped
+   text runs plus fixed tags, so no user string is ever placed unescaped; a depth cap and an
+   operation budget keep it O(n) and crash-proof on hostile input. */
+
+var RICH_MAX_DEPTH = 12;
+
+function renderRichNote(source) {
+  if (source == null) return "";
+  var text = String(source);
+  try {
+    // Drop C0 control chars (keep \n and \t) so nothing can break the parser or reach the DOM.
+    text = text.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "");
+    var ctx = { ops: 0, budget: 50000 + text.length * 50 };
+    var lines = text.split(/\r?\n/);
+    var blocks = [];
+    var i = 0;
+    while (i < lines.length) {
+      if (/^- /.test(lines[i])) {
+        var items = [];
+        while (i < lines.length && /^- /.test(lines[i])) {
+          items.push("<li>" + renderRichInline(lines[i].slice(2), 0, true, ctx) + "</li>");
+          i++;
+        }
+        blocks.push({ list: true, html: '<ul class="cmh-rich-list">' + items.join("") + "</ul>" });
+      } else {
+        blocks.push({ list: false, html: renderRichInline(lines[i], 0, true, ctx) });
+        i++;
+      }
+    }
+    // Text lines are separated by a literal "\n" (the note containers keep white-space: pre-wrap, so
+    // the newline renders as a break); a block-level list needs no surrounding newline of its own.
+    var out = "";
+    for (var j = 0; j < blocks.length; j++) {
+      if (j > 0 && !blocks[j].list && !blocks[j - 1].list) out += "\n";
+      out += blocks[j].html;
+    }
+    return out;
+  } catch (e) {
+    return escapeHtml(text);
+  }
+}
+
+function renderRichInline(text, depth, allowLinks, ctx) {
+  if (depth > RICH_MAX_DEPTH) return escapeHtml(text);
+  var out = "";
+  var i = 0;
+  var n = text.length;
+  while (i < n) {
+    if (ctx.ops > ctx.budget) { out += escapeHtml(text.slice(i)); break; }
+    var ch = text.charAt(i);
+    var two = text.substr(i, 2);
+
+    // inline code: `...` (contents are literal, never re-parsed)
+    if (ch === "`") {
+      var cEnd = text.indexOf("`", i + 1);
+      ctx.ops += cEnd < 0 ? (n - i) : (cEnd - i);
+      if (cEnd > i + 1) {
+        out += "<code>" + escapeHtml(text.slice(i + 1, cEnd)) + "</code>";
+        i = cEnd + 1;
+        continue;
+      }
+    }
+    // link: [label](url) - only when links are allowed (never inside a link label)
+    if (ch === "[" && allowLinks) {
+      var link = richMatchLink(text, i, ctx);
+      if (link && /^(?:https?|mailto):/i.test(link.url)) {
+        var labelHtml = link.label.trim() ? renderRichInline(link.label, depth + 1, false, ctx) : escapeHtml(link.url);
+        out += '<a href="' + escapeHtml(link.url) + '" target="_blank" rel="noopener noreferrer nofollow">'
+          + labelHtml + "</a>";
+        i = link.end;
+        continue;
+      }
+    }
+    // emphasis: ** (bold), __ (underline), ~~ (strike). Like italics, the opening pair must not be
+    // followed by whitespace and the closing pair must not be preceded by whitespace, so `** x **`
+    // stays literal.
+    if ((two === "**" || two === "__" || two === "~~") && text.charAt(i + 2) !== " " && text.charAt(i + 2) !== "\t") {
+      var tag = two === "**" ? "strong" : (two === "__" ? "u" : "s");
+      var eEnd = text.indexOf(two, i + 2);
+      ctx.ops += eEnd < 0 ? (n - i) : (eEnd - i);
+      if (eEnd > i + 2 && text.charAt(eEnd - 1) !== " " && text.charAt(eEnd - 1) !== "\t") {
+        out += "<" + tag + ">" + renderRichInline(text.slice(i + 2, eEnd), depth + 1, allowLinks, ctx) + "</" + tag + ">";
+        i = eEnd + 2;
+        continue;
+      }
+    }
+    // emphasis: * (italic). The opening "*" must not be followed by whitespace and the closing "*"
+    // must not be preceded by whitespace (so `a * b` stays literal), and a "*" that is part of a "**"
+    // run is skipped (so `*a **b** c*` closes on the final lone "*", not the inner bold marker).
+    if (ch === "*" && text.charAt(i + 1) !== " " && text.charAt(i + 1) !== "\t") {
+      var iEnd = -1;
+      for (var q = i + 1; q < n; q++) {
+        ctx.ops++;
+        if (ctx.ops > ctx.budget) break;
+        if (text.charAt(q) === "*" && text.charAt(q + 1) !== "*" && text.charAt(q - 1) !== "*"
+            && text.charAt(q - 1) !== " " && text.charAt(q - 1) !== "\t") { iEnd = q; break; }
+      }
+      if (iEnd > i + 1) {
+        out += "<em>" + renderRichInline(text.slice(i + 1, iEnd), depth + 1, allowLinks, ctx) + "</em>";
+        i = iEnd + 1;
+        continue;
+      }
+    }
+    // bare URL: http(s):// at a word boundary (start or a non-alphanumeric before it)
+    if (allowLinks && (ch === "h" || ch === "H") && /^https?:\/\//i.test(text.substr(i, 8))) {
+      var prev = i > 0 ? text.charAt(i - 1) : "";
+      if (i === 0 || !/[A-Za-z0-9]/.test(prev)) {
+        var bare = richConsumeUrl(text, i, ctx);
+        if (bare) {
+          out += '<a href="' + escapeHtml(bare.href) + '" target="_blank" rel="noopener noreferrer nofollow">'
+            + escapeHtml(bare.href) + "</a>";
+          i = bare.end;
+          continue;
+        }
+      }
+    }
+    out += escapeHtml(ch);
+    i++;
+  }
+  return out;
+}
+
+// Match a [label](url) starting at text[i] === "[", with balanced brackets in the label and balanced
+// parentheses in the URL, so a link whose URL contains "(" ")" (e.g. a wikipedia article) is kept
+// whole. Returns { label, url, end } or null. The URL is returned exactly as written (no trim/decode)
+// so the scheme allowlist sees the real value.
+function richMatchLink(text, i, ctx) {
+  var n = text.length;
+  var depth = 0;
+  var labelEnd = -1;
+  var j;
+  for (j = i; j < n; j++) {
+    ctx.ops++;
+    if (ctx.ops > ctx.budget) return null;
+    var c = text.charAt(j);
+    if (c === "[") depth++;
+    else if (c === "]") { depth--; if (depth === 0) { labelEnd = j; break; } }
+  }
+  if (labelEnd < 0 || text.charAt(labelEnd + 1) !== "(") return null;
+  var pd = 1;
+  var urlEnd = -1;
+  for (var k = labelEnd + 2; k < n; k++) {
+    ctx.ops++;
+    if (ctx.ops > ctx.budget) return null;
+    var ch = text.charAt(k);
+    if (ch === "(") pd++;
+    else if (ch === ")") { pd--; if (pd === 0) { urlEnd = k; break; } }
+    else if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") return null; // whitespace means it is not a well-formed link
+  }
+  if (urlEnd < 0) return null;
+  return { label: text.slice(i + 1, labelEnd), url: text.slice(labelEnd + 2, urlEnd), end: urlEnd + 1 };
+}
+
+// Consume a bare http(s) URL from text[i], keeping balanced trailing ")" and stripping trailing
+// sentence punctuation, so "(see https://a.com)." links "https://a.com" and drops the ")." .
+function richConsumeUrl(text, i, ctx) {
+  var n = text.length;
+  var j = i;
+  var opens = 0, closes = 0;
+  while (j < n) {
+    ctx.ops++;
+    var c = text.charAt(j);
+    if (/\s/.test(c) || c === "<" || c === ">") break;
+    if (c === "(") opens++;
+    else if (c === ")") closes++;
+    j++;
+  }
+  var url = text.slice(i, j);
+  // Trim trailing sentence punctuation and any UNMATCHED closing parens in a SINGLE pass (compute the
+  // final length, then slice once) so this stays O(n) on every engine - repeated `url.slice(0,-1)` is
+  // O(1) amortized in V8 but can be O(n) per call in SpiderMonkey/JavaScriptCore.
+  var trimEnd = url.length;
+  var trimming = true;
+  while (trimEnd > 0 && trimming) {
+    trimming = false;
+    var last = url.charAt(trimEnd - 1);
+    if (".,;:!?\"']".indexOf(last) >= 0) { trimEnd--; trimming = true; continue; }
+    if (last === ")" && closes > opens) { trimEnd--; closes--; trimming = true; }
+  }
+  if (trimEnd < url.length) url = url.slice(0, trimEnd);
+  // Require a non-empty host after the scheme (so `http://a` links but a bare `https://` does not).
+  if (!/^https?:\/\/[^\/?#]/i.test(url)) return null;
+  return { href: url, end: i + url.length };
+}
+
+/* ---------- Composer formatting helpers ---------- */
+// Marker pairs the wrap buttons/shortcuts insert around the selection.
+var NOTE_FORMAT_WRAP = { bold: ["**", "**"], italic: ["*", "*"], underline: ["__", "__"], strike: ["~~", "~~"], code: ["`", "`"] };
+
+// Replace [start,end) in the textarea with text using execCommand("insertText") so the browser's
+// native undo/redo stack is preserved (setRangeText does NOT preserve undo in Chromium); fall back
+// to setRangeText when execCommand is unavailable.
+function richInsertText(ta, start, end, text) {
+  ta.focus();
+  ta.setSelectionRange(start, end);
+  var ok = false;
+  try { ok = document.execCommand("insertText", false, text); } catch (e) { ok = false; }
+  if (!ok) {
+    if (typeof ta.setRangeText === "function") ta.setRangeText(text, start, end, "end");
+    else ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+  }
+}
+
+// Apply a formatting action to the composer textarea's current selection.
+function applyNoteFormat(ta, kind) {
+  if (!ta) return;
+  var start = ta.selectionStart;
+  var end = ta.selectionEnd;
+  var value = ta.value;
+  var sel = value.slice(start, end);
+
+  if (kind === "link") {
+    var label = sel || "text";
+    var url = "url";
+    var inserted = "[" + label + "](" + url + ")";
+    richInsertText(ta, start, end, inserted);
+    var urlStart = start + ("[" + label + "](").length;
+    ta.setSelectionRange(urlStart, urlStart + url.length);
+  } else if (kind === "list") {
+    var lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    var block = value.slice(lineStart, end);
+    // A selection that ends right after a "\n" would otherwise bullet the start of the next line;
+    // keep that trailing newline out of the prefixing and re-add it.
+    var trailingNL = block.charAt(block.length - 1) === "\n";
+    var body = trailingNL ? block.slice(0, -1) : block;
+    var prefixed = body.split("\n").map(function (ln) { return "- " + ln; }).join("\n") + (trailingNL ? "\n" : "");
+    richInsertText(ta, lineStart, end, prefixed);
+    // With a bare caret keep it a caret (shifted past the inserted "- "), so the next keystroke
+    // does not overwrite the just-bulleted line; with a real selection reselect the prefixed block.
+    if (start === end) ta.setSelectionRange(start + 2, start + 2);
+    else ta.setSelectionRange(lineStart, lineStart + prefixed.length);
+  } else {
+    var w = NOTE_FORMAT_WRAP[kind];
+    if (!w) return;
+    var wrapped = w[0] + sel + w[1];
+    richInsertText(ta, start, end, wrapped);
+    if (sel) ta.setSelectionRange(start + w[0].length, end + w[0].length);
+    else ta.setSelectionRange(start + w[0].length, start + w[0].length);
+  }
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+  ta.focus();
+}
 /* ---------- Comment threads (replies) ---------- */
 // Single-level threading: a thread is one ROOT comment (no parentId) plus a flat,
 // chronological list of REPLIES whose parentId is the root's id. A reply carries no
@@ -4418,7 +4667,16 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       <span class="label">drag to move</span>
     </div>
     <div class="quote"></div>
-    <textarea aria-label="Review comment" placeholder="Write your review comment... (Ctrl/Cmd+Enter to save, Esc to cancel)"></textarea>
+    <div class="cm-format-bar" role="group" aria-label="Comment formatting">
+      <button type="button" data-fmt="bold" title="Bold (Ctrl+B)" aria-label="Bold"><strong>B</strong></button>
+      <button type="button" data-fmt="italic" title="Italic (Ctrl+I)" aria-label="Italic"><em>I</em></button>
+      <button type="button" data-fmt="underline" title="Underline (Ctrl+U)" aria-label="Underline"><span style="text-decoration:underline">U</span></button>
+      <button type="button" data-fmt="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+      <button type="button" data-fmt="code" title="Inline code" aria-label="Inline code">&lt;/&gt;</button>
+      <button type="button" data-fmt="link" title="Link (Ctrl+K)" aria-label="Insert link">&#128279;</button>
+      <button type="button" data-fmt="list" title="Bullet list" aria-label="Bullet list">&#8226;</button>
+    </div>
+    <textarea aria-label="Review comment" placeholder="Write your review comment... (**bold** *italic* __underline__, Ctrl/Cmd+Enter to save, Esc to cancel)"></textarea>
     <div class="row">
       <button type="button" data-act="cancel">Cancel</button>
       <button type="button" class="primary" data-act="save">Save comment</button>
@@ -4544,8 +4802,24 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   const cleanups = [];
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
   cleanups.push(addListener(saveBtn, "click", () => saveComposerElement(el)));
+  const formatBar = el.querySelector(".cm-format-bar");
+  if (formatBar) {
+    formatBar.querySelectorAll("button[data-fmt]").forEach((btn) => {
+      // preventDefault on pointer/mouse down keeps the textarea's selection from collapsing when the
+      // button takes focus (mousedown for desktop, pointerdown so touch devices are covered too); the
+      // action runs on click.
+      cleanups.push(addListener(btn, "pointerdown", (e) => e.preventDefault()));
+      cleanups.push(addListener(btn, "mousedown", (e) => e.preventDefault()));
+      cleanups.push(addListener(btn, "click", (e) => { e.preventDefault(); applyNoteFormat(ta, btn.getAttribute("data-fmt")); }));
+    });
+  }
   cleanups.push(addListener(ta, "keydown", (e) => {
     if (e.isComposing) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const fmt = k === "b" ? "bold" : k === "i" ? "italic" : k === "u" ? "underline" : k === "k" ? "link" : null;
+      if (fmt) { e.preventDefault(); e.stopPropagation(); applyNoteFormat(ta, fmt); return; }
+    }
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComposerElement(el); }
     else if (e.key === "Escape") { e.preventDefault(); closeComposerElement(el); }
   }));
@@ -5127,7 +5401,8 @@ function renderComments() {
       const rp = (typeof authorPillHtml === "function") ? authorPillHtml(r.author) : "";
       return `
       <div class="cm-entry cm-reply" data-reply-cid="${r.id}">
-        <div class="note">${rp}${escapeHtml(r.note)}</div>
+        <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
+        <div class="cmh-note-raw" hidden>${escapeHtml(r.note == null ? "" : r.note)}</div>
         <div class="meta">
           <span>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}${r.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
@@ -5143,7 +5418,8 @@ function renderComments() {
       ${quoteHtml}
       ${pinHtml}
       <div class="cm-entry cm-entry-root">
-        <div class="note">${rootPill}${escapeHtml(c.note)}</div>
+        <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
+        <div class="cmh-note-raw" hidden>${escapeHtml(c.note == null ? "" : c.note)}</div>
         <div class="meta">
           <span>#${i + 1} - ${escapeHtml(formatTime(c.updatedAt || c.createdAt))}${c.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
@@ -5335,6 +5611,9 @@ listEl.addEventListener("click", (e) => {
   }
   const card = e.target.closest(".cm-card");
   if (!card) return;
+  // A rendered link inside a comment note is clickable; let it navigate without also firing the
+  // card's jump/scroll handler.
+  if (e.target.closest("a")) return;
   const id = card.dataset.cid;
   const act = e.target.dataset.act;
   if (act === "reply") {
@@ -5429,9 +5708,17 @@ let commentSearchQuery = "";
 // never matched.
 function _commentCardHaystack(card) {
   let text = "";
-  card.querySelectorAll(".note").forEach((el) => {
-    text += " " + (el.textContent || "");
-  });
+  // Prefer the hidden raw-source element(s) so the search matches the note's markdown markers and
+  // link URLs (the visible .note renders those away). A threaded card has one per entry (root +
+  // replies); fall back to .note for any card without a raw element.
+  const raws = card.querySelectorAll(".cmh-note-raw");
+  if (raws.length) {
+    raws.forEach((el) => { text += " " + (el.textContent || ""); });
+  } else {
+    card.querySelectorAll(".note").forEach((el) => {
+      text += " " + (el.textContent || "");
+    });
+  }
   return text.toLowerCase();
 }
 
@@ -5821,13 +6108,13 @@ function openCommentPopover(id, mark) {
   const noteId = "cmh-pop-note-" + Math.random().toString(36).slice(2, 9);
   el.setAttribute("aria-describedby", noteId);
   el.innerHTML =
-    '<div class="cm-comment-popover-note" id="' + noteId + '"></div>'
+    '<div class="cm-comment-popover-note cmh-rich" id="' + noteId + '"></div>'
     + '<div class="cm-comment-popover-meta"></div>'
     + '<div class="cm-comment-popover-acts">'
     + '<button type="button" data-act="close">Close</button>'
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
     + "</div>";
-  el.querySelector(".cm-comment-popover-note").textContent = c.note;
+  el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
   el.querySelector(".cm-comment-popover-meta").textContent =
     formatTime(c.updatedAt || c.createdAt) + (c.updatedAt ? " (edited)" : "");
   document.body.appendChild(el);
@@ -8403,6 +8690,17 @@ function showHelp(restoreEl) {
           '<li>On a triage board, click <strong>Reset moves</strong> on the board to undo every drag move at once, or click <strong>Reset changes</strong> on the board-moves comment card to revert to the layout as of that comment.</li>' +
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
+      T('Formatting your comment',
+        '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the composer toolbar or a shortcut:</p>' +
+        '<ul>' +
+          '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>' +
+          '<li><code>*italic*</code> or <kbd>Ctrl</kbd>+<kbd>I</kbd> for <em>italic</em>.</li>' +
+          '<li><code>__underline__</code> or <kbd>Ctrl</kbd>+<kbd>U</kbd> for <u>underline</u>.</li>' +
+          '<li><code>~~strike~~</code> for <s>strikethrough</s>, and <code>`code`</code> for inline code.</li>' +
+          '<li>Start a line with <code>- </code> for a bullet list.</li>' +
+          '<li><code>[text](https://example.com)</code> or <kbd>Ctrl</kbd>+<kbd>K</kbd> makes a link; bare <code>http(s)://</code> links become clickable on their own.</li>' +
+        '</ul>' +
+        '<p>Only <code>http</code>, <code>https</code>, and <code>mailto</code> links are clickable; everything else is shown as plain text. Characters like <code>*</code>, <code>_</code>, <code>~</code>, and <code>`</code> may be read as formatting - the note is stored as the exact text you typed, so <strong>Copy all</strong> always hands the agent the raw markers.</p>') +
       T('Navigation',
         '<ul>' +
           '<li>On wide screens a <strong>section menu</strong> appears on the left, highlights the section you are reading, and collapses to <em>Navigation &raquo;</em>.</li>' +
@@ -9170,7 +9468,7 @@ function _renderPrintComment(c, index) {
   const repliesHtml = replies.map(function (r) {
     const rp = (typeof authorPillHtml === "function") ? authorPillHtml(r.author) : "";
     const rt = formatTime((r && (r.updatedAt || r.createdAt)) || "");
-    return '<div class="cmh-print-reply"><p class="cmh-print-note">' + rp + escapeHtml(r.note || "") + '</p>'
+    return '<div class="cmh-print-reply"><div class="cmh-print-note cmh-rich">' + rp + renderRichNote(r.note || "") + '</div>'
       + '<p class="cmh-print-meta">reply #' + escapeHtml(r.id || "") + (rt ? " - " + escapeHtml(rt) : "") + '</p></div>';
   }).join("");
   return '<article class="cmh-print-comment" data-cid="' + escapeHtml(c.id || "") + '">'
@@ -9178,7 +9476,7 @@ function _renderPrintComment(c, index) {
     + (path ? '<p class="cmh-print-path"><strong>In:</strong> ' + escapeHtml(path) + '</p>' : "")
     + '<p class="cmh-print-anchor"><strong>Anchor:</strong> ' + escapeHtml(_printAnchorLabel(c)) + '</p>'
     + (quote ? '<blockquote>' + escapeHtml(quote) + '</blockquote>' : "")
-    + '<p class="cmh-print-note">' + pill + escapeHtml(c.note || "") + '</p>'
+    + '<div class="cmh-print-note cmh-rich">' + pill + renderRichNote(c.note || "") + '</div>'
     + '<p class="cmh-print-meta">#' + escapeHtml(c.id || "") + (time ? " - " + escapeHtml(time) : "") + '</p>'
     + repliesHtml
     + '</article>';

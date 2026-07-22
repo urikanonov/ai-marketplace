@@ -11,9 +11,17 @@ let commentSearchQuery = "";
 // never matched.
 function _commentCardHaystack(card) {
   let text = "";
-  card.querySelectorAll(".note").forEach((el) => {
-    text += " " + (el.textContent || "");
-  });
+  // Prefer the hidden raw-source element(s) so the search matches the note's markdown markers and
+  // link URLs (the visible .note renders those away). A threaded card has one per entry (root +
+  // replies); fall back to .note for any card without a raw element.
+  const raws = card.querySelectorAll(".cmh-note-raw");
+  if (raws.length) {
+    raws.forEach((el) => { text += " " + (el.textContent || ""); });
+  } else {
+    card.querySelectorAll(".note").forEach((el) => {
+      text += " " + (el.textContent || "");
+    });
+  }
   return text.toLowerCase();
 }
 

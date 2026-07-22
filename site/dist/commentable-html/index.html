@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.206.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.208.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,6 +456,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.208.0] - 2026-07-22</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Review comment notes now support lightweight rich text (WhatsApp / Office style), rendered safely wherever a note is shown (sidebar card, inline popover, print appendix): <code>**bold**</code>, <code>*italic*</code>, <code>__underline__</code>, <code>~~strikethrough~~</code>, inline code, <code>- </code> bullet lists, markdown-style links (http/https/mailto only), and bare <code>http(s)://</code> URLs auto-linked as clickable, new-tab, safe anchors. A single-pass tokenizer escapes all input first and only emits its own fixed tags, so a note can never inject markup; unsafe link schemes and hostile input are handled safely.</li>
+              <li>The comment composer gained a formatting toolbar (bold, italic, underline, strikethrough, code, link, list) that wraps the current selection, plus keyboard shortcuts <code>Ctrl/Cmd+B</code> / <code>I</code> / <code>U</code> and <code>Ctrl/Cmd+K</code> (link). The stored note stays plain-text source, so Copy all still hands the agent the exact markers and old notes remain loadable without any migration. A new &quot;Formatting your comment&quot; Help topic and a tutorial section document the markers and shortcuts.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.206.0] - 2026-07-22</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -464,6 +472,8 @@
               <li>Added real rendered-PDF CI checks (<code>tests/70-print-pdf.spec.js</code>, <code>CMH-PRINT-03</code>/<code>CMH-PRINT-04</code>/<code>CMH-PRINT-05</code>): they drive the browser&#x27;s native print (<code>page.pdf</code>) and inspect the produced PDF - page count, page geometry, and per-page ink coverage - so a print-layout regression fails CI. The prior print tests only checked <code>@media print</code> computed styles and never paginated a real PDF.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.204.0] - 2026-07-21</h3></div>
             <div class="group-label">Changed</div>
@@ -471,8 +481,6 @@
               <li>Consolidated the always-loaded <code>SKILL.md</code> capability, tool-routing, deterministic-helper, and pre-handoff guidance into one dense tool index while keeping critical triggers and tool routes covered by tests. Deep deck workflow guidance now lives in the on-demand deck references. (CMH-DOC-18)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.203.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
@@ -501,14 +509,7 @@
               <li>Image comments now share one index-plus-src anchor resolver across reload restoration, jump-to-comment, edit-composer positioning, and section-review lookup, with image metadata disambiguation for duplicate-source images and labelled chart canvases, so a stale image index after a document reorders images no longer sends the scroll target or editor to the wrong image. (CMH-IMG-07)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.199.1] - 2026-07-21</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Prevented sortable-table reloads from restoring discontiguous multi-row text highlights over unrelated rows while keeping the comment listed and recoverable.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">170 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">171 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
