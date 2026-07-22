@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.202.0";
+const CMH_VERSION = "1.203.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6020,18 +6020,24 @@ function buildCopyText() {
   // labels, DOC_SOURCE, image alt, etc.) carry document-derived, untrusted content. The
   // free-text note and the fenced quote are emitted in their own sections; the handled-id
   // contract is anchored to the LAST HANDLED_IDS line.
-  const oneLine = (s) => String(s == null ? "" : s).replace(/[\r\n\t\f\v\u0085\u2028\u2029]+/g, " ").trim();
+  const stripBidiControls = (s) => String(s == null ? "" : s).replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, "");
+  const escapeBidiControls = (s) => String(s).replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g,
+    ch => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"));
+  const copyJson = (v) => escapeBidiControls(JSON.stringify(v));
+  const oneLine = (s) => stripBidiControls(s).replace(/[\r\n\t\f\v\u0085\u2028\u2029]+/g, " ").trim();
+  const indexOne = (s) => oneLine((Number(stripBidiControls(s)) || 0) + 1);
+  const lineNo = (s) => s == null ? "?" : oneLine(s);
   // DOC_SOURCE is also emitted inside a Markdown code span in the AGENT INSTRUCTIONS
   // block; oneLine strips newlines but a backtick would close the span and let the
   // remainder read as prose/instructions. Neutralize backticks (a legitimate file
   // path or label never contains one) so the value stays inert data.
   const oneLineSafe = (s) => oneLine(s).replace(/`/g, "'");
   // A reviewer note is free-text and UNTRUSTED (it can travel with a document from an
-  // untrusted source). Wrap it verbatim in a dynamic, nonce-sized delimiter whose tilde
+  // untrusted source). Wrap its sanitized text in a dynamic, nonce-sized delimiter whose tilde
   // run is longer than any tilde run inside the note, so the note can never reproduce
   // the fence and forge an instruction/trailer line that reads as bundle structure.
   const pushNote = (note) => {
-    const s = String(note == null ? "" : note);
+    const s = stripBidiControls(note);
     let maxRun = 0;
     const re = /~+/g;
     let mm;
@@ -6084,8 +6090,8 @@ function buildCopyText() {
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
     lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
-    lines.push(`Id: ${c.id}`);
-    lines.push(`When: ${formatTime(c.createdAt)}${c.updatedAt ? " (edited " + formatTime(c.updatedAt) + ")" : ""}`);
+    lines.push(`Id: ${oneLine(c.id)}`);
+    lines.push(`When: ${oneLine(formatTime(c.createdAt))}${c.updatedAt ? " (edited " + oneLine(formatTime(c.updatedAt)) + ")" : ""}`);
     if (c.headingPath && c.headingPath.length) {
       const path = c.headingPath.map(h => `H${Number(h.level) || 0} "${oneLine(h.text)}"`).join(" > ");
       lines.push(`Where: ${path}`);
@@ -6094,9 +6100,9 @@ function buildCopyText() {
     }
     if (isMermaid) {
       if (c.nodeKey === "__diagram__") {
-        lines.push(`Anchor: mermaid diagram #${(c.diagramIndex || 0) + 1} (whole diagram)`);
+        lines.push(`Anchor: mermaid diagram #${indexOne(c.diagramIndex)} (whole diagram)`);
       } else {
-        lines.push(`Anchor: mermaid diagram #${(c.diagramIndex || 0) + 1}, node "${oneLine(c.nodeKey)}"`);
+        lines.push(`Anchor: mermaid diagram #${indexOne(c.diagramIndex)}, node "${oneLine(c.nodeKey)}"`);
       }
       if (c.nodeLabel && c.nodeLabel !== c.nodeKey) {
         lines.push(`Node label: ${oneLine(c.nodeLabel)}`);
@@ -6104,23 +6110,24 @@ function buildCopyText() {
       lines.push("");
       emitCommentBody(c);
     } else if (isDiff) {
-      const loc = c.lineType === "add" ? "added line " + (c.newNo != null ? c.newNo : "?")
-        : c.lineType === "del" ? "removed line " + (c.oldNo != null ? c.oldNo : "?")
-        : "context line " + (c.newNo != null ? c.newNo : (c.oldNo != null ? c.oldNo : "?"));
+      const loc = c.lineType === "add" ? "added line " + lineNo(c.newNo)
+        : c.lineType === "del" ? "removed line " + lineNo(c.oldNo)
+        : "context line " + lineNo(c.newNo != null ? c.newNo : c.oldNo);
       lines.push(`Anchor: diff${c.diffLabel ? " " + oneLine(c.diffLabel) : ""}, ${loc}`);
       lines.push("");
       lines.push("Diff line:");
+      const diffQuote = stripBidiControls(c.quote);
       // Fence longer than any backtick run in the line so a diff line that itself
       // contains ``` cannot break out of the fenced block into the copied bundle.
       let dMaxRun = 0;
       const dRunRe = /`+/g;
       let dm;
-      while ((dm = dRunRe.exec(c.quote)) !== null) {
+      while ((dm = dRunRe.exec(diffQuote)) !== null) {
         if (dm[0].length > dMaxRun) dMaxRun = dm[0].length;
       }
       const dFence = "`".repeat(Math.max(3, dMaxRun + 1));
       lines.push(dFence + "diff");
-      c.quote.split(/\r?\n/).forEach(l => lines.push(l));
+      diffQuote.split(/\r?\n/).forEach(l => lines.push(l));
       lines.push(dFence);
       lines.push("");
       emitCommentBody(c);
@@ -6128,14 +6135,14 @@ function buildCopyText() {
       const rawSrc = oneLine(c.imageSrc);
       const sSrc = rawSrc.length > 100 ? rawSrc.slice(0, 100) + "..." : rawSrc;
       const mediaWord = c.imageKind === "chart" ? "chart" : "image";
-      lines.push(`Anchor: ${mediaWord} #${(c.imageIndex || 0) + 1}${sSrc ? " (" + sSrc + ")" : ""}`);
+      lines.push(`Anchor: ${mediaWord} #${indexOne(c.imageIndex)}${sSrc ? " (" + sSrc + ")" : ""}`);
       if (c.imageAlt) lines.push(`Alt: ${oneLine(c.imageAlt)}`);
       lines.push("");
       emitCommentBody(c);
     } else if (isLink) {
       const rawHref = oneLine(c.linkHref);
       const sHref = rawHref.length > 100 ? rawHref.slice(0, 100) + "..." : rawHref;
-      lines.push(`Anchor: link #${(Number(c.linkIndex) || 0) + 1}${sHref ? " (" + sHref + ")" : ""}`);
+      lines.push(`Anchor: link #${indexOne(c.linkIndex)}${sHref ? " (" + sHref + ")" : ""}`);
       if (c.linkText) lines.push(`Text: ${oneLine(c.linkText)}`);
       lines.push("");
       emitCommentBody(c);
@@ -6168,6 +6175,7 @@ function buildCopyText() {
       }
       lines.push("");
       lines.push("Quoted text:");
+      const quote = stripBidiControls(c.quote);
       if (c.isCode) {
         // Emit a fenced code block so newlines and indentation survive paste-back into
         // markdown-aware editors (ADO PR comments, GitHub issues, etc.). Choose a fence
@@ -6176,29 +6184,29 @@ function buildCopyText() {
         let maxRun = 0;
         const runRe = /`+/g;
         let mm;
-        while ((mm = runRe.exec(c.quote)) !== null) {
+        while ((mm = runRe.exec(quote)) !== null) {
           if (mm[0].length > maxRun) maxRun = mm[0].length;
         }
         const fenceLen = Math.max(3, maxRun + 1);
         const fenceBar = "`".repeat(fenceLen);
         lines.push(fenceBar + oneLine(c.codeLanguage));
-        c.quote.split(/\r?\n/).forEach(line => lines.push(line));
+        quote.split(/\r?\n/).forEach(line => lines.push(line));
         lines.push(fenceBar);
       } else {
-        c.quote.split(/\r?\n/).forEach(line => lines.push("> " + line));
+        quote.split(/\r?\n/).forEach(line => lines.push("> " + line));
       }
       // "In context" only makes sense for prose. Skip it for code blocks - the fenced
       // quote already preserves the structure that matters.
       if (!c.isCode && (c.before || c.after)) {
         lines.push("");
         lines.push("In context:");
-        const ctxLine = (c.before || "") + '"' + c.quote.replace(/\s+/g, " ") + '"' + (c.after || "");
+        const ctxLine = stripBidiControls(c.before || "") + '"' + quote.replace(/\s+/g, " ") + '"' + stripBidiControls(c.after || "");
         ctxLine.split(/\r?\n/).forEach(line => lines.push("> " + line));
       }
       if (c.blockText && !c.isCode) {
         lines.push("");
         lines.push(`Containing <${oneLine(c.blockTag) || "block"}>:`);
-        c.blockText.split(/\r?\n/).forEach(line => lines.push("> " + line));
+        stripBidiControls(c.blockText).split(/\r?\n/).forEach(line => lines.push("> " + line));
       }
       lines.push("");
       emitCommentBody(c);
@@ -6269,9 +6277,9 @@ function buildCopyText() {
     handledIds.push(c.id);
     (repliesByRoot[c.id] || []).forEach((r) => handledIds.push(r.id));
   });
-  lines.push("HANDLED_IDS_JSON: " + JSON.stringify(handledIds));
-  lines.push("NOTES_STATE_JSON: " + JSON.stringify(noteStateMap));
-  lines.push("CHECKLIST_STATE_JSON: " + JSON.stringify(clStateMap));
+  lines.push("HANDLED_IDS_JSON: " + copyJson(handledIds));
+  lines.push("NOTES_STATE_JSON: " + copyJson(noteStateMap));
+  lines.push("CHECKLIST_STATE_JSON: " + copyJson(clStateMap));
   lines.push("=== END CMH MACHINE TRAILER ===");
   return lines.join("\n").trim() + "\n";
 }

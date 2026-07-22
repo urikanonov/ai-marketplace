@@ -280,7 +280,7 @@ export function stageInline({ mutate = null, source = INLINE } = {}) {
 // Build a self-contained document from dist/PORTABLE.html with custom content injected
 // into the CONTENT region and a unique comment-key, for feature tests that need markup
 // the shared kitchen-sink fixture does not have (widgets, callouts, charts).
-export function stageContent(contentHtml, { key = "cmh-test-doc", source = "test-doc.html" } = {}) {
+export function stageContent(contentHtml, { key = "cmh-test-doc", source = "test-doc.html", label = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_e2e_"));
   let html = fs.readFileSync(INLINE, "utf8");
   const CONTENT_RE = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
@@ -288,6 +288,7 @@ export function stageContent(contentHtml, { key = "cmh-test-doc", source = "test
   html = html.replace(CONTENT_RE, (_m, a, b) => a + "\n" + contentHtml + "\n" + b);
   html = html.replace('data-comment-key="commentable-html-demo"', 'data-comment-key="' + key + '"');
   html = html.replace('data-doc-source="PORTABLE.html"', 'data-doc-source="' + source + '"');
+  if (label != null) html = html.replace(/data-doc-label="[^"]*"/, 'data-doc-label="' + label + '"');
   const p = path.join(dir, "test-doc.html");
   fs.writeFileSync(p, html);
   return { dir, html: p };
