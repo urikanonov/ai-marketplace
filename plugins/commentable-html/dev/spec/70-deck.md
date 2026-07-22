@@ -78,6 +78,7 @@ The commentable-html skill incorporates the third-party frontend-slides design s
 The following features are documented but lack full automated behavior coverage, or have a known mismatch between spec and documentation:
 
 **Remaining manual or design-only gaps:**
+- CMH-HARNESS-01: the harness PLUMBING (CI guard, scratch-under-tmp, prompt corpus, copilot command construction, validator wiring) is automated in `tests/test_skill_flow_harness.py`, but the END-TO-END live model invocation (`copilot -p` actually driving each skill flow) is non-hermetic, consumes AI credits, and is non-deterministic, so it is a deliberate manual, local-only check - never a CI gate.
 - CMH-DECK-01: deck-intent detection and the "confirm before building a real deck" gate are an agent-behavior convention in `SKILL.md` ("Deck capability"), not an automated test.
 - CMH-DECK-03b: the "prefer the Anthropic `pptx` skill when installed, fall back to the local extractor" preference is prompt-level wording in `SKILL.md`; only the deterministic escaping and the local fallback (CMH-DECK-03a) are automated.
 - CMH-CONTENT-05: ADO resource links in authored content are a manual authoring convention with no validator or E2E enforcement.
