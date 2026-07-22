@@ -3398,10 +3398,6 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   }
   #commentRoot section[aria-labelledby="mermaid-gallery"] .visual-grid > pre.mermaid {
     break-inside: avoid; margin: 0 0 1.25rem;
-    /* Each pre sizes to its own diagram here (no fixed height), so nothing overflows; override the
-       layer's overflow-y:hidden so a diagram can never be silently clipped if a browser's column
-       balancer under-sizes the pre. */
-    overflow: visible;
   }
 }
 #commentRoot .visual-chip-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }

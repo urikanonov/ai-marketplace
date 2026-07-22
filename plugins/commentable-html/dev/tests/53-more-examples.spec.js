@@ -333,12 +333,17 @@ test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)"
 
       const cells = await measureGallery(page);
 
-      // The gallery must actually be in the masonry (multi-column block) layout, not the grid - the
-      // `#commentRoot`-specificity override is load-bearing (without it the base grid rule wins and
-      // the marooning silently returns).
-      const gridDisplay = await page.evaluate(() =>
-        getComputedStyle(document.querySelector("#commentRoot .visual-grid")).display);
-      expect(gridDisplay, "mermaid gallery uses the masonry (block/columns) layout, not a grid").not.toBe("grid");
+      // The mermaid gallery must actually be in the masonry (multi-column block) layout, not the grid
+      // - the `#commentRoot`-specificity override is load-bearing (without it the base grid rule wins
+      // and the marooning silently returns). Query the mermaid gallery specifically (not the first
+      // `.visual-grid`, which only happens to be the mermaid one today), and confirm the CHART gallery
+      // is untouched (still a grid), so the masonry change stays scoped.
+      const displays = await page.evaluate(() => ({
+        mermaid: getComputedStyle(document.querySelector('#commentRoot section[aria-labelledby="mermaid-gallery"] .visual-grid')).display,
+        chart: getComputedStyle(document.querySelector('#commentRoot section[aria-labelledby="chart-gallery"] .visual-grid')).display,
+      }));
+      expect(displays.mermaid, "mermaid gallery uses the masonry (block/columns) layout, not a grid").not.toBe("grid");
+      expect(displays.chart, "chart gallery is untouched (still a grid) - masonry is scoped to the mermaid gallery").toBe("grid");
 
       for (const c of cells) {
         expect(c.svgW, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
@@ -389,6 +394,12 @@ test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)"
       // Pre-fix the marooned grid left ~500px gaps below the short diagrams; the masonry gap is the
       // ~1.25rem column margin (~20px). 80px comfortably separates the two.
       expect(Math.round(maxGapBelow), "no diagram is marooned above a large vertical gap").toBeLessThanOrEqual(80);
+
+      // The masonry actually forms MULTIPLE columns on a wide screen (a plain single-column
+      // `display:block` fallback - columns dropped - would satisfy every other assertion). Distinct
+      // left edges among the laid-out diagrams prove real columns.
+      const distinctColumns = new Set(boxes.map((b) => Math.round(b.left / 5))).size;
+      expect(distinctColumns, "the wide-screen mermaid gallery lays out in multiple columns").toBeGreaterThanOrEqual(2);
       expect(errors, "no uncaught errors").toEqual([]);
     } finally {
       await server.close();
