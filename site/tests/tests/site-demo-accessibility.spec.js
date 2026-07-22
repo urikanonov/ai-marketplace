@@ -250,7 +250,7 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const taxi = page.locator("#demo-tab-taxi");
   const garden = page.locator("#demo-tab-garden");
-  const checklist = page.locator("#demo-tab-checklist");
+  const notes = page.locator("#demo-tab-notes");
   const panel = page.locator("#demo-panel");
   await expect(panel).toHaveAttribute("role", "tabpanel");
   await expect(taxi).toHaveAttribute("aria-controls", "demo-panel");
@@ -263,11 +263,11 @@ test("demo tabs expose a complete ARIA tabs contract", async ({ page }) => {
   // Home/End jump to the first/last tab and move the roving tabindex + panel label.
   await taxi.focus();
   await page.keyboard.press("End");
-  await expect(checklist).toHaveAttribute("aria-selected", "true");
-  await expect(checklist).toHaveAttribute("tabindex", "0");
+  await expect(notes).toHaveAttribute("aria-selected", "true");
+  await expect(notes).toHaveAttribute("tabindex", "0");
   await expect(taxi).toHaveAttribute("tabindex", "-1");
-  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-checklist");
-  await expect(page.locator("#demo-iframe")).toHaveAttribute("title", /Checklist|report-checklist/);
+  await expect(panel).toHaveAttribute("aria-labelledby", "demo-tab-notes");
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("title", /Notes|report-notes/);
   await page.keyboard.press("Home");
   await expect(taxi).toHaveAttribute("aria-selected", "true");
   await expect(taxi).toBeFocused();
