@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.214.0] - 2026-07-22
+
+### Added
+
+- Flat (non-deck) documents now print / Save-as-PDF as a SINGLE continuous no-break page instead of
+  paginating onto A4/Letter sheets, so no page break cuts through a section, table, chart, diagram,
+  or code block. On print the runtime measures the full content height (proactively, under stable
+  screen media, since Chromium locks the print `@page` size at `beforeprint`) and sizes a dynamic
+  `@page` to the content, collapsing a multi-page report onto one tall page. Documents that contain a
+  block-stacking container - a multi-column chart gallery or a grid/flex widget such as a kanban
+  board - are left on normal pagination, because their print-time grid-to-block reflow and
+  asynchronous chart resize cannot be measured before the page size is locked; their content still
+  prints in full on standard pages. Decks are unchanged (one landscape 16:9 page per slide). Relies
+  on the browser honoring a CSS `@page` size (Chromium's native print/PDF). (CMH-PRINT-06)
+
 ## [1.213.0] - 2026-07-22
 
 ### Changed

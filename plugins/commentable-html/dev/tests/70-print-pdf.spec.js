@@ -65,7 +65,17 @@ async function waitForRichContent(page) {
     const chartsReady = [...document.querySelectorAll(".chart-wrap canvas")].every(painted);
     return mermaidReady && chartsReady;
   }, undefined, { timeout: 20000 });
-  await page.waitForTimeout(600); // let charts finish their first paint/animation before capture
+  // Wait for the chart/diagram LAYOUT to stabilize (not just first paint): the single-page print
+  // path measures the settled content height, and a chart/mermaid that is still resizing would make
+  // the page measure short. Wait until the total content height stays unchanged for a sustained
+  // window (a real user has viewed the settled document before printing).
+  await page.waitForFunction(() => {
+    const h = document.documentElement.scrollHeight;
+    const now = Date.now();
+    if (window.__cmhStableH !== h) { window.__cmhStableH = h; window.__cmhStableAt = now; return false; }
+    return now - (window.__cmhStableAt || now) >= 700;
+  }, undefined, { timeout: 6000, polling: 150 }).catch(() => {});
+  await page.waitForTimeout(200);
 }
 
 // Temp SRI-stripped example copies created for a test run, cleaned up in afterAll.
@@ -95,6 +105,15 @@ async function openForPrint(page, htmlFile) {
 }
 
 async function renderPdf(page, htmlFile) {
+  await openForPrint(page, htmlFile);
+  return await page.pdf({ printBackground: true, preferCSSPageSize: true });
+}
+
+// Render like a real "Save as PDF": just drive the browser's native print pipeline (page.pdf) with
+// no manual media emulation, so `beforeprint` fires in SCREEN media and Chromium locks the @page to
+// that measurement - exactly what interactive Ctrl+P / Save as PDF does. preferCSSPageSize honors
+// the dynamic single-page @page the runtime injects, so a flat document collapses onto one page.
+async function renderSinglePagePdf(page, htmlFile) {
   await openForPrint(page, htmlFile);
   return await page.pdf({ printBackground: true, preferCSSPageSize: true });
 }
@@ -320,4 +339,96 @@ test("CMH-PRINT-05: print re-lights dark-theme code/KQL tokens so they stay legi
     expect(contrastOnWhite(colors[s]), `${s} (${colors[s]}) is legible on the white print background`)
       .toBeGreaterThanOrEqual(4.5);
   }
+});
+
+test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-break page", async ({ page }) => {
+  test.setTimeout(120000); // several real page.pdf renders (eligible + guard + deck + narrow) plus settle
+  await routeRichContentLocal(page);
+  // report-taxi (tables + inline charts) and report-community-garden (prose + a mermaid diagram +
+  // a code diff) both paginate to many Letter pages by default; the single-page print path collapses
+  // each to ONE tall continuous page (no internal page breaks) with all content present. Render each
+  // once and reuse the buffer.
+  const taxiPdf = await renderSinglePagePdf(page, path.join(EXAMPLES, "report-taxi.html"));
+  const gardenPdf = await renderSinglePagePdf(page, path.join(EXAMPLES, "report-community-garden.html"));
+  const taxi = await analyzePdf(taxiPdf);
+  const garden = await analyzePdf(gardenPdf);
+
+  for (const [name, report] of [["report-taxi.html", taxi], ["report-community-garden.html", garden]]) {
+    // Exactly one page - the whole document is a single no-break canvas.
+    expect(report.pages.length, `${name} prints as a single page`).toBe(1);
+    const pg = report.pages[0];
+    // The page is portrait (a tall continuous canvas), not clipped, and not blank.
+    expect(pg.width, `${name} single page is portrait (taller than wide)`).toBeLessThan(pg.height);
+    // A continuous multi-section report is far taller than a normal Letter page (792pt), proving
+    // the content is not paginated onto standard pages.
+    expect(pg.height, `${name} single page is a tall continuous canvas`).toBeGreaterThan(792 * 2);
+    expect(pg.ink, `${name} single page is not blank`).toBeGreaterThan(MIN_INK);
+  }
+
+  // Nothing is lost off the ends: content from the TOP and the BOTTOM of each report lands on the
+  // one page (a too-short page would clip the closing section).
+  expect(taxi.text, "taxi single page keeps the opening section").toContain("Executive Summary");
+  expect(taxi.text, "taxi single page keeps the closing section").toContain("Recommendations and Next Steps");
+  expect(garden.text, "garden single page keeps the opening section").toContain("Overview");
+  expect(garden.text, "garden single page keeps the closing section").toContain("Next Steps");
+
+  // Scope guard: a document with a block-stacking container - report-metrics has multi-column chart
+  // galleries (.visual-grid), report-triage has a grid kanban board - is intentionally LEFT ON
+  // NORMAL PAGINATION (its grid->block print reflow + async chart resize cannot be measured before
+  // Chromium locks the @page), so it must NOT be collapsed to a single page. Content is complete on
+  // standard pages, not clipped.
+  for (const name of ["report-metrics.html", "report-triage.html"]) {
+    const report = await analyzePdf(await renderSinglePagePdf(page, path.join(EXAMPLES, name)));
+    expect(report.pages.length, `${name} (block-stacking container) stays on normal pagination`).toBeGreaterThan(1);
+    for (let i = 0; i < report.pages.length; i++) {
+      expect(report.pages[i].width, `${name} page ${i + 1} is standard portrait paper`).toBeLessThan(report.pages[i].height);
+    }
+  }
+
+  // The single-page logic is scoped to flat documents: a deck is unaffected and still prints one
+  // landscape page PER SLIDE (see CMH-PRINT-03), never collapsed to a single page.
+  const deckPdf = await renderSinglePagePdf(page, path.join(EXAMPLES, "deck-showcase.html"));
+  const deck = await analyzePdf(deckPdf);
+  expect(deck.pages.length, "deck is unaffected: still one page per slide, not a single page").toBeGreaterThan(1);
+
+  // At a NARROW viewport the single page grows to cover content wider than the reading column (a
+  // wide table) instead of clipping it off the right edge: after the print sizing runs, no content
+  // overflows the pinned page width. report-taxi has a wide monthly-volume table.
+  await page.setViewportSize({ width: 480, height: 900 });
+  await openForPrint(page, path.join(EXAMPLES, "report-taxi.html"));
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const narrow = await page.evaluate(() => ({
+    scrollW: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+    pageW: parseFloat(getComputedStyle(document.body).width),
+  }));
+  await page.emulateMedia({ media: null });
+  expect(narrow.pageW, "narrow single page has a pinned width").toBeGreaterThan(0);
+  expect(narrow.scrollW,
+    "narrow single-page print grew the page to fit the widest content (no right-edge clip)")
+    .toBeLessThanOrEqual(narrow.pageW + 2);
+
+  // Oversized eligible document: taller than Chromium's ~200in page clamp (MAX_PAGE_PX = 18000px).
+  // The single-page path must FALL BACK to normal pagination rather than clamp/clip the page, so the
+  // closing marker survives across multiple standard pages. Stage a tall copy of the (eligible) taxi
+  // report by appending ~20000px of filler ending in a unique marker.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const taxiSrc = fs.readFileSync(path.join(EXAMPLES, "report-taxi.html"), "utf8");
+  const filler = '<section><h2>Oversized filler</h2>'
+    + Array.from({ length: 500 }, (_unused, i) =>
+      `<p>Filler paragraph ${i} - padding this document past the browser page-size clamp so the single-page path must fall back to normal pagination instead of clipping oversized content.</p>`).join("")
+    + '<p>OVERSIZED_TAIL_MARKER_END</p></section>';
+  const tallHtml = taxiSrc.includes("</main>")
+    ? taxiSrc.replace("</main>", filler + "</main>")
+    : taxiSrc.replace("</body>", filler + "</body>");
+  const tallFile = path.join(os.tmpdir(), `cmh-print-oversized-${process.pid}.html`);
+  fs.writeFileSync(tallFile, tallHtml);
+  tmpCopies.push(tallFile);
+  const oversized = await analyzePdf(await renderSinglePagePdf(page, tallFile));
+  expect(oversized.pages.length, "oversized eligible document falls back to normal pagination").toBeGreaterThan(1);
+  for (let i = 0; i < oversized.pages.length; i++) {
+    expect(oversized.pages[i].width, `oversized page ${i + 1} is standard portrait paper`).toBeLessThan(oversized.pages[i].height);
+  }
+  expect(oversized.text, "oversized fallback keeps the closing content (not clipped by the clamp)")
+    .toContain("OVERSIZED_TAIL_MARKER_END");
 });
