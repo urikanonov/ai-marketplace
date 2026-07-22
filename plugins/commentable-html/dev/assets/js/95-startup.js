@@ -241,6 +241,11 @@ setupNotesLayer();
 applyPersistedTableSorts();
 backfillContext();
 restoreHighlights();
+// Re-enable comment persistence only AFTER every automatic startup step that may saveComments()
+// (pruneHandled, backfillContext, restoreHighlights): if the store loaded unreadable, those writes
+// were suppressed so the recoverable bytes are left intact, and from here only a real user edit
+// replaces them (honoring the "editing a comment will replace them" notice).
+_cmhStoreUnreadable = false;
 setupMermaidLayer();
 setupImageLayer();
 setupLinkLayer();

@@ -45,8 +45,6 @@ test("Export as Portable round-trips a batch of adversarial comment notes byte-e
   expect(template).toBeTruthy();
 
   const seeded = await page.evaluate(({ tmpl, notes }) => {
-    const key = (document.getElementById("commentRoot") || document.body).dataset.commentKey
-      || ("commentable-html:" + location.pathname);
     const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
     const mkId = (n) => {
       let s = "c";
@@ -59,7 +57,7 @@ test("Export as Portable round-trips a batch of adversarial comment notes byte-e
       c.note = note;
       return c;
     });
-    localStorage.setItem(key, JSON.stringify(arr));
+    window.__cmhStorageCodec.write(arr);
     return arr.map((c) => ({ id: c.id, note: c.note }));
   }, { tmpl: template, notes: ADVERSARIAL });
   expect(seeded.length).toBe(ADVERSARIAL.length);

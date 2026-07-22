@@ -108,13 +108,12 @@ test("duplicate persisted comment ids dedupe and the newest-timestamp entry wins
   await page.goto(fileUrl(html));
   await ready(page);
   await page.evaluate(() => {
-    const k = document.getElementById("commentRoot").dataset.commentKey;
     const older = { id: "cdup000001", note: "OLD-NOTE", anchorType: "document",
                     createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" };
     const newer = { id: "cdup000001", note: "NEW-NOTE", anchorType: "document",
                     createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-06-01T00:00:00Z" };
     // Older first, newer second: the merge must replace with the later updatedAt.
-    localStorage.setItem(k, JSON.stringify([older, newer]));
+    window.__cmhStorageCodec.write([older, newer]);
   });
   await page.reload();
   await ready(page);
@@ -132,12 +131,11 @@ test("the newest duplicate wins even when it appears first (CMH-PERSIST-03)", as
   await page.goto(fileUrl(html));
   await ready(page);
   await page.evaluate(() => {
-    const k = document.getElementById("commentRoot").dataset.commentKey;
     const newer = { id: "cdup000002", note: "NEW-NOTE", anchorType: "document",
                     createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-06-01T00:00:00Z" };
     const older = { id: "cdup000002", note: "OLD-NOTE", anchorType: "document",
                     createdAt: "2024-01-01T00:00:00Z", updatedAt: "2024-01-01T00:00:00Z" };
-    localStorage.setItem(k, JSON.stringify([newer, older]));
+    window.__cmhStorageCodec.write([newer, older]);
   });
   await page.reload();
   await ready(page);

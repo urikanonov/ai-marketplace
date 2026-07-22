@@ -94,7 +94,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
       .filter((node) => node.tabIndex >= 0)
       .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnHelpTop"]);
+    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnHelpTop"]);
   });
 
   test("the overflow menu header shows the layer version between the badge and brand icon (CMH-MENU-ICON-03)", async ({ page }) => {
@@ -122,7 +122,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
       .filter((node) => node.tabIndex >= 0)
       .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnHelpTop"]);
+    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnHelpTop"]);
   });
 
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {
@@ -144,8 +144,11 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await ready(page);
     await addTextComment(page, "#commentRoot p", "embed me");
     await expect(page.locator("#cmTypeBadge")).toHaveText("Not portable"); // in storage, not yet embedded
-    const comment = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem(document.getElementById("commentRoot").dataset.commentKey))[0]);
+    const comment = await page.evaluate(() => {
+      const root = document.getElementById("commentRoot");
+      const raw = localStorage.getItem(root.dataset.commentKey + "::z") || localStorage.getItem(root.dataset.commentKey);
+      return JSON.parse(window.__cmhStorageCodec.decode(raw).json)[0];
+    });
     // Embed that exact comment (same id + updatedAt) into the file, then reload.
     const embRe = /(<script[^>]*id="embeddedComments"[^>]*>)([\s\S]*?)(<\/script>)/;
     fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(embRe, (_m, a, _b, c) => a + "\n" + JSON.stringify([comment]) + "\n" + c));
@@ -159,8 +162,11 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     await page.goto(fileUrl(html));
     await ready(page);
     await addTextComment(page, "#commentRoot p", "original text");
-    const comment = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem(document.getElementById("commentRoot").dataset.commentKey))[0]);
+    const comment = await page.evaluate(() => {
+      const root = document.getElementById("commentRoot");
+      const raw = localStorage.getItem(root.dataset.commentKey + "::z") || localStorage.getItem(root.dataset.commentKey);
+      return JSON.parse(window.__cmhStorageCodec.decode(raw).json)[0];
+    });
     const embRe = /(<script[^>]*id="embeddedComments"[^>]*>)([\s\S]*?)(<\/script>)/;
     fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(embRe, (_m, a, _b, c) => a + "\n" + JSON.stringify([comment]) + "\n" + c));
     await page.reload();

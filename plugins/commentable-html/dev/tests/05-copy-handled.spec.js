@@ -157,15 +157,14 @@ test.describe("Copy all + handled-id pruning", () => {
       await addTextComment(page, "#bidi", note);
       await addTextComment(page, "#bidiCode", "code note");
       await page.evaluate((bidi) => {
-        const key = document.getElementById("commentRoot").dataset.commentKey;
-        const stored = JSON.parse(localStorage.getItem(key) || "[]");
+        const stored = window.__cmhStorageCodec.read();
         const base = stored[0];
         stored.push(
           { ...base, id: "cmermaid01", anchorType: "mermaid", diagramIndex: "0" + bidi, nodeKey: "node" + bidi, nodeLabel: "label" + bidi, note: "mermaid note" },
           { ...base, id: "cimage01", anchorType: "image", imageKind: "chart", imageIndex: "1" + bidi, imageSrc: "img" + bidi + ".png", imageAlt: "alt" + bidi, note: "image note" },
           { ...base, id: "cdiff01", anchorType: "diff", lineType: "add", newNo: "12" + bidi, oldNo: "7" + bidi, diffLabel: "diff" + bidi, quote: "+" + bidi + "line", note: "diff note" },
         );
-        localStorage.setItem(key, JSON.stringify(stored));
+        window.__cmhStorageCodec.write(stored);
       }, bidiControls);
       await page.reload();
       await ready(page);

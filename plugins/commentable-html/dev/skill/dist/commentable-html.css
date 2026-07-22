@@ -1517,6 +1517,8 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
 .cm-diff-add:focus-visible,
 .cm-image-add:focus-visible,
 .cm-widget-add:focus-visible,
+.cm-storage-manager button:focus-visible,
+.cm-toast-action:focus-visible,
 .cm-hl-bubble:focus-visible {
   outline: 2px solid var(--cp-accent);
   outline-offset: 2px;
@@ -1871,6 +1873,87 @@ html[data-theme="dark"] .cm-author-pill {
 /* Print: show the author pill and replies as plain indented text. */
 @media print {
   .cmh-print-reply { margin: 0.2rem 0 0 0.8rem; }
+}
+/* Storage manager dialog (cross-document localStorage). Reuses .cm-modal-overlay for the backdrop
+   so a click outside the panel dismisses it; the panel is near-full-screen with small margins. */
+.cm-storage-manager {
+  max-width: none;
+  width: min(96vw, 1400px);
+  height: 92vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.cm-storage-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.9rem var(--cp-chrome-modal-x); border-bottom: 1px solid var(--cp-border);
+  flex: 0 0 auto;
+}
+.cm-storage-head h2 { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.4rem; }
+.cm-storage-close {
+  background: transparent; border: none; color: var(--cp-text-soft);
+  font-size: calc(var(--cp-chrome-font) * 1.65); line-height: 1; cursor: pointer;
+  padding: 0 var(--cp-chrome-button-y); border-radius: 6px;
+}
+.cm-storage-close:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-storage-intro, .cm-storage-total {
+  margin: 0; padding: 0.6rem var(--cp-chrome-modal-x) 0;
+  font-size: var(--cp-chrome-help-font); line-height: 1.5; color: var(--cp-text-soft); flex: 0 0 auto;
+}
+.cm-storage-total { padding-bottom: 0.4rem; color: var(--cp-text); font-weight: 600; }
+.cm-storage-banner {
+  margin: 0.6rem var(--cp-chrome-modal-x) 0; padding: 0.55rem 0.75rem; border-radius: 8px;
+  font-size: var(--cp-chrome-help-font); line-height: 1.45; flex: 0 0 auto;
+}
+.cm-storage-banner-warn { background: rgba(220, 38, 38, 0.12); border: 1px solid var(--cp-danger); color: var(--cp-danger); }
+.cm-storage-banner-ok { background: var(--cp-accent-soft); border: 1px solid var(--cp-accent); color: var(--cp-accent); }
+.cm-storage-list { padding: 0.4rem var(--cp-chrome-modal-x) var(--cp-chrome-modal-x); overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.cm-storage-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  padding: 0.6rem 0.2rem; border-bottom: 1px solid var(--cp-border);
+}
+.cm-storage-row.cm-storage-current { background: var(--cp-accent-soft); border-radius: 8px; padding-left: 0.6rem; padding-right: 0.6rem; }
+.cm-storage-info { min-width: 0; flex: 1 1 auto; }
+.cm-storage-name-line { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.cm-storage-name { font-weight: 600; font-size: 0.92rem; word-break: break-word; }
+.cm-storage-badge {
+  font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  background: var(--cp-accent); color: var(--cp-accent-fg); border-radius: 999px; padding: 0.08rem 0.5rem;
+}
+.cm-storage-source { font-size: 0.78rem; color: var(--cp-text-soft); overflow-wrap: anywhere; margin-top: 0.1rem; }
+.cm-storage-meta { font-size: 0.8rem; color: var(--cp-text-soft); margin-top: 0.15rem; }
+.cm-storage-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; }
+.cm-storage-btn {
+  background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
+  border-radius: 8px; padding: 0.35rem 0.7rem; font-size: 0.83rem; font-family: inherit; cursor: pointer;
+}
+.cm-storage-btn:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-storage-danger { color: var(--cp-danger); border-color: var(--cp-danger); border-color: color-mix(in srgb, var(--cp-danger) 45%, var(--cp-border)); }
+.cm-storage-danger:hover { background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger); }
+.cm-storage-confirm { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+.cm-storage-confirm-msg { font-size: 0.8rem; color: var(--cp-text); }
+.cm-storage-empty { padding: 0.8rem var(--cp-chrome-modal-x) var(--cp-chrome-modal-x); flex: 0 0 auto; }
+.cm-storage-empty p { font-size: var(--cp-chrome-help-font); line-height: 1.5; color: var(--cp-text); margin: 0 0 0.6rem; }
+.cm-storage-empty-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.cm-storage-global .cm-storage-name { font-weight: 600; }
+
+/* Inline action button inside a toast (e.g. "Manage storage" on a storage-full toast). The toast
+   itself is pointer-events:none so it never blocks the page; the action re-enables clicks on itself
+   ONLY while the toast is shown (.show). When the toast fades out the action returns to
+   pointer-events:none, and showToast/hideToast removes it from the DOM, so a faded-out toast never
+   leaves an invisible, clickable, or Tab-focusable control behind. */
+.cm-toast-action {
+  margin-left: 0.6rem; background: var(--cp-accent-fg); color: var(--cp-accent);
+  border: none; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.82em;
+  font-family: inherit; font-weight: 600; cursor: pointer; pointer-events: none;
+}
+.cm-toast.show .cm-toast-action { pointer-events: auto; }
+.cm-toast-action:hover { filter: brightness(1.08); }
+
+@media (max-width: 640px) {
+  .cm-storage-manager { width: 96vw; height: 94vh; }
+  .cm-storage-row { flex-direction: column; align-items: flex-start; }
+  .cm-storage-actions { align-self: flex-end; }
 }
 /* Deck profile (data-cmh-mode="deck"): comment-mode force-reveal and slide chrome. */
 body.cmh-deck-present .cm-toolbar,

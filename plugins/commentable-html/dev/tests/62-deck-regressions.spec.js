@@ -328,9 +328,7 @@ test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches
     // reload. The current rendered/rejoined label keeps the space ("You comment on the exact spot"),
     // so the exact `label:` match fails and only the whitespace-insensitive fallback can re-anchor it.
     const rewrote = await page.evaluate(() => {
-      const root = document.getElementById("commentRoot");
-      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
-      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      const arr = window.__cmhStorageCodec.read();
       let changed = false;
       arr.forEach((c) => {
         if (c && typeof c.nodeKey === "string" && c.nodeKey.replace(/\s+/g, "") === "label:Youcommentontheexactspot") {
@@ -338,7 +336,7 @@ test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches
           changed = true;
         }
       });
-      localStorage.setItem(key, JSON.stringify(arr));
+      window.__cmhStorageCodec.write(arr);
       return changed;
     });
     expect(rewrote, "expected a persisted mermaid anchor to rewrite").toBe(true);

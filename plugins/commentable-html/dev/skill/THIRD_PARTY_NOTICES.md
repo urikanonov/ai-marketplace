@@ -1,10 +1,11 @@
-<!-- GENERATED FILE - DO NOT EDIT. Built from the vendored license files under assets/vendor/ (mermaid.LICENSE, chart.umd.LICENSE) by plugins/commentable-html/dev/tools/build.py; run: python plugins/commentable-html/dev/tools/build.py -->
+<!-- GENERATED FILE - DO NOT EDIT. Built from the vendored license files under assets/vendor/ (mermaid.LICENSE, chart.umd.LICENSE) plus the inline lz-string notice, by plugins/commentable-html/dev/tools/build.py; run: python plugins/commentable-html/dev/tools/build.py -->
 # Third-party notices
 
-The commentable-html skill renders diagrams and charts with two third-party open-source
-libraries, redistributed here under the MIT License. They are vendored (bundled into the
-built templates and inlined into zero-network Offline exports), so their upstream license
-texts are reproduced in full below, as the MIT License requires.
+The commentable-html skill bundles a few third-party open-source libraries, redistributed
+here under the MIT License: mermaid and Chart.js render diagrams and charts (vendored into
+the built templates and inlined into zero-network Offline exports), and lz-string compresses
+the stored comment data. Their upstream license texts are reproduced in full below, as the
+MIT License requires.
 
 ## mermaid 11.16.0
 
@@ -44,4 +45,30 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## lz-string 1.4.4
+
+```text
+MIT License
+
+Copyright (c) 2013 pieroxy
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```

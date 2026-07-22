@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.210.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.211.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,6 +456,18 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.211.0] - 2026-07-22</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Manage storage: a near-full-screen dialog (from the overflow / sidebar menu) that lists every commentable-html document&#x27;s data stored in this browser, with a human-readable size and comment count, and lets you delete another document&#x27;s data to reclaim space. On <code>file://</code> all documents share one browser storage budget, so this is how you free room when it fills up. The current document is marked and offers &quot;Clear all comments&quot; instead of Delete; deletion is scoped to commentable-html&#x27;s own keys, so unrelated site data is never touched. (CMH-STORE-04, CMH-STORE-05, CMH-STORE-06, CMH-STORE-08)</li>
+              <li>If saving a comment fails because storage is full, the Manage storage dialog now opens automatically; freeing space retries the save so the comment is not lost. Notes, checklists, and section-review saves that hit the same limit surface a &quot;Manage storage&quot; action on their warning toast, and closing the dialog while any save is still pending re-offers that recovery action so nothing is lost silently. (CMH-STORE-07)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Comments are now stored compressed (lz-string, packed into UTF-16) when that is smaller than plain JSON, so far more documents&#x27; reviews fit in the shared browser storage. The format is backward compatible: documents last saved by an older version still load and are migrated on the next save, and a stored value that cannot be read (a corrupt or newer-version format) is left untouched with a recovery notice rather than being overwritten. (CMH-STORE-01, CMH-STORE-02, CMH-STORE-03)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.210.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -470,6 +482,8 @@
               <li>The footer session-id copy control no longer renders two separator dots next to each other (<code>Generated . . [copy]</code>); the copy button and its separator now read <code>Generated . [copy] . Help</code>.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.209.0] - 2026-07-22</h3></div>
             <div class="group-label">Fixed</div>
@@ -481,8 +495,6 @@
               <li>The validated stamp is now CONTENT-BOUND to the document&#x27;s authored TEXT. On a strict-clean pass <code>validate.py</code>/<code>finalize.py</code> also write <code>commentable-html-validated-hash</code>, a whole content-root text hash computed with the shared section-hash contract, and the runtime reproduces it byte for byte (<code>window.__cmhReview.docHash()</code>). The amber &quot;not validated&quot; banner therefore returns after a post-validation edit to the visible authored text and clears again on re-validation, instead of relying only on timestamps - so &quot;validated&quot; now tracks the CURRENT text. It is a stable-text fingerprint (a strong nudge, not a cryptographic seal): it does not track attribute-only edits or edits inside the excluded rendered blocks (mermaid/diff/KQL/chart/notes). A document with no content root keeps a timestamp-only stamp and the runtime falls back to the timestamp signal, so it never false-positives; a reader&#x27;s persisted table sort is canonicalized so it does not falsely invalidate. Only a FULL clean validation stamps (a <code>--charts-only</code>/<code>--layer-only</code> partial run never does). <code>finalize.py</code> also prints a guardrail reminder on a strict-fail that the fix must end with a clean strict pass to re-stamp. (CMH-STAMP-05, CMH-STAMP-03, CMH-STAMP-02, closes #584)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.208.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
@@ -514,14 +526,7 @@
               <li>Copy all now strips Unicode bidirectional formatting controls from reviewer notes, document text, the document label, and the document source before emitting the agent payload, so invisible direction overrides cannot visually span the trusted fences or metadata lines. Machine-readable JSON identifiers escape those controls so note/checklist apply tools still round-trip ids. (CMH-COPY-09)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.202.0] - 2026-07-21</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Deleting an embedded comment now retries the tombstone write after saving the smaller comments array, so a near-quota browser can free space and persist the delete marker. If the retry still fails, the reviewer gets an assertive warning that the embedded comment may reappear after reload instead of a silent resurrection. (CMH-PERSIST-05)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">173 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">174 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

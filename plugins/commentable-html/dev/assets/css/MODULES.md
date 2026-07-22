@@ -25,6 +25,7 @@ is a real, test-backed area in `dev/SPEC.md`.
 | `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
 | `88-rich-text.css` | CMH-RICH | Rich-text note inline elements (bold/italic/underline/strike/code/list/link) and the composer formatting toolbar. |
 | `88-threads.css` | CMH-AUTHOR, CMH-THREAD | Author pill, sidebar identity control, and the thread root-entry / reply layout + Reply button. |
+| `89-storage.css` | CMH-STORE | Storage manager dialog (near-full-screen list, rows, inline confirm, empty state) and the toast action button. |
 | `90-deck.css` | CMH-DECK, CMH-CODE | Deck profile (`data-cmh-mode="deck"`) overrides; deck theming of the code caption. |
 | `92-print.css` | CMH-PRINT | Print/PDF stylesheet for flat documents plus one-slide-per-page deck print flow. |
 | `95-reduced-motion.css` | CMH-A11Y | `prefers-reduced-motion` reset: clamps non-essential animations/transitions to near-zero. |

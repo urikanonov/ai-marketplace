@@ -22,6 +22,28 @@ if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
   document.body.removeAttribute("data-cm-density");
 }
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
+// The comment array is persisted in a modern slot COMMENT_KEY + "::z" holding either a compressed
+// (framed) payload or plain JSON, whichever is smaller (see 05-persistence.js). COMMENT_KEY itself
+// is only READ, as a legacy fallback for files last saved before this slot existed; the modern
+// runtime never writes it, so an older runtime opening the same key can never clobber ::z.
+const CMH_STORE_KEY = COMMENT_KEY + "::z";
+// Frame marker for a compressed comment payload. "\u0001" is < 32, so it can never collide with
+// lz-string's compressToUTF16 output (all chars >= 32) or legacy plain JSON (which starts with "[").
+const CMH_STORE_FRAME = "\u0001z";
+// Upper bound on decoded characters accepted from a stored/compressed comment payload (a
+// decompression-bomb guard). Far beyond any real document; a value over this is treated as corrupt.
+const CMH_MAX_STORE_CHARS = 8000000;
+// Every per-document subkey suffix (EXACT strings). The storage manager (57-storage-manager.js) uses
+// this single list to compute a document's owned keys and reclaim its space; a new per-document
+// subkey MUST be added here (test_storage.py asserts every COMMENT_KEY + "::" writer suffix is listed).
+const CMH_SUBKEY_SUFFIXES = [
+  "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note",
+  "::commentSort", "::tableSort", "::reviews", "::reviews::deleted", "::deckMode",
+];
+// Shared registry index of every commentable-html document seen in this browser (best-effort
+// presentation metadata only - the storage manager's delete authority is the owned-key shape, never
+// this index). Maps a document's COMMENT_KEY to {label, source}.
+const CMH_INDEX_KEY = "commentable-html::index";
 // Comment ids are generated as "c" + base36 timestamp + 4 base36 chars and are
 // later interpolated into HTML attributes (data-cid="...") and CSS selectors.
 // Loaded and embedded comment ids must match this format - otherwise a
@@ -30,7 +52,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.210.0";
+const CMH_VERSION = "1.211.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

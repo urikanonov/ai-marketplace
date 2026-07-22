@@ -262,26 +262,56 @@ def read_chartjs_version(package_json=None):
 
 
 _NOTICES_BANNER = ("<!-- GENERATED FILE - DO NOT EDIT. Built from the vendored license files under "
-                   "assets/vendor/ (mermaid.LICENSE, chart.umd.LICENSE) by "
-                   "plugins/commentable-html/dev/tools/build.py; run: "
+                   "assets/vendor/ (mermaid.LICENSE, chart.umd.LICENSE) plus the inline lz-string "
+                   "notice, by plugins/commentable-html/dev/tools/build.py; run: "
                    "python plugins/commentable-html/dev/tools/build.py -->")
+
+# lz-string (trimmed to compressToUTF16/decompressFromUTF16) is baked directly into the runtime JS
+# bundle (assets/js/02-lzstring.js) rather than gzip-vendored like the rich libraries, so its MIT
+# notice is reproduced here from a constant. Refresh the version if the vendored copy is updated.
+_LZSTRING_VERSION = "1.4.4"
+_LZSTRING_LICENSE = (
+    "MIT License\n"
+    "\n"
+    "Copyright (c) 2013 pieroxy\n"
+    "\n"
+    "Permission is hereby granted, free of charge, to any person obtaining a copy\n"
+    "of this software and associated documentation files (the \"Software\"), to deal\n"
+    "in the Software without restriction, including without limitation the rights\n"
+    "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell\n"
+    "copies of the Software, and to permit persons to whom the Software is\n"
+    "furnished to do so, subject to the following conditions:\n"
+    "\n"
+    "The above copyright notice and this permission notice shall be included in all\n"
+    "copies or substantial portions of the Software.\n"
+    "\n"
+    "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\n"
+    "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n"
+    "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\n"
+    "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n"
+    "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\n"
+    "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n"
+    "SOFTWARE."
+)
 
 
 def build_third_party_notices(assets_dir):
     """Assemble the shipped THIRD_PARTY_NOTICES.md from the vendored upstream license files, so the
-    MIT copyright and permission notices for mermaid and Chart.js travel with every distribution of
-    the skill (both ship gzipped inside the built templates and are inlined into Offline exports).
-    Single-sourced from assets/vendor/*.LICENSE plus the versions pinned in package.json."""
+    MIT copyright and permission notices for the bundled third-party libraries travel with every
+    distribution of the skill. mermaid and Chart.js ship gzipped inside the built templates and are
+    inlined into Offline exports; lz-string is baked into the runtime JS. Single-sourced from
+    assets/vendor/*.LICENSE (plus the inline lz-string notice) and the versions pinned in package.json."""
     vendor_dir = os.path.join(assets_dir, "vendor")
     versions = {"mermaid": read_mermaid_version(), "Chart.js": read_chartjs_version()}
     parts = [
         _NOTICES_BANNER,
         "# Third-party notices",
         "",
-        "The commentable-html skill renders diagrams and charts with two third-party open-source",
-        "libraries, redistributed here under the MIT License. They are vendored (bundled into the",
-        "built templates and inlined into zero-network Offline exports), so their upstream license",
-        "texts are reproduced in full below, as the MIT License requires.",
+        "The commentable-html skill bundles a few third-party open-source libraries, redistributed",
+        "here under the MIT License: mermaid and Chart.js render diagrams and charts (vendored into",
+        "the built templates and inlined into zero-network Offline exports), and lz-string compresses",
+        "the stored comment data. Their upstream license texts are reproduced in full below, as the",
+        "MIT License requires.",
         "",
     ]
     for label, license_name in VENDORED_LICENSE_FILES:
@@ -291,6 +321,12 @@ def build_third_party_notices(assets_dir):
         parts.append(read_vendored_license(vendor_dir, license_name))
         parts.append("```")
         parts.append("")
+    parts.append("## lz-string %s" % _LZSTRING_VERSION)
+    parts.append("")
+    parts.append("```text")
+    parts.append(_LZSTRING_LICENSE)
+    parts.append("```")
+    parts.append("")
     return "\n".join(parts).rstrip() + "\n"
 
 

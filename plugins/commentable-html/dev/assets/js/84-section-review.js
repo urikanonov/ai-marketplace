@@ -216,8 +216,7 @@ function _deletedReviewIds() {
   } catch (e) { return new Set(); }
 }
 function _saveDeletedReviewIds(set) {
-  try { localStorage.setItem(REVIEW_DELETED_KEY, JSON.stringify([...set])); return true; }
-  catch (e) { return false; }
+  return cmhTrySetItem(REVIEW_DELETED_KEY, function () { return JSON.stringify([...set]); }, "Review state");
 }
 function loadReviewMarkers() {
   let local = Object.create(null);
@@ -234,8 +233,9 @@ function loadReviewMarkers() {
   reviewMarkers = Object.assign(Object.create(null), embedded, local);
 }
 function saveReviewMarkers() {
-  try { localStorage.setItem(REVIEW_KEY, JSON.stringify(reviewMarkers)); return true; }
-  catch (e) { return false; }
+  // The section-review callers below own the user-facing message (they add the "Manage storage"
+  // action via cmhStorageAction), so this low-level writer does not toast - avoiding a double toast.
+  return cmhTrySetItem(REVIEW_KEY, function () { return JSON.stringify(reviewMarkers); }, "Section review state");
 }
 // A heading's own text with cm-skip chrome (the injected badge/caret) removed, so the baked
 // headingText matches the Python tool's value and is not polluted by "Mark reviewed" etc.
@@ -262,7 +262,8 @@ function markSectionReviewed(heading) {
   // full/blocked), matching clearSectionReviewed()'s un-review warning and saveComments()'s alert.
   if (!savedOk && typeof showToast === "function") {
     showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
-      + "may not stick on reload. Use Export as Portable to keep the change.", { alert: true, duration: 8000 });
+      + "may not stick on reload. Use Export as Portable to keep the change.",
+      { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
 }
@@ -283,7 +284,8 @@ function clearSectionReviewed(heading) {
   // reload; warn the reader (storage full/blocked), matching saveComments()'s persistence alert.
   if (wasBaked && (!tombOk || !savedOk) && typeof showToast === "function") {
     showToast("Could not persist un-reviewing this section (browser storage full or blocked) - it "
-      + "may come back on reload. Use Export as Portable to keep the change.", { alert: true, duration: 8000 });
+      + "may come back on reload. Use Export as Portable to keep the change.",
+      { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_DELETED_KEY) || cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
 }

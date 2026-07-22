@@ -237,13 +237,48 @@ export async function markTextForCid(page, cid) {
     els.filter((e) => e.dataset.cid === id).map((e) => e.textContent).join(""), cid);
 }
 
-// The comments array persisted in localStorage for the open document.
+// The comments array persisted in localStorage for the open document. Reads the modern slot
+// (COMMENT_KEY + "::z", which holds a compressed or plain payload) and falls back to the legacy
+// plain COMMENT_KEY, decoding via the runtime's own codec hook.
 export async function storedComments(page) {
   return page.evaluate(() => {
     const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
       || ("commentable-html:" + location.pathname);
-    return JSON.parse(localStorage.getItem(k) || "[]");
+    let raw = localStorage.getItem(k + "::z");
+    if (raw == null) raw = localStorage.getItem(k);
+    if (raw == null) return [];
+    try {
+      if (window.__cmhStorageCodec && window.__cmhStorageCodec.decode) {
+        const dec = window.__cmhStorageCodec.decode(raw);
+        if (dec && dec.ok && dec.json != null) return JSON.parse(dec.json);
+        return [];
+      }
+    } catch (e) { /* fall through to legacy parse */ }
+    try { return JSON.parse(raw); } catch (e) { return []; }
   });
+}
+
+// Overwrite the persisted comments for the open document (writes the modern ::z slot the runtime
+// reads, and clears the legacy key), so a test injecting/patching comments mid-run stays in sync
+// with where the runtime actually loads from.
+export async function setStoredComments(page, arr) {
+  await page.evaluate((a) => {
+    const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
+      || ("commentable-html:" + location.pathname);
+    const json = JSON.stringify(a);
+    const enc = (window.__cmhStorageCodec && window.__cmhStorageCodec.encode)
+      ? window.__cmhStorageCodec.encode(json) : json;
+    localStorage.setItem(k + "::z", enc);
+    localStorage.removeItem(k);
+  }, arr);
+}
+
+// Read-modify-write the persisted comments through the codec: fn receives the current array and
+// returns the array to persist (or mutates it in place and returns undefined).
+export async function mutateStoredComments(page, fn) {
+  const arr = await storedComments(page);
+  const next = fn(arr);
+  await setStoredComments(page, next === undefined ? arr : next);
 }
 
 export function readDownload(download) {

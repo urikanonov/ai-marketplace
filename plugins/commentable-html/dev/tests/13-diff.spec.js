@@ -402,7 +402,9 @@ test.describe("diff comment lifecycle", () => {
     await addDiffComment(page, ".cmh-dl-add", "first note");
     const cid = await page.locator(".cmh-dl-hl").first().getAttribute("data-cid");
     const before = await page.evaluate((id) => {
-      const c = JSON.parse(localStorage.getItem(document.getElementById("commentRoot").dataset.commentKey)).find((x) => x.id === id);
+      const root = document.getElementById("commentRoot");
+      const raw = localStorage.getItem(root.dataset.commentKey + "::z") || localStorage.getItem(root.dataset.commentKey);
+      const c = JSON.parse(window.__cmhStorageCodec.decode(raw).json).find((x) => x.id === id);
       return { anchorType: c.anchorType, diffIndex: c.diffIndex, lineKey: c.lineKey, oldNo: c.oldNo, newNo: c.newNo };
     }, cid);
 
@@ -413,7 +415,9 @@ test.describe("diff comment lifecycle", () => {
 
     await expect(page.locator(`.cm-card[data-cid="${cid}"] .note`)).toHaveText("edited note");
     const after = await page.evaluate((id) => {
-      const c = JSON.parse(localStorage.getItem(document.getElementById("commentRoot").dataset.commentKey)).find((x) => x.id === id);
+      const root = document.getElementById("commentRoot");
+      const raw = localStorage.getItem(root.dataset.commentKey + "::z") || localStorage.getItem(root.dataset.commentKey);
+      const c = JSON.parse(window.__cmhStorageCodec.decode(raw).json).find((x) => x.id === id);
       return { anchorType: c.anchorType, diffIndex: c.diffIndex, lineKey: c.lineKey, oldNo: c.oldNo, newNo: c.newNo, note: c.note, hasUpdated: !!c.updatedAt };
     }, cid);
     expect(after.anchorType).toBe(before.anchorType);

@@ -129,14 +129,12 @@ test("CMH-PRINT-01: the print appendix shows the comment author pill and ordered
   await page.goto(fileUrl(staged.html));
   await ready(page);
   await page.evaluate(() => {
-    const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
-      || ("commentable-html:" + location.pathname);
     const t = Date.now();
-    localStorage.setItem(k, JSON.stringify([
+    window.__cmhStorageCodec.write([
       { id: "cprintroot1", anchorType: "document", note: "print root note", author: "Alice", createdAt: new Date(t).toISOString() },
       { id: "cprintrep01", parentId: "cprintroot1", note: "print reply one", author: "Bob", createdAt: new Date(t + 1000).toISOString() },
       { id: "cprintrep02", parentId: "cprintroot1", note: "print reply two", author: "Bob", createdAt: new Date(t + 2000).toISOString() },
-    ]));
+    ]);
   });
   await page.reload();
   await ready(page);

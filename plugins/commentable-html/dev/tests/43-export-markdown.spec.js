@@ -39,14 +39,12 @@ test("the Markdown export leaks no raw HTML block tags", async ({ page }) => {
 test("the Review comments appendix is thread-aware: root author, ordered reply refinements, and a per-thread count (CMH-MD-01)", async ({ page }) => {
   await openKitchenSink(page);
   await page.evaluate(() => {
-    const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
-      || ("commentable-html:" + location.pathname);
     const t = Date.now();
-    localStorage.setItem(k, JSON.stringify([
+    window.__cmhStorageCodec.write([
       { id: "cmdroot0001", anchorType: "document", note: "the initial point", author: "Alice", createdAt: new Date(t).toISOString() },
       { id: "cmdreply001", parentId: "cmdroot0001", note: "refine one", author: "Bob", createdAt: new Date(t + 1000).toISOString() },
       { id: "cmdreply002", parentId: "cmdroot0001", note: "refine two", author: "Bob", createdAt: new Date(t + 2000).toISOString() },
-    ]));
+    ]);
   });
   await page.reload();
   await ready(page);

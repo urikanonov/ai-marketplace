@@ -82,6 +82,7 @@
   "71-mobile-polish.spec.js": 5058,
   "72-deck-recipes.spec.js": 2370,
   "72-followups.spec.js": 6216,
+  "72-storage.spec.js": 12500,
   "73-startup-bounds.spec.js": 8016,
   "74-code-caption.spec.js": 9258,
   "74-links.spec.js": 19240,

@@ -35,8 +35,7 @@ test("body fallback anchors comments when #commentRoot is absent (CMH-CORE-15)",
   await expect(page.locator("#commentRoot")).toHaveCount(0);
   await addTextComment(page, "main p", "body fallback note", 0);
 
-  const key = await page.evaluate(() => "commentable-html:" + location.pathname);
-  const stored = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || "[]"), key);
+  const stored = await storedComments(page);
   expect(stored).toHaveLength(1);
   expect(await page.locator("mark.cm-hl").evaluateAll((marks) => new Set(marks.map((m) => m.dataset.cid)).size)).toBe(1);
 
@@ -156,15 +155,21 @@ test("persistence sidecar keys are written under the document key (CMH-PERSIST-0
   await page.locator(".cm-card [data-act='del']").first().click();
   await expect(page.locator(".cm-card")).toHaveCount(0);
 
-  const state = await page.evaluate((k) => ({
-    comments: localStorage.getItem(k),
-    deleted: JSON.parse(localStorage.getItem(k + "::deleted") || "[]"),
-    commentSort: localStorage.getItem(k + "::commentSort"),
-    diffLayout: localStorage.getItem(k + "::diffLayout"),
-    diffSyntax: localStorage.getItem(k + "::diffSyntax"),
-    tableSort: JSON.parse(localStorage.getItem(k + "::tableSort") || "{}"),
-  }), key);
-  expect(JSON.parse(state.comments || "[]")).toHaveLength(0);
+  const state = await page.evaluate((k) => {
+    const zraw = localStorage.getItem(k + "::z");
+    const dec = zraw ? window.__cmhStorageCodec.decode(zraw) : { json: "[]" };
+    return {
+      commentCount: JSON.parse(dec.json || "[]").length,
+      legacy: localStorage.getItem(k),
+      deleted: JSON.parse(localStorage.getItem(k + "::deleted") || "[]"),
+      commentSort: localStorage.getItem(k + "::commentSort"),
+      diffLayout: localStorage.getItem(k + "::diffLayout"),
+      diffSyntax: localStorage.getItem(k + "::diffSyntax"),
+      tableSort: JSON.parse(localStorage.getItem(k + "::tableSort") || "{}"),
+    };
+  }, key);
+  expect(state.commentCount).toBe(0);   // the modern ::z store holds the (now empty) comment array
+  expect(state.legacy).toBeNull();       // the legacy base key was reclaimed
   expect(state.deleted).toContain(comment.id);
   expect(state.commentSort).toBe("time-asc");
   expect(state.diffLayout).toBe("inline");

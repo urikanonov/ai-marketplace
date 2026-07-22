@@ -136,15 +136,11 @@ function _clSave() {
       if (cur !== item.baseline) { if (!out[item.checklist]) out[item.checklist] = Object.create(null); out[item.checklist][item.key] = CMH_CHECK_CODE[cur]; }
     });
   });
-  try {
-    if (Object.keys(out).length) localStorage.setItem(CMH_CL_KEY, JSON.stringify(out));
-    else localStorage.removeItem(CMH_CL_KEY);
-    return true;
-  } catch (e) {
-    showToast("Checklist state NOT saved to this browser (storage full or blocked) - it will be lost on reload.",
-      { alert: true, duration: 8000 });
-    return false;
-  }
+  const ok = cmhTrySetItem(CMH_CL_KEY, function () {
+    return Object.keys(out).length ? JSON.stringify(out) : null;
+  }, "Checklist state");
+  if (!ok) cmhStorageFullToast(CMH_CL_KEY, "Checklist state");
+  return ok;
 }
 function _clRefresh() {
   const cache = new Map();
