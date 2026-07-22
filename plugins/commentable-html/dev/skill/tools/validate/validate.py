@@ -52,8 +52,8 @@ if _HERE not in sys.path:
 # section_hash) when validate.py runs as a STANDALONE CLI subprocess - not only in-process under a
 # test's path setup. Without this, _stamp_validated_file's import silently ImportError'd and a
 # `python tools/validate/validate.py <file>` run never stamped, so a clean validate still left the
-# runtime "not validated" banner up (the exact defect in issue #584). Best-effort: a missing
-# bootstrap must not break validation itself.
+# runtime "not validated" banner up (the exact defect in issue #584). The bootstrap below is a HARD
+# dependency (see the import), not best-effort.
 _TOOLS_ROOT = os.path.dirname(_HERE)
 if _TOOLS_ROOT not in sys.path:
     sys.path.insert(0, _TOOLS_ROOT)

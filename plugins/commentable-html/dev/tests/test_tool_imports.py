@@ -61,13 +61,24 @@ _STDLIB = frozenset(getattr(sys, "stdlib_module_names", ())) | frozenset((
     "os", "sys", "re", "io", "json", "ast", "importlib", "subprocess", "tempfile", "shutil"))
 
 
+def _type_name(node):
+    """The exception class name for an ``except`` clause type node - the bare name for `ImportError`
+    and the trailing attribute for a qualified `builtins.ImportError`, so a qualified handler is not
+    silently skipped."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
 def _handler_catches_import_failure(handler):
     t = handler.type
     if t is None:
         return True  # a bare except swallows an import failure too
     if isinstance(t, ast.Tuple):
-        return any(isinstance(e, ast.Name) and e.id in _IMPORT_FAILURE_TYPES for e in t.elts)
-    return isinstance(t, ast.Name) and t.id in _IMPORT_FAILURE_TYPES
+        return any(_type_name(e) in _IMPORT_FAILURE_TYPES for e in t.elts)
+    return _type_name(t) in _IMPORT_FAILURE_TYPES
 
 
 def _collect_imports(nodes):
@@ -112,8 +123,8 @@ def _consumes_all_import_failures(handler):
         return True
     broad = {"ImportError", "Exception", "BaseException"}
     if isinstance(t, ast.Tuple):
-        return any(isinstance(e, ast.Name) and e.id in broad for e in t.elts)
-    return isinstance(t, ast.Name) and t.id in broad
+        return any(_type_name(e) in broad for e in t.elts)
+    return _type_name(t) in broad
 
 
 def _import_guarding_handlers(try_node):
@@ -167,6 +178,8 @@ def _handler_is_silent(handler, guarded_names):
             return False
         if _reimports_guarded(stmt, guarded_tops):
             return False
+        if isinstance(stmt, (ast.Return, ast.Break, ast.Continue)):
+            break  # an unconditional exit - any warn/re-import after it is unreachable (silent)
     return True
 
 
@@ -257,6 +270,21 @@ class DetectorSelfTests(unittest.TestCase):
     def test_return_fallback_is_silent(self):
         self.assertTrue(self._lone_guarding_handler_is_silent(
             "try:\n import doc_stamp\nexcept ImportError:\n return None\n"))
+
+    def test_a_warn_after_an_unconditional_return_is_silent(self):
+        # The warn is unreachable (dead code after `return`), so the failure is still hidden.
+        self.assertTrue(self._lone_guarding_handler_is_silent(
+            "try:\n import doc_stamp\n"
+            "except ImportError:\n return None\n _toolpath.warn_missing_tool('doc_stamp')\n"))
+
+    def test_a_qualified_importerror_handler_is_recognized(self):
+        # `except builtins.ImportError: pass` catches the import failure and must be checked (and
+        # found silent), not skipped because the type is an attribute rather than a bare name.
+        t = self._try(
+            "try:\n import doc_stamp\nexcept builtins.ImportError:\n pass\n")
+        self.assertTrue(_import_guarding_handlers(t), "qualified ImportError must be caught")
+        self.assertTrue(self._lone_guarding_handler_is_silent(
+            "try:\n import doc_stamp\nexcept builtins.ImportError:\n pass\n"))
 
     def test_unrelated_reimport_is_still_silent(self):
         # Re-importing an UNRELATED module (os) does not make the guarded sibling's failure visible.
