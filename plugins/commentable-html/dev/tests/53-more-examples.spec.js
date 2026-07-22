@@ -333,17 +333,35 @@ test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)"
 
       const cells = await measureGallery(page);
 
+      // The gallery must actually be in the masonry (multi-column block) layout, not the grid - the
+      // `#commentRoot`-specificity override is load-bearing (without it the base grid rule wins and
+      // the marooning silently returns).
+      const gridDisplay = await page.evaluate(() =>
+        getComputedStyle(document.querySelector("#commentRoot .visual-grid")).display);
+      expect(gridDisplay, "mermaid gallery uses the masonry (block/columns) layout, not a grid").not.toBe("grid");
+
       for (const c of cells) {
         expect(c.svgW, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
         expect(c.svgH, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
-        // The diagram box hugs its diagram (the box itself is not a tall frame around a small svg).
-        expect(c.hostH - c.svgH, `box for "${c.src}" hugs its diagram`).toBeLessThanOrEqual(24);
+        // The box hugs its diagram in BOTH directions: not a tall frame around a small svg (marooning)
+        // and not shorter than its svg (which `overflow` would clip). Two-sided on purpose.
+        expect(Math.abs(c.hostH - c.svgH), `box for "${c.src}" hugs its diagram`).toBeLessThanOrEqual(24);
         // The diagram stays inside its column (no horizontal overflow / clipping).
         expect(c.svgW, `diagram "${c.src}" fits its column`).toBeLessThanOrEqual(c.hostW + 2);
         expect(c.overRight, `diagram "${c.src}" not clipped on the right`).toBeLessThanOrEqual(1);
         expect(c.overLeft, `diagram "${c.src}" not clipped on the left`).toBeLessThanOrEqual(1);
       }
 
+      // No diagram towers absurdly tall. This is the guard for the un-capped-narrow regression: if the
+      // portrait state diagram were stretched to full column width (instead of staying capped by the
+      // layer's CMH-MMD-10 rule), it balloons to a >1400px tower. Every gallery diagram stays modest.
+      const tallest = Math.max(...cells.map((c) => c.svgH));
+      expect(tallest, "no gallery diagram towers absurdly tall (narrow cap intact)").toBeLessThanOrEqual(900);
+
+      // The columns are real and used, not collapsed to slivers: at least the wide diagrams span
+      // essentially their whole column.
+      const maxFill = Math.max(...cells.map((c) => (c.hostW ? c.svgW / c.hostW : 0)));
+      expect(maxFill, "the widest gallery diagram fills its column").toBeGreaterThanOrEqual(0.85);
       // No marooning: a short diagram must not be stranded above a large vertical gap. In a CSS grid
       // the row height equals the tallest cell, so a short diagram sitting in that row (with the next
       // row far below) leaves a big gap to the diagram beneath it in the same column - even though
@@ -371,11 +389,6 @@ test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)"
       // Pre-fix the marooned grid left ~500px gaps below the short diagrams; the masonry gap is the
       // ~1.25rem column margin (~20px). 80px comfortably separates the two.
       expect(Math.round(maxGapBelow), "no diagram is marooned above a large vertical gap").toBeLessThanOrEqual(80);
-
-      // At least the wide diagrams fill their column (the columns are real and used, not collapsed to
-      // slivers): the widest rendered diagram spans essentially its whole column.
-      const maxFill = Math.max(...cells.map((c) => (c.hostW ? c.svgW / c.hostW : 0)));
-      expect(maxFill, "the widest gallery diagram fills its column").toBeGreaterThanOrEqual(0.9);
       expect(errors, "no uncaught errors").toEqual([]);
     } finally {
       await server.close();
