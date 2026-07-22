@@ -1,5 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const { contrastRatio, compositedContrast, installNetworkBlock } = require("./site-helpers");
+const fs = require("fs");
+const path = require("path");
 
 installNetworkBlock(test);
 
@@ -411,16 +413,16 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
 });
 
 
-test("demo has one safe full-screen button and a six-option slider", async ({ page }) => {
+test("demo has one safe full-screen button and a seven-option slider (SITE-DEMO-01)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const fs = page.locator("#demo-fullscreen");
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
   await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
-  await expect(page.locator(".demo-tab")).toHaveCount(6);
+  await expect(page.locator(".demo-tab")).toHaveCount(7);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
-  for (const id of ["#demo-tab-taxi", "#demo-tab-showcase", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-checklist"]) {
+  for (const id of ["#demo-tab-taxi", "#demo-tab-showcase", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-checklist", "#demo-tab-notes"]) {
     await expect(page.locator(id)).toBeVisible();
   }
 });
@@ -476,6 +478,53 @@ test("demo slider exposes and loads the Showcase deck (SITE-DEMO-10)", async ({ 
   const frame = page.frameLocator("#demo-iframe");
   await expect(frame.locator("#commentRoot[data-cmh-mode='deck']")).toHaveCount(1, { timeout: 15000 });
   await expect(frame.locator(".cmh-deck-mode-toggle")).toBeVisible();
+});
+
+
+test("demo slider exposes and loads the Notes report (SITE-DEMO-11)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const notes = page.locator("#demo-tab-notes");
+  await expect(notes).toBeVisible();
+  await expect(notes).toHaveAttribute("role", "tab");
+  await expect(notes).toHaveAttribute("aria-controls", "demo-panel");
+  await expect(notes).toHaveAttribute("aria-selected", "false");
+  await expect(notes).toHaveAttribute("tabindex", "-1");
+  // Bring the demo into view first so the lazy iframe loads eagerly, then activate Notes and
+  // confirm the iframe actually FETCHES report-notes.html (a live demo, not just a swapped href).
+  await page.locator("#demo-panel").scrollIntoViewIfNeeded();
+  const [resp] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/demo/report-notes.html"), { timeout: 20000 }),
+    notes.click(),
+  ]);
+  expect(resp.status()).toBeLessThan(400);
+  await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-notes\.html/);
+  await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-notes\.html/);
+  await expect(page.locator("#demo-title")).toHaveText("Notes");
+  await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-notes");
+});
+
+
+test("every example is present on the site as a live demo tab (SITE-DEMO-12)", async ({ page, request }) => {
+  // The examples/ directory is the source of truth for "examples"; every HTML example must be
+  // surfaced on the site as a live demo - a slider tab that loads it in the demo iframe, backed
+  // by the file actually being served under commentable-html/demo/. This parity check fails if a
+  // new example is added without wiring it into the Try it live slider.
+  const examplesDir = path.resolve(__dirname, "..", "..", "..", "plugins", "commentable-html", "examples");
+  const examples = fs.readdirSync(examplesDir).filter((name) => name.endsWith(".html")).sort();
+  expect(examples.length).toBeGreaterThan(0);
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  for (const file of examples) {
+    // Exact string match (not a regex built from the filename) - stronger than a substring/anchored
+    // pattern and free of any escaping concern about characters in the filename.
+    const demoPath = "demo/" + file;
+    const tab = page.locator(`.demo-tab[data-file="${file}"]`);
+    await expect(tab, `expected a live-demo slider tab for example ${file}`).toHaveCount(1);
+    await tab.click();
+    await expect(page.locator("#demo-iframe")).toHaveAttribute("src", demoPath);
+    await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", demoPath);
+    const resp = await request.get("/commentable-html/demo/" + file);
+    expect(resp.status(), `expected ${file} to be served under commentable-html/demo/`).toBeLessThan(400);
+  }
 });
 
 
