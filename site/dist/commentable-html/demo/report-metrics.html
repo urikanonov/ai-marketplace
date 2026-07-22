@@ -3378,19 +3378,26 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
 #commentRoot .visual-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: start; }
 #commentRoot .visual-grid > pre.mermaid, #commentRoot .visual-grid > figure { margin: 0; }
 @media screen and (min-width: 481px) {
-  /* Box each gallery diagram to a uniform, bounded height and fit the SVG inside it (centered), so one
-     naturally tall/portrait diagram (e.g. the state diagram, which the layer narrow scale-up grows even
-     taller) never forces its grid row tall and maroons the short diagrams in big empty boxes. Overrides
-     the layer narrow-scale-up width rule inside the gallery only. Applied only above the mobile
-     breakpoint: at <=480px the grid is a single column (no marooning), so the layer's own behavior
-     (wide diagrams scroll inside their box, CMH-RESP-01/09) is left untouched. Screen-scoped so print
-     keeps the layer's natural single-column stacking. */
-  #commentRoot .visual-grid > pre.mermaid {
-    display: flex; align-items: center; justify-content: center;
-    height: 300px; overflow: hidden; box-sizing: border-box;
+  /* Masonry (CSS multi-column) flow for the mermaid gallery. A CSS *grid* row is as tall as its
+     tallest cell, so one very tall diagram (the state diagram - which the layer's narrow scale-up,
+     CMH-MMD-10, grows taller still, amplifying the effect) either strands short siblings in empty
+     space (marooning) or, if each cell is height-bounded to avoid that, squashes tall-narrow diagrams
+     into thin slivers. A column flow sidesteps both: each diagram renders at the layer's own size
+     (narrow diagrams stay capped and centred by CMH-MMD-10; wide ones fill the column) and the
+     columns pack independently, so a tall diagram never strands its neighbours and a narrow one is
+     never a sliver. Deliberately does NOT override the SVG size, so the layer's narrow cap keeps the
+     state diagram at its readable ~173px width instead of filling the column and ballooning tall.
+     `column-fill` is left at the default `balance`; `auto` would need a definite container height to
+     fill top-to-bottom and is unreliable without one. Scoped to the mermaid gallery only (the chart
+     gallery keeps the grid) and above the mobile breakpoint - at <=480px the grid is a single column
+     already and the layer's own wide-diagram scroll behaviour (CMH-RESP-01/09) is left intact. The
+     `#commentRoot` prefix is needed to out-specify the base `#commentRoot .visual-grid` grid rule.
+     Screen-scoped so print keeps the layer's single-column stacking. */
+  #commentRoot section[aria-labelledby="mermaid-gallery"] .visual-grid {
+    display: block; columns: 320px; column-gap: 1.25rem;
   }
-  #commentRoot .visual-grid > pre.mermaid.cm-mermaid-host svg {
-    width: auto !important; max-width: 100% !important; max-height: 100% !important; height: auto !important;
+  #commentRoot section[aria-labelledby="mermaid-gallery"] .visual-grid > pre.mermaid {
+    break-inside: avoid; margin: 0 0 1.25rem;
   }
 }
 #commentRoot .visual-chip-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }
