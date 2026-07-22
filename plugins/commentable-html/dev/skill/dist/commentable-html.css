@@ -537,7 +537,7 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
    Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side
    padding) so the footer never sticks out past the content sections above it. */
 .cm-footer {
-  margin: var(--cp-chrome-shell-x) auto 1.25rem; max-width: calc(1480px - 3rem); padding: var(--cp-chrome-action-x) 1rem;
+  margin: var(--cp-chrome-shell-x) auto 1.25rem; width: calc(100% - 3rem); max-width: calc(1480px - 3rem); box-sizing: border-box; padding: var(--cp-chrome-action-x) 1rem;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--cp-chrome-gap);
   font-size: var(--cp-chrome-small-font); color: var(--cp-text-soft);
   border: 1px solid var(--cp-border); border-radius: 0.6rem; background: var(--cp-surface);
@@ -567,6 +567,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 @media (min-width: 1100px) {
   body.sidebar-open .cm-footer {
     max-width: none;
+    width: auto;
     margin-left: 2rem;
     margin-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
   }

@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.212.0] - 2026-07-22
+
+### Fixed
+
+- The runtime footer is now flush with the content column when the side table-of-contents
+  navigation pane is present and the comments sidebar is closed. Previously, on viewports where the
+  pane's left inset shrank the content shell below its max width, the footer spanned wider than the
+  content column (about 1.5rem past it on each side). The footer now insets to match the content box
+  in that layout.
+
 ## [1.211.0] - 2026-07-22
 
 ### Added
