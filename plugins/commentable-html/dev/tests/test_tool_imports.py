@@ -137,23 +137,6 @@ def _is_warn_call(node):
             or (isinstance(f, ast.Name) and f.id == "warn_missing_tool"))
 
 
-def _statements_that_run(handler):
-    """The statements that ACTUALLY execute when this handler fires: its direct top-level
-    statements, plus one level into a top-level recovery `try` (the sys.path-fix-then-reimport
-    pattern - both its body and its own handlers run on the failure path). We deliberately do NOT
-    descend into a nested def/class body or a conditional block, so a warn/re-import that is dead
-    (`if False: warn(...)`) or merely DEFINED inside a nested function does not count as making the
-    failure visible."""
-    stmts = []
-    for stmt in handler.body:
-        stmts.append(stmt)
-        if isinstance(stmt, ast.Try):
-            stmts.extend(stmt.body)
-            for h in stmt.handlers:
-                stmts.extend(h.body)
-    return stmts
-
-
 def _reimports_guarded(stmt, guarded_tops):
     if isinstance(stmt, ast.Import):
         return any(a.name.split(".")[0] in guarded_tops for a in stmt.names)
@@ -166,17 +149,20 @@ def _reimports_guarded(stmt, guarded_tops):
 
 
 def _handler_is_silent(handler, guarded_names):
-    # A handler guarding a sibling import is NON-silent only if it makes the failure visible on the
-    # path that actually runs: it UNCONDITIONALLY re-raises (a top-level `raise`), calls
-    # warn_missing_tool as a statement that runs, or RECOVERS by re-importing the SAME guarded
-    # sibling. Anything else - pass / assign a sentinel / return, an unrelated `import os`, or a
-    # warn/re-import that is dead-conditional or buried in a nested function - is SILENT and would
-    # hide a broken install (the #584 class).
+    # A handler guarding a sibling import is NON-silent only if one of its DIRECT top-level
+    # statements makes the failure unconditionally visible: an unconditional `raise`, a
+    # warn_missing_tool call, or a re-import of the SAME guarded sibling (a top-level, un-nested
+    # re-import propagates its own ImportError on failure, so it is genuinely loud). We check ONLY
+    # direct top-level statements - never descending into a conditional, a nested def/class, or a
+    # nested `try` - so a warn/re-import that is dead (`if False:`), buried in a nested function, or
+    # that could be swallowed by its own recovery `except` does NOT count. Everything else - pass /
+    # sentinel / return / an unrelated `import os` - is SILENT and would hide a broken install (the
+    # #584 class). This is deliberately CONSERVATIVE: a would-be-loud but non-direct handler is
+    # flagged, which just asks the author to warn at the top level (the style we want anyway).
     guarded_tops = {n.split(".")[0] for n in guarded_names}
     for stmt in handler.body:
         if isinstance(stmt, ast.Raise):
             return False
-    for stmt in _statements_that_run(handler):
         if isinstance(stmt, ast.Expr) and _is_warn_call(stmt.value):
             return False
         if _reimports_guarded(stmt, guarded_tops):
@@ -307,16 +293,20 @@ class DetectorSelfTests(unittest.TestCase):
             "try:\n import highlight_code\n"
             "except ImportError:\n if cond:\n  import highlight_code\n"))
 
-    def test_a_recovery_try_reimport_is_not_silent(self):
-        # The sys.path-fix-then-reimport pattern: the re-import in a top-level recovery `try` runs
-        # on the failure path, so it makes the failure visible.
-        self.assertFalse(self._lone_guarding_handler_is_silent(
+    def test_a_reimport_in_a_swallowing_recovery_try_is_silent(self):
+        # A re-import nested in a recovery `try` whose own handler swallows the failure hides the
+        # original missing import on the success path (side effect) AND the failure path (pass) -
+        # exactly the #584 class. The detector only credits DIRECT top-level statements, so this is
+        # correctly SILENT (do not descend into nested try bodies/handlers).
+        self.assertTrue(self._lone_guarding_handler_is_silent(
             "try:\n import highlight_code\n"
-            "except ImportError:\n try:\n  import highlight_code\n except Exception:\n  raise\n"))
+            "except ImportError:\n try:\n  import highlight_code\n except Exception:\n  pass\n"))
 
-    def test_a_recovery_try_warn_is_not_silent(self):
-        # A warn inside the recovery try's own handler still runs on the failure path.
-        self.assertFalse(self._lone_guarding_handler_is_silent(
+    def test_a_warn_in_a_recovery_try_handler_is_conservatively_silent(self):
+        # A warn buried in a recovery try's handler does not run when the try body succeeds, so the
+        # failure can stay hidden; the conservative detector flags it (the author should warn at the
+        # handler's top level instead).
+        self.assertTrue(self._lone_guarding_handler_is_silent(
             "try:\n import doc_stamp\n"
             "except ImportError:\n try:\n  fix_path()\n"
             " except Exception:\n  _toolpath.warn_missing_tool('doc_stamp')\n"))
