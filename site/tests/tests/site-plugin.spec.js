@@ -514,12 +514,12 @@ test("every example is present on the site as a live demo tab (SITE-DEMO-12)", a
   expect(examples.length).toBeGreaterThan(0);
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   for (const file of examples) {
-    const escaped = file.replace(/[.]/g, "\\.");
+    const srcPattern = new RegExp("demo/" + file.replace(/[.]/g, "\\.") + "$");
     const tab = page.locator(`.demo-tab[data-file="${file}"]`);
     await expect(tab, `expected a live-demo slider tab for example ${file}`).toHaveCount(1);
     await tab.click();
-    await expect(page.locator("#demo-iframe")).toHaveAttribute("src", new RegExp(escaped));
-    await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", new RegExp(escaped));
+    await expect(page.locator("#demo-iframe")).toHaveAttribute("src", srcPattern);
+    await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", srcPattern);
     const resp = await request.get("/commentable-html/demo/" + file);
     expect(resp.status(), `expected ${file} to be served under commentable-html/demo/`).toBeLessThan(400);
   }
