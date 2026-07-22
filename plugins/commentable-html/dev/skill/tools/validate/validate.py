@@ -47,6 +47,22 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+# Put the tools/ root and every topic subdirectory (authoring/, blocks/, ...) on sys.path via the
+# shared bootstrap, so the strict-clean stamp writer can `import doc_stamp` (which in turn imports
+# section_hash) when validate.py runs as a STANDALONE CLI subprocess - not only in-process under a
+# test's path setup. Without this, _stamp_validated_file's import silently ImportError'd and a
+# `python tools/validate/validate.py <file>` run never stamped, so a clean validate still left the
+# runtime "not validated" banner up (the exact defect in issue #584). Best-effort: a missing
+# bootstrap must not break validation itself.
+_TOOLS_ROOT = os.path.dirname(_HERE)
+if _TOOLS_ROOT not in sys.path:
+    sys.path.insert(0, _TOOLS_ROOT)
+try:
+    import _toolpath  # noqa: E402
+    _toolpath.ensure()
+except Exception:  # pragma: no cover - a broken/absent bootstrap surfaces via the import tests
+    pass
+
 try:
     from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
     from cmhval.jsonblocks import check_json_blocks  # noqa: E402
@@ -317,8 +333,13 @@ def _print_theme_suggestions(path):
 
 
 def _stamp_validated_file(path):
-    """Write the commentable-html-validated provenance stamp into a strict-clean file. Never let a
-    stamp failure affect validation reporting (best-effort)."""
+    """Write the commentable-html-validated provenance stamp (timestamp + content hash) into a
+    strict-clean file. Best-effort so a stamp failure never BLOCKS validation, but NOT silent: the
+    import path is fixed (see the _toolpath bootstrap above) so this should always succeed, and if
+    it ever fails we print a visible NOTE rather than silently reporting a clean validation that
+    wrote no stamp - the confusing UX that #584 fixed. Stamping now runs an HTML parse
+    (doc_stamp -> section_hash), a wider failure surface than the old timestamp-only write, so catch
+    broadly. The subprocess-stamp tests guard against a silent regression of the import path."""
     try:
         import doc_stamp
         with open(path, "r", encoding="utf-8", newline="") as fh:
@@ -327,8 +348,11 @@ def _stamp_validated_file(path):
         if stamped != html:
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(stamped)
-    except (OSError, ImportError):
-        pass
+    except Exception as exc:
+        sys.stderr.write(
+            "  NOTE: could not write the validated stamp (%s); the document PASSED validation but "
+            "is not stamped, so the runtime may still show the 'not validated' banner - re-run to "
+            "stamp.\n" % exc)
 
 
 def _wants_help(tokens):
@@ -351,6 +375,7 @@ def main(argv):
         print("  --strict       exit non-zero if any warning remains")
         print("  --suggest      print a compliant nudged value for each low-contrast --cp-* override")
         print("  --no-stamp     do not write the commentable-html-validated stamp on a clean pass")
+        print("                 (a --charts-only/--layer-only partial run never stamps either)")
         return 0
     # A bare "--" ends options: everything after it is a positional path, even if it
     # begins with a dash. Flags are only recognized before the separator.
@@ -371,7 +396,11 @@ def main(argv):
     charts = "--layer-only" not in flags
     strict = "--strict" in flags
     suggest = "--suggest" in flags
-    stamp = "--no-stamp" not in flags
+    # Only a FULL validation (both the layer and chart halves) may stamp: a partial run
+    # (--charts-only / --layer-only) has not confirmed the whole document, so stamping it would let
+    # a doc with broken layer regions (or chart errors) suppress the runtime banner. --no-stamp also
+    # keeps any run read-only.
+    stamp = ("--no-stamp" not in flags) and layer and charts
     if not args or (not layer and not charts):
         sys.stderr.write(_USAGE + "\n")
         return 2
@@ -400,8 +429,9 @@ def main(argv):
         else:
             print(f"  OK ({len(warnings)} warning(s))")
             # Stamp commentable-html-validated ONLY on a strict-clean pass (no errors AND no
-            # warnings), so the runtime banner clears only for a genuinely finished document.
-            # --no-stamp keeps a pure --check/CI run read-only.
+            # warnings) of a FULL validation (see `stamp` above: never for a --charts-only /
+            # --layer-only partial run), so the runtime banner clears only for a document that
+            # genuinely passed the whole validator. --no-stamp keeps a pure --check/CI run read-only.
             if stamp and not errors and not warnings:
                 _stamp_validated_file(path)
     if any_errors:

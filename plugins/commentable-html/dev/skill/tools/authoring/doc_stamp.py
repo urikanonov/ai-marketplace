@@ -14,9 +14,22 @@ import datetime
 import ntpath
 import os
 import re
+import sys
+
+# section_hash is a sibling tool in this same authoring/ directory. Make sure it is importable even
+# when doc_stamp is loaded without the tools/_toolpath bootstrap having run first.
+_HERE_DIR = os.path.dirname(os.path.abspath(__file__))
+if _HERE_DIR not in sys.path:
+    sys.path.insert(0, _HERE_DIR)
+import section_hash  # noqa: E402
 
 CREATED_META = "commentable-html-created"
 VALIDATED_META = "commentable-html-validated"
+# The content hash bound to the validated stamp: the whole content-root text hashed with the shared
+# section-hash contract (section_hash.document_content_hash, reproduced by the runtime
+# cmhDocContentHash). It lets the runtime tell a genuinely validated document from one that was
+# validated and THEN manually edited (the hash no longer matches the current content).
+VALIDATED_HASH_META = "commentable-html-validated-hash"
 # Provenance of the AI session that produced the document. `session-id` is the raw id string
 # the runtime footer copies to the clipboard; `agent` is the producing tool's slug (e.g.
 # "copilot", "claude") the footer maps to a friendly name in the copy tooltip.
@@ -82,6 +95,18 @@ def set_meta(html, name, content):
     return tag + html
 
 
+def remove_meta(html, name):
+    """Remove the first `<meta name=NAME ...>` tag (and a trailing newline if it sits on its own
+    line) if present; returns the new html unchanged when the tag is absent."""
+    m = re.search(r'<meta\s+name="%s"\s+content="[^"]*"\s*/?>' % re.escape(name), html, re.IGNORECASE)
+    if not m:
+        return html
+    start, end = m.start(), m.end()
+    if end < len(html) and html[end] == "\n":
+        end += 1
+    return html[:start] + html[end:]
+
+
 def stamp_created(html, when=None):
     """Stamp the creation time (idempotent: an existing created stamp is preserved)."""
     if get_meta(html, CREATED_META) is not None:
@@ -90,8 +115,20 @@ def stamp_created(html, when=None):
 
 
 def stamp_validated_html(html, when=None):
-    """Return html with the validated stamp set to `when` (default: now)."""
-    return set_meta(html, VALIDATED_META, when or now_iso())
+    """Return html with the validated stamp set to `when` (default: now), CONTENT-BOUND with a
+    whole-document content hash (commentable-html-validated-hash) so the runtime banner can tell a
+    genuinely validated document from one that was validated and then manually edited. A document
+    with no content root is stamped with the timestamp only (there is no reproducible runtime hash
+    to bind to)."""
+    html = set_meta(html, VALIDATED_META, when or now_iso())
+    content_hash = section_hash.document_content_hash(html)
+    if content_hash is not None:
+        html = set_meta(html, VALIDATED_HASH_META, content_hash)
+    else:
+        # No content root => no hash the runtime can reproduce. Drop any stale hash so the stamp is
+        # cleanly timestamp-only and never leaves a mismatching hash that would nag falsely.
+        html = remove_meta(html, VALIDATED_HASH_META)
+    return html
 
 
 def detect_session(environ=None):

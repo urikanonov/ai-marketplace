@@ -62,13 +62,19 @@ class _SectionParser(HTMLParser):
     each heading's (id, level, start-offset, end-offset). convert_charrefs=True so entities arrive
     decoded, like DOM textContent."""
 
-    def __init__(self):
+    def __init__(self, single_root=False):
         super().__init__(convert_charrefs=True)
         self.parts = []
         self.length = 0
         self.headings = []          # list of dicts: {id, level, start, end}
         self._stack = []            # {tag, skip, hidx}
         self._root_depth = None
+        self.found_root = False     # True once a content root was seen
+        # When True, mirror the runtime document hasher exactly: the root is ONLY an id=commentRoot
+        # element (not a bare data-cmh-content-root), and only the FIRST one - once it closes, no
+        # later element re-opens a root. This matches getElementById("commentRoot") (first match,
+        # single subtree) so document_content_hash never hashes text the runtime would not.
+        self.single_root = single_root
 
     def _in_root(self):
         return self._root_depth is not None
@@ -85,18 +91,25 @@ class _SectionParser(HTMLParser):
         d = dict(attrs)
         classes = (d.get("class") or "").split()
         parent_skip = self._skipping()
-        # Skip cm-skip chrome, inert script/style/template, and runtime-transformed blocks (rendered
-        # diffs, KQL, mermaid, chart canvases, editable notes) - the same set the JS runtime walk
-        # excludes - so the hash covers the section's stable prose and the two extractors agree.
+        # Skip cm-skip chrome, inert script/style/template/noscript, and runtime-transformed blocks
+        # (rendered diffs, KQL, mermaid, chart canvases, editable notes) - the same set the JS
+        # runtime walk excludes - so the hash covers the section's stable prose and the two
+        # extractors agree. noscript is excluded because with scripting ON the browser exposes its
+        # markup as literal text, which would diverge from this tag-parsing extractor.
         skip = (parent_skip
                 or bool(_SKIP_CLASSES.intersection(classes))
-                or tag_l in ("script", "style", "template", "canvas")
+                or tag_l in ("script", "style", "template", "canvas", "noscript")
                 or "data-cmh-note" in d)
-        is_root = (d.get("id") == "commentRoot") or ("data-cmh-content-root" in d)
+        is_root = (d.get("id") == "commentRoot") if self.single_root \
+            else ((d.get("id") == "commentRoot") or ("data-cmh-content-root" in d))
         entry = {"tag": tag_l, "skip": skip, "hidx": None}
         self._stack.append(entry)
-        if is_root and self._root_depth is None:
+        # Open the root only when not already inside one and, in single_root mode, only the first
+        # one (found_root latches True) - a later id=commentRoot never re-opens a subtree.
+        if (is_root and self._root_depth is None
+                and not (self.single_root and self.found_root)):
             self._root_depth = len(self._stack)
+            self.found_root = True
         if self._in_root() and not skip and _HEADING_RE.match(tag_l):
             entry["hidx"] = len(self.headings)
             self.headings.append({"id": d.get("id") or "", "level": int(tag_l[1]),
@@ -155,4 +168,22 @@ def extract_sections(html):
 def extract_section_hashes(html):
     """Convenience map {heading_id: (level, section_hash)}."""
     return {s["id"]: (s["level"], s["hash"]) for s in extract_sections(html)}
+
+
+def document_content_hash(html):
+    """The WHOLE content-root text hashed once with cmh_section_hash, using the same extraction
+    contract as the section hashes (cm-skip / script / style / template / canvas / .cmh-diff /
+    .cmh-kql / .mermaid / [data-cmh-note] subtrees excluded). This reproduces the runtime
+    cmhDocContentHash (assets/js/84-section-review.js) byte for byte, so a document that was
+    strict-validated and then manually edited hashes differently and the runtime banner returns.
+
+    Returns None when the document has no content root: without one the runtime cannot reproduce a
+    matching hash, so the stamp is left un-content-bound (timestamp only) rather than risk a false
+    banner on a valid document."""
+    p = _SectionParser(single_root=True)
+    p.feed(html or "")
+    p.close()
+    if not p.found_root:
+        return None
+    return cmh_section_hash("".join(p.parts))
 

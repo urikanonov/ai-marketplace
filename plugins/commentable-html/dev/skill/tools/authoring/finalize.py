@@ -236,6 +236,13 @@ def main(argv):
     if errors:
         return 1
     if args.strict and warnings:
+        # Guardrail (issue #584 #4): a strict-fail leaves the document without a fresh validated
+        # stamp, so the runtime shows the "not validated" banner. Remind the author that the fix
+        # must END with a clean strict pass (finalize OR validate) to re-stamp the CURRENT content.
+        print("finalize: strict mode failed on %d warning(s). Fix them, then re-run "
+              "'finalize.py <file> --strict' (or 'validate.py --strict <file>') so the validated "
+              "stamp is re-written for the current content - until a clean strict pass, the runtime "
+              "'not validated' banner stays up." % len(warnings))
         return 1
     # Strict-clean: stamp the document as validated so the runtime fallback banner clears. --no-stamp
     # keeps a read-only run from writing.

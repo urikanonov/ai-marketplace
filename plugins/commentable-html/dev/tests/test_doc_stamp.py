@@ -18,6 +18,7 @@ import _paths  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
 import doc_stamp  # noqa: E402
 import new_document  # noqa: E402
+import section_hash  # noqa: E402
 import validate  # noqa: E402
 
 CONTENT = '<section><h1>Report</h1><h2 id="a">Hi</h2><p>body text</p></section>'
@@ -254,6 +255,117 @@ class ValidateStampTests(unittest.TestCase):
         self.assertEqual(code, 0, out)  # a warning is not a failure without --strict
         self.assertIsNone(doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_META),
                           "a doc with warnings is not strict-clean and must not be stamped")
+
+    def test_validate_stamps_content_hash_matching_the_document(self):
+        # CMH-STAMP-05: a strict-clean stamp is content-bound - validate writes a
+        # commentable-html-validated-hash equal to the document's content hash, so a later manual
+        # edit is detectable.
+        p = self._make_doc()
+        code, out = self._run_validate(["validate.py", p])
+        self.assertEqual(code, 0, out)
+        html = self._read(p)
+        stamped = doc_stamp.get_meta(html, doc_stamp.VALIDATED_HASH_META)
+        self.assertIsNotNone(stamped, "validate.py must content-bind the validated stamp")
+        self.assertEqual(stamped, section_hash.document_content_hash(html),
+                         "the stamped hash must equal the document's content hash")
+
+    def test_validate_cli_subprocess_stamps_validated_and_content_hash(self):
+        # The real #584 defect: run the way a user actually does - as a STANDALONE CLI subprocess,
+        # not in-process under the test path setup. validate.py only put its own validate/ dir on
+        # sys.path, so _stamp_validated_file's `import doc_stamp` silently ImportError'd and a clean
+        # `python tools/validate/validate.py <file>` never stamped (leaving the runtime banner up).
+        # A strict-clean subprocess pass must write BOTH the validated timestamp and the content hash.
+        p = self._make_doc()
+        proc = subprocess.run(
+            [sys.executable, os.path.join(_paths.TOOLS, "validate", "validate.py"), p],
+            capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        html = self._read(p)
+        self.assertIsNotNone(doc_stamp.get_meta(html, doc_stamp.VALIDATED_META),
+                             "a standalone validate.py subprocess must stamp validated")
+        self.assertEqual(doc_stamp.get_meta(html, doc_stamp.VALIDATED_HASH_META),
+                         section_hash.document_content_hash(html),
+                         "the subprocess must also content-bind the stamp")
+
+    def test_validate_cli_subprocess_no_stamp_flag_is_read_only(self):
+        p = self._make_doc()
+        proc = subprocess.run(
+            [sys.executable, os.path.join(_paths.TOOLS, "validate", "validate.py"), "--no-stamp", p],
+            capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        html = self._read(p)
+        self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.VALIDATED_META))
+        self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.VALIDATED_HASH_META))
+
+    def test_validate_reports_a_visible_note_when_stamping_fails_but_still_passes(self):
+        # A stamp failure must be VISIBLE (not silently swallowed) yet non-fatal: validation still
+        # passes (exit 0), a NOTE tells the user the document is unstamped, and no stamp is written.
+        p = self._make_doc()
+        with mock.patch.object(doc_stamp, "stamp_validated_html", side_effect=ValueError("boom")):
+            code, out = self._run_validate(["validate.py", p])
+        self.assertEqual(code, 0, out)
+        self.assertIn("could not write the validated stamp", out)
+        self.assertIsNone(doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_META))
+
+    def test_validate_partial_modes_never_stamp(self):
+        # A partial run (--charts-only / --layer-only) does NOT confirm the whole document, so it
+        # must not stamp - else a doc with broken layer regions (or chart errors) could suppress the
+        # runtime banner. Only a FULL clean validation stamps.
+        for flag in ("--charts-only", "--layer-only"):
+            p = self._make_doc()
+            code, out = self._run_validate(["validate.py", flag, p])
+            self.assertEqual(code, 0, out)
+            self.assertIsNone(doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_META),
+                              "%s must not stamp (partial validation)" % flag)
+            self.assertIsNone(doc_stamp.get_meta(self._read(p), doc_stamp.VALIDATED_HASH_META))
+
+
+class ValidatedHashStampTests(unittest.TestCase):
+    """CMH-STAMP-05: stamp_validated_html content-binds the stamp with a whole-document content
+    hash so a post-stamp manual edit is detectable by the runtime banner."""
+
+    ROOT = ('<html><head></head><body>'
+            '<main id="commentRoot"><p>Body text here</p></main></body></html>')
+
+    def test_stamp_validated_writes_content_hash(self):
+        out = doc_stamp.stamp_validated_html(self.ROOT, when="2026-01-01T00:00:00Z")
+        self.assertEqual(doc_stamp.get_meta(out, doc_stamp.VALIDATED_META), "2026-01-01T00:00:00Z")
+        self.assertEqual(doc_stamp.get_meta(out, doc_stamp.VALIDATED_HASH_META),
+                         section_hash.document_content_hash(self.ROOT))
+
+    def test_stamp_validated_hash_changes_after_a_content_edit(self):
+        first = doc_stamp.stamp_validated_html(self.ROOT)
+        h1 = doc_stamp.get_meta(first, doc_stamp.VALIDATED_HASH_META)
+        edited = first.replace("Body text here", "Body text CHANGED")
+        restamped = doc_stamp.stamp_validated_html(edited)
+        h2 = doc_stamp.get_meta(restamped, doc_stamp.VALIDATED_HASH_META)
+        self.assertIsNotNone(h1)
+        self.assertNotEqual(h1, h2, "a content edit must change the stamped content hash")
+
+    def test_stamp_validated_hash_survives_re_stamping_unchanged_content(self):
+        # Re-validating an unchanged document yields the same content hash (only the timestamp moves).
+        once = doc_stamp.stamp_validated_html(self.ROOT, when="2026-01-01T00:00:00Z")
+        twice = doc_stamp.stamp_validated_html(once, when="2026-02-02T00:00:00Z")
+        self.assertEqual(doc_stamp.get_meta(once, doc_stamp.VALIDATED_HASH_META),
+                         doc_stamp.get_meta(twice, doc_stamp.VALIDATED_HASH_META))
+
+    def test_stamp_validated_writes_no_hash_without_a_content_root(self):
+        html = "<html><head></head><body><p>no content root here</p></body></html>"
+        out = doc_stamp.stamp_validated_html(html)
+        self.assertIsNotNone(doc_stamp.get_meta(out, doc_stamp.VALIDATED_META))
+        self.assertIsNone(doc_stamp.get_meta(out, doc_stamp.VALIDATED_HASH_META),
+                          "no content root means no reproducible runtime hash, so none is written")
+
+    def test_stamp_validated_drops_a_stale_hash_when_the_content_root_is_gone(self):
+        stamped = doc_stamp.stamp_validated_html(self.ROOT)
+        self.assertIsNotNone(doc_stamp.get_meta(stamped, doc_stamp.VALIDATED_HASH_META))
+        # The content root is later removed but the old hash meta lingers; re-stamping must DROP it
+        # so the timestamp-only stamp never carries a mismatching hash that would nag falsely.
+        no_root = stamped.replace('<main id="commentRoot"><p>Body text here</p></main>',
+                                  "<p>no root now</p>")
+        self.assertIsNotNone(doc_stamp.get_meta(no_root, doc_stamp.VALIDATED_HASH_META))
+        restamped = doc_stamp.stamp_validated_html(no_root)
+        self.assertIsNone(doc_stamp.get_meta(restamped, doc_stamp.VALIDATED_HASH_META))
 
 
 if __name__ == "__main__":

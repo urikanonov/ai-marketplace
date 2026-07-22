@@ -324,6 +324,7 @@ test.describe("section review tracking", () => {
       <section><h1 id="rv-title">T</h1><p>intro</p></section>
       <section><h2 id="rv-rich">Rich</h2><p>Body text before.</p><style>.z{color:red}</style>
         <script>var q=1;</script><img class="cm-skip" src="x">
+        <noscript><b>Enable JavaScript to review.</b></noscript>
         <pre class="cmh-diff" data-diff-label="a.txt">@@ -1 +1 @@\n-old line\n+new line</pre>
         <div data-cmh-note>a note</div><p>More body after inert and transformed nodes.</p></section>
       <section><h2 id="rv-tail">Tail</h2><p>tail body</p></section>`;
