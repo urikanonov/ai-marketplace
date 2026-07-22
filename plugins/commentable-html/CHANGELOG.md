@@ -4,6 +4,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.204.0] - 2026-07-21
+
+### Changed
+
+- Consolidated the always-loaded `SKILL.md` capability, tool-routing, deterministic-helper, and pre-handoff guidance into one dense tool index while keeping critical triggers and tool routes covered by tests. Deep deck workflow guidance now lives in the on-demand deck references. (CMH-DOC-18)
+
 ## [1.203.0] - 2026-07-21
 
 ### Fixed

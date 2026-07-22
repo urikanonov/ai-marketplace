@@ -58,3 +58,7 @@ Every add-comment affordance uses the same **"Add Comment"** control (one accent
 - **Images and charts:** hover or focus an image or a chart canvas and click **Add Comment**; whole-image/whole-chart anchor, multiple comments allowed.
 
 Every comment lands in the sidebar and round-trips through **Copy all**, **Export as Portable**, and the `handledCommentIds` prune contract identically, regardless of anchor type.
+
+Per-section review is separate from comments. Use `tools/authoring/mark_reviewed.py` to bake
+section-level **Mark reviewed** markers and the TOC filter into a document when the reviewer needs a
+lightweight reviewed/unreviewed pass alongside inline comments.

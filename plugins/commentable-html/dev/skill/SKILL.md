@@ -5,42 +5,44 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.203.0`
+**Version:** `1.204.0`
 
 Commentable HTML turns a standalone HTML artifact into an in-browser review surface: reviewers comment on exact prose, code, diffs, diagrams, charts, images, headings, widgets, or table cells, then copy or export structured feedback for the agent to apply.
 
 This plugin installs into both Claude Code and the GitHub Copilot CLI (add the marketplace, then `claude plugin install commentable-html@urikan-ai-marketplace` or `copilot plugin install commentable-html@urikan-ai-marketplace`), and the skill is invokable from each agent's CLI and Desktop app. The output is a portable HTML file that works with any agent.
 
-## Capabilities (use the tested tool - never invent a mechanism)
+## Capabilities and tool index (use tested routes - never invent a mechanism)
 
-commentable-html already ships a tested tool or contract for every capability below. When a request calls for one of these, USE THE NAMED TOOL/CONTRACT and its reference - do NOT hand-author fragile markup or reach for a novel mechanism of your own; the runtime, validator, and tests only cover these tested paths, and inventing an alternative is exactly how a document ships broken. Where a bullet names a tool, run it; where it names only a contract/reference, follow that. Step 3b has the full command detail.
+commentable-html ships a tested route for each capability below. When a request matches a capability, USE THE NAMED TOOL/CONTRACT and its reference; do not hand-author fragile markup, skip validation, or invent a novel mechanism.
 
-- **Create, retrofit, convert:** new document from a fragment - `tools/authoring/new_document.py`; retrofit existing HTML - `tools/authoring/retrofit.py`; upgrade an already-layered file - `tools/authoring/upgrade.py`. Kinds are `report`, `plan`, `slides`, `board`, or `generic` (`--kind`); `slides` is a flat document, and only the deck tool below makes a real deck.
-- **Review surface (every document):** reviewers select prose, table cells, headings, code lines, KQL, diffs, mermaid, charts, images, or widgets and leave inline comments; per-section "Mark reviewed" tracking with a TOC filter (bake markers with `tools/authoring/mark_reviewed.py`); `localStorage` persistence; **Copy all**, embedded-comment export, and handled-id marking with `tools/authoring/mark_handled.py` (the runtime then prunes them). See [Interaction model](references/interaction-model.md).
-- **Highlighted code + copy button** - `tools/blocks/highlight_code.py` or `tools/blocks/highlight_document.py`. See [Code blocks](references/code-blocks.md).
-- **Runnable KQL block + Run-in-ADE link** - `tools/kusto/kql_highlight.py` (bare link: `tools/kusto/kusto_link.py`). See [Kusto query blocks](references/kusto-query-blocks.md).
-- **Unified code-review diff** - `tools/blocks/diff_block.py`. See [Code review diffs](references/code-review-diffs.md).
-- **Mermaid diagram** with structural comments; mark bare source blocks `cm-skip` with `tools/authoring/fix_skip.py`. See [Mermaid diagrams](references/mermaid-diagrams.md).
-- **Chart.js chart** - `tools/blocks/chart_block.py`. See [Chart embedding](references/charts-embedding.md) and [Chart recipes](references/charts-recipes.md).
-- **Commentable image** - `tools/authoring/inline_images.py`. See [Images](references/images-commentable.md).
-- **Layout and structure:** table of contents + heading ids - `tools/authoring/generate_toc.py`; section cards - `tools/authoring/wrap_sections.py`; doc-overview stats strip - `tools/authoring/doc_stats.py`; plus sortable tables, callouts, asides, ADO links, cross-references, and design-token mapping. See [Document layout](references/document-layout.md) and [Content conventions](references/content-conventions.md).
-- **Layered checklist** - scaffold with `tools/checklist/checklist_scaffold.py`, apply returned reviewer state with `tools/checklist/checklist_apply.py`. See [Layered checklist contract](references/checklist-contract.md).
-- **Editable notes fields** - scaffold with `tools/notes/notes_scaffold.py`, apply returned reviewer state with `tools/notes/notes_apply.py`. See [Editable notes-field contract](references/notes-contract.md).
-- **Commentable widgets, SVG parts, draggable slots, and document-wide comments** (the `data-cm-*` markup contract). See [Commentable widgets](references/commentable-widgets.md).
-- **Animated slide deck** - a real fixed-stage deck (not a flat `slides` document) built with `tools/deck/deck_scaffold.py`. See the Deck capability section below.
-- **Output modes:** NonPortable (fast iteration), Portable (peer review), Offline (zero-network handoff), plus Plain HTML / Markdown export. See [Exports](references/exports.md).
-- **Theming and branding:** `--cp-*` theme tokens, chrome density (`data-cm-density`), reusable brand profiles (`--brand`), and deck theme presets - `tools/deck/deck_theme.py list` / `apply` (idempotent, comment-safe). See [Document layout](references/document-layout.md) and [Deck design playbook](references/deck-design.md).
+| Capability / trigger | Tested route / contract | Reference |
+| --- | --- | --- |
+| New document, retrofit an existing HTML, or upgrade an already-layered file | `tools/authoring/new_document.py` creates from a fragment or Markdown-rendered HTML (`--portable` for a single self-contained file), sets identity attrs/kind meta/session stamp (`--session-id` / `--agent`, `--no-session-id`), validates, and suffixes colliding outputs unless `--force` is set. `tools/authoring/retrofit.py` injects the layer into unlayered standalone HTML, preserves host content, accepts `--brand`, bakes highlighting, and validates before writing. `tools/authoring/upgrade.py` refreshes layered HTML; run `finalize.py --strict` afterwards so newer validator warnings are resolved. Choose `--kind report`, `plan`, flat `slides`, `board`, or `generic`; `tools/authoring/recommend_kind.py` only recommends `report`, `plan`, or flat `slides` (mismatch warning is advisory and never overrides your chosen `--kind`). Use `--brand brand.json` only with `new_document.py`, `retrofit.py`, or `deck_scaffold.py` to stamp validated `--cp-*` tokens and local data-URI fonts. | [Retrofitting](references/retrofitting.md), [Forward-compatible layout](references/forward-compatible-layout.md), [Document layout](references/document-layout.md#reusable-brand-profiles) |
+| Review surface for prose/paragraphs, table cells, headings, code blocks, KQL queries, diffs, Mermaid diagrams, charts, images, widgets, SVG parts, draggable slots (`data-cm-draggable`), and document-wide comments | Runtime selection/comment model, author display names, flat reply threads, `localStorage` persistence, **Copy all**, embedded-comment export, Markdown/print exports, handled-id pruning with `tools/authoring/mark_handled.py`, and per-section Mark reviewed tracking with `tools/authoring/mark_reviewed.py`. | [Interaction model](references/interaction-model.md), [Copy payload format](references/copy-payload.md), [Comment data shape](references/comment-data-shape.md), [Commentable widgets](references/commentable-widgets.md) |
+| Highlighted source code with Copy buttons | `tools/blocks/highlight_code.py` for a block or `tools/blocks/highlight_document.py` for a document pass. | [Code blocks](references/code-blocks.md) |
+| Runnable KQL block plus Run in Azure Data Explorer link | `tools/kusto/kql_highlight.py`; bare link only: `tools/kusto/kusto_link.py`. Every KQL block must be runnable unless explicitly marked code-only with `--code-only` / `data-cmh-kql-no-cluster` (CMH-KQL-08); prefer a real cluster such as `help.kusto.windows.net`. | [Kusto query blocks](references/kusto-query-blocks.md) |
+| Unified code-review diff | `tools/blocks/diff_block.py`. | [Code review diffs](references/code-review-diffs.md) |
+| Mermaid diagram and bare-source skip repair | Mermaid structural comment contract; `tools/authoring/fix_skip.py` marks bare source blocks `cm-skip`. | [Mermaid diagrams](references/mermaid-diagrams.md) |
+| Chart.js chart | `tools/blocks/chart_block.py`. | [Chart embedding](references/charts-embedding.md), [Chart recipes](references/charts-recipes.md), [Charts index](references/charts.md) |
+| Commentable local images and chart-canvas comments | `tools/authoring/inline_images.py --strict`. | [Images](references/images-commentable.md) |
+| Layout, structure, and prose conventions | `tools/authoring/generate_toc.py --in-place`, `tools/authoring/wrap_sections.py`, `tools/authoring/doc_stats.py`, `tools/authoring/normalize_typography.py`, sortable tables, callouts, ADO links, cross-references, `--cp-*` tokens, `data-cm-density`, private class prefixes, and reserved `cmh-*` names. | [Document layout](references/document-layout.md), [Content conventions](references/content-conventions.md), [Validation](references/validation.md) |
+| Layered checklist | `tools/checklist/checklist_scaffold.py`; apply returned reviewer state with `tools/checklist/checklist_apply.py`. | [Layered checklist contract](references/checklist-contract.md) |
+| Editable notes fields | `tools/notes/notes_scaffold.py`; apply returned reviewer state with `tools/notes/notes_apply.py`. | [Editable notes-field contract](references/notes-contract.md) |
+| Real animated slide deck, presentation, pitch deck, slide deck, or convert this ppt | `tools/deck/deck_scaffold.py` is the only real fixed-stage deck creator; flat `--kind slides` is not a deck. It supports session stamps (`--session-id` / `--agent`, `--no-session-id`) and `--brand`. Use `tools/deck/deck_theme.py list` / `apply`, `tools/deck/deck_fix_fonts.py`, `tools/deck/pptx_to_fragment.py`, then `tools/deck/deck_validate.py --strict`. | [Deck design playbook](references/deck-design.md), [Deck runtime interface contract](references/deck-contract.md) |
+| Output modes and export routing | NonPortable for fast local iteration, Portable for peer review / a portable self-contained review file, Offline for zero-network handoff after Mermaid/charts render; Plain HTML / Markdown export when stripping the layer is intended. | [Exports](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where) |
 
 ## Always validate before handoff (MUST)
 
-Before you hand a commentable-html document to the user - return its path, share it, or call it done - you MUST finalize the saved file and pass strict validation, and fix everything they report:
+Before you hand a commentable-html document to the user - return its path, share it, save it, or call it done - finalize the saved file and pass strict validation, fixing everything reported:
 
 ```bash
-python tools/authoring/finalize.py <file> --strict
+python tools/authoring/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict
 python tools/validate/validate.py --strict <file.html>
 ```
 
-A document that skipped this is NOT done - it can ship with monochrome code or a broken review layer. `finalize.py` bakes syntax highlighting, section cards, the doc-overview stats strip, and plain-ASCII typography normalization (`tools/authoring/normalize_typography.py`), then validates. For a deck, ALSO run `python tools/deck/deck_validate.py --strict <file.html>` before handoff. If Python is unavailable, say so EXPLICITLY (so the user knows the file is unverified) and run the manual checks in [Validation](references/validation.md). Full guidance is in Step 4 below.
+`finalize.py` bakes syntax highlighting, section cards, the doc-overview stats strip, and plain-ASCII typography normalization. For a deck, also run `python tools/deck/deck_validate.py --strict <file.html>`. If Python is unavailable, say EXPLICITLY that the file is unverified and run the manual checks in [Validation](references/validation.md).
+
+Creation tools validate and surface warnings, but that never replaces the final `finalize.py ... --strict` plus strict-validate pass on the finished artifact.
 
 ## Review loops
 
@@ -49,12 +51,6 @@ A document that skipped this is NOT done - it can ship with monochrome code or a
 - **Reviewer loop:** render Markdown to HTML and pass it to `tools/authoring/new_document.py --content`, or retrofit existing HTML with `tools/authoring/retrofit.py`, then return a Portable file with embedded comments.
 
 The runtime supports text selection, right-click fallback, multiple open composers, composer drag handles, link-wrapped highlight bubbles, `localStorage` persistence, embedded comments, and handled-id pruning. See [Interaction model](references/interaction-model.md) for the full walkthrough.
-
-## Preconditions and postconditions
-
-**Preconditions:** the target is a standalone HTML artifact or a content fragment about to become one; it opens in a modern browser with `localStorage` and Clipboard API access; it is not inside a sandbox that blocks those APIs.
-
-**Postconditions (MUST):** the HTML has the five layer regions, one configured `#commentRoot`, a `commentableHtmlLayer` descriptor, handled-id and embedded-comment JSON blocks, and it MUST pass `python tools/validate/validate.py --strict <file.html>`. Every HTML this skill emits - whether returned to the user, written to disk, or shared - MUST be finalized (`tools/authoring/finalize.py`, which bakes syntax highlighting) and strict-validated before handoff. A document that skipped finalize or strict validation is NOT done: it can ship with monochrome code or other defects. The authoring tools (`new_document.py`, `retrofit.py`, `deck_scaffold.py`) bake highlighting by default and surface validator warnings so a freshly created document is never raw, but that does NOT replace the final `finalize.py ... --strict` + strict-validate pass, which is mandatory on the finished artifact.
 
 ## Steps
 
@@ -66,55 +62,9 @@ Use this skill for iterative plans, reports, dashboards, design docs, migration 
 
 ### Step 2 - Create, retrofit, upgrade, or author a deck with the right tool
 
-**TOOL ROUTING contract:**
+Use the upfront tool index to choose the tested route. In short: `new_document.py` creates a new document from a fragment, `retrofit.py` wraps unlayered standalone HTML, `upgrade.py` refreshes an already-layered file, and `deck_scaffold.py` is the ONLY route to a real fixed-stage deck. `--key auto` derives a stable non-demo key; explicit keys must be unique per document on the same origin. `--label` becomes `data-doc-label`, only the basename of `--source` becomes `data-doc-source`, and `--kind` is required (`report`, `plan`, flat `slides`, `board`, or `generic`). `report` and `plan` need a top-level title; run `tools/authoring/recommend_kind.py <fragment-or-html> [--kind <chosen>]` first when the kind is unclear.
 
-| Input | Tool | Key behavior |
-| --- | --- | --- |
-| New document from a content fragment | `tools/authoring/new_document.py` | Builds the shell, configures `#commentRoot`, stamps `commentable-html-kind`, bakes syntax highlighting, surfaces validator warnings, validates before writing, and suffixes a colliding `--out` unless `--force` is set. It also stamps the creating agent's session id by default (auto-detected from the environment - `COPILOT_AGENT_SESSION_ID` on Copilot, `CLAUDE_CODE_SESSION_ID` on Claude - or passed via `--session-id`/`--agent`) so a viewer can copy it from the footer; `--no-session-id` opts out. |
-| New animated slide **deck** | `tools/deck/deck_scaffold.py` | Builds a fixed-stage deck (`data-cmh-mode="deck"`, stable slide ids), bakes highlighting, accepts the same optional `--brand`, self-validates, and stamps the creating agent's session id (same `--session-id`/`--agent`/`--no-session-id` behavior as `new_document.py`). This is the ONLY tool that creates a real deck. |
-| Fix copied deck web fonts | `tools/deck/deck_fix_fonts.py` | Removes remote font loaders and maps copied web-font stacks to the approved deterministic system stacks before deck validation. |
-| Unlayered existing standalone HTML | `tools/authoring/retrofit.py` | Injects the layer, wraps or stamps a content root, preserves host content, bakes highlighting, accepts the same optional `--brand`, and validates before writing. |
-| Already-layered commentable HTML | `tools/authoring/upgrade.py` | Replaces the CSS, COMMENT UI, and JS regions and re-emits the shell-baked mermaid loader bootstrap (so deck/mermaid shell fixes reach already-generated documents; a hand-vendored offline loader is left alone) while preserving content, handled ids, embedded comments, and root attributes except that legacy source paths are reduced to a basename. Restamps the `<head>` version meta to the new runtime and surfaces post-upgrade validator warnings; pass `--strict` to fail on them. Run `finalize.py --strict` afterwards to resolve any content warnings a newer validator now flags. |
-
-Canonical commands:
-
-```bash
-# New NonPortable document (default, local companion assets).
-python tools/authoring/new_document.py --content fragment.html --key auto --label "My Report" --kind report --out my-report.html
-
-# Single self-contained Portable file.
-python tools/authoring/new_document.py --content fragment.html --key auto --label "My Report" --kind report --portable --out my-report.html
-
-# Retrofit an existing unlayered host HTML.
-python tools/authoring/retrofit.py existing.html --label "My Report" --kind report --key auto --source existing.html --out existing-commentable.html
-
-# Upgrade an existing layered file in place.
-python tools/authoring/upgrade.py existing-commentable.html
-
-# Real fixed-stage deck, not a flat slides-kind document.
-python tools/deck/deck_scaffold.py --content slides.html --label "My Deck" --source my-deck.html --out my-deck.html
-
-# Strip copied web-font loaders and map font stacks before strict deck validation.
-python tools/deck/deck_fix_fonts.py my-deck.html
-```
-
-`--key auto` derives a stable non-demo key; an explicit key must be unique per document on the same
-origin. `--label` becomes `data-doc-label`; only the basename of `--source` becomes
-`data-doc-source`; `--kind` is required
-and must be `report`, `plan`, `slides`, `board`, or `generic`. `report` and `plan` need a top-level
-title; the tools and validator enforce that. If the right kind is unclear, run
-`tools/authoring/recommend_kind.py <fragment-or-html> [--kind <chosen>]` first. It recommends only
-`report`, `plan`, or `slides` from filename, diff, slide-cadence, comparison-table, and callout signals,
-and any mismatch warning is advisory: it never overrides the `--kind` you choose.
-Pass `--brand brand.json` to `new_document.py`, `retrofit.py`, or `deck_scaffold.py` when a reusable
-profile should stamp validated `--cp-*` tokens and local data-URI font faces. Brand profiles are
-stateless and opt-in; unsafe values are rejected and low-contrast token pairs print an advisory.
-
-**Mode decision:** NonPortable is for fast iteration, Portable is for peer review, Offline is for zero-network handoff. Portable still fetches optional mermaid or Chart.js from a CDN unless those libraries are vendored or the browser **Export Offline** path snapshots them. Portable != offline. See [Exports](references/exports.md).
-
-**No CLI export caveat:** a tool or headless browser cannot read browser `localStorage`. If there are no in-browser comments yet, regenerate with `--portable`. If the user already commented in the browser, use the in-page **Export as Portable** button, or **Export Offline** after mermaid diagrams and charts have rendered.
-
-For companion-copy modes, export semantics, network requirements, merge behavior, and Plain HTML / Markdown export details, read [Exports](references/exports.md) and its [bundled-vs-fetched diagrams](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where). For retrofit flags, CSS collision checks, manual paste fallback, and the mechanical upgrade recipe, read [Retrofitting](references/retrofitting.md).
+Mode decision: NonPortable is for fast iteration, Portable is for peer review, Offline is for zero-network handoff after mermaid diagrams and charts have rendered. Portable still fetches optional Mermaid or Chart.js from a CDN unless those libraries are vendored or the browser **Export Offline** path snapshots them. Portable != offline. A tool or headless browser cannot read browser `localStorage`; if the user already commented in the browser, use the in-page **Export as Portable** button, or **Export Offline** after rendering.
 
 ### Step 3 - Wire the content root and avoid the footguns
 
@@ -132,49 +82,9 @@ A valid document has five layer regions in order: CSS, HANDLED IDS, EMBEDDED COM
 
 Use the tools rather than manual region editing. If manual fallback is unavoidable, follow [Forward-compatible layout](references/forward-compatible-layout.md) and [Retrofitting](references/retrofitting.md).
 
-### Step 3b - Assemble rich content with deterministic helpers
+### Step 3b - Add rich blocks only through tested helpers
 
-**MUST**, when Python is available, use these helpers instead of hand-authoring fragile markup:
-
-- KQL block + Run in Azure Data Explorer link: `tools/kusto/kql_highlight.py`; bare link only: `tools/kusto/kusto_link.py`. Every KQL block MUST be runnable (a `figure.cmh-kql` with a cluster + run link) - prefer a real cluster (example reports and decks use the public `help.kusto.windows.net`); a bare highlight-only block MUST be explicitly marked `data-cmh-kql-no-cluster` (via `--code-only`) or the validator errors (CMH-KQL-08).
-- Unified code diff: `tools/blocks/diff_block.py`.
-- Highlighted source code: `tools/blocks/highlight_code.py` or the document pass in `tools/blocks/highlight_document.py`.
-- Chart: `tools/blocks/chart_block.py`.
-- Table of contents + heading ids: `tools/authoring/generate_toc.py --in-place` (it also strips a redundant leading section number from each entry so an author-numbered `<ol>` TOC is never double-numbered; `finalize.py` / `retrofit.py` de-dup an existing `<ol>` `.cm-toc` too).
-- Mermaid `cm-skip`: `tools/authoring/fix_skip.py`.
-- Section cards for a report/plan: `tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block in `<section>` so the document renders as boxed cards (`#commentRoot > section`); `new_document.py` (report/plan fragments) and `finalize.py` run it by default, so hand-wrapping is only needed for externally produced HTML. The validator warns (CMH-VAL-14) when top-level content is not sectioned.
-- Document overview strip for a report/plan (section count, word count, reading time): `tools/authoring/doc_stats.py` bakes a `cm-skip` strip under the `<h1>` title; `new_document.py`, `finalize.py`, and `retrofit.py` run it by default (opt out with `--no-stats`).
-- Local images in a standalone doc: `tools/authoring/inline_images.py --strict`.
-- Plain-ASCII typography: `tools/authoring/normalize_typography.py` rewrites AI smart-typography (em/en dashes, ellipsis, curly quotes, nbsp) in a document's prose to plain ASCII, leaving code/script/style/comments verbatim; `finalize.py` and `deck_scaffold.py` run it by default (opt out with `--no-normalize`).
-- Layered checklist markup: `tools/checklist/checklist_scaffold.py`.
-- Editable notes-field markup: `tools/notes/notes_scaffold.py`.
-- Full deterministic finalization and strict validation:
-
-```bash
-python tools/authoring/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict
-python tools/validate/validate.py --strict <file.html>
-```
-
-Use the conditional lookup table below when a document needs a richer feature:
-
-| Need | Reference |
-| --- | --- |
-| Code blocks, copy buttons, and baked highlighting | [Code blocks](references/code-blocks.md) |
-| KQL blocks and ADE run links | [Kusto query blocks](references/kusto-query-blocks.md) |
-| Mermaid diagrams and structural comments | [Mermaid diagrams](references/mermaid-diagrams.md) |
-| Code review diffs | [Code review diffs](references/code-review-diffs.md) |
-| Chart.js embedding, coexistence rules, and tooltips | [Chart embedding](references/charts-embedding.md) |
-| Chart.js per-type recipes, data hygiene, and dark theme | [Chart recipes](references/charts-recipes.md) |
-| Chart.js split reference index | [Charts index](references/charts.md) |
-| Themes, TOC, sections, tables, callouts, and layout recipes | [Document layout](references/document-layout.md) |
-| Commentable widgets, SVG parts, draggable slots (`data-cm-draggable`), and document-wide comments | [Commentable widgets](references/commentable-widgets.md) |
-| Images and chart-canvas comments | [Images](references/images-commentable.md) |
-| Layered checklists | [Layered checklist contract](references/checklist-contract.md) |
-| Editable notes fields | [Editable notes-field contract](references/notes-contract.md) |
-| Comment gestures and sidebar lifecycle | [Interaction model](references/interaction-model.md) |
-| ADO links, cross-references, prose shape, and design-token mapping | [Content conventions](references/content-conventions.md) |
-
-Compact authoring rules: use `cmh-callout` variants and `cmh-lede` for asides, prefer `nav.cm-toc` for roughly four or more top-level sections, use stable heading ids, use `--cp-*` theme variables instead of hardcoded report colors, and use a private class prefix for custom components rather than reserved `cmh-*` names. Only direct `data-cm-part` children of a slot are movable, so nested controls and sub-widgets stay stable unless they opt in separately.
+When Python is available, use the matching helper from the upfront tool index for KQL, diffs, code highlighting, charts, table of contents, sections, doc stats, Mermaid `cm-skip`, local images, typography normalization, layered checklists, and editable notes. For authoring rules that do not have a tool, follow the linked reference: use `cmh-callout` variants and `cmh-lede` for asides, keep private class prefixes for custom components, reserve `cmh-*` names for the framework, use stable heading ids, add `nav.cm-toc` for roughly four or more sections; Only direct `data-cm-part` children of a slot are movable.
 
 ### Step 4 - Verify before handoff
 
@@ -207,24 +117,15 @@ Once an id is in `<script id="handledCommentIds">`, it must never reappear. On l
 
 ## Deck capability (frontend-slides)
 
-This skill can build a real animated slide **deck** that is also a commentable-html document. A real deck is fixed-stage, navigable, and validated by deck tools; a `--kind slides` flat document is not a deck.
+A real animated slide **deck** is a fixed-stage, navigable commentable-html document; a flat `--kind slides` document is not a deck. Trigger on `slide deck`, `presentation`, `pitch deck`, `slides for a talk`, or `convert this ppt`, and confirm the user wants a real deck before building one (CMH-DECK-01).
 
-**Detect and confirm (CMH-DECK-01).** When the request is really a presentation (`slide deck`, `presentation`, `pitch deck`, `slides for a talk`, `convert this ppt`), do not silently produce a flat document. Confirm that the user wants a real deck; if they decline, fall back to a normal flat commentable HTML.
+**Ask first (CMH-DECK-22):** before outlining, ask what you cannot infer: duration and format, audience, live internet vs handed off / air-gapped, whether reviewers will comment and send it back, theme or brand, running example, and how early the install call-to-action should appear.
 
-**Ask first (CMH-DECK-22).** Before you outline a deck, ask the user the conditional questions in `references/deck-design.md` that you cannot infer - the duration and format, the audience's technical level, whether it is presented live (internet) or handed off / air-gapped, whether reviewers will comment on it and send it back, the theme or brand, whether there is one running example to thread through it, and how early the install call-to-action should appear. These change the deck's density, depth, chrome, and export story, so gather them up front rather than guessing.
+**Design before scaffolding (CMH-DECK-14):** choose a native preset from `tools/deck/themes/` (`tools/deck/deck_theme.py list`) and pass `tools/deck/deck_scaffold.py --theme <name>` or re-theme with `tools/deck/deck_theme.py apply`; compose native recipe classes (`.cmh-slide-section`, `.cmh-slide-lede`, `.cmh-cols-2`, `.cmh-metric-grid`, `.cmh-pill`). Consult `vendor/frontend-slides/` only for a user-requested bespoke style, and keep it egress-free: system fonts, no remote loads, external scripts, remote CSS imports, inline event handlers, or dangerous URL schemes.
 
-**Design with a native theme first (CMH-DECK-14).** When asked to plan or design a deck (not just scaffold one), pick a native CMH deck theme preset before scaffolding: choose a preset from `tools/deck/themes/` (for example `terminal`; run `tools/deck/deck_theme.py list` to see the available presets) and pass it to `tools/deck/deck_scaffold.py --theme <name>` to create a fully styled, contrast-safe deck, or re-theme an existing deck in place with `tools/deck/deck_theme.py apply --theme <name> <deck.html>` (idempotent and comment-safe - it never disturbs slide ids or comments). Compose slides from the native recipe classes (`.cmh-slide-section`, `.cmh-slide-lede`, `.cmh-cols-2`, `.cmh-metric-grid`, `.cmh-pill`) and follow `references/deck-design.md`, the CHM-specific deck design and narrative playbook (fill the fixed stage, capture-safe transform-only motion, act wayfinding, pain-before-mechanism narrative, review-surface patterns, and the contrast/clip discipline), so a themed deck needs no per-deck CSS and no hand-translation. The vendored `vendor/frontend-slides/` subtree is design provenance and the maintainer refresh source only; consult it just for a bespoke, non-preset style a user explicitly asks for, and if you do, keep the deck egress-free (system fonts, no remote loads).
+**Create and iterate:** use `tools/deck/deck_scaffold.py` to create the deck, then edit the deck in place so comments and slide ids survive; never re-run the scaffold, especially with `--force` over an existing deck, unless you intentionally accept new slide ids and state loss. Prefer the installed `pptx` skill when extracting PPTX content but always pass extracted text through `tools/deck/pptx_to_fragment.py` so strings are HTML-escaped before they enter the deck, run `tools/deck/deck_fix_fonts.py` when web-font styles are copied, and finish with `python tools/deck/deck_validate.py --strict <out>` plus **Export Offline** for corporate-safe sharing.
 
-**Deck invariants:**
-
-- Use `tools/deck/deck_scaffold.py` to create the deck. It is create-only and mints stable slide ids.
-- Edit the deck **in place** on iteration so comments, handled ids, embedded comments, and slide ids survive. Never re-run the scaffold without `--force` unless you intentionally accept new slide ids and state loss.
-- Run `python tools/deck/deck_fix_fonts.py <out>` after copying a frontend-slides style, then run `python tools/deck/deck_validate.py --strict <out>` before handoff.
-- Keep the deck body free of remote fonts, remote media/resource fetches, external scripts, remote CSS imports, inline event handlers, dangerous URL schemes, and the upstream SVG host script. Use deterministic system stacks from `deck_fix_fonts.py` or locally embedded `data:font/woff2` fonts only.
-- For PPTX input, extract with the installed `pptx` skill when available, otherwise the local fallback, then pass extracted text through `tools/deck/pptx_to_fragment.py` so strings are HTML-escaped before they enter the deck.
-- Use **Export Offline** for corporate-safe sharing after mermaid diagrams and charts have rendered.
-
-See [Deck design playbook](references/deck-design.md) for the CHM-specific design and narrative guidance (and the conditional up-front questions), and [Deck runtime interface contract](references/deck-contract.md) for author-time commands, PPTX conversion limits, deterministic font fixing, the runtime interface, stable slide-id contract, controller globals, anchoring model, script and resource restrictions, contrast validation, and limitations. Vendored engine resync is a maintainer task documented in the source repo.
+Deep deck planning, fixed-stage layout, motion, narrative, review-surface patterns, and visual audit guidance live in [Deck design playbook](references/deck-design.md). Author-time commands, PPTX conversion limits, deterministic font fixing, runtime interface, slide identity, anchoring, script/resource restrictions, contrast validation, and limitations live in [Deck runtime interface contract](references/deck-contract.md).
 
 ## Output modes and exports
 

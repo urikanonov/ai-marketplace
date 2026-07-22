@@ -19,6 +19,10 @@ flowchart TD
 - **No data attributes required.** Diagrams are indexed in document order; each comment stores `diagramIndex`.
 - **Stable identifiers** come from mermaid's `data-id`, a generated id such as `flowchart-AsmGate-3` with the trailing counter stripped, a raw `id:` fallback, or `label:<text>`.
 
+If mermaid source was pasted without `cm-skip`, run `tools/authoring/fix_skip.py` (or finalize with
+`--fix-skip`) so raw diagram text is not selected as prose while the rendered diagram remains
+structurally commentable.
+
 ### Commentable targets
 
 - Flowchart nodes, clusters, and edge labels are commentable.

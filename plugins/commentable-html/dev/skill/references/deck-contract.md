@@ -6,6 +6,10 @@ profile in the layer JS). Both sides build against these names so they can be de
 tested independently. Do not change a name here without updating the scaffold, the validator, and
 the runtime together.
 
+In entry-point terms, this file owns the stable slide-id contract, controller globals, anchoring model,
+PPTX conversion limits, deterministic font fixing, script/resource restrictions, contrast validation,
+and limitations that are too deep for `SKILL.md`.
+
 ## Contents
 
 - [Activation signal](#activation-signal)
