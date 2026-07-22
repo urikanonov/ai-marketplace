@@ -56,6 +56,8 @@ test("CMH-PRINT-01: flat print hides runtime chrome, expands content, and materi
       <p id="target">Printable target text for the review comment appendix.</p>
       <pre><code>long code line that should wrap instead of clipping in print output</code></pre>
       <button type="button" class="cm-code-copy cm-skip">Copy</button>
+      <table id="sortme"><thead><tr><th>Name</th><th>Count</th></tr></thead>
+        <tbody><tr><td>Alpha</td><td>2</td></tr><tr><td>Beta</td><td>1</td></tr></tbody></table>
     </section>`;
   const staged = stagePrintContent(content, { key: "cmh-print-flat", source: "print-flat.html" });
   expect(fs.readFileSync(staged.html, "utf8")).toContain("cmh-print-noscript");
@@ -80,6 +82,25 @@ test("CMH-PRINT-01: flat print hides runtime chrome, expands content, and materi
   await expect(page.locator("#hlBubble")).toBeHidden();
   expect(await page.locator(".cm-code-copy").evaluateAll((buttons) =>
     buttons.every((button) => getComputedStyle(button).display === "none"))).toBe(true);
+  // Runtime chrome injected INSIDE #commentRoot (a table's sort-arrow controls, a section-review
+  // badge) is cm-skip UI, not content, so it must not print into the PDF. The sort control renders
+  // opacity:1 on screen, so without an explicit print rule it would appear in the printed output.
+  await expect(page.locator("#sortme .cmh-sort-ctrl").first()).toBeAttached();
+  expect(await page.locator("#commentRoot .cmh-sort-ctrl").evaluateAll((els) =>
+    els.length > 0 && els.every((el) => getComputedStyle(el).display === "none"))).toBe(true);
+  expect(await page.locator("#commentRoot .cmh-review-badge").evaluateAll((els) =>
+    els.every((el) => getComputedStyle(el).display === "none"))).toBe(true);
+  // A draggable widget's "Reset layout" control (.cm-widget-reset) is also cm-skip chrome injected
+  // inside #commentRoot (only after a drag), so inject one and confirm the print rule hides it too.
+  const resetHidden = await page.evaluate(() => {
+    const root = document.getElementById("commentRoot");
+    const btn = document.createElement("button");
+    btn.className = "cm-skip cm-widget-reset";
+    btn.textContent = "Reset layout";
+    root.appendChild(btn);
+    return getComputedStyle(btn).display;
+  });
+  expect(resetHidden, "the widget Reset-layout control is hidden in print").toBe("none");
   await expect(page.locator("#fold .cmh-sec-caret")).toBeHidden();
   await expect(page.locator("#target")).toBeVisible();
 
@@ -154,21 +175,30 @@ test("CMH-PRINT-01: deck print keeps one slide per page", async ({ page }) => {
       visibility: style.visibility,
       opacity: style.opacity,
       overflow: style.overflow,
-      breakAfter: style.breakAfter,
-      pageBreakAfter: style.pageBreakAfter,
+      breakBefore: style.breakBefore,
+      pageBreakBefore: style.pageBreakBefore,
       position: style.position,
+      width: style.width,
+      page: style.page,
     };
   }));
   expect(slidesInfo).toHaveLength(3);
   for (const info of slidesInfo) {
     expect(info.visibility).toBe("visible");
     expect(info.opacity).toBe("1");
-    expect(info.overflow).toBe("visible");
+    // Slides clip to their fixed 1920x1080 box (a named landscape page) so nothing spills past the
+    // page; the box is the native slide width, not a portrait-page-width reflow.
+    expect(info.overflow).toBe("hidden");
     expect(info.position).not.toBe("fixed");
+    expect(info.width).toBe("1920px");
+    expect(info.page).toBe("cmh-deck-slide");
   }
-  for (const info of slidesInfo.slice(0, -1)) {
-    expect(info.breakAfter === "page" || info.pageBreakAfter === "always").toBe(true);
+  // Every slide after the first starts a new page (break-before), which is one page per slide with
+  // no trailing blank page; the first slide does not force a break before it (no leading blank).
+  for (const info of slidesInfo.slice(1)) {
+    expect(info.breakBefore === "page" || info.pageBreakBefore === "always").toBe(true);
   }
+  expect(slidesInfo[0].breakBefore === "page" || slidesInfo[0].pageBreakBefore === "always").toBe(false);
 });
 
 test("CMH-PRINT-02: the Save as PDF action fires native window.print() from both menus without intercepting Ctrl/Cmd+P", async ({ page }) => {

@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.204.0";
+const CMH_VERSION = "1.206.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -9188,7 +9188,10 @@ function materializePrintAppendix() {
   let appendix = document.getElementById("cmhPrintComments");
   const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
   if (!roots.length) {
-    if (appendix) appendix.remove();
+    if (appendix) {
+      CMH_INJECTED_CHROME.delete(appendix);
+      appendix.remove();
+    }
     return;
   }
   if (!appendix) {
@@ -9205,7 +9208,12 @@ function materializePrintAppendix() {
 }
 function clearPrintAppendix() {
   const appendix = document.getElementById("cmhPrintComments");
-  if (appendix) appendix.remove();
+  if (appendix) {
+    // Drop it from the injected-chrome set too, so repeated print/cancel cycles (each of which
+    // recreates the appendix) do not accumulate detached nodes that the set keeps alive.
+    CMH_INJECTED_CHROME.delete(appendix);
+    appendix.remove();
+  }
 }
 function setupPrintAppendix() {
   if (IS_DECK || setupPrintAppendix._done) return;
@@ -9223,7 +9231,52 @@ function setupPrintAppendix() {
     if (query.matches) materializePrintAppendix();
   }
 }
-// Discoverable "Save as PDF" affordance: both the toolbar overflow menu (btnPrintTop) and the
+
+// The vendored deck engine's print stylesheet forces every slide to `display: block`, which flattens
+// a slide's authored flex/grid layout so its columns stack and overflow the fixed 1080px slide box,
+// clipping content. While printing, pin each deck slide's on-screen computed display inline (an
+// inline `!important` beats the vendored rule) so the print/PDF keeps the exact layout the reader
+// sees on screen, then remove the inline display when print ends. The pin is PRINT-SCOPED (applied
+// on print-media entry / beforeprint, cleared on exit / afterprint) rather than permanent, so a
+// slide carries no inline `style` attribute under normal media - it never leaks into an exported
+// file and never trips invariants that require clean slide elements (e.g. the deck-theme applies via
+// a `<style>` element, not inline styles). Safe because the engine shows/hides slides via
+// `visibility`/`opacity`, never `display`, so the pinned (always non-`none`) display never fights it.
+function pinDeckSlideDisplayForPrint() {
+  if (!IS_DECK) return;
+  const slides = [].slice.call(root.querySelectorAll(".slide"));
+  // Capture each slide's ON-SCREEN display now (startup, screen media) - once print media is active
+  // the vendored `.slide{display:block}` rule already flattens it, so reading the display during
+  // print would just pin `block`. The authored display comes from static CSS and never changes
+  // (the engine toggles visibility/opacity, not display), so this startup snapshot is correct.
+  const screenDisplays = slides.map(function (slide) { return getComputedStyle(slide).display; });
+  const pin = function () {
+    slides.forEach(function (slide, i) {
+      const display = screenDisplays[i];
+      if (display && display !== "none") slide.style.setProperty("display", display, "important");
+    });
+  };
+  const unpin = function () {
+    slides.forEach(function (slide) {
+      slide.style.removeProperty("display");
+      // Drop an emptied style attribute so the slide is byte-clean under normal media.
+      if (!slide.getAttribute("style")) slide.removeAttribute("style");
+    });
+  };
+  window.addEventListener("beforeprint", pin);
+  window.addEventListener("afterprint", unpin);
+  if (window.matchMedia) {
+    const query = window.matchMedia("print");
+    const onChange = function (event) {
+      if (event.matches) pin();
+      else unpin();
+    };
+    if (query.addEventListener) query.addEventListener("change", onChange);
+    else if (query.addListener) query.addListener(onChange);
+    if (query.matches) pin();
+  }
+}
+
 // sidebar export menu (btnPrint) trigger the browser's native print, which renders the print/PDF
 // layout. This deliberately does NOT intercept Ctrl/Cmd+P, so the native shortcut still works.
 // Wired for flat documents and decks alike (deck print page-breaks one slide per page).
@@ -9885,6 +9938,7 @@ setupSidebarResize();
 if (typeof setupIdentityControl === "function") setupIdentityControl();
 setupCommentSearch();
 setupPrintAppendix();
+pinDeckSlideDisplayForPrint();
 function setupDeck() {
   if (window.__cmhDeck) return;  // idempotent: never install the deck chrome twice
   const stage = root.querySelector(".deck-stage");

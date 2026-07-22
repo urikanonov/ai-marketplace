@@ -8,8 +8,22 @@
     margin: 0.6in;
   }
 
+  /* Deck slides print full-bleed on their own landscape 16:9 page at the native 1920x1080
+     stage size, so a fixed-size slide is never clipped by a portrait paper page. Printing
+     does not need to be A4/Letter - one slide fills exactly one page. */
+  @page cmh-deck-slide {
+    size: 1920px 1080px;
+    margin: 0;
+  }
+
   :root,
   html[data-theme="dark"] {
+    /* Print on light paper regardless of the on-screen theme: reset the palette AND the
+       color-scheme. Without the color-scheme reset a dark-theme document keeps color-scheme:dark,
+       so the browser paints the page canvas/backdrop (the @page margin area behind the content)
+       dark even though the body background is reset to white - producing heavy dark margins in the
+       PDF. */
+    color-scheme: light;
     --cp-bg: #fff;
     --cp-bg-elevated: #fff;
     --cp-surface: #fff;
@@ -45,9 +59,21 @@
   body {
     background: var(--cp-bg) !important;
     color: var(--cp-text) !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
     -webkit-print-color-adjust: economy;
     print-color-adjust: economy;
+  }
+
+  /* Strip the trailing bottom margin from the final flow element. A residual margin below the
+     last content (for example a section's margin-bottom) otherwise counts toward the document
+     height and can spill onto an extra, near-blank page whenever the content height lands just
+     under a page boundary. */
+  #commentRoot > *:last-child,
+  main > *:last-child,
+  .app > main:last-child {
+    margin-bottom: 0 !important;
   }
 
   body,
@@ -75,6 +101,7 @@
   .cm-composer,
   .cm-comment-popover,
   .cm-tooltip,
+  .mermaidTooltip,
   .cm-toast,
   .cm-modal-overlay,
   .cm-mermaid-add,
@@ -83,6 +110,9 @@
   .cm-widget-add,
   .cm-hl-bubble,
   #commentRoot .cmh-sec-caret,
+  #commentRoot .cmh-review-badge,
+  #commentRoot .cmh-sort-ctrl,
+  #commentRoot .cm-widget-reset,
   .cm-code-copy,
   #commentRoot [data-cmh-copy],
   #commentRoot [data-cmh-check-btn],
@@ -131,8 +161,8 @@
   #commentRoot .cmh-lede,
   #commentRoot .cm-toc,
   #commentRoot .cmh-callout,
-  #commentRoot figure.cmh-kql,
-  #commentRoot .cmh-diff-view,
+  #commentRoot:not([data-cmh-mode="deck"]) figure.cmh-kql,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diff-view,
   .cmh-print-comments,
   .cmh-print-noscript {
     background: var(--cp-surface) !important;
@@ -141,15 +171,55 @@
     box-shadow: none !important;
   }
 
-  #commentRoot > section,
-  #commentRoot .cmh-lede,
-  #commentRoot .cm-toc,
+  /* Keep breakable units whole, but let a whole SECTION (which can be taller than a page)
+     flow across pages - forcing break-inside:avoid on a too-tall section made Chromium
+     reserve a page for its box and push the real content to the next page, leaving a
+     near-blank page with only the heading. Small units below still stay whole. */
   #commentRoot figure,
   #commentRoot pre,
   #commentRoot blockquote,
   #commentRoot table,
   #commentRoot .cmh-callout,
+  #commentRoot [data-cm-widget] > *,
   .cmh-print-comment {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* A heading stays with the content that follows it, so a section title never prints
+     orphaned at the bottom of a page or alone on an otherwise-blank page. */
+  #commentRoot h1,
+  #commentRoot h2,
+  #commentRoot h3,
+  #commentRoot h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+    break-inside: avoid;
+  }
+
+  /* Widgets (kanban boards and other draggable part containers) block-stack for print, so
+     their columns print full width one after another instead of relying on a grid/flex track
+     layout that Chromium can fragment badly across a page break. Scoped away from decks, whose
+     fixed-size slides keep their own grid/flex layout (see the deck rules below). */
+  #commentRoot:not([data-cmh-mode="deck"]) [data-cm-widget] {
+    display: block !important;
+  }
+  #commentRoot:not([data-cmh-mode="deck"]) [data-cm-widget] > * {
+    width: auto !important;
+    max-width: 100% !important;
+  }
+
+  /* Multi-column galleries stack into a single column for print, so their items flow across pages
+     naturally. A CSS grid does not fragment across a page break, so a tall gallery would otherwise
+     jump whole to the next page and strand its section heading alone on a near-blank page. Each
+     item still stays whole (break-inside:avoid). Scoped away from decks. */
+  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid {
+    display: block !important;
+  }
+  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid > * {
+    width: auto !important;
+    max-width: 100% !important;
+    margin-bottom: 0.75rem !important;
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -165,6 +235,32 @@
     word-break: break-word !important;
   }
 
+  /* Print re-lights syntax-highlight tokens to the LIGHT palette for FLAT (non-deck) documents
+     regardless of the on-screen theme. A flat document's code/KQL/diff backgrounds are reset to the
+     light paper surface in print, but the four tinted token colors (keyword/function/string/number)
+     are hardcoded hex, and a dark-theme reader keeps `html[data-theme="dark"]` set when printing -
+     so without this the dark-mode pastels (light green strings, etc.) would print near-invisibly on
+     white. The comment/operator tokens already use the reset `--cp-*` variables. This is scoped away
+     from decks (like the other report-only print rules): a deck keeps its own designed slide
+     backgrounds and token palette in print (its KQL blocks stay on a dark slide background, where
+     the bright deck tokens - not this dark palette - are the legible ones). */
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-kql-kw,
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-code-kw {
+    color: #8250df !important;
+  }
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-kql-fn,
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-code-fn {
+    color: #0550ae !important;
+  }
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-kql-str,
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-code-str {
+    color: #0a7d33 !important;
+  }
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-kql-num,
+  html[data-theme="dark"] #commentRoot:not([data-cmh-mode="deck"]) .cmh-code-num {
+    color: #953800 !important;
+  }
+
   #commentRoot table {
     display: table !important;
     width: 100% !important;
@@ -176,6 +272,20 @@
   #commentRoot svg,
   #commentRoot canvas {
     max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Cap tall media (mermaid diagrams, inline SVG figures, images) to the printable page height so a
+     tall item scales to fit one page instead of overflowing, splitting across a page break, or
+     leaving a near-empty trailing page. width:auto keeps the aspect ratio while it shrinks. Scoped
+     away from decks, whose fixed 1080px slides intentionally fill the slide page. */
+  #commentRoot:not([data-cmh-mode="deck"]) pre.mermaid svg,
+  #commentRoot:not([data-cmh-mode="deck"]) figure svg,
+  #commentRoot:not([data-cmh-mode="deck"]) figure img,
+  #commentRoot:not([data-cmh-mode="deck"]) img {
+    max-height: 8.4in !important;
+    max-width: 100% !important;
+    width: auto !important;
     height: auto !important;
   }
 
@@ -240,26 +350,37 @@
     overflow: visible !important;
   }
 
+  /* Only the slides print; the stage's non-slide children (the injected <style> and the
+     corner-logo overlay) would otherwise add a stray page. */
+  #commentRoot[data-cmh-mode="deck"] .deck-stage > *:not(.slide) {
+    display: none !important;
+  }
+
   #commentRoot[data-cmh-mode="deck"] .slide {
+    page: cmh-deck-slide;
     position: relative !important;
     inset: auto !important;
-    display: block !important;
-    width: 100% !important;
-    min-height: auto !important;
-    height: auto !important;
+    /* Display is intentionally NOT set here: 83-print.js pins each slide's on-screen computed
+       display inline so print keeps the authored flex/grid layout (the vendored deck engine's print
+       rule would otherwise force every slide to display:block and flatten multi-column slides). */
+    width: 1920px !important;
+    min-height: 1080px !important;
+    height: 1080px !important;
+    margin: 0 !important;
     visibility: visible !important;
     opacity: 1 !important;
     pointer-events: auto !important;
     transform: none !important;
-    overflow: visible !important;
-    break-after: page;
-    page-break-after: always;
+    overflow: hidden !important;
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
-  #commentRoot[data-cmh-mode="deck"] .slide:last-child {
-    break-after: auto;
-    page-break-after: auto;
+  /* One slide per page via break-BEFORE on every slide after the first (a slide preceded by another
+     slide - the general sibling combinator so an intervening hidden non-slide child cannot break
+     it). This never leaves a trailing blank page the way break-after on the last slide can. */
+  #commentRoot[data-cmh-mode="deck"] .slide ~ .slide {
+    break-before: page;
+    page-break-before: always;
   }
 }

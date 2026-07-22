@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.206.0] - 2026-07-22
+
+### Fixed
+
+- Printing a document or deck to PDF (Save as PDF / Ctrl+P) now renders correctly instead of
+  clipping and stranding content. Decks print one landscape 16:9 page per slide (a named `@page`
+  sized to the native slide, so a fixed-size slide is never cut off by a portrait page) with each
+  slide keeping its authored grid/flex layout and no phantom trailing blank page. Reports no longer
+  strand a section heading on a near-blank page: headings stay with their content, whole sections
+  flow across pages, multi-column galleries and draggable widgets (kanban boards) block-stack so
+  their items flow, and a tall mermaid diagram is scaled to fit one page instead of splitting a node
+  across a page break. Chrome injected inside the document (sort controls, section-review badges, the
+  widget reset control) is hidden in print. The paper size does not need to be A4/Letter - the goal
+  is simply that nothing is clipped and every page carries content. (CMH-PRINT-01, CMH-PRINT-03,
+  CMH-PRINT-04)
+- A document printed while dark theme is active now prints on light paper: the color-scheme is reset
+  to light (so the browser no longer paints the page canvas / margins dark) and syntax-highlighted
+  code/KQL/diff tokens are re-lit to a legible palette on the white background. A deck instead keeps
+  its own designed dark code backgrounds and bright tokens. (CMH-PRINT-05)
+- Added real rendered-PDF CI checks (`tests/70-print-pdf.spec.js`, `CMH-PRINT-03`/`CMH-PRINT-04`/`CMH-PRINT-05`):
+  they drive the browser's native print (`page.pdf`) and inspect the produced PDF - page count,
+  page geometry, and per-page ink coverage - so a print-layout regression fails CI. The prior print
+  tests only checked `@media print` computed styles and never paginated a real PDF.
+
 ## [1.204.0] - 2026-07-21
 
 ### Changed
