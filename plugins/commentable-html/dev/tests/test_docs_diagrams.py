@@ -235,12 +235,11 @@ class SkillTrimDocsTests(unittest.TestCase):
 
     def test_skill_is_lean_and_keeps_generation_critical_contracts(self):
         text = _read(SKILL_MD)
-        # Leanness guard. Topic-bucketed tool paths (tools/<topic>/<tool>.py) add a per-invocation
-        # path segment across the ~44 tool references, so the cap allows for that qualification while
-        # still holding SKILL.md well under the skill-loader budget.
-        self.assertLess(os.path.getsize(SKILL_MD), 38 * 1024)
+        # Leanness guard: keep the trimmed entry point near the 22 KB baseline so removed routing
+        # duplication cannot grow back unnoticed.
+        self.assertLess(os.path.getsize(SKILL_MD), 24 * 1024)
         for snippet in (
-            "TOOL ROUTING contract",
+            "## Capabilities and tool index",
             "tools/authoring/new_document.py",
             "tools/authoring/retrofit.py",
             "tools/authoring/upgrade.py",
@@ -629,26 +628,34 @@ class CapabilitiesOverviewDocsTests(unittest.TestCase):
             "tools/authoring/new_document.py",
             "tools/authoring/retrofit.py",
             "tools/authoring/upgrade.py",
+            "tools/authoring/recommend_kind.py",
             "tools/authoring/mark_reviewed.py",
+            "tools/authoring/mark_handled.py",
             "tools/authoring/generate_toc.py",
             "tools/authoring/wrap_sections.py",
             "tools/authoring/doc_stats.py",
             "tools/authoring/fix_skip.py",
             "tools/authoring/inline_images.py",
+            "tools/authoring/normalize_typography.py",
             "tools/notes/notes_scaffold.py",
             "tools/notes/notes_apply.py",
             "tools/checklist/checklist_scaffold.py",
             "tools/checklist/checklist_apply.py",
             "tools/blocks/highlight_code.py",
+            "tools/blocks/highlight_document.py",
             "tools/kusto/kql_highlight.py",
+            "tools/kusto/kusto_link.py",
             "tools/blocks/diff_block.py",
             "tools/blocks/chart_block.py",
             "tools/deck/deck_scaffold.py",
+            "tools/deck/deck_fix_fonts.py",
             "tools/deck/deck_theme.py",
+            "tools/deck/pptx_to_fragment.py",
         ):
             self.assertIn(tool, cap, f"upfront Capabilities list must name {tool}")
-        # The `slides` flat kind must be named alongside the real-deck tool so they are not confused.
-        self.assertIn("slides", cap)
+        # The supported flat document kinds must be named alongside the real-deck tool so they are not confused.
+        for kind in ("report", "plan", "slides", "board", "generic"):
+            self.assertIn(kind, cap)
         # And each capability's owning reference is linked from the same list.
         for ref in (
             "references/interaction-model.md",
@@ -675,10 +682,215 @@ class CapabilitiesOverviewDocsTests(unittest.TestCase):
             text.index("## Always validate before handoff (MUST)"), text.index("## Steps"),
             "the validate-before-handoff directive must appear ABOVE the detailed Steps")
         directive = text.split("## Always validate before handoff (MUST)", 1)[1].split("\n## ", 1)[0]
-        self.assertIn("tools/authoring/finalize.py <file> --strict", directive)
+        self.assertIn("tools/authoring/finalize.py <file> [--toc --fix-skip --inline-images --images-base DIR] --strict", directive)
         self.assertIn("tools/validate/validate.py --strict <file.html>", directive)
         # Decks need the deck-specific validator too, named in the same upfront directive.
         self.assertIn("tools/deck/deck_validate.py --strict", directive)
+
+
+class SkillToolIndexRetentionTests(unittest.TestCase):
+    """CMH-DOC-18: the trimmed entry point keeps every critical trigger and tested route."""
+
+    def _skill(self):
+        return _read(SKILL_MD)
+
+    def test_trimmed_skill_uses_one_dense_tool_index(self):
+        text = self._skill()
+        self.assertIn("## Capabilities and tool index", text)
+        self.assertLess(text.index("## Capabilities and tool index"), text.index("## Steps"))
+        self.assertNotIn("TOOL ROUTING contract", text)
+        self.assertNotIn("### Step 3b - Assemble rich content with deterministic helpers", text)
+        self.assertNotIn("## Preconditions and postconditions", text)
+
+    def test_critical_tool_paths_remain_reachable(self):
+        text = self._skill()
+        for tool in (
+            "tools/authoring/new_document.py",
+            "tools/deck/deck_scaffold.py",
+            "tools/authoring/retrofit.py",
+            "tools/authoring/upgrade.py",
+            "tools/authoring/finalize.py",
+            "tools/validate/validate.py",
+            "tools/deck/deck_validate.py",
+            "tools/deck/deck_fix_fonts.py",
+            "tools/deck/deck_theme.py",
+            "tools/deck/pptx_to_fragment.py",
+            "tools/authoring/recommend_kind.py",
+            "tools/authoring/mark_reviewed.py",
+            "tools/authoring/mark_handled.py",
+            "tools/authoring/generate_toc.py",
+            "tools/authoring/wrap_sections.py",
+            "tools/authoring/doc_stats.py",
+            "tools/authoring/fix_skip.py",
+            "tools/authoring/inline_images.py",
+            "tools/authoring/normalize_typography.py",
+            "tools/blocks/highlight_code.py",
+            "tools/blocks/highlight_document.py",
+            "tools/kusto/kql_highlight.py",
+            "tools/kusto/kusto_link.py",
+            "tools/blocks/diff_block.py",
+            "tools/blocks/chart_block.py",
+            "tools/checklist/checklist_scaffold.py",
+            "tools/checklist/checklist_apply.py",
+            "tools/notes/notes_scaffold.py",
+            "tools/notes/notes_apply.py",
+        ):
+            self.assertIn(tool, text, f"trimmed skill must keep route to {tool}")
+
+    def test_key_tool_flags_remain_reachable(self):
+        text = self._skill()
+        for flag_or_attr in (
+            "--code-only",
+            "data-cmh-kql-no-cluster",
+            "--session-id",
+            "--agent",
+            "--no-session-id",
+            "--force",
+            "--portable",
+            "only recommends `report`, `plan`, or flat `slides`",
+            "mismatch warning is advisory",
+            "[--toc --fix-skip --inline-images --images-base DIR] --strict",
+            "cmh-callout",
+            "cmh-lede",
+            "vendor/frontend-slides/",
+            "egress-free",
+            "say EXPLICITLY that the file is unverified",
+            "installed `pptx` skill",
+            "help.kusto.windows.net",
+            "CMH-KQL-08",
+            "run `finalize.py --strict` afterwards",
+            "never replaces the final `finalize.py ... --strict`",
+            "CMH-DECK-01",
+            "CMH-DECK-22",
+            "CMH-DECK-14",
+            "external scripts",
+            "inline event handlers",
+            "dangerous URL schemes",
+            "with `--force` over an existing deck",
+            "new slide ids and state loss",
+        ):
+            self.assertIn(flag_or_attr, text)
+
+    def test_create_retrofit_upgrade_routing_scopes_flags_to_supported_tools(self):
+        cap = self._skill().split("## Capabilities", 1)[1].split("\n## ", 1)[0]
+        first_row = next(line for line in cap.splitlines()
+                         if line.startswith("| New document, retrofit"))
+        self.assertIn("new_document.py` creates", first_row)
+        self.assertIn("--session-id", first_row)
+        self.assertIn("--no-session-id", first_row)
+        self.assertIn("--force", first_row)
+        self.assertIn("retrofit.py` injects", first_row)
+        self.assertIn("preserves host content", first_row)
+        self.assertIn("validates before writing", first_row)
+        self.assertIn("upgrade.py` refreshes layered HTML", first_row)
+        self.assertIn("run `finalize.py --strict` afterwards", first_row)
+        self.assertNotIn("Creation/retrofit tools set", first_row)
+
+    def test_deck_scaffold_route_keeps_session_flags(self):
+        cap = self._skill().split("## Capabilities", 1)[1].split("\n## ", 1)[0]
+        deck_row = next(line for line in cap.splitlines()
+                        if line.startswith("| Real animated slide deck"))
+        self.assertIn("tools/deck/deck_scaffold.py", deck_row)
+        self.assertIn("--session-id", deck_row)
+        self.assertIn("--agent", deck_row)
+        self.assertIn("--no-session-id", deck_row)
+        self.assertIn("--brand", deck_row)
+
+    def test_moved_helper_guidance_lives_in_references(self):
+        checks = {
+            "document-layout.md": (
+                "tools/authoring/wrap_sections.py",
+                "wraps each bare top-level `<h2>` block",
+                "new_document.py",
+                "finalize.py",
+            ),
+            "mermaid-diagrams.md": (
+                "tools/authoring/fix_skip.py",
+                "--fix-skip",
+                "structurally commentable",
+            ),
+            "interaction-model.md": (
+                "tools/authoring/mark_reviewed.py",
+                "Mark reviewed",
+                "reviewed/unreviewed",
+            ),
+        }
+        for reference, phrases in checks.items():
+            with self.subTest(reference=reference):
+                text = _read(os.path.join(REFERENCES, reference))
+                for phrase in phrases:
+                    self.assertIn(phrase, text)
+
+    def test_critical_trigger_phrases_remain_reachable(self):
+        text = self._skill().lower()
+        for phrase in (
+            "inline comments",
+            "leave review feedback",
+            "code-review ui",
+            "retrofit an existing html",
+            "markdown doc",
+            "portable, self-contained review file",
+            "cmh",
+            "report",
+            "plan",
+            "dashboard",
+            "design doc",
+            "slide deck",
+            "presentation",
+            "pitch deck",
+            "convert this ppt",
+            "paragraph",
+            "table cell",
+            "code block",
+            "kql query",
+            "chart",
+            "image",
+            "mermaid diagram",
+            "heading",
+            "diff",
+            "widget",
+            "layered checklist",
+            "editable notes",
+            "document-wide comments",
+            "author display names",
+            "reply threads",
+            "markdown/print exports",
+            "nonportable",
+            "portable",
+            "offline",
+        ):
+            self.assertIn(phrase, text, f"trimmed skill must keep trigger phrase {phrase!r}")
+
+    def test_deep_deck_workflow_is_in_references_not_entry_point(self):
+        skill = self._skill()
+        deck = skill.split("## Deck capability", 1)[1].split("\n## ", 1)[0]
+        self.assertLess(len(deck.splitlines()), 18)
+        for pointer in ("references/deck-design.md", "references/deck-contract.md"):
+            self.assertIn(pointer, deck)
+        for moved_phrase, reference in (
+            ("fill the fixed stage", "deck-design.md"),
+            ("capture-safe transform-only motion", "deck-design.md"),
+            ("stable slide-id contract", "deck-contract.md"),
+            ("controller globals", "deck-contract.md"),
+        ):
+            self.assertNotIn(moved_phrase, deck.lower())
+            self.assertIn(moved_phrase, _read(os.path.join(REFERENCES, reference)).lower())
+
+    def test_brand_profile_route_keeps_safety_guidance(self):
+        skill = self._skill()
+        self.assertIn("--brand brand.json", skill)
+        self.assertIn("references/document-layout.md#reusable-brand-profiles", skill)
+        layout = _read(os.path.join(REFERENCES, "document-layout.md"))
+        for phrase in (
+            "new_document.py",
+            "retrofit.py",
+            "deck_scaffold.py",
+            "stateless and opt-in",
+            "unsafe values are rejected",
+            "low-contrast token pairs",
+            "Do not pass `--brand` to `upgrade.py`",
+        ):
+            self.assertIn(phrase, layout)
 
 
 if __name__ == "__main__":

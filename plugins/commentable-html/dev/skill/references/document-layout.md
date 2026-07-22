@@ -5,6 +5,7 @@
 
 - [Runtime UI chrome and toolbar](#runtime-ui-chrome-and-toolbar)
 - [Theme (light by default)](#theme-light-by-default)
+- [Reusable brand profiles](#reusable-brand-profiles)
 - [Density (optional)](#density-optional)
 - [Table of contents (multi-section documents)](#table-of-contents-multi-section-documents)
 - [Document overview strip (report/plan)](#document-overview-strip-reportplan)
@@ -60,6 +61,15 @@ The document defaults to a **light** theme. The generated template sets `data-th
 
 Default to a light document unless the request is explicitly dark.
 
+## Reusable brand profiles
+
+When a reusable brand should stamp report/deck colours or local fonts, pass `--brand brand.json` to
+`tools/authoring/new_document.py`, `tools/authoring/retrofit.py`, or `tools/deck/deck_scaffold.py`.
+Brand profiles are stateless and opt-in. They may set validated `--cp-*` tokens and local
+`data:font/woff2` font faces only; unsafe values are rejected, and low-contrast token pairs print an
+advisory so the author can fix them before handoff. Do not pass `--brand` to `upgrade.py` or
+`recommend_kind.py`.
+
 ## Density (optional)
 
 Leave density unspecified unless the author asks for a different chrome scale. Add
@@ -98,6 +108,11 @@ A `report` or `plan` automatically gets a small `cm-skip` overview strip (`div.c
 ## Sections and document layout
 
 Structure a document as a sequence of `<section>` blocks, each led by a heading. The layer renders top-level sections as cards (surface background, 1px border, 16px radius, padding, and soft shadow) in both light and dark.
+
+`tools/authoring/wrap_sections.py` wraps each bare top-level `<h2>` block in a `<section>` so the
+document renders as boxed cards. `new_document.py` (report/plan fragments) and `finalize.py` run it by
+default; hand-wrapping is only needed for externally produced HTML or unusual layouts. The validator
+warns when top-level report/plan content is not sectioned.
 
 - Wrap each top-level topic in its own `<section>` with an `<h2>` and use `<h3>` for sub-topics.
 - Every authored `<section>` with a direct heading gets a caret. The caret collapses or expands the section body without removing or reordering nodes, so comment offsets stay valid.

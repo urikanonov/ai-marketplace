@@ -32,6 +32,10 @@ A deck's density, depth, chrome, and export story all depend on facts only the u
 outline slides, ask the ones you cannot infer (offer the default in parentheses so the user can just
 confirm):
 
+If the entry request says "slide deck", "presentation", "pitch deck", "slides for a talk", or
+"convert this ppt", confirm that the user wants a real fixed-stage deck rather than a flat
+`--kind slides` commentable document before you scaffold.
+
 1. **Duration and format.** Lightning (about 5 min), a talk (30-60 min), or self-guided/leave-behind?
    Drives slide count and density. A talk deck should still let a newcomer grasp the "why" in the first
    5-10 minutes, even if the whole thing runs long.
@@ -85,6 +89,9 @@ render it blank or faint. Use a **transform-only** entrance reveal (for example 
 is ALWAYS painted at full opacity; the slide-level cross-fade handles opacity. Gate all entrance motion
 behind `@media (prefers-reduced-motion: reduce)` (the inlined `viewport-base.css` supplies the required
 rule; the validator errors without it).
+
+Short form: deck motion must be capture-safe transform-only motion so every screenshot, print, and
+offline export catches painted content.
 
 ## Light-theme depth and palette
 

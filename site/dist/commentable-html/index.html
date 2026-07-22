@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.203.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.204.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,12 +456,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.204.0] - 2026-07-21</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Consolidated the always-loaded <code>SKILL.md</code> capability, tool-routing, deterministic-helper, and pre-handoff guidance into one dense tool index while keeping critical triggers and tool routes covered by tests. Deep deck workflow guidance now lives in the on-demand deck references. (CMH-DOC-18)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.203.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Copy all now strips Unicode bidirectional formatting controls from reviewer notes, document text, the document label, and the document source before emitting the agent payload, so invisible direction overrides cannot visually span the trusted fences or metadata lines. Machine-readable JSON identifiers escape those controls so note/checklist apply tools still round-trip ids. (CMH-COPY-09)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.202.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
@@ -469,8 +478,6 @@
               <li>Deleting an embedded comment now retries the tombstone write after saving the smaller comments array, so a near-quota browser can free space and persist the delete marker. If the retry still fails, the reviewer gets an assertive warning that the embedded comment may reappear after reload instead of a silent resurrection. (CMH-PERSIST-05)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.201.0] - 2026-07-21</h3></div>
             <div class="group-label">Fixed</div>
@@ -499,14 +506,7 @@
               <li>Collaborative threaded comments with author attribution. A reviewer sets a display name once (stored per-browser in <code>localStorage</code>, seedable by the author via <code>data-cm-author</code>); the sidebar &quot;Commenting as&quot; control lets them change it at any time, applying to new comments only. Every attributed comment and reply shows a hashed-color author pill at the start of its note. A new Reply action threads comments: a thread is an initial comment plus a flat, chronological list of replies (single-level), each individually editable and deletable. Deleting a thread root removes the whole thread; deleting a reply removes only that reply. Copy all emits each thread as an initial comment followed by clearly-labelled refinements (author names neutralized so they cannot forge the untrusted-note fence or the machine trailer) and includes every reply id in HANDLED_IDS_JSON so a thread is handled and pruned together. Threads round-trip through Export as Portable / embedded comments, and orphan replies (missing root) are pruned at load. Markdown export and the print appendix are thread-aware. (CMH-AUTHOR-01, CMH-AUTHOR-02, CMH-AUTHOR-03, CMH-THREAD-01, CMH-THREAD-02, CMH-THREAD-03, CMH-THREAD-04, CMH-THREAD-05, CMH-THREAD-06)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.198.0] - 2026-07-21</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>A discoverable <strong>Save as PDF</strong> action makes the existing browser-native print/PDF layout reachable without knowing a keyboard shortcut. It appears in the toolbar overflow (&quot;More actions&quot;) menu and in the sidebar Export menu, and triggers the browser&#x27;s own <code>window.print()</code> - zero PDF dependencies (no jsPDF or html2canvas). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends the current comments. It deliberately does not intercept <code>Ctrl/Cmd+P</code>, so the browser&#x27;s own print/PDF shortcut still works unchanged.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">168 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">169 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
