@@ -9,6 +9,7 @@ import contextlib
 import io
 import os
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -558,13 +559,33 @@ class UpgradeUnitTests(unittest.TestCase):
 
 
 class UpgradeCliTests(unittest.TestCase):
+    def _tmpdir(self):
+        # A directory private to this test, so the leftover-scan tests only ever see files this
+        # test created - never a concurrent or stale .cmh-upgrade-* temp from another process in the
+        # shared system temp dir (issue #601).
+        d = tempfile.mkdtemp(prefix="cmh-upgrade-cli-")
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        return d
+
     def _write(self, text):
-        fd, p = tempfile.mkstemp(suffix=".html")
-        os.close(fd)
+        p = os.path.join(self._tmpdir(), "target.html")
         with open(p, "w", encoding="utf-8", newline="") as fh:
             fh.write(text)
-        self.addCleanup(lambda: os.path.exists(p) and os.remove(p))
         return p
+
+    def test_write_target_is_isolated_so_leftover_scans_are_hermetic(self):
+        # The leftover-scan tests below list the target's PARENT dir for stray .cmh-upgrade-* temp
+        # files. That parent must be a directory private to this test, not the shared system temp
+        # root, or a concurrent or stale upgrade elsewhere would drop a .cmh-upgrade-* file there and
+        # be mis-seen as a leftover (the flaky failure in issue #601).
+        p1 = self._write("<html>one</html>")
+        p2 = self._write("<html>two</html>")
+        parent1 = os.path.realpath(os.path.dirname(p1))
+        self.assertNotEqual(parent1, os.path.realpath(tempfile.gettempdir()))
+        # Each target gets its own private dir, so one test's temp files never appear in another's scan.
+        self.assertNotEqual(parent1, os.path.realpath(os.path.dirname(p2)))
+        # The parent holds only this test's target, so a .cmh-upgrade-* leftover scan is meaningful.
+        self.assertEqual(os.listdir(parent1), [os.path.basename(p1)])
 
     def test_cli_check_reports_stale_and_exits_1(self):
         target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
@@ -706,10 +727,7 @@ class UpgradeCliTests(unittest.TestCase):
     def test_out_flag_does_not_clobber_source_on_validation_fail(self):
         target = _mutate_region_inner(_tpl(), "CSS", "\n/* STALE */\n")
         src = self._write(target)
-        fd, dst = tempfile.mkstemp(suffix=".out.html")
-        os.close(fd)
-        os.remove(dst)  # start absent; must remain absent on failure
-        self.addCleanup(lambda p=dst: os.path.exists(p) and os.remove(p))
+        dst = os.path.join(self._tmpdir(), "out.html")  # absent; must remain absent on failure
         with open(src, "rb") as fh:
             src_original = fh.read()
 
