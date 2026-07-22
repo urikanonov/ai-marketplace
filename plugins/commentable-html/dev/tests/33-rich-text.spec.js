@@ -26,8 +26,9 @@ async function openComposer(page, selector, index = 0) {
 // exact raw source (control chars, null) that a textarea would otherwise normalize away.
 async function seedComments(page, comments) {
   await page.evaluate((cs) => {
-    const key = (document.getElementById("commentRoot") || document.body).dataset.commentKey;
-    localStorage.setItem(key, JSON.stringify(cs));
+    // Write the modern store the runtime reads (COMMENT_KEY + "::z", framed-or-plain) and clear the
+    // legacy key, so the seed is not shadowed by an empty ::z written at startup.
+    window.__cmhStorageCodec.write(cs);
   }, comments);
   await page.reload();
   await page.waitForFunction(() => window.__commentableHtmlReady === true);

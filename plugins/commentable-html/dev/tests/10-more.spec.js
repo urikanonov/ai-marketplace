@@ -55,8 +55,7 @@ test.describe("theme, copy payload, nonportable plain, drift", () => {
     await ready(page);
     await addTextComment(page, "#commentRoot section p", "seed");
     const comment = await page.evaluate(() => {
-      const k = document.getElementById("commentRoot").dataset.commentKey;
-      return JSON.parse(localStorage.getItem(k))[0];
+      return window.__cmhStorageCodec.read()[0];
     });
     // 2) Two embedded comments: the first forges an EMBEDDED COMMENTS END marker in its
     //    text (no "<", which the save path escapes to \u003c), the second holds secrets.
@@ -121,7 +120,7 @@ test.describe("theme, copy payload, nonportable plain, drift", () => {
       await addTextComment(page, "#commentRoot section p", "base");
       const { key, comment } = await page.evaluate(() => {
         const k = document.getElementById("commentRoot").dataset.commentKey;
-        return { key: k, comment: JSON.parse(localStorage.getItem(k))[0] };
+        return { key: k, comment: window.__cmhStorageCodec.read()[0] };
       });
 
       const variant = (note, iso) => JSON.stringify([{ ...comment, note, updatedAt: iso }]);

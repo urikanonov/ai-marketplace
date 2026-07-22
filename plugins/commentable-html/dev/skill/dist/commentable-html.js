@@ -54,6 +54,28 @@ if (CMH_DENSITY === "compact" || CMH_DENSITY === "comfortable") {
   document.body.removeAttribute("data-cm-density");
 }
 const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
+// The comment array is persisted in a modern slot COMMENT_KEY + "::z" holding either a compressed
+// (framed) payload or plain JSON, whichever is smaller (see 05-persistence.js). COMMENT_KEY itself
+// is only READ, as a legacy fallback for files last saved before this slot existed; the modern
+// runtime never writes it, so an older runtime opening the same key can never clobber ::z.
+const CMH_STORE_KEY = COMMENT_KEY + "::z";
+// Frame marker for a compressed comment payload. "\u0001" is < 32, so it can never collide with
+// lz-string's compressToUTF16 output (all chars >= 32) or legacy plain JSON (which starts with "[").
+const CMH_STORE_FRAME = "\u0001z";
+// Upper bound on decoded characters accepted from a stored/compressed comment payload (a
+// decompression-bomb guard). Far beyond any real document; a value over this is treated as corrupt.
+const CMH_MAX_STORE_CHARS = 8000000;
+// Every per-document subkey suffix (EXACT strings). The storage manager (57-storage-manager.js) uses
+// this single list to compute a document's owned keys and reclaim its space; a new per-document
+// subkey MUST be added here (test_storage.py asserts every COMMENT_KEY + "::" writer suffix is listed).
+const CMH_SUBKEY_SUFFIXES = [
+  "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note",
+  "::commentSort", "::tableSort", "::reviews", "::reviews::deleted", "::deckMode",
+];
+// Shared registry index of every commentable-html document seen in this browser (best-effort
+// presentation metadata only - the storage manager's delete authority is the owned-key shape, never
+// this index). Maps a document's COMMENT_KEY to {label, source}.
+const CMH_INDEX_KEY = "commentable-html::index";
 // Comment ids are generated as "c" + base36 timestamp + 4 base36 chars and are
 // later interpolated into HTML attributes (data-cid="...") and CSS selectors.
 // Loaded and embedded comment ids must match this format - otherwise a
@@ -62,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.210.0";
+const CMH_VERSION = "1.211.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -151,14 +173,435 @@ const openComposers = new Set();
 const openEditComposers = new Map();
 let lastFocusedComposer = null;
 let composerZ = 210;
+/* ---------- Vendored: lz-string (UTF-16 codec, trimmed) ----------
+ * lz-string 1.4.4 by pieroxy <pieroxy@pieroxy.net> - MIT license.
+ * https://github.com/pieroxy/lz-string
+ * Trimmed to compressToUTF16 / decompressFromUTF16 (the two entry points the
+ * comment store uses to pack JSON into valid BMP UTF-16 for localStorage), with a
+ * bounded decoder (maxLen) so a hostile pre-seeded value cannot expand without limit.
+ * Keep this partial numbered before 05-persistence.js (which consumes LZString).
+ */
+const LZString = (function () {
+  const f = String.fromCharCode;
+  function _compress(uncompressed, bitsPerChar, getCharFromInt) {
+    if (uncompressed == null) return "";
+    let i, value;
+    const context_dictionary = {};
+    const context_dictionaryToCreate = {};
+    let context_c = "";
+    let context_wc = "";
+    let context_w = "";
+    let context_enlargeIn = 2;
+    let context_dictSize = 3;
+    let context_numBits = 2;
+    const context_data = [];
+    let context_data_val = 0;
+    let context_data_position = 0;
+    let ii;
+    for (ii = 0; ii < uncompressed.length; ii += 1) {
+      context_c = uncompressed.charAt(ii);
+      if (!Object.prototype.hasOwnProperty.call(context_dictionary, context_c)) {
+        context_dictionary[context_c] = context_dictSize++;
+        context_dictionaryToCreate[context_c] = true;
+      }
+      context_wc = context_w + context_c;
+      if (Object.prototype.hasOwnProperty.call(context_dictionary, context_wc)) {
+        context_w = context_wc;
+      } else {
+        if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
+          if (context_w.charCodeAt(0) < 256) {
+            for (i = 0; i < context_numBits; i++) {
+              context_data_val = (context_data_val << 1);
+              if (context_data_position == bitsPerChar - 1) {
+                context_data_position = 0;
+                context_data.push(getCharFromInt(context_data_val));
+                context_data_val = 0;
+              } else { context_data_position++; }
+            }
+            value = context_w.charCodeAt(0);
+            for (i = 0; i < 8; i++) {
+              context_data_val = (context_data_val << 1) | (value & 1);
+              if (context_data_position == bitsPerChar - 1) {
+                context_data_position = 0;
+                context_data.push(getCharFromInt(context_data_val));
+                context_data_val = 0;
+              } else { context_data_position++; }
+              value = value >> 1;
+            }
+          } else {
+            value = 1;
+            for (i = 0; i < context_numBits; i++) {
+              context_data_val = (context_data_val << 1) | value;
+              if (context_data_position == bitsPerChar - 1) {
+                context_data_position = 0;
+                context_data.push(getCharFromInt(context_data_val));
+                context_data_val = 0;
+              } else { context_data_position++; }
+              value = 0;
+            }
+            value = context_w.charCodeAt(0);
+            for (i = 0; i < 16; i++) {
+              context_data_val = (context_data_val << 1) | (value & 1);
+              if (context_data_position == bitsPerChar - 1) {
+                context_data_position = 0;
+                context_data.push(getCharFromInt(context_data_val));
+                context_data_val = 0;
+              } else { context_data_position++; }
+              value = value >> 1;
+            }
+          }
+          context_enlargeIn--;
+          if (context_enlargeIn == 0) {
+            context_enlargeIn = Math.pow(2, context_numBits);
+            context_numBits++;
+          }
+          delete context_dictionaryToCreate[context_w];
+        } else {
+          value = context_dictionary[context_w];
+          for (i = 0; i < context_numBits; i++) {
+            context_data_val = (context_data_val << 1) | (value & 1);
+            if (context_data_position == bitsPerChar - 1) {
+              context_data_position = 0;
+              context_data.push(getCharFromInt(context_data_val));
+              context_data_val = 0;
+            } else { context_data_position++; }
+            value = value >> 1;
+          }
+        }
+        context_enlargeIn--;
+        if (context_enlargeIn == 0) {
+          context_enlargeIn = Math.pow(2, context_numBits);
+          context_numBits++;
+        }
+        context_dictionary[context_wc] = context_dictSize++;
+        context_w = String(context_c);
+      }
+    }
+    if (context_w !== "") {
+      if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
+        if (context_w.charCodeAt(0) < 256) {
+          for (i = 0; i < context_numBits; i++) {
+            context_data_val = (context_data_val << 1);
+            if (context_data_position == bitsPerChar - 1) {
+              context_data_position = 0;
+              context_data.push(getCharFromInt(context_data_val));
+              context_data_val = 0;
+            } else { context_data_position++; }
+          }
+          value = context_w.charCodeAt(0);
+          for (i = 0; i < 8; i++) {
+            context_data_val = (context_data_val << 1) | (value & 1);
+            if (context_data_position == bitsPerChar - 1) {
+              context_data_position = 0;
+              context_data.push(getCharFromInt(context_data_val));
+              context_data_val = 0;
+            } else { context_data_position++; }
+            value = value >> 1;
+          }
+        } else {
+          value = 1;
+          for (i = 0; i < context_numBits; i++) {
+            context_data_val = (context_data_val << 1) | value;
+            if (context_data_position == bitsPerChar - 1) {
+              context_data_position = 0;
+              context_data.push(getCharFromInt(context_data_val));
+              context_data_val = 0;
+            } else { context_data_position++; }
+            value = 0;
+          }
+          value = context_w.charCodeAt(0);
+          for (i = 0; i < 16; i++) {
+            context_data_val = (context_data_val << 1) | (value & 1);
+            if (context_data_position == bitsPerChar - 1) {
+              context_data_position = 0;
+              context_data.push(getCharFromInt(context_data_val));
+              context_data_val = 0;
+            } else { context_data_position++; }
+            value = value >> 1;
+          }
+        }
+        context_enlargeIn--;
+        if (context_enlargeIn == 0) {
+          context_enlargeIn = Math.pow(2, context_numBits);
+          context_numBits++;
+        }
+        delete context_dictionaryToCreate[context_w];
+      } else {
+        value = context_dictionary[context_w];
+        for (i = 0; i < context_numBits; i++) {
+          context_data_val = (context_data_val << 1) | (value & 1);
+          if (context_data_position == bitsPerChar - 1) {
+            context_data_position = 0;
+            context_data.push(getCharFromInt(context_data_val));
+            context_data_val = 0;
+          } else { context_data_position++; }
+          value = value >> 1;
+        }
+      }
+      context_enlargeIn--;
+      if (context_enlargeIn == 0) {
+        context_enlargeIn = Math.pow(2, context_numBits);
+        context_numBits++;
+      }
+    }
+    value = 2;
+    for (i = 0; i < context_numBits; i++) {
+      context_data_val = (context_data_val << 1) | (value & 1);
+      if (context_data_position == bitsPerChar - 1) {
+        context_data_position = 0;
+        context_data.push(getCharFromInt(context_data_val));
+        context_data_val = 0;
+      } else { context_data_position++; }
+      value = value >> 1;
+    }
+    while (true) {
+      context_data_val = (context_data_val << 1);
+      if (context_data_position == bitsPerChar - 1) {
+        context_data.push(getCharFromInt(context_data_val));
+        break;
+      } else { context_data_position++; }
+    }
+    return context_data.join("");
+  }
+  function _decompress(length, resetValue, getNextValue, maxLen) {
+    const dictionary = [];
+    let enlargeIn = 4;
+    let dictSize = 4;
+    let numBits = 3;
+    let entry = "";
+    const result = [];
+    let outLen = 0;
+    let i, w, bits, resb, maxpower, power, c, next;
+    const data = { val: getNextValue(0), position: resetValue, index: 1 };
+    for (i = 0; i < 3; i += 1) { dictionary[i] = i; }
+    bits = 0; maxpower = Math.pow(2, 2); power = 1;
+    while (power != maxpower) {
+      resb = data.val & data.position;
+      data.position >>= 1;
+      if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
+      bits |= (resb > 0 ? 1 : 0) * power;
+      power <<= 1;
+    }
+    switch (next = bits) {
+      case 0:
+        bits = 0; maxpower = Math.pow(2, 8); power = 1;
+        while (power != maxpower) {
+          resb = data.val & data.position;
+          data.position >>= 1;
+          if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
+          bits |= (resb > 0 ? 1 : 0) * power;
+          power <<= 1;
+        }
+        c = f(bits);
+        break;
+      case 1:
+        bits = 0; maxpower = Math.pow(2, 16); power = 1;
+        while (power != maxpower) {
+          resb = data.val & data.position;
+          data.position >>= 1;
+          if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
+          bits |= (resb > 0 ? 1 : 0) * power;
+          power <<= 1;
+        }
+        c = f(bits);
+        break;
+      case 2:
+        return "";
+    }
+    dictionary[3] = c;
+    w = c;
+    result.push(c); outLen += c.length;
+    while (true) {
+      if (data.index > length) { return ""; }
+      bits = 0; maxpower = Math.pow(2, numBits); power = 1;
+      while (power != maxpower) {
+        resb = data.val & data.position;
+        data.position >>= 1;
+        if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
+        bits |= (resb > 0 ? 1 : 0) * power;
+        power <<= 1;
+      }
+      switch (c = bits) {
+        case 0:
+          bits = 0; maxpower = Math.pow(2, 8); power = 1;
+          while (power != maxpower) {
+            resb = data.val & data.position;
+            data.position >>= 1;
+            if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
+            bits |= (resb > 0 ? 1 : 0) * power;
+            power <<= 1;
+          }
+          dictionary[dictSize++] = f(bits);
+          c = dictSize - 1;
+          enlargeIn--;
+          break;
+        case 1:
+          bits = 0; maxpower = Math.pow(2, 16); power = 1;
+          while (power != maxpower) {
+            resb = data.val & data.position;
+            data.position >>= 1;
+            if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
+            bits |= (resb > 0 ? 1 : 0) * power;
+            power <<= 1;
+          }
+          dictionary[dictSize++] = f(bits);
+          c = dictSize - 1;
+          enlargeIn--;
+          break;
+        case 2:
+          return result.join("");
+      }
+      if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
+      if (dictionary[c]) {
+        entry = dictionary[c];
+      } else {
+        if (c === dictSize) { entry = w + w.charAt(0); } else { return null; }
+      }
+      result.push(entry); outLen += entry.length;
+      if (maxLen && outLen > maxLen) { throw new RangeError("lz-string: decoded output exceeds bound"); }
+      dictionary[dictSize++] = w + entry.charAt(0);
+      enlargeIn--;
+      w = entry;
+      if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
+    }
+  }
+  return {
+    compressToUTF16: function (input) {
+      if (input == null) return "";
+      return _compress(input, 15, function (a) { return f(a + 32); }) + " ";
+    },
+    decompressFromUTF16: function (compressed, maxLen) {
+      if (compressed == null) return "";
+      if (compressed == "") return null;
+      return _decompress(compressed.length, 16384, function (index) {
+        return compressed.charCodeAt(index) - 32;
+      }, maxLen);
+    },
+  };
+})();
 /* ---------- Persistence ---------- */
-function loadComments() {
-  let local = [];
+// True for a storage-quota error across browsers (Chrome/Safari "QuotaExceededError", Firefox
+// "NS_ERROR_DOM_QUOTA_REACHED"; legacy numeric codes 22 / 1014). A DOMException raised via the
+// name constructor has code 0, so match primarily on the name.
+function cmhIsQuotaError(e) {
+  if (!e) return false;
+  return e.name === "QuotaExceededError"
+    || e.name === "NS_ERROR_DOM_QUOTA_REACHED"
+    || e.code === 22 || e.code === 1014;
+}
+// Encode a comments JSON string for the modern slot: a framed lz-string payload when that is
+// SMALLER (in UTF-16 code units, which is what localStorage costs), else the plain JSON unchanged.
+function cmhEncodeStore(jsonStr) {
   try {
-    const raw = localStorage.getItem(COMMENT_KEY);
-    local = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(local)) local = [];
-  } catch (e) { local = []; }
+    const framed = CMH_STORE_FRAME + LZString.compressToUTF16(jsonStr);
+    return framed.length < jsonStr.length ? framed : jsonStr;
+  } catch (e) { return jsonStr; }
+}
+// Decode a stored value. Returns {ok, json}: ok=false means the value was PRESENT but unreadable
+// (corrupt/oversized frame) and MUST NOT be overwritten. A framed value starts with the "\u0001"
+// marker; anything else is treated as legacy/plain JSON and returned unchanged.
+function cmhDecodeStore(raw) {
+  if (raw == null) return { ok: true, json: null };
+  if (raw.charCodeAt(0) !== 1) return { ok: true, json: raw };
+  if (raw.charAt(1) !== "z") return { ok: false, json: null };
+  try {
+    const out = LZString.decompressFromUTF16(raw.slice(2), CMH_MAX_STORE_CHARS);
+    if (out == null) return { ok: false, json: null };
+    return { ok: true, json: out };
+  } catch (e) { return { ok: false, json: null }; }
+}
+// Read the persisted comment array. Prefers the modern slot (::z); falls back to the legacy
+// COMMENT_KEY (plain JSON) for files last saved by an older runtime. Returns {arr, unreadable}
+// where unreadable=true flags a present-but-corrupt store so loadComments does not clobber it.
+function cmhLoadStored() {
+  let raw = null;
+  let fromModern = true;
+  try { raw = localStorage.getItem(CMH_STORE_KEY); } catch (e) { return { arr: [], unreadable: false }; }
+  if (raw == null) {
+    fromModern = false;
+    try { raw = localStorage.getItem(COMMENT_KEY); } catch (e) { return { arr: [], unreadable: false }; }
+    if (raw == null) return { arr: [], unreadable: false };
+  }
+  // ANY unreadable value in the MODERN slot is protected: the ::z slot stores EITHER a framed
+  // lz-string payload OR plain JSON (store-the-smaller), so a corrupt/truncated PLAIN ::z value - or
+  // a valid-JSON-non-array future/foreign format - must be treated as unreadable too, not just a
+  // framed one (else a startup merge diff would call saveComments() and clobber recoverable bytes).
+  // A legacy base-key value that fails to parse degrades silently to empty (the pre-existing
+  // behavior), so seeding a corrupt legacy value does not raise a scary notice.
+  const dec = cmhDecodeStore(raw);
+  if (!dec.ok) return { arr: [], unreadable: fromModern };
+  if (dec.json == null || dec.json === "") return { arr: [], unreadable: false };
+  try {
+    const arr = JSON.parse(dec.json);
+    if (Array.isArray(arr)) return { arr: arr, unreadable: false };
+    return { arr: [], unreadable: fromModern };
+  } catch (e) { return { arr: [], unreadable: fromModern }; }
+}
+// Pending write retries keyed by storage key. A quota failure stashes the exact producer so the
+// storage manager can re-run it (recomputing the latest value) once the reviewer frees space.
+const _cmhPendingWrites = new Map();
+// Set true by saveComments() when its last attempt failed on quota (vs a blocked/private-mode
+// error); the comment-composer save reads it to open the storage manager for that specific case.
+let _cmhLastSaveQuota = false;
+// Set true by loadComments() when the persisted store was present but UNREADABLE (a corrupt or
+// newer-format frame). While set, saveComments() does NOT write, so the recoverable bytes are left
+// untouched across a reload-without-edit; startup clears it after pruning so a genuine user edit
+// still persists (and intentionally replaces the unreadable value).
+let _cmhStoreUnreadable = false;
+// Persist key <- produce(). produce() returns a string to store or null to removeItem. Returns
+// true on immediate success (set or remove). On a quota error it stashes the producer for retry
+// and returns false (callers already treat false as "not saved"); other errors return false too.
+function cmhTrySetItem(key, produce, label) {
+  try {
+    const value = produce();
+    if (value == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+    _cmhPendingWrites.delete(key);
+    return true;
+  } catch (e) {
+    if (cmhIsQuotaError(e)) _cmhPendingWrites.set(key, { produce: produce, label: label || "data" });
+    return false;
+  }
+}
+// Re-run every pending write (called by the storage manager after space is freed). Returns the
+// distinct labels that now succeeded, so the manager can confirm what was saved.
+function cmhRetryPendingWrites() {
+  const done = [];
+  _cmhPendingWrites.forEach(function (rec, key) {
+    try {
+      const v = rec.produce();
+      if (v == null) localStorage.removeItem(key); else localStorage.setItem(key, v);
+      _cmhPendingWrites.delete(key);
+      // A successful comment-slot retry also reclaims the legacy key (mirrors saveComments).
+      if (key === CMH_STORE_KEY) { try { localStorage.removeItem(COMMENT_KEY); } catch (e) { /* best-effort */ } }
+      if (done.indexOf(rec.label) === -1) done.push(rec.label);
+    } catch (e) {
+      // Still full: leave the entry pending for the next delete. A NON-quota failure (blocked/
+      // corrupt) will never succeed on retry, so drop it rather than retrying forever.
+      if (!cmhIsQuotaError(e)) _cmhPendingWrites.delete(key);
+    }
+  });
+  return done;
+}
+// Recovery toast for a secondary writer (notes/checklist/reviews) that failed via cmhTrySetItem.
+// A quota failure (the write is now pending in _cmhPendingWrites) offers a "Manage storage" action;
+// a blocked/private-mode failure just warns. Call only after cmhTrySetItem returned false.
+function cmhStorageFullToast(key, what) {
+  const quota = _cmhPendingWrites.has(key);
+  showToast(quota
+    ? what + " could not be saved - this browser's storage is full. Free space from Manage storage."
+    : what + " NOT saved to this browser (storage full or blocked) - it will be lost on reload.",
+    { alert: true, duration: 8000, action: cmhStorageAction(key) });
+}
+// The "Manage storage" toast action object for a key whose write is pending after a quota failure
+// (else null). Lets a caller with its own message keep the recovery action without double-toasting.
+function cmhStorageAction(key) {
+  return (_cmhPendingWrites.has(key) && typeof openStorageManager === "function")
+    ? { label: "Manage storage", onClick: function () { openStorageManager(); } } : null;
+}
+function loadComments() {
+  const loaded = cmhLoadStored();
+  const local = loaded.arr;
   // Exclude embedded comments that were deleted in a prior session (tombstoned), so a
   // baked-in comment stays deleted across reload instead of resurrecting from the file.
   const tomb = _deletedEmbeddedIds();
@@ -167,17 +610,48 @@ function loadComments() {
   // Drop (and tombstone) any reply whose thread root is not present, so a dangling reply
   // can never render or resurrect from the embedded block.
   if (typeof pruneOrphanReplies === "function") pruneOrphanReplies();
-  // If the merge changed localStorage, persist so reloads converge.
+  // A present-but-unreadable store (corrupt/oversized/newer-format frame) is left UNTOUCHED so
+  // the recoverable bytes are not clobbered; only a subsequent edit will replace it.
+  if (loaded.unreadable) {
+    _cmhStoreUnreadable = true;
+    showToast("Saved comments in this browser could not be read (they may be from a newer version) "
+      + "- they are left untouched; editing a comment will replace them.", { alert: true, duration: 8000 });
+    return;
+  }
+  // If the merge changed the stored set, persist so reloads converge (compare against the DECODED
+  // local array, so a framed store does not look "changed" and re-save on every load).
   try {
     if (JSON.stringify(comments) !== JSON.stringify(local)) saveComments();
   } catch (e) { /* serialization noise, ignore */ }
 }
 function saveComments() {
-  try { localStorage.setItem(COMMENT_KEY, JSON.stringify(comments)); return true; }
-  catch (e) {
-    // Storage full or blocked: the comment is still in memory (visible in the list),
-    // but it will not survive a reload. Surface this as an alert with a recovery path
-    // instead of letting the save look successful.
+  _cmhLastSaveQuota = false;
+  // While the store was loaded UNREADABLE, do not overwrite it from an automatic save (startup
+  // prune/convergence); the recoverable bytes survive a reload-without-edit. Startup clears the flag
+  // after pruning, so a genuine user edit still persists.
+  if (_cmhStoreUnreadable) return true;
+  try {
+    // Always write the modern slot FIRST (an empty array serializes to "[]"); only on success
+    // remove the legacy key, so a quota failure never leaves both slots empty (any legacy value
+    // stays recoverable).
+    localStorage.setItem(CMH_STORE_KEY, cmhEncodeStore(JSON.stringify(comments)));
+    _cmhPendingWrites.delete(CMH_STORE_KEY);
+    try { localStorage.removeItem(COMMENT_KEY); } catch (e) { /* best-effort legacy reclaim */ }
+    if (typeof cmhRegisterDocument === "function") cmhRegisterDocument();
+    if (typeof _cmhResetQuotaEpisode === "function") _cmhResetQuotaEpisode();
+    return true;
+  } catch (e) {
+    if (cmhIsQuotaError(e)) {
+      _cmhLastSaveQuota = true;
+      // The comment is still in memory (visible in the list). Stash the exact write for retry; the
+      // composer save opens the storage manager so the reviewer can free space and it is re-saved.
+      _cmhPendingWrites.set(CMH_STORE_KEY, {
+        produce: function () { return cmhEncodeStore(JSON.stringify(comments)); },
+        label: "comment",
+      });
+      return false;
+    }
+    // Blocked / private mode: keep the existing recovery-path warning.
     showToast("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
       + "reload. Use Copy all or Export as Portable to keep it.", { alert: true, duration: 8000 });
     return false;
@@ -3294,15 +3768,11 @@ function _clSave() {
       if (cur !== item.baseline) { if (!out[item.checklist]) out[item.checklist] = Object.create(null); out[item.checklist][item.key] = CMH_CHECK_CODE[cur]; }
     });
   });
-  try {
-    if (Object.keys(out).length) localStorage.setItem(CMH_CL_KEY, JSON.stringify(out));
-    else localStorage.removeItem(CMH_CL_KEY);
-    return true;
-  } catch (e) {
-    showToast("Checklist state NOT saved to this browser (storage full or blocked) - it will be lost on reload.",
-      { alert: true, duration: 8000 });
-    return false;
-  }
+  const ok = cmhTrySetItem(CMH_CL_KEY, function () {
+    return Object.keys(out).length ? JSON.stringify(out) : null;
+  }, "Checklist state");
+  if (!ok) cmhStorageFullToast(CMH_CL_KEY, "Checklist state");
+  return ok;
 }
 function _clRefresh() {
   const cache = new Map();
@@ -3524,15 +3994,11 @@ function _noteSave() {
     const cur = _noteCurrent(note);
     if (cur !== note.baseline) out[note.id] = cur;
   });
-  try {
-    if (Object.keys(out).length) localStorage.setItem(CMH_NOTE_KEY, JSON.stringify(out));
-    else localStorage.removeItem(CMH_NOTE_KEY);
-    return true;
-  } catch (e) {
-    showToast("Note edits NOT saved to this browser (storage full or blocked) - they will be lost on reload.",
-      { alert: true, duration: 8000 });
-    return false;
-  }
+  const ok = cmhTrySetItem(CMH_NOTE_KEY, function () {
+    return Object.keys(out).length ? JSON.stringify(out) : null;
+  }, "Note edits");
+  if (!ok) cmhStorageFullToast(CMH_NOTE_KEY, "Note edits");
+  return ok;
 }
 // Changed notes only, one record per note (mirrors checklistChanges()).
 function notesChanges() {
@@ -5246,10 +5712,23 @@ function saveComposerElement(el) {
     }
     window.getSelection().removeAllRanges();
   }
-  saveComments();
+  const saved = saveComments();
   renderComments();
   closeComposerElement(el);
   openSidebar();
+  // A quota failure on this explicit Save opens the storage manager so the reviewer can free space
+  // and the pending write is retried. Deferred to a microtask so it runs AFTER closeComposerElement
+  // has moved focus. If the manager cannot open (already open, or a prior episode is unresolved),
+  // fall back to a toast with the recovery action so the failure is never silent.
+  if (!saved && _cmhLastSaveQuota) {
+    queueMicrotask(function () {
+      const opened = (typeof openStorageManager === "function") && openStorageManager({ reason: "quota" });
+      if (!opened) {
+        showToast("Comment not saved - this browser's storage is full. Free space from Manage storage.",
+          { alert: true, duration: 8000, action: (typeof cmhStorageAction === "function") ? cmhStorageAction(CMH_STORE_KEY) : null });
+      }
+    });
+  }
 }
 
 
@@ -6651,6 +7130,579 @@ async function copyAll() {
 }
 document.getElementById("btnCopyAll").addEventListener("click", copyAll);
 document.getElementById("btnCopyAllTop").addEventListener("click", copyAll);
+/* ---------- Storage manager (cross-document localStorage) ---------- */
+// On file:// every commentable-html document shares one origin, so all documents' comments and
+// review data compete for a single localStorage budget. This manager lists every document's stored
+// data across the origin and lets the reviewer delete other documents' data to reclaim space; it
+// also opens automatically when a comment save fails because storage is full.
+
+const CMH_INDEX_MAX = 200;
+const CMH_BANNER_PREFIX = "commentable-html::assetBannerDismissed::";
+// Deletable keys in the commentable-html namespace that are NOT tied to one document (shared
+// preferences). The shared registry index (CMH_INDEX_KEY) is deliberately EXCLUDED: it is internal
+// ownership metadata, not a user preference, and deleting it would strand custom-key documents
+// whose only ownership proof is the index (see CMH-STORE-10). It is skipped entirely in the grouping.
+const CMH_GLOBAL_KEYS = [SIDEBAR_WIDTH_KEY, CMH_AUTHOR_KEY];
+
+function _cmhReadIndex() {
+  // A null-prototype map, with own properties copied from the parsed blob, so a document whose
+  // custom data-comment-key is literally "__proto__"/"constructor"/etc. is stored and looked up as
+  // an ordinary entry instead of mutating Object.prototype (registry values are same-origin data).
+  const out = Object.create(null);
+  try {
+    const raw = localStorage.getItem(CMH_INDEX_KEY);
+    const obj = raw ? JSON.parse(raw) : null;
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      Object.keys(obj).forEach(function (k) { out[k] = obj[k]; });
+    }
+  } catch (e) { /* ignore corrupt/blocked index */ }
+  return out;
+}
+function _cmhWriteIndex(idx) {
+  try {
+    let keys = Object.keys(idx);
+    if (keys.length > CMH_INDEX_MAX) {
+      // LRU-ish cap so the shared index cannot itself become a quota bomb: keep the most recently
+      // touched entries (a numeric "t" is stored only for this eviction).
+      keys.sort(function (a, b) { return (Number(idx[b] && idx[b].t) || 0) - (Number(idx[a] && idx[a].t) || 0); });
+      // Null-prototype (like _cmhReadIndex) so a retained entry whose key is literally "__proto__"
+      // is copied as an own property instead of mutating Object.prototype (which would drop it).
+      const keep = Object.create(null);
+      keys.slice(0, CMH_INDEX_MAX).forEach(function (k) { keep[k] = idx[k]; });
+      idx = keep;
+    }
+    localStorage.setItem(CMH_INDEX_KEY, JSON.stringify(idx));
+  } catch (e) { /* index is best-effort presentation metadata; ignore quota/blocked */ }
+}
+// Record the current document in the shared index (label + source) for the manager's listing. Only
+// writes when the entry is missing or changed, to avoid rewriting the shared blob on every load.
+function cmhRegisterDocument() {
+  const label = String(DOC_LABEL || "").slice(0, 300);
+  const source = String((root.dataset && root.dataset.docSource) || location.pathname || "").slice(0, 600);
+  const idx = _cmhReadIndex();
+  const prev = idx[COMMENT_KEY];
+  if (prev && prev.label === label && prev.source === source) return;
+  idx[COMMENT_KEY] = { label: label, source: source, t: Date.now() };
+  _cmhWriteIndex(idx);
+}
+function _cmhRemoveIndexEntry(key) {
+  const idx = _cmhReadIndex();
+  if (Object.prototype.hasOwnProperty.call(idx, key)) { delete idx[key]; _cmhWriteIndex(idx); }
+}
+
+function _cmhKeyBytes(key, value) {
+  return (key.length + (value == null ? 0 : value.length)) * 2; // localStorage stores UTF-16
+}
+function _cmhHumanSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+function _cmhAllKeys() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k != null) out.push(k); }
+  } catch (e) { /* blocked / private mode */ }
+  return out;
+}
+// Longest-suffix-first so "::reviews::deleted" is matched before "::deleted"/"::reviews".
+const _CMH_SUFFIXES_BY_LEN = CMH_SUBKEY_SUFFIXES.slice().sort(function (a, b) { return b.length - a.length; });
+function _cmhBaseOf(key) {
+  // Never suffix-split the current document's own key (a custom data-comment-key could itself end
+  // in a known suffix, e.g. "foo::note"); it is always its own base.
+  if (key === COMMENT_KEY) return { base: key, suffix: "" };
+  for (const suf of _CMH_SUFFIXES_BY_LEN) {
+    if (key.length > suf.length && key.slice(-suf.length) === suf) {
+      return { base: key.slice(0, key.length - suf.length), suffix: suf };
+    }
+  }
+  return { base: key, suffix: "" };
+}
+// True only when a stored value is (very likely) OUR comment store: a framed lz-string payload
+// (only this runtime writes those), or a non-empty JSON array whose first item is a comment object
+// with a SAFE_ID_RE id. A bare "[]" or an unrelated app's array does NOT qualify, so the manager
+// never surfaces or deletes another application's same-origin data.
+function _cmhLooksLikeCommentArray(raw) {
+  if (raw == null) return false;
+  const dec = cmhDecodeStore(raw);
+  if (!dec.ok || dec.json == null) return false;
+  if (raw.charCodeAt(0) === 1) return true; // framed -> our own compressed payload
+  try {
+    const a = JSON.parse(dec.json);
+    return Array.isArray(a) && a.length > 0 && a[0] && typeof a[0] === "object"
+      && typeof a[0].id === "string" && SAFE_ID_RE.test(a[0].id);
+  } catch (e) { return false; }
+}
+// Best-effort comment count for a group (null = unknown/unreadable). Decode is bounded by
+// cmhDecodeStore (CMH_MAX_STORE_CHARS), so this can never be a decompression-bomb vector.
+function _cmhCountComments(g) {
+  const raw = g._zValue != null ? g._zValue : g._baseValue;
+  if (raw == null) return 0;
+  const dec = cmhDecodeStore(raw);
+  if (!dec.ok || dec.json == null) return null;
+  try { const a = JSON.parse(dec.json); return Array.isArray(a) ? a.length : null; } catch (e) { return null; }
+}
+// A group is a deletable commentable-html document only with ownership PROOF: it is the current
+// document, in the default "commentable-html:" namespace, present in OUR registry (which only ever
+// records this runtime's own COMMENT_KEY, so a stale entry is still our doc), or its comment slot
+// decodes to a real comment array. A bare foreign array or an unrelated app's key never qualifies.
+// (A malicious same-origin document could forge the registry, but such a document can already
+// removeItem any key directly, so this grants no new capability.)
+function _cmhIsOwnedDoc(g, idx) {
+  if (g.base === COMMENT_KEY) return true;
+  if (g.base.indexOf("commentable-html:") === 0) return true;
+  if (idx && Object.prototype.hasOwnProperty.call(idx, g.base)) return true;
+  return _cmhLooksLikeCommentArray(g._zValue != null ? g._zValue : g._baseValue);
+}
+// Group every localStorage key into commentable-html documents (owned) + a global/other bucket.
+function cmhStorageGroups() {
+  const idx = _cmhReadIndex();
+  const groups = new Map();
+  const globals = [];
+  const bannerKeys = [];
+  function ensureGroup(base) {
+    if (!groups.has(base)) groups.set(base, { base: base, keys: [], bytes: 0, _zValue: null, _baseValue: null });
+    return groups.get(base);
+  }
+  // Always list the current document, even with nothing stored yet (so "This document" + Clear all
+  // are reachable).
+  ensureGroup(COMMENT_KEY);
+  // Prototype-free membership test: a foreign same-origin key literally named "constructor",
+  // "toString", "__proto__", etc. must NOT satisfy this via Object.prototype (a plain {} lookup
+  // would, sweeping unrelated data into the deletable "shared data" bucket).
+  const globalSet = new Set(CMH_GLOBAL_KEYS);
+  // Known document bases (the registry + the current key) resolved LONGEST-first, so a subkey of a
+  // custom key that itself ends in a reserved suffix (e.g. base "foo::note", subkey "foo::note::z")
+  // is grouped under its real base rather than mis-split by the generic suffix matcher.
+  const knownBases = Object.keys(idx).concat([COMMENT_KEY]).sort(function (a, b) { return b.length - a.length; });
+  function baseOf(key) {
+    for (const kb of knownBases) {
+      if (key === kb) return { base: kb, suffix: "" };
+      // Only a RECOGNIZED subkey suffix belongs to a known base - never an arbitrary "kb::*", so a
+      // foreign key that merely shares the prefix (kb + "::" + something-unknown) is not swept in.
+      for (const suf of _CMH_SUFFIXES_BY_LEN) {
+        if (key === kb + suf) return { base: kb, suffix: suf };
+      }
+    }
+    return _cmhBaseOf(key);
+  }
+  _cmhAllKeys().forEach(function (key) {
+    // The shared registry index is internal ownership metadata - never a document and never a
+    // deletable preference; skip it so it is neither listed nor removable (CMH-STORE-10).
+    if (key === CMH_INDEX_KEY) return;
+    let value = null;
+    try { value = localStorage.getItem(key); } catch (e) { /* ignore */ }
+    const bytes = _cmhKeyBytes(key, value);
+    if (key.indexOf(CMH_BANNER_PREFIX) === 0) { bannerKeys.push({ key: key, bytes: bytes }); return; }
+    if (globalSet.has(key)) { globals.push({ key: key, bytes: bytes }); return; }
+    const split = baseOf(key);
+    const g = ensureGroup(split.base);
+    g.keys.push(key); g.bytes += bytes;
+    if (split.suffix === "::z") g._zValue = value;
+    else if (split.suffix === "") g._baseValue = value;
+  });
+  // Decide ownership, then attribute dismissed-banner keys to an owned document by EXACT base
+  // segment (banner key = PREFIX + COMMENT_KEY + "::" + pageVer + "::" + runtimeVer), matching the
+  // LONGEST owned base first so an overlapping base (k0 vs k0::x0) cannot steal the other's banner.
+  const ownedBases = [];
+  groups.forEach(function (g) { g._owned = _cmhIsOwnedDoc(g, idx); if (g._owned) ownedBases.push(g.base); });
+  ownedBases.sort(function (a, b) { return b.length - a.length; });
+  bannerKeys.forEach(function (bk) {
+    let matched = null;
+    for (const base of ownedBases) {
+      if (bk.key.indexOf(CMH_BANNER_PREFIX + base + "::") === 0) { matched = base; break; }
+    }
+    if (matched) { const g = groups.get(matched); g.keys.push(bk.key); g.bytes += bk.bytes; }
+    else globals.push({ key: bk.key, bytes: bk.bytes });
+  });
+  const docs = [];
+  groups.forEach(function (g) {
+    if (g._owned) {
+      g.current = (g.base === COMMENT_KEY);
+      const meta = idx[g.base] || {};
+      g.label = meta.label || "";
+      g.source = meta.source || "";
+      g.count = _cmhCountComments(g);
+      docs.push(g);
+    } else {
+      // Not a recognized document: only surface keys in the commentable-html namespace (the exact
+      // "commentable-html:" prefix, so a foreign key like "commentable-html-app-state" is untouched).
+      g.keys.forEach(function (k) {
+        if (k.indexOf("commentable-html:") === 0) {
+          let v = null; try { v = localStorage.getItem(k); } catch (e) { /* ignore */ }
+          globals.push({ key: k, bytes: _cmhKeyBytes(k, v) });
+        }
+      });
+    }
+  });
+  docs.sort(function (a, b) { return b.bytes - a.bytes; });
+  return { docs: docs, globals: globals };
+}
+function _cmhDocDisplayName(g) {
+  if (g.source) return _docSourceBasename(g.source);
+  if (g.label) return g.label;
+  const m = /(?:^|[\\/])([^\\/]+)$/.exec(g.base.replace(/^commentable-html:/, ""));
+  return (m && m[1]) || g.base;
+}
+function _cmhDeleteKeys(keys) {
+  let ok = true;
+  keys.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { ok = false; } });
+  return ok;
+}
+
+// ---------- Dialog ----------
+let _cmhStorageOpen = false;
+let _cmhQuotaEpisode = false; // guards against re-opening on every failed save within one episode
+let _cmhConfirmSeq = 0; // unique-id counter for inline-confirm messages (aria-describedby)
+// Re-arm the quota auto-open (called after any successful persistence), so a fresh full -> free ->
+// full cycle re-opens the manager instead of the first episode blocking it forever.
+function _cmhResetQuotaEpisode() { _cmhQuotaEpisode = false; }
+function openStorageManager(opts) {
+  opts = opts || {};
+  if (_cmhStorageOpen) return false;
+  const quota = opts.reason === "quota";
+  if (quota && _cmhQuotaEpisode) return false;
+  const prevFocus = opts.restoreFocus || document.activeElement;
+  let _unregisterEscape = null;
+  const overlay = document.createElement("div");
+  overlay.className = "cm-modal-overlay cm-storage-overlay cm-skip";
+  const box = document.createElement("div");
+  box.className = "cm-modal cm-storage-manager";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", "Manage storage");
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text; // ALWAYS textContent: labels/paths are untrusted
+    return e;
+  }
+
+  function close() {
+    document.removeEventListener("keydown", onKey, true);
+    if (_unregisterEscape) { _unregisterEscape(); _unregisterEscape = null; }
+    overlay.remove();
+    _cmhStorageOpen = false;
+    // The COMMENT quota episode is over once the comment slot's pending write is resolved; re-arm the
+    // auto-open for the next full -> free -> full cycle.
+    if (!_cmhPendingWrites.has(CMH_STORE_KEY)) _cmhQuotaEpisode = false;
+    // If ANY write is still pending (the reviewer closed without freeing enough space), warn with the
+    // recovery action so nothing unsaved - a comment OR a note/checklist/section-review edit that
+    // routed the reviewer here via its own "Manage storage" toast - is lost silently on reload.
+    // cmhRetryPendingWrites re-saves every pending key together, so one recovery action covers all.
+    if (_cmhPendingWrites.size && typeof cmhStorageAction === "function") {
+      let anyKey;
+      _cmhPendingWrites.forEach(function (rec, key) { if (anyKey === undefined) anyKey = key; });
+      const onlyComment = _cmhPendingWrites.size === 1 && _cmhPendingWrites.has(CMH_STORE_KEY);
+      showToast((onlyComment ? "Your comment is" : "Your edits are")
+        + " still not saved - this browser's storage is full. Free space from Manage storage, or use "
+        + "Copy all / Export as Portable to keep it.",
+        { alert: true, duration: 8000, action: cmhStorageAction(anyKey) });
+    }
+    if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
+  }
+  const popup = { isOpen: function () { return _cmhStorageOpen; }, close: close };
+  if (window.__cmhRegisterEscapePopup) _unregisterEscape = window.__cmhRegisterEscapePopup(popup);
+  if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+
+  // Header
+  const head = el("div", "cm-storage-head");
+  const h2 = el("h2", null);
+  h2.innerHTML = CMH_ICON_SVG; // trusted, static
+  h2.appendChild(document.createTextNode(" Manage storage"));
+  head.appendChild(h2);
+  const closeBtn = el("button", "cm-storage-close", "\u00d7");
+  closeBtn.type = "button";
+  closeBtn.title = "Close";
+  closeBtn.setAttribute("aria-label", "Close Manage storage");
+  closeBtn.addEventListener("click", close);
+  head.appendChild(closeBtn);
+  box.appendChild(head);
+
+  const intro = el("p", "cm-storage-intro",
+    "Comments and review data for every commentable-html document open in this browser share one "
+    + "storage budget. Delete another document's data below to free space. Nothing here is uploaded.");
+  box.appendChild(intro);
+
+  const banner = el("div", "cm-storage-banner", "");
+  banner.id = "cmStorageBanner";
+  banner.setAttribute("role", quota ? "alert" : "status");
+  banner.setAttribute("aria-live", quota ? "assertive" : "polite");
+  banner.hidden = true;
+  box.appendChild(banner);
+  // On a quota auto-open the banner explains WHY the dialog appeared; describe the dialog by it so a
+  // screen reader announces the reason when focus enters (a synchronously-mutated role=alert alone is
+  // often missed).
+  if (quota) box.setAttribute("aria-describedby", "cmStorageBanner");
+
+  const totalLine = el("p", "cm-storage-total", "");
+  totalLine.setAttribute("aria-live", "polite");
+  box.appendChild(totalLine);
+
+  const listWrap = el("div", "cm-storage-list");
+  box.appendChild(listWrap);
+
+  const emptyNote = el("div", "cm-storage-empty", "");
+  emptyNote.hidden = true;
+  box.appendChild(emptyNote);
+
+  // Retry any pending (quota-failed) writes after space is freed, regardless of how the manager was
+  // opened, so a manually-opened dialog (or a secondary-writer toast action) also persists the
+  // stashed write. The banner update is quota-only; the retry and the "Saved" confirmation are not.
+  function announceRetry() {
+    const done = (typeof cmhRetryPendingWrites === "function") ? cmhRetryPendingWrites() : [];
+    if (done.length) {
+      showToast("Saved.", { duration: 2500 });
+      if (quota) {
+        banner.className = "cm-storage-banner cm-storage-banner-ok";
+        banner.textContent = "Space freed - your " + done.join(", ") + " was saved.";
+      }
+    }
+    // Re-arm the comment auto-open once the comment slot's pending write is resolved.
+    if (!_cmhPendingWrites.has(CMH_STORE_KEY)) _cmhQuotaEpisode = false;
+  }
+
+  function render(focusSel) {
+    const data = cmhStorageGroups();
+    let total = 0;
+    data.docs.forEach(function (g) { total += g.bytes; });
+    data.globals.forEach(function (x) { total += x.bytes; });
+    totalLine.textContent = "About " + _cmhHumanSize(total) + " used across "
+      + data.docs.length + " document" + (data.docs.length === 1 ? "" : "s")
+      + " (browsers typically allow ~5 MB for local files; the exact limit varies).";
+
+    if (quota) {
+      banner.hidden = false;
+      if (banner.className.indexOf("cm-storage-banner-ok") === -1) {
+        banner.className = "cm-storage-banner cm-storage-banner-warn";
+        banner.textContent = "Storage is full. Delete data from another document to free space - "
+          + "your comment saves automatically once there is room.";
+      }
+    }
+
+    listWrap.textContent = "";
+    const otherDocs = data.docs.filter(function (g) { return !g.current; });
+    data.docs.forEach(function (g) { listWrap.appendChild(rowForDoc(g)); });
+    if (data.globals.length) listWrap.appendChild(rowForGlobals(data.globals));
+
+    // Empty state: nothing reclaimable from OTHER documents. Gate on other-document rows only (not
+    // shared-preference globals): the quota Export/Clear escape hatch must show whenever there is no
+    // other document's data to delete, even if some shared preferences remain (deleting those frees
+    // little). The globals row, if any, still renders above for its own deletion.
+    if (!otherDocs.length) {
+      emptyNote.hidden = false;
+      emptyNote.textContent = "";
+      const p = el("p", null, quota
+        ? "There is no other document's data to delete - this document (or other site data) is using the space. Save your review to a file, then clear this document's comments to free room:"
+        : "No other commentable-html documents have stored data in this browser yet.");
+      emptyNote.appendChild(p);
+      if (quota) {
+        const actions = el("div", "cm-storage-empty-actions");
+        const exp = el("button", "cm-storage-btn", "Export as Portable");
+        exp.type = "button";
+        exp.addEventListener("click", function () {
+          const b = document.getElementById("btnSaveHtmlTop") || document.getElementById("btnSaveHtml");
+          if (b) b.click();
+        });
+        actions.appendChild(exp);
+        actions.appendChild(clearCurrentButton());
+        emptyNote.appendChild(actions);
+      }
+    } else {
+      emptyNote.hidden = true;
+    }
+
+    // Focus management after a re-render (e.g. a row was deleted).
+    let target = null;
+    if (typeof focusSel === "function") target = focusSel(box);
+    else if (focusSel) target = box.querySelector(focusSel);
+    if (!target) target = closeBtn;
+    if (target && typeof target.focus === "function") target.focus();
+  }
+
+  function clearCurrentButton() {
+    const btn = el("button", "cm-storage-btn cm-storage-danger", "Clear all comments");
+    btn.type = "button";
+    btn.setAttribute("aria-label", "Clear all comments for this document");
+    btn.addEventListener("click", function () {
+      inlineConfirm(btn, "Clear all comments and reset tracked widget, checklist, and note changes for this document?", function () {
+        if (typeof performClearAll === "function") performClearAll();
+        // Do NOT drop this document's index entry: it is the CURRENT document (still open and
+        // re-registered on every load), and clearing its comments leaves residual keys (dismissed
+        // banners, and note/checklist sidecars if any). Removing the entry would strip the ownership
+        // proof those residuals need to stay listed/reclaimable from another document (CMH-STORE-10).
+        announceRetry();
+        render();
+        showToast("Comments cleared.", { duration: 2500 });
+      });
+    });
+    return btn;
+  }
+
+  function rowForDoc(g) {
+    const row = el("div", "cm-storage-row" + (g.current ? " cm-storage-current" : ""));
+    const info = el("div", "cm-storage-info");
+    const nameLine = el("div", "cm-storage-name-line");
+    const name = el("span", "cm-storage-name", _cmhDocDisplayName(g));
+    nameLine.appendChild(name);
+    if (g.current) nameLine.appendChild(el("span", "cm-storage-badge", "This document"));
+    info.appendChild(nameLine);
+    if (g.source) info.appendChild(el("div", "cm-storage-source", g.source));
+    const meta = el("div", "cm-storage-meta",
+      (g.count == null ? "?" : g.count) + " comment" + (g.count === 1 ? "" : "s") + " \u00b7 " + _cmhHumanSize(g.bytes));
+    info.appendChild(meta);
+    row.appendChild(info);
+
+    const actions = el("div", "cm-storage-actions");
+    if (g.current) {
+      actions.appendChild(clearCurrentButton());
+    } else {
+      const del = el("button", "cm-storage-btn cm-storage-danger", "Delete");
+      del.type = "button";
+      del.setAttribute("aria-label", "Delete stored data for " + _cmhDocDisplayName(g));
+      del.addEventListener("click", function () {
+        inlineConfirm(del, "Delete this document's data?", function () {
+          // Remember this row's position among the other-document rows so focus lands near it (not
+          // jumping to the top) after the list re-renders.
+          const others = Array.prototype.slice.call(
+            box.querySelectorAll(".cm-storage-row:not(.cm-storage-current):not(.cm-storage-global)"));
+          const idx = others.findIndex(function (r) { return r.querySelector(".cm-storage-confirm"); });
+          _cmhDeleteKeys(g.keys);
+          _cmhRemoveIndexEntry(g.base);
+          announceRetry();
+          render(function (b) {
+            const dels = b.querySelectorAll(
+              ".cm-storage-row:not(.cm-storage-current):not(.cm-storage-global) .cm-storage-danger");
+            if (!dels.length) return null;
+            return dels[Math.min(Math.max(idx, 0), dels.length - 1)] || null;
+          });
+        });
+      });
+      actions.appendChild(del);
+    }
+    row.appendChild(actions);
+    return row;
+  }
+
+  function rowForGlobals(globals) {
+    let bytes = 0;
+    const keys = globals.map(function (x) { bytes += x.bytes; return x.key; });
+    const row = el("div", "cm-storage-row cm-storage-global");
+    const info = el("div", "cm-storage-info");
+    info.appendChild(el("div", "cm-storage-name", "Other / shared data"));
+    info.appendChild(el("div", "cm-storage-source", "Preferences and dismissed banners not tied to one document"));
+    info.appendChild(el("div", "cm-storage-meta", globals.length + " item" + (globals.length === 1 ? "" : "s") + " \u00b7 " + _cmhHumanSize(bytes)));
+    row.appendChild(info);
+    const actions = el("div", "cm-storage-actions");
+    const del = el("button", "cm-storage-btn", "Delete");
+    del.type = "button";
+    del.setAttribute("aria-label", "Delete shared preferences and dismissed banners");
+    del.addEventListener("click", function () {
+      inlineConfirm(del, "Delete shared preferences?", function () {
+        _cmhDeleteKeys(keys);
+        announceRetry();
+        render();
+      });
+    });
+    actions.appendChild(del);
+    row.appendChild(actions);
+    return row;
+  }
+
+  // Inline row confirmation: swap the trigger for Confirm/Cancel in place (avoids nesting a second
+  // modal + focus-trap conflict). Focus moves to Confirm; Cancel restores and refocuses the trigger.
+  function inlineConfirm(triggerBtn, message, onConfirm) {
+    const parent = triggerBtn.parentNode;
+    if (!parent) return;
+    const wrap = el("div", "cm-storage-confirm");
+    const msg = el("span", "cm-storage-confirm-msg", message);
+    const msgId = "cmStorageConfirmMsg" + (++_cmhConfirmSeq);
+    msg.id = msgId;
+    wrap.appendChild(msg);
+    const yes = el("button", "cm-storage-btn cm-storage-danger", "Confirm");
+    yes.type = "button";
+    yes.setAttribute("aria-describedby", msgId); // announce the full warning alongside the label
+    const trigLabel = triggerBtn.getAttribute("aria-label");
+    if (trigLabel) yes.setAttribute("aria-label", "Confirm - " + trigLabel);
+    const no = el("button", "cm-storage-btn", "Cancel");
+    no.type = "button";
+    if (trigLabel) no.setAttribute("aria-label", "Cancel - " + trigLabel);
+    wrap.appendChild(yes);
+    wrap.appendChild(no);
+    parent.replaceChild(wrap, triggerBtn);
+    no.addEventListener("click", function () {
+      parent.replaceChild(triggerBtn, wrap);
+      triggerBtn.focus();
+    });
+    yes.addEventListener("click", function () { onConfirm(); });
+    yes.focus();
+  }
+
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (e.key === "Tab") {
+      const f = Array.prototype.slice.call(box.querySelectorAll("button, a[href], input"))
+        .filter(function (n) { return n.offsetParent !== null || n === document.activeElement; });
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1], active = document.activeElement;
+      if (e.shiftKey) { if (active === first || !box.contains(active)) { e.preventDefault(); last.focus(); } }
+      else { if (active === last || !box.contains(active)) { e.preventDefault(); first.focus(); } }
+    }
+  }
+  overlay.addEventListener("mousedown", function (e) { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", onKey, true);
+  render();
+  // Mark open only AFTER the setup+first render succeed, so a throw mid-build can never leave the
+  // manager permanently un-openable or the quota episode latched (it just returns falsy and the
+  // caller falls back to a toast).
+  _cmhStorageOpen = true;
+  if (quota) _cmhQuotaEpisode = true;
+  closeBtn.focus();
+  return true;
+}
+
+// Wire the toolbar/sidebar Manage-storage menu items. Both ids are in the validator's REQUIRED_IDS
+// (the current shell always emits them exactly once), so the null-guard here is defensive only.
+// Focus is restored to the still-visible menu button (the clicked item lives in a menu that closes),
+// mirroring the help dialog.
+(function () {
+  const wiring = [
+    { id: "btnStorageTop", menu: "toolbarMenu", restore: "btnToolbarMenu" },
+    { id: "btnStorage", menu: "sidebarExportMenu", restore: "btnSidebarExportMenu" },
+  ];
+  wiring.forEach(function (w) {
+    const b = document.getElementById(w.id);
+    if (!b) return;
+    b.addEventListener("click", function () {
+      const menu = document.getElementById(w.menu);
+      if (menu) menu.hidden = true;
+      openStorageManager({ restoreFocus: document.getElementById(w.restore) || undefined });
+    });
+  });
+})();
+
+// Test hook (follows the existing __cmh* baked-hook convention): lets specs exercise the codec and
+// the grouping directly, and read/write the current document's persisted comments through the modern
+// slot (so a spec that injects/patches comments stays in sync with where the runtime loads from).
+// Harmless read-only helpers plus a store writer; the validator does not scan window globals.
+window.__cmhStorageCodec = {
+  encode: cmhEncodeStore,
+  decode: cmhDecodeStore,
+  groups: cmhStorageGroups,
+  open: openStorageManager,
+  read: function () { return cmhLoadStored().arr; },
+  write: function (arr) {
+    localStorage.setItem(CMH_STORE_KEY, cmhEncodeStore(JSON.stringify(arr)));
+    try { localStorage.removeItem(COMMENT_KEY); } catch (e) { /* best-effort */ }
+  },
+};
+
+// Register this document in the shared index on load so the manager can list it by name even before
+// the first comment is saved.
+try { cmhRegisterDocument(); } catch (e) { /* best-effort */ }
 /* ---------- Export to Markdown (deterministic content -> Markdown) ----------
    Walks #commentRoot structure (never rendered layout) and maps each block kind to one
    fixed Markdown construct, so the output is byte-stable and idempotent. cm-skip subtrees
@@ -7424,6 +8476,25 @@ function showConfirm(opts) {
   });
 }
 let _clearAllBusy = false;
+// The post-confirmation clear-all steps, factored out so the storage manager's current-document
+// "Clear all comments" can reuse them after its own inline confirm (without nesting showConfirm).
+function performClearAll() {
+  // Close any open edit composer first: after the array is cleared its Save would find nothing
+  // and the common tail would close it silently, losing the reviewer's in-progress edit.
+  if (typeof openEditComposers !== "undefined") {
+    Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
+  }
+  const tombstoneIds = comments.map(c => c.id);
+  const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
+  comments.forEach(c => removeHighlight(c));
+  comments = [];
+  const commentsOk = saveComments();
+  _ensureTombstoneEmbedded(tombstoneIds, tombstoneOk, commentsOk);
+  if (typeof resetAllChecklists === "function") resetAllChecklists();
+  if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
+  if (typeof resetAllNotes === "function") resetAllNotes();
+  renderComments();
+}
 document.getElementById("btnClearAll").addEventListener("click", async () => {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
@@ -7440,21 +8511,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
       danger: true,
     });
     if (!ok) return;
-    // Close any open edit composer first: after the array is cleared its Save would find nothing
-    // and the common tail would close it silently, losing the reviewer's in-progress edit.
-    if (typeof openEditComposers !== "undefined") {
-      Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
-    }
-    const tombstoneIds = comments.map(c => c.id);
-    const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
-    comments.forEach(c => removeHighlight(c));
-    comments = [];
-    const commentsOk = saveComments();
-    _ensureTombstoneEmbedded(tombstoneIds, tombstoneOk, commentsOk);
-    if (typeof resetAllChecklists === "function") resetAllChecklists();
-    if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
-    if (typeof resetAllNotes === "function") resetAllNotes();
-    renderComments();
+    performClearAll();
   } finally {
     _clearAllBusy = false;
   }
@@ -8748,6 +9805,13 @@ function showHelp(restoreEl) {
           '<li>Images and diff lines are focusable with <kbd>Tab</kbd>; press <kbd>Enter</kbd> to reveal their <em>Add Comment</em> button.</li>' +
           '<li>Controls carry hover and focus tooltips; this dialog traps focus and restores it to the control that opened it.</li>' +
         '</ul>') +
+      T('Managing storage',
+        '<p>Everything you review is saved in this browser&#39;s storage, which every commentable-html document you open shares. If you review many documents from your file system, that space can fill up.</p>' +
+        '<ul>' +
+          '<li><strong>Manage storage</strong> (in the overflow <kbd>...</kbd> menu, or the sidebar&#39;s <em>Export</em> menu) lists every document&#39;s stored data with its size, and lets you delete another document&#39;s data to free space. Your own comments are never uploaded - this only clears local browser storage.</li>' +
+          '<li>If a comment cannot be saved because storage is full, the <strong>Manage storage</strong> window opens automatically; delete another document&#39;s data and your comment is saved.</li>' +
+          '<li>Comments are stored compressed, so far more reviews fit before the space runs out.</li>' +
+        '</ul>') +
       T('Self-contained and privacy',
         '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
         '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> to inline the vendored rich-content libraries into a zero-network file.</p>') +
@@ -9820,8 +10884,7 @@ function _deletedReviewIds() {
   } catch (e) { return new Set(); }
 }
 function _saveDeletedReviewIds(set) {
-  try { localStorage.setItem(REVIEW_DELETED_KEY, JSON.stringify([...set])); return true; }
-  catch (e) { return false; }
+  return cmhTrySetItem(REVIEW_DELETED_KEY, function () { return JSON.stringify([...set]); }, "Review state");
 }
 function loadReviewMarkers() {
   let local = Object.create(null);
@@ -9838,8 +10901,9 @@ function loadReviewMarkers() {
   reviewMarkers = Object.assign(Object.create(null), embedded, local);
 }
 function saveReviewMarkers() {
-  try { localStorage.setItem(REVIEW_KEY, JSON.stringify(reviewMarkers)); return true; }
-  catch (e) { return false; }
+  // The section-review callers below own the user-facing message (they add the "Manage storage"
+  // action via cmhStorageAction), so this low-level writer does not toast - avoiding a double toast.
+  return cmhTrySetItem(REVIEW_KEY, function () { return JSON.stringify(reviewMarkers); }, "Section review state");
 }
 // A heading's own text with cm-skip chrome (the injected badge/caret) removed, so the baked
 // headingText matches the Python tool's value and is not polluted by "Mark reviewed" etc.
@@ -9866,7 +10930,8 @@ function markSectionReviewed(heading) {
   // full/blocked), matching clearSectionReviewed()'s un-review warning and saveComments()'s alert.
   if (!savedOk && typeof showToast === "function") {
     showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
-      + "may not stick on reload. Use Export as Portable to keep the change.", { alert: true, duration: 8000 });
+      + "may not stick on reload. Use Export as Portable to keep the change.",
+      { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
 }
@@ -9887,7 +10952,8 @@ function clearSectionReviewed(heading) {
   // reload; warn the reader (storage full/blocked), matching saveComments()'s persistence alert.
   if (wasBaked && (!tombOk || !savedOk) && typeof showToast === "function") {
     showToast("Could not persist un-reviewing this section (browser storage full or blocked) - it "
-      + "may come back on reload. Use Export as Portable to keep the change.", { alert: true, duration: 8000 });
+      + "may come back on reload. Use Export as Portable to keep the change.",
+      { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_DELETED_KEY) || cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
 }
@@ -10029,6 +11095,14 @@ function _applyReviewStateToHtml(html) {
 }
 /* ---------- Toast ---------- */
 let toastTimer = null;
+function hideToast() {
+  toast.classList.remove("show");
+  // Remove any inline action button when the toast is dismissed/times out so an invisible, faded-out
+  // control cannot intercept clicks or receive Tab focus while it lingers in the DOM until the next
+  // toast replaces the content.
+  const b = toast.querySelector(".cm-toast-action");
+  if (b) b.remove();
+}
 function showToast(msg, opts) {
   opts = opts || {};
   // Set the live-region role/politeness BEFORE mutating the text so the announcement fires. The
@@ -10037,10 +11111,28 @@ function showToast(msg, opts) {
   // not announced by most screen readers. Errors upgrade to an assertive alert.
   if (opts.alert) { toast.setAttribute("role", "alert"); toast.setAttribute("aria-live", "assertive"); }
   else { toast.setAttribute("role", "status"); toast.setAttribute("aria-live", "polite"); }
-  toast.textContent = msg;
+  toast.textContent = "";
+  const span = document.createElement("span");
+  span.textContent = msg;
+  toast.appendChild(span);
+  // Optional inline action button (e.g. "Manage storage" on a storage-full toast). Clicking it
+  // dismisses the toast and runs the handler.
+  if (opts.action && opts.action.label && typeof opts.action.onClick === "function") {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cm-toast-action";
+    btn.textContent = opts.action.label;
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (toastTimer) clearTimeout(toastTimer);
+      hideToast();
+      opts.action.onClick();
+    });
+    toast.appendChild(btn);
+  }
   toast.classList.add("show");
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove("show"), opts.duration || 3000);
+  toastTimer = setTimeout(hideToast, opts.duration || 3000);
 }
 
 /* ---------- Handled-id pruning + startup ---------- */
@@ -10286,6 +11378,11 @@ setupNotesLayer();
 applyPersistedTableSorts();
 backfillContext();
 restoreHighlights();
+// Re-enable comment persistence only AFTER every automatic startup step that may saveComments()
+// (pruneHandled, backfillContext, restoreHighlights): if the store loaded unreadable, those writes
+// were suppressed so the recoverable bytes are left intact, and from here only a real user edit
+// replaces them (honoring the "editing a comment will replace them" notice).
+_cmhStoreUnreadable = false;
 setupMermaidLayer();
 setupImageLayer();
 setupLinkLayer();

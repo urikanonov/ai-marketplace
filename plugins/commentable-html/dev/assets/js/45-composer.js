@@ -616,10 +616,23 @@ function saveComposerElement(el) {
     }
     window.getSelection().removeAllRanges();
   }
-  saveComments();
+  const saved = saveComments();
   renderComments();
   closeComposerElement(el);
   openSidebar();
+  // A quota failure on this explicit Save opens the storage manager so the reviewer can free space
+  // and the pending write is retried. Deferred to a microtask so it runs AFTER closeComposerElement
+  // has moved focus. If the manager cannot open (already open, or a prior episode is unresolved),
+  // fall back to a toast with the recovery action so the failure is never silent.
+  if (!saved && _cmhLastSaveQuota) {
+    queueMicrotask(function () {
+      const opened = (typeof openStorageManager === "function") && openStorageManager({ reason: "quota" });
+      if (!opened) {
+        showToast("Comment not saved - this browser's storage is full. Free space from Manage storage.",
+          { alert: true, duration: 8000, action: (typeof cmhStorageAction === "function") ? cmhStorageAction(CMH_STORE_KEY) : null });
+      }
+    });
+  }
 }
 
 

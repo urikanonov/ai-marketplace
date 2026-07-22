@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.211.0] - 2026-07-22
+
+### Added
+
+- Manage storage: a near-full-screen dialog (from the overflow / sidebar menu) that lists every
+  commentable-html document's data stored in this browser, with a human-readable size and comment
+  count, and lets you delete another document's data to reclaim space. On `file://` all documents
+  share one browser storage budget, so this is how you free room when it fills up. The current
+  document is marked and offers "Clear all comments" instead of Delete; deletion is scoped to
+  commentable-html's own keys, so unrelated site data is never touched. (CMH-STORE-04, CMH-STORE-05,
+  CMH-STORE-06, CMH-STORE-08)
+- If saving a comment fails because storage is full, the Manage storage dialog now opens
+  automatically; freeing space retries the save so the comment is not lost. Notes, checklists, and
+  section-review saves that hit the same limit surface a "Manage storage" action on their warning
+  toast, and closing the dialog while any save is still pending re-offers that recovery action so
+  nothing is lost silently. (CMH-STORE-07)
+
+### Changed
+
+- Comments are now stored compressed (lz-string, packed into UTF-16) when that is smaller than plain
+  JSON, so far more documents' reviews fit in the shared browser storage. The format is backward
+  compatible: documents last saved by an older version still load and are migrated on the next save,
+  and a stored value that cannot be read (a corrupt or newer-version format) is left untouched with a
+  recovery notice rather than being overwritten. (CMH-STORE-01, CMH-STORE-02, CMH-STORE-03)
+
 ## [1.210.0] - 2026-07-22
 
 ### Added

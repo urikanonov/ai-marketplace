@@ -293,6 +293,25 @@ function showConfirm(opts) {
   });
 }
 let _clearAllBusy = false;
+// The post-confirmation clear-all steps, factored out so the storage manager's current-document
+// "Clear all comments" can reuse them after its own inline confirm (without nesting showConfirm).
+function performClearAll() {
+  // Close any open edit composer first: after the array is cleared its Save would find nothing
+  // and the common tail would close it silently, losing the reviewer's in-progress edit.
+  if (typeof openEditComposers !== "undefined") {
+    Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
+  }
+  const tombstoneIds = comments.map(c => c.id);
+  const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
+  comments.forEach(c => removeHighlight(c));
+  comments = [];
+  const commentsOk = saveComments();
+  _ensureTombstoneEmbedded(tombstoneIds, tombstoneOk, commentsOk);
+  if (typeof resetAllChecklists === "function") resetAllChecklists();
+  if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
+  if (typeof resetAllNotes === "function") resetAllNotes();
+  renderComments();
+}
 document.getElementById("btnClearAll").addEventListener("click", async () => {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
@@ -309,21 +328,7 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
       danger: true,
     });
     if (!ok) return;
-    // Close any open edit composer first: after the array is cleared its Save would find nothing
-    // and the common tail would close it silently, losing the reviewer's in-progress edit.
-    if (typeof openEditComposers !== "undefined") {
-      Array.from(openEditComposers.values()).forEach((elc) => closeComposerElement(elc));
-    }
-    const tombstoneIds = comments.map(c => c.id);
-    const tombstoneOk = _tombstoneEmbedded(tombstoneIds);
-    comments.forEach(c => removeHighlight(c));
-    comments = [];
-    const commentsOk = saveComments();
-    _ensureTombstoneEmbedded(tombstoneIds, tombstoneOk, commentsOk);
-    if (typeof resetAllChecklists === "function") resetAllChecklists();
-    if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
-    if (typeof resetAllNotes === "function") resetAllNotes();
-    renderComments();
+    performClearAll();
   } finally {
     _clearAllBusy = false;
   }

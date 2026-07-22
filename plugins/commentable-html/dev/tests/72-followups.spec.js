@@ -127,8 +127,7 @@ test("sidebar context preview inserts separators at block boundaries (CMH-CTX-01
     await ready(page);
     await addTextComment(page, "#t", "context separator check");
     const before = await page.evaluate(() => {
-      const key = (document.getElementById("commentRoot") || document.body).dataset.commentKey;
-      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      const arr = window.__cmhStorageCodec.read();
       return (arr[0] && arr[0].before) || "";
     });
     expect(before, "adjacent block texts are not glued into a run-on").not.toContain("18open");

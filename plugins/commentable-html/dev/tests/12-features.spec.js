@@ -391,11 +391,9 @@ test.describe("rejection paths", () => {
     // that would nest), as a hand-crafted / legacy localStorage array would, then reload so
     // restoreHighlights runs its sweep.
     await page.evaluate((f) => {
-      const root = document.getElementById("commentRoot") || document.body;
-      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
-      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      const arr = window.__cmhStorageCodec.read();
       arr.push({ ...f, id: "coverlap01", start: f.start + 1, end: f.end, note: "second overlapping" });
-      localStorage.setItem(key, JSON.stringify(arr));
+      window.__cmhStorageCodec.write(arr);
     }, first);
     await page.reload();
     await ready(page);
@@ -529,10 +527,9 @@ test.describe("rejection paths", () => {
     await addTextComment(page, "#commentRoot section p", "will lose its anchor");
     // Corrupt the stored offsets so restore-from-offsets cannot re-anchor.
     await page.evaluate(() => {
-      const k = document.getElementById("commentRoot").dataset.commentKey;
-      const arr = JSON.parse(localStorage.getItem(k) || "[]");
+      const arr = window.__cmhStorageCodec.read();
       arr[0].start = 99999999; arr[0].end = 99999999 + 5;
-      localStorage.setItem(k, JSON.stringify(arr));
+      window.__cmhStorageCodec.write(arr);
     });
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
@@ -621,7 +618,7 @@ test.describe("exports preserve comments", () => {
     // export must strip. Save from the sidebar's Export plain.
     const keyBefore = await page.evaluate(() => {
       const k = document.getElementById("commentRoot").dataset.commentKey;
-      return localStorage.getItem(k);
+      return localStorage.getItem(k + "::z");
     });
     const [dl] = await Promise.all([
       page.waitForEvent("download"),
@@ -636,7 +633,7 @@ test.describe("exports preserve comments", () => {
     // The open document's own storage is untouched by exporting.
     const keyAfter = await page.evaluate(() => {
       const k = document.getElementById("commentRoot").dataset.commentKey;
-      return localStorage.getItem(k);
+      return localStorage.getItem(k + "::z");
     });
     expect(keyAfter).toBe(keyBefore);
   });

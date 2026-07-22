@@ -38,15 +38,11 @@ function _noteSave() {
     const cur = _noteCurrent(note);
     if (cur !== note.baseline) out[note.id] = cur;
   });
-  try {
-    if (Object.keys(out).length) localStorage.setItem(CMH_NOTE_KEY, JSON.stringify(out));
-    else localStorage.removeItem(CMH_NOTE_KEY);
-    return true;
-  } catch (e) {
-    showToast("Note edits NOT saved to this browser (storage full or blocked) - they will be lost on reload.",
-      { alert: true, duration: 8000 });
-    return false;
-  }
+  const ok = cmhTrySetItem(CMH_NOTE_KEY, function () {
+    return Object.keys(out).length ? JSON.stringify(out) : null;
+  }, "Note edits");
+  if (!ok) cmhStorageFullToast(CMH_NOTE_KEY, "Note edits");
+  return ok;
 }
 // Changed notes only, one record per note (mirrors checklistChanges()).
 function notesChanges() {

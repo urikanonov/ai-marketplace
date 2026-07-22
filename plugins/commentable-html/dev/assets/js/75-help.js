@@ -148,6 +148,13 @@ function showHelp(restoreEl) {
           '<li>Images and diff lines are focusable with <kbd>Tab</kbd>; press <kbd>Enter</kbd> to reveal their <em>Add Comment</em> button.</li>' +
           '<li>Controls carry hover and focus tooltips; this dialog traps focus and restores it to the control that opened it.</li>' +
         '</ul>') +
+      T('Managing storage',
+        '<p>Everything you review is saved in this browser&#39;s storage, which every commentable-html document you open shares. If you review many documents from your file system, that space can fill up.</p>' +
+        '<ul>' +
+          '<li><strong>Manage storage</strong> (in the overflow <kbd>...</kbd> menu, or the sidebar&#39;s <em>Export</em> menu) lists every document&#39;s stored data with its size, and lets you delete another document&#39;s data to free space. Your own comments are never uploaded - this only clears local browser storage.</li>' +
+          '<li>If a comment cannot be saved because storage is full, the <strong>Manage storage</strong> window opens automatically; delete another document&#39;s data and your comment is saved.</li>' +
+          '<li>Comments are stored compressed, so far more reviews fit before the space runs out.</li>' +
+        '</ul>') +
       T('Self-contained and privacy',
         '<p>Your comments are stored in this browser&#39;s <strong>localStorage</strong>, private to you: nothing is uploaded, there is no account, and no server ever sees them. They persist across reloads until you clear them, and they leave this browser only when you choose to - when you click <strong>Copy all</strong> or run an export.</p>' +
         '<p>Whether the review layer itself travels inside the file depends on the mode shown in the panel bubble: a <strong>Portable</strong> file has the review layer and your comments embedded, so it is safe to send as-is; a <strong>Not portable</strong> file references small companion resources instead. Use <em>Export as Portable</em> to bundle everything into one file. Optional host features (mermaid, Chart.js) can load from a CDN; if they cannot, mermaid stays readable source text and charts stay a blank canvas. Use <em>Export Offline</em> to inline the vendored rich-content libraries into a zero-network file.</p>') +

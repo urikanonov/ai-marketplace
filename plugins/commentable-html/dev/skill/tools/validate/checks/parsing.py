@@ -26,6 +26,7 @@ REQUIRED_IDS = [
     "btnToolbarMenu", "toolbarMenu",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
+    "btnStorage", "btnStorageTop",
     "headingAddBtn", "widgetAddBtn", "menuDocComment", "menuSlideComment",
     "cmIdentity", "cmIdentityName", "btnEditIdentity", "cmIdentityEdit",
     "cmIdentityInput", "btnSaveIdentity", "btnCancelIdentity",

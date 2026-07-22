@@ -286,9 +286,7 @@ test.describe("copy buttons + sortable tables", () => {
     // Rejected: not-saved toast, no second comment, no nested mark.
     await expect(page.locator("#toast")).toContainText("Comment was not saved");
     const stored = await page.evaluate(() => {
-      const root = document.getElementById("commentRoot") || document.body;
-      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
-      return JSON.parse(localStorage.getItem(key) || "[]");
+      return window.__cmhStorageCodec.read();
     });
     expect(stored).toHaveLength(1);
     const nested = await page.evaluate(() => document.querySelectorAll("mark.cm-hl mark.cm-hl").length);
@@ -324,9 +322,7 @@ test.describe("copy buttons + sortable tables", () => {
     await reqHeader.locator(".cmh-sort-ctrl").click();
     expect(await serviceOrder(page)).toEqual(["auth", "gateway", "catalog"]);
     const afterSort = await page.evaluate((id) => {
-      const root = document.getElementById("commentRoot") || document.body;
-      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
-      return JSON.parse(localStorage.getItem(key) || "[]").find((c) => c.id === id);
+      return window.__cmhStorageCodec.read().find((c) => c.id === id);
     }, cid);
     expect(afterSort).toBeTruthy();
     expect(afterSort.start).toBeUndefined();
@@ -336,9 +332,7 @@ test.describe("copy buttons + sortable tables", () => {
     await reqHeader.locator(".cmh-sort-ctrl").click();
     expect(await serviceOrder(page)).toEqual(["gateway", "auth", "catalog"]);
     const afterUnsort = await page.evaluate((id) => {
-      const root = document.getElementById("commentRoot") || document.body;
-      const key = root.dataset.commentKey || ("commentable-html:" + location.pathname);
-      return JSON.parse(localStorage.getItem(key) || "[]").find((c) => c.id === id);
+      return window.__cmhStorageCodec.read().find((c) => c.id === id);
     }, cid);
     expect(afterUnsort.start).toEqual(expect.any(Number));
     expect(afterUnsort.end).toEqual(expect.any(Number));

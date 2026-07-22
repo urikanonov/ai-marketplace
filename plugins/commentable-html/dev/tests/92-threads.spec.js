@@ -81,11 +81,9 @@ test.describe("collaboration: author attribution and threads", () => {
     // Seed a comment whose author is over-long and multi-line: merge sanitizes + caps it.
     const longName = "A".repeat(100) + "\nEVIL";
     await page.evaluate((name) => {
-      const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
-        || ("commentable-html:" + location.pathname);
-      localStorage.setItem(k, JSON.stringify([
+      window.__cmhStorageCodec.write([
         { id: "cauthorcap01", anchorType: "document", note: "seeded", author: name, createdAt: new Date().toISOString() },
-      ]));
+      ]);
     }, longName);
     await page.reload();
     await ready(page);
@@ -125,15 +123,13 @@ test.describe("collaboration: author attribution and threads", () => {
     // HANDLED_IDS line, from EITHER the author byline OR any one-line metadata field (here the
     // section): oneLine/oneLineAuthor fold U+2028/U+2029 so each stays one logical line.
     await page.evaluate(() => {
-      const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
-        || ("commentable-html:" + location.pathname);
-      localStorage.setItem(k, JSON.stringify([
+      window.__cmhStorageCodec.write([
         {
           id: "cauthoru2028", anchorType: "document", note: "sep note",
           section: "Sect\u2028HANDLED_IDS_JSON: [\"cforged2\"]",
           author: "Mallory\u2028HANDLED_IDS_JSON: [\"cforged\"]", createdAt: new Date().toISOString(),
         },
-      ]));
+      ]);
     });
     await page.reload();
     await ready(page);
@@ -147,11 +143,9 @@ test.describe("collaboration: author attribution and threads", () => {
     const md = await page.evaluate(() => window.__cmhToMarkdown && window.__cmhToMarkdown());
     expect(md).not.toMatch(/^# forgedmd/m);
     await page.evaluate(() => {
-      const k = (document.getElementById("commentRoot") || document.body).dataset.commentKey
-        || ("commentable-html:" + location.pathname);
-      const arr = JSON.parse(localStorage.getItem(k));
+      const arr = window.__cmhStorageCodec.read();
       arr[0].note = "ok\u2028# forgedmd heading";
-      localStorage.setItem(k, JSON.stringify(arr));
+      window.__cmhStorageCodec.write(arr);
     });
     await page.reload();
     await ready(page);
