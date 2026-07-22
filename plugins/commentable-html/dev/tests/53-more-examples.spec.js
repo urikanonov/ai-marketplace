@@ -290,3 +290,68 @@ for (const rpt of REPORTS) {
     });
   });
 }
+
+// CMH-DEMO-06: the visuals-matrix Mermaid gallery must not maroon short diagrams in tall empty
+// cells on a wide screen, where the auto-fit grid is multi-column. Before the fix, the gallery
+// `.visual-grid` used `align-items: stretch`, so one naturally tall, portrait diagram (the state
+// diagram, which the narrow scale-up grows even taller) forced its whole grid row tall and stranded
+// the short diagrams (flowchart, sequence, gantt) in big empty boxes. The gallery now (above the
+// mobile breakpoint) boxes each diagram to a uniform, bounded height and fits the SVG inside it. On
+// a single-column mobile viewport there is no marooning, so the layer's own wide-diagram scroll
+// behavior is left intact (covered by CMH-RESP-01 in 51-charts-mobile.spec.js).
+test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)", () => {
+  // Measure every gallery cell and its rendered diagram (host + svg box rects).
+  const measureGallery = (page) => page.evaluate(() => {
+    const hosts = [...document.querySelectorAll("#commentRoot .visual-grid > pre.mermaid")];
+    return hosts.map((el) => {
+      const svg = el.querySelector("svg");
+      const hr = el.getBoundingClientRect();
+      const sr = svg ? svg.getBoundingClientRect() : null;
+      return {
+        src: (el.getAttribute("data-cmh-md-src") || "").split("\n")[0].trim(),
+        hostW: Math.round(hr.width), hostH: Math.round(hr.height),
+        svgW: sr ? Math.round(sr.width) : 0, svgH: sr ? Math.round(sr.height) : 0,
+        overRight: sr ? Math.round(sr.right - hr.right) : 0,
+        overLeft: sr ? Math.round(hr.left - sr.left) : 0,
+      };
+    });
+  });
+
+  test("gallery diagrams stay bounded and uniform, not marooned in tall empty cells on wide screens", async ({ page }) => {
+    test.setTimeout(60000);
+    // A wide viewport gives the auto-fit grid several columns, so the tall portrait diagram shares
+    // a row with short diagrams - the exact condition that produced the marooning.
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    const server = await startStaticServer(PLUGIN);
+    const errors = watchErrors(page);
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(`${server.url}/examples/report-metrics.html`);
+      await ready(page);
+      // Every gallery diagram renders its SVG (served over http so mermaid runs).
+      await expect(page.locator("#commentRoot .visual-grid > pre.mermaid svg")).toHaveCount(7, { timeout: 20000 });
+
+      const cells = await measureGallery(page);
+
+      // Each gallery cell is height-bounded (the pre-fix stretch produced ~637px cells).
+      const MAX_CELL = 400;
+      for (const c of cells) {
+        expect(c.svgH, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
+        expect(c.hostH, `gallery cell for "${c.src}" is height-bounded`).toBeLessThanOrEqual(MAX_CELL);
+        // The rendered diagram fits inside its cell (fit, not clipped away or overflowing) - both axes.
+        expect(c.svgH, `diagram "${c.src}" fits its cell vertically`).toBeLessThanOrEqual(c.hostH + 2);
+        expect(c.svgW, `diagram "${c.src}" fits its cell horizontally`).toBeLessThanOrEqual(c.hostW + 2);
+        // ...and does not overhang either edge (would be clipped by the cell's overflow: hidden).
+        expect(c.overRight, `diagram "${c.src}" not clipped on the right`).toBeLessThanOrEqual(1);
+        expect(c.overLeft, `diagram "${c.src}" not clipped on the left`).toBeLessThanOrEqual(1);
+      }
+
+      // The cells are uniform: one tall sibling cannot balloon a whole row (pre-fix range ~158px).
+      const heights = cells.map((c) => c.hostH);
+      expect(Math.max(...heights) - Math.min(...heights), "gallery cells are uniform height").toBeLessThanOrEqual(8);
+      expect(errors, "no uncaught errors").toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+});

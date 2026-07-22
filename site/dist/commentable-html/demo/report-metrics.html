@@ -3374,8 +3374,24 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
 </style>
 
 <style>
-#commentRoot .visual-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: stretch; }
+#commentRoot .visual-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: start; }
 #commentRoot .visual-grid > pre.mermaid, #commentRoot .visual-grid > figure { margin: 0; }
+@media screen and (min-width: 481px) {
+  /* Box each gallery diagram to a uniform, bounded height and fit the SVG inside it (centered), so one
+     naturally tall/portrait diagram (e.g. the state diagram, which the layer narrow scale-up grows even
+     taller) never forces its grid row tall and maroons the short diagrams in big empty boxes. Overrides
+     the layer narrow-scale-up width rule inside the gallery only. Applied only above the mobile
+     breakpoint: at <=480px the grid is a single column (no marooning), so the layer's own behavior
+     (wide diagrams scroll inside their box, CMH-RESP-01/09) is left untouched. Screen-scoped so print
+     keeps the layer's natural single-column stacking. */
+  #commentRoot .visual-grid > pre.mermaid {
+    display: flex; align-items: center; justify-content: center;
+    height: 300px; overflow: hidden; box-sizing: border-box;
+  }
+  #commentRoot .visual-grid > pre.mermaid.cm-mermaid-host svg {
+    width: auto !important; max-width: 100% !important; max-height: 100% !important; height: auto !important;
+  }
+}
 #commentRoot .visual-chip-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }
 #commentRoot .visual-chip-list span { border: 1px solid var(--cp-border); border-radius: 999px; background: var(--cp-surface-soft); color: var(--cp-text-muted); padding: 0.2rem 0.55rem; font-size: 0.82rem; }
 #commentRoot .metric-svg { width: 100%; max-width: 620px; height: auto; display: block; }
