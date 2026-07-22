@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.212.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.213.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,12 +456,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.212.0] - 2026-07-22</h3></div>
+            <div class="rel-head"><h3>[1.213.0] - 2026-07-22</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Guarded sibling-tool imports in the shipped tools are never SILENT anymore. The #584 root cause was a deferred <code>import doc_stamp</code> swallowed by <code>except (OSError, ImportError): pass</code>, so a broken sibling import degraded a whole feature with no signal. Now every guarded import fallback across the tools (<code>new_document.py</code>, <code>deck_scaffold.py</code>, <code>retrofit.py</code>, <code>upgrade.py</code>, <code>deck_theme.py</code>, <code>deck_validate.py</code>, <code>chart_block.py</code>, <code>highlighting.py</code>, and <code>validate.py</code>&#x27;s <code>cmhval</code> and validated-stamp guards) emits a one-line stderr warning via a new <code>_toolpath.warn_missing_tool</code> (or unconditionally re-raises / recovers by re-importing), so a degraded run is visible. A guard test (<code>test_tool_imports.py</code>) additionally proves every guarded sibling import RESOLVES in the shipped layout (a missing/renamed sibling fails CI loudly) and structurally forbids any future silent import fallback - covering <code>except ImportError</code>, <code>ModuleNotFoundError</code>, and import-guarding broad / bare <code>except</code> handlers across the whole shipped tools tree. (CMH-TOOL-IMPORTS-01)</li>
             </ul>
           </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.212.0] - 2026-07-22</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The runtime footer is now flush with the content column when the side table-of-contents navigation pane is present and the comments sidebar is closed. Previously, on viewports where the pane&#x27;s left inset shrank the content shell below its max width, the footer spanned wider than the content column (about 1.5rem past it on each side). The footer now insets to match the content box in that layout.</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.211.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
@@ -474,8 +483,6 @@
               <li>Comments are now stored compressed (lz-string, packed into UTF-16) when that is smaller than plain JSON, so far more documents&#x27; reviews fit in the shared browser storage. The format is backward compatible: documents last saved by an older version still load and are migrated on the next save, and a stored value that cannot be read (a corrupt or newer-version format) is left untouched with a recovery notice rather than being overwritten. (CMH-STORE-01, CMH-STORE-02, CMH-STORE-03)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.210.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
@@ -519,14 +526,7 @@
               <li>Added real rendered-PDF CI checks (<code>tests/70-print-pdf.spec.js</code>, <code>CMH-PRINT-03</code>/<code>CMH-PRINT-04</code>/<code>CMH-PRINT-05</code>): they drive the browser&#x27;s native print (<code>page.pdf</code>) and inspect the produced PDF - page count, page geometry, and per-page ink coverage - so a print-layout regression fails CI. The prior print tests only checked <code>@media print</code> computed styles and never paginated a real PDF.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.204.0] - 2026-07-21</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Consolidated the always-loaded <code>SKILL.md</code> capability, tool-routing, deterministic-helper, and pre-handoff guidance into one dense tool index while keeping critical triggers and tool routes covered by tests. Deep deck workflow guidance now lives in the on-demand deck references. (CMH-DOC-18)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">175 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">176 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
