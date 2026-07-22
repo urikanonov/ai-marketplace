@@ -5,7 +5,7 @@
   "description": "Development harness, tests, and build tooling for the commentable-html plugin. Not distributed; the shipped skill lives in ../pkg.",
   "type": "module",
   "engines": {
-    "node": ">=20.1.0"
+    "node": ">=20.16.0"
   },
   "scripts": {
     "build": "python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples",
@@ -27,6 +27,8 @@
     "adm-zip": "^0.6.0",
     "chart.js": "^4.5.1",
     "mermaid": "^11.16.0",
-    "playwright": "^1.49.0"
+    "pdf-parse": "^2.4.5",
+    "playwright": "^1.49.0",
+    "pngjs": "^7.0.0"
   }
 }

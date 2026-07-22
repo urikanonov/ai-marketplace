@@ -4,6 +4,6 @@
 // workers) and everything else into the `fast` project (sharded across runners at workers=4), so
 // one serial screenshot block no longer gates a shard. A guard spec imports this list and asserts
 // every spec file lands in exactly one project, so the split can never silently drop coverage.
-export const HEAVY_SPEC_FILES = ["54-tutorial-shots.spec.js"];
+export const HEAVY_SPEC_FILES = ["54-tutorial-shots.spec.js", "70-print-pdf.spec.js"];
 
 export const heavyGlobs = HEAVY_SPEC_FILES.map((f) => `**/${f}`);
