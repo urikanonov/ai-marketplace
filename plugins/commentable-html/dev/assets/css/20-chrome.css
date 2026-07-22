@@ -39,8 +39,8 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 @media (min-width: 1700px) {
   body.sidebar-open .cm-footer {
-    margin-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
-    margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
+    margin-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2));
+    margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2)));
   }
 }
 /* TOC section numbers. */

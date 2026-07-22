@@ -1,7 +1,7 @@
 // Triage-board UX: caption commentability near a cm-skip chart, content-aligned footer,
 // and the runtime board Reset / per-widget state cards with jump + Reset + first-change time.
 import { test, expect } from "@playwright/test";
-import { fileUrl, ready, installClipboardCapture, stageContent } from "./helpers.js";
+import { fileUrl, ready, installClipboardCapture, stageContent, openInline } from "./helpers.js";
 
 async function waitForWidgetMutationFrame(page) {
   await page.evaluate(() => new Promise((resolve) => {
@@ -68,6 +68,47 @@ test("the runtime footer aligns to the content column in normal and sidebar-open
   await waitForWidgetMutationFrame(page);
   root = await measure(page, "#commentRoot");
   footer = await measure(page, "#cmFooter");
+  expect(Math.abs(footer.left - root.left)).toBeLessThanOrEqual(2);
+  expect(Math.abs(footer.right - root.right)).toBeLessThanOrEqual(2);
+});
+
+test("wide screens give the sidebar-open content column extra width (CMH-CONTENT-18)", async ({ page }) => {
+  // On a wide monitor the sidebar-open recipe targets a 1600px content column (up from 1300px),
+  // so at 2200px with a 400px sidebar the body fills clearly more than the old cap.
+  await page.setViewportSize({ width: 2200, height: 1000 });
+  const { html } = stageContent('<section id="probe"><h2>Probe</h2><p>Body text goes here.</p></section>', { key: "cmh-wide-content" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+
+  await page.click("#btnToggleSidebar");
+  await expect(page.locator("body")).toHaveClass(/sidebar-open/);
+  await waitForWidgetMutationFrame(page);
+
+  const root = await measure(page, "#commentRoot");
+  // The old 1300px target yielded a ~1300px column here; the widened target lands near 1600px.
+  expect(root.width).toBeGreaterThan(1450);
+});
+
+test("the widened content column reaches its full target with the side TOC pane present (CMH-CONTENT-18)", async ({ page }) => {
+  // The user's three-column view: nav pane (side TOC) | content | comments sidebar. The centered
+  // gutter must subtract the nav pane's width, or the pane's inset squeezes the column (~1296px).
+  await page.setViewportSize({ width: 2400, height: 1000 });
+  await openInline(page);
+  await expect(page.locator("#cmSideToc")).toBeVisible();
+  await expect(page.locator("body")).toHaveClass(/cm-side-toc-on/);
+  await expect(page.locator("body")).not.toHaveClass(/cm-side-toc-collapsed/);
+
+  if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+    await page.click("#btnToggleSidebar");
+  }
+  await expect(page.locator("body")).toHaveClass(/sidebar-open/);
+  await waitForWidgetMutationFrame(page);
+
+  const root = await measure(page, "#commentRoot");
+  // With the nav-pane inset subtracted the column reaches ~1600px; before the fix it was ~1296px.
+  expect(root.width).toBeGreaterThan(1450);
+  // The footer mirrors the same TOC-aware recipe, so it stays flush with the content column.
+  const footer = await measure(page, "#cmFooter");
   expect(Math.abs(footer.left - root.left)).toBeLessThanOrEqual(2);
   expect(Math.abs(footer.right - root.right)).toBeLessThanOrEqual(2);
 });

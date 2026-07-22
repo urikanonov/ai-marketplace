@@ -4,6 +4,28 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.210.0] - 2026-07-22
+
+### Added
+
+- The runtime footer now ends with a "Report an issue" link, placed to the right of the
+  "Help & about" control, that opens the plugin's GitHub issue form in a new tab. Like the rest of
+  the footer it is `cm-skip` chrome, so it never leaks into a Plain HTML export.
+
+### Changed
+
+- On wide screens with the comments sidebar open, the document content column now targets a wider
+  1600px column (up from 1300px), so the body fills more of the space between the navigation pane
+  and the sidebar instead of leaving a large empty gutter. When the side table-of-contents
+  navigation pane is present, the layout now subtracts that pane's width so the content still
+  reaches its full width between the pane and the sidebar rather than being squeezed. The runtime
+  footer tracks the same widened column so it stays flush with the content.
+
+### Fixed
+
+- The footer session-id copy control no longer renders two separator dots next to each other
+  (`Generated . . [copy]`); the copy button and its separator now read `Generated . [copy] . Help`.
+
 ## [1.209.0] - 2026-07-22
 
 ### Fixed
