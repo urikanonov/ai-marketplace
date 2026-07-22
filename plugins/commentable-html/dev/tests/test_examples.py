@@ -304,7 +304,8 @@ class NotesExampleTests(unittest.TestCase):
     def test_notes_example_ships_and_validates_strict(self):
         self.assertTrue(os.path.isfile(self._EX), "report-notes.html is missing")
         r = subprocess.run(
-            [sys.executable, os.path.join(SKILL, "tools", "validate", "validate.py"), "--strict", self._EX],
+            [sys.executable, os.path.join(SKILL, "tools", "validate", "validate.py"),
+             "--strict", "--no-stamp", self._EX],
             capture_output=True, text=True, cwd=SKILL)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 

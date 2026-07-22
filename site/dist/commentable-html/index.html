@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.208.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.209.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,6 +456,17 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.209.0] - 2026-07-22</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>validate.py</code> now actually stamps a document when run as a standalone CLI subprocess. It previously put only its own <code>validate/</code> directory on <code>sys.path</code>, so <code>_stamp_validated_file</code>&#x27;s <code>import doc_stamp</code> silently failed and a clean <code>python tools/validate/validate.py &lt;file&gt;</code> left the document unstamped - the runtime kept showing the amber &quot;not validated&quot; banner even though validation passed. <code>validate.py</code> now loads the sibling <code>authoring/</code> tools via the shared bootstrap, so both <code>validate.py</code> and <code>finalize.py</code> stamp on a strict-clean pass. (CMH-STAMP-02, part of #584)</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The validated stamp is now CONTENT-BOUND to the document&#x27;s authored TEXT. On a strict-clean pass <code>validate.py</code>/<code>finalize.py</code> also write <code>commentable-html-validated-hash</code>, a whole content-root text hash computed with the shared section-hash contract, and the runtime reproduces it byte for byte (<code>window.__cmhReview.docHash()</code>). The amber &quot;not validated&quot; banner therefore returns after a post-validation edit to the visible authored text and clears again on re-validation, instead of relying only on timestamps - so &quot;validated&quot; now tracks the CURRENT text. It is a stable-text fingerprint (a strong nudge, not a cryptographic seal): it does not track attribute-only edits or edits inside the excluded rendered blocks (mermaid/diff/KQL/chart/notes). A document with no content root keeps a timestamp-only stamp and the runtime falls back to the timestamp signal, so it never false-positives; a reader&#x27;s persisted table sort is canonicalized so it does not falsely invalidate. Only a FULL clean validation stamps (a <code>--charts-only</code>/<code>--layer-only</code> partial run never does). <code>finalize.py</code> also prints a guardrail reminder on a strict-fail that the fix must end with a clean strict pass to re-stamp. (CMH-STAMP-05, CMH-STAMP-03, CMH-STAMP-02, closes #584)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.208.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -463,6 +474,8 @@
               <li>The comment composer gained a formatting toolbar (bold, italic, underline, strikethrough, code, link, list) that wraps the current selection, plus keyboard shortcuts <code>Ctrl/Cmd+B</code> / <code>I</code> / <code>U</code> and <code>Ctrl/Cmd+K</code> (link). The stored note stays plain-text source, so Copy all still hands the agent the exact markers and old notes remain loadable without any migration. A new &quot;Formatting your comment&quot; Help topic and a tutorial section document the markers and shortcuts.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.206.0] - 2026-07-22</h3></div>
             <div class="group-label">Fixed</div>
@@ -472,8 +485,6 @@
               <li>Added real rendered-PDF CI checks (<code>tests/70-print-pdf.spec.js</code>, <code>CMH-PRINT-03</code>/<code>CMH-PRINT-04</code>/<code>CMH-PRINT-05</code>): they drive the browser&#x27;s native print (<code>page.pdf</code>) and inspect the produced PDF - page count, page geometry, and per-page ink coverage - so a print-layout regression fails CI. The prior print tests only checked <code>@media print</code> computed styles and never paginated a real PDF.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.204.0] - 2026-07-21</h3></div>
             <div class="group-label">Changed</div>
@@ -502,14 +513,7 @@
               <li>Keyboard users can now tab from a focused heading to the floating heading Add Comment button, keep it visible while focused, and continue through the next valid heading controls or links without getting trapped on disabled, inert, or programmatic-only candidates. (CMH-A11Y-08)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.200.0] - 2026-07-21</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Image comments now share one index-plus-src anchor resolver across reload restoration, jump-to-comment, edit-composer positioning, and section-review lookup, with image metadata disambiguation for duplicate-source images and labelled chart canvases, so a stale image index after a document reorders images no longer sends the scroll target or editor to the wrong image. (CMH-IMG-07)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">171 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">172 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.209.0] - 2026-07-22
+
+### Fixed
+
+- `validate.py` now actually stamps a document when run as a standalone CLI subprocess. It
+  previously put only its own `validate/` directory on `sys.path`, so `_stamp_validated_file`'s
+  `import doc_stamp` silently failed and a clean `python tools/validate/validate.py <file>` left the
+  document unstamped - the runtime kept showing the amber "not validated" banner even though
+  validation passed. `validate.py` now loads the sibling `authoring/` tools via the shared bootstrap,
+  so both `validate.py` and `finalize.py` stamp on a strict-clean pass. (CMH-STAMP-02, part of #584)
+
+### Added
+
+- The validated stamp is now CONTENT-BOUND to the document's authored TEXT. On a strict-clean pass
+  `validate.py`/`finalize.py` also write `commentable-html-validated-hash`, a whole content-root text
+  hash computed with the shared section-hash contract, and the runtime reproduces it byte for byte
+  (`window.__cmhReview.docHash()`). The amber "not validated" banner therefore returns after a
+  post-validation edit to the visible authored text and clears again on re-validation, instead of
+  relying only on timestamps - so "validated" now tracks the CURRENT text. It is a stable-text
+  fingerprint (a strong nudge, not a cryptographic seal): it does not track attribute-only edits or
+  edits inside the excluded rendered blocks (mermaid/diff/KQL/chart/notes). A document with no
+  content root keeps a timestamp-only stamp and the runtime falls back to the timestamp signal, so it
+  never false-positives; a reader's persisted table sort is canonicalized so it does not falsely
+  invalidate. Only a FULL clean validation stamps (a `--charts-only`/`--layer-only` partial run never
+  does). `finalize.py` also prints a guardrail reminder on a strict-fail that the fix must end with a
+  clean strict pass to re-stamp. (CMH-STAMP-05, CMH-STAMP-03, CMH-STAMP-02, closes #584)
+
 ## [1.208.0] - 2026-07-22
 
 ### Added

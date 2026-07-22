@@ -105,5 +105,66 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual(a1["hash"], a2["hash"])
 
 
+class DocumentContentHashTests(unittest.TestCase):
+    """CMH-STAMP-05: document_content_hash is the whole content-root text hashed once with the same
+    FNV-1a and exclusion contract as the section hashes, so the runtime (cmhDocContentHash) and this
+    Python helper agree byte for byte and a post-validation edit is detectable."""
+
+    ROOT = '<main id="commentRoot">%s</main>'
+
+    def test_matches_the_shared_hash_over_the_content_root_text(self):
+        html = self.ROOT % "<p>Hello world</p>"
+        self.assertEqual(section_hash.document_content_hash(html),
+                         section_hash.cmh_section_hash("Hello world"))
+
+    def test_hash_changes_when_content_changes(self):
+        a = section_hash.document_content_hash(self.ROOT % "<p>one</p>")
+        b = section_hash.document_content_hash(self.ROOT % "<p>two</p>")
+        self.assertNotEqual(a, b)
+
+    def test_hash_excludes_cm_skip_and_runtime_transformed_blocks(self):
+        base = section_hash.document_content_hash(self.ROOT % "<p>keep this prose</p>")
+        noisy = section_hash.document_content_hash(self.ROOT % (
+            '<p>keep this prose</p>'
+            '<div class="cm-skip">injected chrome</div>'
+            '<pre class="mermaid">graph TD; a-->b</pre>'
+            '<pre class="cmh-diff">- old\n+ new</pre>'
+            '<canvas>chart</canvas>'))
+        self.assertEqual(base, noisy, "chrome and runtime-transformed blocks must not affect the hash")
+
+    def test_hash_is_none_without_a_content_root(self):
+        self.assertIsNone(section_hash.document_content_hash("<body><p>no root</p></body>"))
+
+    def test_hashes_only_the_first_commentRoot(self):
+        # The runtime hashes getElementById("commentRoot") - a single subtree. A trailing second
+        # content root must NOT be folded in (Python previously re-opened on any later root).
+        a = section_hash.document_content_hash('<main id="commentRoot">A</main>')
+        b = section_hash.document_content_hash(
+            '<main id="commentRoot">A</main><aside data-cmh-content-root>B</aside>')
+        self.assertEqual(a, b)
+
+    def test_only_id_commentRoot_is_the_root_not_a_bare_data_attr(self):
+        # A bare data-cmh-content-root is not getElementById("commentRoot"); only id=commentRoot is.
+        self.assertIsNone(section_hash.document_content_hash('<aside data-cmh-content-root>X</aside>'))
+        both = section_hash.document_content_hash(
+            '<aside data-cmh-content-root>DECOY</aside><main id="commentRoot">real</main>')
+        self.assertEqual(both, section_hash.cmh_section_hash("real"))
+
+    def test_noscript_is_excluded(self):
+        # With scripting ON the browser exposes <noscript> markup as literal text; excluding it on
+        # both sides keeps the Python and runtime hashes in agreement.
+        base = section_hash.document_content_hash(self.ROOT % "<p>keep</p>")
+        withns = section_hash.document_content_hash(
+            self.ROOT % "<p>keep</p><noscript><b>enable JS</b></noscript>")
+        self.assertEqual(base, withns)
+
+    def test_hash_covers_the_whole_document_not_a_single_section(self):
+        # Editing prose in ANY section changes the whole-document hash.
+        one = self.ROOT % '<h2 id="a">A</h2><p>alpha</p><h2 id="b">B</h2><p>beta</p>'
+        two = self.ROOT % '<h2 id="a">A</h2><p>alpha</p><h2 id="b">B</h2><p>BETA-CHANGED</p>'
+        self.assertNotEqual(section_hash.document_content_hash(one),
+                            section_hash.document_content_hash(two))
+
+
 if __name__ == "__main__":
     unittest.main()

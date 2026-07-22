@@ -15,18 +15,35 @@ function _cmhValidationStale(validated, created) {
   if (isNaN(v) || isNaN(c)) return false; // an unparseable stamp is not treated as stale (no nag)
   return v < c;
 }
+// True when the document carries a content-bound validated stamp (commentable-html-validated-hash)
+// whose hash no longer matches the live content - i.e. the document was strict-validated and THEN
+// manually edited. Fails SAFE: with no stamped hash (an older document, or one with no content
+// root) or when the runtime hasher is unavailable, it returns false so the banner falls back to the
+// timestamp signal and never false-positives on a genuinely validated document.
+function _cmhValidationContentChanged() {
+  const stampedHash = _cmhMetaContent("commentable-html-validated-hash");
+  if (!stampedHash) return false;
+  if (typeof cmhDocContentHash !== "function") return false;
+  try {
+    return cmhDocContentHash() !== stampedHash;
+  } catch (e) {
+    return false;
+  }
+}
 function setupValidationBanner() {
   const created = _cmhMetaContent("commentable-html-created");
   if (!created) return; // only a tooling-produced document is expected to carry a validation stamp
   const validated = _cmhMetaContent("commentable-html-validated");
-  if (validated && !_cmhValidationStale(validated, created)) return; // strict-validated: show nothing
+  // Show nothing only for a strict-validated document whose stamped content still matches: the
+  // stamp must be present, not older than creation, and (when content-bound) still hash-current.
+  if (validated && !_cmhValidationStale(validated, created) && !_cmhValidationContentChanged()) return;
   const banner = document.createElement("div");
   banner.className = "cm-skip cmh-unvalidated-banner";
   banner.setAttribute("role", "status");
   const msg = document.createElement("span");
   msg.className = "cmh-unvalidated-msg";
-  msg.textContent = "This document was not validated and may be incomplete. Run "
-    + "tools/authoring/finalize.py <file> --strict, then tools/validate/validate.py --strict <file>.";
+  msg.textContent = "This document was not validated in its current form and may be incomplete. Run "
+    + "tools/validate/validate.py --strict <file> (or tools/authoring/finalize.py <file> --strict) to re-validate.";
   const dismiss = document.createElement("button");
   dismiss.type = "button";
   dismiss.className = "cmh-unvalidated-dismiss";

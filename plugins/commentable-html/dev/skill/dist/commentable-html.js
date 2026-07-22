@@ -62,7 +62,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.208.0";
+const CMH_VERSION = "1.209.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -3796,18 +3796,35 @@ function _cmhValidationStale(validated, created) {
   if (isNaN(v) || isNaN(c)) return false; // an unparseable stamp is not treated as stale (no nag)
   return v < c;
 }
+// True when the document carries a content-bound validated stamp (commentable-html-validated-hash)
+// whose hash no longer matches the live content - i.e. the document was strict-validated and THEN
+// manually edited. Fails SAFE: with no stamped hash (an older document, or one with no content
+// root) or when the runtime hasher is unavailable, it returns false so the banner falls back to the
+// timestamp signal and never false-positives on a genuinely validated document.
+function _cmhValidationContentChanged() {
+  const stampedHash = _cmhMetaContent("commentable-html-validated-hash");
+  if (!stampedHash) return false;
+  if (typeof cmhDocContentHash !== "function") return false;
+  try {
+    return cmhDocContentHash() !== stampedHash;
+  } catch (e) {
+    return false;
+  }
+}
 function setupValidationBanner() {
   const created = _cmhMetaContent("commentable-html-created");
   if (!created) return; // only a tooling-produced document is expected to carry a validation stamp
   const validated = _cmhMetaContent("commentable-html-validated");
-  if (validated && !_cmhValidationStale(validated, created)) return; // strict-validated: show nothing
+  // Show nothing only for a strict-validated document whose stamped content still matches: the
+  // stamp must be present, not older than creation, and (when content-bound) still hash-current.
+  if (validated && !_cmhValidationStale(validated, created) && !_cmhValidationContentChanged()) return;
   const banner = document.createElement("div");
   banner.className = "cm-skip cmh-unvalidated-banner";
   banner.setAttribute("role", "status");
   const msg = document.createElement("span");
   msg.className = "cmh-unvalidated-msg";
-  msg.textContent = "This document was not validated and may be incomplete. Run "
-    + "tools/authoring/finalize.py <file> --strict, then tools/validate/validate.py --strict <file>.";
+  msg.textContent = "This document was not validated in its current form and may be incomplete. Run "
+    + "tools/validate/validate.py --strict <file> (or tools/authoring/finalize.py <file> --strict) to re-validate.";
   const dismiss = document.createElement("button");
   dismiss.type = "button";
   dismiss.className = "cmh-unvalidated-dismiss";
@@ -9630,10 +9647,10 @@ function _cmhScanSections() {
         // (rendered diffs, KQL, mermaid, chart canvases, editable notes) whose text the runtime
         // rewrites at load - so the hash covers the section's STABLE prose and matches the Python
         // extractor (section_hash.py) for every content type, not just plain prose.
-        if (n.closest(".cm-skip, script, style, template, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]")) return NodeFilter.FILTER_REJECT;
+        if (n.closest(".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]")) return NodeFilter.FILTER_REJECT;
         return /^H[1-6]$/i.test(n.tagName) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
       }
-      if (n.parentElement && n.parentElement.closest(".cm-skip, script, style, template, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]")) return NodeFilter.FILTER_REJECT;
+      if (n.parentElement && n.parentElement.closest(".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]")) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
   });
@@ -9659,6 +9676,46 @@ function _cmhHashForHeadingEl(el, scan) {
   if (i < 0) return cmhSectionHash("");
   const end = _cmhSectionEnd(scan.heads, i, scan.full.length);
   return cmhSectionHash(scan.full.slice(scan.heads[i].offset, end));
+}
+
+// Whole-document content signature: the entire content-root text (the same cm-skip / script /
+// style / template / noscript / diff / KQL / mermaid / canvas / note-excluded text the section
+// hashes derive from) hashed once. The validation banner (38-validation-banner.js) compares it to
+// the stamped commentable-html-validated-hash to tell a genuinely validated document from one that
+// was validated and THEN manually edited. The Python side (tools/authoring/section_hash.py
+// document_content_hash, written by doc_stamp when validate/finalize stamp) reproduces this byte
+// for byte, so the two agree (pinned by tests/64-validation-banner.spec.js end to end).
+//
+// It hashes the CANONICAL (authored source-order) content: a reader's PERSISTED table sort is a
+// runtime-only DOM reorder that the stamp (hashed from the source file) never saw, so source row
+// order is temporarily restored before hashing and the sorted view re-applied afterwards (mirrors
+// the export canonicalizer in 62-sortable-tables.js). Without this a merely sorted-but-unedited
+// document would falsely raise the "not validated" banner on reload.
+//
+// Only TABLE SORT (a pure view of the same rows) is canonicalized. A draggable-widget/triage-board
+// rearrangement is deliberately NOT: moving a card changes the board's meaning (the arrangement IS
+// the content), so it legitimately re-stamps/invalidates. It is also not a live-reload
+// false-positive - widget moves are not persisted to localStorage (they reset on reload), only
+// baked into an explicit Portable/Offline export, and re-validating that export re-stamps it.
+function cmhDocContentHash() {
+  const canSort = typeof _tableSortState !== "undefined" && _tableSortState
+    && Object.keys(_tableSortState).length > 0
+    && typeof _sortableTables === "function" && typeof _unsortRows === "function"
+    && typeof _sortRows === "function" && typeof _tableBody === "function"
+    && typeof _tableKey === "function";
+  if (!canSort) return cmhSectionHash(_cmhScanSections().full);
+  const saved = JSON.parse(JSON.stringify(_tableSortState));
+  _sortableTables().forEach(function (t) { _unsortRows(_tableBody(t)); });
+  try {
+    return cmhSectionHash(_cmhScanSections().full);
+  } finally {
+    // Always restore the reader's sorted view, even if hashing threw, so a transient hash never
+    // leaves the visible table order corrupted.
+    _sortableTables().forEach(function (t, i) {
+      const st = saved[_tableKey(t, i)];
+      if (st) _sortRows(_tableBody(t), st.col, st.dir);
+    });
+  }
 }
 
 function _cmhReviewHeadings() {
@@ -9929,6 +9986,7 @@ if (typeof window !== "undefined") {
       const el = document.getElementById(id);
       return el ? _cmhHashForHeadingEl(el) : null;
     },
+    docHash: function () { return cmhDocContentHash(); },
   };
 }
 

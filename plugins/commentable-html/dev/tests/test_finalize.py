@@ -117,8 +117,13 @@ class FinalizeTests(unittest.TestCase):
         path = os.path.join(directory, "doc.html")
         self._write(path, "<html><body>x</body></html>")
         with mock.patch.object(finalize.validate, "validate", return_value=([], ["warn"])):
-            code, _out, err = self._run_main(["finalize.py", path, "--strict"])
+            code, out, err = self._run_main(["finalize.py", path, "--strict"])
         self.assertEqual(code, 1, err)
+        # Guardrail (issue #584 #4): the strict-fail reminds the author to end with a clean strict
+        # pass to re-stamp, so the runtime "not validated" banner is cleared.
+        self.assertIn("re-run", out)
+        self.assertIn("--strict", out)
+        self.assertIn("banner", out)
 
     def test_errors_fail_in_all_modes(self):
         directory = self._tmpdir()
