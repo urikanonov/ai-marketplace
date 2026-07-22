@@ -83,7 +83,9 @@ function setupFooter() {
     + '<span class="cm-footer-sep" aria-hidden="true">\u00b7</span>'
     + '<span class="cm-footer-gen">Generated ' + escapeHtml(genStr) + '</span>'
     + '<span class="cm-footer-sep" aria-hidden="true">\u00b7</span>'
-    + '<button type="button" class="cm-footer-help">Help &amp; about</button>';
+    + '<button type="button" class="cm-footer-help">Help &amp; about</button>'
+    + '<span class="cm-footer-sep" aria-hidden="true">\u00b7</span>'
+    + '<a class="cm-footer-report" href="https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml" target="_blank" rel="noopener noreferrer">Report an issue</a>';
   document.body.appendChild(f);
   document.body.classList.add("cm-has-footer");
   const hb = f.querySelector(".cm-footer-help");
@@ -122,7 +124,10 @@ function setupFooterSessionCopy(footer) {
   btn.innerHTML = _cmIco("clipboard", 14);
   btn.addEventListener("click", function () { copyPlain(sid, "Session id copied to clipboard."); });
   const help = footer.querySelector(".cm-footer-help");
-  if (help) { footer.insertBefore(sep, help); footer.insertBefore(btn, help); }
+  // Insert the button first, then the separator, both before Help, so the order reads
+  // "...Generated <sep> [copy] <sep> Help" - the existing separator before Help becomes the
+  // one before the button and this new one sits between the button and Help (no doubled dot).
+  if (help) { footer.insertBefore(btn, help); footer.insertBefore(sep, help); }
   else { footer.appendChild(sep); footer.appendChild(btn); }
 }
 

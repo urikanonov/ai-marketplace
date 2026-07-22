@@ -20,11 +20,11 @@ test.describe("attribution footer + Show affordance", () => {
     const footer = page.locator("#cmFooter");
     await expect(footer).toBeVisible();
     await expect(footer).toContainText(/Commentable HTML v\d+\.\d+\.\d+/);
-    // Source/issue/author are NOT in the footer; the only footer link is the brand mark.
+    // The footer has two links: the brand mark and the Report-an-issue link (CMH-FOOT-05).
     await expect(footer).not.toContainText("Authored by");
-    await expect(footer.locator("a")).toHaveCount(1);
+    await expect(footer.locator("a")).toHaveCount(2);
     await expect(footer.locator("a.cm-brand-link")).toHaveCount(1);
-    await expect(footer.locator('a[href*="github.com"]')).toHaveCount(0);
+    await expect(footer.locator('a.cm-footer-report[href*="issues/new?template=plugin-issue.yml"]')).toHaveCount(1);
     // The footer Help & about button opens the Help modal, which carries the attribution.
     await footer.locator(".cm-footer-help").click();
     const help = page.locator(".cm-help");
@@ -44,6 +44,36 @@ test.describe("attribution footer + Show affordance", () => {
     await expect(footer).toBeVisible();
     await expect(footer.locator(".cm-brand-icon")).toHaveCount(1);
     await expect(footer).toContainText(/Generated /);
+  });
+
+  test("the footer shows a Report an issue link to the right of Help (CMH-FOOT-05)", async ({ page }) => {
+    await openInline(page);
+    const footer = page.locator("#cmFooter");
+    const report = footer.locator("a.cm-footer-report");
+    await expect(report).toHaveCount(1);
+    await expect(report).toHaveAttribute(
+      "href",
+      "https://github.com/urikanonov/ai-marketplace/issues/new?template=plugin-issue.yml"
+    );
+    await expect(report).toHaveAttribute("target", "_blank");
+    await expect(report).toHaveAttribute("rel", /noopener/);
+    await expect(report).toHaveAttribute("rel", /noreferrer/);
+    await expect(report).toHaveText(/Report an issue/i);
+    // The Report link sits to the RIGHT of the Help & about control.
+    const helpBox = await footer.locator(".cm-footer-help").boundingBox();
+    const reportBox = await report.boundingBox();
+    expect(reportBox.x).toBeGreaterThan(helpBox.x);
+  });
+
+  test("the Report an issue link does not leak into a Plain HTML export (CMH-FOOT-05)", async ({ page }) => {
+    await openInline(page);
+    await expect(page.locator("#cmFooter a.cm-footer-report")).toHaveCount(1);
+    await openToolbarMenu(page);
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#btnSavePlainTop")]);
+    const out = await readDownload(dl);
+    // The footer is cm-skip chrome, so its Report link markup is stripped from a Plain export.
+    expect(out).not.toContain("cm-footer-report");
+    expect(out).not.toContain("issues/new?template=plugin-issue.yml");
   });
 
   test("the brand icon shows in the panel meta row and a favicon is set", async ({ page }) => {
@@ -105,6 +135,14 @@ test.describe("attribution footer + Show affordance", () => {
     await btn.click();
     expect(await lastCopied(page)).toBe("sess-abc-123");
     await expect(page.locator("#toast")).toContainText(/Session id copied/i);
+    // The session-copy control must not leave two separators adjacent (CMH-FOOT-04).
+    const adjacentSeps = await page.evaluate(() => {
+      const kids = [...document.querySelectorAll("#cmFooter > *")];
+      return kids.some((el, i) => i > 0
+        && el.classList.contains("cm-footer-sep")
+        && kids[i - 1].classList.contains("cm-footer-sep"));
+    });
+    expect(adjacentSeps).toBe(false);
   });
 
   test("the copy-session tooltip names the agent (Claude) (CMH-FOOT-04)", async ({ page }) => {

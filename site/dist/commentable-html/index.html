@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.209.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.210.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -456,6 +456,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.210.0] - 2026-07-22</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The runtime footer now ends with a &quot;Report an issue&quot; link, placed to the right of the &quot;Help &amp; about&quot; control, that opens the plugin&#x27;s GitHub issue form in a new tab. Like the rest of the footer it is <code>cm-skip</code> chrome, so it never leaks into a Plain HTML export.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>On wide screens with the comments sidebar open, the document content column now targets a wider 1600px column (up from 1300px), so the body fills more of the space between the navigation pane and the sidebar instead of leaving a large empty gutter. When the side table-of-contents navigation pane is present, the layout now subtracts that pane&#x27;s width so the content still reaches its full width between the pane and the sidebar rather than being squeezed. The runtime footer tracks the same widened column so it stays flush with the content.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The footer session-id copy control no longer renders two separator dots next to each other (<code>Generated . . [copy]</code>); the copy button and its separator now read <code>Generated . [copy] . Help</code>.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.209.0] - 2026-07-22</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -466,6 +481,8 @@
               <li>The validated stamp is now CONTENT-BOUND to the document&#x27;s authored TEXT. On a strict-clean pass <code>validate.py</code>/<code>finalize.py</code> also write <code>commentable-html-validated-hash</code>, a whole content-root text hash computed with the shared section-hash contract, and the runtime reproduces it byte for byte (<code>window.__cmhReview.docHash()</code>). The amber &quot;not validated&quot; banner therefore returns after a post-validation edit to the visible authored text and clears again on re-validation, instead of relying only on timestamps - so &quot;validated&quot; now tracks the CURRENT text. It is a stable-text fingerprint (a strong nudge, not a cryptographic seal): it does not track attribute-only edits or edits inside the excluded rendered blocks (mermaid/diff/KQL/chart/notes). A document with no content root keeps a timestamp-only stamp and the runtime falls back to the timestamp signal, so it never false-positives; a reader&#x27;s persisted table sort is canonicalized so it does not falsely invalidate. Only a FULL clean validation stamps (a <code>--charts-only</code>/<code>--layer-only</code> partial run never does). <code>finalize.py</code> also prints a guardrail reminder on a strict-fail that the fix must end with a clean strict pass to re-stamp. (CMH-STAMP-05, CMH-STAMP-03, CMH-STAMP-02, closes #584)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.208.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
@@ -474,8 +491,6 @@
               <li>The comment composer gained a formatting toolbar (bold, italic, underline, strikethrough, code, link, list) that wraps the current selection, plus keyboard shortcuts <code>Ctrl/Cmd+B</code> / <code>I</code> / <code>U</code> and <code>Ctrl/Cmd+K</code> (link). The stored note stays plain-text source, so Copy all still hands the agent the exact markers and old notes remain loadable without any migration. A new &quot;Formatting your comment&quot; Help topic and a tutorial section document the markers and shortcuts.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.206.0] - 2026-07-22</h3></div>
             <div class="group-label">Fixed</div>
@@ -506,14 +521,7 @@
               <li>Deleting an embedded comment now retries the tombstone write after saving the smaller comments array, so a near-quota browser can free space and persist the delete marker. If the retry still fails, the reviewer gets an assertive warning that the embedded comment may reappear after reload instead of a silent resurrection. (CMH-PERSIST-05)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.201.0] - 2026-07-21</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Keyboard users can now tab from a focused heading to the floating heading Add Comment button, keep it visible while focused, and continue through the next valid heading controls or links without getting trapped on disabled, inert, or programmatic-only candidates. (CMH-A11Y-08)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">172 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">173 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

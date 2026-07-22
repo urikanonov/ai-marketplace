@@ -295,8 +295,8 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 }
 @media (min-width: 1700px) {
   body.sidebar-open .app {
-    padding-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
-    padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
+    padding-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2));
+    padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2)));
   }
 }
 
@@ -492,9 +492,11 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 @media (min-width: 1400px) {
   .cm-side-toc { display: flex; }
   /* Reserve gutter space so an expanded TOC never overlaps the (centered) content.
-     Collapsing the TOC reclaims the full width. */
-  body.cm-side-toc-on { padding-left: calc(var(--cm-side-toc-w, 17rem) + 2rem); }
-  body.cm-side-toc-on.cm-side-toc-collapsed { padding-left: 0; }
+     Collapsing the TOC reclaims the full width. --cm-toc-inset is the space the TOC
+     takes on the left; the sidebar-open recipe subtracts it so the centered content
+     column keeps its full width between the nav pane and the comments sidebar. */
+  body.cm-side-toc-on { padding-left: calc(var(--cm-side-toc-w, 17rem) + 2rem); --cm-toc-inset: calc(var(--cm-side-toc-w, 17rem) + 2rem); }
+  body.cm-side-toc-on.cm-side-toc-collapsed { padding-left: 0; --cm-toc-inset: 0px; }
 }
 .cm-side-toc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--cp-chrome-button-gap); }
 .cm-side-toc-title { font-weight: 700; color: var(--cp-text); }
@@ -571,8 +573,8 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 @media (min-width: 1700px) {
   body.sidebar-open .cm-footer {
-    margin-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2));
-    margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1300px) / 2)));
+    margin-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2));
+    margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2)));
   }
 }
 /* TOC section numbers. */
