@@ -72,6 +72,22 @@ test("the runtime footer aligns to the content column in normal and sidebar-open
   expect(Math.abs(footer.right - root.right)).toBeLessThanOrEqual(2);
 });
 
+test("the runtime footer aligns to the content column when the side TOC pane is present and the sidebar is closed (CMH-FOOT-03)", async ({ page }) => {
+  // TOC-on + sidebar-closed at a width where the pane's left inset shrinks the .app shell below
+  // its 1480px max: the footer must inset to match the .app content box, not span the full body.
+  await page.setViewportSize({ width: 1750, height: 1000 });
+  await openInline(page);
+  await expect(page.locator("#cmSideToc")).toBeVisible();
+  await expect(page.locator("body")).toHaveClass(/cm-side-toc-on/);
+  await expect(page.locator("body")).not.toHaveClass(/cm-side-toc-collapsed/);
+  await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+
+  const root = await measure(page, "#commentRoot");
+  const footer = await measure(page, "#cmFooter");
+  expect(Math.abs(footer.left - root.left)).toBeLessThanOrEqual(2);
+  expect(Math.abs(footer.right - root.right)).toBeLessThanOrEqual(2);
+});
+
 test("wide screens give the sidebar-open content column extra width (CMH-CONTENT-18)", async ({ page }) => {
   // On a wide monitor the sidebar-open recipe targets a 1600px content column (up from 1300px),
   // so at 2200px with a 400px sidebar the body fills clearly more than the old cap.
