@@ -413,7 +413,7 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
 });
 
 
-test("demo has one safe full-screen button and a seven-option slider", async ({ page }) => {
+test("demo has one safe full-screen button and a seven-option slider (SITE-DEMO-01)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const fs = page.locator("#demo-fullscreen");
   await expect(fs).toHaveCount(1);
@@ -514,12 +514,14 @@ test("every example is present on the site as a live demo tab (SITE-DEMO-12)", a
   expect(examples.length).toBeGreaterThan(0);
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   for (const file of examples) {
-    const srcPattern = new RegExp("demo/" + file.replace(/[.]/g, "\\.") + "$");
+    // Exact string match (not a regex built from the filename) - stronger than a substring/anchored
+    // pattern and free of any escaping concern about characters in the filename.
+    const demoPath = "demo/" + file;
     const tab = page.locator(`.demo-tab[data-file="${file}"]`);
     await expect(tab, `expected a live-demo slider tab for example ${file}`).toHaveCount(1);
     await tab.click();
-    await expect(page.locator("#demo-iframe")).toHaveAttribute("src", srcPattern);
-    await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", srcPattern);
+    await expect(page.locator("#demo-iframe")).toHaveAttribute("src", demoPath);
+    await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", demoPath);
     const resp = await request.get("/commentable-html/demo/" + file);
     expect(resp.status(), `expected ${file} to be served under commentable-html/demo/`).toBeLessThan(400);
   }
