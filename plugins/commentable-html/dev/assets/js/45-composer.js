@@ -54,7 +54,16 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
       <span class="label">drag to move</span>
     </div>
     <div class="quote"></div>
-    <textarea aria-label="Review comment" placeholder="Write your review comment... (Ctrl/Cmd+Enter to save, Esc to cancel)"></textarea>
+    <div class="cm-format-bar" role="group" aria-label="Comment formatting">
+      <button type="button" data-fmt="bold" title="Bold (Ctrl+B)" aria-label="Bold"><strong>B</strong></button>
+      <button type="button" data-fmt="italic" title="Italic (Ctrl+I)" aria-label="Italic"><em>I</em></button>
+      <button type="button" data-fmt="underline" title="Underline (Ctrl+U)" aria-label="Underline"><span style="text-decoration:underline">U</span></button>
+      <button type="button" data-fmt="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+      <button type="button" data-fmt="code" title="Inline code" aria-label="Inline code">&lt;/&gt;</button>
+      <button type="button" data-fmt="link" title="Link (Ctrl+K)" aria-label="Insert link">&#128279;</button>
+      <button type="button" data-fmt="list" title="Bullet list" aria-label="Bullet list">&#8226;</button>
+    </div>
+    <textarea aria-label="Review comment" placeholder="Write your review comment... (**bold** *italic* __underline__, Ctrl/Cmd+Enter to save, Esc to cancel)"></textarea>
     <div class="row">
       <button type="button" data-act="cancel">Cancel</button>
       <button type="button" class="primary" data-act="save">Save comment</button>
@@ -180,8 +189,24 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   const cleanups = [];
   cleanups.push(addListener(cancelBtn, "click", () => closeComposerElement(el)));
   cleanups.push(addListener(saveBtn, "click", () => saveComposerElement(el)));
+  const formatBar = el.querySelector(".cm-format-bar");
+  if (formatBar) {
+    formatBar.querySelectorAll("button[data-fmt]").forEach((btn) => {
+      // preventDefault on pointer/mouse down keeps the textarea's selection from collapsing when the
+      // button takes focus (mousedown for desktop, pointerdown so touch devices are covered too); the
+      // action runs on click.
+      cleanups.push(addListener(btn, "pointerdown", (e) => e.preventDefault()));
+      cleanups.push(addListener(btn, "mousedown", (e) => e.preventDefault()));
+      cleanups.push(addListener(btn, "click", (e) => { e.preventDefault(); applyNoteFormat(ta, btn.getAttribute("data-fmt")); }));
+    });
+  }
   cleanups.push(addListener(ta, "keydown", (e) => {
     if (e.isComposing) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const fmt = k === "b" ? "bold" : k === "i" ? "italic" : k === "u" ? "underline" : k === "k" ? "link" : null;
+      if (fmt) { e.preventDefault(); e.stopPropagation(); applyNoteFormat(ta, fmt); return; }
+    }
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComposerElement(el); }
     else if (e.key === "Escape") { e.preventDefault(); closeComposerElement(el); }
   }));

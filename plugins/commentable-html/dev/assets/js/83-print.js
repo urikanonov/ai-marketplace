@@ -40,7 +40,7 @@ function _renderPrintComment(c, index) {
   const repliesHtml = replies.map(function (r) {
     const rp = (typeof authorPillHtml === "function") ? authorPillHtml(r.author) : "";
     const rt = formatTime((r && (r.updatedAt || r.createdAt)) || "");
-    return '<div class="cmh-print-reply"><p class="cmh-print-note">' + rp + escapeHtml(r.note || "") + '</p>'
+    return '<div class="cmh-print-reply"><div class="cmh-print-note cmh-rich">' + rp + renderRichNote(r.note || "") + '</div>'
       + '<p class="cmh-print-meta">reply #' + escapeHtml(r.id || "") + (rt ? " - " + escapeHtml(rt) : "") + '</p></div>';
   }).join("");
   return '<article class="cmh-print-comment" data-cid="' + escapeHtml(c.id || "") + '">'
@@ -48,7 +48,7 @@ function _renderPrintComment(c, index) {
     + (path ? '<p class="cmh-print-path"><strong>In:</strong> ' + escapeHtml(path) + '</p>' : "")
     + '<p class="cmh-print-anchor"><strong>Anchor:</strong> ' + escapeHtml(_printAnchorLabel(c)) + '</p>'
     + (quote ? '<blockquote>' + escapeHtml(quote) + '</blockquote>' : "")
-    + '<p class="cmh-print-note">' + pill + escapeHtml(c.note || "") + '</p>'
+    + '<div class="cmh-print-note cmh-rich">' + pill + renderRichNote(c.note || "") + '</div>'
     + '<p class="cmh-print-meta">#' + escapeHtml(c.id || "") + (time ? " - " + escapeHtml(time) : "") + '</p>'
     + repliesHtml
     + '</article>';

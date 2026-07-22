@@ -196,6 +196,9 @@ document.addEventListener("keydown", (e) => {
 });
 function showMenu(x, y) {
   menu.hidden = false;
+  // Keep the selection menu above any open composer (composers raise their z-index as they are
+  // focused), so a reviewer can always start another comment on a fresh selection.
+  menu.style.zIndex = composerZ + 1;
   // Measure the menu's real footprint (the single "Add Comment" pill) rather than
   // a hardcoded size, so the clamp keeps it snug to the selection near viewport edges.
   const w = menu.offsetWidth || 120;

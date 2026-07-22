@@ -163,7 +163,8 @@ function renderComments() {
       const rp = (typeof authorPillHtml === "function") ? authorPillHtml(r.author) : "";
       return `
       <div class="cm-entry cm-reply" data-reply-cid="${r.id}">
-        <div class="note">${rp}${escapeHtml(r.note)}</div>
+        <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
+        <div class="cmh-note-raw" hidden>${escapeHtml(r.note == null ? "" : r.note)}</div>
         <div class="meta">
           <span>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}${r.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
@@ -179,7 +180,8 @@ function renderComments() {
       ${quoteHtml}
       ${pinHtml}
       <div class="cm-entry cm-entry-root">
-        <div class="note">${rootPill}${escapeHtml(c.note)}</div>
+        <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
+        <div class="cmh-note-raw" hidden>${escapeHtml(c.note == null ? "" : c.note)}</div>
         <div class="meta">
           <span>#${i + 1} - ${escapeHtml(formatTime(c.updatedAt || c.createdAt))}${c.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
@@ -371,6 +373,9 @@ listEl.addEventListener("click", (e) => {
   }
   const card = e.target.closest(".cm-card");
   if (!card) return;
+  // A rendered link inside a comment note is clickable; let it navigate without also firing the
+  // card's jump/scroll handler.
+  if (e.target.closest("a")) return;
   const id = card.dataset.cid;
   const act = e.target.dataset.act;
   if (act === "reply") {

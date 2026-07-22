@@ -150,7 +150,17 @@
           <li>Your changes are saved with the document and appear as a note card in the sidebar (with jump and reset), so the agent can cement them back into the source. You can also select the note text and click <strong>Add Comment</strong> to leave a tracked comment on it.</li>
           </ol>
           <p><img src="assets/note-01-note.png" alt="An editable note field labeled Verdict with a single/multi-line toggle" loading="lazy" /></p>
-          <h3>12. Track review progress per section</h3>
+          <h3>12. Format your comment</h3>
+          <p>Comment notes support lightweight rich text (WhatsApp / Office style), so you can emphasize a point or drop in a link. Type the markers directly, or select text in the composer and use the formatting toolbar (or a keyboard shortcut).</p>
+          <ol>
+          <li>Select some text and open the composer. A formatting toolbar sits above the note field: bold, italic, underline, strikethrough, inline code, link, and bullet list.</li>
+          <li>Wrap the current selection by clicking a toolbar button or pressing a shortcut: <code>Ctrl/Cmd+B</code> for <code>**bold**</code>, <code>Ctrl/Cmd+I</code> for <code>*italic*</code>, <code>Ctrl/Cmd+U</code> for <code>__underline__</code>, and <code>Ctrl/Cmd+K</code> to turn the selection into a link. Start a line with <code>- </code> for a bullet list, wrap text in backticks for inline code, and use <code>~~text~~</code> for strikethrough.</li>
+          <li>Type or paste a bare <code>http(s)://</code> address and it becomes clickable on its own. Only <code>http</code>, <code>https</code>, and <code>mailto</code> links are made clickable; anything else stays plain text.</li>
+          </ol>
+          <p><img src="assets/garden-15-format-toolbar.png" alt="The comment composer with its formatting toolbar above a note being written with bold text, a link, and a bullet list" loading="lazy" /></p>
+          <p>Once saved, the note renders its formatting in the sidebar card and the inline popover, while the stored note keeps the exact text you typed - so <strong>Copy all</strong> still hands the agent the raw markers.</p>
+          <p><img src="assets/garden-16-rich-card.png" alt="A saved comment card in the sidebar showing bold text, a clickable link, and a bullet list" loading="lazy" /></p>
+          <h3>13. Track review progress per section</h3>
           <p>Every section heading carries a small review badge so you can mark sections as you finish them and see at a glance what is left.</p>
           <ol>
           <li>Hover a section heading to reveal its badge, then click the badge to mark that section <strong>Reviewed</strong>. The badge turns green and stays visible.</li>
@@ -158,7 +168,7 @@
           <li>Use these badges together with the section filter in the side navigation (next step) to focus on unreviewed or changed sections.</li>
           </ol>
           <p><img src="assets/garden-10-review-badge.png" alt="A section heading showing a green Reviewed badge" loading="lazy" /></p>
-          <h3>13. Navigate, search, and filter sections</h3>
+          <h3>14. Navigate, search, and filter sections</h3>
           <ol>
           <li>Widen the browser window to at least 1400px. A generated section navigation appears on the left (separate from the author Contents list near the top) and highlights the section you are reading.</li>
           <li>The nav has a search box at the top: type to filter the section list down to matching headings.</li>
@@ -166,14 +176,14 @@
           <li>The nav buttons let you <strong>Expand All</strong> or <strong>Collapse All</strong> sections at once and <strong>Scroll to Top</strong> or <strong>Scroll to Bottom</strong> of the document. In the document itself, each section title also has a small caret to its left: click the caret to collapse or expand that one section (clicking a collapsed section&#x27;s title expands it again).</li>
           </ol>
           <p><img src="assets/garden-11-side-toc.png" alt="The left section navigation with its search box, review-status filter, and expand/collapse and scroll controls" loading="lazy" /></p>
-          <h3>14. Search and sort your comments</h3>
+          <h3>15. Search and sort your comments</h3>
           <p>Once you have several comments, the sidebar helps you find and order them.</p>
           <ol>
           <li>Type in the comment search box at the top of the panel to filter the list to comments whose quoted text or note matches your query; the header shows how many of the total are shown.</li>
           <li>Use the sort buttons to order comments by their position in the document, ascending or descending, instead of the order you added them.</li>
           </ol>
           <p><img src="assets/garden-13-comment-search.png" alt="The comments panel filtered by a search query, with the sort controls and a shown-of-total count" loading="lazy" /></p>
-          <h3>15. Set your name and reply in threads</h3>
+          <h3>16. Set your name and reply in threads</h3>
           <p>When you pass a document back and forth with someone else, attribute each comment and hold a conversation in threads.</p>
           <ol>
           <li>In the comments panel, the <strong>Commenting as</strong> line shows the name attached to your comments. Click <strong>set name</strong> (or <strong>change</strong>) to enter a display name. It is remembered in this browser and applies to your future comments only - it never rewrites comments you already made. (An author who generated the file for you can pre-fill it with <code>data-cm-author</code>.)</li>
@@ -183,14 +193,14 @@
           <li><strong>Copy all</strong>, Markdown export, and the print appendix keep threads together: each is emitted as an initial comment followed by its labelled replies, so the agent reads the refinements in context.</li>
           </ol>
           <p><img src="assets/garden-14-thread.png" alt="The comments panel showing the Commenting as control and a comment thread with two author pills and a reply" loading="lazy" /></p>
-          <h3>16. Hand your comments back</h3>
+          <h3>17. Hand your comments back</h3>
           <ol>
           <li>Click <strong>Copy all</strong> in the toolbar or the sidebar.</li>
           <li>This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.</li>
           <li>Paste the bundle back to the agent. It addresses each comment and marks it handled in the same file.</li>
           </ol>
           <p><img src="assets/garden-09-copyall.png" alt="The Copy all action with the comments panel populated" loading="lazy" /></p>
-          <h3>17. Use the export menu</h3>
+          <h3>18. Use the export menu</h3>
           <p>The sidebar&#x27;s export menu gathers the ways to save or share the file in one place.</p>
           <ol>
           <li>Click <strong>Export</strong> in the comments panel header to open the menu.</li>
@@ -198,11 +208,11 @@
           <li>The <strong>Clear</strong> button next to Export removes every comment so you can start the review over.</li>
           </ol>
           <p><img src="assets/garden-12-export-menu.png" alt="The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML" loading="lazy" /></p>
-          <h3>18. Refresh and repeat</h3>
+          <h3>19. Refresh and repeat</h3>
           <p>Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.</p>
           <p>To share the review with another person instead, use the export menu&#x27;s <strong>Portable</strong> action to bake the comments into a single self-contained copy, or <strong>Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
           <p>Use <strong>Export Offline</strong> for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the <strong>Offline</strong> badge while keeping live diagrams and chart tooltips.</p>
-          <h3>19. Review a board document</h3>
+          <h3>20. Review a board document</h3>
           <p>Not every commentable file is a prose report. A board document (<code>kind: board</code>) renders as columns of cards - handy for triaging incidents, tickets, or tasks. The <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a> report is one.</p>
           <ol>
           <li>Open <a href="../demo/report-triage.html"><code>examples/report-triage.html</code></a>.</li>

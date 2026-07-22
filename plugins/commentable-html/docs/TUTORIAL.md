@@ -111,7 +111,21 @@ Notes are editable free-text fields authors embed for context, verdicts, or revi
 
 ![An editable note field labeled Verdict with a single/multi-line toggle](assets/note-01-note.png)
 
-## 12. Track review progress per section
+## 12. Format your comment
+
+Comment notes support lightweight rich text (WhatsApp / Office style), so you can emphasize a point or drop in a link. Type the markers directly, or select text in the composer and use the formatting toolbar (or a keyboard shortcut).
+
+1. Select some text and open the composer. A formatting toolbar sits above the note field: bold, italic, underline, strikethrough, inline code, link, and bullet list.
+2. Wrap the current selection by clicking a toolbar button or pressing a shortcut: `Ctrl/Cmd+B` for `**bold**`, `Ctrl/Cmd+I` for `*italic*`, `Ctrl/Cmd+U` for `__underline__`, and `Ctrl/Cmd+K` to turn the selection into a link. Start a line with `- ` for a bullet list, wrap text in backticks for inline code, and use `~~text~~` for strikethrough.
+3. Type or paste a bare `http(s)://` address and it becomes clickable on its own. Only `http`, `https`, and `mailto` links are made clickable; anything else stays plain text.
+
+![The comment composer with its formatting toolbar above a note being written with bold text, a link, and a bullet list](assets/garden-15-format-toolbar.png)
+
+Once saved, the note renders its formatting in the sidebar card and the inline popover, while the stored note keeps the exact text you typed - so **Copy all** still hands the agent the raw markers.
+
+![A saved comment card in the sidebar showing bold text, a clickable link, and a bullet list](assets/garden-16-rich-card.png)
+
+## 13. Track review progress per section
 
 Every section heading carries a small review badge so you can mark sections as you finish them and see at a glance what is left.
 
@@ -121,7 +135,7 @@ Every section heading carries a small review badge so you can mark sections as y
 
 ![A section heading showing a green Reviewed badge](assets/garden-10-review-badge.png)
 
-## 13. Navigate, search, and filter sections
+## 14. Navigate, search, and filter sections
 
 1. Widen the browser window to at least 1400px. A generated section navigation appears on the left (separate from the author Contents list near the top) and highlights the section you are reading.
 2. The nav has a search box at the top: type to filter the section list down to matching headings.
@@ -130,7 +144,7 @@ Every section heading carries a small review badge so you can mark sections as y
 
 ![The left section navigation with its search box, review-status filter, and expand/collapse and scroll controls](assets/garden-11-side-toc.png)
 
-## 14. Search and sort your comments
+## 15. Search and sort your comments
 
 Once you have several comments, the sidebar helps you find and order them.
 
@@ -139,7 +153,7 @@ Once you have several comments, the sidebar helps you find and order them.
 
 ![The comments panel filtered by a search query, with the sort controls and a shown-of-total count](assets/garden-13-comment-search.png)
 
-## 15. Set your name and reply in threads
+## 16. Set your name and reply in threads
 
 When you pass a document back and forth with someone else, attribute each comment and hold a conversation in threads.
 
@@ -151,7 +165,7 @@ When you pass a document back and forth with someone else, attribute each commen
 
 ![The comments panel showing the Commenting as control and a comment thread with two author pills and a reply](assets/garden-14-thread.png)
 
-## 16. Hand your comments back
+## 17. Hand your comments back
 
 1. Click **Copy all** in the toolbar or the sidebar.
 2. This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.
@@ -159,7 +173,7 @@ When you pass a document back and forth with someone else, attribute each commen
 
 ![The Copy all action with the comments panel populated](assets/garden-09-copyall.png)
 
-## 17. Use the export menu
+## 18. Use the export menu
 
 The sidebar's export menu gathers the ways to save or share the file in one place.
 
@@ -169,7 +183,7 @@ The sidebar's export menu gathers the ways to save or share the file in one plac
 
 ![The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML](assets/garden-12-export-menu.png)
 
-## 18. Refresh and repeat
+## 19. Refresh and repeat
 
 Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.
 
@@ -177,7 +191,7 @@ To share the review with another person instead, use the export menu's **Portabl
 
 Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Portable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips.
 
-## 19. Review a board document
+## 20. Review a board document
 
 Not every commentable file is a prose report. A board document (`kind: board`) renders as columns of cards - handy for triaging incidents, tickets, or tasks. The [`examples/report-triage.html`](../examples/report-triage.html) report is one.
 

@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.208.0] - 2026-07-22
+
+### Added
+
+- Review comment notes now support lightweight rich text (WhatsApp / Office style), rendered safely
+  wherever a note is shown (sidebar card, inline popover, print appendix): `**bold**`, `*italic*`,
+  `__underline__`, `~~strikethrough~~`, inline code, `- ` bullet lists, markdown-style links
+  (http/https/mailto only), and bare `http(s)://` URLs auto-linked as clickable, new-tab, safe
+  anchors. A single-pass tokenizer escapes all input first and only emits its own fixed tags, so a
+  note can never inject markup; unsafe link schemes and hostile input are handled safely.
+- The comment composer gained a formatting toolbar (bold, italic, underline, strikethrough, code,
+  link, list) that wraps the current selection, plus keyboard shortcuts `Ctrl/Cmd+B` / `I` / `U`
+  and `Ctrl/Cmd+K` (link). The stored note stays plain-text source, so Copy all still hands the
+  agent the exact markers and old notes remain loadable without any migration. A new "Formatting
+  your comment" Help topic and a tutorial section document the markers and shortcuts.
+
 ## [1.206.0] - 2026-07-22
 
 ### Fixed

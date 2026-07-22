@@ -45,7 +45,7 @@ const GARDEN_SHOTS = [
   "01-top-light", "02-kql", "03-chart", "04-diff", "05-composer",
   "06-comment-saved", "07-help", "08-top-dark", "09-copyall",
   "10-review-badge", "11-side-toc", "12-export-menu", "13-comment-search",
-  "14-thread",
+  "14-thread", "15-format-toolbar", "16-rich-card",
 ];
 // Checklists, notes, and the incident triage board render in their own example reports, so each
 // gets a small scene of its own (checklist-*.png, note-*.png, triage-*.png).
@@ -666,6 +666,45 @@ async function captureGarden(ctx) {
   await waitForStableLayout(page);
   await screenshotFixedRegion(page, page.locator("#sidebar"),
     shotPath(targetDir, P, "14-thread"), 0);
+
+  // Rich-text formatting: show the composer's formatting toolbar with a note being written, then the
+  // rendered rich comment card. Clear first so the panel shows one clean rich comment. Full-viewport
+  // clips keep these dimension-stable across platforms.
+  await page.evaluate(() => {
+    const m = document.getElementById("sidebarExportMenu");
+    if (m) m.hidden = true;
+    window.scrollTo(0, 0);
+  });
+  await clearAllComments(page);
+  const richTarget = page.locator("#commentRoot p").nth(4);
+  if (await richTarget.count()) {
+    await richTarget.scrollIntoViewIfNeeded();
+    await richTarget.evaluate((node) => {
+      const r = document.createRange();
+      r.selectNodeContents(node);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    const addBtn = page.locator("#menuComment");
+    await addBtn.waitFor({ state: "visible", timeout: 5000 });
+    await addBtn.click();
+    const composer = page.locator(".cm-composer").first();
+    await composer.waitFor({ state: "visible", timeout: 5000 });
+    await composer.locator("textarea").first().fill(
+      "Great topic! See **companion planting** and the guide: https://example.com/garden\n- rotate beds each year\n- add __compost__ in spring");
+    await page.mouse.move(1, 1);
+    await waitForStableLayout(page);
+    await writeScreenshot(page, shotPath(targetDir, P, "15-format-toolbar"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+    await composer.locator('[data-act="save"]').click();
+    await expectNoComposer(page);
+    await page.evaluate(() => { window.scrollTo(0, 0); });
+    await waitForStableLayout(page);
+    await writeScreenshot(page, shotPath(targetDir, P, "16-rich-card"),
+      { clip: { x: 0, y: 0, width: 1320, height: 900 } });
+  }
 }
 
 async function captureChecklist(ctx) {
