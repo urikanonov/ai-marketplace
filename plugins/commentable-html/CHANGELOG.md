@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.203.0] - 2026-07-21
+
+### Fixed
+
+- Copy all now strips Unicode bidirectional formatting controls from reviewer notes, document text,
+  the document label, and the document source before emitting the agent payload, so invisible
+  direction overrides cannot visually span the trusted fences or metadata lines. Machine-readable
+  JSON identifiers escape those controls so note/checklist apply tools still round-trip ids.
+  (CMH-COPY-09)
+
 ## [1.202.0] - 2026-07-21
 
 ### Fixed
