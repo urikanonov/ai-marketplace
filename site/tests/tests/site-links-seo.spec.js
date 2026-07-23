@@ -367,3 +367,45 @@ test("a standalone data-anchor sub-heading is a linkable anchor to its own id (S
   await anchor.click();
   await expect(page).toHaveURL(/#mediums$/);
 });
+
+
+test("a nav jump clears the sticky navbar so the target section is not hidden (SITE-NAV-03)", async ({ page }) => {
+  // Reduced motion turns the hash jump instant, so the assertion never races a smooth scroll.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const navBottom = await page.locator(".navbar").evaluate((n) => n.getBoundingClientRect().bottom);
+  expect(navBottom).toBeGreaterThan(0);
+  // Jump to the first hub section (it has enough content below to reach the top of the
+  // scroll area, so a missing scroll offset would hide it behind the sticky navbar).
+  const navLink = page.locator('.nav-links a[href="#install"]');
+  await expect(navLink).toBeVisible();
+  await navLink.click();
+  await expect(page).toHaveURL(/#install$/);
+  // scroll-margin-top keeps the section's own top edge at or below the navbar bottom,
+  // so the heading is never drawn behind the translucent sticky navbar.
+  const top = await page.locator("section#install").evaluate((n) => n.getBoundingClientRect().top);
+  expect(top).toBeGreaterThanOrEqual(navBottom - 1);
+});
+
+
+test("the anchor offset tracks a taller wrapped navbar on a narrow plugin page (SITE-NAV-03)", async ({ page }) => {
+  // On a narrow plugin page the sticky navbar wraps to well over the 76px static fallback,
+  // so a fixed offset would still hide the heading; site.js keeps --nav-offset at the real height.
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/commentable-html/", { waitUntil: "networkidle" });
+  const navBottom = await page.locator(".navbar").evaluate((n) => n.getBoundingClientRect().bottom);
+  // Guard the premise of the test: this navbar is taller than the 76px static fallback.
+  expect(navBottom).toBeGreaterThan(76);
+  // Jump to an early section (plenty of content below to reach the top of the scroll area).
+  await page.locator("section#install .section-title a.header-anchor").click();
+  await expect(page).toHaveURL(/#install$/);
+  const top = await page.locator("section#install").evaluate((n) => n.getBoundingClientRect().top);
+  expect(top).toBeGreaterThanOrEqual(navBottom - 1);
+  // The [data-anchor][id] sub-heading offset must track the same wrapped navbar, so removing
+  // that selector from the rule would be caught here (not only the section[id] case above).
+  await page.locator("h3.why-sub#mediums[data-anchor] a.header-anchor").click();
+  await expect(page).toHaveURL(/#mediums$/);
+  const subTop = await page.locator("#mediums").evaluate((n) => n.getBoundingClientRect().top);
+  expect(subTop).toBeGreaterThanOrEqual(navBottom - 1);
+});
