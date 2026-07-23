@@ -228,6 +228,13 @@ function showMenu(x, y) {
 // Arrow keys rove focus among the visible menuitems (wrapping), matching the ARIA menu pattern.
 if (menu) {
   menu.addEventListener("keydown", (e) => {
+    // Tab (forward or Shift+Tab) leaves the menu: close it and clear the saved opener so a later
+    // Escape cannot surprise-restore, then let the browser move focus naturally (no preventDefault),
+    // so focus lands on the correct next/previous control. This mirrors the ARIA deck mode menu
+    // (95-startup.js) and covers the edge case the focusout backstop cannot: when Tab moves focus
+    // to browser chrome, focusout's relatedTarget is null and its null-guard would keep the menu
+    // open, leaving a stale opener a later Escape could yank focus back to.
+    if (e.key === "Tab") { _menuReturnFocus = null; hideMenu(); return; }
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
     const items = _menuItems();
     if (!items.length) return;

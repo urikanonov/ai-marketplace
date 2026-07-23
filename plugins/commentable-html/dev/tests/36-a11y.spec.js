@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, fileUrl, INLINE, addTextComment, selectText, stageContent } from "./helpers.js";
+import { openInline, ready, fileUrl, INLINE, addTextComment, selectText, stageContent, stageDeck } from "./helpers.js";
 
 // Accessibility + honesty of runtime feedback: toasts are announced to screen readers,
 // and Copy all never claims success when it actually fell back to a manual prompt.
@@ -133,6 +133,75 @@ test("the menu items use a roving tabindex and Tab dismisses the menu without a 
   await page.keyboard.press("Escape");
   const focusedAfterEsc = await page.evaluate(() => document.activeElement && document.activeElement.id);
   expect(focusedAfterEsc).toBe(focusedAfterTab);
+});
+
+test("a Tab keydown dismisses the menu even when focus does not move to a page element (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  // Open the doc-comment menu from a real opener so a stray restore would be observable.
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  // Simulate Tab moving focus to browser chrome: the keydown fires but no page element receives
+  // focus, so focusout's relatedTarget would be null and its null-guard would keep the menu open.
+  // The keydown handler itself must close the menu. Dispatch a synthetic Tab keydown WITHOUT
+  // moving focus to isolate the keydown path from the focusout backstop.
+  await page.evaluate(() => {
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+  });
+  await expect(menu).toBeHidden();
+  // The saved opener was cleared, so a later Escape must not surprise-restore focus to it.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#btnToggleSidebar")).not.toBeFocused();
+});
+
+test("a Shift+Tab keydown also dismisses the menu (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  // Shift+Tab is the backward exit; it too must close the menu via the keydown handler.
+  await page.evaluate(() => {
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+  });
+  await expect(menu).toBeHidden();
+});
+
+test("Home and End rove to the first and last visible menuitems (CMH-A11Y-09)", async ({ page }) => {
+  // A deck's empty right-click shows two visible menuitems (deck + slide), so first and last
+  // differ and Home/End are distinguishable (an inline document shows only one item).
+  const slides =
+    '<section class="slide active" data-slide-id="a11y-slide-1"><h2>One</h2><p>Alpha</p></section>' +
+    '<section class="slide" data-slide-id="a11y-slide-2"><h2>Two</h2><p>Beta</p></section>';
+  const { html } = stageDeck(slides, { key: "cmh-a11y-homeend" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.evaluate(() => {
+    document.querySelector(".slide.active").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  const ids = await page.evaluate(() =>
+    [...document.querySelectorAll("#contextMenu button:not([hidden])")].map((b) => b.id));
+  expect(ids.length).toBeGreaterThan(1);
+  // End focuses the last visible item; Home focuses the first.
+  await page.keyboard.press("End");
+  await expect(page.locator("#" + ids[ids.length - 1])).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(page.locator("#" + ids[0])).toBeFocused();
 });
 
 // CMH-A11Y-10: the floating per-link add-comment affordance carries the shared focus ring.
