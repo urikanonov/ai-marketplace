@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.223.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.224.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.224.0] - 2026-07-23</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Markdown review-note exports now carry an untrusted-data preamble and non-forgeable dynamic fences, and strip bidi/invisible formatting controls from note text.</li>
+              <li>Portable, Offline, and Plain HTML exports strip authoring session-id and agent provenance by default; an explicit retain option preserves it when deliberately requested.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.223.0] - 2026-07-23</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -465,6 +473,8 @@
               <li>Accessibility: a sortable table&#x27;s header cell now reflects the active sort direction via <code>aria-sort</code> (<code>ascending</code> / <code>descending</code>) on the <code>&lt;th&gt;</code>, removed when the column resets or another column takes the sort, so assistive tech announces which column is sorted and how.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.222.0] - 2026-07-23</h3></div>
             <div class="group-label">Fixed</div>
@@ -472,8 +482,6 @@
               <li>Comment search now Unicode-normalizes note text and queries and uses locale-aware casing, so canonically equivalent text and Turkish/Azeri dotted or dotless I case pairs match correctly. Localized card, popover, and board-summary timestamps isolate the date from any LTR suffix under RTL locales, and the inline image tool accepts safe paths whose canonical casing differs on case-insensitive filesystems. (CMH-SEARCH-06, CMH-SEARCH-07, CMH-SIDE-10, CMH-TOOL-21)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.221.0] - 2026-07-23</h3></div>
             <div class="group-label">Changed</div>
@@ -506,14 +514,7 @@
               <li>Flat (non-deck) documents now print / Save-as-PDF as a SINGLE continuous no-break page instead of paginating onto A4/Letter sheets, so no page break cuts through a section, table, chart, diagram, or code block. On print the runtime measures the full content height (proactively, under stable screen media, since Chromium locks the print <code>@page</code> size at <code>beforeprint</code>) and sizes a dynamic <code>@page</code> to the content, collapsing a multi-page report onto one tall page. Documents that contain a block-stacking container - a multi-column chart gallery or a grid/flex widget such as a kanban board - are left on normal pagination, because their print-time grid-to-block reflow and asynchronous chart resize cannot be measured before the page size is locked; their content still prints in full on standard pages. Decks are unchanged (one landscape 16:9 page per slide). Relies on the browser honoring a CSS <code>@page</code> size (Chromium&#x27;s native print/PDF). (CMH-PRINT-06)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.213.0] - 2026-07-22</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Guarded sibling-tool imports in the shipped tools are never SILENT anymore. The #584 root cause was a deferred <code>import doc_stamp</code> swallowed by <code>except (OSError, ImportError): pass</code>, so a broken sibling import degraded a whole feature with no signal. Now every guarded import fallback across the tools (<code>new_document.py</code>, <code>deck_scaffold.py</code>, <code>retrofit.py</code>, <code>upgrade.py</code>, <code>deck_theme.py</code>, <code>deck_validate.py</code>, <code>chart_block.py</code>, <code>highlighting.py</code>, and <code>validate.py</code>&#x27;s <code>cmhval</code> and validated-stamp guards) emits a one-line stderr warning via a new <code>_toolpath.warn_missing_tool</code> (or unconditionally re-raises / recovers by re-importing), so a degraded run is visible. A guard test (<code>test_tool_imports.py</code>) additionally proves every guarded sibling import RESOLVES in the shipped layout (a missing/renamed sibling fails CI loudly) and structurally forbids any future silent import fallback - covering <code>except ImportError</code>, <code>ModuleNotFoundError</code>, and import-guarding broad / bare <code>except</code> handlers across the whole shipped tools tree. (CMH-TOOL-IMPORTS-01)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">182 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">183 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
