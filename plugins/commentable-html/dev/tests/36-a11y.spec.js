@@ -107,6 +107,34 @@ test("Escape closes the selection context menu and restores focus to the opener 
   await expect(page.locator("#btnToggleSidebar")).toBeFocused();
 });
 
+test("the menu items use a roving tabindex and Tab dismisses the menu without a stray Escape-restore (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  // Every menuitem is removed from the native Tab sequence (roving tabindex); focus is moved
+  // programmatically via the Arrow keys instead, so Tab does not step from one item to the next.
+  for (const id of ["#menuComment", "#menuDocComment", "#menuSlideComment"]) {
+    await expect(page.locator(id)).toHaveAttribute("tabindex", "-1");
+  }
+  // Open the menu from a real opener so a later restore would be observable.
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  // Tabbing out of the menu dismisses it cleanly (focus leaves the menu; no stale open menu).
+  await page.keyboard.press("Tab");
+  await expect(menu).toBeHidden();
+  await expect(page.locator("#menuDocComment")).not.toBeFocused();
+  // Because Tab-exit did NOT save a restore target, a later Escape must not yank focus back to
+  // the opener - it stays wherever Tab left it.
+  const focusedAfterTab = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  await page.keyboard.press("Escape");
+  const focusedAfterEsc = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  expect(focusedAfterEsc).toBe(focusedAfterTab);
+});
+
 // CMH-A11Y-10: the floating per-link add-comment affordance carries the shared focus ring.
 test("the link add-comment affordance shows the shared focus-visible ring (CMH-A11Y-10)", async ({ page }) => {
   const staged = stageContent(

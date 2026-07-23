@@ -9,11 +9,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 ### Added
 
 - Accessibility: the text-selection context menu is now a keyboard-operable ARIA menu. Its container
-  carries `role="menu"` and each action carries `role="menuitem"` with roving `tabindex`; opening it
-  moves focus to the first visible item, ArrowUp/ArrowDown (and Home/End) rove focus with wrap-around,
-  and only one item is a tab stop at a time. Escape closes the menu and restores focus to the control
-  that was focused when it opened, and moving focus out of the menu (including via Tab) dismisses it so
-  no stale open menu is left behind.
+  carries `role="menu"` and each action carries `role="menuitem"` with a roving `tabindex="-1"` (only
+  one item is focusable at a time, so Tab does not step through them); opening it moves focus to the
+  first visible item, ArrowUp/ArrowDown (and Home/End) rove focus with wrap-around, Tabbing out
+  dismisses it cleanly, and Escape closes it and restores focus to the control that was focused when it
+  opened.
 - Accessibility: the floating per-link add-comment button and the collapsible-section caret now show the
   shared themed `:focus-visible` outline ring, so keyboard focus on either control is clearly visible.
 - Accessibility: a sortable table's header cell now reflects the active sort direction via `aria-sort`

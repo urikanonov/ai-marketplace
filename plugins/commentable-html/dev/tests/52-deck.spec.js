@@ -334,6 +334,11 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     // ArrowUp roves backwards (wrapping to the last visible item).
     await page.keyboard.press("ArrowUp");
     await expect(page.locator("#menuSlideComment")).toBeFocused();
+    // Home jumps to the first visible item, End to the last (deck + slide are both visible here).
+    await page.keyboard.press("Home");
+    await expect(page.locator("#menuDocComment")).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(page.locator("#menuSlideComment")).toBeFocused();
   });
 
   test("CMH-DECK-33: a slide comment caps a long title and falls back to the active slide without an id", async ({ page }) => {
