@@ -80,7 +80,13 @@ def inline_images(html, base_dir):
         path = os.path.realpath(os.path.join(base_abs, clean))
         # Refuse to read outside the base directory (e.g. src="../../secret.png"): a
         # build tool should only inline images that live under the intended tree.
-        if path != base_abs and not path.startswith(base_abs + os.sep):
+        base_cmp = os.path.normcase(base_abs)
+        path_cmp = os.path.normcase(path)
+        try:
+            inside_base = os.path.commonpath((base_cmp, path_cmp)) == base_cmp
+        except ValueError:
+            inside_base = False
+        if not inside_base:
             stats["missing"].append(src)
             return match.group(0)
         ext = os.path.splitext(path)[1].lower()

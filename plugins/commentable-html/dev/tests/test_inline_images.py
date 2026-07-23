@@ -140,6 +140,25 @@ class InlineImagesTests(unittest.TestCase):
         finally:
             os.remove(outside)
 
+    def test_case_insensitive_realpath_casing_stays_inside_base(self):
+        real_realpath = os.path.realpath
+        mismatched_base = self.dir.swapcase()
+
+        def mismatched_realpath(path):
+            if path == self.dir:
+                return mismatched_base
+            if os.path.basename(path) == "pic.png":
+                return self.png
+            return real_realpath(path)
+
+        html = '<img src="pic.png">'
+        with mock.patch("os.path.realpath", side_effect=mismatched_realpath), \
+                mock.patch("os.path.normcase", side_effect=lambda path: path.lower()):
+            out, inlined, missing = inline_images.inline_images(html, self.dir)
+
+        self.assertEqual((inlined, missing), (1, []))
+        self.assertIn("data:image/png;base64,", out)
+
     def test_percent_decode_exception_fallback(self):
         # urllib.parse.unquote raising must not propagate; the fallback (raw src path) is used.
         # A plain filename without percent-encoded chars resolves identically either way,

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.221.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.222.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.222.0] - 2026-07-23</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Comment search now Unicode-normalizes note text and queries and uses locale-aware casing, so canonically equivalent text and Turkish/Azeri dotted or dotless I case pairs match correctly. Localized card, popover, and board-summary timestamps isolate the date from any LTR suffix under RTL locales, and the inline image tool accepts safe paths whose canonical casing differs on case-insensitive filesystems. (CMH-SEARCH-06, CMH-SEARCH-07, CMH-SIDE-10, CMH-TOOL-21)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.221.0] - 2026-07-23</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Resource-safety hardening across the runtime and tools so large or attacker-controlled input can no longer exhaust memory/disk or freeze the tab (issue #619): - The session-hook zip extractor (<code>pkg/hooks/extract_resources.py</code>) now preflights <code>skill-resources.zip</code> against entry-count, per-entry size, total-size, and compression-ratio caps before writing anything, and streams each member under a per-entry actual-byte cap, so a tampered or decompression-bomb archive fails closed (previous version untouched, no marker). - The interactive chart derives its y-axis ticks by a bounded integer index (capped at <code>MAX_CHART_TICKS</code>), so a tiny/zero <code>data-cmh-chart-step</code> against a large max can no longer drive an unbounded synchronous loop. - Large code blocks are bounded like diffs: above <code>CMH_CODE_MAX_LINES</code> lines the per-line gutter is skipped, and above <code>CMH_CODE_MAX_CHARS</code> characters the runtime highlighter leaves the block plain (the text stays readable and commentable). - The deck <code>--pptx</code> local extractor lowers its archive caps, size-caps a single inlined image (<code>MAX_PPTX_IMAGE_BYTES</code>) and degrades an oversize image gracefully - dropping its extracted temp path (never emitting a dangling <code>assets/...</code> reference) and replacing it with a visible placeholder carrying the alt text so the fragment stays self-contained - and runs the vendored extractor subprocess under a hard wall-clock timeout (<code>PPTX_EXTRACT_TIMEOUT_SECONDS</code>) that fails closed. - Comment restore/backfill at startup reuse ONE <code>getTextNodes()</code> scan across per-comment <code>rangeFromOffsets()</code> lookups (rebuilding only after a DOM-mutating wrap) and cap context capture at <code>CMH_MAX_BACKFILL</code>, so a flood of finite-but-unresolvable comments no longer does O(comment_count x document_size) work.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.220.0] - 2026-07-23</h3></div>
             <div class="group-label">Changed</div>
@@ -470,8 +479,6 @@
               <li>The Manage storage dialog is clearer and more capable (CMH-STORE-13..16). Documents are now shown in a column-headed table (Document, Comments, Size, Share, Actions) where the Share column is each document&#x27;s percentage of commentable-html storage. A usage summary reports total local storage in use as a percentage of the assumed ~5 MB budget, the commentable-html share of the storage in use, and this document&#x27;s percentage of commentable-html storage. Each document row has a lazy &quot;Show comments&quot; toggle that lists every stored comment (quote, note, author, and an approximate per-comment size), each deletable - deleting a comment in the current document routes through the live delete path (tombstoning embedded ids and re-rendering the sidebar), while deleting another document&#x27;s comment rewrites only that document&#x27;s stored slot. A Close button was added in a footer at the bottom of the dialog.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.215.0] - 2026-07-23</h3></div>
             <div class="group-label">Added</div>
@@ -504,19 +511,7 @@
               <li>The runtime footer is now flush with the content column when the side table-of-contents navigation pane is present and the comments sidebar is closed. Previously, on viewports where the pane&#x27;s left inset shrank the content shell below its max width, the footer spanned wider than the content column (about 1.5rem past it on each side). The footer now insets to match the content box in that layout.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.211.0] - 2026-07-22</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Manage storage: a near-full-screen dialog (from the overflow / sidebar menu) that lists every commentable-html document&#x27;s data stored in this browser, with a human-readable size and comment count, and lets you delete another document&#x27;s data to reclaim space. On <code>file://</code> all documents share one browser storage budget, so this is how you free room when it fills up. The current document is marked and offers &quot;Clear all comments&quot; instead of Delete; deletion is scoped to commentable-html&#x27;s own keys, so unrelated site data is never touched. (CMH-STORE-04, CMH-STORE-05, CMH-STORE-06, CMH-STORE-08)</li>
-              <li>If saving a comment fails because storage is full, the Manage storage dialog now opens automatically; freeing space retries the save so the comment is not lost. Notes, checklists, and section-review saves that hit the same limit surface a &quot;Manage storage&quot; action on their warning toast, and closing the dialog while any save is still pending re-offers that recovery action so nothing is lost silently. (CMH-STORE-07)</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Comments are now stored compressed (lz-string, packed into UTF-16) when that is smaller than plain JSON, so far more documents&#x27; reviews fit in the shared browser storage. The format is backward compatible: documents last saved by an older version still load and are migrated on the next save, and a stored value that cannot be read (a corrupt or newer-version format) is left untouched with a recovery notice rather than being overwritten. (CMH-STORE-01, CMH-STORE-02, CMH-STORE-03)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">180 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">181 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

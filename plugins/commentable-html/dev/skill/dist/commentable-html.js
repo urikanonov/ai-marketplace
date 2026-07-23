@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.221.0";
+const CMH_VERSION = "1.222.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6009,7 +6009,7 @@ function renderComments() {
         <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(r.note == null ? "" : r.note)}</div>
         <div class="meta">
-          <span>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}${r.updatedAt ? " (edited)" : ""}</span>
+          <span><bdi>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}</bdi>${r.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
             <button type="button" data-act="reply-edit" title="Edit reply">edit</button>
             <button type="button" class="del" data-act="reply-del" title="Delete reply">delete</button>
@@ -6026,7 +6026,7 @@ function renderComments() {
         <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(c.note == null ? "" : c.note)}</div>
         <div class="meta">
-          <span>#${i + 1} - ${escapeHtml(formatTime(c.updatedAt || c.createdAt))}${c.updatedAt ? " (edited)" : ""}</span>
+          <span>#${i + 1} - <bdi>${escapeHtml(formatTime(c.updatedAt || c.createdAt))}</bdi>${c.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
             ${jumpBtn}
             <button type="button" data-act="edit" title="Edit comment">edit</button>
@@ -6108,7 +6108,7 @@ function _renderWidgetStateCard(changes) {
     groups.get(ch.widget).push(ch);
   });
   const first = (typeof widgetFirstChangeAt === "function") ? widgetFirstChangeAt() : null;
-  const timeHtml = first ? escapeHtml(formatTime(first)) : "";
+  const timeHtml = first ? `<bdi>${escapeHtml(formatTime(first))}</bdi>` : "";
   let html = "";
   groups.forEach((list, name) => {
     const items = list.map((ch) =>
@@ -6307,6 +6307,10 @@ root.addEventListener("click", (e) => {
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
 
+function _normalizeCommentSearchText(value) {
+  return String(value == null ? "" : value).normalize("NFC").toLocaleLowerCase();
+}
+
 // The reviewer's own note text - what THEY wrote - is the only thing the search filters on. The
 // quoted anchor content, section path, and pin are deliberately excluded so a query matches by the
 // comment text, not the surrounding quote; chrome (action-button labels, the meta line) is likewise
@@ -6324,7 +6328,7 @@ function _commentCardHaystack(card) {
       text += " " + (el.textContent || "");
     });
   }
-  return text.toLowerCase();
+  return _normalizeCommentSearchText(text);
 }
 
 function _toggleSearchEmptyNote(show) {
@@ -6358,7 +6362,7 @@ function applyCommentSearch() {
     _toggleSearchEmptyNote(false);
     return;
   }
-  const q = commentSearchQuery.trim().toLowerCase();
+  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
   if (clearBtn) clearBtn.hidden = q === "";
   const cards = listEl ? listEl.querySelectorAll(".cm-card[data-cid]") : [];
   let shown = 0;
@@ -6376,7 +6380,7 @@ function applyCommentSearch() {
       c.classList.toggle("cm-hidden", q !== "");
     });
     noteCards.forEach((c) => {
-      const hay = ((c.querySelector(".cmh-note-search") || {}).textContent || "").toLowerCase();
+      const hay = _normalizeCommentSearchText((c.querySelector(".cmh-note-search") || {}).textContent || "");
       const match = q === "" || hay.indexOf(q) !== -1;
       c.classList.toggle("cm-hidden", !match);
       if (q !== "" && match) noteShown++;
@@ -6720,8 +6724,9 @@ function openCommentPopover(id, mark) {
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
     + "</div>";
   el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
-  el.querySelector(".cm-comment-popover-meta").textContent =
-    formatTime(c.updatedAt || c.createdAt) + (c.updatedAt ? " (edited)" : "");
+  el.querySelector(".cm-comment-popover-meta").innerHTML =
+    "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
+    + (c.updatedAt ? " (edited)" : "");
   document.body.appendChild(el);
   commentPopover = el;
   if (!_positionCommentPopover(_popoverAnchorMark)) { closeCommentPopover(); return; }

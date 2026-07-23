@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { openKitchenSink, addTextComment, openComposerFor, selectText, distinctCids, realDragSelect, allCids } from "./helpers.js";
+import {
+  openKitchenSink, addTextComment, openComposerFor, selectText, distinctCids, realDragSelect,
+  allCids, stageContent, fileUrl, ready,
+} from "./helpers.js";
 
 test.describe("comment interactions", () => {
   test("a genuine pointer drag selects text and pops the Add-comment menu", async ({ page }) => {
@@ -55,6 +58,55 @@ test.describe("comment interactions", () => {
     await expect(page.locator("#commentList")).toContainText("edited note");
     await expect(page.locator("#commentList")).not.toContainText("original note");
     await expect(page.locator(".cm-card .meta")).toContainText(/edited/i);
+  });
+
+  test("RTL timestamps isolate dates in cards, replies, popovers, and board summaries (CMH-SIDE-10)", async ({ page }) => {
+    const { html } = stageContent(`
+      <section><h2>RTL timestamps</h2><p>Comment target text.</p></section>
+      <div class="board cm-skip" data-cm-widget="rtl-board" data-cm-draggable aria-label="RTL board">
+        <div data-cm-slot="Now"><div data-cm-part="rtl-card">Card</div></div>
+        <div data-cm-slot="Later" id="rtl-later"></div>
+      </div>`, { key: "cmh-rtl-timestamps" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await page.evaluate(() => { document.documentElement.dir = "rtl"; });
+    await addTextComment(page, "#commentRoot section p", "RTL timestamp");
+    await page.locator('.cm-card [data-act="edit"]').first().click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("RTL timestamp edited");
+    await composer.locator('[data-act="save"]').click();
+
+    const cardMeta = page.locator(".cm-card .meta > span").first();
+    await expect(cardMeta.locator("bdi")).toHaveCount(1);
+    await expect(cardMeta.locator("bdi")).not.toContainText("edited");
+    expect(await cardMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
+
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    await page.locator(".cm-composer").last().locator("textarea").fill("RTL reply");
+    await page.locator(".cm-composer").last().locator('[data-act="save"]').click();
+    await page.locator('.cm-reply [data-act="reply-edit"]').click();
+    await page.locator(".cm-composer").last().locator("textarea").fill("RTL reply edited");
+    await page.locator(".cm-composer").last().locator('[data-act="save"]').click();
+    const replyMeta = page.locator(".cm-reply .meta > span").first();
+    await expect(replyMeta.locator("bdi")).toHaveCount(1);
+    await expect(replyMeta.locator("bdi")).not.toContainText("edited");
+    expect(await replyMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
+
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const popMeta = page.locator(".cm-comment-popover-meta");
+    await expect(popMeta.locator("bdi")).toHaveCount(1);
+    await expect(popMeta.locator("bdi")).not.toContainText("edited");
+    expect(await popMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
+
+    await page.evaluate(() => new Promise((resolve) => {
+      document.getElementById("rtl-later").appendChild(document.querySelector('[data-cm-part="rtl-card"]'));
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    const summaryMeta = page.locator(".cm-card-state .meta > span").first();
+    await expect(summaryMeta.locator("bdi")).toHaveCount(1);
+    await expect(summaryMeta.locator("bdi")).toContainText(/\d{4}/);
   });
 
   test("deleting one comment leaves the others", async ({ page }) => {
