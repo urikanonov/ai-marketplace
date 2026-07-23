@@ -49,6 +49,26 @@ In a normal (non-deck) report, a diagram that does not naturally fill the conten
   - Keep architecture subgraphs dense: lay subgraphs out `LR` with `direction TB` inside each, so the two clusters sit side by side rather than being pushed far apart.
   - Avoid long cross-subgraph edges (for example `-. implemented by .->` spanning the whole diagram) and isolated/orphan nodes; dagre spreads nodes apart to route them, which is exactly what strands nodes and opens the internal gaps.
 
+### A gallery of several diagrams (use `.cmh-diagram-gallery`)
+
+To show SEVERAL diagrams (or figures) side by side, wrap them in a single `<div class="cmh-diagram-gallery">` rather than hand-rolling a grid. Diagrams have wildly different aspect ratios, and the naive layouts all fail on that mix: a plain CSS grid makes every row as tall as its tallest cell, so one tall diagram (a vertical `stateDiagram-v2`) strands its short siblings in dead space (marooning); bounding a cell's height by shrinking the SVG turns a tall-narrow diagram into a thin sliver; and CSS multi-column packs them but is fragile with mermaid's dynamic sizing (it can render tiny/empty diagrams in a real browser).
+
+The shipped helper is robust by construction: a plain CSS grid of UNIFORM, height-bounded, framed cards. Every card is the same height (no marooning), a diagram taller than its card scrolls inside the framed card instead of being shrunk (no sliver), and there is no multi-column. Width is left to the runtime, so Pattern A's narrow cap and wide-diagram scrolling still apply inside each card. On phones it collapses to a single-column flow, and print stacks it one per column.
+
+```html
+<div class="cmh-diagram-gallery">
+  <pre class="mermaid cm-skip">flowchart LR
+  A --> B --> C</pre>
+  <pre class="mermaid cm-skip">stateDiagram-v2
+  [*] --> Intake
+  Intake --> Done
+  Done --> [*]</pre>
+  <!-- ...more diagrams... -->
+</div>
+```
+
+Keep `cm-skip` on gallery diagrams you do not want individually commentable. Do NOT re-create a per-document `.visual-grid`/masonry for a diagram gallery - it is exactly the layout that failed repeatedly; use `.cmh-diagram-gallery`.
+
 ### Mermaid loader and CDN-fallback guidance
 
 The skill does **not** load mermaid. The host page must include a mermaid script, and diagrams should render by default. For generated reports, vendor mermaid next to the HTML and import it by relative path:

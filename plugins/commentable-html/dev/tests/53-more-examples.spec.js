@@ -290,37 +290,43 @@ for (const rpt of REPORTS) {
     });
   });
 }
-// CMH-DEMO-06: the visuals-matrix Mermaid gallery must render every diagram at a readable size with
-// no marooning (a short/narrow diagram stranded in a tall empty box) and no slivers, on a wide
-// screen where the layout is multi-column. A CSS *grid* row is as tall as its tallest cell, so the
-// one very tall diagram (the state diagram) would either strand short siblings in empty space
-// (marooning) or, if each cell is height-bounded to avoid that, squash tall-narrow diagrams into
-// thin slivers. The gallery uses a masonry (CSS multi-column) flow instead, so each cell hugs its
-// own diagram and columns pack independently. On a single-column mobile viewport the layer's own
-// wide-diagram scroll behavior is left intact (covered by CMH-RESP-01 in 51-charts-mobile.spec.js).
-test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)", () => {
-  // Measure every gallery cell and its rendered diagram (host + svg box rects).
-  const measureGallery = (page) => page.evaluate(() => {
-    const hosts = [...document.querySelectorAll("#commentRoot .visual-grid > pre.mermaid")];
+// CMH-DEMO-06 / CMH-CONTENT-19: the visuals-matrix Mermaid gallery uses the shipped
+// `.cmh-diagram-gallery` layout helper (layer CSS), which is robust BY CONSTRUCTION against the
+// three failure modes this gallery hit repeatedly: marooning (a plain grid row is as tall as its
+// tallest cell, stranding short diagrams beside a tall one), slivers (height-bounding a cell by
+// shrinking the SVG turns a tall-narrow diagram into a thin sliver), and the multi-column/mermaid
+// fragility (tiny/empty diagrams in a real browser). The helper is a plain CSS grid of UNIFORM,
+// height-bounded, framed cards: every card is the same height (no marooning), a diagram taller than
+// its card scrolls inside it instead of being shrunk (no sliver), and there is no multi-column. It
+// does not constrain diagram WIDTH, so the layer's own narrow cap (CMH-MMD-10) still applies. On a
+// single-column mobile viewport the layer's natural diagram flow is left intact (CMH-RESP-01 in
+// 51-charts-mobile.spec.js).
+test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 / CMH-CONTENT-19)", () => {
+  const GALLERY = "#commentRoot section[aria-labelledby=\"mermaid-gallery\"] .cmh-diagram-gallery";
+  const measureGallery = (page) => page.evaluate((gallerySel) => {
+    const hosts = [...document.querySelectorAll(gallerySel + " > pre.mermaid")];
     return hosts.map((el) => {
       const svg = el.querySelector("svg");
       const hr = el.getBoundingClientRect();
       const sr = svg ? svg.getBoundingClientRect() : null;
+      const cs = getComputedStyle(el);
       return {
         src: (el.getAttribute("data-cmh-md-src") || "").split("\n")[0].trim(),
+        left: Math.round(hr.left),
         hostW: Math.round(hr.width), hostH: Math.round(hr.height),
         svgW: sr ? Math.round(sr.width) : 0, svgH: sr ? Math.round(sr.height) : 0,
         overRight: sr ? Math.round(sr.right - hr.right) : 0,
         overLeft: sr ? Math.round(hr.left - sr.left) : 0,
+        borderPx: Math.round(parseFloat(cs.borderTopWidth) || 0),
+        scrolls: el.scrollHeight > el.clientHeight + 1,
       };
     });
-  });
+  }, GALLERY);
 
-  test("gallery diagrams render un-marooned (each cell hugs its diagram) on a wide screen", async ({ page }) => {
+  test("gallery renders as robust uniform framed cards - no marooning, no slivers, no multi-column", async ({ page }) => {
     test.setTimeout(60000);
-    // A wide viewport makes the gallery multi-column, so the very tall state diagram shares a row
-    // (grid) or a set of columns (masonry) with short diagrams - the condition that produced the
-    // marooning / sliver failures.
+    // A wide viewport makes the gallery multi-column; the very tall state diagram would maroon or
+    // sliver under the old layouts. The helper must handle it as uniform framed cards.
     await page.setViewportSize({ width: 1600, height: 1000 });
     const server = await startStaticServer(PLUGIN);
     const errors = watchErrors(page);
@@ -328,83 +334,68 @@ test.describe("commentable visuals matrix: mermaid gallery layout (CMH-DEMO-06)"
       await routeMermaidLocal(page);
       await page.goto(`${server.url}/examples/report-metrics.html`);
       await ready(page);
+      // The demo actually uses the shipped helper class (not a hand-rolled per-example layout).
+      await expect(page.locator(GALLERY)).toHaveCount(1);
       // Every gallery diagram renders its SVG (served over http so mermaid runs).
-      await expect(page.locator("#commentRoot .visual-grid > pre.mermaid svg")).toHaveCount(7, { timeout: 20000 });
+      await expect(page.locator(`${GALLERY} > pre.mermaid svg`)).toHaveCount(7, { timeout: 20000 });
+
+      // The gallery is a plain CSS GRID (not a fragile multi-column block, and not the old marooning
+      // grid-that-strands): a single-column block fallback or a multicol would each break a promise.
+      const displays = await page.evaluate((gallerySel) => ({
+        gallery: getComputedStyle(document.querySelector(gallerySel)).display,
+        galleryCols: getComputedStyle(document.querySelector(gallerySel)).gridTemplateColumns,
+        chart: getComputedStyle(document.querySelector('#commentRoot section[aria-labelledby="chart-gallery"] .visual-grid')).display,
+      }), GALLERY);
+      expect(displays.gallery, "diagram gallery is a CSS grid").toBe("grid");
+      expect(displays.chart, "chart gallery is untouched (still a grid)").toBe("grid");
+      // The grid really forms multiple columns on a wide screen (not one column).
+      expect(displays.galleryCols.trim().split(/\s+/).length, "wide-screen gallery has multiple columns").toBeGreaterThanOrEqual(2);
 
       const cells = await measureGallery(page);
+      expect(cells.length).toBe(7);
 
-      // The mermaid gallery must actually be in the masonry (multi-column block) layout, not the grid
-      // - the `#commentRoot`-specificity override is load-bearing (without it the base grid rule wins
-      // and the marooning silently returns). Query the mermaid gallery specifically (not the first
-      // `.visual-grid`, which only happens to be the mermaid one today), and confirm the CHART gallery
-      // is untouched (still a grid), so the masonry change stays scoped.
-      const displays = await page.evaluate(() => ({
-        mermaid: getComputedStyle(document.querySelector('#commentRoot section[aria-labelledby="mermaid-gallery"] .visual-grid')).display,
-        chart: getComputedStyle(document.querySelector('#commentRoot section[aria-labelledby="chart-gallery"] .visual-grid')).display,
-      }));
-      expect(displays.mermaid, "mermaid gallery uses the masonry (block/columns) layout, not a grid").not.toBe("grid");
-      expect(displays.chart, "chart gallery is untouched (still a grid) - masonry is scoped to the mermaid gallery").toBe("grid");
+      // Every card has a visible frame (border) - the frame is what makes a scrollable tall diagram
+      // read as a bounded card rather than a clipped/broken diagram.
+      for (const c of cells) {
+        expect(c.borderPx, `card for "${c.src}" is framed`).toBeGreaterThanOrEqual(1);
+      }
+
+      // UNIFORM card heights => no marooning. Every card is the same height regardless of its
+      // diagram's height (a plain grid would make the whole row as tall as the state diagram).
+      const heights = cells.map((c) => c.hostH);
+      expect(Math.max(...heights) - Math.min(...heights), "gallery cards are uniform height (no marooning)").toBeLessThanOrEqual(2);
+      // ...and that uniform height is BOUNDED (not the ~637px+ tower a marooning grid row would take).
+      expect(Math.max(...heights), "gallery card height is bounded").toBeLessThanOrEqual(520);
+
+      // Multiple real columns on a wide screen.
+      const distinctColumns = new Set(cells.map((c) => Math.round(c.left / 5))).size;
+      expect(distinctColumns, "wide-screen gallery lays out in multiple columns").toBeGreaterThanOrEqual(2);
 
       for (const c of cells) {
         expect(c.svgW, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
         expect(c.svgH, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
-        // The box hugs its diagram in BOTH directions: not a tall frame around a small svg (marooning)
-        // and not shorter than its svg (which `overflow` would clip). Two-sided on purpose.
-        expect(Math.abs(c.hostH - c.svgH), `box for "${c.src}" hugs its diagram`).toBeLessThanOrEqual(24);
-        // The diagram stays inside its column (no horizontal overflow / clipping).
-        expect(c.svgW, `diagram "${c.src}" fits its column`).toBeLessThanOrEqual(c.hostW + 2);
+        // No sliver: every diagram is at least a readable width. The documented regression squashed
+        // the narrow state diagram to ~81px; the helper never height-shrinks, so it keeps the layer's
+        // ~173px cap. A 120px floor is well below the narrowest legit diagram and above the 81px sliver.
+        expect(c.svgW, `diagram "${c.src}" is at least a readable width (not a sliver)`).toBeGreaterThanOrEqual(120);
+        // The diagram stays inside its card horizontally (no clip past the edges).
+        expect(c.svgW, `diagram "${c.src}" fits its card`).toBeLessThanOrEqual(c.hostW + 2);
         expect(c.overRight, `diagram "${c.src}" not clipped on the right`).toBeLessThanOrEqual(1);
         expect(c.overLeft, `diagram "${c.src}" not clipped on the left`).toBeLessThanOrEqual(1);
-        // No sliver: every diagram is at least a readable width. The documented regression squashed
-        // the narrow state diagram to ~81px; the layer keeps it at its ~173px cap, and every other
-        // gallery diagram is wider. A 120px floor is comfortably below the narrowest legitimate
-        // diagram and well above the 81px sliver.
-        expect(c.svgW, `diagram "${c.src}" is at least a readable width (not a sliver)`).toBeGreaterThanOrEqual(120);
       }
 
-      // No diagram towers absurdly tall. This is the guard for the un-capped-narrow regression: if the
-      // portrait state diagram were stretched to full column width (instead of staying capped by the
-      // layer's CMH-MMD-10 rule), it balloons to a >1400px tower. Every gallery diagram stays modest.
-      const tallest = Math.max(...cells.map((c) => c.svgH));
-      expect(tallest, "no gallery diagram towers absurdly tall (narrow cap intact)").toBeLessThanOrEqual(900);
+      // At least the wide diagrams fill their card width (the diagram uses the card, not stuck small).
+      const innerW = cells[0].hostW - 28; // card width minus ~0.85rem padding each side
+      const maxFill = Math.max(...cells.map((c) => (innerW > 0 ? c.svgW / innerW : 0)));
+      expect(maxFill, "the widest gallery diagram fills its card width").toBeGreaterThanOrEqual(0.9);
 
-      // The columns are real and used, not collapsed to slivers: at least the wide diagrams span
-      // essentially their whole column.
-      const maxFill = Math.max(...cells.map((c) => (c.hostW ? c.svgW / c.hostW : 0)));
-      expect(maxFill, "the widest gallery diagram fills its column").toBeGreaterThanOrEqual(0.85);
-      // No marooning: a short diagram must not be stranded above a large vertical gap. In a CSS grid
-      // the row height equals the tallest cell, so a short diagram sitting in that row (with the next
-      // row far below) leaves a big gap to the diagram beneath it in the same column - even though
-      // each box hugs its own svg. A masonry column packs diagrams tightly, so the gap from any
-      // diagram to the nearest diagram below it (overlapping horizontally) stays small. Measure the
-      // actual laid-out boxes and assert the largest such gap is small.
-      const boxes = await page.evaluate(() => {
-        const hosts = [...document.querySelectorAll("#commentRoot .visual-grid > pre.mermaid")];
-        return hosts.map((el) => {
-          const r = el.getBoundingClientRect();
-          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
-        });
-      });
-      let maxGapBelow = 0;
-      for (const a of boxes) {
-        let nearestBelow = Infinity;
-        for (const b of boxes) {
-          if (b === a) continue;
-          const xOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-          if (xOverlap <= 4) continue; // different column
-          if (b.top >= a.bottom - 2) nearestBelow = Math.min(nearestBelow, b.top - a.bottom);
-        }
-        if (nearestBelow !== Infinity) maxGapBelow = Math.max(maxGapBelow, nearestBelow);
-      }
-      // Pre-fix the marooned grid left ~500px gaps below the short diagrams; the masonry gap is the
-      // ~1.25rem column margin (~20px). 80px comfortably separates the two.
-      expect(Math.round(maxGapBelow), "no diagram is marooned above a large vertical gap").toBeLessThanOrEqual(80);
+      // A diagram TALLER than the card scrolls inside it (bounded + scrollable, never height-shrunk to
+      // a sliver): the state diagram is the tall one and must overflow its bounded card.
+      const tall = cells.find((c) => c.src.startsWith("stateDiagram"));
+      expect(tall, "found the state diagram").toBeTruthy();
+      expect(tall.svgH, "the tall state diagram exceeds the bounded card (so it scrolls, not shrinks)").toBeGreaterThan(tall.hostH);
+      expect(cells.some((c) => c.scrolls), "at least one tall diagram scrolls inside its bounded card").toBe(true);
 
-      // The masonry actually forms MULTIPLE columns on a wide screen (a plain single-column
-      // `display:block` fallback - columns dropped - would satisfy every other assertion). Distinct
-      // left edges among the laid-out diagrams prove real columns.
-      const distinctColumns = new Set(boxes.map((b) => Math.round(b.left / 5))).size;
-      expect(distinctColumns, "the wide-screen mermaid gallery lays out in multiple columns").toBeGreaterThanOrEqual(2);
       expect(errors, "no uncaught errors").toEqual([]);
     } finally {
       await server.close();

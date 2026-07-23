@@ -1261,6 +1261,35 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   opacity: 0.82;
   font-variant-numeric: tabular-nums;
 }
+
+/* CMH-CONTENT-19: a robust GALLERY for MULTIPLE diagrams/figures whose aspect ratios vary a lot.
+   The naive layouts all fail on mixed aspect ratios: a plain CSS grid makes every row as tall as its
+   tallest cell, so one tall diagram strands its short siblings in dead space (marooning); bounding a
+   cell's height by shrinking the SVG turns a tall-narrow diagram into a thin sliver; and CSS
+   multi-column packs them but is fragile with mermaid's dynamic sizing (it can leave tiny/empty
+   diagrams in a real browser). This helper sidesteps all three with a grid of UNIFORM, height-bounded
+   cards: every card is the same height (no marooning), a diagram taller than its card SCROLLS inside
+   it instead of being height-shrunk (no sliver), and there is no multi-column (no multicol/mermaid
+   fragility). It deliberately does NOT constrain the diagram's WIDTH, so the mermaid layer's own
+   narrow scale-up (CMH-MMD-10) and wide-diagram handling still apply. The card grid is applied only
+   above the mobile breakpoint: a single mobile column cannot maroon, so the layer's own diagram flow
+   and wide-diagram scroll (CMH-RESP-01/09) are left intact there. Print stacks it to a single column
+   (see 92-print.css). */
+#commentRoot .cmh-diagram-gallery { margin: 1rem 0; }
+@media screen and (min-width: 481px) {
+  #commentRoot .cmh-diagram-gallery {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;
+  }
+  #commentRoot .cmh-diagram-gallery > * {
+    margin: 0; box-sizing: border-box; height: 25rem;
+    display: grid; align-content: safe center; justify-items: stretch;
+    /* !important overrides the bare-diagram reset in 70-kql.css (`pre.mermaid { background:none;
+       border:0; padding:0; overflow-y:hidden }`), which we intentionally re-frame in the gallery. */
+    overflow: auto !important;
+    padding: 0.85rem !important; border: 1px solid var(--cp-border) !important;
+    border-radius: 12px !important; background: var(--cp-surface-soft) !important;
+  }
+}
 /* ---------------------------------------------------------------------------
    Image comment layer - per-image structural anchoring (mirrors the mermaid
    node layer). A commentable <img> gets a subtle hover ring; the floating
@@ -2996,15 +3025,24 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      naturally. A CSS grid does not fragment across a page break, so a tall gallery would otherwise
      jump whole to the next page and strand its section heading alone on a near-blank page. Each
      item still stays whole (break-inside:avoid). Scoped away from decks. */
-  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid {
+  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery {
     display: block !important;
   }
-  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid > * {
+  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid > *,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > * {
     width: auto !important;
     max-width: 100% !important;
     margin-bottom: 0.75rem !important;
     break-inside: avoid;
     page-break-inside: avoid;
+    /* A diagram card scrolls on screen (bounded height); for print, drop the bound and the frame so
+       the whole diagram prints, not just the visible scroll window. */
+    height: auto !important;
+    overflow: visible !important;
+    border: 0 !important;
+    padding: 0 !important;
+    background: none !important;
   }
 
   #commentRoot pre,

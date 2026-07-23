@@ -213,15 +213,24 @@
      naturally. A CSS grid does not fragment across a page break, so a tall gallery would otherwise
      jump whole to the next page and strand its section heading alone on a near-blank page. Each
      item still stays whole (break-inside:avoid). Scoped away from decks. */
-  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid {
+  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery {
     display: block !important;
   }
-  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid > * {
+  #commentRoot:not([data-cmh-mode="deck"]) .visual-grid > *,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > * {
     width: auto !important;
     max-width: 100% !important;
     margin-bottom: 0.75rem !important;
     break-inside: avoid;
     page-break-inside: avoid;
+    /* A diagram card scrolls on screen (bounded height); for print, drop the bound and the frame so
+       the whole diagram prints, not just the visible scroll window. */
+    height: auto !important;
+    overflow: visible !important;
+    border: 0 !important;
+    padding: 0 !important;
+    background: none !important;
   }
 
   #commentRoot pre,
