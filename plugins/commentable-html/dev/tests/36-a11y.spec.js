@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, fileUrl, INLINE, addTextComment } from "./helpers.js";
+import { openInline, ready, fileUrl, INLINE, addTextComment, selectText, stageContent, stageDeck } from "./helpers.js";
 
 // Accessibility + honesty of runtime feedback: toasts are announced to screen readers,
 // and Copy all never claims success when it actually fell back to a manual prompt.
@@ -69,4 +69,183 @@ test("Copy all does NOT claim success when it falls back to a manual prompt", as
   expect(txt).not.toMatch(/Copied \d+ comment/); // must not lie about success
   expect(txt).toMatch(/blocked|manual/i);        // tells the reviewer what actually happened
   await expect(page.locator("#toast")).toHaveAttribute("role", "alert");
+});
+
+// CMH-A11Y-09: the text-selection context menu is a keyboard-operable ARIA menu.
+test("the selection context menu exposes menu/menuitem roles and focuses its first item on open (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  const menu = page.locator("#contextMenu");
+  // Roles are baked into the template so assistive tech announces a menu of actions.
+  await expect(menu).toHaveAttribute("role", "menu");
+  await expect(page.locator("#menuComment")).toHaveAttribute("role", "menuitem");
+  await expect(page.locator("#menuDocComment")).toHaveAttribute("role", "menuitem");
+  await expect(page.locator("#menuSlideComment")).toHaveAttribute("role", "menuitem");
+  // Selecting text raises the menu; opening it moves focus to the first visible item so a
+  // keyboard-only reviewer lands on the primary inline-comment action.
+  await selectText(page, "#commentRoot p");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuComment")).toBeFocused();
+  // Enter on the focused item opens the composer (the menu is operable without a mouse).
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".cm-composer")).toHaveCount(1);
+});
+
+test("Escape closes the selection context menu and restores focus to the opener (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  // Give a real element focus, then open the doc-comment menu from an empty right-click; the
+  // menu takes focus, and Escape must return focus to where it was.
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(page.locator("#btnToggleSidebar")).toBeFocused();
+});
+
+test("the menu items use a roving tabindex and Tab dismisses the menu without a stray Escape-restore (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  // Every menuitem is removed from the native Tab sequence (roving tabindex); focus is moved
+  // programmatically via the Arrow keys instead, so Tab does not step from one item to the next.
+  for (const id of ["#menuComment", "#menuDocComment", "#menuSlideComment"]) {
+    await expect(page.locator(id)).toHaveAttribute("tabindex", "-1");
+  }
+  // Open the menu from a real opener so a later restore would be observable.
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  // Tabbing out of the menu dismisses it cleanly (focus leaves the menu; no stale open menu).
+  await page.keyboard.press("Tab");
+  await expect(menu).toBeHidden();
+  await expect(page.locator("#menuDocComment")).not.toBeFocused();
+  // Because Tab-exit did NOT save a restore target, a later Escape must not yank focus back to
+  // the opener - it stays wherever Tab left it.
+  const focusedAfterTab = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  await page.keyboard.press("Escape");
+  const focusedAfterEsc = await page.evaluate(() => document.activeElement && document.activeElement.id);
+  expect(focusedAfterEsc).toBe(focusedAfterTab);
+});
+
+test("a Tab keydown dismisses the menu even when focus does not move to a page element (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  // Open the doc-comment menu from a real opener so a stray restore would be observable.
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  // Simulate Tab moving focus to browser chrome: the keydown fires but no page element receives
+  // focus, so focusout's relatedTarget would be null and its null-guard would keep the menu open.
+  // The keydown handler itself must close the menu. Dispatch a synthetic Tab keydown WITHOUT
+  // moving focus to isolate the keydown path from the focusout backstop.
+  await page.evaluate(() => {
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+  });
+  await expect(menu).toBeHidden();
+  // The saved opener was cleared, so a later Escape must not surprise-restore focus to it.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#btnToggleSidebar")).not.toBeFocused();
+});
+
+test("a Shift+Tab keydown also dismisses the menu (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  // Shift+Tab is the backward exit; it too must close the menu via the keydown handler.
+  await page.evaluate(() => {
+    document.activeElement.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+  });
+  await expect(menu).toBeHidden();
+});
+
+test("Home and End rove to the first and last visible menuitems (CMH-A11Y-09)", async ({ page }) => {
+  // A deck's empty right-click shows two visible menuitems (deck + slide), so first and last
+  // differ and Home/End are distinguishable (an inline document shows only one item).
+  const slides =
+    '<section class="slide active" data-slide-id="a11y-slide-1"><h2>One</h2><p>Alpha</p></section>' +
+    '<section class="slide" data-slide-id="a11y-slide-2"><h2>Two</h2><p>Beta</p></section>';
+  const { html } = stageDeck(slides, { key: "cmh-a11y-homeend" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.evaluate(() => {
+    document.querySelector(".slide.active").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  const ids = await page.evaluate(() =>
+    [...document.querySelectorAll("#contextMenu button:not([hidden])")].map((b) => b.id));
+  expect(ids.length).toBeGreaterThan(1);
+  // End focuses the last visible item; Home focuses the first.
+  await page.keyboard.press("End");
+  await expect(page.locator("#" + ids[ids.length - 1])).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(page.locator("#" + ids[0])).toBeFocused();
+});
+
+// CMH-A11Y-10: the floating per-link add-comment affordance carries the shared focus ring.
+test("the link add-comment affordance shows the shared focus-visible ring (CMH-A11Y-10)", async ({ page }) => {
+  const staged = stageContent(
+    '<h2 id="lead">Docs</h2><p>See the <a id="ext" href="https://example.com/docs">reference</a> for details.</p>',
+    { key: "cmh-a11y10-doc" });
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  // Keyboard-focusing a commentable link reveals the floating #linkAddBtn (keyboard parity).
+  await page.locator("#ext").focus();
+  const btn = page.locator("#linkAddBtn");
+  await expect(btn).toBeVisible();
+  // Establish keyboard modality so the browser applies :focus-visible on focus.
+  await page.keyboard.press("Tab");
+  const seen = await btn.evaluate((el) => {
+    el.focus();
+    return {
+      matchesFocusVisible: el.matches(":focus-visible"),
+      outlineStyle: getComputedStyle(el).outlineStyle,
+      outlineWidth: getComputedStyle(el).outlineWidth,
+    };
+  });
+  expect(seen.matchesFocusVisible).toBe(true);
+  expect(seen.outlineStyle).toBe("solid");
+  expect(parseFloat(seen.outlineWidth)).toBeGreaterThanOrEqual(2);
+});
+
+// CMH-A11Y-11: the collapsible-section caret carries a visible focus ring.
+test("the section-collapse caret shows a focus-visible ring (CMH-A11Y-11)", async ({ page }) => {
+  await openInline(page);
+  const caret = page.locator("#commentRoot section .cmh-sec-caret").first();
+  await expect(caret).toHaveCount(1);
+  // Establish keyboard modality so :focus-visible applies.
+  await page.keyboard.press("Tab");
+  const seen = await caret.evaluate((el) => {
+    el.focus();
+    return {
+      matchesFocusVisible: el.matches(":focus-visible"),
+      outlineStyle: getComputedStyle(el).outlineStyle,
+      outlineWidth: getComputedStyle(el).outlineWidth,
+    };
+  });
+  expect(seen.matchesFocusVisible).toBe(true);
+  expect(seen.outlineStyle).toBe("solid");
+  expect(parseFloat(seen.outlineWidth)).toBeGreaterThanOrEqual(2);
 });

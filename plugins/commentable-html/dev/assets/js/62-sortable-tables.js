@@ -194,6 +194,12 @@ function applyPersistedTableSorts() {
 function _reflectSortIco(btn, dir) {
   btn.dataset.dir = dir || "";
   btn.setAttribute("aria-pressed", dir ? "true" : "false");
+  const cell = btn.closest("th, td") || btn.parentElement;
+  if (cell) {
+    if (dir === "asc") cell.setAttribute("aria-sort", "ascending");
+    else if (dir === "desc") cell.setAttribute("aria-sort", "descending");
+    else cell.removeAttribute("aria-sort");
+  }
 }
 function setupSortableTables() {
   _sortableTables().forEach(function (t, i) {

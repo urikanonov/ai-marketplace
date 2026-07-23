@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.222.0";
+const CMH_VERSION = "1.223.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4511,6 +4511,17 @@ function selectionInRoot() {
 const _coarsePointer = !!(window.matchMedia
   && window.matchMedia("(hover: none), (pointer: coarse)").matches);
 let pendingSlideId = null;
+// The element that had focus when the context menu opened, so Escape can hand focus
+// back to it (a keyboard reviewer is not stranded on the dismissed menu).
+let _menuReturnFocus = null;
+function _menuItems() {
+  return menu ? [...menu.querySelectorAll("button:not([hidden])")] : [];
+}
+function _restoreMenuFocus() {
+  const rf = _menuReturnFocus;
+  _menuReturnFocus = null;
+  if (rf && document.contains(rf)) { try { rf.focus({ preventScroll: true }); } catch (_e) { /* ignore */ } }
+}
 function _setMenuMode(mode) {
   const mc = document.getElementById("menuComment");
   const ms = document.getElementById("menuSlideComment");
@@ -4676,8 +4687,9 @@ document.addEventListener("keydown", (e) => {
       return;
     }
     // An open add-comment selection menu closes first and consumes Escape, so the key
-    // does not also discard an open composer draft behind it.
-    if (menu && !menu.hidden) { hideMenu(); return; }
+    // does not also discard an open composer draft behind it. Closing it restores focus
+    // to whatever the reviewer was on when the menu opened.
+    if (menu && !menu.hidden) { hideMenu(); _restoreMenuFocus(); return; }
     hideMenu();
     let target = (lastFocusedComposer && openComposers.has(lastFocusedComposer)) ? lastFocusedComposer : null;
     if (!target && openComposers.size) target = [...openComposers].pop();
@@ -4685,6 +4697,9 @@ document.addEventListener("keydown", (e) => {
   }
 });
 function showMenu(x, y) {
+  // Remember where focus was so Escape can return it (but not the menu itself or the body).
+  const rf = document.activeElement;
+  _menuReturnFocus = (rf && rf !== document.body && menu && !menu.contains(rf)) ? rf : null;
   menu.hidden = false;
   // Keep the selection menu above any open composer (composers raise their z-index as they are
   // focused), so a reviewer can always start another comment on a fresh selection.
@@ -4695,6 +4710,49 @@ function showMenu(x, y) {
   const h = menu.offsetHeight || 32;
   menu.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + "px";
   menu.style.top  = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + "px";
+  // Move focus to the first visible menuitem so a keyboard-only reviewer lands on the
+  // primary action and can rove with the Arrow keys.
+  const first = _menuItems()[0];
+  if (first) { try { first.focus({ preventScroll: true }); } catch (_e) { /* ignore */ } }
+}
+// Arrow keys rove focus among the visible menuitems (wrapping), matching the ARIA menu pattern.
+if (menu) {
+  menu.addEventListener("keydown", (e) => {
+    // Tab (forward or Shift+Tab) leaves the menu: close it and clear the saved opener so a later
+    // Escape cannot surprise-restore, then let the browser move focus naturally (no preventDefault),
+    // so focus lands on the correct next/previous control. This mirrors the ARIA deck mode menu
+    // (95-startup.js) and covers the edge case the focusout backstop cannot: when Tab moves focus
+    // to browser chrome, focusout's relatedTarget is null and its null-guard would keep the menu
+    // open, leaving a stale opener a later Escape could yank focus back to.
+    if (e.key === "Tab") { _menuReturnFocus = null; hideMenu(); return; }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
+    const items = _menuItems();
+    if (!items.length) return;
+    e.preventDefault();
+    const cur = items.indexOf(document.activeElement);
+    let next;
+    if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    else if (e.key === "ArrowDown") next = cur < 0 ? 0 : (cur + 1) % items.length;
+    else next = cur < 0 ? items.length - 1 : (cur - 1 + items.length) % items.length;
+    items[next].focus({ preventScroll: true });
+  });
+  // Dismiss when focus moves to another element OUTSIDE the menu (Tab out, or focusing a control
+  // elsewhere). The items carry tabindex="-1", so Tab is never captured to rove between them - it
+  // moves focus to the next page control and this handler closes the menu, leaving no stale-open
+  // menu behind. Focus has already landed where the user sent it, so this path does NOT restore
+  // focus (and clears the saved opener) - a later Escape can no longer surprise-restore. A null
+  // relatedTarget (a transient/window blur, or Escape's own hide blurring the item to <body>) is
+  // ignored so the menu is not torn down by focus merely being lost to nothing; a click on empty,
+  // non-focusable space is still dismissed by the document click handler. Escape's own path closes
+  // and restores focus to the opener explicitly.
+  menu.addEventListener("focusout", (e) => {
+    if (menu.hidden) return;
+    const to = e.relatedTarget;
+    if (!to || menu.contains(to)) return; // no real outside target, or roving between items
+    _menuReturnFocus = null;
+    hideMenu();
+  });
 }
 function showMenuForRange(range) {
   const rects = range.getClientRects();
@@ -8783,6 +8841,12 @@ function applyPersistedTableSorts() {
 function _reflectSortIco(btn, dir) {
   btn.dataset.dir = dir || "";
   btn.setAttribute("aria-pressed", dir ? "true" : "false");
+  const cell = btn.closest("th, td") || btn.parentElement;
+  if (cell) {
+    if (dir === "asc") cell.setAttribute("aria-sort", "ascending");
+    else if (dir === "desc") cell.setAttribute("aria-sort", "descending");
+    else cell.removeAttribute("aria-sort");
+  }
 }
 function setupSortableTables() {
   _sortableTables().forEach(function (t, i) {

@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.223.0] - 2026-07-23
+
+### Added
+
+- Accessibility: the text-selection context menu is now a keyboard-operable ARIA menu. Its container
+  carries `role="menu"` and each action carries `role="menuitem"` with a roving `tabindex="-1"` (only
+  one item is focusable at a time, so Tab does not step through them); opening it moves focus to the
+  first visible item, ArrowUp/ArrowDown (and Home/End) rove focus with wrap-around, Tabbing out
+  dismisses it cleanly, and Escape closes it and restores focus to the control that was focused when it
+  opened.
+- Accessibility: the floating per-link add-comment button and the collapsible-section caret now show the
+  shared themed `:focus-visible` outline ring, so keyboard focus on either control is clearly visible.
+- Accessibility: a sortable table's header cell now reflects the active sort direction via `aria-sort`
+  (`ascending` / `descending`) on the `<th>`, removed when the column resets or another column takes the
+  sort, so assistive tech announces which column is sorted and how.
+
 ## [1.222.0] - 2026-07-23
 
 ### Fixed

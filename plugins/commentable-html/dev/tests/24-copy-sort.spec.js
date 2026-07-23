@@ -195,6 +195,33 @@ test.describe("copy buttons + sortable tables", () => {
     expect(await serviceOrder(page)).toEqual(["auth", "catalog", "gateway"]);
   });
 
+  // CMH-A11Y-12: the sorted header cell announces its direction to assistive tech via aria-sort.
+  test("the sorted column header reflects direction via aria-sort (CMH-A11Y-12)", async ({ page }) => {
+    await openInline(page);
+    const reqHeader = page.locator("#commentRoot table.cmh-sortable thead th", { hasText: "Requests" });
+    const svcHeader = page.locator("#commentRoot table.cmh-sortable thead th", { hasText: "Service" });
+    const ctrl = reqHeader.locator(".cmh-sort-ctrl");
+    // Unsorted columns carry no aria-sort at all (not "none"), matching the "no chevron dir" state.
+    expect(await reqHeader.getAttribute("aria-sort")).toBeNull();
+
+    await ctrl.click(); // ascending
+    await expect(reqHeader).toHaveAttribute("aria-sort", "ascending");
+    await expect(ctrl).toHaveAttribute("aria-pressed", "true");
+
+    await ctrl.click(); // descending
+    await expect(reqHeader).toHaveAttribute("aria-sort", "descending");
+
+    // Sorting a DIFFERENT column clears the stale aria-sort on the first (only one column is sorted).
+    await svcHeader.locator(".cmh-sort-ctrl").click();
+    await expect(svcHeader).toHaveAttribute("aria-sort", "ascending");
+    expect(await reqHeader.getAttribute("aria-sort")).toBeNull();
+
+    // Cycling back to the authored order removes aria-sort entirely.
+    await svcHeader.locator(".cmh-sort-ctrl").click(); // descending
+    await svcHeader.locator(".cmh-sort-ctrl").click(); // authored order
+    expect(await svcHeader.getAttribute("aria-sort")).toBeNull();
+  });
+
   test("sorting keeps comment anchors attached, and the sort survives reload", async ({ page }) => {
     const warnings = [];
     page.on("console", (m) => { if (m.type() === "warning") warnings.push(m.text()); });
