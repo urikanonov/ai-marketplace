@@ -215,7 +215,9 @@ function markGalleryCardScrollable(host) {
     if (!owned && (card.hasAttribute("tabindex") || card.hasAttribute("role") || card.hasAttribute("aria-label"))) return;
     if (!card.hasAttribute("tabindex")) card.setAttribute("tabindex", "0");
     if (!card.hasAttribute("role")) card.setAttribute("role", "figure");
-    if (!card.hasAttribute("aria-label")) card.setAttribute("aria-label", GALLERY_SCROLL_LABEL);
+    // Do not clobber a <figure>'s native accessible name from its <figcaption> - a captioned diagram
+    // already has a name; only add the generic scroll label when there is none.
+    if (!card.hasAttribute("aria-label") && !card.querySelector("figcaption")) card.setAttribute("aria-label", GALLERY_SCROLL_LABEL);
     card.setAttribute("data-cmh-scroll-a11y", "1");
   } else if (owned) {
     if (card.getAttribute("tabindex") === "0") card.removeAttribute("tabindex");

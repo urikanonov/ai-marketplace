@@ -137,6 +137,38 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
     }
   });
 
+  test("a captioned figure card is framed and focusable but keeps its figcaption accessible name (CMH-CONTENT-19)", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    // A `> figure` card wrapping a tall mermaid diagram with a caption: the figure is the scroll card
+    // (the inner pre is not a direct gallery child, so it is not itself framed). It must be framed and
+    // keyboard-focusable, but must NOT get our scroll aria-label - that would clobber the figcaption's
+    // native accessible name for screen readers.
+    const inner = `<figure style="height:80px"><pre class="mermaid cm-skip">${STATE}</pre><figcaption>State machine</figcaption></figure>`;
+    const server = await stageGallery(page, inner, "cmh-gallery-figcap");
+    try {
+      await expect(page.locator(".cmh-diagram-gallery > figure svg")).toHaveCount(1, { timeout: 20000 });
+      await waitGalleryFramed(page, ".cmh-diagram-gallery > figure");
+      const fig = page.locator(".cmh-diagram-gallery > figure");
+      const info = await fig.evaluate((el) => ({
+        border: Math.round(parseFloat(getComputedStyle(el).borderTopWidth) || 0),
+        overflowY: getComputedStyle(el).overflowY,
+        overflows: el.scrollHeight > el.clientHeight + 1,
+        hasCaption: !!el.querySelector("figcaption"),
+      }));
+      expect(info.border, "figure card is framed").toBeGreaterThanOrEqual(1);
+      expect(info.overflowY, "figure card scrolls").toMatch(/auto|scroll/);
+      expect(info.overflows, "the tall diagram overflows the figure card").toBe(true);
+      // Focusable for keyboard scrolling...
+      await expect(fig, "overflowing figure card is keyboard-focusable").toHaveAttribute("tabindex", "0", { timeout: 10000 });
+      // ...but the figcaption is preserved as the accessible name (no generic scroll aria-label).
+      expect(info.hasCaption, "figcaption is preserved").toBe(true);
+      expect(await fig.getAttribute("aria-label"), "no scroll aria-label clobbers the figcaption").toBeNull();
+    } finally {
+      await server.close();
+    }
+  });
+
   test("the clip-aware whole-diagram button stays inside a scrolled card and hides when it scrolls off (CMH-CONTENT-19 / CMH-MMD-06)", async ({ page }) => {
     test.setTimeout(60000);
     await page.setViewportSize({ width: 1200, height: 900 });
