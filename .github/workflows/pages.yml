@@ -20,9 +20,8 @@ concurrency:
 jobs:
   # Required PR gate, and the producer of the Pages artifact. It regenerates the site
   # (`--check` on PRs, full regen otherwise), runs the generator unit tests, uploads the artifact,
-  # then runs the browser smoke suite. The artifact is uploaded BEFORE the smoke suite so that a
-  # smoke failure does not withhold the artifact from deploy (tests do not gate the deploy), while
-  # a generator/unit failure happens first and does withhold it (a broken generator is not shipped).
+  # then runs the browser smoke suite. The artifact is uploaded BEFORE the smoke suite, but deploy
+  # still requires the complete site job to pass.
   site:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -102,12 +101,10 @@ jobs:
 
   # Privileged publish. It consumes the artifact the `site` job produced and runs only GitHub-owned
   # Pages actions - no checkout, no repo code - so the deploy token is never exposed to merged code.
-  # It runs even when `site` fails its smoke suite (`!cancelled()`), so a failing or flaky test never
-  # skips the deploy; if `site` fails before uploading the artifact, deploy-pages fails loudly and
-  # `notify` fires.
+  # A failed smoke suite blocks deploy, so a browser regression is never published.
   deploy:
     needs: site
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.site.result == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -127,8 +124,8 @@ jobs:
 
   # Alert if the pipeline fails on main (the site build or the deploy, including workflow_dispatch
   # runs and cancellations), so a broken build or a failed deploy never silently leaves the site
-  # wrong. Opens a tracking issue, or comments on the open one, distinguishing a stale site (deploy
-  # failed) from a deployed-but-regressed site (the site job failed after the artifact was uploaded).
+  # wrong. Opens a tracking issue, or comments on the open one, noting that the published site may
+  # be stale because a failed site check now blocks deploy.
   notify:
     needs: [site, deploy]
     if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (contains(fromJSON('["failure", "cancelled"]'), needs.site.result) || contains(fromJSON('["failure", "cancelled"]'), needs.deploy.result)) }}
@@ -151,14 +148,10 @@ jobs:
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const siteResult = process.env.SITE_RESULT;
             const deployResult = process.env.DEPLOY_RESULT;
-            const deployOk = deployResult === "success";
-            const impact = deployOk
-              ? "The deploy completed, but the site job did not finish all its checks, so the published site may contain a regression the checks would have caught."
-              : "The deploy did not complete, so the published site may be stale.";
             const body = [
               `The \`pages\` workflow failed on \`main\` (site: ${siteResult}, deploy: ${deployResult}).`,
               ``,
-              impact,
+              "The deploy did not complete, so the published site may be stale.",
               ``,
               `- Commit: ${context.sha}`,
               `- Run: ${runUrl}`,
