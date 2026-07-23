@@ -307,6 +307,13 @@ code, kbd, .mono { font-family: var(--cp-mono); font-size: 0.92em; }
 
 /* Sections */
 section { padding: 48px 0; }
+/* Anchor and nav jumps clear the sticky navbar (SITE-NAV-03): offset each id target's
+   top by the navbar height so a jumped-to section or data-anchor sub-heading is not
+   hidden behind the sticky navbar (matches the .plugin-card offset in 34-cards.css). */
+section[id],
+[data-anchor][id] {
+  scroll-margin-top: 76px;
+}
 main > section:nth-of-type(even) {
   background: var(--cp-bg-elevated);
   border-top: 1px solid var(--cp-border);

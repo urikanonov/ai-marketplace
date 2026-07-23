@@ -367,3 +367,22 @@ test("a standalone data-anchor sub-heading is a linkable anchor to its own id (S
   await anchor.click();
   await expect(page).toHaveURL(/#mediums$/);
 });
+
+
+test("a nav jump clears the sticky navbar so the target section is not hidden (SITE-NAV-03)", async ({ page }) => {
+  // Reduced motion turns the hash jump instant, so the assertion never races a smooth scroll.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const navBottom = await page.locator(".navbar").evaluate((n) => n.getBoundingClientRect().bottom);
+  expect(navBottom).toBeGreaterThan(0);
+  // Jump to the first hub section (it has enough content below to reach the top of the
+  // scroll area, so a missing scroll offset would hide it behind the sticky navbar).
+  const navLink = page.locator('.nav-links a[href="#install"]');
+  await expect(navLink).toBeVisible();
+  await navLink.click();
+  await expect(page).toHaveURL(/#install$/);
+  // scroll-margin-top keeps the section's own top edge at or below the navbar bottom,
+  // so the heading is never drawn behind the translucent sticky navbar.
+  const top = await page.locator("section#install").evaluate((n) => n.getBoundingClientRect().top);
+  expect(top).toBeGreaterThanOrEqual(navBottom - 1);
+});
