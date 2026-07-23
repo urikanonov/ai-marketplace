@@ -717,10 +717,10 @@ request description), not in `.plans/`.
 - Add a feature to a skill (for example a new commentable-html behavior): implement it, add a
   feature-id row to `plugins/<plugin>/dev/SPEC.md` naming a new or updated automated test, add that
   test under `plugins/<plugin>/dev/tests/`, bump versions per the rules, update the plugin's
-  `CHANGELOG.md`, and run the validator and the plugin's test suite. See
-  [docs/adding-a-feature.md](docs/adding-a-feature.md) for the full end-to-end checklist (worktree, TDD,
-  the shared-layer wiring, the scaffold + apply tools, the coverage gates, the demo + E2E audit, and the
-  rebuild).
+  `CHANGELOG.md`, and run the validator and the plugin's test suite. See the always-available
+  [`adding-a-feature`](.github/skills/adding-a-feature/SKILL.md) project skill for the full end-to-end
+  checklist (worktree, TDD, the shared-layer wiring, the scaffold + apply tools, the coverage gates, the
+  demo + E2E audit, and the rebuild).
 - Add a skill to an existing collection plugin: create `plugins/<plugin>/skills/<skill>/SKILL.md`, register it
   in `marketplace.json`, bump versions per the rules, update the plugin's `CHANGELOG.md`, run the validator.
 - Add or change a site behavior: edit the SOURCE under `site/pages/` (hub, plugin, tutorial page
