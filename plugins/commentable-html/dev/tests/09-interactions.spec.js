@@ -57,6 +57,40 @@ test.describe("comment interactions", () => {
     await expect(page.locator(".cm-card .meta")).toContainText(/edited/i);
   });
 
+  test("RTL edited timestamps isolate dates from the suffix in cards, replies, and popovers (CMH-SIDE-10)", async ({ page }) => {
+    await openKitchenSink(page);
+    await page.evaluate(() => { document.documentElement.dir = "rtl"; });
+    await addTextComment(page, "#commentRoot section p", "RTL timestamp");
+    await page.locator('.cm-card [data-act="edit"]').first().click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill("RTL timestamp edited");
+    await composer.locator('[data-act="save"]').click();
+
+    const cardMeta = page.locator(".cm-card .meta > span").first();
+    await expect(cardMeta.locator("bdi")).toHaveCount(1);
+    await expect(cardMeta.locator("bdi")).not.toContainText("edited");
+    expect(await cardMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
+
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    await page.locator(".cm-composer").last().locator("textarea").fill("RTL reply");
+    await page.locator(".cm-composer").last().locator('[data-act="save"]').click();
+    await page.locator('.cm-reply [data-act="reply-edit"]').click();
+    await page.locator(".cm-composer").last().locator("textarea").fill("RTL reply edited");
+    await page.locator(".cm-composer").last().locator('[data-act="save"]').click();
+    const replyMeta = page.locator(".cm-reply .meta > span").first();
+    await expect(replyMeta.locator("bdi")).toHaveCount(1);
+    await expect(replyMeta.locator("bdi")).not.toContainText("edited");
+    expect(await replyMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
+
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const popMeta = page.locator(".cm-comment-popover-meta");
+    await expect(popMeta.locator("bdi")).toHaveCount(1);
+    await expect(popMeta.locator("bdi")).not.toContainText("edited");
+    expect(await popMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
+  });
+
   test("deleting one comment leaves the others", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "keep me", 0);

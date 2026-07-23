@@ -166,7 +166,7 @@ function renderComments() {
         <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(r.note == null ? "" : r.note)}</div>
         <div class="meta">
-          <span>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}${r.updatedAt ? " (edited)" : ""}</span>
+          <span><bdi>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}</bdi>${r.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
             <button type="button" data-act="reply-edit" title="Edit reply">edit</button>
             <button type="button" class="del" data-act="reply-del" title="Delete reply">delete</button>
@@ -183,7 +183,7 @@ function renderComments() {
         <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(c.note == null ? "" : c.note)}</div>
         <div class="meta">
-          <span>#${i + 1} - ${escapeHtml(formatTime(c.updatedAt || c.createdAt))}${c.updatedAt ? " (edited)" : ""}</span>
+          <span>#${i + 1} - <bdi>${escapeHtml(formatTime(c.updatedAt || c.createdAt))}</bdi>${c.updatedAt ? " (edited)" : ""}</span>
           <span class="acts">
             ${jumpBtn}
             <button type="button" data-act="edit" title="Edit comment">edit</button>

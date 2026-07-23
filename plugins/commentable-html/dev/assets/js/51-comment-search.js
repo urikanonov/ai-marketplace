@@ -5,6 +5,10 @@
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
 
+function _normalizeCommentSearchText(value) {
+  return String(value == null ? "" : value).normalize("NFC").toLocaleLowerCase();
+}
+
 // The reviewer's own note text - what THEY wrote - is the only thing the search filters on. The
 // quoted anchor content, section path, and pin are deliberately excluded so a query matches by the
 // comment text, not the surrounding quote; chrome (action-button labels, the meta line) is likewise
@@ -22,7 +26,7 @@ function _commentCardHaystack(card) {
       text += " " + (el.textContent || "");
     });
   }
-  return text.toLowerCase();
+  return _normalizeCommentSearchText(text);
 }
 
 function _toggleSearchEmptyNote(show) {
@@ -56,7 +60,7 @@ function applyCommentSearch() {
     _toggleSearchEmptyNote(false);
     return;
   }
-  const q = commentSearchQuery.trim().toLowerCase();
+  const q = _normalizeCommentSearchText(commentSearchQuery.trim());
   if (clearBtn) clearBtn.hidden = q === "";
   const cards = listEl ? listEl.querySelectorAll(".cm-card[data-cid]") : [];
   let shown = 0;
@@ -74,7 +78,7 @@ function applyCommentSearch() {
       c.classList.toggle("cm-hidden", q !== "");
     });
     noteCards.forEach((c) => {
-      const hay = ((c.querySelector(".cmh-note-search") || {}).textContent || "").toLowerCase();
+      const hay = _normalizeCommentSearchText((c.querySelector(".cmh-note-search") || {}).textContent || "");
       const match = q === "" || hay.indexOf(q) !== -1;
       c.classList.toggle("cm-hidden", !match);
       if (q !== "" && match) noteShown++;

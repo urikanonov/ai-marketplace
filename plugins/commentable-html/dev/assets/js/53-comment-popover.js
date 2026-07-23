@@ -59,8 +59,9 @@ function openCommentPopover(id, mark) {
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
     + "</div>";
   el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
-  el.querySelector(".cm-comment-popover-meta").textContent =
-    formatTime(c.updatedAt || c.createdAt) + (c.updatedAt ? " (edited)" : "");
+  el.querySelector(".cm-comment-popover-meta").innerHTML =
+    "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
+    + (c.updatedAt ? " (edited)" : "");
   document.body.appendChild(el);
   commentPopover = el;
   if (!_positionCommentPopover(_popoverAnchorMark)) { closeCommentPopover(); return; }

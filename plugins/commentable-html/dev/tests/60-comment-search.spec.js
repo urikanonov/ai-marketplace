@@ -10,6 +10,8 @@ async function openSidebarPanel(page) {
 }
 
 test.describe("comment search / filter", () => {
+  test.use({ locale: "tr-TR" });
+
   test("filters the comment list case-insensitively with a shown/total count and a clear button (CMH-SEARCH-01)", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "cmhsearch alpha apple", 0);
@@ -149,5 +151,25 @@ test.describe("comment search / filter", () => {
       return c;
     });
     expect(clip).toBeLessThanOrEqual(0.5);
+  });
+
+  test("search matches canonically equivalent NFC and NFD note text (CMH-SEARCH-06)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "Cafe\u0301 review");
+    await openSidebarPanel(page);
+
+    await page.locator("#cmSearchInput").fill("Caf\u00e9");
+    await expect(page.locator("#commentList .cm-card[data-cid]:visible")).toHaveCount(1);
+    await expect(page.locator("#cmSearchCount")).toHaveText("1 / 1");
+  });
+
+  test("search applies locale-aware casing for Turkish dotless I (CMH-SEARCH-07)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "IRMAK review");
+    await openSidebarPanel(page);
+
+    await page.locator("#cmSearchInput").fill("\u0131rmak");
+    await expect(page.locator("#commentList .cm-card[data-cid]:visible")).toHaveCount(1);
+    await expect(page.locator("#cmSearchCount")).toHaveText("1 / 1");
   });
 });

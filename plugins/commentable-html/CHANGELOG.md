@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.222.0] - 2026-07-23
+
+### Fixed
+
+- Comment search now Unicode-normalizes note text and queries and uses locale-aware casing, so
+  canonically equivalent text and Turkish/Azeri dotted or dotless I case pairs match correctly.
+  Localized edited timestamps isolate the date from the LTR suffix under RTL locales, and the inline
+  image tool accepts safe paths whose canonical casing differs on case-insensitive filesystems.
+  (CMH-SEARCH-06, CMH-SEARCH-07, CMH-SIDE-10, CMH-TOOL-21)
+
 ## [1.221.0] - 2026-07-23
 
 ### Changed
