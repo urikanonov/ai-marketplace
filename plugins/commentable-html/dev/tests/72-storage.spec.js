@@ -800,3 +800,193 @@ test("the index LRU eviction preserves an entry whose key is __proto__ (CMH-STOR
   });
   expect(survived).toBe(true);
 });
+
+test("the usage summary shows origin, commentable-html, and this-document shares (CMH-STORE-13)", async ({ page }) => {
+  await open(page, { key: "cmh-usage-cur", source: "usage-cur.html" });
+  await addTextComment(page, "#commentRoot p", "a note on the current document");
+  await page.evaluate(() => {
+    // A large NON-commentable-html blob so the origin total clearly exceeds commentable-html usage.
+    localStorage.setItem("some-other-app-blob", "z".repeat(150000));
+    // A second commentable-html document, so this document is only a fraction of CMH storage.
+    localStorage.setItem("commentable-html:/reports/other.html",
+      JSON.stringify(Array.from({ length: 20 }, (_, i) => ({
+        id: "cusage" + i.toString().padStart(4, "0"), note: "n".repeat(50), quote: "q", start: i, end: i + 1,
+      }))));
+  });
+  await openManager(page);
+  const usage = page.locator(".cm-storage-usage");
+  await expect(usage).toBeVisible();
+  const u = await page.evaluate(() => window.__cmhStorageCodec.usage());
+  expect(u.otherBytes).toBeGreaterThan(0);             // the non-CMH blob is counted in the origin total
+  expect(u.cmhBytes).toBeGreaterThan(u.currentBytes);  // this document is a fraction of CMH storage
+  const originPct = Math.round((u.originBytes / u.assumedQuota) * 100);
+  const cmhOfOrigin = Math.round((u.cmhBytes / u.originBytes) * 100);
+  const docOfCmh = Math.round((u.currentBytes / u.cmhBytes) * 100);
+  // Assert per line so a percentage cannot satisfy the test on the wrong line or via a substring.
+  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "Local storage in use" }))
+    .toContainText("about " + originPct + "%");
+  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "commentable-html:" }))
+    .toContainText(cmhOfOrigin + "% of the storage in use");
+  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "This document:" }))
+    .toContainText(docOfCmh + "% of commentable-html storage");
+});
+
+test("documents are shown in a table with a column-headed Share of commentable-html storage (CMH-STORE-14)", async ({ page }) => {
+  await open(page, { key: "cmh-table-cur", source: "table-cur.html" });
+  await addTextComment(page, "#commentRoot p", "small current-doc note");
+  await page.evaluate(() => {
+    // A much larger other document, so its share of commentable-html storage is clearly higher.
+    localStorage.setItem("commentable-html:/reports/big.html",
+      JSON.stringify(Array.from({ length: 80 }, (_, i) => ({
+        id: "cbig" + i.toString().padStart(6, "0"), note: "long repeated review note ".repeat(8),
+        quote: "q", start: i, end: i + 1, createdAt: "2026-07-22T00:00:00Z",
+      }))));
+  });
+  await openManager(page);
+  const table = page.locator(".cm-storage-table");
+  await expect(table).toBeVisible();
+  await expect(table.locator("thead")).toContainText("Comments");
+  await expect(table.locator("thead")).toContainText("Size");
+  await expect(table.locator("thead")).toContainText("Share");
+  const bigShare = await page.locator(".cm-storage-row", { hasText: "big.html" }).locator(".cm-storage-share").innerText();
+  const curShare = await page.locator(".cm-storage-current .cm-storage-share").innerText();
+  expect(bigShare).toContain("%");
+  expect(curShare).toContain("%");
+  expect(parseInt(bigShare, 10)).toBeGreaterThan(parseInt(curShare, 10));
+});
+
+test("the current document's comments can be browsed lazily and deleted per comment (CMH-STORE-15)", async ({ page }) => {
+  const key = "cmh-browse-cur";
+  const { html } = stageContent(
+    "<section><p>First paragraph to browse and comment on.</p><p>Second paragraph to browse and comment on.</p></section>",
+    { key, source: "browse-cur.html" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await addTextComment(page, "#commentRoot p:nth-of-type(1)", "first note to browse");
+  await addTextComment(page, "#commentRoot p:nth-of-type(2)", "second note to browse");
+  await openManager(page);
+  const current = page.locator(".cm-storage-current");
+  // The per-comment list is lazy: it appears only after the toggle is clicked.
+  await expect(page.locator(".cm-storage-comments-row")).toHaveCount(0);
+  await current.locator("button", { hasText: "Show comments" }).click();
+  const list = page.locator(".cm-storage-comments-row");
+  await expect(list).toBeVisible();
+  const items = page.locator(".cm-storage-comment");
+  await expect(items).toHaveCount(2);
+  await expect(list).toContainText("first note to browse");
+  await expect(items.first().locator(".cm-storage-comment-size")).toContainText("B"); // approximate per-comment size
+  // Delete the first comment through its own Delete + inline confirm.
+  await items.first().locator(".cm-storage-danger").click();
+  await items.first().locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  // The persisted store and the live in-manager list both drop to one comment.
+  await expect.poll(async () => (await storedComments(page)).length).toBe(1);
+  await expect(page.locator(".cm-storage-comment")).toHaveCount(1);
+  await expect(page.locator(".cm-storage-current .cm-storage-count")).toHaveText("1");
+  // Deleting the last comment collapses the now-empty list (the Show comments toggle is suppressed
+  // at zero, so an empty list must not stay stuck open).
+  await page.locator(".cm-storage-comment").first().locator(".cm-storage-danger").click();
+  await page.locator(".cm-storage-comment").first().locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  await expect(page.locator(".cm-storage-comments-row")).toHaveCount(0);
+  await expect(page.locator(".cm-storage-current .cm-storage-count")).toHaveText("0");
+  await expect(page.locator(".cm-storage-current").locator("button", { hasText: "Show comments" })).toHaveCount(0);
+});
+
+test("another document's comments can be browsed and deleted per comment without touching others (CMH-STORE-15)", async ({ page }) => {
+  await open(page, { key: "cmh-browse-other", source: "browse-other.html" });
+  await page.evaluate(() => {
+    localStorage.setItem("commentable-html:/reports/peer.html",
+      JSON.stringify([
+        { id: "cpeer00001", note: "peer note one", quote: "q1", start: 0, end: 1, createdAt: "2026-07-22T00:00:00Z" },
+        { id: "cpeer00002", note: "peer note two", quote: "q2", start: 2, end: 3, createdAt: "2026-07-22T00:00:01Z" },
+      ]));
+  });
+  await openManager(page);
+  const row = page.locator(".cm-storage-row", { hasText: "peer.html" });
+  await row.locator("button", { hasText: "Show comments" }).click();
+  const items = page.locator(".cm-storage-comment");
+  await expect(items).toHaveCount(2);
+  await items.filter({ hasText: "peer note one" }).locator(".cm-storage-danger").click();
+  await items.filter({ hasText: "peer note one" }).locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  const remaining = await page.evaluate(() => {
+    const raw = localStorage.getItem("commentable-html:/reports/peer.html::z")
+      || localStorage.getItem("commentable-html:/reports/peer.html");
+    const dec = window.__cmhStorageCodec.decode(raw);
+    return JSON.parse(dec.json);
+  });
+  expect(remaining.map((c) => c.id)).toEqual(["cpeer00002"]); // only the deleted comment was removed
+  // The removed id is tombstoned in the peer document's ::deleted set, so an embedded copy of it in
+  // that file does not resurrect when the peer document is next opened.
+  const tomb = await page.evaluate(() => JSON.parse(
+    localStorage.getItem("commentable-html:/reports/peer.html::deleted") || "[]"));
+  expect(tomb).toContain("cpeer00001");
+});
+
+test("a long comment note is truncated to a snippet with the full text in its title (CMH-STORE-15)", async ({ page }) => {
+  await open(page, { key: "cmh-trunc", source: "trunc.html" });
+  const longNote = "L".repeat(400);
+  await page.evaluate((n) => {
+    localStorage.setItem("commentable-html:/reports/big-note.html",
+      JSON.stringify([{ id: "ctrunc0001", note: n, quote: "q", start: 0, end: 1, createdAt: "2026-07-22T00:00:00Z" }]));
+  }, longNote);
+  await openManager(page);
+  await page.locator(".cm-storage-row", { hasText: "big-note.html" }).locator("button", { hasText: "Show comments" }).click();
+  const note = page.locator(".cm-storage-comment-note");
+  await expect(note).toBeVisible();
+  const text = await note.innerText();
+  expect(text.length).toBeLessThan(160);            // rendered as a bounded snippet, not in full
+  expect(text.endsWith("...")).toBe(true);
+  expect(await note.getAttribute("title")).toBe(longNote); // the full text is preserved in the title
+});
+
+test("per-comment delete keeps focus within the same document's list (CMH-STORE-15)", async ({ page }) => {
+  await open(page, { key: "cmh-focus", source: "focus.html" });
+  await page.evaluate(() => {
+    localStorage.setItem("commentable-html:/reports/da.html", JSON.stringify([
+      { id: "cda000001", note: "a-one", quote: "q", start: 0, end: 1 },
+      { id: "cda000002", note: "a-two", quote: "q", start: 2, end: 3 }]));
+    localStorage.setItem("commentable-html:/reports/db.html", JSON.stringify([
+      { id: "cdb000001", note: "b-one", quote: "q", start: 0, end: 1 },
+      { id: "cdb000002", note: "b-two", quote: "q", start: 2, end: 3 }]));
+  });
+  await openManager(page);
+  await page.locator(".cm-storage-row", { hasText: "da.html" }).locator("button", { hasText: "Show comments" }).click();
+  await page.locator(".cm-storage-row", { hasText: "db.html" }).locator("button", { hasText: "Show comments" }).click();
+  const dbItem = page.locator(".cm-storage-comment").filter({ hasText: "b-one" });
+  await dbItem.locator(".cm-storage-danger").click();
+  await dbItem.locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  // Focus lands within the db document's comment list (scoped), not the first expanded document's.
+  const focusedBase = await page.evaluate(() => {
+    const row = document.activeElement && document.activeElement.closest(".cm-storage-comments-row");
+    return row ? row.dataset.cmhBase : null;
+  });
+  expect(focusedBase).toBe("commentable-html:/reports/db.html");
+});
+
+test("the usage summary counts the shared registry index in the commentable-html total (CMH-STORE-13)", async ({ page }) => {
+  await open(page, { key: "cmh-idx", source: "idx.html" });
+  await page.evaluate(() => {
+    const big = {};
+    for (let i = 0; i < 50; i++) big["doc" + i] = { label: "D".repeat(200), source: "s" + i + ".html", t: 1 };
+    localStorage.setItem("commentable-html::index", JSON.stringify(big));
+  });
+  await openManager(page);
+  const u = await page.evaluate(() => {
+    const raw = localStorage.getItem("commentable-html::index");
+    const idxBytes = ("commentable-html::index".length + raw.length) * 2;
+    const usage = window.__cmhStorageCodec.usage();
+    return { idxBytes, cmhBytes: usage.cmhBytes };
+  });
+  // The registry index is commentable-html data, so it is counted toward the commentable-html total
+  // (not misclassified as other-app storage even though it is not a listed document group).
+  expect(u.cmhBytes).toBeGreaterThanOrEqual(u.idxBytes);
+});
+
+test("the dialog has a footer Close button that closes it and restores focus (CMH-STORE-16)", async ({ page }) => {
+  await open(page);
+  await openManager(page);
+  const foot = page.locator(".cm-storage-foot");
+  await expect(foot).toBeVisible();
+  await foot.locator("button", { hasText: "Close" }).click();
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("btnToolbarMenu");
+});

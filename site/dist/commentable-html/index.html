@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.215.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.220.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.220.0] - 2026-07-23</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The Manage storage dialog is clearer and more capable (CMH-STORE-13..16). Documents are now shown in a column-headed table (Document, Comments, Size, Share, Actions) where the Share column is each document&#x27;s percentage of commentable-html storage. A usage summary reports total local storage in use as a percentage of the assumed ~5 MB budget, the commentable-html share of the storage in use, and this document&#x27;s percentage of commentable-html storage. Each document row has a lazy &quot;Show comments&quot; toggle that lists every stored comment (quote, note, author, and an approximate per-comment size), each deletable - deleting a comment in the current document routes through the live delete path (tombstoning embedded ids and re-rendering the sidebar), while deleting another document&#x27;s comment rewrites only that document&#x27;s stored slot. A Close button was added in a footer at the bottom of the dialog.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.215.0] - 2026-07-23</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -467,6 +474,8 @@
               <li>The visuals-matrix demo (<code>report-metrics.html</code>) Mermaid gallery now uses <code>.cmh-diagram-gallery</code> instead of a hand-rolled per-document grid/masonry, retiring the layout that failed repeatedly (marooning in #597, sliver/masonry in #602/#610). This is the durable, tested fix for the demo&#x27;s gallery rendering (CMH-DEMO-06).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.214.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
@@ -474,8 +483,6 @@
               <li>Flat (non-deck) documents now print / Save-as-PDF as a SINGLE continuous no-break page instead of paginating onto A4/Letter sheets, so no page break cuts through a section, table, chart, diagram, or code block. On print the runtime measures the full content height (proactively, under stable screen media, since Chromium locks the print <code>@page</code> size at <code>beforeprint</code>) and sizes a dynamic <code>@page</code> to the content, collapsing a multi-page report onto one tall page. Documents that contain a block-stacking container - a multi-column chart gallery or a grid/flex widget such as a kanban board - are left on normal pagination, because their print-time grid-to-block reflow and asynchronous chart resize cannot be measured before the page size is locked; their content still prints in full on standard pages. Decks are unchanged (one landscape 16:9 page per slide). Relies on the browser honoring a CSS <code>@page</code> size (Chromium&#x27;s native print/PDF). (CMH-PRINT-06)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.213.0] - 2026-07-22</h3></div>
             <div class="group-label">Changed</div>
@@ -517,18 +524,7 @@
               <li>The footer session-id copy control no longer renders two separator dots next to each other (<code>Generated . . [copy]</code>); the copy button and its separator now read <code>Generated . [copy] . Help</code>.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.209.0] - 2026-07-22</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>validate.py</code> now actually stamps a document when run as a standalone CLI subprocess. It previously put only its own <code>validate/</code> directory on <code>sys.path</code>, so <code>_stamp_validated_file</code>&#x27;s <code>import doc_stamp</code> silently failed and a clean <code>python tools/validate/validate.py &lt;file&gt;</code> left the document unstamped - the runtime kept showing the amber &quot;not validated&quot; banner even though validation passed. <code>validate.py</code> now loads the sibling <code>authoring/</code> tools via the shared bootstrap, so both <code>validate.py</code> and <code>finalize.py</code> stamp on a strict-clean pass. (CMH-STAMP-02, part of #584)</li>
-            </ul>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The validated stamp is now CONTENT-BOUND to the document&#x27;s authored TEXT. On a strict-clean pass <code>validate.py</code>/<code>finalize.py</code> also write <code>commentable-html-validated-hash</code>, a whole content-root text hash computed with the shared section-hash contract, and the runtime reproduces it byte for byte (<code>window.__cmhReview.docHash()</code>). The amber &quot;not validated&quot; banner therefore returns after a post-validation edit to the visible authored text and clears again on re-validation, instead of relying only on timestamps - so &quot;validated&quot; now tracks the CURRENT text. It is a stable-text fingerprint (a strong nudge, not a cryptographic seal): it does not track attribute-only edits or edits inside the excluded rendered blocks (mermaid/diff/KQL/chart/notes). A document with no content root keeps a timestamp-only stamp and the runtime falls back to the timestamp signal, so it never false-positives; a reader&#x27;s persisted table sort is canonicalized so it does not falsely invalidate. Only a FULL clean validation stamps (a <code>--charts-only</code>/<code>--layer-only</code> partial run never does). <code>finalize.py</code> also prints a guardrail reminder on a strict-fail that the fix must end with a clean strict pass to re-stamp. (CMH-STAMP-05, CMH-STAMP-03, CMH-STAMP-02, closes #584)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">178 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">179 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.215.0";
+const CMH_VERSION = "1.220.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -7261,6 +7261,10 @@ function _cmhHumanSize(bytes) {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
+// Assumed localStorage budget for a file:// document. Browsers typically allow ~5 MB and the exact
+// limit varies, so the usage summary presents this as an approximate percentage, not a hard number.
+const CMH_ASSUMED_QUOTA = 5 * 1024 * 1024;
+function _cmhPct(part, whole) { return whole > 0 ? Math.round((part / whole) * 100) : 0; }
 function _cmhAllKeys() {
   const out = [];
   try {
@@ -7413,6 +7417,137 @@ function _cmhDeleteKeys(keys) {
   return ok;
 }
 
+// Total bytes used by EVERY key in this origin's localStorage (commentable-html and foreign apps
+// alike), for the usage summary. Bounded by the key count; it never decodes a value.
+function _cmhOriginBytes() {
+  let total = 0;
+  _cmhAllKeys().forEach(function (k) {
+    let v = null; try { v = localStorage.getItem(k); } catch (e) { /* ignore */ }
+    total += _cmhKeyBytes(k, v);
+  });
+  return total;
+}
+// Bytes of the shared registry index (commentable-html::index). cmhStorageGroups() intentionally
+// excludes the index from the listed document groups, so it is added to the commentable-html total
+// separately here and in the table's Share denominator - otherwise it would be misclassified as
+// other-app storage and understate the commentable-html share.
+function _cmhIndexBytes() {
+  try { const iv = localStorage.getItem(CMH_INDEX_KEY); return iv != null ? _cmhKeyBytes(CMH_INDEX_KEY, iv) : 0; }
+  catch (e) { return 0; }
+}
+// Storage-usage split for the summary: the whole origin, the commentable-html share (all documents
+// plus shared/other CMH data plus the registry index), the non-CMH remainder, the current document,
+// and the assumed budget.
+function cmhStorageUsage() {
+  const data = cmhStorageGroups();
+  let cmhBytes = _cmhIndexBytes(), currentBytes = 0;
+  data.docs.forEach(function (g) { cmhBytes += g.bytes; if (g.current) currentBytes = g.bytes; });
+  data.globals.forEach(function (x) { cmhBytes += x.bytes; });
+  const originBytes = _cmhOriginBytes();
+  return {
+    originBytes: originBytes, cmhBytes: cmhBytes, otherBytes: Math.max(0, originBytes - cmhBytes),
+    currentBytes: currentBytes, assumedQuota: CMH_ASSUMED_QUOTA,
+  };
+}
+// Normalize whitespace and truncate a document-derived string to a short snippet for the browse
+// list, so one very long note or quote cannot dominate the dialog. The full text is preserved in the
+// element's title attribute by the caller.
+function _cmhSnippet(s, max) {
+  const str = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  return str.length > max ? str.slice(0, max - 3) + "..." : str;
+}
+// The anchor text shown for one comment in the per-document browse list (a reply inherits its root's
+// anchor, so it has none of its own). Every field is document-derived and rendered via textContent.
+function _cmhCommentQuote(c) {
+  if (!c) return "";
+  if (c.parentId) return "(reply)";
+  return c.imageAlt || c.linkText || c.nodeLabel || c.partLabel || c.quote || c.imageSrc || c.linkHref || "";
+}
+// Approximate per-comment footprint: the UTF-16 byte length of this comment's own JSON. The stored
+// payload may be compressed, so this is an UNCOMPRESSED estimate (shown with a leading "~").
+function _cmhCommentApproxBytes(c) {
+  try { return JSON.stringify(c).length * 2; } catch (e) { return 0; }
+}
+// The comment array browsed for a group: the LIVE in-memory array for the current document (so a
+// delete reflects at once and stays in sync with the sidebar), or the decoded stored array for any
+// other document. Returns [] when the stored value is missing or unreadable.
+function _cmhDocComments(g) {
+  if (g.current) return Array.isArray(comments) ? comments.slice() : [];
+  const raw = g._zValue != null ? g._zValue : g._baseValue;
+  const dec = cmhDecodeStore(raw);
+  if (!dec.ok || dec.json == null) return [];
+  try { const a = JSON.parse(dec.json); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+// Delete one comment (and any replies pointing at it) from the CURRENT document through the live
+// path: tombstone the embedded ids, drop from the in-memory array, remove highlights, persist, and
+// re-render the sidebar - mirroring the sidebar's own delete so nothing resurrects on reload.
+function _cmhDeleteCommentFromCurrent(id) {
+  const dropIds = comments.filter(function (c) { return c && (c.id === id || c.parentId === id); })
+    .map(function (c) { return c.id; });
+  if (!dropIds.length) return;
+  const tombstoneOk = _tombstoneEmbedded(dropIds);
+  const drop = new Set(dropIds);
+  dropIds.forEach(function (tid) { const oc = openEditComposers.get(tid); if (oc) closeComposerElement(oc); });
+  const dropped = comments.filter(function (c) { return drop.has(c.id); });
+  comments = comments.filter(function (c) { return !drop.has(c.id); });
+  dropped.forEach(function (c) { try { removeHighlight(c); } catch (e) { /* anchor may already be gone */ } });
+  const commentsOk = saveComments();
+  _ensureTombstoneEmbedded(dropIds, tombstoneOk, commentsOk);
+  if (typeof renderComments === "function") renderComments();
+}
+// Delete one comment (and any replies pointing at it) from ANOTHER document's stored slot: decode,
+// filter, and re-encode to the modern ::z slot (or remove it when empty), clearing any legacy value.
+// The removed ids are also tombstoned in that document's ::deleted set so a comment that was baked
+// into its embedded block does not resurrect when it is next opened (we cannot read a foreign file's
+// embedded signature from here, so every removed id is recorded; a non-embedded id is inert).
+function _cmhDeleteCommentFromStore(base, id) {
+  const zKey = base + "::z";
+  let raw = null;
+  try { raw = localStorage.getItem(zKey); } catch (e) { /* ignore */ }
+  if (raw == null) { try { raw = localStorage.getItem(base); } catch (e) { /* ignore */ } }
+  const dec = cmhDecodeStore(raw);
+  if (!dec.ok || dec.json == null) return false;
+  let arr;
+  try { arr = JSON.parse(dec.json); } catch (e) { return false; }
+  if (!Array.isArray(arr)) return false;
+  const removedIds = arr.filter(function (c) { return c && (c.id === id || c.parentId === id); })
+    .map(function (c) { return c.id; })
+    .filter(function (x) { return typeof x === "string" && SAFE_ID_RE.test(x); });
+  const next = arr.filter(function (c) { return c && c.id !== id && c.parentId !== id; });
+  try {
+    // Rewrite (or clear) the comment slot FIRST - a net space-freeing write - so the tiny tombstone
+    // write below is far more likely to fit under quota pressure than if it ran first.
+    if (next.length) localStorage.setItem(zKey, cmhEncodeStore(JSON.stringify(next)));
+    else localStorage.removeItem(zKey);
+    localStorage.removeItem(base); // never leave a stale legacy value behind
+    // If the delete marker could not be persisted (storage full/blocked), the comment is gone from
+    // the store but an embedded copy in that document could reappear on its next open; warn rather
+    // than silently reporting success (mirrors _ensureTombstoneEmbedded's recovery notice).
+    if (!_cmhTombstoneForeign(base, removedIds) && removedIds.length && typeof showToast === "function") {
+      showToast("Deleted the comment, but this browser could not save a delete marker for the other "
+        + "document (storage full or blocked) - it may reappear when that document is next opened. "
+        + "Free space and delete it again.", { alert: true, duration: 9000 });
+    }
+    return true;
+  } catch (e) { return false; }
+}
+// Merge ids into another document's ::deleted tombstone set (SAFE_ID_RE-filtered, deduped, capped),
+// mirroring 05-persistence.js's _tombstoneEmbedded but for a base other than the current document's.
+// Returns true on success (including a no-op), false when the write could not be persisted.
+function _cmhTombstoneForeign(base, ids) {
+  if (!ids || !ids.length) return true;
+  const delKey = base + "::deleted";
+  try {
+    let existing = [];
+    try { const v = JSON.parse(localStorage.getItem(delKey) || "[]"); existing = Array.isArray(v) ? v : []; } catch (e) { existing = []; }
+    const cleanExisting = existing.filter(function (x) { return typeof x === "string" && SAFE_ID_RE.test(x); });
+    // New ids FIRST so the cap can only ever evict OLD tombstones, never the just-deleted id.
+    const merged = Array.from(new Set(ids.concat(cleanExisting))).slice(0, CMH_MAX_COMMENTS);
+    localStorage.setItem(delKey, JSON.stringify(merged));
+    return true;
+  } catch (e) { return false; }
+}
+
 // ---------- Dialog ----------
 let _cmhStorageOpen = false;
 let _cmhQuotaEpisode = false; // guards against re-opening on every failed save within one episode
@@ -7505,12 +7640,29 @@ function openStorageManager(opts) {
   totalLine.setAttribute("aria-live", "polite");
   box.appendChild(totalLine);
 
+  const usageWrap = el("div", "cm-storage-usage");
+  usageWrap.setAttribute("aria-live", "polite");
+  box.appendChild(usageWrap);
+
   const listWrap = el("div", "cm-storage-list");
   box.appendChild(listWrap);
 
   const emptyNote = el("div", "cm-storage-empty", "");
   emptyNote.hidden = true;
   box.appendChild(emptyNote);
+
+  // Footer with a Close button (mirrors the header close, so a close control stays reachable at the
+  // bottom of a long list).
+  const foot = el("div", "cm-storage-foot");
+  const footClose = el("button", "cm-storage-btn cm-storage-foot-close", "Close");
+  footClose.type = "button";
+  footClose.addEventListener("click", close);
+  foot.appendChild(footClose);
+  box.appendChild(foot);
+
+  // Bases whose per-comment list is currently expanded. Kept across re-renders so a per-comment
+  // delete does not collapse the list the reviewer is working in.
+  const expanded = new Set();
 
   // Retry any pending (quota-failed) writes after space is freed, regardless of how the manager was
   // opened, so a manually-opened dialog (or a secondary-writer toast action) also persists the
@@ -7533,9 +7685,12 @@ function openStorageManager(opts) {
     let total = 0;
     data.docs.forEach(function (g) { total += g.bytes; });
     data.globals.forEach(function (x) { total += x.bytes; });
+    total += _cmhIndexBytes(); // count the registry index in the commentable-html total + Share base
     totalLine.textContent = "About " + _cmhHumanSize(total) + " used across "
       + data.docs.length + " document" + (data.docs.length === 1 ? "" : "s")
       + " (browsers typically allow ~5 MB for local files; the exact limit varies).";
+
+    renderUsageSummary();
 
     if (quota) {
       banner.hidden = false;
@@ -7548,8 +7703,24 @@ function openStorageManager(opts) {
 
     listWrap.textContent = "";
     const otherDocs = data.docs.filter(function (g) { return !g.current; });
-    data.docs.forEach(function (g) { listWrap.appendChild(rowForDoc(g)); });
-    if (data.globals.length) listWrap.appendChild(rowForGlobals(data.globals));
+    const cmhTotalBytes = total;
+    const table = el("table", "cm-storage-table");
+    const thead = document.createElement("thead");
+    const htr = document.createElement("tr");
+    ["Document", "Comments", "Size", "Share", ""].forEach(function (h, i) {
+      const th = document.createElement("th");
+      th.textContent = h;
+      if (i === 3) th.title = "Share of commentable-html storage";
+      if (i === 4) th.setAttribute("aria-label", "Actions");
+      htr.appendChild(th);
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    data.docs.forEach(function (g) { appendDocRows(tbody, g, cmhTotalBytes); });
+    if (data.globals.length) appendGlobalsRow(tbody, data.globals, cmhTotalBytes);
+    table.appendChild(tbody);
+    listWrap.appendChild(table);
 
     // Empty state: nothing reclaimable from OTHER documents. Gate on other-document rows only (not
     // shared-preference globals): the quota Export/Clear escape hatch must show whenever there is no
@@ -7605,61 +7776,181 @@ function openStorageManager(opts) {
     return btn;
   }
 
-  function rowForDoc(g) {
-    const row = el("div", "cm-storage-row" + (g.current ? " cm-storage-current" : ""));
-    const info = el("div", "cm-storage-info");
-    const nameLine = el("div", "cm-storage-name-line");
-    const name = el("span", "cm-storage-name", _cmhDocDisplayName(g));
-    nameLine.appendChild(name);
-    if (g.current) nameLine.appendChild(el("span", "cm-storage-badge", "This document"));
-    info.appendChild(nameLine);
-    if (g.source) info.appendChild(el("div", "cm-storage-source", g.source));
-    const meta = el("div", "cm-storage-meta",
-      (g.count == null ? "?" : g.count) + " comment" + (g.count === 1 ? "" : "s") + " \u00b7 " + _cmhHumanSize(g.bytes));
-    info.appendChild(meta);
-    row.appendChild(info);
-
-    const actions = el("div", "cm-storage-actions");
-    if (g.current) {
-      actions.appendChild(clearCurrentButton());
-    } else {
-      const del = el("button", "cm-storage-btn cm-storage-danger", "Delete");
-      del.type = "button";
-      del.setAttribute("aria-label", "Delete stored data for " + _cmhDocDisplayName(g));
-      del.addEventListener("click", function () {
-        inlineConfirm(del, "Delete this document's data?", function () {
-          // Remember this row's position among the other-document rows so focus lands near it (not
-          // jumping to the top) after the list re-renders.
-          const others = Array.prototype.slice.call(
-            box.querySelectorAll(".cm-storage-row:not(.cm-storage-current):not(.cm-storage-global)"));
-          const idx = others.findIndex(function (r) { return r.querySelector(".cm-storage-confirm"); });
-          _cmhDeleteKeys(g.keys);
-          _cmhRemoveIndexEntry(g.base);
-          announceRetry();
-          render(function (b) {
-            const dels = b.querySelectorAll(
-              ".cm-storage-row:not(.cm-storage-current):not(.cm-storage-global) .cm-storage-danger");
-            if (!dels.length) return null;
-            return dels[Math.min(Math.max(idx, 0), dels.length - 1)] || null;
-          });
-        });
-      });
-      actions.appendChild(del);
-    }
-    row.appendChild(actions);
-    return row;
+  function renderUsageSummary() {
+    const usage = cmhStorageUsage();
+    usageWrap.textContent = "";
+    const originPct = _cmhPct(usage.originBytes, usage.assumedQuota);
+    const cmhPctOfOrigin = _cmhPct(usage.cmhBytes, usage.originBytes);
+    const docPctOfCmh = _cmhPct(usage.currentBytes, usage.cmhBytes);
+    const bar = el("div", "cm-storage-bar");
+    const fill = el("div", "cm-storage-bar-fill");
+    fill.style.width = Math.min(100, originPct) + "%";
+    bar.appendChild(fill);
+    usageWrap.appendChild(bar);
+    usageWrap.appendChild(el("div", "cm-storage-usage-line",
+      "Local storage in use: " + _cmhHumanSize(usage.originBytes) + " - about " + originPct
+      + "% of the ~5 MB a browser typically allows (the exact limit varies)."));
+    usageWrap.appendChild(el("div", "cm-storage-usage-line",
+      "commentable-html: " + _cmhHumanSize(usage.cmhBytes) + " - " + cmhPctOfOrigin
+      + "% of the storage in use."));
+    usageWrap.appendChild(el("div", "cm-storage-usage-line",
+      "This document: " + _cmhHumanSize(usage.currentBytes) + " - " + docPctOfCmh
+      + "% of commentable-html storage."));
   }
 
-  function rowForGlobals(globals) {
+  // Build a document's table row (and, when expanded, its per-comment list row) and append both.
+  function appendDocRows(tbody, g, cmhTotalBytes) {
+    const row = el("tr", "cm-storage-row" + (g.current ? " cm-storage-current" : ""));
+    const nameTd = el("td", "cm-storage-cell-name");
+    const nameLine = el("div", "cm-storage-name-line");
+    nameLine.appendChild(el("span", "cm-storage-name", _cmhDocDisplayName(g)));
+    if (g.current) nameLine.appendChild(el("span", "cm-storage-badge", "This document"));
+    nameTd.appendChild(nameLine);
+    if (g.source) nameTd.appendChild(el("div", "cm-storage-source", g.source));
+    // For the current document the LIVE count is authoritative (a just-deleted comment is reflected
+    // before the store is re-read); other documents use the decoded stored count.
+    const count = g.current ? (Array.isArray(comments) ? comments.length : 0) : g.count;
+    if (count) nameTd.appendChild(showCommentsToggle(g));
+    row.appendChild(nameTd);
+    row.appendChild(el("td", "cm-storage-count", count == null ? "?" : String(count)));
+    row.appendChild(el("td", "cm-storage-size", _cmhHumanSize(g.bytes)));
+    row.appendChild(el("td", "cm-storage-share", _cmhPct(g.bytes, cmhTotalBytes) + "%"));
+    const actTd = el("td", "cm-storage-actions");
+    if (g.current) actTd.appendChild(clearCurrentButton());
+    else actTd.appendChild(deleteDocButton(g));
+    row.appendChild(actTd);
+    tbody.appendChild(row);
+    if (expanded.has(g.base)) {
+      // Re-append the expanded comment list, but drop the expansion when nothing remains: the
+      // "Show comments" toggle is suppressed at zero, so an empty list would otherwise be stuck open.
+      if (count) tbody.appendChild(commentsRowFor(g));
+      else expanded.delete(g.base);
+    }
+  }
+
+  function deleteDocButton(g) {
+    const del = el("button", "cm-storage-btn cm-storage-danger", "Delete");
+    del.type = "button";
+    del.setAttribute("aria-label", "Delete stored data for " + _cmhDocDisplayName(g));
+    del.addEventListener("click", function () {
+      inlineConfirm(del, "Delete this document's data?", function () {
+        // Remember this row's position among the other-document rows so focus lands near it (not
+        // jumping to the top) after the list re-renders.
+        const others = Array.prototype.slice.call(
+          box.querySelectorAll(".cm-storage-row:not(.cm-storage-current):not(.cm-storage-global)"));
+        const idx = others.findIndex(function (r) { return r.querySelector(".cm-storage-confirm"); });
+        _cmhDeleteKeys(g.keys);
+        _cmhRemoveIndexEntry(g.base);
+        expanded.delete(g.base);
+        announceRetry();
+        render(function (b) {
+          const dels = b.querySelectorAll(
+            ".cm-storage-row:not(.cm-storage-current):not(.cm-storage-global) .cm-storage-danger");
+          if (!dels.length) return null;
+          return dels[Math.min(Math.max(idx, 0), dels.length - 1)] || null;
+        });
+      });
+    });
+    return del;
+  }
+
+  // Lazy per-document "Show comments" toggle: inserts/removes the comment-list row in place (no full
+  // re-render), so focus stays on the toggle and the list is only decoded when opened.
+  function showCommentsToggle(g) {
+    const isOpen = expanded.has(g.base);
+    const btn = el("button", "cm-storage-btn cm-storage-show-comments", isOpen ? "Hide comments" : "Show comments");
+    btn.type = "button";
+    btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    btn.setAttribute("aria-label", (isOpen ? "Hide" : "Show") + " comments for " + _cmhDocDisplayName(g));
+    btn.addEventListener("click", function () {
+      const rowEl = btn.closest("tr");
+      if (expanded.has(g.base)) {
+        expanded.delete(g.base);
+        const next = rowEl && rowEl.nextElementSibling;
+        if (next && next.classList.contains("cm-storage-comments-row")) next.remove();
+        btn.textContent = "Show comments";
+        btn.setAttribute("aria-expanded", "false");
+        btn.setAttribute("aria-label", "Show comments for " + _cmhDocDisplayName(g));
+      } else {
+        expanded.add(g.base);
+        const cr = commentsRowFor(g);
+        if (rowEl && rowEl.parentNode) rowEl.parentNode.insertBefore(cr, rowEl.nextElementSibling);
+        btn.textContent = "Hide comments";
+        btn.setAttribute("aria-expanded", "true");
+        btn.setAttribute("aria-label", "Hide comments for " + _cmhDocDisplayName(g));
+      }
+    });
+    return btn;
+  }
+
+  function commentsRowFor(g) {
+    const tr = el("tr", "cm-storage-comments-row");
+    tr.dataset.cmhBase = g.base; // stable handle for post-delete focus scoping (a value, not a selector)
+    const td = document.createElement("td");
+    td.setAttribute("colspan", "5");
+    const wrap = el("div", "cm-storage-comments");
+    const list = _cmhDocComments(g);
+    if (!list.length) {
+      wrap.appendChild(el("div", "cm-storage-comment-empty", "No stored comments to show."));
+    } else {
+      list.forEach(function (c) { wrap.appendChild(commentEntry(g, c)); });
+    }
+    td.appendChild(wrap);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function commentEntry(g, c) {
+    const item = el("div", "cm-storage-comment");
+    const info = el("div", "cm-storage-comment-info");
+    const q = _cmhCommentQuote(c);
+    if (q) { const qe = el("div", "cm-storage-comment-quote", _cmhSnippet(q, 140)); qe.title = q; info.appendChild(qe); }
+    if (c && c.note) { const ne = el("div", "cm-storage-comment-note", _cmhSnippet(c.note, 140)); ne.title = String(c.note); info.appendChild(ne); }
+    const meta = el("div", "cm-storage-comment-meta");
+    if (c && c.author) meta.appendChild(el("span", "cm-storage-comment-author", _cmhSnippet(c.author, 60)));
+    meta.appendChild(el("span", "cm-storage-comment-size", "~" + _cmhHumanSize(_cmhCommentApproxBytes(c))));
+    info.appendChild(meta);
+    item.appendChild(info);
+    const actions = el("div", "cm-storage-actions");
+    const del = el("button", "cm-storage-btn cm-storage-danger", "Delete");
+    del.type = "button";
+    del.setAttribute("aria-label", "Delete this comment");
+    del.addEventListener("click", function () {
+      inlineConfirm(del, "Delete this comment?", function () {
+        if (g.current) _cmhDeleteCommentFromCurrent(c.id);
+        else _cmhDeleteCommentFromStore(g.base, c.id);
+        announceRetry();
+        // Keep keyboard focus in THIS document's comment list (falls back to the dialog's close
+        // button when that list is now empty or gone).
+        render(function (b) {
+          const rows = b.querySelectorAll(".cm-storage-comments-row");
+          for (let i = 0; i < rows.length; i++) {
+            if (rows[i].dataset && rows[i].dataset.cmhBase === g.base) {
+              const d = rows[i].querySelector(".cm-storage-danger");
+              if (d) return d;
+            }
+          }
+          return null;
+        });
+      });
+    });
+    actions.appendChild(del);
+    item.appendChild(actions);
+    return item;
+  }
+
+  function appendGlobalsRow(tbody, globals, cmhTotalBytes) {
     let bytes = 0;
     const keys = globals.map(function (x) { bytes += x.bytes; return x.key; });
-    const row = el("div", "cm-storage-row cm-storage-global");
-    const info = el("div", "cm-storage-info");
-    info.appendChild(el("div", "cm-storage-name", "Other / shared data"));
-    info.appendChild(el("div", "cm-storage-source", "Preferences and dismissed banners not tied to one document"));
-    info.appendChild(el("div", "cm-storage-meta", globals.length + " item" + (globals.length === 1 ? "" : "s") + " \u00b7 " + _cmhHumanSize(bytes)));
-    row.appendChild(info);
-    const actions = el("div", "cm-storage-actions");
+    const row = el("tr", "cm-storage-row cm-storage-global");
+    const nameTd = el("td", "cm-storage-cell-name");
+    nameTd.appendChild(el("div", "cm-storage-name", "Other / shared data"));
+    nameTd.appendChild(el("div", "cm-storage-source", "Preferences and dismissed banners not tied to one document"));
+    row.appendChild(nameTd);
+    row.appendChild(el("td", "cm-storage-count", String(globals.length)));
+    row.appendChild(el("td", "cm-storage-size", _cmhHumanSize(bytes)));
+    row.appendChild(el("td", "cm-storage-share", _cmhPct(bytes, cmhTotalBytes) + "%"));
+    const actTd = el("td", "cm-storage-actions");
     const del = el("button", "cm-storage-btn", "Delete");
     del.type = "button";
     del.setAttribute("aria-label", "Delete shared preferences and dismissed banners");
@@ -7670,9 +7961,9 @@ function openStorageManager(opts) {
         render();
       });
     });
-    actions.appendChild(del);
-    row.appendChild(actions);
-    return row;
+    actTd.appendChild(del);
+    row.appendChild(actTd);
+    tbody.appendChild(row);
   }
 
   // Inline row confirmation: swap the trigger for Confirm/Cancel in place (avoids nesting a second
@@ -7755,6 +8046,7 @@ window.__cmhStorageCodec = {
   encode: cmhEncodeStore,
   decode: cmhDecodeStore,
   groups: cmhStorageGroups,
+  usage: cmhStorageUsage,
   open: openStorageManager,
   read: function () { return cmhLoadStored().arr; },
   write: function (arr) {
