@@ -240,12 +240,6 @@ if (menu) {
     else next = cur < 0 ? items.length - 1 : (cur - 1 + items.length) % items.length;
     items[next].focus({ preventScroll: true });
   });
-  // Dismiss when focus leaves the menu entirely (Tab out, a click elsewhere). The items carry
-  // tabindex="-1", so Tab is never captured to rove between them - it moves focus to the next
-  // page control and this handler closes the menu, leaving no stale-open menu behind. Focus has
-  // already landed where the user sent it, so this path does NOT restore focus (and clears the
-  // saved opener) - a later Escape can no longer surprise-restore. Escape's own path still
-  // closes and restores focus to the opener explicitly.
   // Dismiss when focus moves to another element OUTSIDE the menu (Tab out, or focusing a control
   // elsewhere). The items carry tabindex="-1", so Tab is never captured to rove between them - it
   // moves focus to the next page control and this handler closes the menu, leaving no stale-open
