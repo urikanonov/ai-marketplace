@@ -28,7 +28,7 @@
 .card:hover { transform: translateY(-2px); border-color: var(--cp-border-strong); }
 
 /* Plugin cards */
-.plugin-card { display: flex; flex-direction: column; gap: 12px; position: relative; scroll-margin-top: 76px; }
+.plugin-card { display: flex; flex-direction: column; gap: 12px; position: relative; scroll-margin-top: var(--nav-offset, 76px); }
 /* Only a card with a page link is clickable (the .name a::after stretches over the whole card);
    a linkless card (e.g. a plugin with no dedicated page) must not show a misleading pointer. */
 .plugin-card:has(.name a[href]) { cursor: pointer; }

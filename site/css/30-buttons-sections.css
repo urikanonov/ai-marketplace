@@ -25,10 +25,11 @@
 section { padding: 48px 0; }
 /* Anchor and nav jumps clear the sticky navbar (SITE-NAV-03): offset each id target's
    top by the navbar height so a jumped-to section or data-anchor sub-heading is not
-   hidden behind the sticky navbar (matches the .plugin-card offset in 34-cards.css). */
+   hidden behind the sticky navbar. site.js keeps --nav-offset equal to the actual navbar
+   height (which wraps taller on narrow viewports); 76px is the static no-JS fallback. */
 section[id],
 [data-anchor][id] {
-  scroll-margin-top: 76px;
+  scroll-margin-top: var(--nav-offset, 76px);
 }
 main > section:nth-of-type(even) {
   background: var(--cp-bg-elevated);

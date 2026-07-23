@@ -114,6 +114,24 @@
     });
   }
 
+  function initNavOffset() {
+    // Keep the anchor-jump scroll offset equal to the actual sticky navbar height so a
+    // nav/hash jump is never hidden behind it, even when the navbar wraps taller on narrow
+    // viewports (SITE-NAV-03). CSS carries a static 76px fallback for the no-JS case.
+    var navbar = document.querySelector(".navbar");
+    if (!navbar) return;
+    var apply = function () {
+      var h = Math.round(navbar.getBoundingClientRect().height);
+      if (h > 0) document.documentElement.style.setProperty("--nav-offset", h + "px");
+    };
+    apply();
+    if (typeof ResizeObserver === "function") {
+      new ResizeObserver(apply).observe(navbar);
+    } else {
+      window.addEventListener("resize", apply);
+    }
+  }
+
   function initPluginCards() {
     var cards = document.querySelectorAll(".plugin-card");
     cards.forEach(function (card) {
@@ -391,6 +409,7 @@
     initCopyButtons();
     initYear();
     initHeaderAnchors();
+    initNavOffset();
     initPluginCards();
     initInstallTabs();
     initDemoSwitch();

@@ -386,3 +386,20 @@ test("a nav jump clears the sticky navbar so the target section is not hidden (S
   const top = await page.locator("section#install").evaluate((n) => n.getBoundingClientRect().top);
   expect(top).toBeGreaterThanOrEqual(navBottom - 1);
 });
+
+
+test("the anchor offset tracks a taller wrapped navbar on a narrow plugin page (SITE-NAV-03)", async ({ page }) => {
+  // On a narrow plugin page the sticky navbar wraps to well over the 76px static fallback,
+  // so a fixed offset would still hide the heading; site.js keeps --nav-offset at the real height.
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/commentable-html/", { waitUntil: "networkidle" });
+  const navBottom = await page.locator(".navbar").evaluate((n) => n.getBoundingClientRect().bottom);
+  // Guard the premise of the test: this navbar is taller than the 76px static fallback.
+  expect(navBottom).toBeGreaterThan(76);
+  // Jump to an early section (plenty of content below to reach the top of the scroll area).
+  await page.locator("section#install .section-title a.header-anchor").click();
+  await expect(page).toHaveURL(/#install$/);
+  const top = await page.locator("section#install").evaluate((n) => n.getBoundingClientRect().top);
+  expect(top).toBeGreaterThanOrEqual(navBottom - 1);
+});
