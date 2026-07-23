@@ -89,6 +89,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   instead of a hand-rolled per-document grid/masonry, retiring the layout that failed repeatedly
   (marooning in #597, sliver/masonry in #602/#610). This is the durable, tested fix for the demo's
   gallery rendering (CMH-DEMO-06).
+
 ## [1.214.0] - 2026-07-22
 
 ### Added
