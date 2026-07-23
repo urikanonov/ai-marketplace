@@ -82,7 +82,9 @@ class PptxToFragmentTests(unittest.TestCase):
                 central_header = raw.find(b"PK\x01\x02", offset)
                 if central_header < 0:
                     break
-                struct.pack_into("<I", raw, central_header + 24, 220 * 1024 * 1024)
+                # 30 MB per entry: under the 32 MB per-entry cap but 5 x 30 = 150 MB is over the
+                # 128 MB total cap, so the TOTAL check (not the per-entry check) is what fires.
+                struct.pack_into("<I", raw, central_header + 24, 30 * 1024 * 1024)
                 offset = central_header + 46
             oversized_total.write_bytes(raw)
             with self.assertRaisesRegex(ValueError, "archive expands"):
@@ -100,6 +102,84 @@ class PptxToFragmentTests(unittest.TestCase):
                     archive.writestr(f"ppt/empty/{index}", b"")
             with self.assertRaisesRegex(ValueError, "entries"):
                 p2f._preflight_pptx_archive(too_many)
+
+    # CMH-DECK-36 (issue #619): the archive caps are lowered to sane sizes, a single extracted image
+    # is size-capped so it is not inlined (bounded output), and the extractor subprocess runs under a
+    # hard wall-clock timeout so a pathological deck cannot hang the tool.
+    def test_cmh_deck_36_limits_are_lowered(self):
+        self.assertLessEqual(p2f.MAX_PPTX_TOTAL_BYTES, 128 * 1024 * 1024)
+        self.assertLessEqual(p2f.MAX_PPTX_ENTRY_BYTES, 32 * 1024 * 1024)
+        self.assertLessEqual(p2f.MAX_PPTX_ENTRIES, 5_000)
+        self.assertLessEqual(p2f.MAX_PPTX_COMPRESSION_RATIO, 100)
+
+    def test_cmh_deck_36_total_cap_rejects_a_mid_size_archive(self):
+        # Five 30 MB entries: each is under the per-entry cap, but 150 MB total is over the lowered
+        # 128 MB total cap. Under the OLD 1 GB total cap this passed preflight; now it is rejected.
+        with tempfile.TemporaryDirectory() as tmp:
+            arch = Path(tmp, "mid.pptx")
+            with zipfile.ZipFile(arch, "w", zipfile.ZIP_DEFLATED) as z:
+                for i in range(5):
+                    z.writestr(f"ppt/media/{i}.bin", b"x")
+            raw = bytearray(arch.read_bytes())
+            offset = 0
+            while True:
+                ch = raw.find(b"PK\x01\x02", offset)
+                if ch < 0:
+                    break
+                struct.pack_into("<I", raw, ch + 24, 30 * 1024 * 1024)
+                offset = ch + 46
+            arch.write_bytes(raw)
+            with self.assertRaisesRegex(ValueError, "archive expands"):
+                p2f._preflight_pptx_archive(arch)
+
+    def test_cmh_deck_36_oversize_image_degrades_gracefully(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "assets").mkdir()
+            big = Path(d, "assets", "big.png")
+            big.write_bytes(b"P" * 4096)
+            slides = [{"title": "T", "images": [{"path": "assets/big.png", "alt": "A big chart"}]}]
+            with mock.patch.object(p2f, "MAX_PPTX_IMAGE_BYTES", 16):
+                out = p2f._inline_local_images(slides, d)
+            fragment = p2f.slides_to_fragment(out)
+            # (a) The extracted/temporary path must NOT leak into the fragment - it would dangle
+            # once the temp dir is torn down (and break the self-contained CMH-DECK-03a contract);
+            # nor is the oversize image base64-inlined (that is what the size cap prevents).
+            self.assertNotIn("big.png", fragment)
+            self.assertNotIn("assets/", fragment)
+            self.assertNotIn("data:image", fragment)
+            self.assertNotIn("<img", fragment)
+            # (b) The oversize image degrades to a visible placeholder carrying its alt text.
+            self.assertIn("A big chart", fragment)
+            self.assertIn("image omitted", fragment)
+
+    def test_cmh_deck_36_small_image_still_inlined(self):
+        import base64
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "assets").mkdir()
+            (Path(d, "assets", "s.png")).write_bytes(png)
+            slides = [{"title": "T", "images": [{"path": "assets/s.png"}]}]
+            out = p2f._inline_local_images(slides, d)
+            self.assertTrue(out[0]["images"][0]["path"].startswith("data:image/png;base64,"))
+
+    def test_cmh_deck_36_extractor_timeout_fails_closed(self):
+        import contextlib
+        import io
+        from unittest import mock
+        captured = {}
+
+        def fake_run(cmd, **kw):
+            captured.update(kw)
+            raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+        stderr = io.StringIO()
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit):
+                p2f._extract_via_local(self._write_minimal_pptx())
+        self.assertEqual(captured.get("timeout"), p2f.PPTX_EXTRACT_TIMEOUT_SECONDS)
+        self.assertIn("timed out", stderr.getvalue())
 
     def test_hostile_text_is_escaped(self):
         frag = p2f.slides_to_fragment(HOSTILE)

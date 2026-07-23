@@ -45,12 +45,18 @@ function restoreHighlights() {
   // overlapping comment stays LISTED (in the sidebar) but only the first-applied one is
   // highlighted, mirroring the diff sub-range guard.
   let maxAppliedEnd = -Infinity;
+  // Reuse ONE text-node index across the whole restore. A comment that fails to resolve (offsets
+  // beyond the document, the flood case) does not mutate the DOM, so the same index serves every
+  // failing lookup - turning a flood of unresolvable comments from O(count x doc) into O(count +
+  // doc). A successful wrapRangeWithMark() splits text nodes and inserts marks, so rebuild the
+  // index after each wrap (and after a failed wrap's unwrap/normalize) before the next lookup.
+  let nodes = getTextNodes();
   sorted.forEach(c => {
     if (c.start < maxAppliedEnd) return; // overlaps an already-highlighted range; leave unhighlighted
-    const r = rangeFromOffsets(c.start, c.end);
+    const r = rangeFromOffsets(c.start, c.end, nodes);
     if (r) {
-      try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); }
-      catch (e) { unwrapMarks(c.id); console.warn("Could not restore highlight for", c.id, e); }
+      try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); nodes = getTextNodes(); }
+      catch (e) { unwrapMarks(c.id); nodes = getTextNodes(); console.warn("Could not restore highlight for", c.id, e); }
     } else {
       console.warn("Lost anchor for comment", c.id, "- offsets", c.start, c.end);
     }

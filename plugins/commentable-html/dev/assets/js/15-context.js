@@ -3,6 +3,7 @@ const CTX_PAD = 80;
 const BLOCK_TAG_RE = /^(P|LI|TD|TH|H[1-6]|BLOCKQUOTE|PRE|DD|DT|FIGCAPTION|CAPTION|ARTICLE|SECTION|ASIDE)$/;
 const MAX_BLOCK_LEN = 280;
 function captureContext(start, end, range) {
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.ctxCaptures = (window.__cmhPerf.ctxCaptures || 0) + 1;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
     acceptNode(n) {
       if (n.nodeType === 1) {
@@ -132,18 +133,29 @@ function captureContext(start, end, range) {
     isCode, codeLanguage,
   };
 }
+// Bound the per-load context backfill so a flood of uncontexted comments cannot drive
+// captureContext() (a full-document walk each) unbounded on startup. Comments beyond the budget are
+// left uncontexted and backfilled on a later load; the cap is far above any real review's size.
+const CMH_MAX_BACKFILL = 400;
 function backfillContext() {
   let changed = false;
+  let processed = 0;
+  // backfillContext() never mutates the DOM (captureContext only reads), so one text-node index is
+  // valid for the whole pass and is reused across every rangeFromOffsets() lookup instead of
+  // re-walking the document per comment.
+  const nodes = getTextNodes();
   for (const c of comments) {
     const hasAll = c.section !== undefined && c.before !== undefined && c.after !== undefined &&
                    c.headingPath !== undefined && c.occurrence !== undefined && c.blockTag !== undefined &&
                    c.isCode !== undefined;
     if (hasAll) continue;
     if (typeof c.start !== "number" || typeof c.end !== "number") continue;
-    const range = rangeFromOffsets(c.start, c.end);
+    if (processed >= CMH_MAX_BACKFILL) break; // work budget: bound context capture per load
+    const range = rangeFromOffsets(c.start, c.end, nodes);
     const ctx = captureContext(c.start, c.end, range);
     Object.assign(c, ctx);
     changed = true;
+    processed++;
   }
   if (changed) saveComments();
 }

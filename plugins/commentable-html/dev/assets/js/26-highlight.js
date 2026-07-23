@@ -264,6 +264,12 @@ function renderDiffSplit(body, block) {
 // rows / commenting) so a pathologically large authored diff cannot freeze the
 // page on open. The raw source is still preserved for export.
 const CMH_DIFF_MAX_LINES = 2000;
+// Bound the two per-code-block DOM allocations so a pathologically large authored code block cannot
+// freeze the page on open (mirrors CMH_DIFF_MAX_LINES for diffs): above CMH_CODE_MAX_LINES lines the
+// per-line gutter is skipped, and above CMH_CODE_MAX_CHARS characters the runtime highlighter leaves
+// the block plain. The block's text is untouched either way, so it stays readable and commentable.
+const CMH_CODE_MAX_LINES = 5000;
+const CMH_CODE_MAX_CHARS = 200000;
 function renderDiffRaw(body, block) {
   const notice = document.createElement("div");
   notice.className = "cmh-diff-toobig";
@@ -626,12 +632,26 @@ function isNumberedCodeBlock(pre) {
 }
 function ensureCodeLineGutter(target, extraClass) {
   if (!target || target.dataset.cmhLineNumbers === "1") return;
-  const lines = String(target.textContent || "").replace(/\r\n?/g, "\n").split("\n");
+  const raw = String(target.textContent || "");
+  // Guard the allocation itself: a pathologically large block skips the per-line gutter BEFORE the
+  // split/array allocation (a hostile million-line block is a million-plus-char string), so it can
+  // never allocate one array entry / one span per line and freeze the page on open.
+  if (raw.length > CMH_CODE_MAX_CHARS) {
+    target.dataset.cmhLineNumbers = "1";
+    return;
+  }
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n");
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
   const gutter = document.createElement("span");
   gutter.className = "cmh-code-gutter cm-skip";
   gutter.setAttribute("aria-hidden", "true");
   const count = Math.max(1, lines.length);
+  // Above CMH_CODE_MAX_LINES lines the per-line gutter is skipped too so it cannot allocate one span
+  // per line. Mark it processed so a later pass does not retry it.
+  if (count > CMH_CODE_MAX_LINES) {
+    target.dataset.cmhLineNumbers = "1";
+    return;
+  }
   const lh = parseFloat(getComputedStyle(target).lineHeight) || 20;
   gutter.style.height = (count * lh) + "px";
   for (let i = 0; i < count; i++) {
@@ -660,6 +680,7 @@ function highlightCodeBlocks() {
     if (!diffLangKnown(lang)) return; // an unknown / non-tokenizable label (text, kusto, ...) stays plain
     const text = code.textContent;
     if (!text.trim()) return;
+    if (text.length > CMH_CODE_MAX_CHARS) return; // too large to tokenize; leave plain (still readable)
     code.innerHTML = cmhHighlightCode(text, lang);
   });
 }

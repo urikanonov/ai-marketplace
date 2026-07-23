@@ -91,6 +91,8 @@
   "76-diagram-gallery.spec.js": 4325,
   "76-render-while-hidden.spec.js": 1546,
   "77-chart-hidpi.spec.js": 7727,
+  "78-chart-tick-cap.spec.js": 1304,
+  "79-code-caps.spec.js": 2677,
   "90-section-review.spec.js": 27298,
   "91-upgrade-review.spec.js": 2991,
   "92-threads.spec.js": 15930
