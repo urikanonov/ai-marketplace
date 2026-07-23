@@ -11291,11 +11291,13 @@ function _cmhDeleteCommentFromStore(base, id) {
     .map(function (c) { return c.id; })
     .filter(function (x) { return typeof x === "string" && SAFE_ID_RE.test(x); });
   const next = arr.filter(function (c) { return c && c.id !== id && c.parentId !== id; });
-  _cmhTombstoneForeign(base, removedIds);
   try {
+    // Rewrite (or clear) the comment slot FIRST - a net space-freeing write - so the tiny tombstone
+    // write below is far more likely to fit under quota pressure than if it ran first.
     if (next.length) localStorage.setItem(zKey, cmhEncodeStore(JSON.stringify(next)));
     else localStorage.removeItem(zKey);
     localStorage.removeItem(base); // never leave a stale legacy value behind
+    _cmhTombstoneForeign(base, removedIds);
     return true;
   } catch (e) { return false; }
 }
@@ -11307,9 +11309,10 @@ function _cmhTombstoneForeign(base, ids) {
   try {
     let existing = [];
     try { const v = JSON.parse(localStorage.getItem(delKey) || "[]"); existing = Array.isArray(v) ? v : []; } catch (e) { existing = []; }
-    const set = new Set(existing.filter(function (x) { return typeof x === "string" && SAFE_ID_RE.test(x); }));
-    ids.forEach(function (x) { set.add(x); });
-    localStorage.setItem(delKey, JSON.stringify(Array.from(set).slice(0, CMH_MAX_COMMENTS)));
+    const cleanExisting = existing.filter(function (x) { return typeof x === "string" && SAFE_ID_RE.test(x); });
+    // New ids FIRST so the cap can only ever evict OLD tombstones, never the just-deleted id.
+    const merged = Array.from(new Set(ids.concat(cleanExisting))).slice(0, CMH_MAX_COMMENTS);
+    localStorage.setItem(delKey, JSON.stringify(merged));
   } catch (e) { /* best-effort tombstone; ignore quota/blocked */ }
 }
 
