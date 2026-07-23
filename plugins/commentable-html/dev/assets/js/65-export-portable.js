@@ -159,6 +159,33 @@ function _normalizeDocSourceInHtml(html) {
   if (!changed) return raw;
   return raw.slice(0, rootTag.start) + nextTag + raw.slice(rootTag.end);
 }
+function _retainSessionProvenance() {
+  return Array.prototype.some.call(
+    document.querySelectorAll("[data-cmh-retain-session-provenance]"),
+    function (option) { return option.checked; });
+}
+function _stripSessionProvenanceFromHtml(html) {
+  return String(html == null ? "" : html).replace(/<meta\b[^>]*>/gi, function (tag) {
+    const name = _cmhTagAttributes(tag).find(function (attr) {
+      return attr.name === "name" && attr.valueStart != null;
+    });
+    if (!name) return tag;
+    const value = _cmhDecodeAttribute(tag.slice(name.valueStart, name.valueEnd)).toLowerCase();
+    return value === "commentable-html-session-id" || value === "commentable-html-agent" ? "" : tag;
+  });
+}
+function _prepareExportHtml(html) {
+  return _retainSessionProvenance() ? html : _stripSessionProvenanceFromHtml(html);
+}
+function _initSessionProvenanceOptions() {
+  const options = Array.prototype.slice.call(document.querySelectorAll("[data-cmh-retain-session-provenance]"));
+  options.forEach(function (option) {
+    option.addEventListener("change", function () {
+      options.forEach(function (other) { other.checked = option.checked; });
+    });
+  });
+}
+_initSessionProvenanceOptions();
 async function _getBaseHtml() {
   // Prefer the on-disk version (cleaner diff). Fall back to the snapshot
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
@@ -328,6 +355,7 @@ async function saveHtml() {
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
   baseHtml = _applyReviewStateToHtml(baseHtml);
+  baseHtml = _prepareExportHtml(baseHtml);
   const exportComments = _exportableComments();
   let text;
   try { text = _buildSavedHtml(baseHtml, exportComments); }

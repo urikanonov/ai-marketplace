@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.224.0] - 2026-07-23
+
+### Changed
+
+- Markdown review-note exports now carry an untrusted-data preamble and non-forgeable dynamic fences,
+  and strip bidi/invisible formatting controls from note text.
+- Portable, Offline, and Plain HTML exports strip authoring session-id and agent provenance by default;
+  an explicit retain option preserves it when deliberately requested.
+
 ## [1.223.0] - 2026-07-23
 
 ### Added

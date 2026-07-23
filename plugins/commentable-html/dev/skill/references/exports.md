@@ -135,6 +135,8 @@ The fifth region, **EMBEDDED COMMENTS**, is an optional in-file snapshot of the 
 
 The overflow menu and sidebar both expose an **Export as Portable** button. It is the handoff point for the peer review loop: after your self review pass, export the Portable file, share it with a peer, then feed the peer's returned Portable HTML with embedded comments back to the agent.
 
+All HTML exports remove the `commentable-html-session-id` and `commentable-html-agent` provenance tags by default, so a shared file does not disclose the authoring session. Select **Retain authoring session provenance** in either Export menu only when that provenance is needed for the recipient; the synchronized checkbox deliberately retains it in Portable, Offline, and Plain HTML downloads.
+
 Clicking it:
 
 1. Fetches the on-disk HTML (`fetch(location.href)`). If that fails (file://, network unavailable, CSP), falls back to a snapshot of `document.documentElement.outerHTML` captured on the very first line of the layer's IIFE, before any DOM mutation.
