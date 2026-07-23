@@ -764,6 +764,71 @@ class ExtractResourcesTests(unittest.TestCase):
             p = os.path.join(self.skill, name)
             shutil.rmtree(p, ignore_errors=True) if os.path.isdir(p) else os.remove(p)
 
+    # CMH-PKG-14: a tampered/decompression-bomb skill-resources.zip is rejected by a preflight
+    # (entry count, per-entry expanded size, total expanded size, overall compression ratio)
+    # BEFORE any bytes are written, and again by a streaming per-entry byte cap during extraction
+    # so a member whose header lies about its size cannot expand unbounded on disk.
+    def test_preflight_rejects_too_many_entries(self):
+        with unittest.mock.patch.object(extract_resources, "MAX_ZIP_ENTRIES", 3):
+            members = [zipfile.ZipInfo("tools/f%d" % i) for i in range(4)]
+            with self.assertRaisesRegex(ValueError, "entries"):
+                extract_resources._preflight_zip(members)
+
+    def test_preflight_rejects_oversized_entry(self):
+        z = os.path.join(self.tmp, "big-entry.zip")
+        _make_zip(z, {"tools/big.bin": "A" * 4096})
+        with unittest.mock.patch.object(extract_resources, "MAX_ZIP_ENTRY_BYTES", 16):
+            with zipfile.ZipFile(z) as zf:
+                with self.assertRaisesRegex(ValueError, "per-entry"):
+                    extract_resources._preflight_zip(zf.infolist())
+
+    def test_preflight_rejects_oversized_total(self):
+        z = os.path.join(self.tmp, "big-total.zip")
+        _make_zip(z, {"tools/a.bin": "A" * 4096, "tools/b.bin": "B" * 4096})
+        with unittest.mock.patch.object(extract_resources, "MAX_ZIP_TOTAL_BYTES", 5000):
+            with zipfile.ZipFile(z) as zf:
+                with self.assertRaisesRegex(ValueError, "total limit|expands"):
+                    extract_resources._preflight_zip(zf.infolist())
+
+    def test_preflight_rejects_high_compression_ratio(self):
+        z = os.path.join(self.tmp, "bomb.zip")
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("tools/bomb.bin", b"A" * (1024 * 1024))
+        with zipfile.ZipFile(z) as zf:
+            with self.assertRaisesRegex(ValueError, "compression ratio"):
+                extract_resources._preflight_zip(zf.infolist())
+
+    def test_extract_all_fails_closed_on_bomb_zip(self):
+        z = os.path.join(self.skill, "skill-resources.zip")
+        self._reset_skill()
+        with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("tools/bomb.bin", b"A" * (1024 * 1024))
+        with self.assertRaises(ValueError):
+            extract_resources.extract_all(z, self.skill, "1.0.0", sleep=lambda *_: None)
+        self.assertFalse(os.path.isfile(self._marker("1.0.0")))
+        self.assertFalse(os.path.isdir(os.path.join(self.skill, "tools")))
+
+    def test_streaming_byte_cap_aborts_a_lying_member(self):
+        # A member whose ACTUAL decompressed size exceeds the per-entry cap is aborted mid-stream
+        # (the preflight over declared sizes is neutralized so this pins the streaming enforcement
+        # path specifically), and its partial file is removed.
+        z = os.path.join(self.tmp, "stream.zip")
+        _make_zip(z, {"tools/big.bin": "A" * 4096})
+        with unittest.mock.patch.object(extract_resources, "_preflight_zip", lambda members: None), \
+                unittest.mock.patch.object(extract_resources, "MAX_ZIP_ENTRY_BYTES", 64):
+            with zipfile.ZipFile(z) as zf:
+                member = zf.infolist()[0]
+                with self.assertRaisesRegex(ValueError, "per-entry|byte cap"):
+                    extract_resources._extract_member(zf, member, self.tmp)
+        self.assertFalse(os.path.isfile(os.path.join(self.tmp, "tools", "big.bin")))
+
+    def test_shipped_zip_passes_preflight(self):
+        shipped = os.path.join(_paths.PKG_SHIPPED, "skill-resources.zip")
+        if not os.path.isfile(shipped):
+            self.skipTest("shipped skill-resources.zip not present")
+        with zipfile.ZipFile(shipped) as zf:
+            self.assertIsNone(extract_resources._preflight_zip(zf.infolist()))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.220.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.221.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.221.0] - 2026-07-23</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Resource-safety hardening across the runtime and tools so large or attacker-controlled input can no longer exhaust memory/disk or freeze the tab (issue #619): - The session-hook zip extractor (<code>pkg/hooks/extract_resources.py</code>) now preflights <code>skill-resources.zip</code> against entry-count, per-entry size, total-size, and compression-ratio caps before writing anything, and streams each member under a per-entry actual-byte cap, so a tampered or decompression-bomb archive fails closed (previous version untouched, no marker). - The interactive chart derives its y-axis ticks by a bounded integer index (capped at <code>MAX_CHART_TICKS</code>), so a tiny/zero <code>data-cmh-chart-step</code> against a large max can no longer drive an unbounded synchronous loop. - Large code blocks are bounded like diffs: above <code>CMH_CODE_MAX_LINES</code> lines the per-line gutter is skipped, and above <code>CMH_CODE_MAX_CHARS</code> characters the runtime highlighter leaves the block plain (the text stays readable and commentable). - The deck <code>--pptx</code> local extractor lowers its archive caps, size-caps a single inlined image (<code>MAX_PPTX_IMAGE_BYTES</code>) and degrades an oversize image gracefully - dropping its extracted temp path (never emitting a dangling <code>assets/...</code> reference) and replacing it with a visible placeholder carrying the alt text so the fragment stays self-contained - and runs the vendored extractor subprocess under a hard wall-clock timeout (<code>PPTX_EXTRACT_TIMEOUT_SECONDS</code>) that fails closed. - Comment restore/backfill at startup reuse ONE <code>getTextNodes()</code> scan across per-comment <code>rangeFromOffsets()</code> lookups (rebuilding only after a DOM-mutating wrap) and cap context capture at <code>CMH_MAX_BACKFILL</code>, so a flood of finite-but-unresolvable comments no longer does O(comment_count x document_size) work.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.220.0] - 2026-07-23</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The Manage storage dialog is clearer and more capable (CMH-STORE-13..16). Documents are now shown in a column-headed table (Document, Comments, Size, Share, Actions) where the Share column is each document&#x27;s percentage of commentable-html storage. A usage summary reports total local storage in use as a percentage of the assumed ~5 MB budget, the commentable-html share of the storage in use, and this document&#x27;s percentage of commentable-html storage. Each document row has a lazy &quot;Show comments&quot; toggle that lists every stored comment (quote, note, author, and an approximate per-comment size), each deletable - deleting a comment in the current document routes through the live delete path (tombstoning embedded ids and re-rendering the sidebar), while deleting another document&#x27;s comment rewrites only that document&#x27;s stored slot. A Close button was added in a footer at the bottom of the dialog.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.215.0] - 2026-07-23</h3></div>
             <div class="group-label">Added</div>
@@ -474,8 +483,6 @@
               <li>The visuals-matrix demo (<code>report-metrics.html</code>) Mermaid gallery now uses <code>.cmh-diagram-gallery</code> instead of a hand-rolled per-document grid/masonry, retiring the layout that failed repeatedly (marooning in #597, sliver/masonry in #602/#610). This is the durable, tested fix for the demo&#x27;s gallery rendering (CMH-DEMO-06).</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.214.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
@@ -509,22 +516,7 @@
               <li>Comments are now stored compressed (lz-string, packed into UTF-16) when that is smaller than plain JSON, so far more documents&#x27; reviews fit in the shared browser storage. The format is backward compatible: documents last saved by an older version still load and are migrated on the next save, and a stored value that cannot be read (a corrupt or newer-version format) is left untouched with a recovery notice rather than being overwritten. (CMH-STORE-01, CMH-STORE-02, CMH-STORE-03)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.210.0] - 2026-07-22</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The runtime footer now ends with a &quot;Report an issue&quot; link, placed to the right of the &quot;Help &amp; about&quot; control, that opens the plugin&#x27;s GitHub issue form in a new tab. Like the rest of the footer it is <code>cm-skip</code> chrome, so it never leaks into a Plain HTML export.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>On wide screens with the comments sidebar open, the document content column now targets a wider 1600px column (up from 1300px), so the body fills more of the space between the navigation pane and the sidebar instead of leaving a large empty gutter. When the side table-of-contents navigation pane is present, the layout now subtracts that pane&#x27;s width so the content still reaches its full width between the pane and the sidebar rather than being squeezed. The runtime footer tracks the same widened column so it stays flush with the content.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The footer session-id copy control no longer renders two separator dots next to each other (<code>Generated . . [copy]</code>); the copy button and its separator now read <code>Generated . [copy] . Help</code>.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">179 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">180 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

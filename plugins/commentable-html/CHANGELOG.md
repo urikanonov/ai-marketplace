@@ -4,6 +4,32 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.221.0] - 2026-07-23
+
+### Changed
+
+- Resource-safety hardening across the runtime and tools so large or attacker-controlled input can no
+  longer exhaust memory/disk or freeze the tab (issue #619):
+  - The session-hook zip extractor (`pkg/hooks/extract_resources.py`) now preflights
+    `skill-resources.zip` against entry-count, per-entry size, total-size, and compression-ratio caps
+    before writing anything, and streams each member under a per-entry actual-byte cap, so a tampered
+    or decompression-bomb archive fails closed (previous version untouched, no marker).
+  - The interactive chart derives its y-axis ticks by a bounded integer index (capped at
+    `MAX_CHART_TICKS`), so a tiny/zero `data-cmh-chart-step` against a large max can no longer drive an
+    unbounded synchronous loop.
+  - Large code blocks are bounded like diffs: above `CMH_CODE_MAX_LINES` lines the per-line gutter is
+    skipped, and above `CMH_CODE_MAX_CHARS` characters the runtime highlighter leaves the block plain
+    (the text stays readable and commentable).
+  - The deck `--pptx` local extractor lowers its archive caps, size-caps a single inlined image
+    (`MAX_PPTX_IMAGE_BYTES`) and degrades an oversize image gracefully - dropping its extracted temp
+    path (never emitting a dangling `assets/...` reference) and replacing it with a visible
+    placeholder carrying the alt text so the fragment stays self-contained - and runs the vendored
+    extractor subprocess under a hard wall-clock timeout (`PPTX_EXTRACT_TIMEOUT_SECONDS`) that fails
+    closed.
+  - Comment restore/backfill at startup reuse ONE `getTextNodes()` scan across per-comment
+    `rangeFromOffsets()` lookups (rebuilding only after a DOM-mutating wrap) and cap context capture at
+    `CMH_MAX_BACKFILL`, so a flood of finite-but-unresolvable comments no longer does
+    O(comment_count x document_size) work.
 ## [1.220.0] - 2026-07-23
 
 ### Changed

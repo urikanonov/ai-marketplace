@@ -13,6 +13,10 @@ let imageActiveEl = null;
 let chartTooltipEl = null;
 let chartTooltipCanvas = null;
 let chartResizeBound = false;
+// Cap the number of y-axis gridline ticks so a tiny/zero data-cmh-chart-step (an attacker-
+// controllable attribute) cannot drive an effectively unbounded synchronous tick loop and freeze
+// the tab. Ordinary charts use a handful of ticks, far below this.
+const MAX_CHART_TICKS = 100;
 
 function _chartColors(canvas) {
   const rootStyle = getComputedStyle(document.documentElement);
@@ -216,7 +220,11 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
   const plotHeight = Math.max(10, height - pad.top - pad.bottom);
   const startY = pad.top + plotHeight;
   const ticks = [];
-  for (let tick = 0; tick <= config.max + 0.0001; tick += config.step) ticks.push(tick);
+  // Derive ticks by a BOUNDED integer index so a tiny/zero step cannot loop unbounded: cap the
+  // count at MAX_CHART_TICKS. Normal charts (a handful of ticks) are unaffected.
+  const rawCount = config.step > 0 ? Math.floor((config.max + 0.0001) / config.step) : 0;
+  const stepCount = Math.min(MAX_CHART_TICKS, Math.max(0, rawCount));
+  for (let i = 0; i <= stepCount; i++) ticks.push(i * config.step);
   if (ticks[ticks.length - 1] !== config.max) ticks.push(config.max);
   ctx.strokeStyle = config.colors.axis;
   ctx.lineWidth = 2;
@@ -277,7 +285,7 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
       height: barHeight,
     };
   });
-  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height, dpr: dpr };
+  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height, dpr: dpr, tickCount: ticks.length };
   return true;
 }
 function setupInteractiveCharts() {

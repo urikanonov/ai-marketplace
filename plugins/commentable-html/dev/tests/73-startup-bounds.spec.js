@@ -147,3 +147,89 @@ test("a flood of offsetless, non-anchor-typed comments does not drive per-commen
   await expect(page.locator(".cm-card")).toHaveCount(FLOOD);
   expect(errors).toEqual([]);
 });
+
+test("a flood of finite-but-unresolvable text comments shares ONE text-node scan at restore (CMH-PERSIST-06)", async ({ page }) => {
+  // The count cap and offset-sanity gate still admit up to CMH_MAX_COMMENTS text comments whose
+  // finite offsets lie BEYOND the document's text length (sane, below CMH_MAX_OFFSET, but they can
+  // never resolve to a range). restoreHighlights() used to call rangeFromOffsets() per comment, and
+  // each call ran a full getTextNodes() TreeWalk over the whole document - O(count x doc size) work
+  // on load. The fix builds the text-node index ONCE and reuses it across the failing lookups
+  // (rebuilding only after a wrap actually mutates the DOM), so a flood of unresolvable comments
+  // costs a single scan. getTextNodes() bumps window.__cmhPerf.textScans when the counter is seeded.
+  test.setTimeout(15000);
+  const FLOOD = 1000; // at the CMH_MAX_COMMENTS cap
+  const arr = [];
+  for (let i = 0; i < FLOOD; i++) {
+    // Offsets far past the ~80k-char document but well under CMH_MAX_OFFSET (1e9), with all context
+    // fields present so backfillContext() skips them and this isolates restoreHighlights().
+    arr.push({
+      id: idFor(i),
+      start: 500000 + i,
+      end: 500000 + i + 1,
+      quote: "x",
+      note: "unresolvable-" + i,
+      createdAt: "2024-01-01T00:00:00Z",
+      section: "Doc", before: "", after: "", headingPath: [], occurrence: 0,
+      occurrenceTotal: 1, blockTag: "P", blockText: "word", isCode: false,
+    });
+  }
+  const html = stageWithEmbeddedComments(MANY_NODES_CONTENT, arr, "cmh-flood-unresolvable");
+  await page.addInitScript(() => { window.__cmhPerf = { textScans: 0 }; });
+  await installClipboardCapture(page);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  const stored = await storedComments(page);
+  expect(stored.length).toBe(FLOOD);
+  // None of the unresolvable comments highlight, but the whole startup does only a handful of
+  // full-document text-node scans, not one per comment (pre-fix this was ~FLOOD).
+  const textScans = await page.evaluate(() => (window.__cmhPerf && window.__cmhPerf.textScans) || 0);
+  expect(textScans).toBeLessThanOrEqual(20);
+  await expect(page.locator(".cm-card")).toHaveCount(FLOOD);
+});
+
+test("a flood of uncontexted comments caps backfill context capture at CMH_MAX_BACKFILL and shares one scan (CMH-PERSIST-06)", async ({ page }) => {
+  // The complementary bound to the restoreHighlights() scan above: an uncontexted comment (one
+  // missing its stored section/before/after/... fields) drives backfillContext() ->
+  // captureContext(), which runs its OWN full-document TreeWalk each call. A flood of such
+  // comments would be O(count x doc size) on load, so backfillContext() (a) reuses ONE
+  // getTextNodes() index across the whole pass instead of re-walking per comment, and (b) caps
+  // context capture at CMH_MAX_BACKFILL (400) per load; comments beyond the budget stay uncontexted
+  // and are backfilled on a later load. This pins both bounds against a regression that removed the
+  // cap or moved the getTextNodes() call inside the loop.
+  test.setTimeout(15000);
+  const FLOOD = 1000; // at the CMH_MAX_COMMENTS cap
+  const CMH_MAX_BACKFILL = 400;
+  const arr = [];
+  for (let i = 0; i < FLOOD; i++) {
+    // Sane, in-range offsets PAST the ~28k-char document (below CMH_MAX_OFFSET) and NO context
+    // fields: every one is a backfill candidate, but because the offsets never resolve to a range
+    // restoreHighlights() adds no wraps, so this isolates the backfill pass's single shared scan
+    // from real highlight-wrap rebuilds.
+    arr.push({
+      id: idFor(i),
+      start: 500000 + i,
+      end: 500000 + i + 1,
+      quote: "x",
+      note: "uncontexted-" + i,
+      createdAt: "2024-01-01T00:00:00Z",
+    });
+  }
+  const html = stageWithEmbeddedComments(LONG_CONTENT, arr, "cmh-flood-uncontexted");
+  await page.addInitScript(() => { window.__cmhPerf = { textScans: 0, ctxCaptures: 0 }; });
+  await installClipboardCapture(page);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  const stored = await storedComments(page);
+  expect(stored.length).toBe(FLOOD);
+  // captureContext() ran at most CMH_MAX_BACKFILL times this load (pre-cap this was ~FLOOD, one
+  // full-document walk per comment).
+  const ctxCaptures = await page.evaluate(() => (window.__cmhPerf && window.__cmhPerf.ctxCaptures) || 0);
+  expect(ctxCaptures).toBeLessThanOrEqual(CMH_MAX_BACKFILL);
+  // Exactly the budget got context this load; the rest remain uncontexted for a later load.
+  const withContext = stored.filter((c) => c.section !== undefined).length;
+  expect(withContext).toBe(CMH_MAX_BACKFILL);
+  // The backfill pass shares one text-node scan (it never mutates the DOM), so a flood does not
+  // re-walk getTextNodes() per comment.
+  const textScans = await page.evaluate(() => (window.__cmhPerf && window.__cmhPerf.textScans) || 0);
+  expect(textScans).toBeLessThanOrEqual(20);
+});

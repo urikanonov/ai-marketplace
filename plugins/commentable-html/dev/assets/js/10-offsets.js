@@ -1,5 +1,6 @@
 /* ---------- Text-offset helpers ---------- */
 function getTextNodes() {
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.textScans = (window.__cmhPerf.textScans || 0) + 1;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(n) {
       if (!n.nodeValue) return NodeFilter.FILTER_REJECT;
@@ -95,8 +96,12 @@ function _comparePointAt(a, ao, b, bo) {
   r.setStart(b, bo); r.setEnd(b, bo);
   try { return r.comparePoint(a, ao); } catch (e) { return 1; }
 }
-function rangeFromOffsets(start, end) {
-  const nodes = getTextNodes();
+function rangeFromOffsets(start, end, nodes) {
+  // An optional precomputed text-node list lets a caller restoring/backfilling MANY comments reuse
+  // one getTextNodes() walk across lookups instead of re-walking the whole document per comment
+  // (O(count x doc) -> O(count + doc)). It is only safe to reuse while the DOM is unchanged, so a
+  // caller must rebuild the list after any mutation (e.g. a successful wrapRangeWithMark).
+  nodes = nodes || getTextNodes();
   let total = 0;
   const range = document.createRange();
   let sSet = false, eSet = false;

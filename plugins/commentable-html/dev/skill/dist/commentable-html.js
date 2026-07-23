@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.220.0";
+const CMH_VERSION = "1.221.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -762,6 +762,7 @@ function getEmbeddedComments() {
 
 /* ---------- Text-offset helpers ---------- */
 function getTextNodes() {
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.textScans = (window.__cmhPerf.textScans || 0) + 1;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(n) {
       if (!n.nodeValue) return NodeFilter.FILTER_REJECT;
@@ -857,8 +858,12 @@ function _comparePointAt(a, ao, b, bo) {
   r.setStart(b, bo); r.setEnd(b, bo);
   try { return r.comparePoint(a, ao); } catch (e) { return 1; }
 }
-function rangeFromOffsets(start, end) {
-  const nodes = getTextNodes();
+function rangeFromOffsets(start, end, nodes) {
+  // An optional precomputed text-node list lets a caller restoring/backfilling MANY comments reuse
+  // one getTextNodes() walk across lookups instead of re-walking the whole document per comment
+  // (O(count x doc) -> O(count + doc)). It is only safe to reuse while the DOM is unchanged, so a
+  // caller must rebuild the list after any mutation (e.g. a successful wrapRangeWithMark).
+  nodes = nodes || getTextNodes();
   let total = 0;
   const range = document.createRange();
   let sSet = false, eSet = false;
@@ -877,6 +882,7 @@ const CTX_PAD = 80;
 const BLOCK_TAG_RE = /^(P|LI|TD|TH|H[1-6]|BLOCKQUOTE|PRE|DD|DT|FIGCAPTION|CAPTION|ARTICLE|SECTION|ASIDE)$/;
 const MAX_BLOCK_LEN = 280;
 function captureContext(start, end, range) {
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.ctxCaptures = (window.__cmhPerf.ctxCaptures || 0) + 1;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
     acceptNode(n) {
       if (n.nodeType === 1) {
@@ -1006,18 +1012,29 @@ function captureContext(start, end, range) {
     isCode, codeLanguage,
   };
 }
+// Bound the per-load context backfill so a flood of uncontexted comments cannot drive
+// captureContext() (a full-document walk each) unbounded on startup. Comments beyond the budget are
+// left uncontexted and backfilled on a later load; the cap is far above any real review's size.
+const CMH_MAX_BACKFILL = 400;
 function backfillContext() {
   let changed = false;
+  let processed = 0;
+  // backfillContext() never mutates the DOM (captureContext only reads), so one text-node index is
+  // valid for the whole pass and is reused across every rangeFromOffsets() lookup instead of
+  // re-walking the document per comment.
+  const nodes = getTextNodes();
   for (const c of comments) {
     const hasAll = c.section !== undefined && c.before !== undefined && c.after !== undefined &&
                    c.headingPath !== undefined && c.occurrence !== undefined && c.blockTag !== undefined &&
                    c.isCode !== undefined;
     if (hasAll) continue;
     if (typeof c.start !== "number" || typeof c.end !== "number") continue;
-    const range = rangeFromOffsets(c.start, c.end);
+    if (processed >= CMH_MAX_BACKFILL) break; // work budget: bound context capture per load
+    const range = rangeFromOffsets(c.start, c.end, nodes);
     const ctx = captureContext(c.start, c.end, range);
     Object.assign(c, ctx);
     changed = true;
+    processed++;
   }
   if (changed) saveComments();
 }
@@ -2044,6 +2061,12 @@ function renderDiffSplit(body, block) {
 // rows / commenting) so a pathologically large authored diff cannot freeze the
 // page on open. The raw source is still preserved for export.
 const CMH_DIFF_MAX_LINES = 2000;
+// Bound the two per-code-block DOM allocations so a pathologically large authored code block cannot
+// freeze the page on open (mirrors CMH_DIFF_MAX_LINES for diffs): above CMH_CODE_MAX_LINES lines the
+// per-line gutter is skipped, and above CMH_CODE_MAX_CHARS characters the runtime highlighter leaves
+// the block plain. The block's text is untouched either way, so it stays readable and commentable.
+const CMH_CODE_MAX_LINES = 5000;
+const CMH_CODE_MAX_CHARS = 200000;
 function renderDiffRaw(body, block) {
   const notice = document.createElement("div");
   notice.className = "cmh-diff-toobig";
@@ -2406,12 +2429,26 @@ function isNumberedCodeBlock(pre) {
 }
 function ensureCodeLineGutter(target, extraClass) {
   if (!target || target.dataset.cmhLineNumbers === "1") return;
-  const lines = String(target.textContent || "").replace(/\r\n?/g, "\n").split("\n");
+  const raw = String(target.textContent || "");
+  // Guard the allocation itself: a pathologically large block skips the per-line gutter BEFORE the
+  // split/array allocation (a hostile million-line block is a million-plus-char string), so it can
+  // never allocate one array entry / one span per line and freeze the page on open.
+  if (raw.length > CMH_CODE_MAX_CHARS) {
+    target.dataset.cmhLineNumbers = "1";
+    return;
+  }
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n");
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
   const gutter = document.createElement("span");
   gutter.className = "cmh-code-gutter cm-skip";
   gutter.setAttribute("aria-hidden", "true");
   const count = Math.max(1, lines.length);
+  // Above CMH_CODE_MAX_LINES lines the per-line gutter is skipped too so it cannot allocate one span
+  // per line. Mark it processed so a later pass does not retry it.
+  if (count > CMH_CODE_MAX_LINES) {
+    target.dataset.cmhLineNumbers = "1";
+    return;
+  }
   const lh = parseFloat(getComputedStyle(target).lineHeight) || 20;
   gutter.style.height = (count * lh) + "px";
   for (let i = 0; i < count; i++) {
@@ -2440,6 +2477,7 @@ function highlightCodeBlocks() {
     if (!diffLangKnown(lang)) return; // an unknown / non-tokenizable label (text, kusto, ...) stays plain
     const text = code.textContent;
     if (!text.trim()) return;
+    if (text.length > CMH_CODE_MAX_CHARS) return; // too large to tokenize; leave plain (still readable)
     code.innerHTML = cmhHighlightCode(text, lang);
   });
 }
@@ -2503,6 +2541,10 @@ let imageActiveEl = null;
 let chartTooltipEl = null;
 let chartTooltipCanvas = null;
 let chartResizeBound = false;
+// Cap the number of y-axis gridline ticks so a tiny/zero data-cmh-chart-step (an attacker-
+// controllable attribute) cannot drive an effectively unbounded synchronous tick loop and freeze
+// the tab. Ordinary charts use a handful of ticks, far below this.
+const MAX_CHART_TICKS = 100;
 
 function _chartColors(canvas) {
   const rootStyle = getComputedStyle(document.documentElement);
@@ -2706,7 +2748,11 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
   const plotHeight = Math.max(10, height - pad.top - pad.bottom);
   const startY = pad.top + plotHeight;
   const ticks = [];
-  for (let tick = 0; tick <= config.max + 0.0001; tick += config.step) ticks.push(tick);
+  // Derive ticks by a BOUNDED integer index so a tiny/zero step cannot loop unbounded: cap the
+  // count at MAX_CHART_TICKS. Normal charts (a handful of ticks) are unaffected.
+  const rawCount = config.step > 0 ? Math.floor((config.max + 0.0001) / config.step) : 0;
+  const stepCount = Math.min(MAX_CHART_TICKS, Math.max(0, rawCount));
+  for (let i = 0; i <= stepCount; i++) ticks.push(i * config.step);
   if (ticks[ticks.length - 1] !== config.max) ticks.push(config.max);
   ctx.strokeStyle = config.colors.axis;
   ctx.lineWidth = 2;
@@ -2767,7 +2813,7 @@ function renderInteractiveChart(canvas, activeIndex, measure) {
       height: barHeight,
     };
   });
-  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height, dpr: dpr };
+  canvas._cmhChart = { points: renderedPoints, activeIndex: activeIndex == null ? -1 : activeIndex, width: width, height: height, dpr: dpr, tickCount: ticks.length };
   return true;
 }
 function setupInteractiveCharts() {
@@ -11746,12 +11792,18 @@ function restoreHighlights() {
   // overlapping comment stays LISTED (in the sidebar) but only the first-applied one is
   // highlighted, mirroring the diff sub-range guard.
   let maxAppliedEnd = -Infinity;
+  // Reuse ONE text-node index across the whole restore. A comment that fails to resolve (offsets
+  // beyond the document, the flood case) does not mutate the DOM, so the same index serves every
+  // failing lookup - turning a flood of unresolvable comments from O(count x doc) into O(count +
+  // doc). A successful wrapRangeWithMark() splits text nodes and inserts marks, so rebuild the
+  // index after each wrap (and after a failed wrap's unwrap/normalize) before the next lookup.
+  let nodes = getTextNodes();
   sorted.forEach(c => {
     if (c.start < maxAppliedEnd) return; // overlaps an already-highlighted range; leave unhighlighted
-    const r = rangeFromOffsets(c.start, c.end);
+    const r = rangeFromOffsets(c.start, c.end, nodes);
     if (r) {
-      try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); }
-      catch (e) { unwrapMarks(c.id); console.warn("Could not restore highlight for", c.id, e); }
+      try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); nodes = getTextNodes(); }
+      catch (e) { unwrapMarks(c.id); nodes = getTextNodes(); console.warn("Could not restore highlight for", c.id, e); }
     } else {
       console.warn("Lost anchor for comment", c.id, "- offsets", c.start, c.end);
     }

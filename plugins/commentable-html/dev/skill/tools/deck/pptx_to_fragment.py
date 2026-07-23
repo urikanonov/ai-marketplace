@@ -52,10 +52,18 @@ _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.\-]*:", re.I)
 # non-egress) but rejects data:text/html and every other scheme.
 _DATA_IMAGE_RE = re.compile(r"^data:image/[a-z0-9.+-]+;base64,", re.I)
 
-MAX_PPTX_TOTAL_BYTES = 1024 * 1024 * 1024
-MAX_PPTX_ENTRY_BYTES = 250 * 1024 * 1024
-MAX_PPTX_ENTRIES = 100_000
-MAX_PPTX_COMPRESSION_RATIO = 250
+MAX_PPTX_TOTAL_BYTES = 128 * 1024 * 1024
+MAX_PPTX_ENTRY_BYTES = 32 * 1024 * 1024
+MAX_PPTX_ENTRIES = 5_000
+MAX_PPTX_COMPRESSION_RATIO = 100
+# Cap a single extracted image so one giant media file cannot blow up memory (read wholly) or the
+# emitted fragment (base64 is ~1.33x the bytes). An oversize image is NOT inlined; its extracted
+# temp path is dropped (never left as a dangling reference) and it degrades to a visible placeholder,
+# so the output stays bounded and self-contained.
+MAX_PPTX_IMAGE_BYTES = 16 * 1024 * 1024
+# Hard wall-clock cap on the vendored extractor subprocess so a pathological deck cannot hang the
+# tool indefinitely; on expiry the tool fails closed.
+PPTX_EXTRACT_TIMEOUT_SECONDS = 120
 
 
 def _preflight_pptx_archive(pptx_path):
@@ -149,9 +157,18 @@ def slides_to_fragment(slides) -> str:
         for img in slide.get("images") or []:
             if not isinstance(img, dict):
                 raise ValueError(f"slide {i}: image entry is not a JSON object")
+            if img.get("omitted"):
+                # An image dropped upstream (e.g. it exceeds MAX_PPTX_IMAGE_BYTES) must NOT leave a
+                # dangling path in the fragment. Degrade gracefully to a visible placeholder that
+                # carries the alt text (when available) so the fragment stays self-contained.
+                alt = (img.get("alt") or "").strip()
+                note = "[image omitted: exceeds size limit]"
+                label = f"{alt} {note}" if alt else note
+                images.append(f'  <p class="cmh-omitted-image">{esc(label)}</p>')
+                continue
             vetted = _safe_image_path(img.get("path"), i)
             if vetted:
-                images.append(vetted)
+                images.append(f'  <img src="{esc(vetted)}" alt="">')
         if not (title or texts or images):
             raise ValueError(f"slide {i} has no title, text, or image content")
         sid = slide_id(title + "\n" + "\n".join(texts), taken)
@@ -160,8 +177,7 @@ def slides_to_fragment(slides) -> str:
             parts.append(f'  <h2 class="cmh-slide-title">{esc(title)}</h2>')
         for text in texts:
             parts.append(f"  <p>{esc(text)}</p>")
-        for path in images:
-            parts.append(f'  <img src="{esc(path)}" alt="">')
+        parts.extend(images)
         parts.append("</section>")
         out.append("\n".join(parts))
     return "\n".join(out) + "\n"
@@ -171,7 +187,9 @@ def _inline_local_images(slides, base_dir):
     """Rewrite each slide image whose ``path`` is a local file under ``base_dir`` to a
     self-contained ``data:image/...;base64,...`` URI. The local ``--pptx`` extractor writes images
     into a temp dir that is deleted right after extraction; inlining here (before teardown) keeps
-    the extracted images in the fragment instead of leaving dangling ``assets/...`` references.
+    the extracted images in the fragment instead of leaving dangling ``assets/...`` references. An
+    image over ``MAX_PPTX_IMAGE_BYTES`` is not inlined; its temp path is dropped and it is marked
+    ``omitted`` so the renderer degrades it to a visible placeholder (never a dangling reference).
     """
     if not isinstance(slides, list):
         return slides
@@ -189,6 +207,16 @@ def _inline_local_images(slides, base_dir):
             f = base / norm
             if not f.is_file():
                 continue
+            try:
+                if f.stat().st_size > MAX_PPTX_IMAGE_BYTES:
+                    # Too large to inline. Do NOT keep the extracted temp path - it would dangle
+                    # once the temp dir is torn down (breaking the self-contained CMH-DECK-03a
+                    # contract). Drop it and mark the image so the renderer emits a placeholder.
+                    img.pop("path", None)
+                    img["omitted"] = "size"
+                    continue
+            except OSError:
+                continue
             mime = _IMG_MIME.get(f.suffix.lower(), "application/octet-stream")
             img["path"] = "data:%s;base64,%s" % (mime, base64.b64encode(f.read_bytes()).decode("ascii"))
     return slides
@@ -204,10 +232,18 @@ def _extract_via_local(pptx_path: str):
         print(f"pptx_to_fragment: PPTX archive rejected: {exc}", file=sys.stderr)
         raise SystemExit(1)
     with tempfile.TemporaryDirectory() as tmp:
-        proc = subprocess.run(
-            [sys.executable, str(VENDOR_EXTRACTOR), pptx_path, tmp],
-            capture_output=True, text=True,
-        )
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(VENDOR_EXTRACTOR), pptx_path, tmp],
+                capture_output=True, text=True, timeout=PPTX_EXTRACT_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            print(
+                f"pptx_to_fragment: local extraction timed out after "
+                f"{PPTX_EXTRACT_TIMEOUT_SECONDS}s",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
         if proc.returncode != 0:
             msg = (proc.stderr or proc.stdout or "").strip()
             hint = ""

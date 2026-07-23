@@ -68,6 +68,19 @@ _OPEN_BUDGET_SECONDS = 15.0
 # finishes within DEFAULT_BUDGET_SECONDS (90s), well under this, so a running session is never seen
 # as stale; this only governs recovery from a hard-crashed holder.
 STALE_LOCK_SECONDS = 150.0
+# Bound a (possibly tampered) skill-resources.zip so extraction can never exhaust disk or memory:
+# a hard cap on entry count, on each entry's expanded size, on the total expanded size, and on the
+# overall compression ratio (a decompression-bomb signal). The shipped zip is ~3 MB with ~99
+# entries expanding to ~6 MB, so these caps sit far above the real runtime yet reject a bomb. The
+# caps are enforced by a preflight over infolist() BEFORE any bytes are written, AND again by a
+# streaming per-entry byte cap during extraction, so a member whose header lies about its size
+# cannot expand unbounded on disk.
+MAX_ZIP_ENTRIES = 5000
+MAX_ZIP_ENTRY_BYTES = 64 * 1024 * 1024      # 64 MB per member (expanded)
+MAX_ZIP_TOTAL_BYTES = 256 * 1024 * 1024     # 256 MB expanded overall
+MAX_ZIP_COMPRESSION_RATIO = 200
+_EXTRACT_CHUNK = 1024 * 1024                 # stream members in 1 MB chunks so the cap check is
+# reached before a giant member is fully read into memory.
 # Windows lock/share/transient codes worth retrying: ACCESS_DENIED, SHARING_VIOLATION,
 # LOCK_VIOLATION, and DIR_NOT_EMPTY (the NTFS delete-pending window after an rmtree, before an
 # os.replace onto the same path).
@@ -122,8 +135,64 @@ def _retry(func, retries, backoff, sleep, deadline):
             attempt += 1
 
 
+def _preflight_zip(members):
+    """Reject a tampered / decompression-bomb archive from its central directory BEFORE writing any
+    bytes: too many entries, an entry whose declared expanded size is too large, a total expanded
+    size over budget, or an overall compression ratio that signals a bomb. Raises ValueError with a
+    message naming the breached cap so extract_all fails closed (no marker, previous version intact).
+    Directory entries and the stored sizes come from the zip central directory; the streaming cap in
+    _extract_member is the second line of defence for a member whose header understates its size."""
+    if len(members) > MAX_ZIP_ENTRIES:
+        raise ValueError("zip has too many entries: %d (limit %d)" % (len(members), MAX_ZIP_ENTRIES))
+    total_uncompressed = 0
+    total_compressed = 0
+    for member in members:
+        size = member.file_size
+        if size > MAX_ZIP_ENTRY_BYTES:
+            raise ValueError("zip member %r exceeds the per-entry size limit: %d (limit %d)"
+                             % (member.filename, size, MAX_ZIP_ENTRY_BYTES))
+        total_uncompressed += size
+        total_compressed += member.compress_size
+    if total_uncompressed > MAX_ZIP_TOTAL_BYTES:
+        raise ValueError("zip expands to %d bytes, over the total limit %d"
+                         % (total_uncompressed, MAX_ZIP_TOTAL_BYTES))
+    if total_compressed > 0:
+        ratio = total_uncompressed / float(total_compressed)
+        if ratio > MAX_ZIP_COMPRESSION_RATIO:
+            raise ValueError("zip compression ratio %.1f exceeds limit %d (decompression bomb?)"
+                             % (ratio, MAX_ZIP_COMPRESSION_RATIO))
+
+
 def _extract_member(zf, member, dest):
-    zf.extract(member, dest)
+    """Stream one member to disk under a per-entry ACTUAL-byte cap so a member whose header lies
+    about its size cannot expand unbounded. The write target is resolved through _safe_member_path
+    (fail closed on traversal); on overflow the partial file is removed and ValueError is raised."""
+    target = _safe_member_path(dest, member.filename)
+    if member.is_dir() or member.filename.endswith("/"):
+        os.makedirs(target, exist_ok=True)
+        return 0
+    parent = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    written = 0
+    try:
+        with zf.open(member) as src, open(target, "wb") as out:
+            while True:
+                chunk = src.read(_EXTRACT_CHUNK)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > MAX_ZIP_ENTRY_BYTES:
+                    raise ValueError("zip member %r exceeds the per-entry byte cap %d while "
+                                     "extracting" % (member.filename, MAX_ZIP_ENTRY_BYTES))
+                out.write(chunk)
+    except ValueError:
+        try:
+            os.remove(target)
+        except OSError:
+            pass
+        raise
+    return written
 
 
 def extract_member_with_retry(zf, member, dest, retries, backoff,
@@ -460,6 +529,7 @@ def extract_all(zip_path, skill_dir, version, retries=DEFAULT_RETRIES, backoff=D
         zf = _retry(lambda: zipfile.ZipFile(zip_path), retries, backoff, sleep, open_deadline)
         with zf:
             members = zf.infolist()
+            _preflight_zip(members)  # fail closed on a bomb/tampered zip before writing anything
             for member in members:
                 _safe_member_path(staging, member.filename)  # fail closed before writing anything
             for member in members:
