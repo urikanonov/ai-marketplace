@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { openKitchenSink, addTextComment, openComposerFor, selectText, distinctCids, realDragSelect, allCids } from "./helpers.js";
+import {
+  openKitchenSink, addTextComment, openComposerFor, selectText, distinctCids, realDragSelect,
+  allCids, stageContent, fileUrl, ready,
+} from "./helpers.js";
 
 test.describe("comment interactions", () => {
   test("a genuine pointer drag selects text and pops the Add-comment menu", async ({ page }) => {
@@ -57,8 +60,15 @@ test.describe("comment interactions", () => {
     await expect(page.locator(".cm-card .meta")).toContainText(/edited/i);
   });
 
-  test("RTL edited timestamps isolate dates from the suffix in cards, replies, and popovers (CMH-SIDE-10)", async ({ page }) => {
-    await openKitchenSink(page);
+  test("RTL timestamps isolate dates in cards, replies, popovers, and board summaries (CMH-SIDE-10)", async ({ page }) => {
+    const { html } = stageContent(`
+      <section><h2>RTL timestamps</h2><p>Comment target text.</p></section>
+      <div class="board cm-skip" data-cm-widget="rtl-board" data-cm-draggable aria-label="RTL board">
+        <div data-cm-slot="Now"><div data-cm-part="rtl-card">Card</div></div>
+        <div data-cm-slot="Later" id="rtl-later"></div>
+      </div>`, { key: "cmh-rtl-timestamps" });
+    await page.goto(fileUrl(html));
+    await ready(page);
     await page.evaluate(() => { document.documentElement.dir = "rtl"; });
     await addTextComment(page, "#commentRoot section p", "RTL timestamp");
     await page.locator('.cm-card [data-act="edit"]').first().click();
@@ -89,6 +99,14 @@ test.describe("comment interactions", () => {
     await expect(popMeta.locator("bdi")).toHaveCount(1);
     await expect(popMeta.locator("bdi")).not.toContainText("edited");
     expect(await popMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
+
+    await page.evaluate(() => new Promise((resolve) => {
+      document.getElementById("rtl-later").appendChild(document.querySelector('[data-cm-part="rtl-card"]'));
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    const summaryMeta = page.locator(".cm-card-state .meta > span").first();
+    await expect(summaryMeta.locator("bdi")).toHaveCount(1);
+    await expect(summaryMeta.locator("bdi")).toContainText(/\d{4}/);
   });
 
   test("deleting one comment leaves the others", async ({ page }) => {

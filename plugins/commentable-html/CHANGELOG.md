@@ -10,8 +10,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - Comment search now Unicode-normalizes note text and queries and uses locale-aware casing, so
   canonically equivalent text and Turkish/Azeri dotted or dotless I case pairs match correctly.
-  Localized edited timestamps isolate the date from the LTR suffix under RTL locales, and the inline
-  image tool accepts safe paths whose canonical casing differs on case-insensitive filesystems.
+  Localized card, popover, and board-summary timestamps isolate the date from any LTR suffix under
+  RTL locales, and the inline image tool accepts safe paths whose canonical casing differs on
+  case-insensitive filesystems.
   (CMH-SEARCH-06, CMH-SEARCH-07, CMH-SIDE-10, CMH-TOOL-21)
 
 ## [1.221.0] - 2026-07-23

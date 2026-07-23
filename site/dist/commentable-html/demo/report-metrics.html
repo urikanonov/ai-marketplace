@@ -9901,7 +9901,7 @@ function _renderWidgetStateCard(changes) {
     groups.get(ch.widget).push(ch);
   });
   const first = (typeof widgetFirstChangeAt === "function") ? widgetFirstChangeAt() : null;
-  const timeHtml = first ? escapeHtml(formatTime(first)) : "";
+  const timeHtml = first ? `<bdi>${escapeHtml(formatTime(first))}</bdi>` : "";
   let html = "";
   groups.forEach((list, name) => {
     const items = list.map((ch) =>
