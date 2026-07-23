@@ -11452,6 +11452,9 @@ function _cmhDeleteCommentFromCurrent(id) {
 }
 // Delete one comment (and any replies pointing at it) from ANOTHER document's stored slot: decode,
 // filter, and re-encode to the modern ::z slot (or remove it when empty), clearing any legacy value.
+// The removed ids are also tombstoned in that document's ::deleted set so a comment that was baked
+// into its embedded block does not resurrect when it is next opened (we cannot read a foreign file's
+// embedded signature from here, so every removed id is recorded; a non-embedded id is inert).
 function _cmhDeleteCommentFromStore(base, id) {
   const zKey = base + "::z";
   let raw = null;
@@ -11462,13 +11465,30 @@ function _cmhDeleteCommentFromStore(base, id) {
   let arr;
   try { arr = JSON.parse(dec.json); } catch (e) { return false; }
   if (!Array.isArray(arr)) return false;
+  const removedIds = arr.filter(function (c) { return c && (c.id === id || c.parentId === id); })
+    .map(function (c) { return c.id; })
+    .filter(function (x) { return typeof x === "string" && SAFE_ID_RE.test(x); });
   const next = arr.filter(function (c) { return c && c.id !== id && c.parentId !== id; });
+  _cmhTombstoneForeign(base, removedIds);
   try {
     if (next.length) localStorage.setItem(zKey, cmhEncodeStore(JSON.stringify(next)));
     else localStorage.removeItem(zKey);
     localStorage.removeItem(base); // never leave a stale legacy value behind
     return true;
   } catch (e) { return false; }
+}
+// Merge ids into another document's ::deleted tombstone set (SAFE_ID_RE-filtered, deduped, capped),
+// mirroring 05-persistence.js's _tombstoneEmbedded but for a base other than the current document's.
+function _cmhTombstoneForeign(base, ids) {
+  if (!ids || !ids.length) return;
+  const delKey = base + "::deleted";
+  try {
+    let existing = [];
+    try { const v = JSON.parse(localStorage.getItem(delKey) || "[]"); existing = Array.isArray(v) ? v : []; } catch (e) { existing = []; }
+    const set = new Set(existing.filter(function (x) { return typeof x === "string" && SAFE_ID_RE.test(x); }));
+    ids.forEach(function (x) { set.add(x); });
+    localStorage.setItem(delKey, JSON.stringify(Array.from(set).slice(0, CMH_MAX_COMMENTS)));
+  } catch (e) { /* best-effort tombstone; ignore quota/blocked */ }
 }
 
 // ---------- Dialog ----------
@@ -11742,7 +11762,12 @@ function openStorageManager(opts) {
     else actTd.appendChild(deleteDocButton(g));
     row.appendChild(actTd);
     tbody.appendChild(row);
-    if (expanded.has(g.base)) tbody.appendChild(commentsRowFor(g));
+    if (expanded.has(g.base)) {
+      // Re-append the expanded comment list, but drop the expansion when nothing remains: the
+      // "Show comments" toggle is suppressed at zero, so an empty list would otherwise be stuck open.
+      if (count) tbody.appendChild(commentsRowFor(g));
+      else expanded.delete(g.base);
+    }
   }
 
   function deleteDocButton(g) {
@@ -11836,7 +11861,12 @@ function openStorageManager(opts) {
         if (g.current) _cmhDeleteCommentFromCurrent(c.id);
         else _cmhDeleteCommentFromStore(g.base, c.id);
         announceRetry();
-        render();
+        // Keep keyboard focus in the comment list the reviewer is working in (falls back to the
+        // dialog's close button when no comment remains).
+        render(function (b) {
+          const dels = b.querySelectorAll(".cm-storage-comment .cm-storage-danger");
+          return dels.length ? dels[0] : null;
+        });
       });
     });
     actions.appendChild(del);

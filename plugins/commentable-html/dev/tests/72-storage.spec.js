@@ -822,10 +822,13 @@ test("the usage summary shows origin, commentable-html, and this-document shares
   const originPct = Math.round((u.originBytes / u.assumedQuota) * 100);
   const cmhOfOrigin = Math.round((u.cmhBytes / u.originBytes) * 100);
   const docOfCmh = Math.round((u.currentBytes / u.cmhBytes) * 100);
-  await expect(usage).toContainText(originPct + "%");   // local storage in use, percent of the budget
-  await expect(usage).toContainText(cmhOfOrigin + "%"); // commentable-html share of storage in use
-  await expect(usage).toContainText(docOfCmh + "%");    // this document's share of commentable-html
-  await expect(usage).toContainText("This document");
+  // Assert per line so a percentage cannot satisfy the test on the wrong line or via a substring.
+  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "Local storage in use" }))
+    .toContainText("about " + originPct + "%");
+  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "commentable-html:" }))
+    .toContainText(cmhOfOrigin + "% of the storage in use");
+  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "This document:" }))
+    .toContainText(docOfCmh + "% of commentable-html storage");
 });
 
 test("documents are shown in a table with a column-headed Share of commentable-html storage (CMH-STORE-14)", async ({ page }) => {
@@ -879,6 +882,13 @@ test("the current document's comments can be browsed lazily and deleted per comm
   await expect.poll(async () => (await storedComments(page)).length).toBe(1);
   await expect(page.locator(".cm-storage-comment")).toHaveCount(1);
   await expect(page.locator(".cm-storage-current .cm-storage-count")).toHaveText("1");
+  // Deleting the last comment collapses the now-empty list (the Show comments toggle is suppressed
+  // at zero, so an empty list must not stay stuck open).
+  await page.locator(".cm-storage-comment").first().locator(".cm-storage-danger").click();
+  await page.locator(".cm-storage-comment").first().locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  await expect(page.locator(".cm-storage-comments-row")).toHaveCount(0);
+  await expect(page.locator(".cm-storage-current .cm-storage-count")).toHaveText("0");
+  await expect(page.locator(".cm-storage-current").locator("button", { hasText: "Show comments" })).toHaveCount(0);
 });
 
 test("another document's comments can be browsed and deleted per comment without touching others (CMH-STORE-15)", async ({ page }) => {
@@ -904,6 +914,11 @@ test("another document's comments can be browsed and deleted per comment without
     return JSON.parse(dec.json);
   });
   expect(remaining.map((c) => c.id)).toEqual(["cpeer00002"]); // only the deleted comment was removed
+  // The removed id is tombstoned in the peer document's ::deleted set, so an embedded copy of it in
+  // that file does not resurrect when the peer document is next opened.
+  const tomb = await page.evaluate(() => JSON.parse(
+    localStorage.getItem("commentable-html:/reports/peer.html::deleted") || "[]"));
+  expect(tomb).toContain("cpeer00001");
 });
 
 test("the dialog has a footer Close button that closes it and restores focus (CMH-STORE-16)", async ({ page }) => {
