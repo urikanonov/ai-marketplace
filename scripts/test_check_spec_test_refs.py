@@ -241,6 +241,63 @@ class SpecTestReferenceTests(unittest.TestCase):
 
         self.assertEqual(refs.check_spec(spec, self.base), [])
 
+    def test_reports_orphan_feature_id_in_regression_title(self):
+        regression = self.base / "tests" / "deck-regressions.spec.js"
+        regression.write_text(
+            "test('ORPHAN-99: unmapped regression', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_test_id_mappings(spec, self.base, (regression,))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("feature id `ORPHAN-99` has no spec row", issues[0].message)
+
+    def test_reports_regression_title_mapped_to_wrong_spec_behavior(self):
+        regression = self.base / "tests" / "deck-regressions.spec.js"
+        regression.write_text(
+            "test('DEMO-01: unrelated regression', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_test_id_mappings(spec, self.base, (regression,))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("is not cited by its `DEMO-01` spec row", issues[0].message)
+
+    def test_accepts_regression_title_cited_by_matching_spec_row(self):
+        regression = self.base / "tests" / "deck-regressions.spec.js"
+        title = "DEMO-01: mapped regression"
+        regression.write_text(
+            "test('%s', async () => {});\n" % title,
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/deck-regressions.spec.js` - `%s`" % title)
+
+        self.assertEqual(
+            refs.check_test_id_mappings(spec, self.base, (regression,)),
+            [],
+        )
+
+    def test_check_all_discovers_regression_id_mappings(self):
+        regression = self.base / "tests" / "deck-regressions.spec.js"
+        regression.write_text(
+            "test('ORPHAN-99: unmapped regression', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`")
+
+        issues = refs.check_all(((spec, self.base),))
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("feature id `ORPHAN-99` has no spec row", issues[0].message)
+
     def test_ignores_quoted_code_notes_after_test_references(self):
         spec = self._spec(
             "`tests/demo.spec.js` - `real browser title (DEMO-01)` "

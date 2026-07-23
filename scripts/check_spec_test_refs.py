@@ -318,10 +318,57 @@ def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
     return issues
 
 
+def check_test_id_mappings(
+    spec_path: Path,
+    base_dir: Path,
+    test_paths: tuple[Path, ...],
+) -> list[SpecIssue]:
+    rows: dict[str, list[str]] = {}
+    for line in _read(spec_path).splitlines():
+        cells = _row_cells(line)
+        if cells and _FEATURE_ID_RE.fullmatch(cells[0]):
+            rows.setdefault(cells[0], []).append(cells[-1])
+
+    issues: list[SpecIssue] = []
+    for test_path in test_paths:
+        text = _read(test_path)
+        rel = (
+            test_path.resolve().relative_to(base_dir.resolve()).as_posix()
+            if test_path.resolve().is_relative_to(base_dir.resolve())
+            else test_path.resolve().relative_to(REPO_ROOT).as_posix()
+        )
+        for title in sorted(_js_test_titles(text)):
+            line_no = text[:text.find(title)].count("\n") + 1
+            for feature_id in _FEATURE_ID_RE.findall(title):
+                matching_rows = rows.get(feature_id)
+                if not matching_rows:
+                    issues.append(SpecIssue(
+                        test_path,
+                        line_no,
+                        "feature id `%s` has no spec row" % feature_id,
+                    ))
+                    continue
+                if not any(
+                    "`%s`" % rel in coverage and "`%s`" % title in coverage
+                    for coverage in matching_rows
+                ):
+                    issues.append(SpecIssue(
+                        test_path,
+                        line_no,
+                        "test title `%s` is not cited by its `%s` spec row"
+                        % (title, feature_id),
+                    ))
+    return issues
+
+
 def check_all(targets: tuple[tuple[Path, Path], ...] = SPEC_TARGETS) -> list[SpecIssue]:
     issues: list[SpecIssue] = []
     for spec_path, base_dir in targets:
         issues.extend(check_spec(spec_path, base_dir))
+        regression_dir = base_dir / "tests"
+        if regression_dir.is_dir():
+            regression_tests = tuple(sorted(regression_dir.glob("*regressions*.spec.js")))
+            issues.extend(check_test_id_mappings(spec_path, base_dir, regression_tests))
     return issues
 
 

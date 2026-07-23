@@ -669,7 +669,7 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, portab
   }
 });
 
-test("CMH-DECK-20: slide 16 cross-card comments do not highlight the grid gap", async ({ page }) => {
+test("CMH-DECK-38: cross-card comments do not highlight whitespace-only grid gaps", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await enterCommentMode(page);
@@ -759,7 +759,7 @@ test("CMH-DECK-21: deck chrome exposes the project link and distinct overview/co
   }
 });
 
-test("CMH-BOARD-06: the showcase Locked column Add Comment affordance avoids Reset moves", async ({ page }) => {
+test("CMH-DECK-39: the showcase Locked column Add Comment affordance avoids Reset moves", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await enterCommentMode(page);

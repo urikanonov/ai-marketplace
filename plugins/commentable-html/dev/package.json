@@ -13,7 +13,7 @@
     "fixtures": "node tests/fixtures/generate.mjs",
     "fixtures:check": "node tests/fixtures/generate.mjs --check",
     "shots": "node tools/capture_tutorial.mjs",
-    "shots:check": "node tools/capture_tutorial.mjs --check || node tools/capture_tutorial.mjs --check",
+    "shots:check": "node tools/capture_tutorial.mjs --check",
     "shots:quality": "node tools/check_shot_quality.mjs",
     "shard:timings": "node tests/refresh-spec-timings.mjs",
     "test": "npm run shots:check && playwright test",
