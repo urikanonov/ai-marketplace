@@ -24,7 +24,8 @@ to your agent to refine the process. It is built with the repository's own `comm
 
 ## Adding a feature
 
-[`adding-a-feature.md`](./adding-a-feature.md) is the end-to-end checklist for adding a new feature to a
+The always-available [`adding-a-feature`](../.github/skills/adding-a-feature/SKILL.md) project skill is the
+end-to-end checklist for adding a new feature to a
 plugin (most often a new `commentable-html` behavior): issue-first tracking, a fresh worktree, the
 test-first (TDD) and spec-row discipline, editing the owning split partial and wiring the shared layers,
 the scaffold + apply tool pattern with a validator guardrail and an on-demand reference doc, the coverage
