@@ -147,7 +147,8 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot .cmh-diagram-gallery { margin: 1rem 0; }
 @media screen and (min-width: 481px) {
   #commentRoot .cmh-diagram-gallery {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: 1rem; align-items: start;
   }
   /* Target the diagram CONTAINERS explicitly (not `> *`, which would turn a stray table/list into a
      grid item and break it). `> pre.mermaid` / `> div.mermaid` are specificity (1,2,1) which

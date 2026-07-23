@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style>
+  .card {
+    height: 400px;
+    width: 300px;
+    overflow: auto;
+  }
+  .content {
+    height: 200px;
+    width: 600px;
+    background: blue;
+  }
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="content"></div>
+  </div>
+  <script>
+    var host = document.getElementById("card");
+    console.log("scrollHeight", host.scrollHeight, "clientHeight", host.clientHeight);
+    console.log("scrollWidth", host.scrollWidth, "clientWidth", host.clientWidth);
+  </script>
+</body>
+</html>

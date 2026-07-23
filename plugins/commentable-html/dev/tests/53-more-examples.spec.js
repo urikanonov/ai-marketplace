@@ -318,6 +318,8 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
         overRight: sr ? Math.round(sr.right - hr.right) : 0,
         overLeft: sr ? Math.round(hr.left - sr.left) : 0,
         borderPx: Math.round(parseFloat(cs.borderTopWidth) || 0),
+        overflowY: cs.overflowY,
+        nodeCount: svg ? svg.querySelectorAll("*").length : 0,
         scrolls: el.scrollHeight > el.clientHeight + 1,
       };
     });
@@ -338,6 +340,23 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
       await expect(page.locator(GALLERY)).toHaveCount(1);
       // Every gallery diagram renders its SVG (served over http so mermaid runs).
       await expect(page.locator(`${GALLERY} > pre.mermaid svg`)).toHaveCount(7, { timeout: 20000 });
+      // Gate on the SETTLED layout AND settled mermaid CONTENT: the card frame + overflow are applied
+      // by CSS once each mermaid host is laid out (a rAF pass), and mermaid populates some diagrams in
+      // TWO phases (e.g. a pie first paints an empty `<svg><g></g></svg>` then fills in its slices a few
+      // hundred ms later). Waiting only for the SVG to exist or for the frame would sample that transient
+      // empty state. So wait for every card to be framed + scrollable AND to have real rendered content
+      // (mirrors the per-diagram not-empty assertion) before measuring. A real regression that drops the
+      // frame or never renders content never settles, so the poll times out and the test still fails.
+      await expect.poll(async () => page.evaluate((s) => {
+        const cards = [...document.querySelectorAll(s + " > pre.mermaid")];
+        if (cards.length !== 7) return false;
+        return cards.every((c) => {
+          const cs = getComputedStyle(c);
+          const svg = c.querySelector("svg");
+          return (parseFloat(cs.borderTopWidth) || 0) >= 1 && /auto|scroll/.test(cs.overflowY) &&
+            svg && svg.querySelectorAll("*").length >= 5;
+        });
+      }, GALLERY), { timeout: 15000 }).toBe(true);
 
       // The gallery is a plain CSS GRID (not a fragile multi-column block, and not the old marooning
       // grid-that-strands): a single-column block fallback or a multicol would each break a promise.
@@ -378,6 +397,11 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
       for (const c of cells) {
         expect(c.svgW, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
         expect(c.svgH, `diagram "${c.src}" actually rendered`).toBeGreaterThan(0);
+        // Not tiny/empty (the exact failure the user saw with the old multi-column layout): every
+        // diagram has real painted content and a real height, so a card that renders an empty or
+        // slivered box fails here rather than passing on a mere `svgW/svgH > 0` check.
+        expect(c.nodeCount, `diagram "${c.src}" has real rendered content (not an empty box)`).toBeGreaterThanOrEqual(5);
+        expect(c.svgH, `diagram "${c.src}" has a real height (not a tiny box)`).toBeGreaterThanOrEqual(30);
         // No sliver: every diagram is at least a readable width. The documented regression squashed
         // the narrow state diagram to ~81px; the helper never height-shrinks, so it keeps the layer's
         // ~173px cap. A 120px floor is well below the narrowest legit diagram and above the 81px sliver.
@@ -388,10 +412,11 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
         expect(c.overLeft, `diagram "${c.src}" not clipped on the left`).toBeLessThanOrEqual(1);
       }
 
-      // At least the wide diagrams fill their card width (the diagram uses the card, not stuck small).
+      // Multiple diagrams (not just the single widest) actually fill their card width, so a regression
+      // that collapses most diagrams to a narrow column while one still fills is caught.
       const innerW = cells[0].hostW - 28; // card width minus ~0.85rem padding each side
-      const maxFill = Math.max(...cells.map((c) => (innerW > 0 ? c.svgW / innerW : 0)));
-      expect(maxFill, "the widest gallery diagram fills its card width").toBeGreaterThanOrEqual(0.9);
+      const fillCount = cells.filter((c) => innerW > 0 && c.svgW / innerW >= 0.6).length;
+      expect(fillCount, "several gallery diagrams fill their card width (not just one)").toBeGreaterThanOrEqual(3);
 
       // A diagram TALLER than the card scrolls inside it (bounded + scrollable, never height-shrunk to
       // a sliver): the state diagram is the tall one and must overflow its bounded card.
@@ -401,6 +426,21 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
       // The narrow state diagram stays width-CAPPED by the layer (CMH-MMD-10, ~173px), never widened
       // to fill the card - if a change ever un-caps it the scroll test would still pass, so pin the cap.
       expect(tall.svgW, "the tall state diagram keeps the layer narrow cap (not widened)").toBeLessThan(250);
+      // The tall card is GENUINELY scrollable, not merely `scrollHeight > clientHeight` (which is true
+      // even under overflow:hidden - i.e. clipped, the failure class): its computed overflow-y is
+      // auto/scroll AND setting scrollTop actually moves it.
+      expect(tall.overflowY, "the tall card's overflow-y is scrollable (not hidden/clipped)").toMatch(/auto|scroll/);
+      const scrolled = await page.evaluate((gallerySel) => {
+        const el = [...document.querySelectorAll(gallerySel + " > pre.mermaid")]
+          .find((n) => (n.getAttribute("data-cmh-md-src") || "").trim().startsWith("stateDiagram"));
+        if (!el) return -1;
+        el.scrollTop = 120;
+        return el.scrollTop;
+      }, GALLERY);
+      expect(scrolled, "the tall card actually scrolls when scrollTop is set (content is reachable)").toBeGreaterThan(0);
+      // Every card is uniformly BOUNDED near the 25rem contract (~400px): not a ~637px marooning tower
+      // (upper bound) and not collapsed (lower bound). Combined with the uniform-spread check above.
+      expect(Math.min(...heights), "gallery card height is bounded near 25rem, not collapsed").toBeGreaterThanOrEqual(360);
       expect(cells.some((c) => c.scrolls), "at least one tall diagram scrolls inside its bounded card").toBe(true);
 
       expect(errors, "no uncaught errors").toEqual([]);

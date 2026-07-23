@@ -1278,7 +1278,8 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot .cmh-diagram-gallery { margin: 1rem 0; }
 @media screen and (min-width: 481px) {
   #commentRoot .cmh-diagram-gallery {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: 1rem; align-items: start;
   }
   /* Target the diagram CONTAINERS explicitly (not `> *`, which would turn a stray table/list into a
      grid item and break it). `> pre.mermaid` / `> div.mermaid` are specificity (1,2,1) which
@@ -3046,8 +3047,12 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   }
   /* A .cmh-diagram-gallery card scrolls on screen (bounded height + frame); for print, drop the bound
      and the frame so the whole diagram prints, not just the visible scroll window. Scoped to the
-     diagram gallery ONLY - the chart .visual-grid keeps its figure frames in print. */
-  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > * {
+     diagram CONTAINERS (matching the screen card selector), so a stray non-card child is left alone,
+     and to the diagram gallery ONLY - the chart .visual-grid keeps its figure frames in print. */
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > pre.mermaid,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > div.mermaid,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > figure {
+    display: block !important;
     height: auto !important;
     overflow: visible !important;
     border: 0 !important;
