@@ -4857,12 +4857,14 @@ function _rectInViewport(r) {
 }
 function _clipContainerFor(node) {
   const el = node && (node.nodeType === 1 ? node : node.parentElement);
-  // A direct-child pre.mermaid gallery card is already covered by the bare `pre.mermaid` match; add the
-  // other two gallery card types (div.mermaid, bare figure) scoped to a gallery, rather than a broad
-  // `.cmh-diagram-gallery > *` that would treat any stray direct child as a clip container.
-  return el && el.closest
-    ? el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure")
-    : null;
+  if (!el || !el.closest) return null;
+  // Prefer the gallery CARD (a direct child of .cmh-diagram-gallery) FIRST, then fall back to the
+  // generic clip containers. Otherwise, for a supported `<figure><pre class="mermaid">...</pre></figure>`
+  // card, `closest()` starting at the svg would match the inner `pre.mermaid` (the nearer ancestor)
+  // before the outer figure, and clamp the button to the non-scrolling pre instead of the figure's
+  // scroll card - so the whole-diagram button could detach while the figure scrolls.
+  return el.closest(".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure")
+    || el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw");
 }
 function _intersectRects(a, b) {
   const left = Math.max(a.left, b.left);
@@ -4991,8 +4993,13 @@ var GALLERY_CARD_SEL = ".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery
 function markGalleryCardScrollable(host) {
   const card = host && host.closest && host.closest(GALLERY_CARD_SEL);
   if (!card) return;
-  const overflows = card.scrollHeight > card.clientHeight + 1 ||
-    card.scrollWidth > card.clientWidth + 1;
+  // Only the framed (>=481px) gallery is a bounded scroll card; below the mobile breakpoint the helper
+  // is a frameless full-height flow (a wide diagram uses the layer's own horizontal scroll,
+  // CMH-RESP-01/09, which carries no extra tab stop), so a mobile card gets no tab stop. A
+  // desktop->mobile resize makes `overflows` false, so the else-branch clears any marking we added.
+  const framed = typeof window.matchMedia !== "function" || window.matchMedia("(min-width: 481px)").matches;
+  const overflows = framed && (card.scrollHeight > card.clientHeight + 1 ||
+    card.scrollWidth > card.clientWidth + 1);
   const owned = card.getAttribute("data-cmh-scroll-a11y") === "1";
   if (overflows) {
     // Respect an author who set any of these on a card we do not already own.

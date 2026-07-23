@@ -169,6 +169,67 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
     }
   });
 
+  test("on a phone the gallery is a frameless single-column flow with no tab stop (CMH-CONTENT-19)", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width: 400, height: 800 });
+    const inner = `<pre class="mermaid cm-skip">${FLOW}</pre><pre class="mermaid cm-skip">${STATE}</pre>`;
+    const server = await stageGallery(page, inner, "cmh-gallery-mobile");
+    try {
+      await expect(page.locator(".cmh-diagram-gallery > pre.mermaid svg")).toHaveCount(2, { timeout: 20000 });
+      const info = await page.evaluate(() => {
+        const g = document.querySelector(".cmh-diagram-gallery");
+        const cards = [...g.querySelectorAll(":scope > pre.mermaid")];
+        return {
+          galleryDisplay: getComputedStyle(g).display,
+          cards: cards.map((c) => ({ display: getComputedStyle(c).display, tabindex: c.getAttribute("tabindex") })),
+        };
+      });
+      // Below the 481px breakpoint the grid does not apply: the gallery is a plain single-column flow
+      // (the diagram uses the layer's own responsive handling, CMH-RESP-01), and no card is a bounded
+      // scroll card, so none is given a tab stop.
+      expect(info.galleryDisplay, "gallery is a plain block flow on mobile").toBe("block");
+      for (const c of info.cards) {
+        expect(c.display, "a mobile card is not a bounded grid card").not.toBe("grid");
+        expect(c.tabindex, "a mobile card gets no tab stop").toBeNull();
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("print stacks the gallery single-column and unframes each card (CMH-CONTENT-19)", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    const inner = `<pre class="mermaid cm-skip">${FLOW}</pre><pre class="mermaid cm-skip">${STATE}</pre>`;
+    const server = await stageGallery(page, inner, "cmh-gallery-print");
+    try {
+      await expect(page.locator(".cmh-diagram-gallery > pre.mermaid svg")).toHaveCount(2, { timeout: 20000 });
+      await waitGalleryFramed(page, ".cmh-diagram-gallery > pre.mermaid");
+      await page.emulateMedia({ media: "print" });
+      const info = await page.evaluate(() => {
+        const g = document.querySelector(".cmh-diagram-gallery");
+        const cards = [...g.querySelectorAll(":scope > pre.mermaid")];
+        return {
+          galleryDisplay: getComputedStyle(g).display,
+          cards: cards.map((c) => {
+            const cs = getComputedStyle(c);
+            return { display: cs.display, overflow: cs.overflow, border: Math.round(parseFloat(cs.borderTopWidth) || 0) };
+          }),
+        };
+      });
+      // In print the gallery stacks to a single column and each card is unframed with the scroll bound
+      // dropped, so the WHOLE diagram prints (not just the 25rem scroll window).
+      expect(info.galleryDisplay, "gallery stacks to a single column in print").toBe("block");
+      for (const c of info.cards) {
+        expect(c.display, "a card is a plain block in print (grid context stripped)").toBe("block");
+        expect(c.overflow, "a card's overflow is visible in print (whole diagram prints)").toMatch(/visible/);
+        expect(c.border, "a card is unframed in print").toBe(0);
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
   test("the clip-aware whole-diagram button stays inside a scrolled card and hides when it scrolls off (CMH-CONTENT-19 / CMH-MMD-06)", async ({ page }) => {
     test.setTimeout(60000);
     await page.setViewportSize({ width: 1200, height: 900 });
