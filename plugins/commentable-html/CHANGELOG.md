@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.220.0] - 2026-07-23
+
+### Changed
+
+- The Manage storage dialog is clearer and more capable (CMH-STORE-13..16). Documents are now shown
+  in a column-headed table (Document, Comments, Size, Share, Actions) where the Share column is each
+  document's percentage of commentable-html storage. A usage summary reports total local storage in
+  use as a percentage of the assumed ~5 MB budget, the commentable-html share of the storage in use,
+  and this document's percentage of commentable-html storage. Each document row has a lazy "Show
+  comments" toggle that lists every stored comment (quote, note, author, and an approximate
+  per-comment size), each deletable - deleting a comment in the current document routes through the
+  live delete path (tombstoning embedded ids and re-rendering the sidebar), while deleting another
+  document's comment rewrites only that document's stored slot. A Close button was added in a footer
+  at the bottom of the dialog.
+
 ## [1.215.0] - 2026-07-23
 
 ### Added

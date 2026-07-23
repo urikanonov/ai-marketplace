@@ -25,28 +25,40 @@
   font-size: var(--cp-chrome-help-font); line-height: 1.5; color: var(--cp-text-soft); flex: 0 0 auto;
 }
 .cm-storage-total { padding-bottom: 0.4rem; color: var(--cp-text); font-weight: 600; }
+.cm-storage-usage {
+  margin: 0.2rem var(--cp-chrome-modal-x) 0.2rem; padding: 0.5rem 0.75rem;
+  background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; flex: 0 0 auto;
+}
+.cm-storage-bar { height: 8px; border-radius: 999px; background: var(--cp-border); overflow: hidden; margin-bottom: 0.4rem; }
+.cm-storage-bar-fill { height: 100%; background: var(--cp-accent); border-radius: 999px; }
+.cm-storage-usage-line { font-size: 0.8rem; color: var(--cp-text-soft); line-height: 1.5; }
+.cm-storage-usage-line:first-of-type { color: var(--cp-text); font-weight: 600; }
 .cm-storage-banner {
   margin: 0.6rem var(--cp-chrome-modal-x) 0; padding: 0.55rem 0.75rem; border-radius: 8px;
   font-size: var(--cp-chrome-help-font); line-height: 1.45; flex: 0 0 auto;
 }
 .cm-storage-banner-warn { background: rgba(220, 38, 38, 0.12); border: 1px solid var(--cp-danger); color: var(--cp-danger); }
 .cm-storage-banner-ok { background: var(--cp-accent-soft); border: 1px solid var(--cp-accent); color: var(--cp-accent); }
-.cm-storage-list { padding: 0.4rem var(--cp-chrome-modal-x) var(--cp-chrome-modal-x); overflow-y: auto; flex: 1 1 auto; min-height: 0; }
-.cm-storage-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
-  padding: 0.6rem 0.2rem; border-bottom: 1px solid var(--cp-border);
+.cm-storage-list { padding: 0.4rem var(--cp-chrome-modal-x) var(--cp-chrome-modal-x); overflow-y: auto; overflow-x: auto; flex: 1 1 auto; min-height: 0; }
+.cm-storage-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.cm-storage-table thead th {
+  text-align: left; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.03em;
+  color: var(--cp-text-soft); font-weight: 600; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--cp-border);
 }
-.cm-storage-row.cm-storage-current { background: var(--cp-accent-soft); border-radius: 8px; padding-left: 0.6rem; padding-right: 0.6rem; }
-.cm-storage-info { min-width: 0; flex: 1 1 auto; }
+.cm-storage-table thead th:nth-child(2), .cm-storage-table thead th:nth-child(3), .cm-storage-table thead th:nth-child(4) { text-align: right; white-space: nowrap; }
+.cm-storage-row > td { padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--cp-border); vertical-align: top; }
+.cm-storage-row .cm-storage-count, .cm-storage-row .cm-storage-size, .cm-storage-row .cm-storage-share { text-align: right; white-space: nowrap; color: var(--cp-text-soft); }
+.cm-storage-current > td { background: var(--cp-accent-soft); }
+.cm-storage-cell-name { min-width: 0; }
 .cm-storage-name-line { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.cm-storage-name { font-weight: 600; font-size: 0.92rem; word-break: break-word; }
+.cm-storage-name { font-weight: 600; font-size: 0.9rem; word-break: break-word; }
 .cm-storage-badge {
   font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
   background: var(--cp-accent); color: var(--cp-accent-fg); border-radius: 999px; padding: 0.08rem 0.5rem;
 }
-.cm-storage-source { font-size: 0.78rem; color: var(--cp-text-soft); overflow-wrap: anywhere; margin-top: 0.1rem; }
-.cm-storage-meta { font-size: 0.8rem; color: var(--cp-text-soft); margin-top: 0.15rem; }
-.cm-storage-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 0.4rem; }
+.cm-storage-source { font-size: 0.76rem; color: var(--cp-text-soft); overflow-wrap: anywhere; margin-top: 0.1rem; }
+.cm-storage-actions { display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end; flex-wrap: wrap; }
+.cm-storage-show-comments { margin-top: 0.35rem; font-size: 0.78rem; padding: 0.2rem 0.5rem; }
 .cm-storage-btn {
   background: var(--cp-surface); border: 1px solid var(--cp-border); color: var(--cp-text);
   border-radius: 8px; padding: 0.35rem 0.7rem; font-size: 0.83rem; font-family: inherit; cursor: pointer;
@@ -56,10 +68,28 @@
 .cm-storage-danger:hover { background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger); }
 .cm-storage-confirm { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
 .cm-storage-confirm-msg { font-size: 0.8rem; color: var(--cp-text); }
+/* Per-document comment browse list (a full-width row under its document). */
+.cm-storage-comments-row > td { padding: 0 0.5rem 0.55rem; background: var(--cp-surface); }
+.cm-storage-comments { display: flex; flex-direction: column; gap: 0.3rem; padding-top: 0.2rem; }
+.cm-storage-comment {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 0.6rem;
+  padding: 0.4rem 0.55rem; border: 1px solid var(--cp-border); border-radius: 6px;
+}
+.cm-storage-comment-info { min-width: 0; flex: 1 1 auto; }
+.cm-storage-comment-quote { font-size: 0.8rem; color: var(--cp-text-soft); font-style: italic; overflow-wrap: anywhere; }
+.cm-storage-comment-note { font-size: 0.84rem; color: var(--cp-text); overflow-wrap: anywhere; margin-top: 0.1rem; }
+.cm-storage-comment-meta { font-size: 0.74rem; color: var(--cp-text-soft); margin-top: 0.15rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.cm-storage-comment .cm-storage-actions { flex: 0 0 auto; }
+.cm-storage-comment-empty { font-size: 0.8rem; color: var(--cp-text-soft); padding: 0.3rem 0.2rem; }
 .cm-storage-empty { padding: 0.8rem var(--cp-chrome-modal-x) var(--cp-chrome-modal-x); flex: 0 0 auto; }
 .cm-storage-empty p { font-size: var(--cp-chrome-help-font); line-height: 1.5; color: var(--cp-text); margin: 0 0 0.6rem; }
 .cm-storage-empty-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .cm-storage-global .cm-storage-name { font-weight: 600; }
+.cm-storage-foot {
+  flex: 0 0 auto; display: flex; justify-content: flex-end;
+  padding: 0.6rem var(--cp-chrome-modal-x); border-top: 1px solid var(--cp-border);
+}
+.cm-storage-foot-close { min-width: 5rem; }
 
 /* Inline action button inside a toast (e.g. "Manage storage" on a storage-full toast). The toast
    itself is pointer-events:none so it never blocks the page; the action re-enables clicks on itself
@@ -76,6 +106,7 @@
 
 @media (max-width: 640px) {
   .cm-storage-manager { width: 96vw; height: 94vh; }
-  .cm-storage-row { flex-direction: column; align-items: flex-start; }
-  .cm-storage-actions { align-self: flex-end; }
+  .cm-storage-table { font-size: 0.82rem; }
+  .cm-storage-comment { flex-direction: column; align-items: stretch; }
+  .cm-storage-comment .cm-storage-actions { justify-content: flex-end; }
 }
