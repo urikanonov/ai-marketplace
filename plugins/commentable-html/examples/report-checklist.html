@@ -11136,11 +11136,20 @@ function _cmhOriginBytes() {
   });
   return total;
 }
+// Bytes of the shared registry index (commentable-html::index). cmhStorageGroups() intentionally
+// excludes the index from the listed document groups, so it is added to the commentable-html total
+// separately here and in the table's Share denominator - otherwise it would be misclassified as
+// other-app storage and understate the commentable-html share.
+function _cmhIndexBytes() {
+  try { const iv = localStorage.getItem(CMH_INDEX_KEY); return iv != null ? _cmhKeyBytes(CMH_INDEX_KEY, iv) : 0; }
+  catch (e) { return 0; }
+}
 // Storage-usage split for the summary: the whole origin, the commentable-html share (all documents
-// plus shared/other CMH data), the non-CMH remainder, the current document, and the assumed budget.
+// plus shared/other CMH data plus the registry index), the non-CMH remainder, the current document,
+// and the assumed budget.
 function cmhStorageUsage() {
   const data = cmhStorageGroups();
-  let cmhBytes = 0, currentBytes = 0;
+  let cmhBytes = _cmhIndexBytes(), currentBytes = 0;
   data.docs.forEach(function (g) { cmhBytes += g.bytes; if (g.current) currentBytes = g.bytes; });
   data.globals.forEach(function (x) { cmhBytes += x.bytes; });
   const originBytes = _cmhOriginBytes();
@@ -11148,6 +11157,13 @@ function cmhStorageUsage() {
     originBytes: originBytes, cmhBytes: cmhBytes, otherBytes: Math.max(0, originBytes - cmhBytes),
     currentBytes: currentBytes, assumedQuota: CMH_ASSUMED_QUOTA,
   };
+}
+// Normalize whitespace and truncate a document-derived string to a short snippet for the browse
+// list, so one very long note or quote cannot dominate the dialog. The full text is preserved in the
+// element's title attribute by the caller.
+function _cmhSnippet(s, max) {
+  const str = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  return str.length > max ? str.slice(0, max - 3) + "..." : str;
 }
 // The anchor text shown for one comment in the per-document browse list (a reply inherits its root's
 // anchor, so it has none of its own). Every field is document-derived and rendered via textContent.
@@ -11213,14 +11229,22 @@ function _cmhDeleteCommentFromStore(base, id) {
     if (next.length) localStorage.setItem(zKey, cmhEncodeStore(JSON.stringify(next)));
     else localStorage.removeItem(zKey);
     localStorage.removeItem(base); // never leave a stale legacy value behind
-    _cmhTombstoneForeign(base, removedIds);
+    // If the delete marker could not be persisted (storage full/blocked), the comment is gone from
+    // the store but an embedded copy in that document could reappear on its next open; warn rather
+    // than silently reporting success (mirrors _ensureTombstoneEmbedded's recovery notice).
+    if (!_cmhTombstoneForeign(base, removedIds) && removedIds.length && typeof showToast === "function") {
+      showToast("Deleted the comment, but this browser could not save a delete marker for the other "
+        + "document (storage full or blocked) - it may reappear when that document is next opened. "
+        + "Free space and delete it again.", { alert: true, duration: 9000 });
+    }
     return true;
   } catch (e) { return false; }
 }
 // Merge ids into another document's ::deleted tombstone set (SAFE_ID_RE-filtered, deduped, capped),
 // mirroring 05-persistence.js's _tombstoneEmbedded but for a base other than the current document's.
+// Returns true on success (including a no-op), false when the write could not be persisted.
 function _cmhTombstoneForeign(base, ids) {
-  if (!ids || !ids.length) return;
+  if (!ids || !ids.length) return true;
   const delKey = base + "::deleted";
   try {
     let existing = [];
@@ -11229,7 +11253,8 @@ function _cmhTombstoneForeign(base, ids) {
     // New ids FIRST so the cap can only ever evict OLD tombstones, never the just-deleted id.
     const merged = Array.from(new Set(ids.concat(cleanExisting))).slice(0, CMH_MAX_COMMENTS);
     localStorage.setItem(delKey, JSON.stringify(merged));
-  } catch (e) { /* best-effort tombstone; ignore quota/blocked */ }
+    return true;
+  } catch (e) { return false; }
 }
 
 // ---------- Dialog ----------
@@ -11369,6 +11394,7 @@ function openStorageManager(opts) {
     let total = 0;
     data.docs.forEach(function (g) { total += g.bytes; });
     data.globals.forEach(function (x) { total += x.bytes; });
+    total += _cmhIndexBytes(); // count the registry index in the commentable-html total + Share base
     totalLine.textContent = "About " + _cmhHumanSize(total) + " used across "
       + data.docs.length + " document" + (data.docs.length === 1 ? "" : "s")
       + " (browsers typically allow ~5 MB for local files; the exact limit varies).";
@@ -11568,6 +11594,7 @@ function openStorageManager(opts) {
 
   function commentsRowFor(g) {
     const tr = el("tr", "cm-storage-comments-row");
+    tr.dataset.cmhBase = g.base; // stable handle for post-delete focus scoping (a value, not a selector)
     const td = document.createElement("td");
     td.setAttribute("colspan", "5");
     const wrap = el("div", "cm-storage-comments");
@@ -11586,10 +11613,10 @@ function openStorageManager(opts) {
     const item = el("div", "cm-storage-comment");
     const info = el("div", "cm-storage-comment-info");
     const q = _cmhCommentQuote(c);
-    if (q) info.appendChild(el("div", "cm-storage-comment-quote", q));
-    if (c && c.note) info.appendChild(el("div", "cm-storage-comment-note", String(c.note)));
+    if (q) { const qe = el("div", "cm-storage-comment-quote", _cmhSnippet(q, 140)); qe.title = q; info.appendChild(qe); }
+    if (c && c.note) { const ne = el("div", "cm-storage-comment-note", _cmhSnippet(c.note, 140)); ne.title = String(c.note); info.appendChild(ne); }
     const meta = el("div", "cm-storage-comment-meta");
-    if (c && c.author) meta.appendChild(el("span", "cm-storage-comment-author", String(c.author)));
+    if (c && c.author) meta.appendChild(el("span", "cm-storage-comment-author", _cmhSnippet(c.author, 60)));
     meta.appendChild(el("span", "cm-storage-comment-size", "~" + _cmhHumanSize(_cmhCommentApproxBytes(c))));
     info.appendChild(meta);
     item.appendChild(info);
@@ -11602,11 +11629,17 @@ function openStorageManager(opts) {
         if (g.current) _cmhDeleteCommentFromCurrent(c.id);
         else _cmhDeleteCommentFromStore(g.base, c.id);
         announceRetry();
-        // Keep keyboard focus in the comment list the reviewer is working in (falls back to the
-        // dialog's close button when no comment remains).
+        // Keep keyboard focus in THIS document's comment list (falls back to the dialog's close
+        // button when that list is now empty or gone).
         render(function (b) {
-          const dels = b.querySelectorAll(".cm-storage-comment .cm-storage-danger");
-          return dels.length ? dels[0] : null;
+          const rows = b.querySelectorAll(".cm-storage-comments-row");
+          for (let i = 0; i < rows.length; i++) {
+            if (rows[i].dataset && rows[i].dataset.cmhBase === g.base) {
+              const d = rows[i].querySelector(".cm-storage-danger");
+              if (d) return d;
+            }
+          }
+          return null;
         });
       });
     });
