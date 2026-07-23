@@ -315,6 +315,27 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#menuSlideComment")).toBeHidden();
   });
 
+  test("Arrow keys rove focus between the deck context-menu items (CMH-A11Y-09)", async ({ page }) => {
+    await openDeck(page);
+    // An empty right-click on the active slide shows two visible menuitems (slide + deck).
+    await page.evaluate(() => {
+      const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 });
+      document.querySelector(".slide.active").dispatchEvent(ev);
+    });
+    await expect(page.locator("#contextMenu")).toBeVisible();
+    // In a deck the empty right-click shows two items (deck + slide); menuComment is hidden, so the
+    // first VISIBLE item takes focus on open.
+    await expect(page.locator("#menuDocComment")).toBeFocused();
+    // ArrowDown moves to the next visible item; a second wraps back to the first.
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator("#menuSlideComment")).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator("#menuDocComment")).toBeFocused();
+    // ArrowUp roves backwards (wrapping to the last visible item).
+    await page.keyboard.press("ArrowUp");
+    await expect(page.locator("#menuSlideComment")).toBeFocused();
+  });
+
   test("CMH-DECK-33: a slide comment caps a long title and falls back to the active slide without an id", async ({ page }) => {
     const longTitle = "T".repeat(200);
     const slides =

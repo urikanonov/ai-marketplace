@@ -611,6 +611,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cmh-sec-caret::before { content: "\25BE"; font-size: 1.45em; }
 .cmh-sec-caret[aria-expanded="false"]::before { content: "\25B8"; }
 .cmh-sec-caret:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cmh-sec-caret:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; color: var(--cp-accent); }
 #commentRoot section.cmh-section-collapsed > .cmh-section-heading { cursor: pointer; }
 #commentRoot section.cmh-section-collapsed > * { display: none; }
 #commentRoot section.cmh-section-collapsed > .cmh-section-heading { display: revert; }
@@ -1554,6 +1555,7 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
 .cm-mermaid-add:focus-visible,
 .cm-diff-add:focus-visible,
 .cm-image-add:focus-visible,
+.cm-link-add:focus-visible,
 .cm-widget-add:focus-visible,
 .cm-storage-manager button:focus-visible,
 .cm-toast-action:focus-visible,

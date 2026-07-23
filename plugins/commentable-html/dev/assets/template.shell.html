@@ -326,10 +326,10 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
   <div id="sidebarResizeHandle" class="cm-sidebar-resize cm-skip" role="separator" aria-orientation="vertical" aria-label="Resize comments sidebar" tabindex="0" title="Drag or use Left and Right arrow keys to resize the comments sidebar"></div>
 </aside>
 
-<div class="cm-menu cm-skip" id="contextMenu" hidden>
-  <button type="button" id="menuComment">Add Comment</button>
-  <button type="button" id="menuDocComment" hidden>Comment on document</button>
-  <button type="button" id="menuSlideComment" hidden>Comment on slide</button>
+<div class="cm-menu cm-skip" id="contextMenu" role="menu" hidden>
+  <button type="button" role="menuitem" id="menuComment">Add Comment</button>
+  <button type="button" role="menuitem" id="menuDocComment" hidden>Comment on document</button>
+  <button type="button" role="menuitem" id="menuSlideComment" hidden>Comment on slide</button>
 </div>
 
 <button type="button" class="cm-mermaid-add cm-skip" id="mermaidAddBtn" hidden title="Comment on this diagram node">Add Comment</button>

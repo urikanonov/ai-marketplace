@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, fileUrl, INLINE, addTextComment } from "./helpers.js";
+import { openInline, ready, fileUrl, INLINE, addTextComment, selectText, stageContent } from "./helpers.js";
 
 // Accessibility + honesty of runtime feedback: toasts are announced to screen readers,
 // and Copy all never claims success when it actually fell back to a manual prompt.
@@ -69,4 +69,86 @@ test("Copy all does NOT claim success when it falls back to a manual prompt", as
   expect(txt).not.toMatch(/Copied \d+ comment/); // must not lie about success
   expect(txt).toMatch(/blocked|manual/i);        // tells the reviewer what actually happened
   await expect(page.locator("#toast")).toHaveAttribute("role", "alert");
+});
+
+// CMH-A11Y-09: the text-selection context menu is a keyboard-operable ARIA menu.
+test("the selection context menu exposes menu/menuitem roles and focuses its first item on open (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  const menu = page.locator("#contextMenu");
+  // Roles are baked into the template so assistive tech announces a menu of actions.
+  await expect(menu).toHaveAttribute("role", "menu");
+  await expect(page.locator("#menuComment")).toHaveAttribute("role", "menuitem");
+  await expect(page.locator("#menuDocComment")).toHaveAttribute("role", "menuitem");
+  await expect(page.locator("#menuSlideComment")).toHaveAttribute("role", "menuitem");
+  // Selecting text raises the menu; opening it moves focus to the first visible item so a
+  // keyboard-only reviewer lands on the primary inline-comment action.
+  await selectText(page, "#commentRoot p");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuComment")).toBeFocused();
+  // Enter on the focused item opens the composer (the menu is operable without a mouse).
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".cm-composer")).toHaveCount(1);
+});
+
+test("Escape closes the selection context menu and restores focus to the opener (CMH-A11Y-09)", async ({ page }) => {
+  await openInline(page);
+  // Give a real element focus, then open the doc-comment menu from an empty right-click; the
+  // menu takes focus, and Escape must return focus to where it was.
+  await page.locator("#btnToggleSidebar").focus();
+  await page.evaluate(() => {
+    document.getElementById("commentRoot").dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 30, clientY: 120 }));
+  });
+  const menu = page.locator("#contextMenu");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#menuDocComment")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(page.locator("#btnToggleSidebar")).toBeFocused();
+});
+
+// CMH-A11Y-10: the floating per-link add-comment affordance carries the shared focus ring.
+test("the link add-comment affordance shows the shared focus-visible ring (CMH-A11Y-10)", async ({ page }) => {
+  const staged = stageContent(
+    '<h2 id="lead">Docs</h2><p>See the <a id="ext" href="https://example.com/docs">reference</a> for details.</p>',
+    { key: "cmh-a11y10-doc" });
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  // Keyboard-focusing a commentable link reveals the floating #linkAddBtn (keyboard parity).
+  await page.locator("#ext").focus();
+  const btn = page.locator("#linkAddBtn");
+  await expect(btn).toBeVisible();
+  // Establish keyboard modality so the browser applies :focus-visible on focus.
+  await page.keyboard.press("Tab");
+  const seen = await btn.evaluate((el) => {
+    el.focus();
+    return {
+      matchesFocusVisible: el.matches(":focus-visible"),
+      outlineStyle: getComputedStyle(el).outlineStyle,
+      outlineWidth: getComputedStyle(el).outlineWidth,
+    };
+  });
+  expect(seen.matchesFocusVisible).toBe(true);
+  expect(seen.outlineStyle).toBe("solid");
+  expect(parseFloat(seen.outlineWidth)).toBeGreaterThanOrEqual(2);
+});
+
+// CMH-A11Y-11: the collapsible-section caret carries a visible focus ring.
+test("the section-collapse caret shows a focus-visible ring (CMH-A11Y-11)", async ({ page }) => {
+  await openInline(page);
+  const caret = page.locator("#commentRoot section .cmh-sec-caret").first();
+  await expect(caret).toHaveCount(1);
+  // Establish keyboard modality so :focus-visible applies.
+  await page.keyboard.press("Tab");
+  const seen = await caret.evaluate((el) => {
+    el.focus();
+    return {
+      matchesFocusVisible: el.matches(":focus-visible"),
+      outlineStyle: getComputedStyle(el).outlineStyle,
+      outlineWidth: getComputedStyle(el).outlineWidth,
+    };
+  });
+  expect(seen.matchesFocusVisible).toBe(true);
+  expect(seen.outlineStyle).toBe("solid");
+  expect(parseFloat(seen.outlineWidth)).toBeGreaterThanOrEqual(2);
 });
