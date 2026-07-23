@@ -402,4 +402,10 @@ test("the anchor offset tracks a taller wrapped navbar on a narrow plugin page (
   await expect(page).toHaveURL(/#install$/);
   const top = await page.locator("section#install").evaluate((n) => n.getBoundingClientRect().top);
   expect(top).toBeGreaterThanOrEqual(navBottom - 1);
+  // The [data-anchor][id] sub-heading offset must track the same wrapped navbar, so removing
+  // that selector from the rule would be caught here (not only the section[id] case above).
+  await page.locator("h3.why-sub#mediums[data-anchor] a.header-anchor").click();
+  await expect(page).toHaveURL(/#mediums$/);
+  const subTop = await page.locator("#mediums").evaluate((n) => n.getBoundingClientRect().top);
+  expect(subTop).toBeGreaterThanOrEqual(navBottom - 1);
 });
