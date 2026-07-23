@@ -199,9 +199,9 @@ build scripts rather than hand-editing them. Land the work as one or more focuse
 
 ### 6. Verification rounds
 
-Before merge, run at least three verification rounds on the diff (this exceeds AGENTS.md rule 6's default of
-two multi-duck rounds; the required multi-duck-review check validates only the PR-body stamp, not the round
-count). Each round independently confirms the work is bug-free and matches the intent behind every accepted
+Before merge, run at least three model-diverse multi-duck review rounds against the actual diff (this
+exceeds AGENTS.md rule 6's default of two multi-duck rounds; the required multi-duck-review check validates
+only the PR-body stamp, not the round count). Each round independently confirms the work is bug-free and matches the intent behind every accepted
 item, with no regressions or half-fixes. Fix issues found in a round and re-verify in the next; exit only
 when a full round is clean, and the final materially-changed HEAD must receive a clean round. Model diversity
 across rounds catches subtle bugs a single reviewer rubber-stamps.
