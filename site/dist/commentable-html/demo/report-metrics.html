@@ -1465,14 +1465,21 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   #commentRoot .cmh-diagram-gallery {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;
   }
-  #commentRoot .cmh-diagram-gallery > * {
-    margin: 0; box-sizing: border-box; height: 25rem;
-    display: grid; align-content: safe center; justify-items: stretch;
-    /* !important overrides the bare-diagram reset in 70-kql.css (`pre.mermaid { background:none;
-       border:0; padding:0; overflow-y:hidden }`), which we intentionally re-frame in the gallery. */
-    overflow: auto !important;
-    padding: 0.85rem !important; border: 1px solid var(--cp-border) !important;
-    border-radius: 12px !important; background: var(--cp-surface-soft) !important;
+  /* Target the diagram CONTAINERS explicitly (not `> *`, which would turn a stray table/list into a
+     grid item and break it). `> pre.mermaid` / `> div.mermaid` are specificity (1,2,1) which
+     out-specifies the bare-diagram reset in 70-kql.css (`#commentRoot pre.mermaid`, (1,1,1)), so this
+     re-frames them without `!important`. Top-aligned (`align-content: start`), NOT vertically centred:
+     `safe center` would be needed to keep a too-tall diagram's top reachable while it scrolls, and
+     `safe` is not reliable across older engines - top alignment guarantees the top is always reachable
+     in every browser. `justify-items: stretch` lets a diagram fill the card width; the layer's own
+     narrow cap (CMH-MMD-10) still governs a narrow diagram's width. */
+  #commentRoot .cmh-diagram-gallery > pre.mermaid,
+  #commentRoot .cmh-diagram-gallery > div.mermaid,
+  #commentRoot .cmh-diagram-gallery > figure {
+    margin: 0; box-sizing: border-box; height: 25rem; overflow: auto;
+    display: grid; align-content: start; justify-items: stretch;
+    padding: 0.85rem; border: 1px solid var(--cp-border); border-radius: 12px;
+    background: var(--cp-surface-soft);
   }
 }
 /* ---------------------------------------------------------------------------
@@ -3221,8 +3228,11 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
     margin-bottom: 0.75rem !important;
     break-inside: avoid;
     page-break-inside: avoid;
-    /* A diagram card scrolls on screen (bounded height); for print, drop the bound and the frame so
-       the whole diagram prints, not just the visible scroll window. */
+  }
+  /* A .cmh-diagram-gallery card scrolls on screen (bounded height + frame); for print, drop the bound
+     and the frame so the whole diagram prints, not just the visible scroll window. Scoped to the
+     diagram gallery ONLY - the chart .visual-grid keeps its figure frames in print. */
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > * {
     height: auto !important;
     overflow: visible !important;
     border: 0 !important;
@@ -5263,8 +5273,15 @@ function mermaidDiagramLabel(host) {
 // middle of a gantt timeline) so the ENTIRE graph is commentable, not only nodes.
 function showMermaidWholeFor(host) {
   const svg = host.querySelector("svg");
-  const rect = (svg || host).getBoundingClientRect();
+  const target = svg || host;
+  const rect = target.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return false;
+  // Clip to any scroll/overflow ancestor (e.g. a bounded .cmh-diagram-gallery card): when a tall
+  // diagram is scrolled inside its card the raw svg rect extends past the card, so anchor the button
+  // to the VISIBLE intersection and hide it when the diagram is scrolled out of view - mirroring
+  // positionMermaidAdd for node buttons.
+  const visible = _clipAwareRect(target, rect);
+  if (!visible) { mermaidAddBtn.hidden = true; pendingMermaid = null; return false; }
   pendingMermaid = {
     diagramIndex: parseInt(host.dataset.cmMermaidIndex, 10) || 0,
     nodeKey: "__diagram__",
@@ -5274,11 +5291,12 @@ function showMermaidWholeFor(host) {
   mermaidAddBtn.hidden = false;
   mermaidAddBtn.textContent = "Comment on diagram";
   const bw = mermaidAddBtn.offsetWidth || 160, bh = mermaidAddBtn.offsetHeight || 28;
-  const left = rect.right - bw - 6, top = rect.top + 6;
-  mermaidAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
-  mermaidAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
+  const bounds = _floatingBounds(host);
+  const left = visible.right - bw - 6, top = visible.top + 6;
+  mermaidAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
+  mermaidAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
   setActiveAdd({ el: host, btn: mermaidAddBtn, position: () => showMermaidWholeFor(host), clear: () => { pendingMermaid = null; } });
-  return _rectInViewport(rect);
+  return true;
 }
 function scheduleHideMermaidAdd() {
   if (mermaidAddHideTimer) clearTimeout(mermaidAddHideTimer);

@@ -1516,8 +1516,15 @@ function mermaidDiagramLabel(host) {
 // middle of a gantt timeline) so the ENTIRE graph is commentable, not only nodes.
 function showMermaidWholeFor(host) {
   const svg = host.querySelector("svg");
-  const rect = (svg || host).getBoundingClientRect();
+  const target = svg || host;
+  const rect = target.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return false;
+  // Clip to any scroll/overflow ancestor (e.g. a bounded .cmh-diagram-gallery card): when a tall
+  // diagram is scrolled inside its card the raw svg rect extends past the card, so anchor the button
+  // to the VISIBLE intersection and hide it when the diagram is scrolled out of view - mirroring
+  // positionMermaidAdd for node buttons.
+  const visible = _clipAwareRect(target, rect);
+  if (!visible) { mermaidAddBtn.hidden = true; pendingMermaid = null; return false; }
   pendingMermaid = {
     diagramIndex: parseInt(host.dataset.cmMermaidIndex, 10) || 0,
     nodeKey: "__diagram__",
@@ -1527,11 +1534,12 @@ function showMermaidWholeFor(host) {
   mermaidAddBtn.hidden = false;
   mermaidAddBtn.textContent = "Comment on diagram";
   const bw = mermaidAddBtn.offsetWidth || 160, bh = mermaidAddBtn.offsetHeight || 28;
-  const left = rect.right - bw - 6, top = rect.top + 6;
-  mermaidAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
-  mermaidAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
+  const bounds = _floatingBounds(host);
+  const left = visible.right - bw - 6, top = visible.top + 6;
+  mermaidAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
+  mermaidAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
   setActiveAdd({ el: host, btn: mermaidAddBtn, position: () => showMermaidWholeFor(host), clear: () => { pendingMermaid = null; } });
-  return _rectInViewport(rect);
+  return true;
 }
 function scheduleHideMermaidAdd() {
   if (mermaidAddHideTimer) clearTimeout(mermaidAddHideTimer);

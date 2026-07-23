@@ -224,8 +224,11 @@
     margin-bottom: 0.75rem !important;
     break-inside: avoid;
     page-break-inside: avoid;
-    /* A diagram card scrolls on screen (bounded height); for print, drop the bound and the frame so
-       the whole diagram prints, not just the visible scroll window. */
+  }
+  /* A .cmh-diagram-gallery card scrolls on screen (bounded height + frame); for print, drop the bound
+     and the frame so the whole diagram prints, not just the visible scroll window. Scoped to the
+     diagram gallery ONLY - the chart .visual-grid keeps its figure frames in print. */
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > * {
     height: auto !important;
     overflow: visible !important;
     border: 0 !important;

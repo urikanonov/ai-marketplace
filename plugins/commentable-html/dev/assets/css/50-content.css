@@ -149,13 +149,20 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
   #commentRoot .cmh-diagram-gallery {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;
   }
-  #commentRoot .cmh-diagram-gallery > * {
-    margin: 0; box-sizing: border-box; height: 25rem;
-    display: grid; align-content: safe center; justify-items: stretch;
-    /* !important overrides the bare-diagram reset in 70-kql.css (`pre.mermaid { background:none;
-       border:0; padding:0; overflow-y:hidden }`), which we intentionally re-frame in the gallery. */
-    overflow: auto !important;
-    padding: 0.85rem !important; border: 1px solid var(--cp-border) !important;
-    border-radius: 12px !important; background: var(--cp-surface-soft) !important;
+  /* Target the diagram CONTAINERS explicitly (not `> *`, which would turn a stray table/list into a
+     grid item and break it). `> pre.mermaid` / `> div.mermaid` are specificity (1,2,1) which
+     out-specifies the bare-diagram reset in 70-kql.css (`#commentRoot pre.mermaid`, (1,1,1)), so this
+     re-frames them without `!important`. Top-aligned (`align-content: start`), NOT vertically centred:
+     `safe center` would be needed to keep a too-tall diagram's top reachable while it scrolls, and
+     `safe` is not reliable across older engines - top alignment guarantees the top is always reachable
+     in every browser. `justify-items: stretch` lets a diagram fill the card width; the layer's own
+     narrow cap (CMH-MMD-10) still governs a narrow diagram's width. */
+  #commentRoot .cmh-diagram-gallery > pre.mermaid,
+  #commentRoot .cmh-diagram-gallery > div.mermaid,
+  #commentRoot .cmh-diagram-gallery > figure {
+    margin: 0; box-sizing: border-box; height: 25rem; overflow: auto;
+    display: grid; align-content: start; justify-items: stretch;
+    padding: 0.85rem; border: 1px solid var(--cp-border); border-radius: 12px;
+    background: var(--cp-surface-soft);
   }
 }

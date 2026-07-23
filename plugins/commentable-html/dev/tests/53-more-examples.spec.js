@@ -341,14 +341,18 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
 
       // The gallery is a plain CSS GRID (not a fragile multi-column block, and not the old marooning
       // grid-that-strands): a single-column block fallback or a multicol would each break a promise.
-      const displays = await page.evaluate((gallerySel) => ({
-        gallery: getComputedStyle(document.querySelector(gallerySel)).display,
-        galleryCols: getComputedStyle(document.querySelector(gallerySel)).gridTemplateColumns,
-        chart: getComputedStyle(document.querySelector('#commentRoot section[aria-labelledby="chart-gallery"] .visual-grid')).display,
-      }), GALLERY);
+      const displays = await page.evaluate((gallerySel) => {
+        const chartEl = document.querySelector('#commentRoot section[aria-labelledby="chart-gallery"] .visual-grid');
+        return {
+          gallery: getComputedStyle(document.querySelector(gallerySel)).display,
+          galleryCols: getComputedStyle(document.querySelector(gallerySel)).gridTemplateColumns,
+          chart: chartEl ? getComputedStyle(chartEl).display : null,
+        };
+      }, GALLERY);
       expect(displays.gallery, "diagram gallery is a CSS grid").toBe("grid");
       expect(displays.chart, "chart gallery is untouched (still a grid)").toBe("grid");
-      // The grid really forms multiple columns on a wide screen (not one column).
+      // getComputedStyle serializes grid-template-columns to the resolved per-column track list
+      // ("Npx Npx ...") in Chromium, so counting whitespace-separated tokens counts real columns.
       expect(displays.galleryCols.trim().split(/\s+/).length, "wide-screen gallery has multiple columns").toBeGreaterThanOrEqual(2);
 
       const cells = await measureGallery(page);
@@ -394,6 +398,9 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
       const tall = cells.find((c) => c.src.startsWith("stateDiagram"));
       expect(tall, "found the state diagram").toBeTruthy();
       expect(tall.svgH, "the tall state diagram exceeds the bounded card (so it scrolls, not shrinks)").toBeGreaterThan(tall.hostH);
+      // The narrow state diagram stays width-CAPPED by the layer (CMH-MMD-10, ~173px), never widened
+      // to fill the card - if a change ever un-caps it the scroll test would still pass, so pin the cap.
+      expect(tall.svgW, "the tall state diagram keeps the layer narrow cap (not widened)").toBeLessThan(250);
       expect(cells.some((c) => c.scrolls), "at least one tall diagram scrolls inside its bounded card").toBe(true);
 
       expect(errors, "no uncaught errors").toEqual([]);

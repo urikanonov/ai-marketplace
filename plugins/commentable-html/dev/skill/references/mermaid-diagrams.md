@@ -69,6 +69,8 @@ The shipped helper is robust by construction: a plain CSS grid of UNIFORM, heigh
 
 Keep `cm-skip` on gallery diagrams you do not want individually commentable. Do NOT re-create a per-document `.visual-grid`/masonry for a diagram gallery - it is exactly the layout that failed repeatedly; use `.cmh-diagram-gallery`.
 
+Put diagram CONTAINERS directly inside the gallery: only a `<pre class="mermaid">`, a `<div class="mermaid">`, or a `<figure>` is framed as a card (a stray `<table>` or list is left alone, not forced into the grid). A too-tall diagram scrolls WITHIN its card; the diagram content is fully present in the DOM (so assistive tech reads it), is shown whole when printed, and expands to full height on phones, and modern browsers make an overflow region keyboard-scrollable - so nothing is lost to the on-screen scroll. The whole-diagram "Comment on diagram" button is clip-aware, so it stays pinned to the card (or hides) as a tall diagram scrolls.
+
 ### Mermaid loader and CDN-fallback guidance
 
 The skill does **not** load mermaid. The host page must include a mermaid script, and diagrams should render by default. For generated reports, vendor mermaid next to the HTML and import it by relative path:
