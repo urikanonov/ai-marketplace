@@ -1,11 +1,17 @@
 # Mermaid diagrams
 
-
-## Mermaid diagrams
-
 The layer adds structural commenting to rendered mermaid diagrams inside `#commentRoot`. Raw mermaid source stays out of text selection when the host carries `cm-skip`.
 
-### Recommended markup
+## Contents
+
+- [Recommended markup](#recommended-markup)
+- [Commentable targets](#commentable-targets)
+- [How it behaves at runtime](#how-it-behaves-at-runtime)
+- [Diagram width and dense layouts](#diagram-width-and-dense-layouts)
+- [A gallery of several diagrams (use `.cmh-diagram-gallery`)](#a-gallery-of-several-diagrams-use-cmh-diagram-gallery)
+- [Mermaid loader and CDN-fallback guidance](#mermaid-loader-and-cdn-fallback-guidance)
+
+## Recommended markup
 
 ```html
 <pre class="mermaid cm-skip">
@@ -23,7 +29,7 @@ If mermaid source was pasted without `cm-skip`, run `tools/authoring/fix_skip.py
 `--fix-skip`) so raw diagram text is not selected as prose while the rendered diagram remains
 structurally commentable.
 
-### Commentable targets
+## Commentable targets
 
 - Flowchart nodes, clusters, and edge labels are commentable.
 - Gantt task labels and task bars are commentable. Bars without text use an `id:` key when mermaid emits one.
@@ -31,7 +37,7 @@ structurally commentable.
 - Hovering empty rendered diagram area shows **Comment on diagram** and creates a whole-diagram anchor with `nodeKey: "__diagram__"`.
 - Pie slices and actors are readiness signals but are treated as whole-diagram-only for commenting.
 
-### How it behaves at runtime
+## How it behaves at runtime
 
 1. `setupMermaidLayer()` finds each `pre.mermaid` / `div.mermaid`, stamps `class="cm-mermaid-host"` and `data-cm-mermaid-index`, then waits for a rendered SVG when needed.
 2. Readiness uses mermaid's processed flag plus rendered SVG markers. Pie slices can make the diagram ready even though they fall through to whole-diagram commenting.
@@ -39,7 +45,7 @@ structurally commentable.
 4. Saving writes an `anchorType: "mermaid"` comment keyed by `(diagramIndex, nodeKey)`, applies `cm-mermaid-hl`, and adds a sidebar card.
 5. Highlights restore across reload after mermaid finishes rendering and round-trip through **Copy all**, **Export as Portable**, and handled-id pruning.
 
-### Diagram width and dense layouts
+## Diagram width and dense layouts
 
 In a normal (non-deck) report, a diagram that does not naturally fill the content column looks small in two distinct ways. The runtime fixes one; authoring fixes the other.
 
@@ -49,7 +55,29 @@ In a normal (non-deck) report, a diagram that does not naturally fill the conten
   - Keep architecture subgraphs dense: lay subgraphs out `LR` with `direction TB` inside each, so the two clusters sit side by side rather than being pushed far apart.
   - Avoid long cross-subgraph edges (for example `-. implemented by .->` spanning the whole diagram) and isolated/orphan nodes; dagre spreads nodes apart to route them, which is exactly what strands nodes and opens the internal gaps.
 
-### Mermaid loader and CDN-fallback guidance
+## A gallery of several diagrams (use `.cmh-diagram-gallery`)
+
+To show SEVERAL diagrams (or figures) side by side, wrap them in a single `<div class="cmh-diagram-gallery">` rather than hand-rolling a grid. Diagrams have wildly different aspect ratios, and the naive layouts all fail on that mix: a plain CSS grid makes every row as tall as its tallest cell, so one tall diagram (a vertical `stateDiagram-v2`) strands its short siblings in dead space (marooning); bounding a cell's height by shrinking the SVG turns a tall-narrow diagram into a thin sliver; and CSS multi-column packs them but is fragile with mermaid's dynamic sizing (it can render tiny/empty diagrams in a real browser).
+
+The shipped helper is robust by construction: a plain CSS grid of UNIFORM, height-bounded, framed cards. Every card is the same height (no marooning), a diagram taller than its card scrolls inside the framed card instead of being shrunk (no sliver), and there is no multi-column. Width is left to the runtime, so Pattern A's narrow cap and wide-diagram scrolling still apply inside each card. On phones it collapses to a single-column flow, and print stacks it one per column.
+
+```html
+<div class="cmh-diagram-gallery">
+  <pre class="mermaid cm-skip">flowchart LR
+  A --> B --> C</pre>
+  <pre class="mermaid cm-skip">stateDiagram-v2
+  [*] --> Intake
+  Intake --> Done
+  Done --> [*]</pre>
+  <!-- ...more diagrams... -->
+</div>
+```
+
+Keep `cm-skip` on gallery diagrams you do not want individually commentable. Do NOT re-create a per-document `.visual-grid`/masonry for a diagram gallery - it is exactly the layout that failed repeatedly; use `.cmh-diagram-gallery`.
+
+Put diagram CONTAINERS directly inside the gallery: a `<pre class="mermaid">`, a `<div class="mermaid">`, or a `<figure>` is framed as a card (a stray `<table>` or list is left alone, not forced into the grid). To caption a diagram, wrap it in a `<figure>` with a `<figcaption>` - the figure is the scroll card, and its caption is kept as the accessible name (the generic scroll label is not added on top of it). This gallery is for DIAGRAMS - put charts (a `figure.chart`) in the separate chart gallery (`.visual-grid`), not here, so each keeps its own framing. A too-tall (or too-wide) diagram scrolls WITHIN its card; the diagram content is fully present in the DOM (so assistive tech reads it), is shown whole when printed, and expands to full height on phones. On the desktop (framed) layout a card that actually overflows is made keyboard-focusable (`tabindex="0"`, `role="figure"`, an arrow-key label) so a sighted keyboard-only user can scroll to the clipped content - nothing is lost to the on-screen scroll. The whole-diagram "Comment on diagram" button is clip-aware, so it stays pinned to the card (or hides) as a tall diagram scrolls.
+
+## Mermaid loader and CDN-fallback guidance
 
 The skill does **not** load mermaid. The host page must include a mermaid script, and diagrams should render by default. For generated reports, vendor mermaid next to the HTML and import it by relative path:
 

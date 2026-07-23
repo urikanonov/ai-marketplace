@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.214.0";
+const CMH_VERSION = "1.215.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1157,7 +1157,14 @@ function _rectInViewport(r) {
 }
 function _clipContainerFor(node) {
   const el = node && (node.nodeType === 1 ? node : node.parentElement);
-  return el && el.closest ? el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw") : null;
+  if (!el || !el.closest) return null;
+  // Prefer the gallery CARD (a direct child of .cmh-diagram-gallery) FIRST, then fall back to the
+  // generic clip containers. Otherwise, for a supported `<figure><pre class="mermaid">...</pre></figure>`
+  // card, `closest()` starting at the svg would match the inner `pre.mermaid` (the nearer ancestor)
+  // before the outer figure, and clamp the button to the non-scrolling pre instead of the figure's
+  // scroll card - so the whole-diagram button could detach while the figure scrolls.
+  return el.closest(".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure")
+    || el.closest("pre.mermaid, figure.chart, table, .cmh-diff-raw");
 }
 function _intersectRects(a, b) {
   const left = Math.max(a.left, b.left);
@@ -1265,9 +1272,50 @@ function updateMermaidWidthClass(host) {
   else host.style.removeProperty("--cmh-diagram-cap");
   const syncFade = () => {
     host.classList.toggle("cmh-diagram-scroll-fade", wide && host.scrollWidth > host.clientWidth + 1);
+    markGalleryCardScrollable(host);
   };
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncFade);
   else setTimeout(syncFade, 0);
+}
+// A bounded .cmh-diagram-gallery card whose diagram is taller OR wider than the card scrolls
+// (overflow:auto). Make an OVERFLOWING card keyboard-focusable so a sighted keyboard-only user can
+// scroll to the clipped content (WCAG 2.1.1). Only a card that actually overflows gets a tab stop - a
+// card that fits, and the frameless mobile single-column flow, do not - and the state is re-synced on
+// resize/ResizeObserver, so it clears when a widened card no longer overflows. Ownership is explicit and
+// precise: we take a card over ONLY when the author set none of tabindex/role/aria-label, we mark it with
+// `data-cmh-scroll-a11y` (which survives export so an exported+reloaded card is re-adopted), we
+// idempotently re-assert the trio (so a sanitizer that stripped tabindex/role but kept the marker is
+// healed), and we remove ONLY the values we set (leaving any author-modified value alone). `host` is a
+// mermaid host; the actual gallery CARD is resolved with closest over the exact card selectors, so a
+// mermaid host wrapped in a figure card marks the figure and a stray non-card wrapper is never adopted.
+var GALLERY_SCROLL_LABEL = "Scrollable diagram - use the arrow keys to scroll";
+var GALLERY_CARD_SEL = ".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure";
+function markGalleryCardScrollable(host) {
+  const card = host && host.closest && host.closest(GALLERY_CARD_SEL);
+  if (!card) return;
+  // Only the framed (>=481px) gallery is a bounded scroll card; below the mobile breakpoint the helper
+  // is a frameless full-height flow (a wide diagram uses the layer's own horizontal scroll,
+  // CMH-RESP-01/09, which carries no extra tab stop), so a mobile card gets no tab stop. A
+  // desktop->mobile resize makes `overflows` false, so the else-branch clears any marking we added.
+  const framed = typeof window.matchMedia !== "function" || window.matchMedia("(min-width: 481px)").matches;
+  const overflows = framed && (card.scrollHeight > card.clientHeight + 1 ||
+    card.scrollWidth > card.clientWidth + 1);
+  const owned = card.getAttribute("data-cmh-scroll-a11y") === "1";
+  if (overflows) {
+    // Respect an author who set any of these on a card we do not already own.
+    if (!owned && (card.hasAttribute("tabindex") || card.hasAttribute("role") || card.hasAttribute("aria-label"))) return;
+    if (!card.hasAttribute("tabindex")) card.setAttribute("tabindex", "0");
+    if (!card.hasAttribute("role")) card.setAttribute("role", "figure");
+    // Do not clobber a <figure>'s native accessible name from its <figcaption> - a captioned diagram
+    // already has a name; only add the generic scroll label when there is none.
+    if (!card.hasAttribute("aria-label") && !card.querySelector("figcaption")) card.setAttribute("aria-label", GALLERY_SCROLL_LABEL);
+    card.setAttribute("data-cmh-scroll-a11y", "1");
+  } else if (owned) {
+    if (card.getAttribute("tabindex") === "0") card.removeAttribute("tabindex");
+    if (card.getAttribute("role") === "figure") card.removeAttribute("role");
+    if (card.getAttribute("aria-label") === GALLERY_SCROLL_LABEL) card.removeAttribute("aria-label");
+    card.removeAttribute("data-cmh-scroll-a11y");
+  }
 }
 // The rendered SVG's design-space dimensions from its viewBox (the intrinsic aspect ratio used to
 // scale a deck diagram). Returns null when no positive viewBox is present.
@@ -1514,10 +1562,28 @@ function mermaidDiagramLabel(host) {
 }
 // Whole-diagram affordance: shown when hovering the diagram's empty area (e.g. the
 // middle of a gantt timeline) so the ENTIRE graph is commentable, not only nodes.
-function showMermaidWholeFor(host) {
+// Pure positioner (mirrors positionMermaidAdd): computes the clip-aware placement and returns
+// whether the button is visible. NO state/timer/setActiveAdd side effects, so a scroll/resize
+// reposition can call it safely without cancelling a pending mouseleave hide.
+function positionMermaidWhole(host) {
   const svg = host.querySelector("svg");
-  const rect = (svg || host).getBoundingClientRect();
+  const target = svg || host;
+  const rect = target.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return false;
+  // Clip to any scroll/overflow ancestor (e.g. a bounded .cmh-diagram-gallery card): when a tall
+  // diagram is scrolled inside its card the raw svg rect extends past the card, so anchor the button
+  // to the VISIBLE intersection and hide it when the diagram is scrolled out of view - mirroring
+  // positionMermaidAdd for node buttons.
+  const visible = _clipAwareRect(target, rect);
+  if (!visible) return false;
+  const bw = mermaidAddBtn.offsetWidth || 160, bh = mermaidAddBtn.offsetHeight || 28;
+  const bounds = _floatingBounds(host);
+  const left = visible.right - bw - 6, top = visible.top + 6;
+  mermaidAddBtn.style.left = _clamp(left, bounds.left, bounds.right - bw) + "px";
+  mermaidAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - bh) + "px";
+  return true;
+}
+function showMermaidWholeFor(host) {
   pendingMermaid = {
     diagramIndex: parseInt(host.dataset.cmMermaidIndex, 10) || 0,
     nodeKey: "__diagram__",
@@ -1526,12 +1592,9 @@ function showMermaidWholeFor(host) {
   if (mermaidAddHideTimer) { clearTimeout(mermaidAddHideTimer); mermaidAddHideTimer = null; }
   mermaidAddBtn.hidden = false;
   mermaidAddBtn.textContent = "Comment on diagram";
-  const bw = mermaidAddBtn.offsetWidth || 160, bh = mermaidAddBtn.offsetHeight || 28;
-  const left = rect.right - bw - 6, top = rect.top + 6;
-  mermaidAddBtn.style.left = Math.max(8, Math.min(left, window.innerWidth - bw - 8)) + "px";
-  mermaidAddBtn.style.top = Math.max(8, Math.min(top, window.innerHeight - bh - 8)) + "px";
-  setActiveAdd({ el: host, btn: mermaidAddBtn, position: () => showMermaidWholeFor(host), clear: () => { pendingMermaid = null; } });
-  return _rectInViewport(rect);
+  if (!positionMermaidWhole(host)) { mermaidAddBtn.hidden = true; pendingMermaid = null; return false; }
+  setActiveAdd({ el: host, btn: mermaidAddBtn, position: () => positionMermaidWhole(host), clear: () => { pendingMermaid = null; } });
+  return true;
 }
 function scheduleHideMermaidAdd() {
   if (mermaidAddHideTimer) clearTimeout(mermaidAddHideTimer);

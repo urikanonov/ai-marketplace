@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.214.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.215.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,25 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.215.0] - 2026-07-23</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>A shipped <code>.cmh-diagram-gallery</code> layout helper for showing several diagrams/figures of very different aspect ratios robustly (CMH-CONTENT-19). It is a plain CSS grid of uniform, height-bounded, framed cards: every card is the same height (no marooning of a short diagram beside a tall one), a diagram taller than its card scrolls inside it instead of being shrunk (no sliver), and there is no CSS multi-column (which is fragile with mermaid&#x27;s dynamic sizing and produced tiny/empty diagrams in a real browser). Documented in <code>references/mermaid-diagrams.md</code>.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The visuals-matrix demo (<code>report-metrics.html</code>) Mermaid gallery now uses <code>.cmh-diagram-gallery</code> instead of a hand-rolled per-document grid/masonry, retiring the layout that failed repeatedly (marooning in #597, sliver/masonry in #602/#610). This is the durable, tested fix for the demo&#x27;s gallery rendering (CMH-DEMO-06).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.214.0] - 2026-07-22</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>Flat (non-deck) documents now print / Save-as-PDF as a SINGLE continuous no-break page instead of paginating onto A4/Letter sheets, so no page break cuts through a section, table, chart, diagram, or code block. On print the runtime measures the full content height (proactively, under stable screen media, since Chromium locks the print <code>@page</code> size at <code>beforeprint</code>) and sizes a dynamic <code>@page</code> to the content, collapsing a multi-page report onto one tall page. Documents that contain a block-stacking container - a multi-column chart gallery or a grid/flex widget such as a kanban board - are left on normal pagination, because their print-time grid-to-block reflow and asynchronous chart resize cannot be measured before the page size is locked; their content still prints in full on standard pages. Decks are unchanged (one landscape 16:9 page per slide). Relies on the browser honoring a CSS <code>@page</code> size (Chromium&#x27;s native print/PDF). (CMH-PRINT-06)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.213.0] - 2026-07-22</h3></div>
             <div class="group-label">Changed</div>
@@ -470,8 +483,6 @@
               <li>Guarded sibling-tool imports in the shipped tools are never SILENT anymore. The #584 root cause was a deferred <code>import doc_stamp</code> swallowed by <code>except (OSError, ImportError): pass</code>, so a broken sibling import degraded a whole feature with no signal. Now every guarded import fallback across the tools (<code>new_document.py</code>, <code>deck_scaffold.py</code>, <code>retrofit.py</code>, <code>upgrade.py</code>, <code>deck_theme.py</code>, <code>deck_validate.py</code>, <code>chart_block.py</code>, <code>highlighting.py</code>, and <code>validate.py</code>&#x27;s <code>cmhval</code> and validated-stamp guards) emits a one-line stderr warning via a new <code>_toolpath.warn_missing_tool</code> (or unconditionally re-raises / recovers by re-importing), so a degraded run is visible. A guard test (<code>test_tool_imports.py</code>) additionally proves every guarded sibling import RESOLVES in the shipped layout (a missing/renamed sibling fails CI loudly) and structurally forbids any future silent import fallback - covering <code>except ImportError</code>, <code>ModuleNotFoundError</code>, and import-guarding broad / bare <code>except</code> handlers across the whole shipped tools tree. (CMH-TOOL-IMPORTS-01)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.212.0] - 2026-07-22</h3></div>
             <div class="group-label">Fixed</div>
@@ -517,15 +528,7 @@
               <li>The validated stamp is now CONTENT-BOUND to the document&#x27;s authored TEXT. On a strict-clean pass <code>validate.py</code>/<code>finalize.py</code> also write <code>commentable-html-validated-hash</code>, a whole content-root text hash computed with the shared section-hash contract, and the runtime reproduces it byte for byte (<code>window.__cmhReview.docHash()</code>). The amber &quot;not validated&quot; banner therefore returns after a post-validation edit to the visible authored text and clears again on re-validation, instead of relying only on timestamps - so &quot;validated&quot; now tracks the CURRENT text. It is a stable-text fingerprint (a strong nudge, not a cryptographic seal): it does not track attribute-only edits or edits inside the excluded rendered blocks (mermaid/diff/KQL/chart/notes). A document with no content root keeps a timestamp-only stamp and the runtime falls back to the timestamp signal, so it never false-positives; a reader&#x27;s persisted table sort is canonicalized so it does not falsely invalidate. Only a FULL clean validation stamps (a <code>--charts-only</code>/<code>--layer-only</code> partial run never does). <code>finalize.py</code> also prints a guardrail reminder on a strict-fail that the fix must end with a clean strict pass to re-stamp. (CMH-STAMP-05, CMH-STAMP-03, CMH-STAMP-02, closes #584)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.208.0] - 2026-07-22</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Review comment notes now support lightweight rich text (WhatsApp / Office style), rendered safely wherever a note is shown (sidebar card, inline popover, print appendix): <code>**bold**</code>, <code>*italic*</code>, <code>__underline__</code>, <code>~~strikethrough~~</code>, inline code, <code>- </code> bullet lists, markdown-style links (http/https/mailto only), and bare <code>http(s)://</code> URLs auto-linked as clickable, new-tab, safe anchors. A single-pass tokenizer escapes all input first and only emits its own fixed tags, so a note can never inject markup; unsafe link schemes and hostile input are handled safely.</li>
-              <li>The comment composer gained a formatting toolbar (bold, italic, underline, strikethrough, code, link, list) that wraps the current selection, plus keyboard shortcuts <code>Ctrl/Cmd+B</code> / <code>I</code> / <code>U</code> and <code>Ctrl/Cmd+K</code> (link). The stored note stays plain-text source, so Copy all still hands the agent the exact markers and old notes remain loadable without any migration. A new &quot;Formatting your comment&quot; Help topic and a tutorial section document the markers and shortcuts.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">177 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">178 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

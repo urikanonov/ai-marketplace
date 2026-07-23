@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.215.0] - 2026-07-23
+
+### Added
+
+- A shipped `.cmh-diagram-gallery` layout helper for showing several diagrams/figures of very
+  different aspect ratios robustly (CMH-CONTENT-19). It is a plain CSS grid of uniform,
+  height-bounded, framed cards: every card is the same height (no marooning of a short diagram
+  beside a tall one), a diagram taller than its card scrolls inside it instead of being shrunk (no
+  sliver), and there is no CSS multi-column (which is fragile with mermaid's dynamic sizing and
+  produced tiny/empty diagrams in a real browser). Documented in `references/mermaid-diagrams.md`.
+
+### Changed
+
+- The visuals-matrix demo (`report-metrics.html`) Mermaid gallery now uses `.cmh-diagram-gallery`
+  instead of a hand-rolled per-document grid/masonry, retiring the layout that failed repeatedly
+  (marooning in #597, sliver/masonry in #602/#610). This is the durable, tested fix for the demo's
+  gallery rendering (CMH-DEMO-06).
+
 ## [1.214.0] - 2026-07-22
 
 ### Added
