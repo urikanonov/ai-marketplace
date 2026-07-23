@@ -180,7 +180,7 @@ test("a blockquote and an image figure map to their forms", async ({ page }) => 
   expect(md).toContain("![a picture](pic.png)");
 });
 
-test("a blockquote with nested block children preserves each child on its own > prefixed lines (CMH-MD-07)", async ({ page }) => {
+test("a blockquote with nested block children preserves each child on its own > prefixed lines (CMH-MD-08)", async ({ page }) => {
   const C = '<h1>BQ</h1>'
     + '<blockquote>'
     + '<p>first paragraph</p>'
