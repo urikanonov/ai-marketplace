@@ -142,24 +142,30 @@ try {
         return
     }
 
+    $anyFailed = $false
     foreach ($plugin in @($plugins)) {
         try {
             $output = & $cli plugin update "$plugin@$marketplace" 2>&1
             if ($LASTEXITCODE -ne 0) {
                 Write-UpdaterLog "update failed for $plugin (exit $LASTEXITCODE): $output"
+                $anyFailed = $true
             }
         } catch {
             Write-UpdaterLog "update errored for $plugin : $($_.Exception.Message)"
+            $anyFailed = $true
         }
     }
 
     Write-UpdaterLog ("auto-update pass complete: {0} plugin(s) checked." -f @($plugins).Count)
 
-    # Record the pass so the next session can throttle. Failure here is non-fatal.
-    try {
-        if (-Not (Test-Path $pluginData)) { New-Item -ItemType Directory -Force -Path $pluginData | Out-Null }
-        ([datetimeoffset]::Now).ToString('o') | Set-Content -Path $throttleFile -Encoding utf8
-    } catch { }
+    # Only stamp a fully successful pass; a partial failure leaves the stamp absent so the
+    # next session retries rather than waiting the full throttle interval. Failure here is non-fatal.
+    if (-Not $anyFailed) {
+        try {
+            if (-Not (Test-Path $pluginData)) { New-Item -ItemType Directory -Force -Path $pluginData | Out-Null }
+            ([datetimeoffset]::Now).ToString('o') | Set-Content -Path $throttleFile -Encoding utf8
+        } catch { }
+    }
 } catch {
     Write-UpdaterLog "auto-update aborted: $($_.Exception.Message)"
 }

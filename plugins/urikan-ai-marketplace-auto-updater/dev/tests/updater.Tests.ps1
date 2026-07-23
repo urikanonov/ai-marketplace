@@ -612,6 +612,26 @@ try {
     }
 } catch { $script:failures += "UPD-20 threw: $_" }
 
+Write-Host "== UPD-21 failed update does not write the success throttle stamp =="
+try {
+    # A pass where one plugin fails must NOT write the stamp so the next session retries.
+    Reset-Mock
+    $global:CopilotFailFor = "beta"
+    $h21 = New-Sandbox -plugins @("alpha", "beta", "gamma")
+    Invoke-Hook $h21
+    Assert-True (-not (Test-Path (Get-Throttle $h21))) "UPD-21: throttle stamp must NOT be written after a failed update"
+    Assert-True ((Get-Log $h21) -like "*update failed for beta*") "UPD-21: the failure is still logged"
+    Remove-Item -Recurse -Force $h21
+
+    # A fully successful pass MUST still write the stamp (regression guard).
+    $global:CopilotFailFor = $null
+    Reset-Mock
+    $h21b = New-Sandbox -plugins @("alpha", "beta")
+    Invoke-Hook $h21b
+    Assert-True (Test-Path (Get-Throttle $h21b)) "UPD-21: throttle stamp IS written after an all-success pass"
+    Remove-Item -Recurse -Force $h21b
+} catch { $script:failures += "UPD-21 threw: $_" }
+
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue
 

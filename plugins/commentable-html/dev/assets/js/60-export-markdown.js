@@ -268,7 +268,10 @@ function _mdBlock(el) {
     (((code || el).className) || "").split(/\s+/).forEach((c) => { const m = c.match(/^language-(.+)$/); if (m) lang = m[1]; });
     return _mdFence(lang, (code || el).textContent || "");
   }
-  if (t === "BLOCKQUOTE") return "> " + _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
+  if (t === "BLOCKQUOTE") {
+    const inner = _mdChildren(el);
+    return inner.split("\n").map(function(l) { return l ? "> " + l : ">"; }).join("\n");
+  }
   if (el.classList && el.classList.contains("cmh-callout")) return _mdCallout(el);
   return _mdChildren(el);
 }

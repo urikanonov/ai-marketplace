@@ -12,7 +12,7 @@
     {
       "name": "commentable-html",
       "description": "Make any static HTML report reviewable. Readers highlight any paragraph, table cell, code block, KQL query, chart, image, or diagram, leave inline comments, and export the whole thread back to your agent to act on - all in one portable file, no server or build required.",
-      "version": "1.224.0",
+      "version": "1.225.0",
       "source": "./plugins/commentable-html/pkg",
       "author": {
         "name": "Uri Kanonov",
@@ -67,7 +67,7 @@
     {
       "name": "urikan-ai-marketplace-auto-updater",
       "description": "Automatically checks for and installs plugin updates from the urikan-ai-marketplace on session start. Opt-in: only install if you want automatic updates.",
-      "version": "1.4.1",
+      "version": "1.4.2",
       "source": "./plugins/urikan-ai-marketplace-auto-updater/pkg",
       "author": {
         "name": "Uri Kanonov",
