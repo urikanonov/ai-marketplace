@@ -299,6 +299,7 @@ function _mdCommentsAppendix() {
   const oneLine = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
   const esc = (s) => _mdLinkLabel(oneLine(s));   // bracket/backslash-escape so a crafted label cannot inject a link into the heading
   const _mdNoteText = (note) => String(note == null ? "" : note)
+    .replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, "")
     .replace(/[\u0085\u2028\u2029]/g, "\n").replace(/\r\n?/g, "\n");
   const _mdNoteFence = (note) => {
     const text = _mdNoteText(note);
@@ -342,9 +343,6 @@ function _mdCommentsAppendix() {
     out.push("");
     out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment") + _mdBy(c));
     out.push("");
-    // Escape each preserved note line like prose (raw HTML, inline markup, leading structural
-    // markers including setext underlines) and neutralize pipes so a multi-line note cannot
-    // forge a GFM table either.
     _mdNoteFence(c.note);
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, live) : [];
     replies.forEach((r, k) => {
