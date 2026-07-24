@@ -20,19 +20,47 @@
   padding: 0 var(--cp-chrome-button-y); border-radius: 6px;
 }
 .cm-storage-close:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
-.cm-storage-intro, .cm-storage-total {
+.cm-storage-intro {
   margin: 0; padding: 0.6rem var(--cp-chrome-modal-x) 0;
   font-size: var(--cp-chrome-help-font); line-height: 1.5; color: var(--cp-text-soft); flex: 0 0 auto;
 }
-.cm-storage-total { padding-bottom: 0.4rem; color: var(--cp-text); font-weight: 600; }
 .cm-storage-usage {
-  margin: 0.2rem var(--cp-chrome-modal-x) 0.2rem; padding: 0.5rem 0.75rem;
+  margin: 0.2rem var(--cp-chrome-modal-x) 0.2rem; padding: 0.6rem 0.75rem;
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 8px; flex: 0 0 auto;
+  /* Slice colors, shared by the SVG wedges and the legend swatches. Each keeps at least a 3:1 contrast
+     against the panel surface (light and dark) so the wedges stay distinguishable for low-vision users;
+     the per-slice SVG <title> and the legend text are the non-color cues. `this` reuses --cp-accent,
+     which already flips per theme. */
+  --cm-pie-this: var(--cp-accent);
+  --cm-pie-otherdocs: #4f46e5;
+  --cm-pie-other: #b45309;
+  --cm-pie-free: #64748b;
 }
-.cm-storage-bar { height: 8px; border-radius: 999px; background: var(--cp-border); overflow: hidden; margin-bottom: 0.4rem; }
-.cm-storage-bar-fill { height: 100%; background: var(--cp-accent); border-radius: 999px; }
-.cm-storage-usage-line { font-size: 0.8rem; color: var(--cp-text-soft); line-height: 1.5; }
-.cm-storage-usage-line:first-of-type { color: var(--cp-text); font-weight: 600; }
+html[data-theme="dark"] .cm-storage-usage {
+  --cm-pie-otherdocs: #a5b4fc;
+  --cm-pie-other: #fbbf24;
+  --cm-pie-free: #94a3b8;
+}
+.cm-storage-chart { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.cm-storage-pie { flex: 0 0 auto; display: block; }
+.cm-storage-pie .cm-pie-slice { stroke: var(--cp-surface); stroke-width: 1; }
+.cm-storage-pie .cm-pie-this { fill: var(--cm-pie-this); }
+.cm-storage-pie .cm-pie-otherdocs { fill: var(--cm-pie-otherdocs); }
+.cm-storage-pie .cm-pie-other { fill: var(--cm-pie-other); }
+.cm-storage-pie .cm-pie-free { fill: var(--cm-pie-free); }
+.cm-storage-legend { list-style: none; margin: 0; padding: 0; flex: 1 1 12rem; min-width: 12rem; }
+.cm-storage-legend-item {
+  display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; line-height: 1.9; color: var(--cp-text);
+}
+.cm-storage-legend-swatch {
+  flex: 0 0 auto; width: 0.72rem; height: 0.72rem; border-radius: 3px; border: 1px solid var(--cp-border);
+}
+.cm-storage-legend-swatch.cm-pie-this { background: var(--cm-pie-this); }
+.cm-storage-legend-swatch.cm-pie-otherdocs { background: var(--cm-pie-otherdocs); }
+.cm-storage-legend-swatch.cm-pie-other { background: var(--cm-pie-other); }
+.cm-storage-legend-swatch.cm-pie-free { background: var(--cm-pie-free); }
+.cm-storage-legend-label { flex: 1 1 auto; }
+.cm-storage-legend-size { flex: 0 0 auto; color: var(--cp-text-soft); font-variant-numeric: tabular-nums; }
 .cm-storage-banner {
   margin: 0.6rem var(--cp-chrome-modal-x) 0; padding: 0.55rem 0.75rem; border-radius: 8px;
   font-size: var(--cp-chrome-help-font); line-height: 1.45; flex: 0 0 auto;

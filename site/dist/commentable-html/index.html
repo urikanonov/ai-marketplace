@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.228.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.230.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.230.0] - 2026-07-24</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The Manage storage dialog now shows storage consumption ONLY as a four-slice pie chart with a short bullet legend beside it, replacing both the previous prose usage summary and the &quot;About X used across N documents&quot; total line. The slices are This document, Other commentable-html documents (only other real documents), Other (all remaining same-origin data - non-commentable-html apps plus commentable-html&#x27;s shared registry index and preferences), and Free (remaining headroom in the assumed ~5 MB budget); the four slices sum to the whole disc. Each legend bullet names its slice with a human-readable size and percentage (the accessible text alternative), and the pie SVG carries a brief role/aria-label plus a per-slice title as a non-color cue. (CMH-STORE-13)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.228.0] - 2026-07-24</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Deck: a right-click on non-interactive slide text now reliably opens the deck comment menu again, even when it lands immediately after an empty-space advance click (CMH-DECK-31). The advance click&#x27;s still-pending deferred mouseup selection cleanup could clobber the freshly opened menu, so the menu now cancels that pending cleanup when it opens. The menu stays suppressed on <code>cm-skip</code> deck chrome and on interactive targets. (CMH-DECK-40)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.227.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
@@ -470,8 +479,6 @@
               <li>Hardened the diagram-gallery legibility tests (CMH-CONTENT-19) to also cover HTML labels. Non-deck mermaid diagrams (flowchart, state, class, er) render their node labels as HTML in <code>&lt;foreignObject&gt;</code>, which the previous svg-<code>&lt;text&gt;</code> legibility checks did not measure - so a crushed or transparent HTML label would have looked empty in a real browser while every geometry and svg-text assertion stayed green. The demo test (<code>tests/53-more-examples.spec.js</code>) and the diverse-types hermetic test (<code>tests/76-diagram-gallery.spec.js</code>) now measure each <code>foreignObject</code> label&#x27;s rendered height and paint visibility and assert a legibility floor, and the demo test asserts the demo genuinely includes HTML-label diagrams so the check is never vacuously skipped. Documented in <code>references/mermaid-diagrams.md</code> that an extreme-tall (very high aspect-ratio) diagram is scaled down by the fixed-height gallery and reads better as a standalone diagram outside it.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.226.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
@@ -503,14 +510,7 @@
               <li>Accessibility: a sortable table&#x27;s header cell now reflects the active sort direction via <code>aria-sort</code> (<code>ascending</code> / <code>descending</code>) on the <code>&lt;th&gt;</code>, removed when the column resets or another column takes the sort, so assistive tech announces which column is sorted and how.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.222.0] - 2026-07-23</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Comment search now Unicode-normalizes note text and queries and uses locale-aware casing, so canonically equivalent text and Turkish/Azeri dotted or dotless I case pairs match correctly. Localized card, popover, and board-summary timestamps isolate the date from any LTR suffix under RTL locales, and the inline image tool accepts safe paths whose canonical casing differs on case-insensitive filesystems. (CMH-SEARCH-06, CMH-SEARCH-07, CMH-SIDE-10, CMH-TOOL-21)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">187 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">188 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -109,7 +109,6 @@ test("the manager lists every document with size and count, current marked (CMH-
   await expect(page.locator(".cm-storage-row:not(.cm-storage-global)")).toHaveCount(2);
   await expect(page.locator(".cm-storage-current .cm-storage-badge")).toHaveText("This document");
   await expect(page.locator(".cm-storage-row", { hasText: "other.html" })).toBeVisible();
-  await expect(page.locator(".cm-storage-total")).toContainText("used across 2 documents");
 });
 
 test("deleting another document's row frees its keys but never touches non-CMH data (CMH-STORE-05)", async ({ page }) => {
@@ -801,13 +800,13 @@ test("the index LRU eviction preserves an entry whose key is __proto__ (CMH-STOR
   expect(survived).toBe(true);
 });
 
-test("the usage summary shows origin, commentable-html, and this-document shares (CMH-STORE-13)", async ({ page }) => {
+test("the storage breakdown is a four-slice pie with a bullet legend (CMH-STORE-13)", async ({ page }) => {
   await open(page, { key: "cmh-usage-cur", source: "usage-cur.html" });
   await addTextComment(page, "#commentRoot p", "a note on the current document");
   await page.evaluate(() => {
-    // A large NON-commentable-html blob so the origin total clearly exceeds commentable-html usage.
+    // A large NON-commentable-html blob so the Other slice is clearly non-zero.
     localStorage.setItem("some-other-app-blob", "z".repeat(150000));
-    // A second commentable-html document, so this document is only a fraction of CMH storage.
+    // A second commentable-html document, so the Other commentable-html documents slice is non-zero.
     localStorage.setItem("commentable-html:/reports/other.html",
       JSON.stringify(Array.from({ length: 20 }, (_, i) => ({
         id: "cusage" + i.toString().padStart(4, "0"), note: "n".repeat(50), quote: "q", start: i, end: i + 1,
@@ -816,19 +815,84 @@ test("the usage summary shows origin, commentable-html, and this-document shares
   await openManager(page);
   const usage = page.locator(".cm-storage-usage");
   await expect(usage).toBeVisible();
-  const u = await page.evaluate(() => window.__cmhStorageCodec.usage());
-  expect(u.otherBytes).toBeGreaterThan(0);             // the non-CMH blob is counted in the origin total
-  expect(u.cmhBytes).toBeGreaterThan(u.currentBytes);  // this document is a fraction of CMH storage
-  const originPct = Math.round((u.originBytes / u.assumedQuota) * 100);
-  const cmhOfOrigin = Math.round((u.cmhBytes / u.originBytes) * 100);
-  const docOfCmh = Math.round((u.currentBytes / u.cmhBytes) * 100);
-  // Assert per line so a percentage cannot satisfy the test on the wrong line or via a substring.
-  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "Local storage in use" }))
-    .toContainText("about " + originPct + "%");
-  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "commentable-html:" }))
-    .toContainText(cmhOfOrigin + "% of the storage in use");
-  await expect(usage.locator(".cm-storage-usage-line").filter({ hasText: "This document:" }))
-    .toContainText(docOfCmh + "% of commentable-html storage");
+  // The old prose usage lines are gone; a pie chart replaces them.
+  await expect(usage.locator(".cm-storage-usage-line")).toHaveCount(0);
+  await expect(usage.locator("svg.cm-storage-pie")).toHaveCount(1);
+  await expect(usage.locator("svg.cm-storage-pie")).toHaveAttribute("role", "img");
+
+  // Exactly four legend bullets, in slice order, each labelled and sized.
+  const items = usage.locator(".cm-storage-legend-item");
+  await expect(items).toHaveCount(4);
+  await expect(items.nth(0)).toHaveAttribute("data-slice", "this");
+  await expect(items.nth(1)).toHaveAttribute("data-slice", "otherdocs");
+  await expect(items.nth(2)).toHaveAttribute("data-slice", "other");
+  await expect(items.nth(3)).toHaveAttribute("data-slice", "free");
+  await expect(items.nth(0).locator(".cm-storage-legend-label")).toHaveText("This document");
+  await expect(items.nth(3).locator(".cm-storage-legend-label")).toHaveText("Free");
+
+  const bd = await page.evaluate(() => window.__cmhStorageCodec.breakdown());
+  expect(bd.thisDoc).toBeGreaterThan(0);
+  expect(bd.otherDocs).toBeGreaterThan(0);  // the second commentable-html document
+  expect(bd.other).toBeGreaterThan(0);      // the non-CMH blob (plus shared metadata)
+  expect(bd.free).toBeGreaterThan(0);       // headroom remains in the ~5 MB budget
+  // The four slices sum to the whole disc.
+  expect(bd.thisDoc + bd.otherDocs + bd.other + bd.free).toBe(bd.whole);
+
+  // Every non-zero slice is drawn in the pie and tagged with its byte value.
+  for (const key of ["this", "otherdocs", "other", "free"]) {
+    const slice = usage.locator(`svg.cm-storage-pie .cm-pie-slice[data-slice="${key}"]`);
+    await expect(slice).toHaveCount(1);
+    // Each slice carries a <title> so a mouse user gets a non-color hover cue.
+    await expect(slice.locator("title")).toHaveCount(1);
+    const bytes = Number(await slice.getAttribute("data-bytes"));
+    expect(bytes).toBeGreaterThan(0);
+  }
+  // The legend size for "This document" reports a human size and percentage.
+  await expect(items.nth(0).locator(".cm-storage-legend-size")).toContainText("(");
+});
+
+test("the storage breakdown caps Free at 0 and fills the disc when usage exceeds the budget (CMH-STORE-13)", async ({ page }) => {
+  await open(page, { key: "cmh-over", source: "over.html" });
+  const seeded = await page.evaluate(() => {
+    // A blob large enough that total origin usage exceeds the assumed ~5 MB budget (UTF-16 = 2 bytes/char).
+    try { localStorage.setItem("big-non-cmh-blob", "z".repeat(3 * 1024 * 1024)); return true; }
+    catch (e) { return false; }
+  });
+  expect(seeded, "seeded an over-budget blob").toBe(true);
+  await openManager(page);
+  const bd = await page.evaluate(() => window.__cmhStorageCodec.breakdown());
+  expect(bd.used).toBeGreaterThan(bd.quota);   // over the assumed 5 MB budget
+  expect(bd.free).toBe(0);                      // no headroom left
+  // The disc equals the actual usage (not the budget), and the four slices still sum to it.
+  expect(bd.thisDoc + bd.otherDocs + bd.other + bd.free).toBe(bd.whole);
+  expect(bd.whole).toBe(bd.used);
+  // The pie still renders a full disc from the non-zero slices; Free (0) is not drawn.
+  const usage = page.locator(".cm-storage-usage");
+  await expect(usage.locator("svg.cm-storage-pie .cm-pie-slice[data-slice='other']")).toHaveCount(1);
+  await expect(usage.locator("svg.cm-storage-pie .cm-pie-slice[data-slice='free']")).toHaveCount(0);
+  // The Free legend bullet reports 0.
+  await expect(usage.locator(".cm-storage-legend-item[data-slice='free'] .cm-storage-legend-size")).toContainText("0 B");
+});
+
+test("the storage breakdown counts the shared registry index in the Other slice (CMH-STORE-13)", async ({ page }) => {
+  await open(page, { key: "cmh-idx", source: "idx.html" });
+  await page.evaluate(() => {
+    const big = {};
+    for (let i = 0; i < 50; i++) big["doc" + i] = { label: "D".repeat(200), source: "s" + i + ".html", t: 1 };
+    localStorage.setItem("commentable-html::index", JSON.stringify(big));
+  });
+  await openManager(page);
+  const u = await page.evaluate(() => {
+    const raw = localStorage.getItem("commentable-html::index");
+    const idxBytes = ("commentable-html::index".length + raw.length) * 2;
+    const bd = window.__cmhStorageCodec.breakdown();
+    return { idxBytes, other: bd.other, otherDocs: bd.otherDocs };
+  });
+  // The registry index belongs to no single document, so it lands in the catch-all "Other" slice -
+  // NOT the "Other commentable-html documents" slice (which counts only real other documents, and is
+  // 0 here because this is the only document).
+  expect(u.other).toBeGreaterThanOrEqual(u.idxBytes);
+  expect(u.otherDocs).toBe(0);
 });
 
 test("documents are shown in a table with a column-headed Share of commentable-html storage (CMH-STORE-14)", async ({ page }) => {
@@ -960,25 +1024,6 @@ test("per-comment delete keeps focus within the same document's list (CMH-STORE-
     return row ? row.dataset.cmhBase : null;
   });
   expect(focusedBase).toBe("commentable-html:/reports/db.html");
-});
-
-test("the usage summary counts the shared registry index in the commentable-html total (CMH-STORE-13)", async ({ page }) => {
-  await open(page, { key: "cmh-idx", source: "idx.html" });
-  await page.evaluate(() => {
-    const big = {};
-    for (let i = 0; i < 50; i++) big["doc" + i] = { label: "D".repeat(200), source: "s" + i + ".html", t: 1 };
-    localStorage.setItem("commentable-html::index", JSON.stringify(big));
-  });
-  await openManager(page);
-  const u = await page.evaluate(() => {
-    const raw = localStorage.getItem("commentable-html::index");
-    const idxBytes = ("commentable-html::index".length + raw.length) * 2;
-    const usage = window.__cmhStorageCodec.usage();
-    return { idxBytes, cmhBytes: usage.cmhBytes };
-  });
-  // The registry index is commentable-html data, so it is counted toward the commentable-html total
-  // (not misclassified as other-app storage even though it is not a listed document group).
-  expect(u.cmhBytes).toBeGreaterThanOrEqual(u.idxBytes);
 });
 
 test("the dialog has a footer Close button that closes it and restores focus (CMH-STORE-16)", async ({ page }) => {
