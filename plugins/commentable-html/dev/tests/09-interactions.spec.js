@@ -82,11 +82,11 @@ test.describe("comment interactions", () => {
     expect(await cardMeta.locator("bdi").evaluate((el) => el.nextSibling && el.nextSibling.textContent)).toBe(" (edited)");
 
     await page.locator(".cm-card .cm-reply-btn").first().click();
-    await page.locator(".cm-composer").last().locator("textarea").fill("RTL reply");
-    await page.locator(".cm-composer").last().locator('[data-act="save"]').click();
+    await page.locator(".cm-reply-compose").last().locator("textarea").fill("RTL reply");
+    await page.locator(".cm-reply-compose").last().locator(".cm-reply-save").click();
     await page.locator('.cm-reply [data-act="reply-edit"]').click();
-    await page.locator(".cm-composer").last().locator("textarea").fill("RTL reply edited");
-    await page.locator(".cm-composer").last().locator('[data-act="save"]').click();
+    await page.locator(".cm-reply-compose").last().locator("textarea").fill("RTL reply edited");
+    await page.locator(".cm-reply-compose").last().locator(".cm-reply-save").click();
     const replyMeta = page.locator(".cm-reply .meta > span").first();
     await expect(replyMeta.locator("bdi")).toHaveCount(1);
     await expect(replyMeta.locator("bdi")).not.toContainText("edited");

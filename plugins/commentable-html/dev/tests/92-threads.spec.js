@@ -30,9 +30,9 @@ async function setReviewerName(page, name) {
 async function addReply(page, note) {
   await openSidebarPanel(page);
   await page.locator(".cm-card .cm-reply-btn").first().click();
-  const composer = page.locator(".cm-composer").last();
+  const composer = page.locator(".cm-card .cm-reply-compose").last();
   await composer.locator("textarea").fill(note);
-  await composer.locator('[data-act="save"]').click();
+  await composer.locator(".cm-reply-save").click();
   await expect(composer).toHaveCount(0);
 }
 
@@ -155,38 +155,22 @@ test.describe("collaboration: author attribution and threads", () => {
     expect(md2.replace(fencedNote, "")).not.toMatch(/^# forgedmd/m);
   });
 
-  test("a reply is not saved once its root is gone and deleting closes open edit composers (CMH-THREAD-05)", async ({ page }) => {
+  test("deleting a reply drops its open inline editor, and Clear all closes an open root edit composer (CMH-THREAD-05)", async ({ page }) => {
     await openKitchenSink(page);
     await setReviewerName(page, "Alice");
-    await addTextComment(page, "#commentRoot section p", "root to delete", 0);
-    await openSidebarPanel(page);
-
-    // Open a reply composer, then delete the root while it is open, then try to save the reply.
-    await page.locator(".cm-card .cm-reply-btn").first().click();
-    const replyComposer = page.locator(".cm-composer").last();
-    await replyComposer.locator("textarea").fill("a reply that should not persist");
-    page.once("dialog", (d) => d.accept());
-    await page.locator('.cm-card .cm-entry-root [data-act="del"]').click();
-    await expect(page.locator(".cm-card[data-cid]")).toHaveCount(0);
-    await replyComposer.locator('[data-act="save"]').click();
-    // The reply is refused: the composer stays open and nothing orphaned is stored.
-    await expect(replyComposer).toBeVisible();
-    expect((await storedComments(page)).length).toBe(0);
-    await replyComposer.locator('[data-act="cancel"]').click();
-    await expect(replyComposer).toHaveCount(0);
-
-    // Deleting a reply closes an open edit composer for it (no silent edit loss).
-    await addTextComment(page, "#commentRoot section p", "another root", 1);
+    await addTextComment(page, "#commentRoot section p", "a root", 0);
     await addReply(page, "reply to edit");
     const card = page.locator(".cm-card[data-cid]").first();
+
+    // Open the reply's INLINE editor, then delete the reply: the editor is dropped with no orphan.
     await card.locator('.cm-reply [data-act="reply-edit"]').click();
-    await expect(page.locator(".cm-composer")).toHaveCount(1);
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(1);
     page.once("dialog", (d) => d.accept());
     await card.locator('.cm-reply [data-act="reply-del"]').click();
-    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+    expect((await storedComments(page)).filter((c) => c.parentId).length).toBe(0);
 
-    // Clear all also closes any open edit composer (bulk delete must not silently lose an edit).
-    await addTextComment(page, "#commentRoot section p", "root for clear", 2);
+    // Clear all still closes an open ROOT edit composer (root edits use the floating composer).
     await page.locator(".cm-card .cm-entry-root [data-act='edit']").first().click();
     await expect(page.locator(".cm-composer")).toHaveCount(1);
     await page.click("#btnClearAll");
@@ -196,41 +180,95 @@ test.describe("collaboration: author attribution and threads", () => {
     expect((await storedComments(page)).length).toBe(0);
   });
 
-  test("editing a reply positions the composer at the thread root anchor (CMH-THREAD-06)", async ({ page }) => {
-    // A reply to a NON-text root (here an image) has no anchor of its own. The edit composer must
-    // resolve the ROOT's anchor (the image), not fall back to the viewport corner. This is red on
-    // the old code, which queried mark.cm-hl[data-cid=<reply/parentId>] and found nothing.
-    await openInline(page);
-    await page.evaluate((sel) => {
-      const img = document.querySelector(sel);
-      img.scrollIntoView({ block: "center" });
-      img.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    }, IMG);
-    await expect(page.locator("#imageAddBtn")).toBeVisible();
-    await page.locator("#imageAddBtn").click();
-    let composer = page.locator(".cm-composer").last();
-    await composer.locator("textarea").fill("image root");
-    await composer.locator('[data-act="save"]').click();
-    await expect(composer).toBeHidden();
-
-    // Reply to the image comment, then edit the reply.
+  test("Reply opens an EMPTY inline editor in the sidebar, never prepopulated with the comment text (CMH-THREAD-06)", async ({ page }) => {
+    await openKitchenSink(page);
+    await setReviewerName(page, "Alice");
+    await addTextComment(page, "#commentRoot section p", "the root comment text", 0);
+    await openSidebarPanel(page);
     const card = page.locator(".cm-card[data-cid]").first();
     await card.locator(".cm-reply-btn").click();
-    composer = page.locator(".cm-composer").last();
-    await composer.locator("textarea").fill("reply on image");
-    await composer.locator('[data-act="save"]').click();
-    await expect(composer).toBeHidden();
+    // The composer is INLINE inside the thread card - a floating .cm-composer is NOT used - and empty.
+    const composer = card.locator(".cm-reply-compose");
+    await expect(composer).toHaveCount(1);
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    await expect(composer.locator("textarea")).toHaveValue("");
+    // There is no "reply to: ..." quote header echoing the comment being replied to.
+    await expect(composer).not.toContainText("reply to:");
+    await expect(composer).not.toContainText("the root comment text");
+    // Cancel dismisses the inline editor without saving anything.
+    await composer.locator(".cm-reply-cancel").click();
+    await expect(card.locator(".cm-reply-compose")).toHaveCount(0);
+    await expect(card.locator(".cm-reply")).toHaveCount(0);
+    // Reopen and dismiss with Escape - also saves nothing.
+    await card.locator(".cm-reply-btn").click();
+    await card.locator(".cm-reply-compose textarea").fill("discarded draft");
+    await card.locator(".cm-reply-compose textarea").press("Escape");
+    await expect(card.locator(".cm-reply-compose")).toHaveCount(0);
+    expect((await storedComments(page)).filter((c) => c.parentId).length).toBe(0);
+    // Reopen, type, and save with Ctrl+Enter: the reply is appended to the thread.
+    await card.locator(".cm-reply-btn").click();
+    const composer2 = card.locator(".cm-reply-compose");
+    await composer2.locator("textarea").fill("my reply");
+    await composer2.locator("textarea").press("Control+Enter");
+    await expect(card.locator(".cm-reply")).toHaveCount(1);
+    await expect(card.locator(".cm-reply")).toContainText("my reply");
+  });
 
+  test("an in-progress inline reply draft survives a re-render such as sorting (CMH-THREAD-09)", async ({ page }) => {
+    await openKitchenSink(page);
+    await setReviewerName(page, "Alice");
+    await addTextComment(page, "#commentRoot section p", "root for draft", 0);
+    await openSidebarPanel(page);
+    const card = page.locator(".cm-card[data-cid]").first();
+    await card.locator(".cm-reply-btn").click();
+    await card.locator(".cm-reply-compose textarea").fill("draft in progress");
+    // A re-render triggered by re-sorting the comment list must NOT drop the open draft.
+    await page.evaluate(() => { if (typeof renderComments === "function") renderComments(); });
+    await expect(card.locator(".cm-reply-compose textarea")).toHaveValue("draft in progress");
+    // The rehydrated editor still saves normally.
+    await card.locator(".cm-reply-compose .cm-reply-save").click();
+    await expect(card.locator(".cm-reply")).toContainText("draft in progress");
+  });
+
+  test("editing a reply edits IN the sidebar, prefilled with that reply's own text (CMH-THREAD-07)", async ({ page }) => {
+    await openKitchenSink(page);
+    await setReviewerName(page, "Alice");
+    await addTextComment(page, "#commentRoot section p", "root", 0);
+    await addReply(page, "original reply");
+    const card = page.locator(".cm-card[data-cid]").first();
     await card.locator('.cm-reply [data-act="reply-edit"]').click();
-    composer = page.locator(".cm-composer").last();
-    await expect(composer).toBeVisible();
+    const editor = card.locator(".cm-reply-compose");
+    await expect(editor).toHaveCount(1);
+    await expect(page.locator(".cm-composer")).toHaveCount(0);
+    // Editing prefills with the reply's OWN text (not the root's).
+    await expect(editor.locator("textarea")).toHaveValue("original reply");
+    await editor.locator("textarea").fill("edited reply");
+    await editor.locator(".cm-reply-save").click();
+    await expect(card.locator(".cm-reply")).toContainText("edited reply");
+    await expect(card.locator(".cm-reply")).toContainText("(edited)");
+  });
 
-    const imgBox = await page.locator(IMG).boundingBox();
-    const compBox = await composer.boundingBox();
-    expect(imgBox).not.toBeNull();
-    // The composer sits adjacent to the image (top edge near the image bottom), not at the
-    // ~(100,138) corner fallback the old code produced for a non-text-root reply.
-    expect(Math.abs(compBox.y - (imgBox.y + imgBox.height))).toBeLessThan(120);
+  test("the first reply without a name prompts for a username, and still saves if declined (CMH-THREAD-08)", async ({ page }) => {
+    await openKitchenSink(page);
+    // Seed a root comment WITHOUT opening a composer (so the identity nudge is not consumed by an
+    // earlier new-comment composer), then reload so the one-time nudge is re-armed and no name is set.
+    await page.evaluate(() => {
+      window.__cmhStorageCodec.write([{ id: "croot0001", note: "seeded root", quote: "q", start: 0, end: 1 }]);
+    });
+    await page.reload();
+    await ready(page);
+    await openSidebarPanel(page);
+    await expect(page.locator("#cmIdentityEdit")).toBeHidden();
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    // Opening the first reply with no name reveals the identity editor so the reply can be attributed.
+    await expect(page.locator("#cmIdentityEdit")).toBeVisible();
+    // The reply still saves (unattributed) if the reviewer declines to name themselves.
+    await page.locator(".cm-reply-compose textarea").fill("anon reply");
+    await page.locator(".cm-reply-compose .cm-reply-save").click();
+    await expect(page.locator(".cm-card .cm-reply")).toContainText("anon reply");
+    const kids = (await storedComments(page)).filter((c) => c.parentId);
+    expect(kids.length).toBe(1);
+    expect(kids[0].author == null || kids[0].author === "").toBe(true);
   });
 
   test("replying adds a chronological reply under the root and the count stays per-thread (CMH-THREAD-01)", async ({ page }) => {

@@ -49,6 +49,15 @@ function renderComments() {
   // note-typing path COALESCES a keystroke burst into a single render rather than one per key
   // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
   if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.renders = (window.__cmhPerf.renders || 0) + 1;
+  // A full re-render replaces the list DOM, wiping any open inline reply editor. Snapshot an in-progress
+  // draft first (a re-render can be triggered by sorting, a note debounce, a checklist change, etc.) and
+  // re-open the editor with the same text at the end, so the draft is preserved instead of dropped.
+  let _inlineDraft = null;
+  if (_activeInlineEditor) {
+    const _dta = _activeInlineEditor.el && _activeInlineEditor.el.querySelector("textarea");
+    _inlineDraft = { kind: _activeInlineEditor.kind, targetId: _activeInlineEditor.targetId, value: _dta ? _dta.value : "" };
+  }
+  _activeInlineEditor = null;
   const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
@@ -218,6 +227,22 @@ function renderComments() {
   listEl.innerHTML = stateHtml + parts.join("");
   if (typeof applyCommentSearch === "function") applyCommentSearch();
   if (typeof refreshReviewUI === "function") refreshReviewUI();
+  if (_inlineDraft) _reopenInlineDraft(_inlineDraft);
+}
+// Re-open an inline reply/edit editor after a re-render and restore the reviewer's in-progress text,
+// so a re-render (sort, note debounce, ...) never silently drops a draft.
+function _reopenInlineDraft(snap) {
+  if (snap.kind === "reply") {
+    const card = listEl.querySelector('.cm-card[data-cid="' + snap.targetId + '"]');
+    if (card) openInlineReply(card, snap.targetId);
+  } else if (snap.kind === "edit") {
+    const entry = listEl.querySelector('[data-reply-cid="' + snap.targetId + '"]');
+    if (entry) openInlineReplyEdit(entry, snap.targetId);
+  }
+  if (_activeInlineEditor && _activeInlineEditor.el) {
+    const ta = _activeInlineEditor.el.querySelector("textarea");
+    if (ta) { ta.value = snap.value; try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }
+  }
 }
 function _widgetOrderKey(c) {
   const o = _widgetOrder.get(partKey(c.widget, c.part));
@@ -346,6 +371,158 @@ function expandCollapsedAncestors(el) {
     sec = sec.parentElement && sec.parentElement.closest && sec.parentElement.closest("section.cmh-section-collapsed");
   }
 }
+// ---- Inline reply composing (issue #644) ----
+// Replies are composed and edited IN the sidebar thread card (Word-style), not in a floating popup.
+// A NEW reply box starts EMPTY - it never prepopulates with the comment being replied to. Editing an
+// existing reply prefills with that reply's OWN text. renderComments() rebuilds the list, so these
+// transient editors are naturally cleared on save.
+let _activeInlineEditor = null;
+function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel) {
+  const wrap = document.createElement("div");
+  wrap.className = "cm-reply-compose";
+  const ta = document.createElement("textarea");
+  ta.className = "cm-reply-input";
+  ta.setAttribute("rows", "2");
+  ta.setAttribute("aria-label", "Write a reply");
+  ta.placeholder = "Write a reply...";
+  ta.value = initialText || "";
+  const actions = document.createElement("div");
+  actions.className = "cm-reply-compose-actions";
+  const cancel = document.createElement("button");
+  cancel.type = "button"; cancel.className = "cm-reply-cancel"; cancel.textContent = "Cancel";
+  const save = document.createElement("button");
+  save.type = "button"; save.className = "cm-reply-save"; save.textContent = saveLabel;
+  actions.appendChild(cancel); actions.appendChild(save);
+  wrap.appendChild(ta); wrap.appendChild(actions);
+  function doSave() {
+    const val = ta.value.trim();
+    if (!val) { ta.setAttribute("aria-invalid", "true"); ta.classList.add("cm-invalid"); ta.focus(); return; }
+    onSave(val);
+  }
+  cancel.addEventListener("click", function () { onCancel(); });
+  save.addEventListener("click", doSave);
+  ta.addEventListener("keydown", function (e) {
+    // Ignore shortcuts mid-IME composition so Escape/Enter cannot discard a draft the composer is
+    // still assembling (e.g. a CJK candidate window).
+    if (e.isComposing) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); }
+  });
+  wrap._focus = function () { setTimeout(function () { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 0); };
+  return wrap;
+}
+// Exactly one inline reply editor is open at a time (opening another, or a full re-render, first
+// closes the current one) so a transient editor can never silently drop another card's draft.
+function _closeActiveInlineEditor() {
+  const a = _activeInlineEditor;
+  _activeInlineEditor = null;
+  if (a && typeof a.restore === "function") { try { a.restore(); } catch (e) {} }
+}
+function _focusInList(sel) {
+  const el = listEl.querySelector(sel);
+  if (el) { try { el.focus(); } catch (e) {} }
+}
+// First-reply identity prompt (issue #645), tracked separately from the first-COMMENT nudge so that a
+// reviewer whose first attributable action is a reply is still prompted even if an earlier comment
+// composer already consumed the shared comment nudge. Non-blocking - revealing the sidebar identity
+// editor once; the reply still saves unattributed if declined.
+let _cmReplyIdentityNudged = false;
+function _nudgeIdentityOnReply() {
+  if (_cmReplyIdentityNudged) return;
+  if (typeof getAuthorName === "function" && getAuthorName()) return;
+  if (!document.getElementById("cmIdentity")) return;
+  _cmReplyIdentityNudged = true;
+  if (typeof beginEditIdentity === "function") beginEditIdentity(false);
+}
+// Mirror the composer's quota recovery: on a quota failure the write is stashed by saveComments(), so
+// open the storage manager (deferred) to let the reviewer free space and have the pending write
+// retried; fall back to a toast if the manager cannot open. A non-quota (blocked/private) failure
+// already surfaces saveComments()'s own recovery toast, so nothing extra is shown for it.
+function _afterInlineSaveQuota(saved, label) {
+  if (saved || !_cmhLastSaveQuota) return;
+  queueMicrotask(function () {
+    const opened = (typeof openStorageManager === "function") && openStorageManager({ reason: "quota" });
+    if (!opened) {
+      showToast("The " + label + " is shown but this browser's storage is full - free space from Manage storage.",
+        { alert: true, duration: 8000, action: (typeof cmhStorageAction === "function") ? cmhStorageAction(CMH_STORE_KEY) : null });
+    }
+  });
+}
+function openInlineReply(card, rootId) {
+  if (!card) return;
+  const row = card.querySelector(".cm-reply-row");
+  if (!row) return;
+  if (!comments.some(function (x) { return x.id === rootId && !isReply(x); })) return;
+  // Re-clicking Reply on a card whose editor is already open just refocuses it (never discards the draft).
+  if (_activeInlineEditor && _activeInlineEditor.kind === "reply" && _activeInlineEditor.targetId === rootId) {
+    if (_activeInlineEditor.el && _activeInlineEditor.el._focus) _activeInlineEditor.el._focus();
+    return;
+  }
+  _closeActiveInlineEditor();
+  const btn = row.querySelector(".cm-reply-btn");
+  const editor = _buildInlineReplyEditor("", "Save reply",
+    function (val) {
+      if (!comments.some(function (x) { return x.id === rootId && !isReply(x); })) {
+        showToast("The comment you were replying to was deleted - your reply was not saved.", { alert: true, duration: 6000 });
+        return;
+      }
+      const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      comments.push(stampAuthor({ id: id, parentId: rootId, note: val, createdAt: new Date().toISOString() }));
+      const ok = saveComments();
+      _activeInlineEditor = null;
+      renderComments();
+      _focusInList('.cm-card[data-cid="' + rootId + '"] .cm-reply-btn');
+      _afterInlineSaveQuota(ok, "reply");
+    },
+    function () { _closeActiveInlineEditor(); });
+  if (btn) btn.hidden = true;
+  row.appendChild(editor);
+  _activeInlineEditor = { el: editor, kind: "reply", targetId: rootId, restore: function () { editor.remove(); if (btn) { btn.hidden = false; try { btn.focus(); } catch (e) {} } } };
+  editor._focus();
+  // First-reply identity prompt (issue #645).
+  _nudgeIdentityOnReply();
+}
+function openInlineReplyEdit(entry, replyId) {
+  if (!entry) return;
+  const rc = comments.find(function (x) { return x.id === replyId && isReply(x); });
+  if (!rc) return;
+  const noteEl = entry.querySelector(".note");
+  if (!noteEl) return;
+  // Re-clicking edit on a reply already being edited just refocuses it (never resets the draft).
+  if (_activeInlineEditor && _activeInlineEditor.kind === "edit" && _activeInlineEditor.targetId === replyId) {
+    if (_activeInlineEditor.el && _activeInlineEditor.el._focus) _activeInlineEditor.el._focus();
+    return;
+  }
+  _closeActiveInlineEditor();
+  const editor = _buildInlineReplyEditor(rc.note == null ? "" : rc.note, "Save",
+    function (val) {
+      const c = comments.find(function (x) { return x.id === replyId; });
+      if (!c) {
+        showToast("The reply you were editing was deleted - your change was not saved.", { alert: true, duration: 6000 });
+        _activeInlineEditor = null;
+        renderComments();
+        return;
+      }
+      c.note = val; c.updatedAt = new Date().toISOString();
+      const ok = saveComments();
+      _activeInlineEditor = null;
+      renderComments();
+      _focusInList('[data-reply-cid="' + replyId + '"] [data-act="reply-edit"]');
+      _afterInlineSaveQuota(ok, "edit");
+    },
+    function () { _closeActiveInlineEditor(); });
+  entry.classList.add("cm-reply-editing");
+  noteEl.hidden = true;
+  noteEl.insertAdjacentElement("afterend", editor);
+  _activeInlineEditor = { el: editor, kind: "edit", targetId: replyId, restore: function () {
+    editor.remove();
+    noteEl.hidden = false;
+    entry.classList.remove("cm-reply-editing");
+    const eb = entry.querySelector('[data-act="reply-edit"]');
+    if (eb) { try { eb.focus(); } catch (e) {} }
+  } };
+  editor._focus();
+}
 listEl.addEventListener("click", (e) => {
   // Checklist change cards are not comments: jump focuses the checklist, Reset reverts it to
   // the authored state. Handle before the .cm-card comment path (a checklist card is a .cm-card).
@@ -387,8 +564,7 @@ listEl.addEventListener("click", (e) => {
   const id = card.dataset.cid;
   const act = e.target.dataset.act;
   if (act === "reply") {
-    const rc = comments.find(x => x.id === id);
-    if (rc && typeof openComposerForReply === "function") { scrollToAnchor(rc); openComposerForReply(rc); }
+    if (comments.some(x => x.id === id && !isReply(x))) openInlineReply(card, id);
     return;
   }
   if (act === "reply-del") {
@@ -409,8 +585,7 @@ listEl.addEventListener("click", (e) => {
   if (act === "reply-edit") {
     const entry = e.target.closest("[data-reply-cid]");
     const rid = entry && entry.getAttribute("data-reply-cid");
-    const rc = comments.find(x => x.id === rid);
-    if (rc) openComposerForEdit(rc);
+    openInlineReplyEdit(entry, rid);
     return;
   }
   if (act === "del") {

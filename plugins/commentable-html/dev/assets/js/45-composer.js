@@ -347,11 +347,6 @@ function openComposer(range, quote) {
   return createComposerElement({ mode: "new", range, quote });
 }
 
-function openComposerForReply(rootComment) {
-  if (!rootComment || isReply(rootComment)) return null;
-  return createComposerElement({ mode: "new-reply", comment: rootComment });
-}
-
 function openComposerForEdit(comment) {
   const existing = openEditComposers.get(comment.id);
   if (existing) {
