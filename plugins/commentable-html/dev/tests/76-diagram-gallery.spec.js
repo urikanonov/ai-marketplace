@@ -415,6 +415,13 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
         expect(c.fillArea, `diagram "${c.src}" fills its card area (not tiny/sliver)`).toBeGreaterThanOrEqual(0.3);
         expect(c.clip, `diagram "${c.src}" has no clipped content`).toBe(0);
         expect(c.within, `diagram "${c.src}" is whole inside its card`).toBe(true);
+        // These types (classDiagram/erDiagram/...) render their labels as HTML in <foreignObject>, which
+        // the svg-geometry checks do not measure; assert the HTML labels are legible and painted so a
+        // crushed/transparent label can't slip through green.
+        if (c.nHtmlLabel > 0) {
+          expect(c.htmlLabelMinH, `diagram "${c.src}" HTML labels are legible`).toBeGreaterThanOrEqual(6);
+          expect(c.htmlLabelInvisible, `diagram "${c.src}" HTML labels are painted (not transparent/hidden)`).toBe(0);
+        }
       }
       // Uniform height across these different renderers too.
       const hs = cells.map((c) => c.cardH);
