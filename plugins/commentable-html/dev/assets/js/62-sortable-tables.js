@@ -242,7 +242,7 @@ let _cmModalSeq = 0;
 function showConfirm(opts) {
   opts = opts || {};
   return new Promise((resolve) => {
-    const prevFocus = document.activeElement;
+    const prevFocus = opts.restoreFocus || document.activeElement;
     const overlay = document.createElement("div");
     overlay.className = "cm-modal-overlay cm-skip";
     const box = document.createElement("div");
@@ -332,6 +332,9 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
+      // Clear lives in the More menu, which closes (hiding btnClearAll) when clicked, so restore
+      // focus to the still-visible More button instead of the now-hidden Clear item.
+      restoreFocus: document.getElementById("btnMoreMenu") || undefined,
     });
     if (!ok) return;
     performClearAll();

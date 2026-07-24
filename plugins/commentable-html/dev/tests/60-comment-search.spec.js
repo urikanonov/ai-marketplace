@@ -65,6 +65,35 @@ test.describe("comment search / filter", () => {
     await expect(page.locator(".head-search")).toBeVisible();
   });
 
+  test("closing the Search field with the button keeps it closed across a re-render (CMH-SEARCH-08)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "cmhsearch keep", 0);
+    await openSidebarPanel(page);
+    const row = page.locator(".head-search");
+    await expect(row).toBeVisible();
+    // Close the field via the Search toggle; the explicit reviewer intent must survive later renders.
+    await page.click("#btnSearchToggle");
+    await expect(row).toBeHidden();
+    await expect(page.locator("#btnSearchToggle")).toHaveAttribute("aria-expanded", "false");
+    // Adding another comment re-renders the list; the closed field stays closed.
+    await addTextComment(page, "#commentRoot section p", "cmhsearch again", 1);
+    await expect(row).toBeHidden();
+    await expect(page.locator("#btnSearchToggle")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("Escape closes the open Search field when it is empty and returns focus to the toggle (CMH-SEARCH-08)", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section p", "cmhsearch esc", 0);
+    await openSidebarPanel(page);
+    const row = page.locator(".head-search");
+    const input = page.locator("#cmSearchInput");
+    await input.focus();
+    await expect(row).toBeVisible();
+    await input.press("Escape");
+    await expect(row).toBeHidden();
+    await expect(page.locator("#btnSearchToggle")).toBeFocused();
+  });
+
   test("search matches only the comment note, not the quoted anchor text (CMH-SEARCH-04)", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "zzznoteonly", 0);

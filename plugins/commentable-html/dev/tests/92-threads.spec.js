@@ -6,6 +6,7 @@ import {
   openKitchenSink, addTextComment, storedComments, machineTrailerBody, expectNoteFenced,
   installClipboardCapture, ready, fileUrl, stageInline, lastCopied, openInline,
   clickSidebarExport, readDownload,
+  clickClearAll,
 } from "./helpers.js";
 
 const IMG = "#commentRoot img.cm-img-commentable";
@@ -173,7 +174,7 @@ test.describe("collaboration: author attribution and threads", () => {
     // Clear all still closes an open ROOT edit composer (root edits use the floating composer).
     await page.locator(".cm-card .cm-entry-root [data-act='edit']").first().click();
     await expect(page.locator(".cm-composer")).toHaveCount(1);
-    await page.click("#btnClearAll");
+    await clickClearAll(page);
     await expect(page.locator(".cm-modal")).toBeVisible();
     await page.locator(".cm-modal").getByRole("button", { name: "OK", exact: true }).click();
     await expect(page.locator(".cm-composer")).toHaveCount(0);

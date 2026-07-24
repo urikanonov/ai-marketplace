@@ -58,7 +58,44 @@
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    if (open) {
+      const other = document.getElementById("sidebarMoreMenu");
+      if (other) other.hidden = true;
+      const otherBtn = document.getElementById("btnMoreMenu");
+      if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
+      if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    }
+  }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
+  btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  menu.addEventListener("click", () => setOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+  });
+})();
+
+/* ---------- Sidebar More menu (manage storage + clear) ---------- */
+(function () {
+  const btn = document.getElementById("btnMoreMenu");
+  const menu = document.getElementById("sidebarMoreMenu");
+  if (!btn || !menu) return;
+  function setOpen(open) {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      const other = document.getElementById("sidebarExportMenu");
+      if (other) other.hidden = true;
+      const otherBtn = document.getElementById("btnSidebarExportMenu");
+      if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
+      if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    }
   }
   const popup = {
     isOpen: () => !menu.hidden,

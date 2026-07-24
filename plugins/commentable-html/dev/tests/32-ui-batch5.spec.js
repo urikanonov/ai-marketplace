@@ -109,18 +109,20 @@ test.describe("custom tooltips (no jQuery/CDN)", () => {
 });
 
 test.describe("compact sidebar header", () => {
-  test("the two timestamps share one row and the action buttons wrap into aligned rows", async ({ page }) => {
+  test("the two timestamps stack on separate rows and the action ribbon sits on one row", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await openInline(page);
     await page.evaluate(() => document.body.classList.add("sidebar-open"));
     const rects = await page.evaluate(() => {
       const r = (id) => { const e = document.getElementById(id); const b = e.getBoundingClientRect(); return { top: Math.round(b.top), h: b.height }; };
-      return { gen: r("cmGenerated"), last: r("cmLastComment"), exportMenu: r("btnSidebarExportMenu"), clear: r("btnClearAll") };
+      const ribbon = document.querySelector(".cm-sidebar .head-ribbon");
+      const tops = Array.from(ribbon.children).map((c) => Math.round(c.getBoundingClientRect().top));
+      return { gen: r("cmGenerated"), last: r("cmLastComment"), ribbonRows: new Set(tops).size };
     });
-    // timestamps on one line
-    expect(Math.abs(rects.gen.top - rects.last.top)).toBeLessThan(6);
-    // the action controls stay on a compact, aligned row.
-    expect(rects.exportMenu.top).toBe(rects.clear.top);
+    // The metadata stacks: Last comment sits on its own row below Generated (proposal-9 layout).
+    expect(rects.last.top).toBeGreaterThan(rects.gen.top + 4);
+    // the action ribbon stays on one compact row.
+    expect(rects.ribbonRows).toBe(1);
     // The compact Export control is a disclosure, not an ARIA menu button.
     const exportButton = page.locator("#btnSidebarExportMenu");
     await expect(exportButton).toHaveAttribute("aria-controls", "sidebarExportMenu");
@@ -231,7 +233,84 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await openInline(page);
     await page.evaluate(() => document.body.classList.add("sidebar-open"));
     expect((await page.locator("#btnSidebarExportMenu").innerText()).trim()).toBe("Export");
-    expect((await page.locator("#btnClearAll").innerText()).trim()).toBe("Clear");
+    // Clear now lives in the More menu as a full menu item.
+    expect((await page.locator("#btnClearAll").textContent()).trim()).toBe("Clear all comments");
+  });
+
+  test("the sidebar More menu holds Manage storage and Clear all (CMH-SIDE-11)", async ({ page }) => {
+    await openInline(page);
+    await page.evaluate(() => {
+      document.body.classList.add("sidebar-open");
+      const sb = document.getElementById("sidebar");
+      if (sb) sb.inert = false;
+    });
+    const menu = page.locator("#sidebarMoreMenu");
+    await expect(menu).toBeHidden();
+    await page.click("#btnMoreMenu");
+    await expect(menu).toBeVisible();
+    await expect(menu.locator("#btnStorage")).toBeVisible();
+    await expect(menu.locator("#btnClearAll")).toBeVisible();
+    // The Export menu no longer carries Storage (it holds only the file formats).
+    await expect(page.locator("#sidebarExportMenu #btnStorage")).toHaveCount(0);
+  });
+
+  test("opening either sidebar disclosure closes the sibling one (CMH-SIDE-11)", async ({ page }) => {
+    await openInline(page);
+    await page.evaluate(() => {
+      document.body.classList.add("sidebar-open");
+      const sb = document.getElementById("sidebar");
+      if (sb) sb.inert = false;
+    });
+    const exportMenu = page.locator("#sidebarExportMenu");
+    const moreMenu = page.locator("#sidebarMoreMenu");
+    // Export open, then More: Export closes and its toggle resets aria-expanded.
+    await page.click("#btnSidebarExportMenu");
+    await expect(exportMenu).toBeVisible();
+    await page.click("#btnMoreMenu");
+    await expect(moreMenu).toBeVisible();
+    await expect(exportMenu).toBeHidden();
+    await expect(page.locator("#btnSidebarExportMenu")).toHaveAttribute("aria-expanded", "false");
+    // The reverse direction: opening Export again closes More.
+    await page.click("#btnSidebarExportMenu");
+    await expect(exportMenu).toBeVisible();
+    await expect(moreMenu).toBeHidden();
+    await expect(page.locator("#btnMoreMenu")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("on a phone the Sort arrows expose a >=44px touch target (CMH-SIDE-12)", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openInline(page);
+    await page.evaluate(() => {
+      document.body.classList.add("sidebar-open");
+      const sb = document.getElementById("sidebar");
+      if (sb) sb.inert = false;
+    });
+    const boxes = await page.evaluate(() => {
+      const ids = ["btnSortAsc", "btnSortDesc"];
+      return ids.map((id) => {
+        const b = document.getElementById(id).getBoundingClientRect();
+        return { w: b.width, h: b.height };
+      });
+    });
+    for (const b of boxes) {
+      expect(b.w).toBeGreaterThanOrEqual(44);
+      expect(b.h).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test("the Search button reveals and focuses the filter field (CMH-SEARCH-08)", async ({ page }) => {
+    await openInline(page);
+    await page.evaluate(() => {
+      document.body.classList.add("sidebar-open");
+      const sb = document.getElementById("sidebar");
+      if (sb) sb.inert = false;
+    });
+    const row = page.locator(".head-search");
+    await expect(row).toBeHidden();
+    await page.click("#btnSearchToggle");
+    await expect(row).toBeVisible();
+    await expect(page.locator("#cmSearchInput")).toBeFocused();
+    await expect(page.locator("#btnSearchToggle")).toHaveAttribute("aria-expanded", "true");
   });
 
   test("the section caret toggles the section with the keyboard", async ({ page }) => {

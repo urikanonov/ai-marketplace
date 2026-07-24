@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.234.0";
+const CMH_VERSION = "1.235.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6653,6 +6653,10 @@ root.addEventListener("click", (e) => {
 // The query is module-level so it survives re-renders: renderComments() re-applies it at the
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
+// Explicit reviewer intent for the filter field: null = auto (hidden at zero comments, shown once
+// there is one), true = the reviewer opened it via the Search button, false = the reviewer closed it.
+// This survives re-renders so closing the field stays closed even while comments exist.
+let searchUserState = null;
 
 function _normalizeCommentSearchText(value) {
   return String(value == null ? "" : value).normalize("NFC").toLocaleLowerCase();
@@ -6704,7 +6708,13 @@ function applyCommentSearch() {
     ? threadRoots(comments).length
     : (Array.isArray(comments) ? comments.length : 0);
   const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
-  if (row) row.hidden = total === 0 && noteCards.length === 0;
+  if (row) {
+    row.hidden = searchUserState === null
+      ? (total === 0 && noteCards.length === 0)
+      : !searchUserState;
+  }
+  const _searchToggle = document.getElementById("btnSearchToggle");
+  if (_searchToggle && row) _searchToggle.setAttribute("aria-expanded", row.hidden ? "false" : "true");
   if (total === 0 && noteCards.length === 0) {
     _toggleSearchEmptyNote(false);
     return;
@@ -6745,6 +6755,24 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
+  // The Search button in the primary row reveals the filter field (it is hidden until then),
+  // focuses it, and toggles it closed again on a second press.
+  const toggle = document.getElementById("btnSearchToggle");
+  const row = document.querySelector(".head-search");
+  if (toggle && row) {
+    toggle.addEventListener("click", () => {
+      if (row.hidden) {
+        searchUserState = true;
+        applyCommentSearch();
+        input.focus();
+      } else {
+        searchUserState = false;
+        input.value = "";
+        commentSearchQuery = "";
+        applyCommentSearch();
+      }
+    });
+  }
   input.addEventListener("input", () => {
     commentSearchQuery = input.value || "";
     applyCommentSearch();
@@ -6754,6 +6782,11 @@ function setupCommentSearch() {
       input.value = "";
       commentSearchQuery = "";
       applyCommentSearch();
+      e.stopPropagation();
+    } else if (e.key === "Escape" && row && !row.hidden && toggle) {
+      searchUserState = false;
+      applyCommentSearch();
+      toggle.focus();
       e.stopPropagation();
     }
   });
@@ -7215,7 +7248,44 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    if (open) {
+      const other = document.getElementById("sidebarMoreMenu");
+      if (other) other.hidden = true;
+      const otherBtn = document.getElementById("btnMoreMenu");
+      if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
+      if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    }
+  }
+  const popup = {
+    isOpen: () => !menu.hidden,
+    close: () => {
+      setOpen(false);
+      btn.focus();
+    },
+  };
+  if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
+  btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
+  menu.addEventListener("click", () => setOpen(false));
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
+  });
+})();
+
+/* ---------- Sidebar More menu (manage storage + clear) ---------- */
+(function () {
+  const btn = document.getElementById("btnMoreMenu");
+  const menu = document.getElementById("sidebarMoreMenu");
+  if (!btn || !menu) return;
+  function setOpen(open) {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      const other = document.getElementById("sidebarExportMenu");
+      if (other) other.hidden = true;
+      const otherBtn = document.getElementById("btnSidebarExportMenu");
+      if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
+      if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    }
   }
   const popup = {
     isOpen: () => !menu.hidden,
@@ -8492,7 +8562,7 @@ function openStorageManager(opts) {
 (function () {
   const wiring = [
     { id: "btnStorageTop", menu: "toolbarMenu", restore: "btnToolbarMenu" },
-    { id: "btnStorage", menu: "sidebarExportMenu", restore: "btnSidebarExportMenu" },
+    { id: "btnStorage", menu: "sidebarMoreMenu", restore: "btnMoreMenu" },
   ];
   wiring.forEach(function (w) {
     const b = document.getElementById(w.id);
@@ -9298,7 +9368,7 @@ let _cmModalSeq = 0;
 function showConfirm(opts) {
   opts = opts || {};
   return new Promise((resolve) => {
-    const prevFocus = document.activeElement;
+    const prevFocus = opts.restoreFocus || document.activeElement;
     const overlay = document.createElement("div");
     overlay.className = "cm-modal-overlay cm-skip";
     const box = document.createElement("div");
@@ -9388,6 +9458,9 @@ document.getElementById("btnClearAll").addEventListener("click", async () => {
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
+      // Clear lives in the More menu, which closes (hiding btnClearAll) when clicked, so restore
+      // focus to the still-visible More button instead of the now-hidden Clear item.
+      restoreFocus: document.getElementById("btnMoreMenu") || undefined,
     });
     if (!ok) return;
     performClearAll();

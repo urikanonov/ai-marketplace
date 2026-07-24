@@ -62,3 +62,6 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-AUTHOR-02 | tutorial, help |
 | CMH-AUTHOR-03 | opt-out: agent-facing Copy all attribution format and injection hardening |
 | CMH-MMD-11 | opt-out: keyboard-accessibility parity (WCAG 2.1.1) for the already-documented diagram commenting, mirroring the image keyboard path; no new user-facing capability to document |
+| CMH-SEARCH-08 | tutorial, help |
+| CMH-SIDE-11 | tutorial, help |
+| CMH-SIDE-12 | opt-out: responsive touch-target sizing for the already-documented Sort control; a mobile accessibility refinement, not a new user-facing capability |

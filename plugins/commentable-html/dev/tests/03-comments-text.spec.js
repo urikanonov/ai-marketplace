@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, addTextComment, distinctCids, storedComments } from "./helpers.js";
+import { openInline, addTextComment, distinctCids, storedComments, clickClearAll } from "./helpers.js";
 
 async function openComposer(page, selector) {
   await page.evaluate((sel) => {
@@ -67,7 +67,7 @@ test.describe("text comments", () => {
   test("Clear removes every comment", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "temporary");
-    await page.locator("#btnClearAll").click();
+    await clickClearAll(page);
     await page.locator(".cm-modal").getByRole("button", { name: "OK" }).click();
     expect(await distinctCids(page)).toBe(0);
     await expect(page.locator("#toolbarCount")).toHaveText("0");

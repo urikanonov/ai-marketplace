@@ -4,6 +4,10 @@
 // The query is module-level so it survives re-renders: renderComments() re-applies it at the
 // end of every render, so adding, editing, or sorting comments keeps the active filter.
 let commentSearchQuery = "";
+// Explicit reviewer intent for the filter field: null = auto (hidden at zero comments, shown once
+// there is one), true = the reviewer opened it via the Search button, false = the reviewer closed it.
+// This survives re-renders so closing the field stays closed even while comments exist.
+let searchUserState = null;
 
 function _normalizeCommentSearchText(value) {
   return String(value == null ? "" : value).normalize("NFC").toLocaleLowerCase();
@@ -55,7 +59,13 @@ function applyCommentSearch() {
     ? threadRoots(comments).length
     : (Array.isArray(comments) ? comments.length : 0);
   const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
-  if (row) row.hidden = total === 0 && noteCards.length === 0;
+  if (row) {
+    row.hidden = searchUserState === null
+      ? (total === 0 && noteCards.length === 0)
+      : !searchUserState;
+  }
+  const _searchToggle = document.getElementById("btnSearchToggle");
+  if (_searchToggle && row) _searchToggle.setAttribute("aria-expanded", row.hidden ? "false" : "true");
   if (total === 0 && noteCards.length === 0) {
     _toggleSearchEmptyNote(false);
     return;
@@ -96,6 +106,24 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
+  // The Search button in the primary row reveals the filter field (it is hidden until then),
+  // focuses it, and toggles it closed again on a second press.
+  const toggle = document.getElementById("btnSearchToggle");
+  const row = document.querySelector(".head-search");
+  if (toggle && row) {
+    toggle.addEventListener("click", () => {
+      if (row.hidden) {
+        searchUserState = true;
+        applyCommentSearch();
+        input.focus();
+      } else {
+        searchUserState = false;
+        input.value = "";
+        commentSearchQuery = "";
+        applyCommentSearch();
+      }
+    });
+  }
   input.addEventListener("input", () => {
     commentSearchQuery = input.value || "";
     applyCommentSearch();
@@ -105,6 +133,11 @@ function setupCommentSearch() {
       input.value = "";
       commentSearchQuery = "";
       applyCommentSearch();
+      e.stopPropagation();
+    } else if (e.key === "Escape" && row && !row.hidden && toggle) {
+      searchUserState = false;
+      applyCommentSearch();
+      toggle.focus();
       e.stopPropagation();
     }
   });
