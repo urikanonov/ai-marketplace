@@ -298,6 +298,32 @@ class SpecTestReferenceTests(unittest.TestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn("feature id `ORPHAN-99` has no spec row", issues[0].message)
 
+    def test_flags_automated_clause_missing_cited_name(self):
+        spec = self._spec("`tests/demo.spec.js` - element-boundary noise test")
+
+        issues = refs.check_spec(spec, self.base)
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("no exact test name cited", issues[0].message)
+        self.assertIn("`tests/demo.spec.js`", issues[0].message)
+
+    def test_accepts_automated_clause_with_prose_and_a_cited_name(self):
+        spec = self._spec("`tests/demo.spec.js` - noise handling, `real browser title (DEMO-01)`")
+
+        self.assertEqual(refs.check_spec(spec, self.base), [])
+
+    def test_missing_name_flag_is_per_reference_in_a_multi_ref_cell(self):
+        spec = self._spec(
+            "`tests/demo.spec.js` - `real browser title (DEMO-01)`; "
+            "`tests/test_demo.py` - only prose here"
+        )
+
+        issues = refs.check_spec(spec, self.base)
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("no exact test name cited", issues[0].message)
+        self.assertIn("`tests/test_demo.py`", issues[0].message)
+
     def test_ignores_quoted_code_notes_after_test_references(self):
         spec = self._spec(
             "`tests/demo.spec.js` - `real browser title (DEMO-01)` "

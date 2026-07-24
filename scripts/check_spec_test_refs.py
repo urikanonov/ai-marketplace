@@ -308,7 +308,15 @@ def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
                 continue
             next_ref = matches[idx + 1].start() if idx + 1 < len(matches) else len(coverage)
             end = _clause_end(coverage, match.end(), next_ref)
-            for name in _referenced_names(coverage[match.end():end], test_path):
+            names = _referenced_names(coverage[match.end():end], test_path)
+            if not names:
+                issues.append(SpecIssue(
+                    spec_path,
+                    line_no,
+                    "no exact test name cited for `%s` (name at least one exact test title or "
+                    "Python test method)" % rel,
+                ))
+            for name in names:
                 if not _file_has_name(test_path, name):
                     issues.append(SpecIssue(
                         spec_path,
