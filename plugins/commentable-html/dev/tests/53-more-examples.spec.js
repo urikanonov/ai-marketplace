@@ -343,16 +343,15 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
         // svg-geometry/text check stays green. Measure the HTML label content too: its rendered height (a
         // legibility floor) and its paint visibility (transparent color / zero opacity / hidden).
         svg.querySelectorAll("foreignObject").forEach((foEl) => {
-          // Prefer the nested SEMANTIC label element explicitly: a comma selector returns the first DOM
-          // match, which is mermaid's OUTER wrapper div (full box height), not the nested .nodeLabel -
-          // measuring the wrapper would overstate a crushed inner label and let it pass.
-          const label = foEl.querySelector(".nodeLabel") || foEl.querySelector(".edgeLabel") ||
-            foEl.querySelector("span") || foEl.querySelector("p") || foEl.querySelector("div") || foEl;
-          // Count every label that carries TEXT (skip structural/empty foreignObjects) REGARDLESS of
-          // size, so a label that COLLAPSED to zero height - the exact regression this guards - is
-          // counted and fails the floor/visibility checks below, instead of being skipped (which would
-          // drop nHtmlLabel to 0 and let the assertions be vacuously skipped).
-          if (!label.textContent || !label.textContent.trim()) return;
+          // Prefer the nested SEMANTIC label element explicitly, and among matches pick the first that
+          // actually carries TEXT: a comma selector (or a bare querySelector) returns the first DOM
+          // match, which may be mermaid's outer wrapper div (overstating a crushed inner label) or an
+          // empty structural node BEFORE the text-bearing one (which would then skip a real label).
+          const hasText = (el) => !!(el && el.textContent && el.textContent.trim());
+          const pick = (sel) => [...foEl.querySelectorAll(sel)].find(hasText);
+          const label = pick(".nodeLabel") || pick(".edgeLabel") || pick("span") || pick("p") || pick("div") || foEl;
+          // A foreignObject with no text at all (e.g. an unlabelled edge) is legitimately empty - skip it.
+          if (!hasText(label)) return;
           nHtmlLabel++;
           const nr = label.getBoundingClientRect();
           htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
