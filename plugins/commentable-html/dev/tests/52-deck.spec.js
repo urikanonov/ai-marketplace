@@ -517,6 +517,11 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       document.getElementById("para").dispatchEvent(
         new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
     });
+    // Flush the mouseup's queued setTimeout(0) cleanup BEFORE asserting, so the check is
+    // deterministic: on the pre-fix code the cleanup fires here and hides the just-opened menu
+    // (the regression), so toBeVisible cannot pass on a transient open; the fix cancels the
+    // cleanup, so the menu is still visible after the flush.
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
     await expect(page.locator("#contextMenu")).toBeVisible();
     // ...and it offers the deck/slide comment scope (document mode) for that text.
     await expect(page.locator("#menuDocComment")).toBeVisible();
