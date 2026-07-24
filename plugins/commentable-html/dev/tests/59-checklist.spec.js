@@ -133,11 +133,15 @@ test("CMH-CHECK-06: one card per changed list; Reset reverts that list to baseli
   await expect(card.locator('[data-act="cl-reset"]')).toHaveText("reset");
   await expect(card.locator(".cmh-cl-arrow")).toHaveText("\u2192");
   await expect(card).not.toContainText("->");
-  // Not a comment: the comment count stays 0.
-  await expect(page.locator("#sidebarCount")).toHaveText("0");
+  // The changed checklist is reflected in BOTH counters, so it is not mistaken for no change (issue #643).
+  await expect(page.locator("#sidebarCount")).toHaveText("1");
+  await expect(page.locator("#toolbarCount")).toHaveText("1");
   await card.locator('[data-act="cl-reset"]').click();
   await expect(page.locator(".cm-card-checklist")).toHaveCount(0);
   expect(await stateOf(page, "rel")).toBe("blank");
+  // Reverting the only change returns both counters to 0.
+  await expect(page.locator("#sidebarCount")).toHaveText("0");
+  await expect(page.locator("#toolbarCount")).toHaveText("0");
 });
 
 test("CMH-CHECK-07: the checklist card is placed by document order among comments", async ({ page }) => {

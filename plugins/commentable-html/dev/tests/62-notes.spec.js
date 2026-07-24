@@ -72,17 +72,22 @@ test("CMH-NOTE-03: the single/multi-line toggle switches the field height", asyn
   expect(await field(page).evaluate((el) => el.rows)).toBeGreaterThan(1);
 });
 
-test("CMH-NOTE-04: a changed note renders one non-comment card by document order; count stays 0", async ({ page }) => {
+test("CMH-NOTE-04: a changed note renders one non-comment card by document order and is counted", async ({ page }) => {
   await open(page, DOC, "cmh-note-04");
   await expect(page.locator(".cm-card-note")).toHaveCount(0);
-  await addTextComment(page, "#before", "before note");
   await field(page).fill(HOSTILE);
   const card = page.locator(".cm-card-note");
   await expect(card).toHaveCount(1);
   await expect(card).toContainText("Reviewer risk summary");
   await expect(card.locator('[data-act="note-jump"]')).toHaveText("jump");
   await expect(card.locator('[data-act="note-reset"]')).toHaveText("reset");
-  await expect(page.locator("#sidebarCount")).toHaveText("1");  // only the real comment counts
+  // A changed note alone is reflected in BOTH counters, so it is not mistaken for no change (issue #643).
+  await expect(page.locator("#sidebarCount")).toHaveText("1");
+  await expect(page.locator("#toolbarCount")).toHaveText("1");
+  // Adding a real comment brings the count to 2 (the comment plus the changed note).
+  await addTextComment(page, "#before", "before note");
+  await expect(page.locator("#sidebarCount")).toHaveText("2");
+  await expect(page.locator("#toolbarCount")).toHaveText("2");
   // The note (after #before) sorts after that comment's card.
   const order = await page.$$eval("#commentList > article", (els) =>
     els.map((e) => e.classList.contains("cm-card-note") ? "NOTE" : (e.querySelector(".note") || {}).textContent));
@@ -92,10 +97,14 @@ test("CMH-NOTE-04: a changed note renders one non-comment card by document order
 test("CMH-NOTE-05: reset reverts the note to its authored baseline", async ({ page }) => {
   await open(page, DOC, "cmh-note-05");
   await field(page).fill(HOSTILE);
+  await expect(page.locator("#sidebarCount")).toHaveText("1");  // the changed note is counted
   await page.locator('.cm-card-note [data-act="note-reset"]').click();
   await expect(page.locator(".cm-card-note")).toHaveCount(0);
   await expect(field(page)).toHaveValue("No blocking risks yet.");
   expect(await storedNotes(page)).toBeNull();
+  // Reverting the only change returns BOTH counters to 0 (issue #643).
+  await expect(page.locator("#sidebarCount")).toHaveText("0");
+  await expect(page.locator("#toolbarCount")).toHaveText("0");
 });
 
 test("CMH-NOTE-06: Clear all comments also reverts note edits to baseline", async ({ page }) => {
@@ -193,7 +202,8 @@ test("CMH-NOTE-12: the note field is cm-skip; editing it never creates a highlig
   await field(page).click();
   await field(page).fill(HOSTILE);
   await expect(page.locator("mark.cm-hl")).toHaveCount(0);
-  await expect(page.locator("#sidebarCount")).toHaveText("0");
+  // Editing the note creates no comment highlight, but the changed note is reflected in the count.
+  await expect(page.locator("#sidebarCount")).toHaveText("1");
 });
 
 test("CMH-NOTE-E2E: reviewer edit -> Copy all -> notes_apply.py -> reopen shows the cemented source", async ({ page }) => {
