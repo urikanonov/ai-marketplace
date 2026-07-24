@@ -109,16 +109,26 @@ function measureCards(page, cardSel) {
       // rendered height (a legibility floor) and its paint visibility (transparent color / zero opacity
       // / hidden - a broken HTML label would look empty while all the svg-geometry checks stay green).
       svg.querySelectorAll("foreignObject").forEach((fo) => {
-        const label = fo.querySelector(".nodeLabel, .edgeLabel, span, div, p") || fo;
-        // Count every label that carries TEXT (skip structural/empty foreignObjects) REGARDLESS of
-        // size, so a label that COLLAPSED to zero height - the exact regression this guards - is counted
-        // and fails the floor/visibility checks, instead of being skipped (vacuous guard).
-        if (!label.textContent || !label.textContent.trim()) return;
+        // Prefer the nested SEMANTIC label element explicitly, and among matches pick the first that
+        // actually carries TEXT: a comma selector (or a bare querySelector) returns the first DOM match,
+        // which may be mermaid's outer wrapper div (overstating a crushed inner label) or an empty
+        // structural node BEFORE the text-bearing one (which would then skip a real label).
+        const hasText = (el) => !!(el && el.textContent && el.textContent.trim());
+        const pick = (sel) => [...fo.querySelectorAll(sel)].find(hasText);
+        const label = pick(".nodeLabel") || pick(".edgeLabel") || pick("span") || pick("p") || pick("div") || fo;
+        // A foreignObject with no text at all (e.g. an unlabelled edge) is legitimately empty - skip it.
+        if (!hasText(label)) return;
         nHtmlLabel++;
         const nr = label.getBoundingClientRect();
         htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
         const ls = getComputedStyle(label);
-        if (nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
+        let hidden = nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none";
+        // A hidden ANCESTOR (opacity/visibility/display) hides the label too, so fold the chain in.
+        for (let a = label.parentElement; !hidden && a && svg.contains(a); a = a.parentElement) {
+          const as = getComputedStyle(a);
+          if (parseFloat(as.opacity) === 0 || as.visibility === "hidden" || as.display === "none") hidden = true;
+        }
+        if (hidden) htmlLabelInvisible++;
       });
     }
     return {
@@ -427,6 +437,13 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
           expect(c.htmlLabelInvisible, `diagram "${c.src}" HTML labels are painted (not transparent/hidden)`).toBe(0);
         }
       }
+      // The per-card HTML-label guard above is NON-VACUOUS: the classDiagram and erDiagram cards render
+      // their labels as HTML in <foreignObject>, so each must report at least one measured HTML label -
+      // otherwise a future mermaid change that stopped emitting HTML labels would silently make the
+      // legibility guard vacuous (nHtmlLabel 0 => the assertions are skipped) with no signal.
+      const byType = (needle) => cells.find((c) => c.src.startsWith(needle));
+      expect(byType("classDiagram")?.nHtmlLabel, "the classDiagram card renders HTML labels (guard is not vacuous)").toBeGreaterThan(0);
+      expect(byType("erDiagram")?.nHtmlLabel, "the erDiagram card renders HTML labels (guard is not vacuous)").toBeGreaterThan(0);
       // Uniform height across these different renderers too.
       const hs = cells.map((c) => c.cardH);
       expect(Math.max(...hs) - Math.min(...hs), "different diagram types share the uniform card height").toBeLessThanOrEqual(2);
