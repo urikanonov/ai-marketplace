@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.225.0";
+const CMH_VERSION = "1.226.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -1265,6 +1265,32 @@ function mermaidIntrinsicWidth(host) {
 const NARROW_ENTER = 0.82, NARROW_EXIT = 0.90, NARROW_CAP = 1.4;
 function updateMermaidWidthClass(host) {
   if (!host) return;
+  // A diagram inside a .cmh-diagram-gallery card is sized by CSS (fixed height + aspect-derived width;
+  // the card hugs it). Match the EXACT card hosts the CSS sizes (a direct-child mermaid, or a mermaid
+  // inside a direct-child figure), not any descendant, so a mermaid in a stray wrapper keeps normal
+  // handling.
+  const isGalleryHost = host.matches && host.matches(".cmh-diagram-gallery > .mermaid, .cmh-diagram-gallery > figure > .mermaid");
+  if (isGalleryHost) {
+    // A11y: keep the OVERFLOWING-card tab stop in sync on EVERY call, including a desktop<->mobile
+    // resize. `markGalleryCardScrollable` checks the `min-width:481px` `framed` state itself: it makes
+    // an overflowing framed card keyboard-focusable (WCAG 2.1.1, a bare overflow container is not
+    // focusable in every browser) and CLEARS that marking on a card that fits OR on mobile. Calling it
+    // here unconditionally (not only inside the desktop branch below) is what lets a desktop->mobile
+    // resize clean up a leaked tabindex. It only sets a11y attributes, never a size.
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => markGalleryCardScrollable(host));
+    else setTimeout(() => markGalleryCardScrollable(host), 0);
+    // Above the mobile breakpoint the CSS sizes the card, so the layer's own narrow/wide/scroll-fade
+    // SIZING affordances must NOT apply - the narrow scale-up in particular is measurement-timing
+    // dependent and rendered diagrams tiny in a real browser. Clear the sizing classes and bail. Gated
+    // to `screen and (min-width:481px)` to mirror the card CSS's media query exactly: below it the
+    // gallery is a frameless flow where a wide diagram must keep the layer's wide/scroll handling
+    // (CMH-RESP-01/09) - so fall through - and in print the card CSS is inactive too.
+    if (typeof window.matchMedia !== "function" || window.matchMedia("screen and (min-width: 481px)").matches) {
+      host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade", "cmh-diagram-narrow");
+      host.style.removeProperty("--cmh-diagram-cap");
+      return;
+    }
+  }
   // A diagram-fit slide sizes the SVG to contain-fit (see fitDeckDiagram); the wide/scroll-fade
   // affordance (and its narrow-viewport min-width rule) would fight that, so never apply it there.
   // Only relevant in a deck: outside deck mode the classes drive horizontal scroll for wide diagrams.
@@ -1291,22 +1317,21 @@ function updateMermaidWidthClass(host) {
   else host.style.removeProperty("--cmh-diagram-cap");
   const syncFade = () => {
     host.classList.toggle("cmh-diagram-scroll-fade", wide && host.scrollWidth > host.clientWidth + 1);
-    markGalleryCardScrollable(host);
   };
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(syncFade);
   else setTimeout(syncFade, 0);
 }
-// A bounded .cmh-diagram-gallery card whose diagram is taller OR wider than the card scrolls
-// (overflow:auto). Make an OVERFLOWING card keyboard-focusable so a sighted keyboard-only user can
-// scroll to the clipped content (WCAG 2.1.1). Only a card that actually overflows gets a tab stop - a
-// card that fits, and the frameless mobile single-column flow, do not - and the state is re-synced on
-// resize/ResizeObserver, so it clears when a widened card no longer overflows. Ownership is explicit and
-// precise: we take a card over ONLY when the author set none of tabindex/role/aria-label, we mark it with
-// `data-cmh-scroll-a11y` (which survives export so an exported+reloaded card is re-adopted), we
-// idempotently re-assert the trio (so a sanitizer that stripped tabindex/role but kept the marker is
-// healed), and we remove ONLY the values we set (leaving any author-modified value alone). `host` is a
-// mermaid host; the actual gallery CARD is resolved with closest over the exact card selectors, so a
-// mermaid host wrapped in a figure card marks the figure and a stray non-card wrapper is never adopted.
+// A .cmh-diagram-gallery card whose diagram is WIDER than the card overflows into a horizontal scroll
+// (overflow-x:auto). A bare overflow container is not keyboard-focusable in every browser, so make an
+// OVERFLOWING card keyboard-focusable (WCAG 2.1.1) so a sighted keyboard-only user can scroll to the
+// clipped content. Only a card that actually overflows gets a tab stop - a card that fits, and the
+// frameless mobile single-column flow, do not - and the state is re-synced on resize/ResizeObserver so
+// it clears when a widened viewport lets the card fit. This sets ONLY a11y attributes, never a size.
+// Ownership is explicit: we adopt a card ONLY when the author set none of tabindex/role/aria-label, we
+// mark it with `data-cmh-scroll-a11y` (which survives export so a reloaded card is re-adopted),
+// idempotently re-assert the trio (healing a sanitizer that stripped tabindex/role but kept the
+// marker), and remove ONLY the values we set. `host` is a mermaid host; the actual gallery CARD is
+// resolved with closest over the exact card selectors, so a mermaid host in a figure marks the figure.
 var GALLERY_SCROLL_LABEL = "Scrollable diagram - use the arrow keys to scroll";
 var GALLERY_CARD_SEL = ".cmh-diagram-gallery > pre.mermaid, .cmh-diagram-gallery > div.mermaid, .cmh-diagram-gallery > figure";
 function markGalleryCardScrollable(host) {
@@ -1314,25 +1339,36 @@ function markGalleryCardScrollable(host) {
   if (!card) return;
   // Only the framed (>=481px) gallery is a bounded scroll card; below the mobile breakpoint the helper
   // is a frameless full-height flow (a wide diagram uses the layer's own horizontal scroll,
-  // CMH-RESP-01/09, which carries no extra tab stop), so a mobile card gets no tab stop. A
-  // desktop->mobile resize makes `overflows` false, so the else-branch clears any marking we added.
-  const framed = typeof window.matchMedia !== "function" || window.matchMedia("(min-width: 481px)").matches;
-  const overflows = framed && (card.scrollHeight > card.clientHeight + 1 ||
-    card.scrollWidth > card.clientWidth + 1);
+  // CMH-RESP-01/09), so a mobile card gets no tab stop. A desktop->mobile resize makes `overflows`
+  // false, so the else-branch clears any marking we added.
+  const framed = typeof window.matchMedia !== "function" || window.matchMedia("screen and (min-width: 481px)").matches;
+  // A gallery card only ever scrolls HORIZONTALLY (overflow-x:auto; overflow-y:hidden, and the svg is
+  // pinned to a fixed 15rem height), so overflow == the diagram being wider than the card. (Checking
+  // scrollHeight too would be dead under this design and could mislead a future regression that added a
+  // card height into marking a card focusable for a direction it cannot scroll.)
+  const overflows = framed && card.scrollWidth > card.clientWidth + 1;
   const owned = card.getAttribute("data-cmh-scroll-a11y") === "1";
   if (overflows) {
-    // Respect an author who set any of these on a card we do not already own.
-    if (!owned && (card.hasAttribute("tabindex") || card.hasAttribute("role") || card.hasAttribute("aria-label"))) return;
+    if (!owned && (card.hasAttribute("tabindex") || card.hasAttribute("role") || card.hasAttribute("aria-label") || card.hasAttribute("aria-description"))) return;
     if (!card.hasAttribute("tabindex")) card.setAttribute("tabindex", "0");
-    if (!card.hasAttribute("role")) card.setAttribute("role", "figure");
-    // Do not clobber a <figure>'s native accessible name from its <figcaption> - a captioned diagram
-    // already has a name; only add the generic scroll label when there is none.
-    if (!card.hasAttribute("aria-label") && !card.querySelector("figcaption")) card.setAttribute("aria-label", GALLERY_SCROLL_LABEL);
+    const isFigure = card.tagName === "FIGURE";
+    // A <figure> is already a figure landmark; only a pre/div card needs an explicit role. Use `group`
+    // (a scrollable group of diagram content) rather than a spurious landmark.
+    if (!isFigure && !card.hasAttribute("role")) card.setAttribute("role", "group");
+    // The scroll hint: use aria-label when the card has no other name; a captioned <figure> is already
+    // named by its <figcaption>, so attach the hint as aria-description (progressive - ignored by a
+    // screen reader that does not support it) instead of clobbering the caption name.
+    if (!card.hasAttribute("aria-label") && !card.querySelector("figcaption")) {
+      card.setAttribute("aria-label", GALLERY_SCROLL_LABEL);
+    } else if (isFigure && card.querySelector("figcaption") && !card.hasAttribute("aria-description")) {
+      card.setAttribute("aria-description", GALLERY_SCROLL_LABEL);
+    }
     card.setAttribute("data-cmh-scroll-a11y", "1");
   } else if (owned) {
     if (card.getAttribute("tabindex") === "0") card.removeAttribute("tabindex");
-    if (card.getAttribute("role") === "figure") card.removeAttribute("role");
+    if (card.getAttribute("role") === "group") card.removeAttribute("role");
     if (card.getAttribute("aria-label") === GALLERY_SCROLL_LABEL) card.removeAttribute("aria-label");
+    if (card.getAttribute("aria-description") === GALLERY_SCROLL_LABEL) card.removeAttribute("aria-description");
     card.removeAttribute("data-cmh-scroll-a11y");
   }
 }
@@ -1747,6 +1783,8 @@ function setupMermaidLayer() {
     setupMermaidLayer._widthObs = widthObs;
   }
 }
+
+
 /* ---------- Diff / code-review layer ----------
    Renders unified-diff blocks (pre.cmh-diff / div.cmh-diff) into a colored
    review view with a per-block toggle between side-by-side and inline layouts.

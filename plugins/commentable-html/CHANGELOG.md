@@ -4,6 +4,44 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.226.0] - 2026-07-24
+
+### Changed
+
+- The `.cmh-diagram-gallery` helper (CMH-CONTENT-19) now lays diagrams out as a centred FLEX-WRAP of
+  UNIFORM-HEIGHT, content-HUGGING cards instead of a grid of uniform fixed-size cards. Every diagram is
+  rendered at one fixed HEIGHT with its WIDTH derived from the mermaid viewBox aspect ratio (at natural,
+  readable size, with no width clamp), and each card SHRINKS to hug that width up to a generous cap.
+  This fixes the cases a fixed-card layout could not: a tall-narrow diagram (a vertical
+  `stateDiagram-v2`) no longer slivers into a thin ribbon in an empty wide card - it gets a narrow
+  full-height card - and every diagram now fills its card in BOTH dimensions at readable size (no
+  letterbox). A diagram too wide for the card keeps its full height and SCROLLS horizontally inside its
+  card rather than being crushed into an unreadable strip. Sizing is pure deterministic CSS anchored on
+  a definite height, so it renders consistently (geometry-identical) across Chromium, Firefox, and
+  WebKit and has no JS-measurement race; the layer's narrow/wide scale-up is disabled inside the
+  gallery because it was measurement-timing dependent and rendered diagrams tiny in a real browser
+  (while passing headless). A
+  `<figure>` card is `width:fit-content` so it hugs its diagram for a short caption, and for a caption
+  LONGER than a narrow diagram it grows only to a bounded readable width (`figcaption{max-width:22rem}`)
+  with the caption wrapping there and the diagram CENTRED above it (`margin-inline:auto`) - so a long
+  caption neither stretches the card to its full length (marooning the diagram in dead space) nor
+  collapses to the tiny diagram width (towering into a many-line vertical strip). The caption is itself
+  `margin-inline:auto` centred, so a short caption under a diagram wider than the 22rem cap sits centred
+  rather than pinned to the card's start edge. When a wide diagram
+  makes the figure its own horizontal scroll container, the caption is `position:sticky;
+  inset-inline-start:0` so it stays PINNED in the visible card while the diagram scrolls beneath it
+  (a static caption scrolled off-screen and stranded the reader without the label); the logical
+  `inset-inline-start` pins the correct edge in both LTR and RTL. A diagram wider than the card cap scrolls horizontally with `align-items:flex-start`
+  so its start edge stays reachable (a centered over-wide diagram is pushed to a negative
+  offset the scroll range excludes, clipping its start), and an overflowing card is made
+  keyboard-focusable (WCAG 2.1.1) with a visible focus ring. The gallery tests now assert each diagram FILLS its card in BOTH dimensions (a
+  `Math.max`-based single-axis check could not catch a sliver), that no painted content is clipped or
+  painted invisible, that text stays legible, that the card height stays at its design size (catching a
+  uniform downscale), that an extreme-wide diagram scrolls at full height, that a wide figure's caption
+  stays pinned in view (and never overlaps the diagram) while scrolling, and that a long caption wraps
+  to a bounded readable width with no tower and the diagram centred - each mutation-verified
+  to fail on a reverted/broken render. Documented in `references/mermaid-diagrams.md`.
+
 ## [1.225.0] - 2026-07-24
 
 ### Fixed
