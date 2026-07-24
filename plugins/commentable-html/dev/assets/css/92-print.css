@@ -225,9 +225,9 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  /* A .cmh-diagram-gallery card scrolls on screen (bounded height + frame); for print, drop the bound
-     and the frame so the whole diagram prints, not just the visible scroll window. Scoped to the
-     diagram CONTAINERS (matching the screen card selector), so a stray non-card child is left alone,
+  /* A .cmh-diagram-gallery card hugs its diagram at a fixed height on screen (framed, bounded); for
+     print, drop the height bound and the frame so the whole diagram prints at natural size. Scoped to
+     the diagram CONTAINERS (matching the screen card selector), so a stray non-card child is left alone,
      and to the diagram gallery ONLY - the chart .visual-grid keeps its figure frames in print. */
   #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > pre.mermaid,
   #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery > div.mermaid,
