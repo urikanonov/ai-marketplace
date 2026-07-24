@@ -208,6 +208,19 @@ class SiteTutorialMarkdownTests(unittest.TestCase):
         self.assertIn("click **Comments**", out)
         self.assertNotIn("click **Show**", out)
 
+    def test_tutorial_documents_the_storage_pie_and_badge_counting(self):
+        # Issue #655: the tutorial must surface the storage manager's pie-chart breakdown
+        # and that the toolbar count badge counts note/checklist changes, so these shipped
+        # features are documented on at least one surface.
+        tutorial = os.path.join(os.path.dirname(__file__), "..", "plugins",
+                                "commentable-html", "docs", "TUTORIAL.md")
+        with open(tutorial, encoding="utf-8") as fh:
+            out = bsd.site_tutorial_markdown(fh.read())
+        self.assertIn("Manage storage", out)
+        self.assertIn("pie-chart breakdown", out)
+        self.assertIn("Other commentable-html documents", out)
+        self.assertIn("count badge counts these checklist changes", out)
+
 class DemoFullscreenTests(unittest.TestCase):
     def test_link_accessible_name_announces_new_tab(self):
         out = bsd.render_demo_fullscreen_link()

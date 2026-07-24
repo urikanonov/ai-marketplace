@@ -240,6 +240,18 @@ test. The rule is simple and non-negotiable:
   not possible.
 - Removing a feature means removing its spec row and its now-dead test together; for a published
   plugin, also bump the version and update the changelog.
+- Surface every new user-facing feature to users (doc-surface rule). When a pull request adds a NEW
+  feature-id row for a user-visible commentable-html behavior, it must also, in the same PR, declare
+  where that feature is surfaced to readers - the guided tutorial (`docs/TUTORIAL.md`), the
+  marketplace site pages (`site/pages/commentable-html`), or the in-runtime Help/About panel
+  (`dev/assets/js/75-help.js`) - by adding a row to the "Doc-surface registry" table in
+  `plugins/commentable-html/dev/SPEC.md` (a comma-separated subset of `tutorial`, `site`, `help`).
+  A change that is genuinely not user-facing (internal hardening, build/authoring tooling, a
+  robustness invariant, a security guard, an agent-facing export format) records `opt-out: <reason>`
+  in that table instead. The required `validate` job runs `scripts/check_doc_surfaces.py`, which fails
+  a PR whose newly added feature ids lack a registry entry (and fails on a stale or malformed entry),
+  so a new feature cannot ship undocumented and unexplained. See the SPEC "Doc-surface coverage"
+  section for the surfaces and the coverage matrix.
 - For BUG FIXES, work test-first (TDD): add a test that reproduces the defect and FAILS on the
   current code, confirm it is red, then make the fix so it passes. Commit the failing test and the
   fix together in the same PR - the red-then-green test is the proof the bug was real and is fixed,

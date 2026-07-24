@@ -60,3 +60,48 @@ test.describe("Help terminology matches the current button labels", () => {
     }
   });
 });
+
+test.describe("Help documents recently shipped features (issue #655)", () => {
+  test("the panel-and-toolbar topic explains the count bubble includes note and checklist changes (CMH-HELP-COUNT-01)", async ({ page }) => {
+    await openHelp(page);
+    const search = page.locator(".cm-help-search-input");
+    await search.fill("count bubble");
+    const visible = page.locator(".cm-help-topic:visible");
+    expect(await visible.count()).toBeGreaterThan(0);
+    let text = "";
+    for (const t of await visible.all()) text += "\n" + (await t.innerText());
+    expect(text).toMatch(/count bubble/i);
+    expect(text).toMatch(/thread/i);
+    expect(text).toMatch(/note/i);
+    expect(text).toMatch(/checklist/i);
+  });
+
+  test("the help panel documents inline replies, author names, and thread export (CMH-HELP-THREADS-01)", async ({ page }) => {
+    await openHelp(page);
+    const search = page.locator(".cm-help-search-input");
+    await search.fill("Threads, replies and author names");
+    const topic = page.locator(".cm-help-topic:visible", { hasText: "Threads, replies and author names" });
+    await expect(topic).toHaveCount(1);
+    const text = await topic.innerText();
+    expect(text).toMatch(/Commenting as/);
+    expect(text).toMatch(/author pill/i);
+    expect(text).toMatch(/inline/i);
+    expect(text).toMatch(/oldest first/i);
+    expect(text).toMatch(/whole thread/i);
+    expect(text).toMatch(/Copy all/);
+  });
+
+  test("the managing-storage topic documents the pie chart, Share column, and per-comment browsing (CMH-HELP-STORE-01)", async ({ page }) => {
+    await openHelp(page);
+    const search = page.locator(".cm-help-search-input");
+    await search.fill("pie chart");
+    const topic = page.locator(".cm-help-topic:visible", { hasText: "Managing storage" });
+    await expect(topic).toHaveCount(1);
+    const text = await topic.innerText();
+    expect(text).toMatch(/pie chart/i);
+    expect(text).toMatch(/Other commentable-html documents/);
+    expect(text).toMatch(/Free/);
+    expect(text).toMatch(/Share/);
+    expect(text).toMatch(/Show comments/);
+  });
+});

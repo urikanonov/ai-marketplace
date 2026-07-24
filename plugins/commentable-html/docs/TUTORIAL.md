@@ -97,7 +97,7 @@ Some reports embed interactive review checklists - grouped items whose state you
 
 1. Open [`examples/report-checklist.html`](../examples/report-checklist.html).
 2. Click an item's box to cycle its state: blank, done (green check), failed (red cross), or unresolved (amber question). A group heading rolls up the state of its items, and clicking it propagates a state to every item beneath it.
-3. Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item's text and click **Add Comment** to leave a note on that specific check.
+3. Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item's text and click **Add Comment** to leave a note on that specific check. The toolbar count badge counts these checklist changes and any review-note edits too, alongside open comment threads, so it reflects everything still needing attention.
 
 ![A grouped review checklist with tickable items under Backend and Frontend headings](assets/checklist-01-checklist.png)
 
@@ -179,7 +179,8 @@ The sidebar's export menu gathers the ways to save or share the file in one plac
 
 1. Click **Export** in the comments panel header to open the menu.
 2. Choose an option: **Portable** bakes your comments into a single self-contained copy, **Offline** makes a zero-network copy after diagrams and charts have rendered, **Markdown** writes the comment bundle to a `.md` file, and **Plain HTML** hands over a clean copy with the commenting layer removed.
-3. The **Clear** button next to Export removes every comment so you can start the review over.
+3. The same menu holds **Manage storage**, which opens a window with a pie-chart breakdown of how your browser storage is used - **This document**, **Other commentable-html documents**, **Other** site data, and the **Free** headroom - above a per-document table whose **Share** column shows each document's percentage of commentable-html storage. Expand a row's **Show comments** to browse or delete individual comments, or delete another document's data to free space. Nothing is ever uploaded; this only manages your browser's local storage.
+4. The **Clear** button next to Export removes every comment so you can start the review over.
 
 ![The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML](assets/garden-12-export-menu.png)
 

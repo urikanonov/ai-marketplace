@@ -76,10 +76,18 @@ function showHelp(restoreEl) {
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
           '<li><strong>Clear</strong> deletes every comment and always asks for confirmation first (Cancel is the default).</li>' +
         '</ul>') +
+      T('Threads, replies and author names',
+        '<ul>' +
+          '<li><strong>Set your name:</strong> the <strong>Commenting as</strong> line in the panel shows the name attached to your comments. Click <em>set name</em> (or <em>change</em>) to enter a display name; it is remembered in this browser and applies to your future comments only - it never rewrites comments you already made. An author who generated the file can pre-fill it with <code>data-cm-author</code>.</li>' +
+          '<li><strong>Author pills:</strong> each attributed comment and reply shows a colored author pill at the start of its note, so it is clear who wrote what; an unattributed comment shows no pill.</li>' +
+          '<li><strong>Reply in a thread:</strong> click <strong>Reply</strong> on a comment card to open an empty editor <em>inline</em> in that card (Word-style, not a floating popup) - it is never prefilled with the quoted text. Your reply stacks under the original comment, oldest first. <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> saves and <kbd>Esc</kbd> cancels. Replying for the first time without a name prompts you to set one.</li>' +
+          '<li><strong>Edit or delete a reply</strong> from its own controls. Deleting the original comment removes the whole thread; deleting a single reply removes only that reply.</li>' +
+          '<li><strong>Threads travel together:</strong> <strong>Copy all</strong>, the Markdown export, and the print appendix emit each thread as an initial comment followed by its labelled replies, so the agent reads the refinements in context.</li>' +
+        '</ul>') +
       T('The panel and toolbar',
         '<ul>' +
           '<li><strong>Copy all</strong> copies every comment as a Markdown bundle to paste back to the agent.</li>' +
-          '<li>The <strong>count bubble</strong> shows how many open comments there are.</li>' +
+          '<li>The <strong>count bubble</strong> shows how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies).</li>' +
           '<li><strong>Hide</strong> collapses the panel; a small floating toolbar stays to bring it back. The overflow <kbd>...</kbd> menu holds the export actions and <strong>Help &amp; About</strong>.</li>' +
           '<li>The <strong>Help &amp; About</strong> and <strong>Hide</strong> controls sit together at the top of the panel; <strong>Help &amp; About</strong> opens this dialog.</li>' +
         '</ul>') +
@@ -152,6 +160,7 @@ function showHelp(restoreEl) {
         '<p>Everything you review is saved in this browser&#39;s storage, which every commentable-html document you open shares. If you review many documents from your file system, that space can fill up.</p>' +
         '<ul>' +
           '<li><strong>Manage storage</strong> (in the overflow <kbd>...</kbd> menu, or the sidebar&#39;s <em>Export</em> menu) lists every document&#39;s stored data with its size, and lets you delete another document&#39;s data to free space. Your own comments are never uploaded - this only clears local browser storage.</li>' +
+          '<li>The window shows a <strong>pie chart</strong> of how the browser storage is used - <em>This document</em>, <em>Other commentable-html documents</em>, <em>Other</em> site data, and the <em>Free</em> headroom - above a per-document <strong>table</strong> (Document, Comments, Size, Share, Actions) whose <em>Share</em> column is each document&#39;s percentage of commentable-html storage. Expand a row&#39;s <strong>Show comments</strong> to browse and delete individual comments.</li>' +
           '<li>If a comment cannot be saved because storage is full, the <strong>Manage storage</strong> window opens automatically; delete another document&#39;s data and your comment is saved.</li>' +
           '<li>Comments are stored compressed, so far more reviews fit before the space runs out.</li>' +
         '</ul>') +
