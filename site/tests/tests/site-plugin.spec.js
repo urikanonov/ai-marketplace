@@ -746,4 +746,9 @@ test("the demo section and its links are labelled 'Demo', not 'Try it' (SITE-DEM
   await expect(page.getByText("Try the live demo", { exact: false })).toHaveCount(0);
   // The #demo anchor itself is preserved so existing deep links keep working.
   await expect(page.locator("#demo")).toHaveCount(1);
+
+  // The tutorial page's nav link back to the demo is renamed to "Demo" too (href "../#demo").
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  const tutorialDemoLink = page.locator(".nav-links a[href='../#demo']");
+  await expect(tutorialDemoLink).toHaveText("Demo");
 });
