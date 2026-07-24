@@ -6,6 +6,7 @@ import {
   openInline, ready, fileUrl, INLINE, stageInline, addTextComment, readDownload,
   installClipboardCapture, allCids,
   clickSidebarExport, currentToast,
+  clickClearAll,
 } from "./helpers.js";
 
 const CONTENT_END = "<!-- END: commentable-html - CONTENT -->";
@@ -198,7 +199,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
     await p2.goto(fileUrl(p));
     await ready(p2);
     const ids = await p2.locator(".cm-card").evaluateAll((cards) => cards.map((c) => c.dataset.cid));
-    await p2.locator("#btnClearAll").click();
+    await clickClearAll(p2);
     await p2.locator(".cm-modal").getByRole("button", { name: "OK" }).click();
     await expect(p2.locator(".cm-card")).toHaveCount(0);
     expect(await p2.evaluate((expected) => {

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { fileUrl, ready, stageContent, stageInline, INLINE, addTextComment, storedComments, currentToast } from "./helpers.js";
+import { fileUrl, ready, stageContent, stageInline, INLINE, addTextComment, storedComments, currentToast, clickSidebarMore } from "./helpers.js";
 
 // The storage manager and compression codec (CMH-STORE-*). Each test loads an isolated document
 // (its own data-comment-key) so seeded "other document" data is unambiguous.
@@ -13,12 +13,11 @@ async function open(page, opts = {}) {
 }
 
 async function openManager(page) {
-  // The floating toolbar (and its overflow menu) is hidden while the sidebar is open, so reach the
-  // manager via the sidebar export menu in that state and via the toolbar menu otherwise.
+  // The floating toolbar is hidden while the sidebar is open, so reach the manager via
+  // the sidebar More menu in that state and via the toolbar menu otherwise.
   const sidebarOpen = await page.evaluate(() => document.body.classList.contains("sidebar-open"));
   if (sidebarOpen) {
-    if (await page.locator("#sidebarExportMenu").isHidden()) await page.click("#btnSidebarExportMenu");
-    await page.click("#btnStorage");
+    await clickSidebarMore(page, "#btnStorage");
   } else {
     if (await page.locator("#toolbarMenu").isHidden()) await page.click("#btnToolbarMenu");
     await page.click("#btnStorageTop");

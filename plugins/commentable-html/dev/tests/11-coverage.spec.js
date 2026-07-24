@@ -9,6 +9,7 @@ import {
   openToolbarMenu, markTextForCid, distinctCids, ready, fileUrl, selectText,
   startStaticServer, routeMermaidLocal, installClipboardCapture, readDownload,
   stageNonPortable, SKILL,
+  clickClearAll,
 } from "./helpers.js";
 
 test.describe("targeted coverage gaps", () => {
@@ -71,7 +72,7 @@ test.describe("targeted coverage gaps", () => {
     await expect(page.locator(".cm-empty")).toHaveCount(0);
     await expect(page.locator("#sidebarCount")).toHaveText("1");
 
-    await page.locator("#btnClearAll").click();
+    await clickClearAll(page);
     await page.locator(".cm-modal").getByRole("button", { name: "OK" }).click();
     await expect(page.locator(".cm-card")).toHaveCount(0);
     await expect(page.locator(".cm-empty")).toBeVisible();

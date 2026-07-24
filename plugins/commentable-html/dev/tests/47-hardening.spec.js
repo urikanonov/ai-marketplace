@@ -7,6 +7,7 @@ import {
   openInline, openNonPortable, openComposerFor, addTextComment, selectText,
   openToolbarMenu, readDownload, currentToast, storedComments,
   clickSidebarExport,
+  clickClearAll,
 } from "./helpers.js";
 
 async function openRich(page, content, key) {
@@ -163,7 +164,7 @@ test("Escape dismissing the Add-Comment menu does not close an open composer dra
 test("the confirm dialog always traps Tab and pulls escaped focus back to Cancel (CMH-A11Y-04)", async ({ page }) => {
   await openInline(page);
   await addTextComment(page, "#commentRoot p", "to be cleared");
-  await page.click("#btnClearAll");
+  await clickClearAll(page);
   await expect(page.locator(".cm-modal-overlay")).toBeVisible();
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.keyboard.press("Tab");

@@ -485,6 +485,18 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
         doc = build().replace('<span id="btnStorage" class="cm-skip"></span>', "")
         self.assertError(doc, 'required element id="btnStorage" is missing')
 
+    def test_missing_required_id_more_menu_button(self):
+        doc = build().replace('<span id="btnMoreMenu" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="btnMoreMenu" is missing')
+
+    def test_missing_required_id_sidebar_more_menu(self):
+        doc = build().replace('<span id="sidebarMoreMenu" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="sidebarMoreMenu" is missing')
+
+    def test_missing_required_id_search_toggle(self):
+        doc = build().replace('<span id="btnSearchToggle" class="cm-skip"></span>', "")
+        self.assertError(doc, 'required element id="btnSearchToggle" is missing')
+
     def test_missing_required_id_cm_identity(self):
         doc = build().replace('<span id="cmIdentity" class="cm-skip"></span>', "")
         self.assertError(doc, 'required element id="cmIdentity" is missing')

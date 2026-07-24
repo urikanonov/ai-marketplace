@@ -5,6 +5,7 @@ import fs from "fs";
 import {
   fileUrl, ready, distinctCids, markTextForCid, storedComments,
   stageInline, KITCHEN_SINK, SKILL,
+  clickClearAll,
 } from "./helpers.js";
 
 // Seeded PRNG so a failing position is reproducible. A matrix of seeds turns the
@@ -251,7 +252,7 @@ test("noise: a random sequence of add/edit/delete/clear keeps every invariant", 
         await page.locator(".cm-card").nth(idx).locator('[data-act="del"]').click();
         await expect(page.locator(".cm-card")).toHaveCount(stored.length - 1);
       } else {
-        await page.locator("#btnClearAll").click();
+        await clickClearAll(page);
         await page.locator(".cm-modal").getByRole("button", { name: "OK" }).click();
         await expect(page.locator(".cm-card")).toHaveCount(0);
       }

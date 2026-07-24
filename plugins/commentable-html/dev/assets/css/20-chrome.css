@@ -87,13 +87,15 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
 .cm-sidebar-export {
-  position: relative;
   flex: 1 1 6.8rem;
   min-width: min(100%, 6.2rem);
 }
-.cm-sidebar .head-actions .cm-sidebar-export > button {
+.cm-sidebar .cm-sidebar-export > button,
+.cm-sidebar .cm-sidebar-more > button {
   width: 100%;
 }
+/* Export and More dropdowns anchor to the action ribbon (position:relative) and span its full
+   width, so they never render off-screen or wrap ambiguously at any panel width. */
 .cm-sidebar-export-menu {
   position: absolute;
   z-index: 230;
@@ -111,15 +113,17 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   box-shadow: var(--cp-shadow);
 }
 .cm-sidebar-export-menu[hidden] { display: none; }
-.cm-sidebar .head-actions .cm-sidebar-export-menu button {
+.cm-sidebar .cm-sidebar-export-menu button {
   width: 100%;
   justify-content: flex-start;
   flex: none;
   min-width: 0;
   white-space: nowrap;
 }
-.cm-sidebar.is-narrow .head-actions .cm-sidebar-export { flex: 1 1 calc(50% - 0.2rem); min-width: 0; }
-.cm-sidebar.is-narrow .head-actions .cm-sidebar-export-menu { right: auto; width: min(14rem, calc(100vw - 2rem)); }
+/* The More menu reuses the export-menu shell; mark Clear as destructive. */
+.cm-sidebar-more-menu .cm-menu-group { padding: 0.3rem 0.45rem 0.15rem; font-size: var(--cp-chrome-tiny-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-text-soft); font-weight: 700; }
+.cm-sidebar-more-menu button.danger { color: var(--cp-danger); }
+.cm-sidebar-more-menu button.danger:hover { background: var(--cp-danger-soft); color: var(--cp-danger); }
 
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class

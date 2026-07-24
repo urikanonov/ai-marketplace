@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.235.0] - 2026-07-24
+
+### Changed
+
+- Redesigned the comment panel header into a composite layout: a top row with the title, count, and
+  the portability badge + version; a captioned action ribbon (Export, Sort, More, Help, Hide); a
+  half-and-half Copy / Search row where the Search button reveals and focuses the filter field; and
+  stacked Generated / Last comment / identity metadata rows.
+- Moved Manage storage and Clear all comments into a new sidebar More menu (kebab); the Export menu
+  now holds only the five file formats.
+
 ## [1.234.0] - 2026-07-24
 
 ### Added

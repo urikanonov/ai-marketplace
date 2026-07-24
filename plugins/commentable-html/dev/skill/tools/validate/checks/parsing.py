@@ -24,6 +24,7 @@ REQUIRED_IDS = [
     "btnToggleSidebar", "btnCopyAll", "btnCopyAllTop", "btnClearAll",
     "btnCloseSidebar", "menuComment",
     "btnToolbarMenu", "toolbarMenu",
+    "btnMoreMenu", "sidebarMoreMenu", "btnSearchToggle",
     "btnSaveHtml", "btnSaveHtmlTop", "btnSavePlain", "btnSavePlainTop",
     "btnExportOffline", "btnExportOfflineTop",
     "btnStorage", "btnStorageTop",

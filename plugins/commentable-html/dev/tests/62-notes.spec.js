@@ -10,6 +10,7 @@ import {
   fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, readDownload,
   addTextComment, SKILL, PYTHON,
   clickSidebarExport,
+  clickClearAll,
 } from "./helpers.js";
 
 const NOTES_APPLY = path.join(SKILL, "tools", "notes", "notes_apply.py");
@@ -112,7 +113,7 @@ test("CMH-NOTE-06: Clear all comments also reverts note edits to baseline", asyn
   await addTextComment(page, "#before", "a comment");
   await field(page).fill(HOSTILE);
   await expect(page.locator(".cm-card-note")).toHaveCount(1);
-  await page.click("#btnClearAll");
+  await clickClearAll(page);
   await expect(page.locator(".cm-modal")).toBeVisible();
   // The confirm names the note reset alongside the comment deletion (a comment is present here).
   await expect(page.locator(".cm-modal")).toContainText(
@@ -129,7 +130,7 @@ test("CMH-NOTE-06: Clear all reverts a note-only change even with no comment pre
   // used to treat this as "nothing to clear" and no-op; it must now open the confirm and reset it.
   await field(page).fill(HOSTILE);
   await expect(page.locator(".cm-card-note")).toHaveCount(1);
-  await page.click("#btnClearAll");
+  await clickClearAll(page);
   await expect(page.locator(".cm-modal")).toBeVisible();
   // With no comment present, the confirm names only the resets - no "Delete all 0 comment(s)" clause.
   await expect(page.locator(".cm-modal")).toContainText(

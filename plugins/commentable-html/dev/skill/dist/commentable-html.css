@@ -306,18 +306,8 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 }
 .cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--cp-chrome-gap) var(--cp-chrome-wide-gap); }
 .cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex: 1 1 8rem; min-width: 0; }
-.cm-sidebar .head-actions { display: flex; flex-wrap: wrap; gap: var(--cp-chrome-button-gap); }
-.cm-sidebar .head-actions button { flex: 1 1 6.8rem; min-width: min(100%, 6.2rem); display: inline-flex; align-items: center; justify-content: center; gap: var(--cp-chrome-button-gap); padding: var(--cp-chrome-button-y) var(--cp-chrome-shell-x); font-size: var(--cp-chrome-small-font); }
-.cm-sidebar .head-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: normal; }
-.cm-sidebar.is-narrow .head-meta .cm-head-actions { margin-left: 0; width: 100%; justify-content: stretch; }
-.cm-sidebar.is-narrow .head-meta .cm-head-actions button { flex: 1 1 8rem; }
 .cm-sidebar.is-narrow .head-top { align-items: stretch; }
 .cm-sidebar.is-narrow .head-top h3 { flex-basis: 100%; }
-.cm-sidebar.is-narrow .head-top #btnCopyAll { flex: 1 1 calc(100% - 4rem); }
-.cm-sidebar.is-narrow .head-top .cm-sort { margin-left: 0; }
-/* In narrow layout the Export menu and Clear share a compact action row. */
-.cm-sidebar.is-narrow .head-actions button { flex: 1 1 calc(50% - 0.2rem); min-width: 0; justify-content: center; }
-.cm-sidebar.is-narrow .head-actions button.danger { flex-basis: calc(50% - 0.2rem); }
 .cm-ui-ico { flex: none; vertical-align: middle; }
 
 /* Dependency-free styled tooltip (see setupTooltips). Dark bubble on both themes with
@@ -365,11 +355,6 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-side-info { display: flex; flex-flow: row wrap; align-items: baseline; gap: 0.1rem var(--cp-chrome-button-x); font-size: var(--cp-chrome-tiny-font); color: var(--cp-text-soft); margin: 0.15rem 0 var(--cp-chrome-button-y); }
 .cm-side-info > span { white-space: nowrap; }
 /* Clear Comments wears a persistent warning treatment so it is not clicked by accident. */
-.cm-sidebar .head-actions button.danger {
-  background: rgba(220, 38, 38, 0.12); border-color: var(--cp-danger); color: var(--cp-danger);
-}
-.cm-sidebar .head-actions button.danger:hover { background: rgba(220, 38, 38, 0.22); border-color: var(--cp-danger); color: var(--cp-danger); }
-
 /* Confirm dialog (used for destructive actions such as Clear Comments). */
 .cm-modal-overlay {
   position: fixed; inset: 0; z-index: 300;
@@ -420,11 +405,11 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-toolbar-menu-brand .cm-brand-icon { width: 20px; height: 20px; margin: 0; }
 .cm-toolbar-menu-head .cm-menu-version { align-self: center; white-space: nowrap; }
 .cm-toolbar #btnCopyAllTop[aria-disabled="true"],
-.cm-sidebar .head-top #btnCopyAll[aria-disabled="true"] {
+.cm-sidebar .head-primary #btnCopyAll[aria-disabled="true"] {
   opacity: 0.58; cursor: not-allowed; box-shadow: none;
 }
 .cm-toolbar #btnCopyAllTop[aria-disabled="true"]:hover,
-.cm-sidebar .head-top #btnCopyAll[aria-disabled="true"]:hover {
+.cm-sidebar .head-primary #btnCopyAll[aria-disabled="true"]:hover {
   background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-text-soft);
 }
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
@@ -532,6 +517,50 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
 .cm-side-toc.is-collapsed .cm-side-toc-list,
 .cm-side-toc.is-collapsed .cm-side-toc-scroll,
 .cm-side-toc.is-collapsed .cm-side-toc-top { display: none; }
+
+/* ===== Redesigned panel header (composite layout, issue #658) ===== */
+.cm-sidebar .head-top { flex-wrap: nowrap; justify-content: space-between; align-items: center; gap: var(--cp-chrome-gap); }
+.cm-sidebar .head-top h3 { flex: 0 1 auto; gap: 0.3rem; }
+.cm-sidebar .head-chrome { display: inline-flex; align-items: center; gap: 0.45rem; flex: none; }
+
+.cm-sidebar .head-ribbon { display: flex; align-items: stretch; gap: 0.2rem; position: relative; }
+.cm-sidebar .head-ribbon > * { flex: 1 1 0; min-width: 0; }
+.cm-sidebar .cm-ribbon-btn {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  padding: 0.4rem 0.15rem; background: transparent; border: 1px solid transparent; border-radius: 0.5rem;
+  color: var(--cp-text-soft); cursor: pointer; font-family: inherit; line-height: 1;
+}
+.cm-sidebar .cm-ribbon-btn:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-sidebar .cm-ribbon-cap { font-size: var(--cp-chrome-tiny-font); }
+.cm-sidebar .cm-sidebar-export, .cm-sidebar .cm-sidebar-more { display: flex; }
+
+.cm-sidebar .head-ribbon .cm-sort { position: relative; cursor: default; }
+.cm-sidebar .head-ribbon .cm-sort .cm-ribbon-ico { display: inline-flex; }
+.cm-sidebar .head-ribbon .cm-sort-btns { display: inline-flex; gap: 2px; margin-top: 2px; }
+.cm-sidebar .head-ribbon .cm-sort-btn { padding: 0 0.28rem; font-size: var(--cp-chrome-tiny-font); line-height: 1.4; color: var(--cp-text-soft); background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
+.cm-sidebar .head-ribbon .cm-sort-btn:hover { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cm-sidebar .head-ribbon .cm-sort-btn[aria-pressed="true"] { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); }
+
+.cm-sidebar .head-primary { display: flex; gap: var(--cp-chrome-gap); }
+.cm-sidebar .head-primary > button { flex: 1 1 50%; display: inline-flex; align-items: center; justify-content: center; gap: var(--cp-chrome-button-gap); padding: var(--cp-chrome-control-y) var(--cp-chrome-control-x); border-radius: 0.6rem; font-family: inherit; font-size: var(--cp-chrome-body-font); cursor: pointer; }
+.cm-sidebar .head-primary #btnCopyAll { background: var(--cp-accent); color: var(--cp-accent-fg); border: 1px solid var(--cp-accent); font-weight: 700; font-size: var(--cp-chrome-primary-font); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14); }
+.cm-sidebar .head-primary #btnCopyAll:hover { background: var(--cp-accent-hover); color: var(--cp-accent-fg); }
+.cm-sidebar .head-primary .cm-search-toggle { background: var(--cp-surface); color: var(--cp-text); border: 1px solid var(--cp-border); }
+.cm-sidebar .head-primary .cm-search-toggle:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cm-sidebar .head-primary .cm-search-toggle[aria-expanded="true"] { border-color: var(--cp-accent); color: var(--cp-accent); background: var(--cp-accent-soft); }
+
+/* Stacked, labelled metadata rows (Generated, then Last activity), followed by the identity row. */
+.cm-sidebar .cm-side-info { flex-flow: column nowrap; align-items: flex-start; gap: 0.1rem; }
+
+/* On phones the Sort arrows and every ribbon action get a comfortable >=44px touch target. */
+@media (max-width: 640px) {
+  .cm-sidebar .cm-ribbon-btn { min-height: 44px; }
+  .cm-sidebar .head-ribbon .cm-sort-btn {
+    min-width: 44px; min-height: 44px; padding: 0 0.5rem;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .cm-sidebar .head-ribbon .cm-sort-btns { gap: 0.35rem; }
+}
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
    active, and is correctly absent from a Plain HTML export where the layer is removed.
    Its box tracks the .app content column (max-width 1480px minus the .app 1.5rem side
@@ -621,13 +650,15 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
 .cm-sidebar-export {
-  position: relative;
   flex: 1 1 6.8rem;
   min-width: min(100%, 6.2rem);
 }
-.cm-sidebar .head-actions .cm-sidebar-export > button {
+.cm-sidebar .cm-sidebar-export > button,
+.cm-sidebar .cm-sidebar-more > button {
   width: 100%;
 }
+/* Export and More dropdowns anchor to the action ribbon (position:relative) and span its full
+   width, so they never render off-screen or wrap ambiguously at any panel width. */
 .cm-sidebar-export-menu {
   position: absolute;
   z-index: 230;
@@ -645,15 +676,17 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   box-shadow: var(--cp-shadow);
 }
 .cm-sidebar-export-menu[hidden] { display: none; }
-.cm-sidebar .head-actions .cm-sidebar-export-menu button {
+.cm-sidebar .cm-sidebar-export-menu button {
   width: 100%;
   justify-content: flex-start;
   flex: none;
   min-width: 0;
   white-space: nowrap;
 }
-.cm-sidebar.is-narrow .head-actions .cm-sidebar-export { flex: 1 1 calc(50% - 0.2rem); min-width: 0; }
-.cm-sidebar.is-narrow .head-actions .cm-sidebar-export-menu { right: auto; width: min(14rem, calc(100vw - 2rem)); }
+/* The More menu reuses the export-menu shell; mark Clear as destructive. */
+.cm-sidebar-more-menu .cm-menu-group { padding: 0.3rem 0.45rem 0.15rem; font-size: var(--cp-chrome-tiny-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-text-soft); font-weight: 700; }
+.cm-sidebar-more-menu button.danger { color: var(--cp-danger); }
+.cm-sidebar-more-menu button.danger:hover { background: var(--cp-danger-soft); color: var(--cp-danger); }
 
 /* Comment search / filter row: a single text field with a leading magnifier, a clear (X)
    button, and a shown/total count. Filtered-out cards are hidden with an explicit class

@@ -1,7 +1,7 @@
 // Triage-board UX: caption commentability near a cm-skip chart, content-aligned footer,
 // and the runtime board Reset / per-widget state cards with jump + Reset + first-change time.
 import { test, expect } from "@playwright/test";
-import { fileUrl, ready, installClipboardCapture, stageContent, openInline } from "./helpers.js";
+import { fileUrl, ready, installClipboardCapture, stageContent, openInline, clickClearAll } from "./helpers.js";
 
 async function waitForWidgetMutationFrame(page) {
   await page.evaluate(() => new Promise((resolve) => {
@@ -271,7 +271,7 @@ test("Clear restores draggable board moves to the authored baseline (CMH-BOARD-0
   await expect(page.locator('#later [data-cm-part="a"]')).toHaveCount(1);
   await expect(page.locator(".cm-card-state")).toHaveCount(1);
 
-  await page.click("#btnClearAll");
+  await clickClearAll(page);
   await page.locator(".cm-modal .danger").click();
   await waitForWidgetMutationFrame(page);
   await expect(page.locator('#now [data-cm-part="a"]')).toHaveCount(1);
@@ -292,7 +292,7 @@ test("Clear restores slot-level draggable boards in exact order without touching
   await expect(page.locator('#slotDone [data-cm-part="beta"]')).toHaveCount(1);
   await expect(page.locator(".cm-card-state")).toHaveCount(1);
 
-  await page.click("#btnClearAll");
+  await clickClearAll(page);
   await page.locator(".cm-modal .danger").click();
   await waitForWidgetMutationFrame(page);
   await expect.poll(() => childElementOrder(page, "#slotOpen")).toBe(initialOpen);

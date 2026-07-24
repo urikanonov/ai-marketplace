@@ -899,7 +899,7 @@ function openStorageManager(opts) {
 (function () {
   const wiring = [
     { id: "btnStorageTop", menu: "toolbarMenu", restore: "btnToolbarMenu" },
-    { id: "btnStorage", menu: "sidebarExportMenu", restore: "btnSidebarExportMenu" },
+    { id: "btnStorage", menu: "sidebarMoreMenu", restore: "btnMoreMenu" },
   ];
   wiring.forEach(function (w) {
     const b = document.getElementById(w.id);

@@ -24,12 +24,12 @@ test("the diff toggle button label names the action it performs (CMH-DIFF-LABEL-
   await expect(toggle).toHaveText("To side-by-side view");
 });
 
-test("the help buttons are labelled Help & About (CMH-HELP-LABEL-01)", async ({ page }) => {
+test("the help buttons are clearly labelled (CMH-HELP-LABEL-01)", async ({ page }) => {
   await openInline(page);
-  for (const id of ["btnHelp", "btnHelpTop"]) {
-    const txt = await page.locator("#" + id).evaluate((el) => el.textContent.trim());
-    expect(txt, id + " label").toBe("Help & About");
-  }
+  const sideTxt = await page.locator("#btnHelp").evaluate((el) => el.textContent.trim());
+  expect(sideTxt, "btnHelp label").toBe("Help");
+  const topTxt = await page.locator("#btnHelpTop").evaluate((el) => el.textContent.trim());
+  expect(topTxt, "btnHelpTop label").toBe("Help & About");
 });
 
 test("help opens with the 4-step review workflow in the Getting started topic (CMH-WF-HELP-01)", async ({ page }) => {

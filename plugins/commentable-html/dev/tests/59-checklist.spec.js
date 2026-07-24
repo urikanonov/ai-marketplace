@@ -8,6 +8,7 @@ import {
   fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, readDownload,
   addTextComment, SKILL,
   clickSidebarExport,
+  clickClearAll,
 } from "./helpers.js";
 
 const CHECKLIST_DEMO = path.join(SKILL, "..", "..", "examples", "report-checklist.html");
@@ -253,7 +254,7 @@ test("CMH-CHECK-18: Clear restores checklist state changes to the authored basel
   await expect(page.locator(".cm-card-checklist")).toHaveCount(1);
   expect(await stateOf(page, "rel")).toBe("check");
 
-  await page.click("#btnClearAll");
+  await clickClearAll(page);
   await page.locator(".cm-modal .danger").click();
   await expect(page.locator(".cm-card-checklist")).toHaveCount(0);
   expect(await stateOf(page, "rel")).toBe("blank");

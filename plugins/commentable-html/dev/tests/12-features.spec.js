@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
-import { PYTHON ,
-  clickSidebarExport } from "./helpers.js";
+import { PYTHON } from "./helpers.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -11,6 +10,7 @@ import {
   denyExternalNetwork, installClipboardCapture, readDownload, fileUrl, ready,
   startStaticServer, routeMermaidLocal, stageNonPortable, stageInline, openToolbarMenu, KITCHEN_SINK, SKILL,
   expectNoteFenced,
+  clickSidebarExport, clickClearAll,
 } from "./helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ test.describe("copy all", () => {
     await expect(sidebarCopy).toHaveAttribute("aria-disabled", "false");
     expect((await sidebarCopy.getAttribute("title")) || (await sidebarCopy.getAttribute("data-cmh-tip"))).toMatch(/Copy all comments/);
 
-    await page.click("#btnClearAll");
+    await clickClearAll(page);
     await page.locator(".cm-modal .danger").click();
     await expect(sidebarCopy).toHaveAttribute("aria-disabled", "true");
     expect((await sidebarCopy.getAttribute("title")) || (await sidebarCopy.getAttribute("data-cmh-tip"))).toBe("No comments to copy");

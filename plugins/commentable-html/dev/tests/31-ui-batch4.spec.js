@@ -104,31 +104,34 @@ test.describe("heading Add Comment placement and header layout", () => {
     expect(m.blockRight - m.btnLeft).toBeGreaterThan(120);
   });
 
-  test("Help and Hide are a grouped pair with a small gap, and Hide has a right chevron", async ({ page }) => {
+  test("Help and Hide are ribbon buttons and Hide shows a right chevron", async ({ page }) => {
     await page.goto(fileUrl(KITCHEN_SINK));
     await ready(page);
     await page.evaluate(() => document.body.classList.add("sidebar-open"));
     const info = await page.evaluate(() => {
       const help = document.getElementById("btnHelp");
       const hide = document.getElementById("btnCloseSidebar");
-      const group = help.closest(".cm-head-actions");
-      const chevron = hide.querySelector(".cm-btn-chevron");
+      const ribbon = help.closest(".head-ribbon");
+      const chevron = hide.querySelector("svg path");
       const hr = help.getBoundingClientRect(), dr = hide.getBoundingClientRect();
       return {
-        grouped: !!(group && group.contains(hide)),
+        grouped: !!(ribbon && ribbon.contains(hide)),
+        bothRibbon: help.classList.contains("cm-ribbon-btn") && hide.classList.contains("cm-ribbon-btn"),
         hasChevron: !!chevron,
+        helpCap: (help.querySelector(".cm-ribbon-cap") || {}).textContent,
+        hideCap: (hide.querySelector(".cm-ribbon-cap") || {}).textContent,
         sameRow: Math.abs(hr.top - dr.top) < 3,
-        gap: dr.left - hr.right,
       };
     });
     expect(info.grouped).toBe(true);
+    expect(info.bothRibbon).toBe(true);
     expect(info.hasChevron).toBe(true);
+    expect(info.helpCap).toBe("Help");
+    expect(info.hideCap).toBe("Hide");
     expect(info.sameRow).toBe(true);
-    expect(info.gap).toBeGreaterThanOrEqual(0);
-    expect(info.gap).toBeLessThan(14);
   });
 
-  test("the sidebar Hide button is accent-tinted and distinct from the Help button (CMH-SIDE-09)", async ({ page }) => {
+  test("the sidebar Hide and Help are distinct ribbon controls (CMH-SIDE-09)", async ({ page }) => {
     await page.goto(fileUrl(KITCHEN_SINK));
     await ready(page);
     // Open the panel AND clear its inert flag so the header button is interactive (opening via
@@ -143,35 +146,24 @@ test.describe("heading Add Comment placement and header layout", () => {
       document.body.appendChild(probe);
       probe.style.color = "var(--cp-accent)";
       const accent = getComputedStyle(probe).color;
-      probe.style.color = "var(--cp-accent-soft)";
-      const accentSoft = getComputedStyle(probe).color;
-      probe.style.color = "var(--cp-accent-fg)";
-      const accentFg = getComputedStyle(probe).color;
       probe.remove();
       const hide = document.getElementById("btnCloseSidebar");
       const help = document.getElementById("btnHelp");
-      const hs = getComputedStyle(hide), hp = getComputedStyle(help);
       return {
-        accent, accentSoft, accentFg,
-        hideBg: hs.backgroundColor, hideColor: hs.color, hideBorder: hs.borderTopColor,
-        helpBg: hp.backgroundColor,
+        accent,
+        hideCap: (hide.querySelector(".cm-ribbon-cap") || {}).textContent,
+        helpCap: (help.querySelector(".cm-ribbon-cap") || {}).textContent,
+        bothRibbon: hide.classList.contains("cm-ribbon-btn") && help.classList.contains("cm-ribbon-btn"),
       };
     });
-    // Accent-tinted resting state: accent-soft fill, accent text and border.
-    expect(info.hideBg).toBe(info.accentSoft);
-    expect(info.hideColor).toBe(info.accent);
-    expect(info.hideBorder).toBe(info.accent);
-    // Distinct from the neutral Help & About button beside it.
-    expect(info.hideBg).not.toBe(info.helpBg);
-    // Solid-accent hover, asserted from the COMPUTED state (so a future higher-specificity
-    // override that broke the cascade would be caught, unlike a rule-text-only check).
+    // Distinct by label (and icon): Help vs Hide, not two identical controls.
+    expect(info.bothRibbon).toBe(true);
+    expect(info.helpCap).toBe("Help");
+    expect(info.hideCap).toBe("Hide");
+    expect(info.helpCap).not.toBe(info.hideCap);
+    // Ribbon hover raises the accent so the control gives clear feedback.
     await page.locator("#btnCloseSidebar").hover();
-    const hover = await page.evaluate(() => {
-      const hs = getComputedStyle(document.getElementById("btnCloseSidebar"));
-      return { bg: hs.backgroundColor, color: hs.color, border: hs.borderTopColor };
-    });
-    expect(hover.bg).toBe(info.accent);
-    expect(hover.border).toBe(info.accent);
-    expect(hover.color).toBe(info.accentFg);
+    const hoverColor = await page.evaluate(() => getComputedStyle(document.getElementById("btnCloseSidebar")).color);
+    expect(hoverColor).toBe(info.accent);
   });
 });

@@ -192,6 +192,22 @@ export async function clickSidebarExport(page, selector) {
   await page.locator(selector).click();
 }
 
+export async function openSidebarMoreMenu(page) {
+  const menu = page.locator("#sidebarMoreMenu");
+  if (await menu.isHidden()) await page.click("#btnMoreMenu");
+  await expect(menu).toBeVisible();
+}
+
+export async function clickSidebarMore(page, selector) {
+  await openSidebarMoreMenu(page);
+  await page.locator(selector).click();
+}
+
+// Clear all comments now lives in the sidebar More menu; open it, then click Clear.
+export async function clickClearAll(page) {
+  await clickSidebarMore(page, "#btnClearAll");
+}
+
 export async function lastCopied(page) {
   return page.evaluate(() => (window.__copied && window.__copied.length ? window.__copied[window.__copied.length - 1] : null));
 }

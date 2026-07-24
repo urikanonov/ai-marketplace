@@ -2,7 +2,7 @@
 // default (Enter cancels), Escape cancels, a backdrop click cancels, and only OK clears
 // every comment. This guards against an accidental, irreversible clear.
 import { test, expect } from "@playwright/test";
-import { openInline, addTextComment } from "./helpers.js";
+import { openInline, addTextComment, clickClearAll, openSidebarMoreMenu } from "./helpers.js";
 
 test.describe("Clear Comments confirm dialog", () => {
   async function seedOneComment(page) {
@@ -13,14 +13,14 @@ test.describe("Clear Comments confirm dialog", () => {
 
   test("Clear Comments opens a confirm dialog rather than clearing immediately", async ({ page }) => {
     await seedOneComment(page);
-    await page.click("#btnClearAll");
+    await clickClearAll(page);
     await expect(page.locator(".cm-modal")).toBeVisible();
     await expect(page.locator("#commentList .cm-card")).toHaveCount(1); // nothing cleared yet
   });
 
   test("Cancel is the default: pressing Enter cancels and keeps the comments", async ({ page }) => {
     await seedOneComment(page);
-    await page.click("#btnClearAll");
+    await clickClearAll(page);
     await expect(page.locator(".cm-modal")).toBeVisible();
     await page.keyboard.press("Enter"); // focus starts on Cancel -> Enter cancels
     await expect(page.locator(".cm-modal")).toHaveCount(0);
@@ -29,7 +29,7 @@ test.describe("Clear Comments confirm dialog", () => {
 
   test("Escape cancels and keeps the comments", async ({ page }) => {
     await seedOneComment(page);
-    await page.click("#btnClearAll");
+    await clickClearAll(page);
     await expect(page.locator(".cm-modal")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator(".cm-modal")).toHaveCount(0);
@@ -38,7 +38,7 @@ test.describe("Clear Comments confirm dialog", () => {
 
   test("clicking the backdrop cancels and keeps the comments", async ({ page }) => {
     await seedOneComment(page);
-    await page.click("#btnClearAll");
+    await clickClearAll(page);
     const overlay = page.locator(".cm-modal-overlay");
     await expect(overlay).toBeVisible();
     // Click the overlay itself (outside the dialog box) at the top-left corner.
@@ -51,14 +51,15 @@ test.describe("Clear Comments confirm dialog", () => {
     await openInline(page);
     await page.click("#btnToggleSidebar"); // open the panel (empty state)
     await expect(page.locator("#commentList .cm-card")).toHaveCount(0);
-    await page.click("#btnClearAll");
+    await clickClearAll(page);
     await expect(page.locator(".cm-modal")).toHaveCount(0); // no confirm dialog for an empty set
   });
 
   test("the confirm dialog is an accessible modal that traps Tab and restores focus (CMH-A11Y-01)", async ({ page }) => {
     await seedOneComment(page);
-    await page.locator("#btnClearAll").focus();
-    await page.click("#btnClearAll");
+    await openSidebarMoreMenu(page);
+    await page.locator("#btnMoreMenu").focus();
+    await page.locator("#btnClearAll").evaluate((button) => button.click());
     const modal = page.locator(".cm-modal");
     await expect(modal).toBeVisible();
     await expect(modal).toHaveAttribute("role", "dialog");
@@ -74,6 +75,20 @@ test.describe("Clear Comments confirm dialog", () => {
     }
     await page.keyboard.press("Escape");
     await expect(page.locator(".cm-modal")).toHaveCount(0);
-    await expect(page.locator("#btnClearAll")).toBeFocused(); // focus restored to the trigger
+    await expect(page.locator("#btnMoreMenu")).toBeFocused(); // focus restored to the visible menu trigger
+  });
+
+  test("activating Clear all with the keyboard restores focus to the More button (CMH-A11Y-01)", async ({ page }) => {
+    // A real keyboard activation (Enter on the focused Clear item) must not leave focus on the
+    // now-hidden Clear button when the dialog closes - it returns to the visible More trigger.
+    await seedOneComment(page);
+    await openSidebarMoreMenu(page);
+    await page.locator("#btnClearAll").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".cm-modal")).toBeVisible();
+    await expect(page.locator("#commentList .cm-card")).toHaveCount(1); // nothing cleared yet
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-modal")).toHaveCount(0);
+    await expect(page.locator("#btnMoreMenu")).toBeFocused();
   });
 });

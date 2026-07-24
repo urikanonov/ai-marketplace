@@ -71,9 +71,9 @@ test.describe("UI batch 2: headings, whole-diagram, scroll bubble, code box, ico
 
   test("the Hide button sits next to Help in the sidebar header", async ({ page }) => {
     await openInline(page);
-    const meta = page.locator(".cm-sidebar .head-meta");
-    await expect(meta.locator("#btnHelp")).toHaveCount(1);
-    await expect(meta.locator("#btnCloseSidebar")).toHaveCount(1);
+    const ribbon = page.locator(".cm-sidebar .head-ribbon");
+    await expect(ribbon.locator("#btnHelp")).toHaveCount(1);
+    await expect(ribbon.locator("#btnCloseSidebar")).toHaveCount(1);
   });
   test("whole-diagram comment: hover empty area, create, and it survives reload (http)", async ({ page }) => {
     test.setTimeout(60000);

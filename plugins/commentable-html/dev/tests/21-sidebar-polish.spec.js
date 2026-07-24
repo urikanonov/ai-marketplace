@@ -131,11 +131,11 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
   });
 
   test("the sidebar minimum width keeps every action button label legible (CMH-SIDE-06)", async ({ page }) => {
-    // The resize floor is 256px - the empirically measured minimum at which the Export menu,
-    // Clear, Copy all, and the search placeholder stay fully shown. The same floor applies
-    // on wide and narrow viewports. Below the 640px
-    // phone breakpoint the sidebar is instead a non-resizable full-width sheet (CMH-RESP-04), so the
-    // narrow-viewport case uses 700px, where the panel is still a resizable side panel.
+    // The resize floor is 256px - the empirically measured minimum at which the captioned action
+    // ribbon (Export, Sort, More, Help, Hide), the Copy all / Search primary row, and the search
+    // placeholder stay fully shown. The same floor applies on wide and narrow viewports. Below the
+    // 640px phone breakpoint the sidebar is instead a non-resizable full-width sheet (CMH-RESP-04),
+    // so the narrow-viewport case uses 700px, where the panel is still a resizable side panel.
     for (const vw of [1400, 700]) {
       await page.setViewportSize({ width: vw, height: 800 });
       await openKitchenSink(page);
@@ -146,10 +146,14 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
       const m = await page.evaluate(() => {
         const sidebar = document.getElementById("sidebar");
         const clip = (el) => Math.max(0, el.scrollWidth - el.clientWidth);
-        const spanClips = Array.from(sidebar.querySelectorAll(".head-actions button > span")).map(clip);
+        // Every captioned ribbon action plus the two primary-row button labels must stay legible.
+        const labels = Array.from(sidebar.querySelectorAll(
+          ".head-ribbon .cm-ribbon-cap, .head-primary button > span"));
+        const spanClips = labels.map(clip);
         return {
           width: sidebar.getBoundingClientRect().width,
           min: Number(document.getElementById("sidebarResizeHandle").getAttribute("aria-valuemin")),
+          labelCount: labels.length,
           maxSpanClip: Math.max(0, ...spanClips),
           copyClip: clip(document.getElementById("btnCopyAll")),
           narrow: sidebar.classList.contains("is-narrow"),
@@ -157,10 +161,13 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
       });
       expect(m.min).toBe(256);
       expect(Math.abs(m.width - 256)).toBeLessThanOrEqual(2);
-      // No action-button label (nor Copy all) clips at the enforced minimum width.
+      // The retargeted query must actually match the new labels (guards against a vacuous pass):
+      // 5 ribbon captions (Export, Sort, More, Help, Hide) + 2 primary labels (Copy all, Search).
+      expect(m.labelCount).toBe(7);
+      // No ribbon caption nor primary label (nor Copy all) clips at the enforced minimum width.
       expect(m.maxSpanClip).toBeLessThanOrEqual(0.5);
       expect(m.copyClip).toBeLessThanOrEqual(0.5);
-      // At the minimum the panel is in the compact two-per-row layout.
+      // At the minimum the panel is in the compact layout.
       expect(m.narrow).toBe(true);
     }
   });
@@ -180,16 +187,18 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
         const r = b.getBoundingClientRect();
         return r.left < header.left - 1 || r.right > header.right + 1;
       }).length;
-      const actionRows = new Set(Array.from(sidebar.querySelectorAll(".head-actions button")).map((b) => Math.round(b.getBoundingClientRect().top))).size;
-      return { width: sidebar.getBoundingClientRect().width, narrow: sidebar.classList.contains("is-narrow"), overflowing, actionRows };
+      const ribbon = sidebar.querySelector(".head-ribbon").getBoundingClientRect();
+      const primary = sidebar.querySelector(".head-primary").getBoundingClientRect();
+      const headerRows = new Set([Math.round(ribbon.top), Math.round(primary.top)]).size;
+      return { width: sidebar.getBoundingClientRect().width, narrow: sidebar.classList.contains("is-narrow"), overflowing, headerRows };
     });
     expect(metrics.width).toBeLessThanOrEqual(340);
     expect(metrics.narrow).toBe(true);
     expect(metrics.overflowing).toBe(0);
-    expect(metrics.actionRows).toBeGreaterThan(1);
+    expect(metrics.headerRows).toBeGreaterThan(1);
   });
 
-  test("the sidebar Export menu and Clear button share the narrow action row (CMH-SIDE-08)", async ({ page }) => {
+  test("the sidebar action ribbon stays on one row at narrow width (CMH-SIDE-08)", async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await openKitchenSink(page);
     await openSidebarPanel(page);
@@ -198,28 +207,26 @@ test.describe("sidebar polish: 24h time, hidden prose pin, sort, info rows", () 
 
     const layout = await page.evaluate(() => {
       const sidebar = document.getElementById("sidebar");
-      const actions = sidebar.querySelector(".head-actions");
-      const rect = (id) => document.getElementById(id).getBoundingClientRect();
-      const r = {
-        exportMenu: rect("btnSidebarExportMenu"),
-        clear: rect("btnClearAll"),
-      };
-      const round = (f) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(f(v))]));
+      const ribbon = sidebar.querySelector(".head-ribbon");
+      const cells = Array.from(ribbon.children);
+      const rb = ribbon.getBoundingClientRect();
+      const tops = cells.map((c) => Math.round(c.getBoundingClientRect().top));
+      const overflow = cells.some((c) => {
+        const r = c.getBoundingClientRect();
+        return r.left < rb.left - 1 || r.right > rb.right + 1;
+      });
       return {
         narrow: sidebar.classList.contains("is-narrow"),
-        containerWidth: actions.getBoundingClientRect().width,
-        top: round((v) => v.top),
-        left: round((v) => v.left),
-        width: Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v.width])),
+        cells: cells.length,
+        rows: new Set(tops).size,
+        overflow,
       };
     });
 
     expect(layout.narrow).toBe(true);
-    expect(layout.top.exportMenu).toBe(layout.top.clear);
-    expect(layout.left.exportMenu).toBeLessThan(layout.left.clear);
-    expect(layout.width.exportMenu).toBeLessThan(layout.containerWidth * 0.75);
-    expect(layout.width.clear).toBeLessThan(layout.containerWidth * 0.75);
-    expect(layout.width.exportMenu + layout.width.clear).toBeLessThanOrEqual(layout.containerWidth + 2);
+    expect(layout.cells).toBe(5); // Export, Sort, More, Help, Hide
+    expect(layout.rows).toBe(1);
+    expect(layout.overflow).toBe(false);
   });
 
   test("the sidebar shows Generated-on and Last-comment info rows", async ({ page }) => {
