@@ -452,14 +452,15 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
     }
   });
 
-  test("an overflowing (extreme-wide) gallery card is keyboard-focusable but a fitting one is not (CMH-CONTENT-19)", async ({ page }) => {
+  test("an overflowing gallery card gets the scroll affordance; a fitting one does not, but both are comment tab stops (CMH-CONTENT-19)", async ({ page }) => {
     test.setTimeout(60000);
     await page.setViewportSize({ width: 1400, height: 1000 });
-    // A card whose diagram overflows into the horizontal scroll must be keyboard-focusable so a
-    // keyboard-only user can scroll to the clipped content (WCAG 2.1.1); a card that fits must NOT get a
-    // spurious tab stop. Stage every card TYPE overflowing (a wide pre, a wide div, a wide CAPTIONED
-    // figure, a wide UNCAPTIONED figure) plus a small fitting pre - so the a11y helper is proven to
-    // cover pre/div/figure and both figure naming paths, not just one.
+    // Every rendered gallery diagram is a keyboard COMMENT tab stop (CMH-MMD-11), fitting or overflowing.
+    // On TOP of that, a card whose diagram overflows into the horizontal scroll gets the SCROLL
+    // affordance (WCAG 2.1.1): role=group for a bare pre/div, and a scroll hint as aria-DESCRIPTION (so
+    // it never clobbers the comment name in aria-label). A fitting card is still a comment tab stop but
+    // gets NO scroll role/description. Stage every card TYPE overflowing (a wide pre, a wide div, a wide
+    // CAPTIONED figure, a wide UNCAPTIONED figure) plus a small fitting pre.
     const WIDE = "flowchart LR\n  A[Ingest] --> B[Parse] --> C[Validate] --> D[Enrich] --> E[Score] --> F[Route] --> G[Notify] --> H[Store] --> I[Audit] --> J[Archive]";
     const SMALL = "stateDiagram-v2\n  [*] --> S1\n  S1 --> [*]";
     const inner = `<pre class="mermaid cm-skip">${WIDE}</pre><pre class="mermaid cm-skip">${SMALL}</pre>` +
@@ -471,47 +472,51 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
     try {
       await expect(page.locator(".cmh-diagram-gallery svg")).toHaveCount(5, { timeout: 20000 });
       await waitGalleryReady(page, CARDS);
-      // Poll: the a11y marker is applied in a rAF after the card overflows.
+      // Poll: the scroll marker is applied in a rAF after the card overflows.
       await expect.poll(async () => page.evaluate((s) => {
         const cards = [...document.querySelectorAll(s)];
         const wide = cards.find((c) => c.scrollWidth > c.clientWidth + 1);
-        return wide ? wide.getAttribute("tabindex") : null;
-      }, CARDS), { timeout: 5000 }).toBe("0");
+        return wide ? wide.getAttribute("data-cmh-scroll-a11y") : null;
+      }, CARDS), { timeout: 5000 }).toBe("1");
       const info = await page.evaluate((s) => {
         const cards = [...document.querySelectorAll(s)];
         const overflowing = cards.filter((c) => c.scrollWidth > c.clientWidth + 1);
         const fit = cards.find((c) => c.scrollWidth <= c.clientWidth + 1);
-        const desc = (c) => c ? { tag: c.tagName.toLowerCase(), hasCaption: !!c.querySelector("figcaption"), tabindex: c.getAttribute("tabindex"), role: c.getAttribute("role"), ariaLabel: c.getAttribute("aria-label"), ariaDesc: c.getAttribute("aria-description") } : null;
+        const desc = (c) => c ? { tag: c.tagName.toLowerCase(), hasCaption: !!c.querySelector("figcaption"), tabindex: c.getAttribute("tabindex"), role: c.getAttribute("role"), ariaLabel: c.getAttribute("aria-label"), ariaDesc: c.getAttribute("aria-description"), scrollA11y: c.getAttribute("data-cmh-scroll-a11y"), commentA11y: c.getAttribute("data-cmh-comment-a11y") } : null;
         return {
           overflowing: overflowing.map(desc),
           tags: overflowing.map((c) => c.tagName.toLowerCase()),
           fit: desc(fit),
         };
       }, CARDS);
-      // Every overflowing card TYPE is present and keyboard-focusable.
+      // Every overflowing card TYPE is present, is a comment tab stop, and carries the scroll marker.
       expect(info.tags.includes("pre"), "found an overflowing pre card").toBe(true);
       expect(info.tags.includes("div"), "found an overflowing div card").toBe(true);
       expect(info.overflowing.filter((c) => c.tag === "figure").length, "found both figure cards overflowing").toBe(2);
       for (const c of info.overflowing) {
-        expect(c.tabindex, `overflowing ${c.tag} card is keyboard-focusable`).toBe("0");
+        expect(c.tabindex, `overflowing ${c.tag} card is a comment tab stop`).toBe("0");
+        expect(c.commentA11y, `overflowing ${c.tag} card carries the comment-a11y marker`).toBe("1");
+        expect(c.scrollA11y, `overflowing ${c.tag} card carries the scroll-a11y marker`).toBe("1");
+        expect((c.ariaDesc || "").trim().length, `overflowing ${c.tag} card has a non-empty aria-description scroll hint`).toBeGreaterThan(0);
       }
-      // A pre/div card gets an explicit `group` role plus an aria-label hint; a native <figure> keeps
-      // its implicit figure role and gets the hint via aria-description when captioned, aria-label when
-      // not (so a screen-reader user is always told the card scrolls).
+      // A pre/div card gets an explicit `group` role; a native <figure> keeps its implicit figure role.
+      // The scroll hint is always in aria-description (never aria-label), so the comment name is intact.
       const widePre = info.overflowing.find((c) => c.tag === "pre");
       const wideDiv = info.overflowing.find((c) => c.tag === "div");
       const capFigure = info.overflowing.find((c) => c.tag === "figure" && c.hasCaption);
       const noCapFigure = info.overflowing.find((c) => c.tag === "figure" && !c.hasCaption);
       for (const c of [widePre, wideDiv]) {
         expect(c.role, `overflowing ${c.tag} card has an explicit group role`).toBe("group");
-        expect((c.ariaLabel || "").trim().length, `overflowing ${c.tag} card has a non-empty aria-label scroll hint`).toBeGreaterThan(0);
+        expect((c.ariaLabel || "").trim().length, `overflowing ${c.tag} card has a non-empty aria-label comment name`).toBeGreaterThan(0);
       }
       expect(capFigure.role, "captioned figure keeps its native figure role (no redundant explicit role)").toBeNull();
-      expect((capFigure.ariaDesc || "").trim().length, "captioned overflowing figure has a non-empty aria-description scroll hint").toBeGreaterThan(0);
       expect(noCapFigure.role, "uncaptioned figure keeps its native figure role").toBeNull();
-      expect((noCapFigure.ariaLabel || "").trim().length, "uncaptioned overflowing figure has a non-empty aria-label scroll hint").toBeGreaterThan(0);
-      // The fitting card is NOT given a spurious tab stop.
-      expect(info.fit.tabindex, "fitting card is not a spurious tab stop").toBeNull();
+      // The fitting card IS a comment tab stop but gets NO scroll affordance.
+      expect(info.fit.tabindex, "fitting card is a comment tab stop").toBe("0");
+      expect(info.fit.commentA11y, "fitting card carries the comment-a11y marker").toBe("1");
+      expect(info.fit.scrollA11y, "fitting card is NOT marked scrollable").toBeNull();
+      expect(info.fit.role, "fitting pre card has no spurious group role").toBeNull();
+      expect(info.fit.ariaDesc, "fitting card has no scroll description").toBeNull();
       // The focusable scroll card has a VISIBLE focus indicator (WCAG 2.4.7): the :focus-visible rule
       // for a scroll-a11y card must resolve to a real outline, not `outline:none`, so a keyboard user
       // can see which card they are on.
@@ -533,15 +538,27 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
       expect(focusRing.found, "a :focus-visible rule exists for a scroll-a11y gallery card").toBe(true);
       expect(focusRing.outlineStyle, "the focus ring has a visible outline style (not none)").not.toBe("none");
       expect(focusRing.outlineWidth, "the focus ring has a non-zero outline width").not.toBe("0px");
-      // Resizing from desktop to mobile must CLEAR the tab stop (the card is no longer a bounded scroll
-      // container below the breakpoint) - not leak it. This guards the a11y-helper being run on every
-      // update, not only inside the desktop branch.
+      // Resizing from desktop to mobile must CLEAR the SCROLL affordance (the card is no longer a bounded
+      // scroll container below the breakpoint) - but the COMMENT tab stop must remain (every gallery
+      // diagram stays keyboard-commentable on mobile). This guards the a11y helpers being run on every
+      // update AND the scroll helper not stripping the comment helper's attributes.
       await page.setViewportSize({ width: 400, height: 800 });
       await page.evaluate(() => window.dispatchEvent(new Event("resize")));
       await expect.poll(async () => page.evaluate((s) => {
         const cards = [...document.querySelectorAll(s)];
-        return cards.some((c) => c.getAttribute("tabindex") === "0");
+        return cards.some((c) => c.getAttribute("data-cmh-scroll-a11y") === "1");
       }, CARDS), { timeout: 5000 }).toBe(false);
+      const afterResize = await page.evaluate((s) => {
+        const cards = [...document.querySelectorAll(s)];
+        return {
+          allComment: cards.every((c) => c.getAttribute("tabindex") === "0" && c.getAttribute("data-cmh-comment-a11y") === "1"),
+          anyScrollRole: cards.some((c) => c.getAttribute("role") === "group"),
+          anyScrollDesc: cards.some((c) => (c.getAttribute("aria-description") || "").indexOf("Scrollable") >= 0),
+        };
+      }, CARDS);
+      expect(afterResize.allComment, "every card stays a comment tab stop on mobile").toBe(true);
+      expect(afterResize.anyScrollRole, "no leftover scroll group role on mobile").toBe(false);
+      expect(afterResize.anyScrollDesc, "no leftover scroll description on mobile").toBe(false);
     } finally {
       await server.close();
     }
@@ -949,6 +966,188 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
       await composer.locator('[data-act="save"]').click();
       await expect(composer).toHaveCount(0);
       await expect(host).toHaveClass(/cm-mermaid-hl/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("an overflowing gallery card is keyboard-commentable and its comment tab stop is also the scroll tab stop (CMH-MMD-11)", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width: 1200, height: 900 });
+    // A wide diagram overflows its card into the horizontal scroll. The card is the single keyboard
+    // tab stop and it is BOTH the comment tab stop (attachMermaidKeyboardCommenting, unconditional) and
+    // the scroll container (markGalleryCardScrollable). Focusing that ONE tab stop must reveal the
+    // whole-diagram button and Enter must compose - a keyboard user never has to tab to the disjointed
+    // floating button. This proves the comment affordance rides the card's single tab stop.
+    const WIDE = "flowchart LR\n  A[Ingest] --> B[Parse] --> C[Validate] --> D[Enrich] --> E[Score] --> F[Route] --> G[Notify] --> H[Store] --> I[Audit] --> J[Archive]";
+    const inner = `<pre class="mermaid">${WIDE}</pre>`;
+    const CARD = ".cmh-diagram-gallery > pre.mermaid";
+    const server = await stageGallery(page, inner, "cmh-gallery-kbd-comment");
+    try {
+      await expect(page.locator(CARD + " svg")).toHaveCount(1, { timeout: 20000 });
+      await waitGalleryReady(page, CARD);
+      const card = page.locator(CARD).first();
+      // The card is the scroll tab stop and it is the SAME element that is comment-focusable (no
+      // separate comment tab stop was added). Both markers ride the one element.
+      await expect(card).toHaveAttribute("tabindex", "0");
+      await expect(card).toHaveAttribute("data-cmh-comment-a11y", "1");
+      await expect.poll(async () => card.evaluate((c) => c.hasAttribute("data-cmh-scroll-a11y"))).toBe(true);
+      await card.focus();
+      const btn = page.locator("#mermaidAddBtn");
+      await expect(btn).toBeVisible();
+      await expect(btn).toHaveText(/diagram/i);
+      await card.press("Enter");
+      const composer = page.locator(".cm-composer").last();
+      await expect(composer).toBeVisible();
+      await composer.locator("textarea").fill("keyboard comment on a scrollable gallery card");
+      await composer.locator('[data-act="save"]').click();
+      await expect(composer).toHaveCount(0);
+      await expect(page.locator("#commentList")).toContainText("keyboard comment on a scrollable gallery card");
+      await expect(card).toHaveClass(/cm-mermaid-hl/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("a FITTING gallery diagram is keyboard-commentable (focus card, button shows, Enter composes) (CMH-MMD-11)", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    // The masked common case: a diagram that FITS its card (no horizontal overflow) must still be a
+    // keyboard comment tab stop - the whole point of issue #638 ("commentable like an image"). This
+    // FAILS on the pre-fix build, which delegated focusability to the scroll helper (overflow-only).
+    const SMALL = "stateDiagram-v2\n  [*] --> S1\n  S1 --> [*]";
+    const inner = `<pre class="mermaid">${SMALL}</pre>`;
+    const CARD = ".cmh-diagram-gallery > pre.mermaid";
+    const server = await stageGallery(page, inner, "cmh-gallery-fit-comment");
+    try {
+      await expect(page.locator(CARD + " svg")).toHaveCount(1, { timeout: 20000 });
+      await waitGalleryReady(page, CARD);
+      const card = page.locator(CARD).first();
+      // It fits (no overflow) yet is a comment tab stop, and is NOT marked scrollable.
+      await expect.poll(async () => card.evaluate((c) => c.scrollWidth <= c.clientWidth + 1)).toBe(true);
+      await expect(card).toHaveAttribute("tabindex", "0");
+      await expect(card).toHaveAttribute("data-cmh-comment-a11y", "1");
+      await expect.poll(async () => card.evaluate((c) => c.hasAttribute("data-cmh-scroll-a11y"))).toBe(false);
+      await card.focus();
+      const btn = page.locator("#mermaidAddBtn");
+      await expect(btn).toBeVisible();
+      await expect(btn).toHaveText(/diagram/i);
+      await card.press("Enter");
+      const composer = page.locator(".cm-composer").last();
+      await expect(composer).toBeVisible();
+      await composer.locator("textarea").fill("keyboard comment on a fitting gallery card");
+      await composer.locator('[data-act="save"]').click();
+      await expect(composer).toHaveCount(0);
+      await expect(page.locator("#commentList")).toContainText("keyboard comment on a fitting gallery card");
+      await expect(card).toHaveClass(/cm-mermaid-hl/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("a mobile single-column gallery diagram is keyboard-commentable (CMH-MMD-11)", async ({ page }) => {
+    test.setTimeout(60000);
+    // Below the mobile breakpoint the gallery is a frameless single-column flow: cards do not overflow
+    // and get NO scroll tab stop, so a mobile gallery diagram would be uncommentable if focusability
+    // were delegated to the scroll helper. The comment tab stop must be present regardless of viewport.
+    await page.setViewportSize({ width: 400, height: 800 });
+    const WIDE = "flowchart LR\n  A[Ingest] --> B[Parse] --> C[Validate] --> D[Enrich] --> E[Score] --> F[Route] --> G[Notify]";
+    const inner = `<pre class="mermaid">${WIDE}</pre>`;
+    const CARD = ".cmh-diagram-gallery > pre.mermaid";
+    const server = await stageGallery(page, inner, "cmh-gallery-mobile-comment");
+    try {
+      await expect(page.locator(CARD + " svg")).toHaveCount(1, { timeout: 20000 });
+      await expect.poll(async () => page.locator(CARD + " svg *").count()).toBeGreaterThanOrEqual(5);
+      const card = page.locator(CARD).first();
+      await expect(card).toHaveAttribute("tabindex", "0");
+      await expect(card).toHaveAttribute("data-cmh-comment-a11y", "1");
+      // Mobile flow: not a bounded scroll container, so no scroll marking.
+      await expect.poll(async () => card.evaluate((c) => c.hasAttribute("data-cmh-scroll-a11y"))).toBe(false);
+      await card.focus();
+      const btn = page.locator("#mermaidAddBtn");
+      await expect(btn).toBeVisible();
+      await card.press("Enter");
+      const composer = page.locator(".cm-composer").last();
+      await expect(composer).toBeVisible();
+      await composer.locator("textarea").fill("keyboard comment on a mobile gallery card");
+      await composer.locator('[data-act="save"]').click();
+      await expect(composer).toHaveCount(0);
+      await expect(page.locator("#commentList")).toContainText("keyboard comment on a mobile gallery card");
+      await expect(card).toHaveClass(/cm-mermaid-hl/);
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("Space and arrow keys scroll an overflowing card natively; Enter still comments (CMH-MMD-11)", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width: 900, height: 900 });
+    // WCAG 2.1.1: on an OVERFLOWING (horizontally scrollable) card, Space and the arrow keys must drive
+    // native horizontal scrolling, NOT be hijacked to open the composer - otherwise a keyboard user
+    // cannot reach the clipped diagram. Enter must remain the universal comment activator.
+    const WIDE = "flowchart LR\n  A[Ingest] --> B[Parse] --> C[Validate] --> D[Enrich] --> E[Score] --> F[Route] --> G[Notify] --> H[Store] --> I[Audit] --> J[Archive] --> K[Report]";
+    const inner = `<pre class="mermaid">${WIDE}</pre>`;
+    const CARD = ".cmh-diagram-gallery > pre.mermaid";
+    const server = await stageGallery(page, inner, "cmh-gallery-scroll-keys");
+    try {
+      await expect(page.locator(CARD + " svg")).toHaveCount(1, { timeout: 20000 });
+      await waitGalleryReady(page, CARD);
+      const card = page.locator(CARD).first();
+      await expect.poll(async () => card.evaluate((c) => c.hasAttribute("data-cmh-scroll-a11y"))).toBe(true);
+      await card.focus();
+      // ArrowRight scrolls horizontally (native), does not open a composer.
+      const before = await card.evaluate((c) => c.scrollLeft);
+      await card.press("ArrowRight");
+      await card.press("ArrowRight");
+      await expect.poll(async () => card.evaluate((c) => c.scrollLeft)).toBeGreaterThan(before);
+      expect(await page.locator(".cm-composer").count(), "arrow keys do not open the composer").toBe(0);
+      // Space does not open the composer on a scroll card (left to native scrolling).
+      await card.press(" ");
+      expect(await page.locator(".cm-composer").count(), "Space does not open the composer on a scroll card").toBe(0);
+      // Enter still comments.
+      await card.press("Enter");
+      const composer = page.locator(".cm-composer").last();
+      await expect(composer).toBeVisible();
+      await composer.locator("textarea").fill("Enter still comments on a scroll card");
+      await composer.locator('[data-act="save"]').click();
+      await expect(composer).toHaveCount(0);
+      await expect(page.locator("#commentList")).toContainText("Enter still comments on a scroll card");
+    } finally {
+      await server.close();
+    }
+  });
+
+  test("a control inside a gallery figcaption keeps its native Enter/Space action; the diagram composer is not hijacked (CMH-MMD-11)", async ({ page }) => {
+    test.setTimeout(60000);
+    await page.setViewportSize({ width: 1200, height: 900 });
+    // Blocker B: the card keydown handler acts only when the event target IS the card itself. A link or
+    // button inside a <figcaption> that receives Enter/Space must perform ITS OWN action and must NOT
+    // open the whole-diagram composer via the bubbled event.
+    const SMALL = "stateDiagram-v2\n  [*] --> S1\n  S1 --> [*]";
+    const inner = `<figure><pre class="mermaid">${SMALL}</pre>` +
+      `<figcaption>See <button type="button" id="capBtn" onclick="window.__capClicked=(window.__capClicked||0)+1">details</button></figcaption></figure>`;
+    const FIG = ".cmh-diagram-gallery > figure";
+    const server = await stageGallery(page, inner, "cmh-gallery-figcaption-ctrl");
+    try {
+      await expect(page.locator(FIG + " svg")).toHaveCount(1, { timeout: 20000 });
+      await waitGalleryReady(page, FIG);
+      const btn = page.locator("#capBtn");
+      await btn.focus();
+      await expect(btn).toBeFocused();
+      // Enter on the button fires its own click, not the diagram composer.
+      await btn.press("Enter");
+      await expect.poll(async () => page.evaluate(() => window.__capClicked || 0)).toBe(1);
+      expect(await page.locator(".cm-composer").count(), "Enter on a figcaption control does not open the diagram composer").toBe(0);
+      // Space on the button also activates the button (native), not the composer.
+      await btn.press(" ");
+      await expect.poll(async () => page.evaluate(() => window.__capClicked || 0)).toBe(2);
+      expect(await page.locator(".cm-composer").count(), "Space on a figcaption control does not open the diagram composer").toBe(0);
+      // Sanity: the figure card itself IS still a comment tab stop and Enter on IT composes.
+      const fig = page.locator(FIG).first();
+      await expect(fig).toHaveAttribute("tabindex", "0");
+      await fig.focus();
+      await fig.press("Enter");
+      await expect(page.locator(".cm-composer").last()).toBeVisible();
     } finally {
       await server.close();
     }
