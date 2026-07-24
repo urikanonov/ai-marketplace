@@ -84,8 +84,12 @@ test.describe("link handling", () => {
     await page.evaluate(() => document.getElementById("frag")
       .dispatchEvent(new MouseEvent("mouseenter", { bubbles: true })));
     await expect(page.locator("#linkAddBtn")).toBeHidden();
-    // An author-set target is respected (not forced to _blank).
-    expect(await page.locator("#self").getAttribute("target")).toBe("_self");
+    // An author-set target on a document reference is OVERRIDDEN to _blank (forced to a new
+    // tab so the reviewer is never navigated away from the report and their comments).
+    expect((await page.locator("#self").getAttribute("target")).toLowerCase()).toBe("_blank");
+    const selfRel = await page.locator("#self").getAttribute("rel");
+    expect(selfRel).toContain("noopener");
+    expect(selfRel).toContain("noreferrer");
   });
 
   test("an author-set target=_blank without rel gains the secure rel regardless of scheme (CMH-LINK-01)", async ({ page }) => {

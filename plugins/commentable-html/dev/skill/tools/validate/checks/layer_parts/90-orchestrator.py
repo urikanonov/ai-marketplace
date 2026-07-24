@@ -56,6 +56,10 @@ def check_layer(html, parser, base_dir=None):
     warnings.extend(check_section_reference_links(parser))
     warnings.extend(check_section_wrapping(parser))
 
+    # 11a0) Author links must open in a new tab: warn on a document reference in #commentRoot
+    #       that sets an explicit target other than _blank (it would open in the same tab).
+    warnings.extend(check_links(parser))
+
     # 11a1) Document kind: the doc must declare a known kind, and title-bearing kinds
     #       (report/plan) must carry a top-level <h1> in #commentRoot.
     errors.extend(check_document_kind(parser))
