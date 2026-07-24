@@ -728,3 +728,22 @@ test("the showcase screenshot renders small and stays crisp on HiDPI (SITE-PLUGI
     expect(naturalWidth, `crispness at ${width}px`).toBeGreaterThanOrEqual(box.width * 2);
   }
 });
+
+
+test("the demo section and its links are labelled 'Demo', not 'Try it' (SITE-DEMO-13)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  // The in-page nav link, the demo section heading, and every call-to-action that jumps to the
+  // #demo anchor read "Demo" - the older "Try it" / "Try the live demo" wording is gone.
+  await expect(page.locator(".nav-links a[href='#demo']")).toHaveText("Demo");
+  await expect(page.locator("#demo .section-title")).toHaveText("Demo");
+  const demoCtas = page.locator("a.btn[href='#demo']");
+  await expect(demoCtas.first()).toBeVisible();
+  const ctaCount = await demoCtas.count();
+  for (let i = 0; i < ctaCount; i++) {
+    await expect(demoCtas.nth(i)).toHaveText("Demo");
+  }
+  await expect(page.getByText("Try it live", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Try the live demo", { exact: false })).toHaveCount(0);
+  // The #demo anchor itself is preserved so existing deep links keep working.
+  await expect(page.locator("#demo")).toHaveCount(1);
+});
