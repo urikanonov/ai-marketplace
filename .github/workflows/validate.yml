@@ -38,6 +38,12 @@ jobs:
         run: python -m unittest discover -s scripts -p "test_*.py"
       - name: Verify spec test references
         run: python scripts/check_spec_test_refs.py
+      - name: Require a doc-surface declaration for new commentable-html features
+        env:
+          DOCS_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          DOCS_HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          DOCS_EVENT: ${{ github.event_name }}
+        run: python scripts/check_doc_surfaces.py
       - name: Validate Markdown files
         run: python scripts/validate_markdown.py
       - name: Block secret-bearing files (.env, private keys, keystores)

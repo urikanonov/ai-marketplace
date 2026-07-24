@@ -290,6 +290,9 @@ endings, trimmed outer whitespace) is implemented identically in the runtime and
 | CMH-HELP-AUTHOR-02 | The Help About author link has a visible link affordance without relying on hover, using the accent color and an underline while preserving focus styling. | `tests/58-help-terminology.spec.js` - `the About section gives the author link a visible affordance and links the changelog (CMH-HELP-AUTHOR-02, CMH-HELP-SITE-02)`; source: `assets/css/` - `.cm-help-about .cm-brand-link` |
 | CMH-HELP-SITE-02 | The Help About links list includes a Changelog link to the commentable-html plugin changelog on GitHub with `target="_blank"` and `rel="noopener noreferrer"`, alongside the existing Website, Source, issue, feature request, and contribute links. | `tests/58-help-terminology.spec.js` - `the About section gives the author link a visible affordance and links the changelog (CMH-HELP-AUTHOR-02, CMH-HELP-SITE-02)`; source: `assets/js/` - `showHelp()` |
 | CMH-HELP-TERMS-01 | Help panel text names controls by their exact current on-screen labels (`Copy all`, `Export as Portable`, `Export Offline`, `Export to Plain HTML`, `Export to Markdown`, `Help & About`, `Comment on document`), and describes the triage board's `Reset moves` button and the board-moves comment card's `Reset changes` button in the `Sending comments to an agent` topic. | `tests/58-help-terminology.spec.js` - `the help panel names the board Reset moves and board-moves Reset changes buttons (CMH-HELP-TERMS-01)`, `the help panel uses the exact current export and toolbar labels` |
+| CMH-HELP-COUNT-01 | The Help `The panel and toolbar` topic describes the count bubble as showing open comment threads PLUS unresolved review-note and checklist changes (each top-level thread counted once, not its replies), rather than the stale "open comments" wording, so the badge's documented meaning matches what it counts. | `tests/58-help-terminology.spec.js` - `the panel-and-toolbar topic explains the count bubble includes note and checklist changes (CMH-HELP-COUNT-01)` |
+| CMH-HELP-THREADS-01 | Help has a `Threads, replies and author names` topic covering the `Commenting as` identity control (future comments only), the colored author pill, replying inline in the sidebar card (Word-style, empty, `Ctrl/Cmd+Enter` saves / `Esc` cancels, first-reply name prompt), edit/delete-reply semantics (deleting the root removes the whole thread), and that `Copy all` and the exports keep each thread as a comment plus its labelled replies. | `tests/58-help-terminology.spec.js` - `the help panel documents inline replies, author names, and thread export (CMH-HELP-THREADS-01)` |
+| CMH-HELP-STORE-01 | The Help `Managing storage` topic documents the storage pie chart (This document / Other commentable-html documents / Other / Free), the per-document table with a `Share` column, and the per-row `Show comments` browse-and-delete control, so the storage manager's current UI is described rather than only the older size-list wording. | `tests/58-help-terminology.spec.js` - `the managing-storage topic documents the pie chart, Share column, and per-comment browsing (CMH-HELP-STORE-01)` |
 | CMH-PRIVACY-01 | The `Self-contained and privacy` help topic states that comments are stored in the browser's `localStorage`, private to the reader (nothing uploaded, no account), and that the review layer travels inside the file only in Portable mode (a Not portable file references companion resources); it no longer claims the layer is always bundled into the file. | `tests/32-ui-batch5.spec.js` - `the Self-contained and privacy topic explains localStorage privacy and portable bundling (CMH-PRIVACY-01)` |
 | CMH-TOC-01 | On wide screens, a runtime `cm-skip` side menu appears when an author `.cm-toc` exists, otherwise it falls back to `h2` and `h3` ids; it is hidden on narrow screens. | `tests/20-ui-chrome.spec.js` - `appears with a numbered link per section and tracks the current section on scroll`, `the TOC side menu falls back to h2/h3 ids when there is no author .cm-toc`, `the TOC side menu is hidden on narrow screens` |
 | CMH-TOC-02 | The side menu heading reads `Navigation`, scroll-spies the active section, collapses to `Navigation >>`, expands back with `<<`, and provides icon-bearing `Scroll to Top` and `Scroll to Bottom` buttons. | `tests/32-ui-batch5.spec.js` - `Expand All, Collapse All, Scroll to Top and Scroll to Bottom each carry an icon`; source: `assets/js/` - `setupSideToc()` |
@@ -706,3 +709,66 @@ The plugin ships a compact `skills/commentable-html/` (only `SKILL.md`, `LICENSE
 | CMH-PKG-12 | Concurrent session startups do not interleave extraction: an exclusive pid-stamped lock (held open for the duration) serializes them, a lock abandoned by a crashed process is stolen atomically after a timeout, a leftover `.lock.stale.<pid>` sidecar is swept up next run, a failed extraction always releases the lock, and release never deletes a lock owned by another session. | `tests/test_extract_resources.py` - `test_concurrent_lock_makes_run_skip`, `test_stale_lock_is_stolen`, `test_cleanup_removes_stale_lock_sidecar`, `test_lock_released_on_extraction_failure`, `test_release_does_not_delete_a_foreign_pid_lock` |
 | CMH-PKG-13 | The shipped `pkg/` root carries its own `LICENSE` (matching the repository root LICENSE) so the always-shipped hooks (`pkg/hooks/`) are covered by a license even before the skill-resources zip is extracted. | `tests/test_session_hooks.py` - `test_pkg_root_ships_license_matching_repo_root` |
 | CMH-PKG-14 | The session-hook extractor bounds a (possibly tampered) `skill-resources.zip` so extraction can never exhaust disk or memory: a preflight over the central directory rejects too many entries, an over-limit per-entry expanded size, an over-limit total expanded size, or a decompression-bomb compression ratio BEFORE any bytes are written (extract_all fails closed, leaving the previous version and no marker), and each member is streamed to disk under a per-entry ACTUAL-byte cap so a member whose header understates its size is aborted mid-stream (partial file removed). The real shipped zip passes the preflight. | `tests/test_extract_resources.py` - `test_preflight_rejects_too_many_entries`, `test_preflight_rejects_oversized_entry`, `test_preflight_rejects_oversized_total`, `test_preflight_rejects_high_compression_ratio`, `test_extract_all_fails_closed_on_bomb_zip`, `test_streaming_byte_cap_aborts_a_lying_member`, `test_shipped_zip_passes_preflight`; source: `pkg/hooks/extract_resources.py` |
+## Doc-surface coverage (feature visibility)
+
+Every user-facing feature must be discoverable from at least one documentation SURFACE, and every new
+feature must declare where it is surfaced (or opt out) in the same pull request. The three surfaces are:
+
+- `tutorial` - the guided walkthrough in `docs/TUTORIAL.md` (the site tutorial page is generated from it).
+- `site` - the marketplace pages under `site/pages/commentable-html` (a highlights page, not exhaustive).
+- `help` - the in-runtime Help/About panel (`dev/assets/js/75-help.js`).
+
+Governance rule (enforced): when a pull request adds a NEW feature-id row to this spec, it must also add
+a row for that id to the "Doc-surface registry" table below whose value is either one or more surfaces
+(a comma-separated subset of `tutorial`, `site`, `help`) OR `opt-out: <reason>` for a change that is not
+user-facing (internal hardening, build/authoring tooling, a robustness invariant, a security guard, an
+agent-facing export format, etc.). `scripts/check_doc_surfaces.py` fails a PR whose newly added feature
+ids lack a registry entry, and fails if a registry row names an id that no longer exists. Prefer a real
+surface; use `opt-out` only when the behavior is genuinely not something a reader needs documented.
+
+### Coverage matrix (by area)
+
+A human summary of where each major user-facing area is surfaced today. Internal / tooling / hardening
+areas are surfaced as `opt-out` in the registry and omitted here.
+
+| Area | Surfaced in |
+| --- | --- |
+| Leaving and managing comments (CORE, NOTE editing, SIDE) | tutorial, site, help |
+| Rich content: charts, KQL, code, diffs, mermaid, images (CHART, KQL, CODE, DIFF, MMD, IMG) | tutorial, site, help |
+| Rich-text comment formatting (RICH) | tutorial, help |
+| Review checklists (CHECK) | tutorial, help |
+| Section review badges and the section menu / search / filter (REVIEW, TOC, SEARCH) | tutorial, help |
+| Threads, inline replies, and author names (THREAD, AUTHOR) | tutorial, help |
+| Counting note and checklist changes in the badge (NOTE-04, CHECK-06) | tutorial, help |
+| Copy all and sending comments to an agent (COPY, HANDLED) | tutorial, help |
+| Exports: Portable, Offline, Plain HTML, Markdown, Save as PDF (EXP, OFFLINE, PRINT) | tutorial, site, help |
+| Storage manager, pie-chart breakdown, and per-document browsing (STORE) | tutorial, help |
+| Board and deck document kinds (BOARD, DECK, MODE) | tutorial (board), site (deck), help (board) |
+| Portability / offline badge and privacy (PKG-portability, PRIVACY) | tutorial, site, help |
+| Commentable widgets and SVG nodes (WIDGET) | help |
+
+### Doc-surface registry
+
+Machine-checked by `scripts/check_doc_surfaces.py`. Each new feature-id row above must add a matching
+entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `site`, `help`, or
+`opt-out: <reason>`.
+
+| Feature id | Doc surface |
+| --- | --- |
+| CMH-HELP-COUNT-01 | help |
+| CMH-HELP-THREADS-01 | help |
+| CMH-HELP-STORE-01 | help |
+| CMH-STORE-13 | tutorial, help |
+| CMH-STORE-14 | tutorial, help |
+| CMH-STORE-15 | tutorial, help |
+| CMH-NOTE-04 | tutorial, help |
+| CMH-NOTE-05 | tutorial |
+| CMH-CHECK-06 | tutorial, help |
+| CMH-THREAD-01 | tutorial, help |
+| CMH-THREAD-06 | tutorial, help |
+| CMH-THREAD-07 | help |
+| CMH-THREAD-08 | help |
+| CMH-THREAD-09 | opt-out: internal draft-preservation robustness, not separately documented |
+| CMH-AUTHOR-01 | tutorial, help |
+| CMH-AUTHOR-02 | tutorial, help |
+| CMH-AUTHOR-03 | opt-out: agent-facing Copy all attribution format and injection hardening |

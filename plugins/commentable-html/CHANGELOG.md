@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.233.0] - 2026-07-24
+
+### Added
+
+- Help/About now documents recently shipped features: a new "Threads, replies and author names" topic
+  (set your name via Commenting as, colored author pills, inline Word-style replies, and that Copy all
+  and the exports keep each thread together), the storage manager's pie-chart breakdown and
+  per-document Share table with per-comment browsing in "Managing storage", and a corrected count-bubble
+  description that counts open comment threads plus unresolved note and checklist changes.
+  (CMH-HELP-COUNT-01, CMH-HELP-THREADS-01, CMH-HELP-STORE-01)
+- The guided tutorial now covers the Manage storage pie-chart breakdown and that the toolbar count
+  badge counts note and checklist changes, so no user-facing feature is left off every doc surface.
+
+### Changed
+
+- New governance: every new user-facing feature must declare its documentation surface (tutorial, site,
+  or help) - or record an explicit opt-out with a reason - in the SPEC "Doc-surface registry".
+  `scripts/check_doc_surfaces.py` (run in the required validate job and the pre-push hook) fails a PR
+  whose newly added feature ids lack a doc-surface entry.
+
 ## [1.232.0] - 2026-07-24
 
 ### Changed
