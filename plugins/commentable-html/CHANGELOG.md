@@ -4,6 +4,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.236.0] - 2026-07-25
+
+### Changed
+
+- Updated the in-runtime Help/About panel and the guided tutorial (`docs/TUTORIAL.md`) to describe the
+  redesigned composite header: the captioned action ribbon (Export, Sort, More, Help, Hide), the
+  Copy all / Search split, and the More menu that now holds Manage storage and Clear all comments
+  (previously described as living in the Export menu).
+- Regenerated every tutorial screenshot that shows the comments panel so it reflects the new header;
+  the full-page shots (Copy all, dark theme, saved comment, thread, and others) had lagged behind
+  because a whole-page screenshot dilutes the header-region change below the screenshot-check tolerance.
+
 ## [1.235.0] - 2026-07-24
 
 ### Changed
