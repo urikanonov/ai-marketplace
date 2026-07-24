@@ -972,6 +972,86 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
   });
 
+  test("CMH-DECK-25: comments-off persists across every slide-navigation path (issue #659)", async ({ page }) => {
+    await openDeck(page, "", "cmh-deck-off-nav");
+    const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
+    const assertOff = async (expectedSlide) => {
+      if (expectedSlide) expect(await activeId(page)).toBe(expectedSlide);
+      expect(await mode()).toBe("off");
+      expect(await page.locator("body").evaluate((b) => b.classList.contains("cmh-deck-comments-off"))).toBe(true);
+      // An open sidebar would flip the model to "open"; navigation must never open it.
+      expect(await page.locator("body").evaluate((b) => b.classList.contains("sidebar-open"))).toBe(false);
+    };
+
+    const menu = await openDeckModeMenu(page);
+    await menu.locator(".cmh-deck-mode-off-item").click();
+    await assertOff("slide-00000001");
+
+    // Slide movement must NEVER change the deck comment model. Walk EVERY accepted route (each has
+    // its own event handler) and assert the model stays "off" after each move.
+    // Keyboard: arrows, PageUp/PageDown, Backspace, Home/End.
+    await page.keyboard.press("ArrowRight");
+    await assertOff("slide-00000002");
+    await page.keyboard.press("PageDown");
+    await assertOff("slide-00000003");
+    await page.keyboard.press("PageUp");
+    await assertOff("slide-00000002");
+    await page.keyboard.press("ArrowLeft");
+    await assertOff("slide-00000001");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Backspace");
+    await assertOff("slide-00000001");
+    await page.keyboard.press("End");
+    await assertOff("slide-00000003");
+    await page.keyboard.press("Home");
+    await assertOff("slide-00000001");
+
+    // Both programmatic navigation APIs.
+    await page.evaluate(() => window.__cmhDeck.showSlide(1));
+    await assertOff("slide-00000002");
+    await page.evaluate(() => window.__cmhDeck.showSlideById("slide-00000003"));
+    await assertOff("slide-00000003");
+
+    // Hash navigation.
+    await page.evaluate(() => { location.hash = "#slide-00000002"; });
+    await expect.poll(() => activeId(page)).toBe("slide-00000002");
+    await assertOff();
+
+    // Edge-nav arrow: reveal it by hovering the right edge, then click it.
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
+    await assertOff("slide-00000001");
+    const vp = await page.locator(".deck-viewport").boundingBox();
+    await page.mouse.move(vp.x + vp.width - 10, vp.y + vp.height / 2);
+    await page.locator(".cmh-deck-edge-nav-next").click({ force: true });
+    await assertOff("slide-00000002");
+
+    // Overview jump: open the overview and click a slide card.
+    await page.locator(".cmh-deck-nav").getByRole("button", { name: "Slide overview", exact: true }).click();
+    await expect(page.locator(".cmh-deck-overview")).toBeVisible();
+    await page.locator(".cmh-deck-overview-card").nth(2).click();
+    await expect.poll(() => activeId(page)).toBe("slide-00000003");
+    await assertOff();
+
+    // Real trusted click-to-advance on empty slide space.
+    await page.evaluate(() => window.__cmhDeck.showSlide(0));
+    await assertOff("slide-00000001");
+    const box = await page.locator(".slide.active").boundingBox();
+    await page.mouse.click(box.x + box.width - 15, box.y + box.height - 15);
+    await expect.poll(() => activeId(page)).toBe("slide-00000002");
+    await assertOff();
+
+    // Functional gate: after navigating, selecting slide text still shows no Add Comment popup.
+    await selectText(page, ".slide.active p");
+    await expect(page.locator("#menuComment")).toBeHidden();
+    await page.evaluate(() => window.getSelection().removeAllRanges());
+
+    // Only an explicit comment-options re-selection re-enables commenting.
+    const menu2 = await openDeckModeMenu(page);
+    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="closed"]').click();
+    expect(await mode()).toBe("closed");
+    expect(await page.locator("body").evaluate((b) => b.classList.contains("cmh-deck-comments-off"))).toBe(false);
+  });
+
   test("CMH-DECK-25: three-state comment model defaults, persists, and gates commenting", async ({ page }) => {
     await openDeck(page, "", "cmh-deck-22-authoring");
     const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
