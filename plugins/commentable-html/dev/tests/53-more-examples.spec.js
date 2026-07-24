@@ -343,7 +343,11 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
         // svg-geometry/text check stays green. Measure the HTML label content too: its rendered height (a
         // legibility floor) and its paint visibility (transparent color / zero opacity / hidden).
         svg.querySelectorAll("foreignObject").forEach((foEl) => {
-          const label = foEl.querySelector(".nodeLabel, .edgeLabel, span, div, p") || foEl;
+          // Prefer the nested SEMANTIC label element explicitly: a comma selector returns the first DOM
+          // match, which is mermaid's OUTER wrapper div (full box height), not the nested .nodeLabel -
+          // measuring the wrapper would overstate a crushed inner label and let it pass.
+          const label = foEl.querySelector(".nodeLabel") || foEl.querySelector(".edgeLabel") ||
+            foEl.querySelector("span") || foEl.querySelector("p") || foEl.querySelector("div") || foEl;
           // Count every label that carries TEXT (skip structural/empty foreignObjects) REGARDLESS of
           // size, so a label that COLLAPSED to zero height - the exact regression this guards - is
           // counted and fails the floor/visibility checks below, instead of being skipped (which would
@@ -353,7 +357,13 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
           const nr = label.getBoundingClientRect();
           htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
           const ls = getComputedStyle(label);
-          if (nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
+          let hidden = nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none";
+          // A hidden ANCESTOR (opacity/visibility/display) hides the label too, so fold the chain in.
+          for (let a = label.parentElement; !hidden && a && svg.contains(a); a = a.parentElement) {
+            const as = getComputedStyle(a);
+            if (parseFloat(as.opacity) === 0 || as.visibility === "hidden" || as.display === "none") hidden = true;
+          }
+          if (hidden) htmlLabelInvisible++;
         });
       }
       return {
