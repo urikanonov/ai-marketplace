@@ -254,6 +254,83 @@ function cmhStorageUsage() {
     currentBytes: currentBytes, assumedQuota: CMH_ASSUMED_QUOTA,
   };
 }
+// The four pie slices, in draw order. Their values sum to `whole` (the assumed budget, or the actual
+// origin usage when that already exceeds the budget so `free` is 0), so the pie is always a full disc:
+//   this      = this document's bytes
+//   otherDocs = every OTHER commentable-html document's bytes
+//   other     = all remaining same-origin data: non-commentable-html apps PLUS shared commentable-html
+//               metadata that is not tied to one document (the registry index and shared preferences)
+//   free      = remaining headroom in the ~5 MB budget
+const CMH_PIE_SLICES = [
+  { key: "this", field: "thisDoc", label: "This document" },
+  { key: "otherdocs", field: "otherDocs", label: "Other commentable-html documents" },
+  { key: "other", field: "other", label: "Other" },
+  { key: "free", field: "free", label: "Free" },
+];
+function cmhStorageBreakdown() {
+  const data = cmhStorageGroups();
+  let thisDoc = 0, otherDocs = 0;
+  data.docs.forEach(function (g) { if (g.current) thisDoc += g.bytes; else otherDocs += g.bytes; });
+  const originBytes = _cmhOriginBytes();
+  // "Other" is the catch-all remainder: foreign same-origin data plus commentable-html's own shared
+  // metadata (the registry index and shared preferences), which belongs to no single document.
+  const other = Math.max(0, originBytes - thisDoc - otherDocs);
+  const free = Math.max(0, CMH_ASSUMED_QUOTA - originBytes);
+  const whole = thisDoc + otherDocs + other + free;
+  return { thisDoc: thisDoc, otherDocs: otherDocs, other: other, free: free,
+    whole: whole, used: originBytes, quota: CMH_ASSUMED_QUOTA };
+}
+function _cmhSvgNode(tag, attrs) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]); }
+  return n;
+}
+// SVG path for a pie wedge from angle a0 to a1 (radians), centered at (cx, cy).
+function _cmhPieWedge(cx, cy, r, a0, a1) {
+  const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+  const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+  const large = (a1 - a0) > Math.PI ? 1 : 0;
+  return "M " + cx + " " + cy + " L " + x0 + " " + y0
+    + " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1 + " Z";
+}
+// A per-slice SVG <title> so a sighted mouse user gets a hover tooltip that names the slice (a
+// non-color cue). The full numeric breakdown is conveyed to assistive tech by the legend list, so
+// the SVG itself carries only a brief label to avoid reading every value twice.
+function _cmhSliceTitle(label, bytes) { return label + ": " + _cmhHumanSize(bytes); }
+// Build the four-slice pie as an inline SVG. Zero-value slices are omitted from the disc (they still
+// appear in the legend). A single non-zero slice is drawn as a full circle (an arc from a point back
+// to itself would collapse to nothing).
+function cmhStoragePieSvg(bd) {
+  const size = 132, r = 62, cx = size / 2, cy = size / 2;
+  const svg = _cmhSvgNode("svg", {
+    class: "cm-storage-pie", viewBox: "0 0 " + size + " " + size,
+    width: String(size), height: String(size), role: "img", "aria-label": "Storage usage breakdown",
+  });
+  const nonzero = CMH_PIE_SLICES.filter(function (s) { return bd[s.field] > 0; });
+  if (!nonzero.length || bd.whole <= 0) return svg;
+  function withTitle(node, s) {
+    const t = _cmhSvgNode("title", {});
+    t.textContent = _cmhSliceTitle(s.label, bd[s.field]);
+    node.appendChild(t);
+    return node;
+  }
+  if (nonzero.length === 1) {
+    const s = nonzero[0];
+    const c = _cmhSvgNode("circle", { class: "cm-pie-slice cm-pie-" + s.key,
+      cx: String(cx), cy: String(cy), r: String(r), "data-slice": s.key, "data-bytes": String(bd[s.field]) });
+    svg.appendChild(withTitle(c, s));
+    return svg;
+  }
+  let acc = -Math.PI / 2;
+  nonzero.forEach(function (s) {
+    const a1 = acc + (bd[s.field] / bd.whole) * 2 * Math.PI;
+    const path = _cmhSvgNode("path", { class: "cm-pie-slice cm-pie-" + s.key,
+      d: _cmhPieWedge(cx, cy, r, acc, a1), "data-slice": s.key, "data-bytes": String(bd[s.field]) });
+    svg.appendChild(withTitle(path, s));
+    acc = a1;
+  });
+  return svg;
+}
 // Normalize whitespace and truncate a document-derived string to a short snippet for the browse
 // list, so one very long note or quote cannot dominate the dialog. The full text is preserved in the
 // element's title attribute by the caller.
@@ -441,10 +518,6 @@ function openStorageManager(opts) {
   // often missed).
   if (quota) box.setAttribute("aria-describedby", "cmStorageBanner");
 
-  const totalLine = el("p", "cm-storage-total", "");
-  totalLine.setAttribute("aria-live", "polite");
-  box.appendChild(totalLine);
-
   const usageWrap = el("div", "cm-storage-usage");
   usageWrap.setAttribute("aria-live", "polite");
   box.appendChild(usageWrap);
@@ -491,9 +564,6 @@ function openStorageManager(opts) {
     data.docs.forEach(function (g) { total += g.bytes; });
     data.globals.forEach(function (x) { total += x.bytes; });
     total += _cmhIndexBytes(); // count the registry index in the commentable-html total + Share base
-    totalLine.textContent = "About " + _cmhHumanSize(total) + " used across "
-      + data.docs.length + " document" + (data.docs.length === 1 ? "" : "s")
-      + " (browsers typically allow ~5 MB for local files; the exact limit varies).";
 
     renderUsageSummary();
 
@@ -582,25 +652,24 @@ function openStorageManager(opts) {
   }
 
   function renderUsageSummary() {
-    const usage = cmhStorageUsage();
+    const bd = cmhStorageBreakdown();
     usageWrap.textContent = "";
-    const originPct = _cmhPct(usage.originBytes, usage.assumedQuota);
-    const cmhPctOfOrigin = _cmhPct(usage.cmhBytes, usage.originBytes);
-    const docPctOfCmh = _cmhPct(usage.currentBytes, usage.cmhBytes);
-    const bar = el("div", "cm-storage-bar");
-    const fill = el("div", "cm-storage-bar-fill");
-    fill.style.width = Math.min(100, originPct) + "%";
-    bar.appendChild(fill);
-    usageWrap.appendChild(bar);
-    usageWrap.appendChild(el("div", "cm-storage-usage-line",
-      "Local storage in use: " + _cmhHumanSize(usage.originBytes) + " - about " + originPct
-      + "% of the ~5 MB a browser typically allows (the exact limit varies)."));
-    usageWrap.appendChild(el("div", "cm-storage-usage-line",
-      "commentable-html: " + _cmhHumanSize(usage.cmhBytes) + " - " + cmhPctOfOrigin
-      + "% of the storage in use."));
-    usageWrap.appendChild(el("div", "cm-storage-usage-line",
-      "This document: " + _cmhHumanSize(usage.currentBytes) + " - " + docPctOfCmh
-      + "% of commentable-html storage."));
+    const chart = el("div", "cm-storage-chart");
+    chart.appendChild(cmhStoragePieSvg(bd));
+    const legend = el("ul", "cm-storage-legend");
+    CMH_PIE_SLICES.forEach(function (s) {
+      const li = el("li", "cm-storage-legend-item");
+      li.setAttribute("data-slice", s.key);
+      const sw = el("span", "cm-storage-legend-swatch cm-pie-" + s.key);
+      sw.setAttribute("aria-hidden", "true");
+      li.appendChild(sw);
+      li.appendChild(el("span", "cm-storage-legend-label", s.label));
+      li.appendChild(el("span", "cm-storage-legend-size",
+        _cmhHumanSize(bd[s.field]) + " (" + _cmhPct(bd[s.field], bd.whole) + "%)"));
+      legend.appendChild(li);
+    });
+    chart.appendChild(legend);
+    usageWrap.appendChild(chart);
   }
 
   // Build a document's table row (and, when expanded, its per-comment list row) and append both.
@@ -852,6 +921,7 @@ window.__cmhStorageCodec = {
   decode: cmhDecodeStore,
   groups: cmhStorageGroups,
   usage: cmhStorageUsage,
+  breakdown: cmhStorageBreakdown,
   open: openStorageManager,
   read: function () { return cmhLoadStored().arr; },
   write: function (arr) {

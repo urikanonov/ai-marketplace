@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.230.0] - 2026-07-24
+
+### Changed
+
+- The Manage storage dialog now shows storage consumption ONLY as a four-slice pie chart with a short
+  bullet legend beside it, replacing both the previous prose usage summary and the "About X used
+  across N documents" total line. The slices are This document,
+  Other commentable-html documents (only other real documents), Other (all remaining same-origin data
+  - non-commentable-html apps plus commentable-html's shared registry index and preferences), and
+  Free (remaining headroom in the assumed ~5 MB budget); the four slices sum to the whole disc. Each
+  legend bullet names its slice with a human-readable size and percentage (the accessible text
+  alternative), and the pie SVG carries a brief role/aria-label plus a per-slice title as a non-color
+  cue. (CMH-STORE-13)
+
 ## [1.228.0] - 2026-07-24
 
 ### Fixed
