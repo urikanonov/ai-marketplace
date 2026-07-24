@@ -324,6 +324,24 @@ class SpecTestReferenceTests(unittest.TestCase):
         self.assertIn("no exact test name cited", issues[0].message)
         self.assertIn("`tests/test_demo.py`", issues[0].message)
 
+    def test_accepts_single_token_exact_js_title(self):
+        (self.base / "tests" / "smoke.spec.js").write_text(
+            "test('smoke', async () => {});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/smoke.spec.js` - `smoke`")
+
+        self.assertEqual(refs.check_spec(spec, self.base), [])
+
+    def test_flags_single_token_that_is_not_a_real_title(self):
+        spec = self._spec("`tests/demo.spec.js` - `nope`")
+
+        issues = refs.check_spec(spec, self.base)
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("no exact test name cited", issues[0].message)
+
     def test_ignores_quoted_code_notes_after_test_references(self):
         spec = self._spec(
             "`tests/demo.spec.js` - `real browser title (DEMO-01)` "

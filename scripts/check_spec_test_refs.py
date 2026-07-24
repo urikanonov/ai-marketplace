@@ -107,6 +107,31 @@ def _file_has_name(path: Path, name: str) -> bool:
     return False
 
 
+def _is_exact_test_name(path: Path, name: str) -> bool:
+    """True when name is a verbatim JS test title or a Python test method/class in path (a bare
+    feature id does NOT count - it is a reference to a test, not an exact title/method)."""
+    if _FEATURE_ID_RE.fullmatch(name.strip()):
+        return False
+    if path.suffix in {".js", ".mjs"}:
+        return name in _js_test_titles(_read(path))
+    if path.suffix == ".py":
+        return _python_has_name(path, name)
+    return False
+
+
+def _clause_cites_exact_test_name(segment: str, test_path: Path) -> bool:
+    """Whether any backticked token in an automated coverage clause is an exact test title/method.
+    Catches a single-token JS title (no whitespace) that the _looks_like_test_reference heuristic
+    used by _referenced_names would otherwise miss."""
+    for match in _QUOTED_RE.finditer(segment):
+        token = match.group(1)
+        if _TEST_PATH_RE.fullmatch("`%s`" % token):
+            continue
+        if _is_exact_test_name(test_path, token):
+            return True
+    return False
+
+
 def _js_test_titles(text: str) -> set[str]:
     titles: set[str] = set()
     i = 0
@@ -309,7 +334,7 @@ def check_spec(spec_path: Path, base_dir: Path) -> list[SpecIssue]:
             next_ref = matches[idx + 1].start() if idx + 1 < len(matches) else len(coverage)
             end = _clause_end(coverage, match.end(), next_ref)
             names = _referenced_names(coverage[match.end():end], test_path)
-            if not names:
+            if not names and not _clause_cites_exact_test_name(coverage[match.end():end], test_path):
                 issues.append(SpecIssue(
                     spec_path,
                     line_no,
