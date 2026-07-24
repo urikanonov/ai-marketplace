@@ -313,6 +313,7 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
       const cs = getComputedStyle(el);
       let fillW = 0, fillH = 0, within = true, clip = 0, minTextH = Infinity, nText = 0, textInvisible = 0, hasPositiveViewBox = false;
       let svgBoxW = 0, svgBoxH = 0;
+      let htmlLabelMinH = Infinity, nHtmlLabel = 0, htmlLabelInvisible = 0;
       if (svg) {
         const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
         hasPositiveViewBox = vb.length === 4 && isFinite(vb[2]) && isFinite(vb[3]) && vb[2] > 0 && vb[3] > 0;
@@ -336,6 +337,24 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
           const ts = getComputedStyle(n), f = ts.fill, fo = parseFloat(ts.fillOpacity), o = parseFloat(ts.opacity);
           if (f === "rgba(0, 0, 0, 0)" || f === "transparent" || fo === 0 || o === 0 || ts.visibility === "hidden") textInvisible++;
         });
+        // Non-deck mermaid (flowchart, state, class, er, ...) renders node labels as HTML in
+        // <foreignObject>, not as svg <text>, so the <text> checks above miss them. Several live demo
+        // diagrams use HTML labels, so a broken HTML label would look empty in a real browser while every
+        // svg-geometry/text check stays green. Measure the HTML label content too: its rendered height (a
+        // legibility floor) and its paint visibility (transparent color / zero opacity / hidden).
+        svg.querySelectorAll("foreignObject").forEach((foEl) => {
+          const label = foEl.querySelector(".nodeLabel, .edgeLabel, span, div, p") || foEl;
+          // Count every label that carries TEXT (skip structural/empty foreignObjects) REGARDLESS of
+          // size, so a label that COLLAPSED to zero height - the exact regression this guards - is
+          // counted and fails the floor/visibility checks below, instead of being skipped (which would
+          // drop nHtmlLabel to 0 and let the assertions be vacuously skipped).
+          if (!label.textContent || !label.textContent.trim()) return;
+          nHtmlLabel++;
+          const nr = label.getBoundingClientRect();
+          htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
+          const ls = getComputedStyle(label);
+          if (nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
+        });
       }
       return {
         src: (el.getAttribute("data-cmh-md-src") || "").split("\n")[0].trim(),
@@ -344,6 +363,7 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
         nodeCount: svg ? svg.querySelectorAll("*").length : 0,
         svgBoxW, svgBoxH, fillArea: fillW * fillH, clip,
         minTextH: isFinite(minTextH) ? minTextH : null, nText, textInvisible, hasPositiveViewBox,
+        htmlLabelMinH: isFinite(htmlLabelMinH) ? htmlLabelMinH : null, nHtmlLabel, htmlLabelInvisible,
         within, scrolls: el.scrollHeight > el.clientHeight + 1,
       };
     });
@@ -442,11 +462,24 @@ test.describe("commentable visuals matrix: diagram gallery layout (CMH-DEMO-06 /
           expect(c.minTextH, `diagram "${c.src}" text is legible, not crushed`).toBeGreaterThanOrEqual(6);
           expect(c.textInvisible, `diagram "${c.src}" text is painted (not transparent/hidden)`).toBe(0);
         }
+        // Same legibility floor for HTML labels: non-deck mermaid (flowchart/state/class/er) renders its
+        // node labels as HTML in <foreignObject>, which the svg-<text> checks above do NOT see. A broken
+        // HTML label (crushed to microscopic, or painted transparent/hidden) would look empty in a real
+        // browser while every geometry + svg-text check stayed green - exactly the "green headless,
+        // broken live" failure this gallery exists to prevent - so assert the HTML label content too.
+        if (c.nHtmlLabel > 0) {
+          expect(c.htmlLabelMinH, `diagram "${c.src}" HTML labels are legible, not crushed`).toBeGreaterThanOrEqual(6);
+          expect(c.htmlLabelInvisible, `diagram "${c.src}" HTML labels are painted (not transparent/hidden)`).toBe(0);
+        }
         // The diagram is WHOLE inside its card and the card never scrolls vertically. (The demo's
         // diagrams all fit under the card cap, so none scroll horizontally either.)
         expect(c.within, `diagram "${c.src}" is whole inside its card (not clipped)`).toBe(true);
         expect(c.scrolls, `card "${c.src}" does not scroll (hug-fit)`).toBe(false);
       }
+
+      // The demo genuinely exercises HTML-label (foreignObject) diagrams, so the per-card HTML-label
+      // legibility assertions above are not vacuously skipped: at least one live card must have them.
+      expect(cells.some((c) => c.nHtmlLabel > 0), "the demo gallery includes HTML-label (foreignObject) diagrams").toBe(true);
 
       // The tall state diagram is present, shown WHOLE, and gets a NARROW hugging card (not a wide card
       // it slivers inside): its card is markedly narrower than the widest card.

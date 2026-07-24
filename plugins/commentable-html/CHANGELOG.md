@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.227.0] - 2026-07-24
+
+### Changed
+
+- Hardened the diagram-gallery legibility tests (CMH-CONTENT-19) to also cover HTML labels. Non-deck
+  mermaid diagrams (flowchart, state, class, er) render their node labels as HTML in `<foreignObject>`,
+  which the previous svg-`<text>` legibility checks did not measure - so a crushed or transparent HTML
+  label would have looked empty in a real browser while every geometry and svg-text assertion stayed
+  green. The demo test (`tests/53-more-examples.spec.js`) and the diverse-types hermetic test
+  (`tests/76-diagram-gallery.spec.js`) now measure each `foreignObject` label's rendered height and
+  paint visibility and assert a legibility floor, and the demo test asserts the demo genuinely includes
+  HTML-label diagrams so the check is never vacuously skipped. Documented in `references/mermaid-diagrams.md`
+  that an extreme-tall (very high aspect-ratio) diagram is scaled down by the fixed-height gallery and
+  reads better as a standalone diagram outside it.
+
 ## [1.226.0] - 2026-07-24
 
 ### Changed

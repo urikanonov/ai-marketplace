@@ -110,11 +110,15 @@ function measureCards(page, cardSel) {
       // / hidden - a broken HTML label would look empty while all the svg-geometry checks stay green).
       svg.querySelectorAll("foreignObject").forEach((fo) => {
         const label = fo.querySelector(".nodeLabel, .edgeLabel, span, div, p") || fo;
+        // Count every label that carries TEXT (skip structural/empty foreignObjects) REGARDLESS of
+        // size, so a label that COLLAPSED to zero height - the exact regression this guards - is counted
+        // and fails the floor/visibility checks, instead of being skipped (vacuous guard).
+        if (!label.textContent || !label.textContent.trim()) return;
+        nHtmlLabel++;
         const nr = label.getBoundingClientRect();
-        if (nr.width <= 0 || nr.height <= 0) return;
-        nHtmlLabel++; htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
+        htmlLabelMinH = Math.min(htmlLabelMinH, nr.height);
         const ls = getComputedStyle(label);
-        if (ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
+        if (nr.width <= 0 || nr.height <= 0 || ls.color === "rgba(0, 0, 0, 0)" || ls.color === "transparent" || parseFloat(ls.opacity) === 0 || ls.visibility === "hidden" || ls.display === "none") htmlLabelInvisible++;
       });
     }
     return {
@@ -415,6 +419,13 @@ test.describe("diagram gallery helper (CMH-CONTENT-19)", () => {
         expect(c.fillArea, `diagram "${c.src}" fills its card area (not tiny/sliver)`).toBeGreaterThanOrEqual(0.3);
         expect(c.clip, `diagram "${c.src}" has no clipped content`).toBe(0);
         expect(c.within, `diagram "${c.src}" is whole inside its card`).toBe(true);
+        // These types (classDiagram/erDiagram/...) render their labels as HTML in <foreignObject>, which
+        // the svg-geometry checks do not measure; assert the HTML labels are legible and painted so a
+        // crushed/transparent label can't slip through green.
+        if (c.nHtmlLabel > 0) {
+          expect(c.htmlLabelMinH, `diagram "${c.src}" HTML labels are legible`).toBeGreaterThanOrEqual(6);
+          expect(c.htmlLabelInvisible, `diagram "${c.src}" HTML labels are painted (not transparent/hidden)`).toBe(0);
+        }
       }
       // Uniform height across these different renderers too.
       const hs = cells.map((c) => c.cardH);
