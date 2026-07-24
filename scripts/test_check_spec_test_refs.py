@@ -269,6 +269,22 @@ class SpecTestReferenceTests(unittest.TestCase):
             spec = self._spec("`tests/test_helpers.py` - %s" % citation)
             self.assertEqual(refs.check_spec(spec, self.base), [], citation)
 
+    def test_non_test_helper_class_alone_does_not_satisfy_strict(self):
+        (self.base / "tests" / "test_fixtures.py").write_text(
+            "class Fixtures:\n"
+            "    def build(self):\n"
+            "        pass\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        # `Fixtures` is not a TestCase and is not named like a test case, so it is not an exact test.
+        spec = self._spec("`tests/test_fixtures.py` - `Fixtures`")
+
+        issues = refs.check_spec(spec, self.base)
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("no exact test name cited", issues[0].message)
+
     def test_rejects_partial_feature_id_reference(self):
         spec = self._spec("`tests/demo.spec.js` - `DEMO-0`")
 

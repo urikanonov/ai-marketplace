@@ -116,13 +116,15 @@ def _file_has_name(path: Path, name: str) -> bool:
 
 def _python_is_exact_test(path: Path, name: str) -> bool:
     """True when name is a test method (`test_*`, bare or `Class.method`) or a test-case CLASS in
-    path. A non-test helper/function (e.g. `main`, `setUp`) or a non-test method does NOT qualify."""
+    path. A non-test helper/function (e.g. `main`, `setUp`) or a non-test helper class does NOT
+    qualify; a class counts only when it subclasses `TestCase` or is named `*Tests`/`*Case`."""
     text = _read(path)
     try:
         tree = ast.parse(text, filename=str(path))
     except SyntaxError:
         return False
     classes: dict[str, set[str]] = {}
+    test_classes: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             classes[node.name] = {
@@ -130,12 +132,25 @@ def _python_is_exact_test(path: Path, name: str) -> bool:
                 for child in node.body
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
             }
+            if _TEST_CLASS_NAME_RE.search(node.name) or _has_testcase_base(node):
+                test_classes.add(node.name)
     if "." in name:
         class_name, method_name = name.split(".", 1)
         return method_name.startswith("test") and method_name in classes.get(class_name, set())
-    if name in classes:
+    if name in test_classes:
         return True  # a TestCase class names a group of tests
     return name.startswith("test") and any(name in methods for methods in classes.values())
+
+
+_TEST_CLASS_NAME_RE = re.compile(r"(?:Tests?|Case)$")
+
+
+def _has_testcase_base(node: ast.ClassDef) -> bool:
+    for base in node.bases:
+        label = getattr(base, "attr", None) or getattr(base, "id", None)
+        if label and "TestCase" in label:
+            return True
+    return False
 
 
 def _is_exact_test_name(path: Path, name: str) -> bool:
