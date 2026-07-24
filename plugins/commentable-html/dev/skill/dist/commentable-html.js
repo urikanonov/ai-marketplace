@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.230.0";
+const CMH_VERSION = "1.231.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6003,18 +6003,26 @@ function renderComments() {
   // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
   if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.renders = (window.__cmhPerf.renders || 0) + 1;
   const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
-  toolbarCount.textContent = roots.length;
-  sidebarCount.textContent = roots.length;
+  const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
+  const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
+  const notePieces = (typeof notesCardPieces === "function") ? notesCardPieces() : [];
+  // The count badge reflects the pending note and checklist changes shown in the panel, not just
+  // comment threads: a changed note and a changed checklist each render their own card and are now
+  // counted too. Otherwise a reviewer who only edited a note or ticked a checklist saw the count
+  // stay at 0, as if nothing had been captured (issue #643). Notes are one card each; a checklist is
+  // one card regardless of how many of its items changed. Widget/layout state changes are
+  // deliberately NOT counted here - that stays a non-comment signal (see CMH-STATE-01).
+  const changeCardCount = notePieces.length + clPieces.length;
+  const pendingCount = roots.length + changeCardCount;
+  toolbarCount.textContent = pendingCount;
+  sidebarCount.textContent = pendingCount;
   // Keep the deck comment-options menu in step with the live comment count (the "Disable
   // commenting" item is only available when the deck has zero comments).
   if (window.__cmhDeck && typeof window.__cmhDeck.refreshMode === "function") window.__cmhDeck.refreshMode();
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   updateSideInfo();
   updateSortUi();
-  const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
-  const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
-  const notePieces = (typeof notesCardPieces === "function") ? notesCardPieces() : [];
   if (!roots.length && !stateChanges.length && !clPieces.length && !notePieces.length) {
     const deckHint = IS_DECK
       ? "<p><strong>On this deck:</strong> in comment mode, select text on the current slide and choose <em>Add Comment</em>, or right-click empty slide space for a whole-slide comment. Move between slides with Prev / Next or the arrow keys.</p>"

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.230.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.231.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,12 +457,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.231.0] - 2026-07-24</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The open-comment count badge (toolbar and sidebar) now includes pending note and checklist changes, not just comment threads. A reviewer who only edited an editable note or ticked a checklist item previously saw the count stay at 0, as if nothing had been captured; now each changed note (one per note) and each changed checklist (one per list) is counted, so the badge reflects that there is something to hand back. Widget/layout state changes remain a non-comment signal and are still not counted (CMH-STATE-01 unchanged). (CMH-NOTE-04, CMH-CHECK-06)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.230.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>The Manage storage dialog now shows storage consumption ONLY as a four-slice pie chart with a short bullet legend beside it, replacing both the previous prose usage summary and the &quot;About X used across N documents&quot; total line. The slices are This document, Other commentable-html documents (only other real documents), Other (all remaining same-origin data - non-commentable-html apps plus commentable-html&#x27;s shared registry index and preferences), and Free (remaining headroom in the assumed ~5 MB budget); the four slices sum to the whole disc. Each legend bullet names its slice with a human-readable size and percentage (the accessible text alternative), and the pie SVG carries a brief role/aria-label plus a per-slice title as a non-color cue. (CMH-STORE-13)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.228.0] - 2026-07-24</h3></div>
             <div class="group-label">Fixed</div>
@@ -470,8 +479,6 @@
               <li>Deck: a right-click on non-interactive slide text now reliably opens the deck comment menu again, even when it lands immediately after an empty-space advance click (CMH-DECK-31). The advance click&#x27;s still-pending deferred mouseup selection cleanup could clobber the freshly opened menu, so the menu now cancels that pending cleanup when it opens. The menu stays suppressed on <code>cm-skip</code> deck chrome and on interactive targets. (CMH-DECK-40)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.227.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
@@ -501,16 +508,7 @@
               <li>Portable, Offline, and Plain HTML exports strip authoring session-id and agent provenance by default; an explicit retain option preserves it when deliberately requested.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.223.0] - 2026-07-23</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Accessibility: the text-selection context menu is now a keyboard-operable ARIA menu. Its container carries <code>role=&quot;menu&quot;</code> and each action carries <code>role=&quot;menuitem&quot;</code> with a roving <code>tabindex=&quot;-1&quot;</code> (only one item is focusable at a time, so Tab does not step through them); opening it moves focus to the first visible item, ArrowUp/ArrowDown (and Home/End) rove focus with wrap-around, Tabbing out dismisses it cleanly, and Escape closes it and restores focus to the control that was focused when it opened.</li>
-              <li>Accessibility: the floating per-link add-comment button and the collapsible-section caret now show the shared themed <code>:focus-visible</code> outline ring, so keyboard focus on either control is clearly visible.</li>
-              <li>Accessibility: a sortable table&#x27;s header cell now reflects the active sort direction via <code>aria-sort</code> (<code>ascending</code> / <code>descending</code>) on the <code>&lt;th&gt;</code>, removed when the column resets or another column takes the sort, so assistive tech announces which column is sorted and how.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">188 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">189 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

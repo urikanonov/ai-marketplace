@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.231.0] - 2026-07-24
+
+### Changed
+
+- The open-comment count badge (toolbar and sidebar) now includes pending note and checklist changes,
+  not just comment threads. A reviewer who only edited an editable note or ticked a checklist item
+  previously saw the count stay at 0, as if nothing had been captured; now each changed note (one per
+  note) and each changed checklist (one per list) is counted, so the badge reflects that there is
+  something to hand back. Widget/layout state changes remain a non-comment signal and are still not
+  counted (CMH-STATE-01 unchanged). (CMH-NOTE-04, CMH-CHECK-06)
+
 ## [1.230.0] - 2026-07-24
 
 ### Changed
