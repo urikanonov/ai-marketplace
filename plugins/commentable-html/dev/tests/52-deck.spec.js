@@ -489,6 +489,57 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await activeId(page)).toBe("s1");
   });
 
+  test("CMH-DECK-40: a right-click comment menu on non-interactive slide text opens even right after an empty-space advance click, and stays hidden on chrome/interactive targets", async ({ page }) => {
+    const slides =
+      '<section class="slide active" data-slide-id="s1"><h2>One</h2></section>'
+      + '<section class="slide" data-slide-id="s2"><h2 id="ttl">Title two</h2>'
+      + '<p id="para">Plain paragraph body text here</p>'
+      + '<a id="lnk" href="#nowhere">a real link</a>'
+      + '<div id="spacer" style="height:200px"></div></section>';
+    const { html } = stageDeck(slides, { key: "cmh-deck-ctx-text" });
+    await installClipboardCapture(page);
+    await page.goto(fileUrl(html));
+    await ready(page);
+    // Go to the last slide (which carries text) so an empty-space left-click there does NOT
+    // advance (no wrap-around) but STILL schedules the mouseup selection cleanup.
+    await page.evaluate(() => window.__cmhDeck.showSlide(1));
+    expect(await activeId(page)).toBe("s2");
+    await page.locator("#spacer").click();
+    expect(await activeId(page)).toBe("s2");
+    // A right-click on NON-INTERACTIVE slide text immediately after an empty-space click must
+    // still raise the deck comment menu: the click's pending mouseup cleanup must not clobber the
+    // freshly opened menu (the regression this feature guards). Model the race deterministically -
+    // a plain left mouseup schedules the deferred cleanup, then a contextmenu opens the menu before
+    // the cleanup's setTimeout(0) can fire (both in one task, so the cleanup is still pending).
+    await page.evaluate(() => {
+      document.getElementById("spacer").dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, cancelable: true, button: 0, clientX: 60, clientY: 60 }));
+      document.getElementById("para").dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+    });
+    // Flush the mouseup's queued setTimeout(0) cleanup BEFORE asserting, so the check is
+    // deterministic: on the pre-fix code the cleanup fires here and hides the just-opened menu
+    // (the regression), so toBeVisible cannot pass on a transient open; the fix cancels the
+    // cleanup, so the menu is still visible after the flush.
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    await expect(page.locator("#contextMenu")).toBeVisible();
+    // ...and it offers the deck/slide comment scope (document mode) for that text.
+    await expect(page.locator("#menuDocComment")).toBeVisible();
+    // A right-click on an INTERACTIVE target (a link) keeps the native menu: our menu stays hidden.
+    await page.evaluate(() => {
+      document.getElementById("lnk").dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+    });
+    await expect(page.locator("#contextMenu")).toBeHidden();
+    // A right-click on cm-skip deck chrome is suppressed too (the menu stays hidden).
+    await page.evaluate(() => {
+      const chrome = document.querySelector(".cmh-deck-nav, .cm-footer, .cm-skip");
+      chrome.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }));
+    });
+    await expect(page.locator("#contextMenu")).toBeHidden();
+  });
+
   test("CMH-DECK-34: the deck comment-scope menu stacks vertically with 'Comment on deck' above 'Comment on slide'", async ({ page }) => {
     await openDeck(page);
     // An empty right-click on the active slide offers both scope options.
