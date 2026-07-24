@@ -24,6 +24,11 @@ let pendingSlideId = null;
 // The element that had focus when the context menu opened, so Escape can hand focus
 // back to it (a keyboard reviewer is not stranded on the dismissed menu).
 let _menuReturnFocus = null;
+// The pending deferred cleanup a left/middle mouseup schedules to tear down a stale menu when a
+// click collapses a selection. It is cancelled the instant a menu is (re)opened (showMenu), so a
+// right-click that raises the comment menu right after an empty-space advance click is not
+// clobbered by that click's still-pending cleanup (CMH-DECK-31 makes empty-space clicks routine).
+let _mouseupCleanupTimer = null;
 function _menuItems() {
   return menu ? [...menu.querySelectorAll("button:not([hidden])")] : [];
 }
@@ -101,7 +106,9 @@ document.addEventListener("mouseup", (e) => {
   const onSkip = !!(e.target.closest && e.target.closest(".cm-skip"));
   // Deck with commenting disabled: no text-selection comment popup.
   if (document.body.classList.contains("cmh-deck-comments-off")) return;
-  setTimeout(() => {
+  if (_mouseupCleanupTimer) clearTimeout(_mouseupCleanupTimer);
+  _mouseupCleanupTimer = setTimeout(() => {
+    _mouseupCleanupTimer = null;
     const got = selectionInRoot();
     if (!got) {
       // A collapsed or whitespace-only selection: drop any menu/pending state left
@@ -207,6 +214,11 @@ document.addEventListener("keydown", (e) => {
   }
 });
 function showMenu(x, y) {
+  // A pending mouseup cleanup (scheduled by a preceding empty-space click that collapsed a
+  // selection) would tear this menu down the instant it opens; opening the menu supersedes that
+  // cleanup, so cancel it. This keeps a right-click comment menu on non-interactive slide text
+  // from being clobbered by the empty-space advance click that came just before it (CMH-DECK-31).
+  if (_mouseupCleanupTimer) { clearTimeout(_mouseupCleanupTimer); _mouseupCleanupTimer = null; }
   // Remember where focus was so Escape can return it (but not the menu itself or the body).
   const rf = document.activeElement;
   _menuReturnFocus = (rf && rf !== document.body && menu && !menu.contains(rf)) ? rf : null;

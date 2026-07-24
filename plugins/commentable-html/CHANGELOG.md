@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.228.0] - 2026-07-24
+
+### Fixed
+
+- Deck: a right-click on non-interactive slide text now reliably opens the deck comment menu again,
+  even when it lands immediately after an empty-space advance click (CMH-DECK-31). The advance
+  click's still-pending deferred mouseup selection cleanup could clobber the freshly opened menu, so
+  the menu now cancels that pending cleanup when it opens. The menu stays suppressed on `cm-skip`
+  deck chrome and on interactive targets. (CMH-DECK-40)
+
 ## [1.227.0] - 2026-07-24
 
 ### Changed
