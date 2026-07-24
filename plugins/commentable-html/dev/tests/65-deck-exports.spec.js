@@ -276,7 +276,7 @@ test("CMH-DECK-EXPORT-01: Export Markdown produces a deterministic structural ex
     expect(a).toMatch(/^## /m);
     expect(a).toContain("garden plan");
     expect(a).toContain("```mermaid");
-    expect(a).toContain("flowchart LR");
+    expect(a).toContain("flowchart TB");
     expect(a).toContain("```diff");
     expect(a).toContain("```kusto");
     expect(a).toContain("_[Chart");

@@ -72,8 +72,9 @@ commentable-html document, not a flat report.
 > 3. Why this medium - the website-style comparison table (chat / Markdown / plain HTML /
 >    Commentable HTML) early in the deck.
 > 4. The pain, shown - reviewing the garden plan, then losing the location by describing it in chat.
-> 5. Close the loop - a Mermaid flowchart of agent -> commentable plan -> comment in place ->
->    Copy all -> agent applies -> handled ids embedded.
+> 5. Close the loop - a top-down Mermaid flowchart of the review cycle that fills the slide: the agent
+>    writes the plan -> commentable HTML file -> you review it in place -> fan out to comment on a
+>    sentence, a cell or chart, or a diagram node -> Copy all, paste, press Enter -> then repeat.
 > Act 2 - Start with prompts, then show the surface:
 > 6. Example prompts - the first three shipped one-line prompts, each linked to its full demo page on the site.
 > 7. More example prompts - the other three shipped one-line prompts, also linked to their full demo pages.

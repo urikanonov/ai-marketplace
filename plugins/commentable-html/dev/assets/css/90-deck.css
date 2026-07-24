@@ -619,6 +619,24 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   line-height: 1.4;
   max-width: 26ch;
 }
+/* Stable header baseline (general deck rule): reserve a consistent title band so a slide's
+   subtitle and body start at the same vertical position no matter how many lines the title (h2)
+   wraps to, and the header does not visibly jump when navigating between slides. Content slides
+   top-align by default (see viewport-base.css / the scaffolded per-deck padding), so the title
+   itself already starts at a stable Y; the centred section-divider recipe (.cmh-slide-section)
+   opts out. The band is sized in em so it scales with any deck's title font size, and it is a
+   min-height (not a fixed height) so a rare longer title still grows rather than clip. */
+#commentRoot[data-cmh-mode="deck"] .slide:not(.cmh-slide-section) > h2 {
+  min-height: 2.8em;
+}
+/* A subtitle/lede placed immediately under the title takes its top spacing from the title's own
+   margin-bottom, not from its own margin-top, so its rendered top is exactly the (stable) title-band
+   bottom on every slide - it cannot drift with a per-slide lede margin. (Flex-column items do not
+   collapse margins, so a stray lede margin-top would otherwise offset the subtitle baseline even
+   though the title band is stable.) */
+#commentRoot[data-cmh-mode="deck"] .slide:not(.cmh-slide-section) > h2 + .cmh-slide-lede {
+  margin-top: 0;
+}
 #commentRoot[data-cmh-mode="deck"] .slide.cmh-slide-section {
   display: flex;
   flex-direction: column;
