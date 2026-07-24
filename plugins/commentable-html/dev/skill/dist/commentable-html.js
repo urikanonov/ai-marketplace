@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.235.0";
+const CMH_VERSION = "1.236.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6755,8 +6755,8 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
-  // The Search button in the primary row reveals the filter field (it is hidden until then),
-  // focuses it, and toggles it closed again on a second press.
+  // The filter field auto-appears once there are comments (it is hidden only at zero comments);
+  // the Search button toggles it: it opens and focuses the field, or closes and clears it.
   const toggle = document.getElementById("btnSearchToggle");
   const row = document.querySelector(".head-search");
   if (toggle && row) {
@@ -10729,7 +10729,7 @@ function showHelp(restoreEl) {
           '<li><strong>Edit</strong> or <strong>Delete</strong> a comment from its card in the panel.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
-          '<li><strong>Clear</strong> deletes every comment and always asks for confirmation first (Cancel is the default).</li>' +
+          '<li><strong>Clear all comments</strong> (in the <strong>More</strong> menu) deletes every comment and always asks for confirmation first (Cancel is the default).</li>' +
         '</ul>') +
       T('Threads, replies and author names',
         '<ul>' +
@@ -10741,10 +10741,10 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('The panel and toolbar',
         '<ul>' +
-          '<li><strong>Copy all</strong> copies every comment as a Markdown bundle to paste back to the agent.</li>' +
-          '<li>The <strong>count bubble</strong> shows how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies).</li>' +
-          '<li><strong>Hide</strong> collapses the panel; a small floating toolbar stays to bring it back. The overflow <kbd>...</kbd> menu holds the export actions and <strong>Help &amp; About</strong>.</li>' +
-          '<li>The <strong>Help &amp; About</strong> and <strong>Hide</strong> controls sit together at the top of the panel; <strong>Help &amp; About</strong> opens this dialog.</li>' +
+          '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The portability badge and version sit at the right of the same row.</li>' +
+          '<li>Below it, a row of captioned buttons - <strong>Export</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
+          '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, a search field appears once there are comments and filters the list by each comment\'s note text, and the <strong>Search</strong> button hides or re-shows that field.</li>' +
+          '<li><strong>More</strong> opens a menu with <strong>Manage storage</strong> and <strong>Clear all comments</strong>; <strong>Export</strong> opens the file-format menu. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, and <strong>Help &amp; About</strong>.</li>' +
         '</ul>') +
       T('Portable or Not portable',
         '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>' +
@@ -10814,7 +10814,7 @@ function showHelp(restoreEl) {
       T('Managing storage',
         '<p>Everything you review is saved in this browser&#39;s storage, which every commentable-html document you open shares. If you review many documents from your file system, that space can fill up.</p>' +
         '<ul>' +
-          '<li><strong>Manage storage</strong> (in the overflow <kbd>...</kbd> menu, or the sidebar&#39;s <em>Export</em> menu) lists every document&#39;s stored data with its size, and lets you delete another document&#39;s data to free space. Your own comments are never uploaded - this only clears local browser storage.</li>' +
+          '<li><strong>Manage storage</strong> (in the sidebar&#39;s <em>More</em> menu, or the collapsed toolbar&#39;s overflow <kbd>...</kbd> menu) lists every document&#39;s stored data with its size, and lets you delete another document&#39;s data to free space. Your own comments are never uploaded - this only clears local browser storage.</li>' +
           '<li>The window shows a <strong>pie chart</strong> of how the browser storage is used - <em>This document</em>, <em>Other commentable-html documents</em>, <em>Other</em> site data, and the <em>Free</em> headroom - above a per-document <strong>table</strong> (Document, Comments, Size, Share, Actions) whose <em>Share</em> column is each document&#39;s percentage of commentable-html storage. Expand a row&#39;s <strong>Show comments</strong> to browse and delete individual comments.</li>' +
           '<li>If a comment cannot be saved because storage is full, the <strong>Manage storage</strong> window opens automatically; delete another document&#39;s data and your comment is saved.</li>' +
           '<li>Comments are stored compressed, so far more reviews fit before the space runs out.</li>' +

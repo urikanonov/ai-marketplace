@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.235.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.236.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.236.0] - 2026-07-25</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Updated the in-runtime Help/About panel and the guided tutorial (<code>docs/TUTORIAL.md</code>) to describe the redesigned composite header: the captioned action ribbon (Export, Sort, More, Help, Hide), the Copy all / Search split, and the More menu that now holds Manage storage and Clear all comments (previously described as living in the Export menu).</li>
+              <li>Regenerated every tutorial screenshot that shows the comments panel so it reflects the new header; the full-page shots (Copy all, dark theme, saved comment, thread, and others) had lagged behind because a whole-page screenshot dilutes the header-region change below the screenshot-check tolerance.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.235.0] - 2026-07-24</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -464,6 +472,8 @@
               <li>Moved Manage storage and Clear all comments into a new sidebar More menu (kebab); the Export menu now holds only the five file formats.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.234.0] - 2026-07-24</h3></div>
             <div class="group-label">Added</div>
@@ -471,8 +481,6 @@
               <li>Rendered mermaid diagrams are now keyboard-commentable, mirroring the image keyboard path: focusing a diagram reveals the whole-diagram &quot;Comment on diagram&quot; button and Enter opens the whole-diagram composer, so a keyboard-only user never has to tab to the disjointed floating button. Every diagram gets exactly one comment tab stop - a standalone host, or the card inside a <code>.cmh-diagram-gallery</code> (fitting or overflowing, desktop or mobile). A bubbled Enter/Space from a descendant control (a <code>figcaption</code> link/button) keeps its native action, and on an overflowing gallery card Space and the arrow keys are left to native horizontal scrolling (WCAG 2.1.1). (CMH-MMD-11)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.233.0] - 2026-07-24</h3></div>
             <div class="group-label">Added</div>
@@ -507,14 +515,7 @@
               <li>The Manage storage dialog now shows storage consumption ONLY as a four-slice pie chart with a short bullet legend beside it, replacing both the previous prose usage summary and the &quot;About X used across N documents&quot; total line. The slices are This document, Other commentable-html documents (only other real documents), Other (all remaining same-origin data - non-commentable-html apps plus commentable-html&#x27;s shared registry index and preferences), and Free (remaining headroom in the assumed ~5 MB budget); the four slices sum to the whole disc. Each legend bullet names its slice with a human-readable size and percentage (the accessible text alternative), and the pie SVG carries a brief role/aria-label plus a per-slice title as a non-color cue. (CMH-STORE-13)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.228.0] - 2026-07-24</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Deck: a right-click on non-interactive slide text now reliably opens the deck comment menu again, even when it lands immediately after an empty-space advance click (CMH-DECK-31). The advance click&#x27;s still-pending deferred mouseup selection cleanup could clobber the freshly opened menu, so the menu now cancels that pending cleanup when it opens. The menu stays suppressed on <code>cm-skip</code> deck chrome and on interactive targets. (CMH-DECK-40)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">193 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">194 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -106,8 +106,8 @@ function setupCommentSearch() {
   const input = document.getElementById("cmSearchInput");
   const clearBtn = document.getElementById("cmSearchClear");
   if (!input) return;
-  // The Search button in the primary row reveals the filter field (it is hidden until then),
-  // focuses it, and toggles it closed again on a second press.
+  // The filter field auto-appears once there are comments (it is hidden only at zero comments);
+  // the Search button toggles it: it opens and focuses the field, or closes and clears it.
   const toggle = document.getElementById("btnSearchToggle");
   const row = document.querySelector(".head-search");
   if (toggle && row) {

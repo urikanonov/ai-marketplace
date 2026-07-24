@@ -55,9 +55,38 @@ test.describe("Help terminology matches the current button labels", () => {
   test("the help panel uses the exact current export and toolbar labels", async ({ page }) => {
     await openHelp(page);
     const body = page.locator(".cm-help-body");
-    for (const label of ["Copy all", "Export as Portable", "Export Offline", "Export to Plain HTML", "Export to Markdown", "Help & About", "Comment on document"]) {
+    for (const label of ["Copy all", "Export as Portable", "Export Offline", "Export to Plain HTML", "Export to Markdown", "Save as PDF", "Help & About", "Comment on document"]) {
       await expect(body).toContainText(label);
     }
+  });
+
+  test("the panel-and-toolbar topic describes the composite header ribbon, Search, and More menu (CMH-HELP-TERMS-01)", async ({ page }) => {
+    await openHelp(page);
+    const search = page.locator(".cm-help-search-input");
+    // The panel-and-toolbar topic must name the redesigned composite header: the captioned ribbon
+    // (Export, Sort, More, Help, Hide), the Copy all / Search split, and the More menu that now holds
+    // Manage storage and Clear all comments.
+    await search.fill("panel and toolbar");
+    const panelTopic = page.locator(".cm-help-topic:visible", { hasText: "The panel and toolbar" });
+    await expect(panelTopic).toHaveCount(1);
+    const panelText = await panelTopic.innerText();
+    for (const label of ["Export", "Sort", "More", "Help", "Hide", "Search", "Copy all", "Manage storage", "Clear all comments"]) {
+      expect(panelText, `panel-and-toolbar topic names ${label}`).toContain(label);
+    }
+    // The managing-storage topic points reviewers at the More menu, not the old Export menu.
+    await search.fill("Managing storage");
+    const storageTopic = page.locator(".cm-help-topic:visible", { hasText: "Managing storage" });
+    await expect(storageTopic).toHaveCount(1);
+    const storageText = await storageTopic.innerText();
+    expect(storageText).toContain("More menu");
+    expect(storageText).not.toContain("Export menu");
+    // The managing-comments topic must use the exact current control label, not the old bare "Clear".
+    await search.fill("Clear all comments");
+    const commentsTopic = page.locator(".cm-help-topic:visible", { hasText: "Managing comments" });
+    await expect(commentsTopic).toHaveCount(1);
+    const commentsText = await commentsTopic.innerText();
+    expect(commentsText).toContain("Clear all comments");
+    expect(commentsText).not.toContain("Clear deletes");
   });
 });
 

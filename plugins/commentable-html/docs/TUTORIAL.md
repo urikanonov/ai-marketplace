@@ -148,8 +148,8 @@ Every section heading carries a small review badge so you can mark sections as y
 
 Once you have several comments, the sidebar helps you find and order them.
 
-1. Type in the comment search box at the top of the panel to filter the list to comments whose quoted text or note matches your query; the header shows how many of the total are shown.
-2. Use the sort buttons to order comments by their position in the document, ascending or descending, instead of the order you added them.
+1. Once you have comments, a search field appears in the panel; type to filter the list to comments whose **note** matches your query, and the field shows how many of the total are shown. The **Search** button hides or re-shows the field, and the clear (X) button empties it.
+2. Use the **Sort** arrows in the header ribbon to order comments oldest-first or newest-first; click the active arrow again to return to document order.
 
 ![The comments panel filtered by a search query, with the sort controls and a shown-of-total count](assets/garden-13-comment-search.png)
 
@@ -173,16 +173,16 @@ When you pass a document back and forth with someone else, attribute each commen
 
 ![The Copy all action with the comments panel populated](assets/garden-09-copyall.png)
 
-## 18. Use the export menu
+## 18. Export, manage storage, and clear
 
-The sidebar's export menu gathers the ways to save or share the file in one place.
+The comments panel header gathers the ways to save, share, and manage the review.
 
-1. Click **Export** in the comments panel header to open the menu.
-2. Choose an option: **Portable** bakes your comments into a single self-contained copy, **Offline** makes a zero-network copy after diagrams and charts have rendered, **Markdown** writes the comment bundle to a `.md` file, and **Plain HTML** hands over a clean copy with the commenting layer removed.
-3. The same menu holds **Manage storage**, which opens a window with a pie-chart breakdown of how your browser storage is used - **This document**, **Other commentable-html documents**, **Other** site data, and the **Free** headroom - above a per-document table whose **Share** column shows each document's percentage of commentable-html storage. Expand a row's **Show comments** to browse or delete individual comments, or delete another document's data to free space. Nothing is ever uploaded; this only manages your browser's local storage.
-4. The **Clear** button next to Export removes every comment so you can start the review over.
+1. Click **Export** in the header to open the file-format menu.
+2. Choose an option: **Portable** bakes your comments into a single self-contained copy, **Offline** makes a zero-network copy after diagrams and charts have rendered, **Markdown** writes the comment bundle to a `.md` file, **Plain HTML** hands over a clean copy with the commenting layer removed, and **PDF** opens your browser's print dialog to save a PDF or print.
+3. The data-management actions live in the separate **More** menu in the ribbon. **Manage storage** opens a window with a pie-chart breakdown of how your browser storage is used - **This document**, **Other commentable-html documents**, **Other** site data, and the **Free** headroom - above a per-document table whose **Share** column shows each document's percentage of commentable-html storage. Expand a row's **Show comments** to browse or delete individual comments, or delete another document's data to free space. Nothing is ever uploaded; this only manages your browser's local storage.
+4. The **More** menu also holds **Clear all comments**, which removes every comment (after a confirmation) so you can start the review over.
 
-![The sidebar export menu open, listing Portable, Offline, Markdown, and Plain HTML](assets/garden-12-export-menu.png)
+![The sidebar export menu open, listing Portable, Offline, Markdown, Plain HTML, and PDF](assets/garden-12-export-menu.png)
 
 ## 19. Refresh and repeat
 
@@ -210,7 +210,7 @@ The layer follows your browser or OS theme and stays readable in both. Everythin
 
 Commentable HTML has a built-in reference for every control, gesture, and keyboard shortcut. Open it whenever you want the full picture.
 
-1. Click **Help & About** in the sidebar header.
+1. Click **Help** in the comments panel header (or **Help & About** in the collapsed toolbar's `...` menu).
 2. The first topic is the review workflow above; the rest cover every control, gesture, keyboard shortcut, the document-type bubble, exports, and the section menu. Use the search box to jump to an answer.
 3. For faster work, open the **Tips and shortcuts** topic: right-click to comment, re-select the same text to reopen its comment, sort back to document order, toggle diff syntax, and the keyboard shortcuts.
 4. Close it with the X button, Escape, or by clicking the backdrop.
