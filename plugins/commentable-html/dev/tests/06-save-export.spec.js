@@ -128,6 +128,78 @@ test.describe("Save comments / Export plain", () => {
     }
   });
 
+  test("HTML exports strip authoring session provenance by default (CMH-SEC-05)", async ({ page }) => {
+    const sessionId = "private-session-622>suffix";
+    const staged = stageContent("<section><p>Private provenance.</p></section>", {
+      key: "cmh-session-provenance-export",
+      source: "private-provenance.html",
+    });
+    try {
+      const authored = fs.readFileSync(staged.html, "utf8").replace("</head>",
+        `<meta name="commentable-html-session&#45;id" content="${sessionId}">\n`
+          + '<meta name="commentable-html-agent" content="copilot">\n</head>');
+      fs.writeFileSync(staged.html, authored);
+      const server = await startStaticServer(staged.dir);
+      try {
+        await page.goto(server.url + "/test-doc.html");
+        await ready(page);
+        await addTextComment(page, "#commentRoot p", "export this review");
+
+        for (const selector of ["#btnSaveHtml", "#btnExportOffline", "#btnSavePlain"]) {
+          const [download] = await Promise.all([
+            page.waitForEvent("download"),
+            clickSidebarExport(page, selector),
+          ]);
+          const html = await readDownload(download);
+          expect(html).not.toContain(sessionId);
+          expect(html).not.toContain('suffix">');
+        }
+      } finally {
+        await server.close();
+      }
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("both export menus synchronize explicit provenance retention for every HTML export (CMH-SEC-05)", async ({ page }) => {
+    const sessionId = "private-session-retained-622";
+    const staged = stageContent("<section><p>Private provenance.</p></section>", {
+      key: "cmh-session-provenance-retain",
+      source: "private-provenance.html",
+    });
+    try {
+      const authored = fs.readFileSync(staged.html, "utf8").replace("</head>",
+        `<meta name="commentable-html-session-id" content="${sessionId}">\n</head>`);
+      fs.writeFileSync(staged.html, authored);
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      await openToolbarMenu(page);
+      const options = page.locator("[data-cmh-retain-session-provenance]");
+      await expect(options).toHaveCount(2);
+      await expect(options.first()).not.toBeChecked();
+      await expect(options.last()).not.toBeChecked();
+      await options.first().check();
+      await expect(options.last()).toBeChecked();
+      await addTextComment(page, "#commentRoot p", "retain this provenance");
+      await openSidebarExportMenu(page);
+      await options.last().uncheck();
+      await expect(options.first()).not.toBeChecked();
+      await openSidebarExportMenu(page);
+      await options.last().check();
+      await expect(options.first()).toBeChecked();
+      for (const selector of ["#btnSaveHtml", "#btnExportOffline", "#btnSavePlain"]) {
+        const [download] = await Promise.all([
+          page.waitForEvent("download"),
+          clickSidebarExport(page, selector),
+        ]);
+        expect(await readDownload(download)).toContain(sessionId);
+      }
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
   test("sidebar export actions live in a single disclosure and Portable still downloads (CMH-EXP-13)", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "menu export note");

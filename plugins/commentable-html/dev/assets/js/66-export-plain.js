@@ -60,6 +60,7 @@ async function saveAsPlain() {
   catch (e) { showToast("Could not load base HTML."); return; }
   baseHtml = _applyChecklistStateToHtml(baseHtml);
   baseHtml = _applyNoteStateToHtml(baseHtml);
+  baseHtml = _prepareExportHtml(baseHtml);
   let text;
   try { text = _buildPlainHtml(baseHtml); }
   catch (e) { showToast(e.message); return; }
@@ -78,4 +79,3 @@ const _btnSavePlain = document.getElementById("btnSavePlain");
 const _btnSavePlainTop = document.getElementById("btnSavePlainTop");
 if (_btnSavePlain) _btnSavePlain.addEventListener("click", saveAsPlain);
 if (_btnSavePlainTop) _btnSavePlainTop.addEventListener("click", saveAsPlain);
-

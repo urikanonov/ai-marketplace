@@ -58,6 +58,13 @@ class DocStampUnitTests(unittest.TestCase):
         self.assertEqual(doc_stamp.get_meta(out, doc_stamp.SESSION_META), "sess-123")
         self.assertEqual(doc_stamp.get_meta(out, doc_stamp.AGENT_META), "copilot")
 
+    def test_stamp_session_escapes_tag_delimiters(self):
+        out = doc_stamp.stamp_session("<head></head>", "session>suffix", agent="copilot>agent")
+        self.assertIn('content="session&gt;suffix"', out)
+        self.assertIn('content="copilot&gt;agent"', out)
+        self.assertNotIn('content="session>suffix"', out)
+        self.assertNotIn('content="copilot>agent"', out)
+
     def test_stamp_session_without_agent_omits_agent_meta(self):
         out = doc_stamp.stamp_session("<head></head>", "sess-123")
         self.assertEqual(doc_stamp.get_meta(out, doc_stamp.SESSION_META), "sess-123")

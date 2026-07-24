@@ -94,7 +94,7 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
       .filter((node) => node.tabIndex >= 0)
       .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnHelpTop"]);
+    expect(focusableIds).toEqual(["cmhRetainSessionProvenanceTop", "btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnHelpTop"]);
   });
 
   test("the overflow menu header shows the layer version between the badge and brand icon (CMH-MENU-ICON-03)", async ({ page }) => {
@@ -118,11 +118,11 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     expect(order.badge).toBeGreaterThanOrEqual(0);
     expect(order.ver).toBeGreaterThan(order.badge);
     expect(order.brand).toBeGreaterThan(order.ver);
-    // Decorative text: not a focusable menu item, so the tab order is unchanged.
+    // Decorative header text does not alter the interactive control order.
     const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
       .filter((node) => node.tabIndex >= 0)
       .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnHelpTop"]);
+    expect(focusableIds).toEqual(["cmhRetainSessionProvenanceTop", "btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnHelpTop"]);
   });
 
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {

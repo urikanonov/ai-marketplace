@@ -232,7 +232,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await expect(pop.locator(".cm-comment-popover-note.cmh-rich strong")).toHaveText("strong");
   });
 
-  test("Copy all keeps the raw note source; Markdown export escapes the markers to literal (CMH-RICH-08)", async ({ page }) => {
+  test("Copy all keeps the raw note source; Markdown export fences it as literal data (CMH-RICH-08)", async ({ page }) => {
     await openInline(page);
     await installClipboardCapture(page);
     await addTextComment(page, SEL, "**bold** note");
@@ -246,7 +246,9 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
       page.click("#btnExportMd"),
     ]);
     const md = await readDownload(download);
-    expect(md).toContain("\\*\\*bold\\*\\* note");
+    const fenced = "\n~~~\n**bold** note\n~~~\n";
+    expect(md).toContain(fenced);
+    expect(md.replace(fenced, "")).not.toContain("**bold** note");
     expect(md).not.toContain("<strong>");
   });
 

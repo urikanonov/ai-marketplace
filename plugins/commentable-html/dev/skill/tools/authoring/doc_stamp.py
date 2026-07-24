@@ -84,7 +84,7 @@ def get_meta(html, name):
 def set_meta(html, name, content):
     """Set (or insert into <head>) `<meta name=NAME content=CONTENT>`; returns the new html.
     The content is attribute-escaped so a stray quote can never break the tag."""
-    esc = content.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
+    esc = content.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
     new_html, n = _meta_re(name).subn(lambda m: m.group(1) + esc + m.group(2), html, count=1)
     if n:
         return new_html

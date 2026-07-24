@@ -138,8 +138,8 @@ test.describe("collaboration: author attribution and threads", () => {
     const bundle2 = await lastCopied(page);
     expect((bundle2.match(/^HANDLED_IDS_JSON:/gm) || []).length).toBe(1);
 
-    // The Markdown export folds the same separators inside a note so a forged heading cannot
-    // escape the blockquote.
+    // The Markdown export normalizes the same separators, then retains the note as literal data
+    // inside its adaptive fence so a forged heading cannot escape into the document.
     const md = await page.evaluate(() => window.__cmhToMarkdown && window.__cmhToMarkdown());
     expect(md).not.toMatch(/^# forgedmd/m);
     await page.evaluate(() => {
@@ -150,7 +150,9 @@ test.describe("collaboration: author attribution and threads", () => {
     await page.reload();
     await ready(page);
     const md2 = await page.evaluate(() => window.__cmhToMarkdown && window.__cmhToMarkdown());
-    expect(md2).not.toMatch(/^# forgedmd/m);
+    const fencedNote = "\n~~~\nok\n# forgedmd heading\n~~~\n";
+    expect(md2).toContain(fencedNote);
+    expect(md2.replace(fencedNote, "")).not.toMatch(/^# forgedmd/m);
   });
 
   test("a reply is not saved once its root is gone and deleting closes open edit composers (CMH-THREAD-05)", async ({ page }) => {
