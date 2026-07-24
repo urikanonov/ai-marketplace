@@ -84,7 +84,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.224.0";
+const CMH_VERSION = "1.225.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -173,6 +173,8 @@ const openComposers = new Set();
 const openEditComposers = new Map();
 let lastFocusedComposer = null;
 let composerZ = 210;
+
+
 /* ---------- Vendored: lz-string (UTF-16 codec, trimmed) ----------
  * lz-string 1.4.4 by pieroxy <pieroxy@pieroxy.net> - MIT license.
  * https://github.com/pieroxy/lz-string
@@ -8437,7 +8439,39 @@ function _mdBlock(el) {
     (((code || el).className) || "").split(/\s+/).forEach((c) => { const m = c.match(/^language-(.+)$/); if (m) lang = m[1]; });
     return _mdFence(lang, (code || el).textContent || "");
   }
-  if (t === "BLOCKQUOTE") return "> " + _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
+  if (t === "BLOCKQUOTE") {
+    // Group adjacent inline child nodes into a single paragraph each; separate
+    // block-level children (P, PRE, UL, OL, TABLE, nested BLOCKQUOTE, …) as
+    // their own block so that blank lines between blocks are preserved.
+    // This handles three cases correctly:
+    //   - all-inline:  <blockquote>text <strong>bold</strong></blockquote>  -> "> text **bold**"
+    //   - all-block:   <blockquote><p>a</p><p>b</p></blockquote>             -> "> a\n>\n> b"
+    //   - mixed:       inline run, then a P, then more inline               -> each a segment
+    const BQBLOCK = /^(P|PRE|BLOCKQUOTE|UL|OL|TABLE|FIGURE|H[1-6]|DIV|SECTION)$/;
+    const segs = [];
+    let inlineAcc = "";
+    const flushInline = () => {
+      const c = _mdEscapeLeading(_mdCollapse(inlineAcc));
+      inlineAcc = "";
+      if (c) segs.push(c);
+    };
+    Array.prototype.forEach.call(el.childNodes, (ch) => {
+      if (ch.nodeType === 3) {
+        inlineAcc = _mdAppendInline(inlineAcc, ch);
+      } else if (ch.nodeType === 1 && !_mdSkip(ch)) {
+        if (BQBLOCK.test(ch.tagName)) {
+          flushInline();
+          const md = _mdBlock(ch);
+          if (md && md.trim()) segs.push(md);
+        } else {
+          inlineAcc = _mdAppendInline(inlineAcc, ch);
+        }
+      }
+    });
+    flushInline();
+    const inner = segs.join("\n\n");
+    return inner.split("\n").map(function(l) { return l ? "> " + l : ">"; }).join("\n");
+  }
   if (el.classList && el.classList.contains("cmh-callout")) return _mdCallout(el);
   return _mdChildren(el);
 }

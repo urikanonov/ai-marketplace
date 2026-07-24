@@ -180,6 +180,52 @@ test("a blockquote and an image figure map to their forms", async ({ page }) => 
   expect(md).toContain("![a picture](pic.png)");
 });
 
+test("a blockquote with nested block children preserves each child on its own > prefixed lines (CMH-MD-08)", async ({ page }) => {
+  // Case 1: block children - paragraphs + list (original regression guard)
+  const C = '<h1>BQ</h1>'
+    + '<blockquote>'
+    + '<p>first paragraph</p>'
+    + '<p>second paragraph</p>'
+    + '<ul><li>list item</li></ul>'
+    + '</blockquote>';
+  await openRich(page, C, "cmh-md-bq-nested");
+  let md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toMatch(/^> first paragraph$/m);
+  expect(md).toMatch(/^> second paragraph$/m);
+  expect(md).toMatch(/^> - list item$/m);
+  expect(md).not.toMatch(/> first paragraph.*second paragraph/);
+
+  // Case 2: inline content - plain text + inline element on ONE prefixed line.
+  // A blockquote whose children are all inline (text nodes + STRONG/EM/A/CODE/etc.)
+  // must produce a single "> ..." line, not blank-line-separated fragments.
+  const C2 = '<h1>BQ-inline</h1>'
+    + '<blockquote>plain <strong>bold</strong> tail</blockquote>';
+  await openRich(page, C2, "cmh-md-bq-inline");
+  md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toMatch(/^> plain \*\*bold\*\* tail$/m);
+  expect(md).not.toMatch(/^> plain$/m);    // must NOT be split into fragments
+  expect(md).not.toMatch(/^> \*\*bold\*\*$/m);
+
+  // Case 3: code fence inside a blockquote - blank lines inside the fence are
+  // preserved and each gets a bare ">" prefix (no trailing space).
+  const C3 = '<h1>BQ-fence</h1>'
+    + '<blockquote><pre><code>line 1\n\nline 2</code></pre></blockquote>';
+  await openRich(page, C3, "cmh-md-bq-fence");
+  md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toMatch(/^> ```$/m);
+  expect(md).toMatch(/^> line 1$/m);
+  expect(md).toMatch(/^>$/m);          // blank line inside fence -> bare ">"
+  expect(md).toMatch(/^> line 2$/m);
+
+  // Case 4: nested blockquote - second level gets "> > " prefix.
+  const C4 = '<h1>BQ-nesting</h1>'
+    + '<blockquote><p>outer</p><blockquote><p>inner</p></blockquote></blockquote>';
+  await openRich(page, C4, "cmh-md-bq-nesting");
+  md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toMatch(/^> outer$/m);
+  expect(md).toMatch(/^> > inner$/m);
+});
+
 test("a KQL figure exports a kusto fence and the run link", async ({ page }) => {
   const C = '<h1>K</h1><figure class="cmh-kql"><pre><code class="language-kusto">StormEvents | take 5</code></pre>'
     + '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x">Run</a><figcaption>q</figcaption></figure>';

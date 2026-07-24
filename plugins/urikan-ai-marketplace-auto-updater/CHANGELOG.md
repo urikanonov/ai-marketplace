@@ -4,6 +4,14 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-07-23
+
+### Fixed
+
+- The throttle stamp is now written only when ALL plugin updates in the pass succeed. Previously a
+  pass where any plugin update exited non-zero or threw an exception still wrote the stamp,
+  suppressing retries for up to 24 hours after a transient failure. (UPD-21)
+
 ## [1.4.1] - 2026-07-19
 
 ### Added

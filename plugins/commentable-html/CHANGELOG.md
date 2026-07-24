@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.225.0] - 2026-07-24
+
+### Fixed
+
+- Markdown export: a `<blockquote>` now recursively serializes its block children (paragraphs,
+  lists, code fences, nested blockquotes) so every output line is prefixed with `> `, preserving
+  the full GFM structure. Previously `_mdCollapse(_mdInlineText(el))` flattened all block children
+  to a single line, losing the nested structure and changing the document's meaning. (CMH-MD-08)
 ## [1.224.0] - 2026-07-23
 
 ### Changed

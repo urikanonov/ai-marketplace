@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.224.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.225.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -457,6 +457,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.225.0] - 2026-07-24</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Markdown export: a <code>&lt;blockquote&gt;</code> now recursively serializes its block children (paragraphs, lists, code fences, nested blockquotes) so every output line is prefixed with <code>&gt; </code>, preserving the full GFM structure. Previously <code>_mdCollapse(_mdInlineText(el))</code> flattened all block children to a single line, losing the nested structure and changing the document&#x27;s meaning. (CMH-MD-08)</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.224.0] - 2026-07-23</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -464,6 +471,8 @@
               <li>Portable, Offline, and Plain HTML exports strip authoring session-id and agent provenance by default; an explicit retain option preserves it when deliberately requested.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.223.0] - 2026-07-23</h3></div>
             <div class="group-label">Added</div>
@@ -473,8 +482,6 @@
               <li>Accessibility: a sortable table&#x27;s header cell now reflects the active sort direction via <code>aria-sort</code> (<code>ascending</code> / <code>descending</code>) on the <code>&lt;th&gt;</code>, removed when the column resets or another column takes the sort, so assistive tech announces which column is sorted and how.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.222.0] - 2026-07-23</h3></div>
             <div class="group-label">Fixed</div>
@@ -507,14 +514,7 @@
               <li>The visuals-matrix demo (<code>report-metrics.html</code>) Mermaid gallery now uses <code>.cmh-diagram-gallery</code> instead of a hand-rolled per-document grid/masonry, retiring the layout that failed repeatedly (marooning in #597, sliver/masonry in #602/#610). This is the durable, tested fix for the demo&#x27;s gallery rendering (CMH-DEMO-06).</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.214.0] - 2026-07-22</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Flat (non-deck) documents now print / Save-as-PDF as a SINGLE continuous no-break page instead of paginating onto A4/Letter sheets, so no page break cuts through a section, table, chart, diagram, or code block. On print the runtime measures the full content height (proactively, under stable screen media, since Chromium locks the print <code>@page</code> size at <code>beforeprint</code>) and sizes a dynamic <code>@page</code> to the content, collapsing a multi-page report onto one tall page. Documents that contain a block-stacking container - a multi-column chart gallery or a grid/flex widget such as a kanban board - are left on normal pagination, because their print-time grid-to-block reflow and asynchronous chart resize cannot be measured before the page size is locked; their content still prints in full on standard pages. Decks are unchanged (one landscape 16:9 page per slide). Relies on the browser honoring a CSS <code>@page</code> size (Chromium&#x27;s native print/PDF). (CMH-PRINT-06)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">183 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">184 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
