@@ -215,10 +215,59 @@ class SpecTestReferenceTests(unittest.TestCase):
 
         self.assertEqual(refs.check_spec(spec, self.base), [])
 
-    def test_accepts_exact_feature_id_reference(self):
+    def test_bare_feature_id_alone_does_not_satisfy_strict(self):
+        # A bare feature id is a valid reference (existence is still checked), but per issue #629 it
+        # is NOT an exact test title/method, so a clause citing only one is flagged.
         spec = self._spec("`tests/demo.spec.js` - `DEMO-01`")
 
+        issues = refs.check_spec(spec, self.base)
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("no exact test name cited", issues[0].message)
+
+    def test_feature_id_alongside_an_exact_title_is_accepted_and_validated(self):
+        # The exact title satisfies the strict rule; the feature id is still validated to exist.
+        spec = self._spec("`tests/demo.spec.js` - `real browser title (DEMO-01)`, `DEMO-03`")
+
         self.assertEqual(refs.check_spec(spec, self.base), [])
+
+    def test_describe_suite_title_alone_does_not_satisfy_strict(self):
+        (self.base / "tests" / "suite.spec.js").write_text(
+            "describe('a suite group (DEMO-20)', () => {\n"
+            "  test('a real test in the suite (DEMO-21)', async () => {});\n"
+            "});\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        spec = self._spec("`tests/suite.spec.js` - `a suite group (DEMO-20)`")
+
+        issues = refs.check_spec(spec, self.base)
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("no exact test name cited", issues[0].message)
+
+    def test_non_test_python_helper_alone_does_not_satisfy_strict(self):
+        (self.base / "tests" / "test_helpers.py").write_text(
+            "def main():\n"
+            "    pass\n\n"
+            "class HelperTests:\n"
+            "    def setUp(self):\n"
+            "        pass\n"
+            "    def test_real(self):\n"
+            "        pass\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        # `main` (module helper) and `HelperTests.setUp` (non-test method) are not exact tests.
+        for citation in ("`main`", "`HelperTests.setUp`"):
+            spec = self._spec("`tests/test_helpers.py` - %s" % citation)
+            issues = refs.check_spec(spec, self.base)
+            self.assertEqual(len(issues), 1, citation)
+            self.assertIn("no exact test name cited", issues[0].message)
+        # A real test method or the test-case class does satisfy it.
+        for citation in ("`HelperTests.test_real`", "`HelperTests`"):
+            spec = self._spec("`tests/test_helpers.py` - %s" % citation)
+            self.assertEqual(refs.check_spec(spec, self.base), [], citation)
 
     def test_rejects_partial_feature_id_reference(self):
         spec = self._spec("`tests/demo.spec.js` - `DEMO-0`")
