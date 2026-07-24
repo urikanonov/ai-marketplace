@@ -1,16 +1,16 @@
 {
   "files": {
     "commentable-html.assets.js": {
-      "bytes": 850462,
-      "sha256": "38cf3b91915288b0508e720380d87e72d0c5549f614be0b080e4a81b9b24dcd5"
+      "bytes": 851803,
+      "sha256": "418918f8266704cefd60f2d9e376716f1103da72e82967414520a3731eaa2780"
     },
     "commentable-html.css": {
       "bytes": 162701,
       "sha256": "0291239d9e221bcdb4d993aab8bdd9fa837e36dc79adcf835888032d201e6a24"
     },
     "commentable-html.js": {
-      "bytes": 658767,
-      "sha256": "fd5b0961ec2eaeb55b4bc6e4774de190b2f9f84889363d5cffc6609da9d5d23c"
+      "bytes": 660062,
+      "sha256": "044ed3c1975ac0c775d3038e28129d62a0f1c10e7533ffc8abceec4573012535"
     }
   },
   "version": "1.225.0"

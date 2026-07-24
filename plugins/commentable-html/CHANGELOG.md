@@ -4,7 +4,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
 ## [1.225.0] - 2026-07-24
 
 ### Fixed
@@ -2601,8 +2600,3 @@ First official release.
   storage keys no longer embed a version. The single source of truth for the release version is
   `dev/VERSION`; `build.py` stamps it into the layer constant, `plugin.json`, the marketplace entry,
   and each document's version `<meta>`, and `build.py --check` guards against drift.
-
-
-
-
-

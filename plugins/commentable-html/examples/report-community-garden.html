@@ -12415,7 +12415,36 @@ function _mdBlock(el) {
     return _mdFence(lang, (code || el).textContent || "");
   }
   if (t === "BLOCKQUOTE") {
-    const inner = _mdChildren(el);
+    // Group adjacent inline child nodes into a single paragraph each; separate
+    // block-level children (P, PRE, UL, OL, TABLE, nested BLOCKQUOTE, …) as
+    // their own block so that blank lines between blocks are preserved.
+    // This handles three cases correctly:
+    //   - all-inline:  <blockquote>text <strong>bold</strong></blockquote>  -> "> text **bold**"
+    //   - all-block:   <blockquote><p>a</p><p>b</p></blockquote>             -> "> a\n>\n> b"
+    //   - mixed:       inline run, then a P, then more inline               -> each a segment
+    const BQBLOCK = /^(P|PRE|BLOCKQUOTE|UL|OL|TABLE|FIGURE|H[1-6]|DIV|SECTION)$/;
+    const segs = [];
+    let inlineAcc = "";
+    const flushInline = () => {
+      const c = _mdEscapeLeading(_mdCollapse(inlineAcc));
+      inlineAcc = "";
+      if (c) segs.push(c);
+    };
+    Array.prototype.forEach.call(el.childNodes, (ch) => {
+      if (ch.nodeType === 3) {
+        inlineAcc = _mdAppendInline(inlineAcc, ch);
+      } else if (ch.nodeType === 1 && !_mdSkip(ch)) {
+        if (BQBLOCK.test(ch.tagName)) {
+          flushInline();
+          const md = _mdBlock(ch);
+          if (md && md.trim()) segs.push(md);
+        } else {
+          inlineAcc = _mdAppendInline(inlineAcc, ch);
+        }
+      }
+    });
+    flushInline();
+    const inner = segs.join("\n\n");
     return inner.split("\n").map(function(l) { return l ? "> " + l : ">"; }).join("\n");
   }
   if (el.classList && el.classList.contains("cmh-callout")) return _mdCallout(el);
