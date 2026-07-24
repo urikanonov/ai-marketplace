@@ -153,7 +153,7 @@ This means:
 - A user can keep editing comments locally (composer save bumps `updatedAt`); their localStorage version wins until they click **Export as Portable** again.
 - The agent's `handledCommentIds` contract is unchanged: appending an id there prunes the comment from localStorage on next load. To remove it from the embedded snapshot, click **Export as Portable** after the prune so the downloaded copy reflects the pruned state.
 
-The `<script id="embeddedComments">` block is the **only** part of the file that **Export as Portable** ever rewrites (aside from inlining the layer in nonportable mode, below). It does not regenerate any other markup, does not re-run mermaid, does not change `handledCommentIds`, and does not modify the five pasteable regions.
+The `<script id="embeddedComments">` block is the **only** comment-state part of the file that **Export as Portable** rewrites (aside from inlining the layer in nonportable mode, below). By default it also removes the `commentable-html-session-id` and `commentable-html-agent` provenance meta tags; select **Retain authoring session provenance** in either Export menu before exporting to keep them. It does not regenerate any other markup, does not re-run mermaid, does not change `handledCommentIds`, and does not modify the five pasteable regions.
 
 In **nonportable** mode, **Export as Portable** additionally inlines the CSS and runtime so the downloaded file is ONE portable, self-contained document (see below) - so the same button always yields a combined file whether the source was inline or nonportable.
 
@@ -162,7 +162,7 @@ In **nonportable** mode, **Export as Portable** additionally inlines the CSS and
 
 > UI label: **Export Offline** (overflow menu and sidebar header).
 
-The overflow menu and sidebar expose an **Export Offline** button for handoff situations where the recipient may have no network. It is an addition to **Export as Portable**; the existing Portable, Plain HTML, and Markdown exports are unchanged.
+The overflow menu and sidebar expose an **Export Offline** button for handoff situations where the recipient may have no network. It is an addition to **Export as Portable**; Portable, Offline, and Plain HTML exports all remove session-id/agent provenance meta by default unless **Retain authoring session provenance** is selected, while Markdown export is unchanged.
 
 Clicking it:
 

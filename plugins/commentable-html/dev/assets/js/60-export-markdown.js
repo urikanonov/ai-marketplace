@@ -343,6 +343,7 @@ function _mdCommentsAppendix() {
     out.push("");
     out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment") + _mdBy(c));
     out.push("");
+    // Keep raw note data inside a tilde fence that outgrows any inner tilde run.
     _mdNoteFence(c.note);
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, live) : [];
     replies.forEach((r, k) => {

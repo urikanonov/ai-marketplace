@@ -12247,6 +12247,7 @@ function _mdCommentsAppendix() {
     out.push("");
     out.push("### " + (i + 1) + ". " + (oneLine(where) || "comment") + _mdBy(c));
     out.push("");
+    // Keep raw note data inside a tilde fence that outgrows any inner tilde run.
     _mdNoteFence(c.note);
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, live) : [];
     replies.forEach((r, k) => {
@@ -12905,14 +12906,31 @@ function _retainSessionProvenance() {
     function (option) { return option.checked; });
 }
 function _stripSessionProvenanceFromHtml(html) {
-  return String(html == null ? "" : html).replace(/<meta\b[^>]*>/gi, function (tag) {
+  const raw = String(html == null ? "" : html);
+  const lower = raw.toLowerCase();
+  let out = "";
+  let cursor = 0;
+  let search = 0;
+  for (;;) {
+    const start = lower.indexOf("<meta", search);
+    if (start < 0) return out + raw.slice(cursor);
+    if (!/[\s/>]/.test(raw[start + 5] || "")) {
+      search = start + 5;
+      continue;
+    }
+    const end = _cmhTagEnd(raw, start);
+    if (end < 0) return out + raw.slice(cursor);
+    const tag = raw.slice(start, end + 1);
     const name = _cmhTagAttributes(tag).find(function (attr) {
       return attr.name === "name" && attr.valueStart != null;
     });
-    if (!name) return tag;
-    const value = _cmhDecodeAttribute(tag.slice(name.valueStart, name.valueEnd)).toLowerCase();
-    return value === "commentable-html-session-id" || value === "commentable-html-agent" ? "" : tag;
-  });
+    const value = name
+      ? _cmhDecodeAttribute(tag.slice(name.valueStart, name.valueEnd)).toLowerCase() : "";
+    out += raw.slice(cursor, start);
+    if (value !== "commentable-html-session-id" && value !== "commentable-html-agent") out += tag;
+    cursor = end + 1;
+    search = cursor;
+  }
 }
 function _prepareExportHtml(html) {
   return _retainSessionProvenance() ? html : _stripSessionProvenanceFromHtml(html);
